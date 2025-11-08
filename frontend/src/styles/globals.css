@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #ffffff;
+  --text: #171717;
+  --muted: #6b7280;
+  --primary: #0f172a;
+  --oran: #f37121;
+  --accent: #0ea5a4;
+}
+
+/* أضف هذه القواعد الهامة */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  height: 100%;
+}
+
+/* باقي الكود كما هو */
+.container-max {
+  max-width: 1180px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.fade-up {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+:focus-visible {
+  outline: 3px solid rgba(14,165,164,0.18);
+  outline-offset: 2px;
+}

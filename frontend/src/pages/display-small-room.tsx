@@ -3,9 +3,9 @@
 
 import { useState, useEffect } from 'react';
 import { Booking } from '../../types';
-import { bookingsAPI } from '../../utils/api';
-import ScheduleGrid from '../../components/ScheduleGrid';
-import DateSelector from '../../components/DateSelector';
+import { bookingsAPI } from '../utils/api';
+import ScheduleGrid from '../components/ScheduleGrid';
+import DateSelector from '../components/DateSelector';
 import { Calendar, Clock, Monitor } from 'lucide-react';
 
 export default function SmallRoomDisplay() {

@@ -291,7 +291,7 @@ export default function AboutPage() {
             { name: "Mohamed Al Zahrani", role: "HR Manager", img: "/images/zaa.png" },
             { name: "Haitham Omar", role: "B2B HOD", img: "/images/haithamomar.jpeg" },
             { name: "Islam Suror", role: "B2C HOD", img: "/images/eslam.jpeg" },
-            { name: "Morsy Hassan", role: "S/OP Team Leader", img: "/images/morsy.jpeg" },
+            { name: "Mohamed Zaher", role: "Software Head", img: "/images/darr.png" },
             { name: "Ahmed Mahmoud", role: "Head of Operation", img: "/images/ahmedmahmoud.jpeg" },
             { name: "Adel Hasaballah", role: "BDM", img: "/images/adel.jpeg" },
           ].map((head) => (

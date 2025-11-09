@@ -1,1 +1,11 @@
-{}
+{
+  "/_app": "pages/_app.js",
+  "/admin-dashboard": "pages/admin-dashboard.html",
+  "/display-large-room": "pages/display-large-room.html",
+  "/display-small-room": "pages/display-small-room.html",
+  "/meeting-room": "pages/meeting-room.html",
+  "/user-management": "pages/user-management.html",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js",
+  "/404": "pages/404.html"
+}

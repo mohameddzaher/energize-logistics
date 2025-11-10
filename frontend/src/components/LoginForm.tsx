@@ -87,7 +87,7 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
         </button>
       </form>
 
-      <div className="mt-6 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+      {/* <div className="mt-6 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
         <p className="font-medium text-[#f37121] text-sm mb-2">Test Accounts:</p>
         <div className="text-xs text-gray-400 space-y-1">
           <div className="flex justify-between">
@@ -103,7 +103,7 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
             <span>admin / admin123</span>
           </div>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }

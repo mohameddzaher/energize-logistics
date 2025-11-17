@@ -41,9 +41,9 @@
 //                 {logos.map((logo, index) => (
 //                   <div
 //                     key={`${loopIndex}-${index}`}
-//                     className="flex items-center justify-center bg-white/5 backdrop-blur-sm 
-//                                p-6 rounded-2xl shadow-md border border-gray-700/40 
-//                                hover:border-[#f37121]/50 transition-all duration-300 
+//                     className="flex items-center justify-center bg-white/5 backdrop-blur-sm
+//                                p-6 rounded-2xl shadow-md border border-gray-700/40
+//                                hover:border-[#f37121]/50 transition-all duration-300
 //                                min-w-[220px] h-[130px]"
 //                   >
 //                     <img
@@ -65,8 +65,8 @@
 //           {logos.map((logo, index) => (
 //             <div
 //               key={index}
-//               className="flex items-center justify-center bg-white/5 backdrop-blur-sm 
-//                          p-5 rounded-xl border border-gray-700/40 
+//               className="flex items-center justify-center bg-white/5 backdrop-blur-sm
+//                          p-5 rounded-xl border border-gray-700/40
 //                          hover:border-[#f37121]/50 transition-all duration-300"
 //             >
 //               <img
@@ -84,11 +84,14 @@
 //   )
 // }
 
-'use client'
+"use client";
 
 export default function ClientsPage() {
   // قلل عدد الصور لتحسين الأداء
-  const logos = Array.from({ length: 100 }, (_, i) => `/images/clients/${i + 1}.jpeg`)
+  const logos = Array.from(
+    { length: 100 },
+    (_, i) => `/images/clients/${i + 1}.jpeg`
+  );
 
   return (
     <main className="min-h-screen bg-gray-900 text-white py-14 px-4 sm:px-6 relative overflow-hidden">
@@ -103,7 +106,8 @@ export default function ClientsPage() {
         </h1>
 
         <p className="max-w-3xl mx-auto text-gray-300 mb-12 text-sm sm:text-base">
-          We are proud to work with a wide range of trusted clients across industries.
+          We are proud to work with a wide range of trusted clients across
+          industries.
         </p>
 
         {/* 🎞️ الكاروسيل المتحرك (محسّن للأداء) */}
@@ -123,7 +127,7 @@ export default function ClientsPage() {
                       loading="lazy"
                       className="max-w-full max-h-[50px] object-contain"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none'
+                        (e.target as HTMLImageElement).style.display = "none";
                       }}
                     />
                   </div>
@@ -146,7 +150,7 @@ export default function ClientsPage() {
                 loading="lazy"
                 className="max-w-full max-h-[40px] sm:max-h-[60px] object-contain"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none'
+                  (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
             </div>
@@ -163,25 +167,25 @@ export default function ClientsPage() {
             transform: translateX(calc(-100% / 3));
           }
         }
-        
+
         .clients-carousel {
           animation: scroll 40s linear infinite;
           width: max-content;
           will-change: transform;
         }
-        
+
         /* تحسينات للأجهزة المحمولة */
         @media (max-width: 768px) {
           .clients-carousel {
             animation: scroll 60s linear infinite;
           }
         }
-        
+
         /* إيقاف التحريك عند التمرير */
         .clients-carousel:hover {
           animation-play-state: paused;
         }
       `}</style>
     </main>
-  )
+  );
 }

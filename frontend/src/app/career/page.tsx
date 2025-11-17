@@ -268,7 +268,7 @@
 //             <button
 //               type="submit"
 //               disabled={loading}
-//               className="px-6 py-2 bg-[#f37121] text-black rounded-xl font-semibold tracking-wide 
+//               className="px-6 py-2 bg-[#f37121] text-black rounded-xl font-semibold tracking-wide
 //                          hover:bg-[#d65d12] transition disabled:opacity-50"
 //             >
 //               {loading ? "Submitting..." : "Submit Application"}
@@ -289,7 +289,6 @@
 //     </section>
 //   );
 // }
-
 
 // "use client";
 
@@ -532,7 +531,7 @@
 //             <button
 //               type="submit"
 //               disabled={loading}
-//               className="px-6 py-2 bg-[#f37121] text-black rounded-xl font-semibold tracking-wide 
+//               className="px-6 py-2 bg-[#f37121] text-black rounded-xl font-semibold tracking-wide
 //                          hover:bg-[#d65d12] transition disabled:opacity-50"
 //             >
 //               {loading ? "Submitting..." : "Submit Application"}
@@ -553,7 +552,6 @@
 //     </section>
 //   );
 // }
-
 
 "use client";
 
@@ -579,7 +577,7 @@ export default function CareerPage() {
       message,
       type,
     });
-    
+
     // إخفاء التوست بعد 4 ثواني
     setTimeout(() => {
       setToast({
@@ -606,13 +604,19 @@ export default function CareerPage() {
       .then(
         (result) => {
           console.log("Application Sent:", result.text);
-          showToast("Your application has been submitted successfully!", "success");
+          showToast(
+            "Your application has been submitted successfully!",
+            "success"
+          );
           form.current?.reset();
           setLoading(false);
         },
         (error) => {
           console.error("Error:", error.text);
-          showToast("Failed to submit application, please try again later.", "error");
+          showToast(
+            "Failed to submit application, please try again later.",
+            "error"
+          );
           setLoading(false);
         }
       );
@@ -622,11 +626,13 @@ export default function CareerPage() {
     <section className="min-h-screen bg-gray-900 text-white py-16 px-6 md:px-20 relative">
       {/* Toast Notification */}
       {toast.show && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm ${
-          toast.type === "success" 
-            ? "bg-green-600 border-green-500" 
-            : "bg-red-600 border-red-500"
-        } text-white px-6 py-3 rounded-xl shadow-2xl border transform transition-all duration-300 animate-fade-in`}>
+        <div
+          className={`fixed top-4 right-4 z-50 max-w-sm ${
+            toast.type === "success"
+              ? "bg-green-600 border-green-500"
+              : "bg-red-600 border-red-500"
+          } text-white px-6 py-3 rounded-xl shadow-2xl border transform transition-all duration-300 animate-fade-in`}
+        >
           <div className="flex items-center gap-3">
             <span className="text-lg">
               {toast.type === "success" ? "✅" : "❌"}

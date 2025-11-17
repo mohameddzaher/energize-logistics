@@ -26,10 +26,20 @@
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
+    "/admin-dashboard": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/admin-dashboard.js"
+    ],
     "/meeting-room": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
       "static/chunks/pages/meeting-room.js"
+    ],
+    "/user-management": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/user-management.js"
     ]
   },
   "ampFirstPages": []

@@ -253,9 +253,21 @@ export default function AdminDashboard() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-white">{booking.user.fullName}</div>
+                      {/* <div className="text-sm text-white">{booking.user.fullName}</div>
                       <div className="text-sm text-gray-300">@{booking.user.username}</div>
-                      <div className="text-sm text-gray-400 capitalize">{booking.user.role}</div>
+                      <div className="text-sm text-gray-400 capitalize">{booking.user.role}</div> */}
+
+<div className="text-sm text-white">
+  {booking.user?.fullName || "Unknown User"}
+</div>
+<div className="text-sm text-gray-300">
+  @{booking.user?.username || "unknown"}
+</div>
+<div className="text-sm text-gray-400 capitalize">
+  {booking.user?.role || "unknown"}
+</div>
+
+
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${

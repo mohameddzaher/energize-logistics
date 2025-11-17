@@ -2,5 +2,7 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/meeting-room": "pages/meeting-room.js"
+  "/meeting-room": "pages/meeting-room.js",
+  "/admin-dashboard": "pages/admin-dashboard.js",
+  "/user-management": "pages/user-management.js"
 }

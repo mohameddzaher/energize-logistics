@@ -285,9 +285,7 @@
 //   );
 // }
 
-
 //    AFTER ADDED TOAST NOTIFICATION
-
 
 "use client";
 
@@ -313,7 +311,7 @@ export default function ContactPage() {
       message,
       type,
     });
-    
+
     // إخفاء التوست بعد 4 ثواني
     setTimeout(() => {
       setToast({
@@ -353,11 +351,13 @@ export default function ContactPage() {
     <section className="bg-gray-900 text-center text-white px-4 md:px-20 py-16 relative">
       {/* Toast Notification */}
       {toast.show && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm ${
-          toast.type === "success" 
-            ? "bg-green-600 border-green-500" 
-            : "bg-red-600 border-red-500"
-        } text-white px-6 py-3 rounded-xl shadow-2xl border transform transition-all duration-300 animate-fade-in`}>
+        <div
+          className={`fixed top-4 right-4 z-50 max-w-sm ${
+            toast.type === "success"
+              ? "bg-green-600 border-green-500"
+              : "bg-red-600 border-red-500"
+          } text-white px-6 py-3 rounded-xl shadow-2xl border transform transition-all duration-300 animate-fade-in`}
+        >
           <div className="flex items-center gap-3">
             <span className="text-lg">
               {toast.type === "success" ? "✅" : "❌"}

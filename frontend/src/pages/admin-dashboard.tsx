@@ -164,6 +164,15 @@ export default function AdminDashboard() {
             >
               Manage Users
             </Link>
+
+{/* في قسم الأزرار في الـ Header */}
+<Link 
+  href="/analytics"
+  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl border border-purple-500/50 text-center"
+>
+  View Analytics
+</Link>
+
           </div>
         </div>
         
@@ -257,6 +266,7 @@ export default function AdminDashboard() {
                       <div className="text-sm text-gray-300">@{booking.user.username}</div>
                       <div className="text-sm text-gray-400 capitalize">{booking.user.role}</div> */}
 
+
 <div className="text-sm text-white">
   {booking.user?.fullName || "Unknown User"}
 </div>
@@ -266,7 +276,6 @@ export default function AdminDashboard() {
 <div className="text-sm text-gray-400 capitalize">
   {booking.user?.role || "unknown"}
 </div>
-
 
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

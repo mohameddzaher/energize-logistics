@@ -16,11 +16,11 @@ export default function Hero() {
           className="w-full h-full object-cover"
           priority
         />
-        <div className="absolute inset-0 bg-black/70"></div>
+        <div className="absolute inset-0 bg-black/85"></div>
       </div>
 
       {/* المحتوى */}
-      <div className="relative z-10 flex flex-col justify-center items-center h-full px-6 md:px-24 text-white">
+      <div className="relative z-10 flex flex-col justify-start pt-32 items-center h-full px-6 md:px-24 text-white">
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -82,15 +82,15 @@ export default function Hero() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 1.5 }}
-        className="absolute bottom-10 left-1/2 transform -translate-x-1/2"
+        className="absolute bottom-24 left-1/2 transform -translate-x-1/2"
       >
         <div className="flex flex-col items-center">
           <span className="text-sm text-gray-400 mb-2">Scroll to explore</span>
-          <div className="w-6 h-10 border-2 border-gray-400 rounded-full flex justify-center">
+          <div className="w-5 h-8 border-2 border-gray-500 rounded-full flex justify-center">
             <motion.div
               animate={{ y: [0, 12, 0] }}
               transition={{ duration: 1.5, repeat: Infinity }}
-              className="w-1 h-3 bg-gray-400 rounded-full mt-2"
+              className="w-1 h-2 bg-gray-400 rounded-full mt-1"
             />
           </div>
         </div>
@@ -98,59 +98,3 @@ export default function Hero() {
     </section>
   );
 }
-// ---------------------------------------
-
-// 'use client'
-// import { motion } from 'framer-motion'
-
-// export default function Hero() {
-//   return (
-//     <section className="relative w-full h-screen">
-//       {/* الخلفية */}
-//       <div className="absolute inset-0">
-//         <img
-//           src="/images/1 reduced.jpg"
-//           alt="logistics"
-//           className="w-full h-full object-cover"
-//         />
-//         {/* overlay لتغميق الصورة قليلًا */}
-//         <div className="absolute inset-0 bg-black/40"></div>
-//       </div>
-
-//       {/* المحتوى */}
-//       <div className="relative z-10 flex flex-col justify-center items-start h-full px-6 md:px-24 text-white">
-//         <motion.h1
-//           initial={{ opacity: 0, y: 20 }}
-//           animate={{ opacity: 1, y: 0 }}
-//           transition={{ duration: 0.7 }}
-//           className="text-4xl md:text-6xl font-extrabold mb-4"
-//         >
-//           Energize Logistics
-//         </motion.h1>
-
-//         <motion.p
-//           initial={{ opacity: 0, y: 20 }}
-//           animate={{ opacity: 1, y: 0 }}
-//           transition={{ duration: 0.9 }}
-//           className="text-lg md:text-xl mb-6 max-w-xl"
-//         >
-//           Reliable logistics, smarter supply chains and seamless international shipping solutions. We help you move goods faster and safer.
-//         </motion.p>
-
-//         <motion.div
-//           initial={{ opacity: 0, y: 20 }}
-//           animate={{ opacity: 1, y: 0 }}
-//           transition={{ duration: 1 }}
-//           className="flex gap-4"
-//         >
-//           <a href="#services" className="px-6 py-3 rounded-md bg-accent text-white font-semibold">
-//             Our Services
-//           </a>
-//           <a href="#contact" className="px-6 py-3 rounded-md border border-white">
-//             Contact Us
-//           </a>
-//         </motion.div>
-//       </div>
-//     </section>
-//   )
-// }

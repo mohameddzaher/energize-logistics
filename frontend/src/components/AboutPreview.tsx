@@ -822,11 +822,11 @@ export default function AboutPreview() {
 
             <div className="grid grid-cols-2 gap-6 md:w-1/2 w-full">
               {[
-                { label: "Successful Shipments", value: "1M+" },
-                { label: "Tons Delivered", value: "1M+" },
-                { label: "Clients Served", value: "100+" },
-                { label: "Cities Covered Across KSA", value: "50+" },
-                { label: "Employees & Drivers", value: "360+" },
+                { label: "Successful Shipments", value: "+1M" },
+                { label: "Tons Delivered", value: "+1M" },
+                { label: "Clients Served", value: "+100" },
+                { label: "Cities Covered Across KSA", value: "+50" },
+                { label: "Employees & Drivers", value: "+360" },
                 { label: "Operational Branches", value: "7" },
               ].map((stat, index) => (
                 <div

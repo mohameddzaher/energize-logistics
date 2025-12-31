@@ -420,7 +420,7 @@ export default function Header() {
       {/* --- Top Bar --- */}
       <div className="w-full py-2 bg-gray-800 text-white flex justify-center items-center text-xs font-light tracking-wide shadow-sm">
         <h6 className="text-center font-bold whitespace-nowrap">
-          Smart logistics. Fast customs clearance. On-time delivery.
+          Energize Your Logistics.
         </h6>
       </div>
 

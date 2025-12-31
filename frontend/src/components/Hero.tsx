@@ -99,8 +99,8 @@ export default function Hero() {
       >
         <div className="text-right">
           <div className="text-center inline-block bg-black/30 backdrop-blur-sm px-5 py-3 rounded-lg border border-white/10">
-            <p className="text-sm text-gray-300 font-bold">1M+</p>
-            <p className="text-xs text-white pt-1">Successful Shipments</p>
+            <p className="text-sm text-[#f37121] font-bold">+1M</p>
+            <p className="text-xs text-white pt-1">Successful Trips</p>
           </div>
         </div>
       </motion.div>

@@ -432,7 +432,7 @@ export default function AboutPage() {
 
         <h1 className="text-3xl font-bold mb-6 text-[#f37121]">About Energize</h1>
         <p className="text-gray-300 max-w-4xl mx-auto leading-relaxed text-lg">
-          Founded in <span className="text-[#f37121] font-semibold">2020</span>,{" "}
+          Founded in <span className="text-[#f37121] font-semibold">2021</span>,{" "}
           <strong> ENERGIZE </strong> has grown rapidly into one of the leading logistics
           and transportation companies across the Middle East and Africa. We specialize
           in providing smart, integrated, and technology-driven logistics solutions –

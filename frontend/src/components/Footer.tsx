@@ -3,8 +3,9 @@
 
 import React from "react";
 import Link from "next/link";
-import { FaFacebook, FaInstagram, FaLinkedin } from "react-icons/fa";
+import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
 import Image from "next/image";
+import { FaXTwitter } from "react-icons/fa6";
 
 interface FooterItem {
   name: string;
@@ -78,8 +79,13 @@ const Footer: React.FC = () => {
 
   const socialItems: FooterItem[] = [
     {
-      name: "Facebook",
-      link: "https://www.facebook.com/energizelco",
+      name: "LinkedIn",
+      link: "https://www.linkedin.com/company/energizelco",
+      target: "_blank",
+    },
+    {
+      name: "X",
+      link: "https://x.com/energizelco",
       target: "_blank",
     },
     {
@@ -88,10 +94,17 @@ const Footer: React.FC = () => {
       target: "_blank",
     },
     {
-      name: "LinkedIn",
-      link: "https://www.linkedin.com/company/energizelco",
+      name: "YouTube",
+      link: "https://www.youtube.com/@energizelco",
       target: "_blank",
     },
+    {
+      name: "Facebook",
+      link: "https://www.facebook.com/energizelco",
+      target: "_blank",
+    },
+    
+    
   ];
 
   return (
@@ -109,7 +122,7 @@ const Footer: React.FC = () => {
             <p className="text-gray-400 text-sm max-w-[220px] leading-relaxed">
               Powering Logistics Forward - across the Middle East & Africa.
             </p>
-            <div className="flex gap-5 mt-2">
+            <div className="flex gap-3 mt-2">
               {socialItems.map((social, index) => (
                 <a
                   key={index}
@@ -118,14 +131,22 @@ const Footer: React.FC = () => {
                   rel="noopener noreferrer"
                   className="text-white hover:text-[#f37121] transition-all duration-300"
                 >
-                  {social.name === "Facebook" && (
-                    <FaFacebook className="text-xl" />
+                  
+                  
+                  {social.name === "LinkedIn" && (
+                    <FaLinkedin className="text-xl" />
+                  )}
+                  {social.name === "X" && (
+                    <FaXTwitter className="text-xl" />
                   )}
                   {social.name === "Instagram" && (
                     <FaInstagram className="text-xl" />
                   )}
-                  {social.name === "LinkedIn" && (
-                    <FaLinkedin className="text-xl" />
+                  {social.name === "YouTube" && (
+                    <FaYoutube className="text-xl" />
+                  )}
+                  {social.name === "Facebook" && (
+                    <FaFacebook className="text-xl" />
                   )}
                 </a>
               ))}

@@ -177,7 +177,7 @@ export default function ServicesPage() {
       id: 2,
       anchor: 'customs-clearance',
       icon: <FaTasks className="text-[#f37121] text-4xl" />,
-      title: 'Full Customs Clearance Procedures',
+      title: 'Customs Clearance & Brokerage',
       details: `
         We handle all customs clearance operations with precision and speed.
         Our experienced team ensures compliance with Saudi regulations, minimizing delays and optimizing workflow.
@@ -185,9 +185,9 @@ export default function ServicesPage() {
     },
     {
       id: 3,
-      anchor: 'support',
+      anchor: '3PL Last-Mile Logistics',
       icon: <FaHeadset className="text-[#f37121] text-4xl" />,
-      title: '24/7 Customer Service and Support',
+      title: '3PL Last-Mile Logistics',
       details: `
         Our dedicated support team is available around the clock to provide real-time updates and
         assist clients in ensuring smooth and efficient logistics operations, anytime, anywhere.
@@ -205,9 +205,9 @@ export default function ServicesPage() {
     },
     {
       id: 5,
-      anchor: 'fleet-management',
+      anchor: 'Vehicle Transportation',
       icon: <FaCogs className="text-[#f37121] text-4xl" />,
-      title: 'Fleet Management',
+      title: 'Vehicle Transportation',
       details: `
         Our intelligent fleet management platform enhances vehicle utilization, maintenance planning, and routing efficiency.
         It helps reduce downtime, optimize costs, and improve logistics productivity.
@@ -217,7 +217,7 @@ export default function ServicesPage() {
       id: 6,
       anchor: 'b2b-solutions',
       icon: <FaLaptopCode className="text-[#f37121] text-4xl" />,
-      title: 'B2B Tech Solutions',
+      title: 'B2B Logistics Tech Solutions',
       details: `
         Innovative B2B logistics technology solutions that simplify operations,
         enhance tracking accuracy, and strengthen communication between clients and partners.

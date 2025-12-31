@@ -430,7 +430,7 @@ export default function Header() {
           {/* --- Logo --- */}
           <Link href="/" className="flex items-center gap-3 shrink-0">
             <img
-              src="/images/logooo.png"
+              src="/images/logoo.png"
               alt="Energize logo"
               className="h-7 w-auto"
             />

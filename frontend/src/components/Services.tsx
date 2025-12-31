@@ -148,16 +148,16 @@ export default function Services() {
     {
       id: 2,
       icon: <FaTasks className="text-[#f37121] text-3xl" />,
-      title: 'Full Customs Clearance Procedures',
+      title: 'Customs Clearance & Brokerage',
       description:
-        'Comprehensive customs clearance services handled by experienced professionals, ensuring smooth and fast import and export operations with zero delays.',
+        'Efficient customs clearance & brokerage services, ensuring smooth import and export processes with expert handling.',
     },
     {
       id: 3,
       icon: <FaHeadset className="text-[#f37121] text-3xl" />,
-      title: '24/7 Customer Service and Support',
+      title: '3PL Last-Mile Logistics',
       description:
-        'Dedicated support team available around the clock to assist our clients, providing real-time updates and solutions to ensure seamless logistics operations.',
+        'Reliable 3PL last-mile logistics with real-time updates and dedicated support for seamless deliveries.',
     },
     {
       id: 4,
@@ -169,9 +169,9 @@ export default function Services() {
     {
       id: 5,
       icon: <FaCogs className="text-[#f37121] text-3xl" />,
-      title: 'Fleet Management',
+      title: 'Vehicle Transportation',
       description:
-        'Smart fleet management systems designed to optimize vehicle usage, maintenance, and routing—improving efficiency and reducing operational costs.',
+        'Optimized vehicle transportation services, maximizing fleet efficiency and reducing operational costs.',
     },
     {
       id: 6,

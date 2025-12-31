@@ -141,7 +141,7 @@ const NewsSection: React.FC = () => {
 
       <div className="relative z-10 max-w-4xl mx-auto text-center">
         <h2 className="text-3xl md:text-3xl font-bold text-[#f37121] mb-4">
-          Logistics Insights in Saudi Arabia
+          Logistics in Saudi Arabia
         </h2>
         <p className="text-gray-400 text-sm md:text-base max-w-2xl mx-auto">
           Explore how Saudi Arabia is redefining logistics through technology, innovation,

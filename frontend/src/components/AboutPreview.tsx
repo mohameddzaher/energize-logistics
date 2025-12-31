@@ -782,7 +782,7 @@ export default function AboutPreview() {
         <div className="flex flex-col md:flex-row items-center gap-8 mt-10">
           <div className="md:w-1/2 text-left space-y-4">
             <h2 className="text-2xl md:text-2xl font-extrabold bg-gradient-to-r from-[#f37121] to-orange-500 bg-clip-text text-transparent">
-              Powering Logistics Forward ⚡
+              About Energize Logistics ⚡
             </h2>
             <div className="w-20 h-[3px] bg-gradient-to-r from-[#f37121] to-orange-600 rounded-full" />
             <p className="text-gray-300 text-base md:text-md leading-relaxed">
@@ -912,42 +912,41 @@ export default function AboutPreview() {
           </div>
         </div>
 
-        {/* --- 0️⃣ CONTAINER IMAGE WITH TEXT --- */}
-        <div className="relative mb-12 mt-4 flex justify-center">
-          <div className="relative w-full max-w-xl">
-            {/* الصورة الرئيسية */}
-            <img
-              src="/images/Picture1.png"
-              alt="Shipping Container"
-              className="w-full h-auto rounded-xl shadow-lg"
-            />
+        {/* --- 0️⃣ CONTAINER IMAGE WITH TEXT UNDER --- */}
+<div className="relative mb-12 mt-4 flex justify-center">
+  <div className="relative w-full max-w-xl">
+    {/* الصورة الرئيسية */}
+    <img
+      src="/images/Picture1.png"
+      alt="Shipping Container"
+      className="w-full h-auto rounded-xl shadow-lg"
+    />
 
-            {/* النص فوق الصورة */}
-            <div className="absolute inset-0 flex flex-col items-center justify-end text-center p-6 mb-16 !mb-2 md:!mb-16">
-              <h2 className="text-xl md:text-xl font-bold text-white mb-2 drop-shadow-lg">
-                Your Trusted Partner in{" "}
-                <span className="text-[#f37121]">Global Shipping</span>
-              </h2>
+    {/* النص تحت الصورة */}
+    <div className="mt-6 text-center px-4">
+      <h2 className="text-xl md:text-xl font-bold text-white mb-2 drop-shadow-lg">
+        Your Trusted Partner in{" "}
+        <span className="text-[#f37121]">Global Shipping</span>
+      </h2>
 
-              <p className="text-base md:text-sm text-gray-100 max-w-xl mx-auto leading-relaxed drop-shadow-md">
-                We ensure your goods reach any destination worldwide safely and
-                efficiently
-              </p>
+      <p className="text-base md:text-sm text-gray-100 max-w-xl mx-auto leading-relaxed drop-shadow-md">
+        We ensure your goods reach any destination worldwide safely and efficiently
+      </p>
 
-              <div className="mt-4">
-                {/* زر Contact Us مع التوست */}
-                <a
-                  href="/contact"
-                  onClick={handleContactClick}
-                  className="group flex items-center gap-3 px-6 py-2 rounded-lg border border-gray-400 hover:border-white hover:bg-white/10 text-white text-sm transition-all duration-300 cursor-pointer"
-                >
-                  <span>Contact Us</span>
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className="mt-4">
+        {/* زر Contact Us مع التوست */}
+        <a
+          href="/contact"
+          // onClick={handleContactClick}
+          className="group flex items-center gap-3 px-6 py-2 rounded-lg border border-gray-400 hover:border-white hover:bg-white/10 text-white text-sm transition-all duration-300 cursor-pointer justify-center mx-auto"
+        >
+          <span>Contact Us</span>
+          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
 
         {/* --- 4️⃣ OUR MISSION & VISION --- */}
         <div className="mt-20 text-center">

@@ -14,10 +14,10 @@ export default function LocationMap({
   const [isMapLoaded, setIsMapLoaded] = useState(false);
 
   const contactInfo = {
-    address: "Al Hamra District, Jeddah, Saudi Arabia",
+    address: "Al-Madinah Al-Munawarah Road, Jeddah, Saudi Arabia",
     coordinates: "21.576898, 39.16732",
-    phone: "+966 500 000 000",
-    email: "info@energizeglobal.com",
+    phone: "920031911",
+    email: "info@energize-logistics.com",
     workingHours: "Sun - Thu: 8:00 AM - 6:00 PM"
   };
 

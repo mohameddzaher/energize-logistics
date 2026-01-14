@@ -689,7 +689,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, TrendingUp, Cpu, MapPinned, UserCheck, HeadphonesIcon, Sprout } from "lucide-react";
 
 export default function AboutPreview() {
   const [counters, setCounters] = useState({
@@ -858,39 +858,41 @@ export default function AboutPreview() {
                 {
                   title: "Proven Track Record",
                   desc: "Over a million successful shipments — trusted by leaders across the region.",
-                  icon: "🚚",
+                  Icon: TrendingUp,
                 },
                 {
                   title: "Cutting-Edge Technology",
                   desc: "Advanced tracking and digital fleet management for full transparency.",
-                  icon: "⚙️",
+                  Icon: Cpu,
                 },
                 {
                   title: "Reliable Coverage",
                   desc: "Serving 50+ cities in Saudi Arabia with 7 fully equipped branches.",
-                  icon: "📍",
+                  Icon: MapPinned,
                 },
                 {
                   title: "Professional Team",
                   desc: "360+ skilled drivers and staff ensuring seamless delivery operations.",
-                  icon: "👷‍♂️",
+                  Icon: UserCheck,
                 },
                 {
                   title: "Customer-Centered",
                   desc: "24/7 support and customized logistics solutions for every business.",
-                  icon: "🤝",
+                  Icon: HeadphonesIcon,
                 },
                 {
                   title: "Sustainable Growth",
                   desc: "Focused on efficiency and eco-friendly logistics innovation.",
-                  icon: "🌱",
+                  Icon: Sprout,
                 },
               ].map((item, index) => (
                 <div
                   key={index}
                   className="text-center relative bg-gradient-to-b from-gray-800 to-[#242424] p-3 rounded-lg shadow-md hover:shadow-lg border border-[#2f2f2f] hover:border-[#f37121]/40 transition-all duration-300"
                 >
-                  <div className="text-xl mb-2">{item.icon}</div>
+                  <div className="flex justify-center mb-2">
+                    <item.Icon className="w-6 h-6 text-gray-300" strokeWidth={1.5} />
+                  </div>
                   <h4 className="text-sm font-semibold text-[#f37121] mb-1">
                     {item.title}
                   </h4>

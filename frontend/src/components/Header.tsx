@@ -360,6 +360,7 @@ export default function Header() {
     { href: "/", label: "Home" },
     { href: "/about", label: "About us" },
     { href: "/services", label: "Services" },
+    { href: "/gallery", label: "Gallery" },
     { href: "/clients", label: "Clients" },
     { href: "/contact", label: "Contact" },
     { href: "/career", label: "Career" },

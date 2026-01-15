@@ -8,20 +8,20 @@ export default function GalleryPreview() {
   const events = [
     {
       id: "annual-event",
-      title: "2nd Anniversary Celebration",
-      description: "Celebrating two years of excellence in logistics and transportation across the region.",
-      date: "September 2024",
+      title: "5th Anniversary Celebration",
+      description: "Celebrating 5 years of excellence in logistics and transportation across the region.",
+      date: "September 2025",
       location: "Jeddah, Saudi Arabia",
-      coverImage: "/images/annual event/WhatsApp Image 2025-09-16 at 09.14.55_1ca17e0c.jpg",
+      coverImage: "/images/annual event/energize family.jpg",
       imageCount: 31,
     },
     {
       id: "grand-opening",
-      title: "Grand Opening - New Branch",
+      title: "Grand Opening - New Main Branch",
       description: "Opening our largest and most advanced logistics facility to serve you better.",
-      date: "October 2024",
-      location: "Riyadh, Saudi Arabia",
-      coverImage: "/images/openinng/367A3280.jpg",
+      date: "January 2026",
+      location: "Jeddah, Saudi Arabia",
+      coverImage: "/images/openinng/367A3410.jpg",
       imageCount: 34,
     },
   ];

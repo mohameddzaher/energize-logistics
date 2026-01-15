@@ -87,6 +87,13 @@ const eventsData: Record<string, {
   },
 };
 
+export function generateStaticParams() {
+  return [
+    { eventId: 'annual-event' },
+    { eventId: 'grand-opening' },
+  ];
+}
+
 export default function EventAlbumPage({ params }: { params: Promise<{ eventId: string }> }) {
   const resolvedParams = use(params);
   const event = eventsData[resolvedParams.eventId];
@@ -108,28 +115,28 @@ export default function EventAlbumPage({ params }: { params: Promise<{ eventId: 
   return (
     <main className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
-      <section className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-16 px-6">
+      <section className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-10 px-6">
         <div className="absolute inset-0 bg-gradient-to-br from-[#f37121]/10 via-transparent to-[#f37121]/5 blur-3xl pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto relative z-10">
+        <div className="max-w-6xl mx-auto relative z-10">
           <Link
             href="/gallery"
-            className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-6"
+            className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-5"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Gallery</span>
           </Link>
 
-          <h1 className="text-3xl md:text-4xl font-bold mb-3">{event.title}</h1>
-          <p className="text-gray-400 mb-6 max-w-3xl">{event.description}</p>
+          <h1 className="text-2xl md:text-3xl font-bold mb-2">{event.title}</h1>
+          <p className="text-gray-400 text-sm mb-5 max-w-2xl">{event.description}</p>
 
-          <div className="flex flex-wrap gap-4 text-sm">
-            <div className="flex items-center gap-2 text-gray-300">
-              <Calendar className="w-4 h-4 text-[#f37121]" />
+          <div className="flex flex-wrap gap-3 text-xs">
+            <div className="flex items-center gap-1.5 text-gray-300">
+              <Calendar className="w-3.5 h-3.5 text-[#f37121]" />
               <span>{event.date}</span>
             </div>
-            <div className="flex items-center gap-2 text-gray-300">
-              <MapPin className="w-4 h-4 text-[#f37121]" />
+            <div className="flex items-center gap-1.5 text-gray-300">
+              <MapPin className="w-3.5 h-3.5 text-[#f37121]" />
               <span>{event.location}</span>
             </div>
             <div className="text-gray-400">
@@ -140,9 +147,9 @@ export default function EventAlbumPage({ params }: { params: Promise<{ eventId: 
       </section>
 
       {/* Image Grid */}
-      <section className="py-12 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <section className="py-8 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {event.images.map((image, index) => (
               <button
                 key={index}

@@ -6,6 +6,7 @@ import Newsletter from '../components/Newsletter'
 import GoogleMapSection from "../components/GoogleMapSection"
 import ContactCTA from "../components/ContactCTA"
 import NewsSection from "../components/NewsSection"
+import GalleryPreview from "../components/GalleryPreview"
 
 export default function Home() {
   return (
@@ -21,6 +22,12 @@ export default function Home() {
       <section className="w-full overflow-hidden">
         <div className="w-full">
           <Services />
+        </div>
+      </section>
+
+      <section className="w-full overflow-hidden">
+        <div className="w-full">
+          <GalleryPreview />
         </div>
       </section>
 

@@ -1,15 +1,19 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useState, useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
+  const pathname = usePathname() || "/";
+  const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
+  const { isAuthenticated, user } = useAuth();
 
   const links = [
     { href: "/", label: "Home" },
@@ -20,6 +24,16 @@ export default function Header() {
     { href: "/contact", label: "Contact" },
     { href: "/career", label: "Career" },
   ];
+
+  const handlePortalClick = () => {
+    setOpen(false);
+    if (isAuthenticated) {
+      const route = user?.role === 'client' ? '/system/portal' : '/system/dashboard';
+      router.push(route);
+    } else {
+      router.push('/login?returnTo=/system/dashboard');
+    }
+  };
 
   const socialLinks = [
     {
@@ -49,7 +63,6 @@ export default function Header() {
     },
   ];
 
-  // Function to check if link is active
   const isActiveLink = (href: string) => {
     if (href === "/") {
       return pathname === "/";
@@ -57,7 +70,6 @@ export default function Header() {
     return pathname.startsWith(href);
   };
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -70,6 +82,9 @@ export default function Header() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  // Hide header on system pages (system has its own layout)
+  if (pathname.startsWith("/system")) return null;
 
   return (
     <header className="sticky top-0 z-50 w-full">
@@ -85,16 +100,19 @@ export default function Header() {
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           {/* --- Logo --- */}
           <Link href="/" className="flex items-center gap-3 shrink-0">
-            <img
+            <Image
               src="/images/logoo.png"
-              alt="Energize logo"
+              alt="Energize Logistics Logo"
+              width={120}
+              height={28}
               className="h-7 w-auto"
+              priority
             />
           </Link>
 
           {/* --- Desktop Navigation --- */}
           <div className="hidden md:flex items-center gap-8">
-            <nav className="flex items-center gap-6 text-sm font-bold text-gray-800">
+            <nav className="flex items-center gap-5 text-sm font-bold text-gray-800">
               {links.map((link) => (
                 <Link
                   key={link.href}
@@ -108,6 +126,12 @@ export default function Header() {
                   {link.label}
                 </Link>
               ))}
+              <button
+                onClick={handlePortalClick}
+                className="ml-1 px-3 py-1.5 rounded-md bg-[#f37121] text-white text-xs font-bold hover:bg-[#e06010] transition-all duration-200"
+              >
+                Collections Portal
+              </button>
             </nav>
           </div>
 
@@ -170,6 +194,14 @@ export default function Header() {
                   {link.label}
                 </Link>
               ))}
+
+              {/* Collections Portal - Mobile */}
+              <button
+                onClick={handlePortalClick}
+                className="block w-full py-2 px-3 rounded text-sm font-bold transition-all duration-200 border text-center bg-[#f37121] text-white border-[#f37121] hover:bg-[#e06010]"
+              >
+                Collections Portal
+              </button>
 
               {/* Social Icons */}
               <div className="flex gap-2 justify-center mt-2 pt-2 border-t border-gray-700">

@@ -685,12 +685,16 @@ export default function AboutPage() {
             We Move Your World 🌍
           </h2>
 
-          <img
-            src="/images/scrrr.png"
-            alt="Energize Logistics"
-            loading="lazy"
-            className="rounded-3xl shadow-2xl mx-auto w-full max-w-[650px] h-[280px] md:h-[380px] object-cover border border-gray-800"
-          />
+          <div className="relative w-full max-w-[650px] h-[280px] md:h-[380px] mx-auto">
+            <Image
+              src="/images/scrrr.png"
+              alt="Energize Logistics Operations"
+              fill
+              className="rounded-3xl shadow-2xl object-cover border border-gray-800"
+              sizes="(max-width: 768px) 100vw, 650px"
+              loading="lazy"
+            />
+          </div>
         </div>
       </section>
 

@@ -4,6 +4,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { ArrowRight, TrendingUp, Cpu, MapPinned, UserCheck, HeadphonesIcon, Sprout } from "lucide-react";
 
 export default function AboutPreview() {
@@ -109,12 +110,16 @@ export default function AboutPreview() {
           </div>
 
           <div className="md:w-1/2 flex justify-center">
-            <img
-              src="/images/one.jpeg"
-              alt="About Energize"
-              className="rounded-2xl shadow-lg w-full max-w-[420px] md:max-w-[480px] h-[220px] md:h-[260px] object-cover"
-              loading="lazy"
-            />
+            <div className="relative w-full max-w-[420px] md:max-w-[480px] h-[220px] md:h-[260px]">
+              <Image
+                src="/images/one.jpeg"
+                alt="About Energize Logistics"
+                fill
+                className="rounded-2xl shadow-lg object-cover"
+                sizes="(max-width: 768px) 100vw, 480px"
+                loading="lazy"
+              />
+            </div>
           </div>
         </div>
 
@@ -127,12 +132,16 @@ export default function AboutPreview() {
 
           <div className="relative z-10 max-w-6xl mx-auto flex flex-col md:flex-row items-center gap-10">
             <div className="md:w-1/2 w-full">
-              <img
-                src="/images/two.jpeg"
-                alt="Company Stats"
-                className="rounded-3xl shadow-xl w-full h-auto object-cover"
-                loading="lazy"
-              />
+              <div className="relative w-full aspect-[4/3]">
+                <Image
+                  src="/images/two.jpeg"
+                  alt="Energize Logistics Company Statistics"
+                  fill
+                  className="rounded-3xl shadow-xl object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  loading="lazy"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-6 md:w-1/2 w-full">
@@ -219,12 +228,16 @@ export default function AboutPreview() {
             </div>
 
             <div className="md:w-1/3 flex justify-center">
-              <img
-                src="/images/Photo front view of truck in low lights _ Premium… (1).jpeg"
-                alt="Why Choose Energize"
-                className="rounded-3xl shadow-xl object-cover w-full max-w-[280px] h-[400px] md:max-w-[280px] md:h-[400px]"
-                loading="lazy"
-              />
+              <div className="relative w-full max-w-[280px] h-[400px]">
+                <Image
+                  src="/images/Photo front view of truck in low lights _ Premium… (1).jpeg"
+                  alt="Why Choose Energize - Heavy truck transportation"
+                  fill
+                  className="rounded-3xl shadow-xl object-cover"
+                  sizes="280px"
+                  loading="lazy"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -233,10 +246,14 @@ export default function AboutPreview() {
 <div className="relative mb-12 mt-4 flex justify-center">
   <div className="relative w-full max-w-xl">
     {/* Main image */}
-    <img
+    <Image
       src="/images/Picture1.png"
-      alt="Shipping Container"
+      alt="Energize Logistics Shipping Container"
+      width={600}
+      height={400}
       className="w-full h-auto rounded-xl shadow-lg"
+      sizes="(max-width: 768px) 100vw, 600px"
+      loading="lazy"
     />
 
     {/* Text below image */}
@@ -271,12 +288,16 @@ export default function AboutPreview() {
             Our Mission & Vision
           </h2>
 
-          <img
-            src="/images/four.jpeg"
-            alt="Mission & Vision"
-            className="rounded-2xl shadow-lg w-full max-w-[500px] h-[200px] object-cover mx-auto"
-            loading="lazy"
-          />
+          <div className="relative w-full max-w-[500px] h-[200px] mx-auto">
+            <Image
+              src="/images/four.jpeg"
+              alt="Energize Logistics Mission and Vision"
+              fill
+              className="rounded-2xl shadow-lg object-cover"
+              sizes="(max-width: 768px) 100vw, 500px"
+              loading="lazy"
+            />
+          </div>
 
           <div className="bg-gray-900 py-10 px-4 text-center rounded-2xl shadow-md">
             <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">

@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import { CalendarDays, ArrowRight } from "lucide-react";
+import { CalendarDays, ArrowRight, LogIn } from "lucide-react";
 
 export default function Hero() {
   return (
@@ -11,12 +11,12 @@ export default function Hero() {
       <div className="absolute inset-0">
         <Image
           src="/images/energize-hero.jpg"
-          alt="logistics"
-          width={1920}
-          height={1080}
-          className="w-full h-full object-cover"
+          alt="Energize Logistics - Heavy truck transportation and supply chain solutions across Saudi Arabia"
+          fill
+          className="object-cover"
           priority
-          quality={90}
+          quality={60}
+          sizes="100vw"
         />
         <div className="absolute inset-0 bg-black/60 md:bg-gradient-to-r md:from-black/60 md:via-black/60 md:to-transparent" />
       </div>
@@ -72,6 +72,14 @@ export default function Hero() {
               >
                 <span>Contact Us</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
+              </Link>
+
+              <Link
+                href="/login"
+                className="group flex items-center gap-3 px-6 py-3 rounded-lg bg-[#f37121]/20 border border-[#f37121]/50 hover:bg-[#f37121] text-white font-semibold transition-all duration-300"
+              >
+                <LogIn className="w-5 h-5" />
+                <span>Staff Login</span>
               </Link>
             </motion.div>
 

@@ -3,6 +3,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
 import Image from "next/image";
 import { FaXTwitter } from "react-icons/fa6";
@@ -51,6 +52,9 @@ const FooterList: React.FC<FooterListProps> = ({ title, items }) => {
 };
 
 const Footer: React.FC = () => {
+  const pathname = usePathname();
+  if (pathname?.startsWith("/system") || pathname?.startsWith("/login")) return null;
+
   const infoItems: FooterItem[] = [
     { name: "About Us", link: "/about" },
     { name: "Services", link: "/services" },

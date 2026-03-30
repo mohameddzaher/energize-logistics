@@ -1,0 +1,253 @@
+'use client';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
+import { getOverdueTranslations } from '@/lib/translations';
+import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
+import DataTable from '@/components/system/DataTable';
+import { AlertTriangle, Search, Filter, ChevronDown, Download } from 'lucide-react';
+import { exportToExcel, fmt } from '@/utils/exportExcel';
+
+interface OverdueInvoice {
+  _id: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  dueDate: string;
+  amount: number;
+  balance: number;
+  status: string;
+  overdueDays: number;
+  customer?: {
+    _id: string;
+    companyName: string;
+    customerNumber?: string;
+    grade?: string;
+    salesManager?: string;
+    office?: string;
+    assignedCollector?: {
+      firstName: string;
+      lastName: string;
+    };
+  };
+}
+
+export default function OverduePage() {
+  const { user } = useAuth();
+  const { lang } = useLanguage();
+  const T = getOverdueTranslations(lang);
+  const router = useRouter();
+  const [invoices, setInvoices] = useState<OverdueInvoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const fetchOverdue = useCallback(async () => {
+    try {
+      setError('');
+      const params = new URLSearchParams({ page: String(page), limit: '50' });
+      if (search) params.set('search', search);
+      const data = await api.get<any>(`/api/analytics/overdue?${params}`);
+      setInvoices(data.invoices || []);
+      setTotal(data.total || 0);
+      setTotalPages(data.pages || 1);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, search]);
+
+  useEffect(() => {
+    fetchOverdue();
+  }, [fetchOverdue]);
+
+  useSocket('payment:logged', fetchOverdue);
+  useSocket('invoice:updated', fetchOverdue);
+  useSocket('invoice:deleted', fetchOverdue);
+  useSocket('customer:deleted', fetchOverdue);
+
+  const formatCurrency = (val: number) =>
+    'SAR ' + Math.round(val || 0).toLocaleString('en-US');
+
+  const formatDate = (d: string) =>
+    d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+
+  const gradeBadge = (grade?: string) => {
+    const colors: Record<string, string> = {
+      A: 'bg-green-500/20 text-green-400',
+      B: 'bg-blue-500/20 text-blue-400',
+      C: 'bg-yellow-500/20 text-yellow-400',
+      D: 'bg-red-500/20 text-red-400',
+    };
+    return grade ? (
+      <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[grade] || 'bg-gray-500/20 text-gray-400'}`}>
+        {grade}
+      </span>
+    ) : '-';
+  };
+
+  const columns = [
+    {
+      key: 'customer.companyName',
+      label: T.customer,
+      render: (row: OverdueInvoice) => (
+        <div>
+          <span className="text-white font-medium text-sm">{row.customer?.companyName || '-'}</span>
+          {row.customer?.customerNumber && (
+            <span className="text-gray-500 text-xs block">{row.customer.customerNumber}</span>
+          )}
+        </div>
+      ),
+    },
+    { key: 'invoiceNumber', label: T.invoiceNumber, render: (row: OverdueInvoice) => <span className="text-[#f37121] font-medium text-sm">{row.invoiceNumber}</span> },
+    { key: 'invoiceDate', label: T.invoiceDate, render: (row: OverdueInvoice) => <span className="text-gray-300 text-sm">{formatDate(row.invoiceDate)}</span> },
+    { key: 'dueDate', label: T.dueDate, render: (row: OverdueInvoice) => <span className="text-gray-300 text-sm">{formatDate(row.dueDate)}</span> },
+    {
+      key: 'overdueDays',
+      label: T.overdueDays,
+      render: (row: OverdueInvoice) => (
+        <span className={`text-sm font-bold ${row.overdueDays > 60 ? 'text-red-400' : row.overdueDays > 30 ? 'text-yellow-400' : 'text-orange-400'}`}>
+          {row.overdueDays}d
+        </span>
+      ),
+    },
+    { key: 'balance', label: T.balance, render: (row: OverdueInvoice) => <span className="text-red-400 font-medium text-sm">{formatCurrency(row.balance)}</span> },
+    {
+      key: 'collector',
+      label: T.assignedCollector,
+      render: (row: OverdueInvoice) => {
+        const c = row.customer?.assignedCollector;
+        return c ? <span className="text-gray-300 text-sm">{c.firstName} {c.lastName}</span> : <span className="text-gray-500 text-sm">-</span>;
+      },
+    },
+    { key: 'salesManager', label: T.salesManager, render: (row: OverdueInvoice) => <span className="text-gray-300 text-sm">{row.customer?.salesManager || '-'}</span> },
+    { key: 'grade', label: T.grade, render: (row: OverdueInvoice) => gradeBadge(row.customer?.grade) },
+    {
+      key: 'status',
+      label: T.status,
+      render: (row: OverdueInvoice) => {
+        const colors: Record<string, string> = {
+          overdue: 'bg-red-500/20 text-red-400',
+          pending: 'bg-blue-500/20 text-blue-400',
+          partial: 'bg-yellow-500/20 text-yellow-400',
+          disputed: 'bg-orange-500/20 text-orange-400',
+        };
+        return (
+          <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[row.status] || 'bg-gray-500/20 text-gray-400'}`}>
+            {row.status}
+          </span>
+        );
+      },
+    },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">{T.title}</h1>
+            <p className="text-gray-400 text-sm">{total} overdue invoices</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const suffix = search ? `_search-${search}` : '';
+            exportToExcel(
+              invoices,
+              [
+                { header: 'Customer', key: 'customer.companyName', width: 25 },
+                { header: 'Customer #', key: 'customer.customerNumber', width: 14 },
+                { header: 'Invoice #', key: 'invoiceNumber', width: 18 },
+                { header: 'Invoice Date', key: 'invoiceDate', transform: fmt.date, width: 14 },
+                { header: 'Due Date', key: 'dueDate', transform: fmt.date, width: 14 },
+                { header: 'Overdue Days', key: 'overdueDays', width: 14 },
+                { header: 'Amount', key: 'amount', transform: fmt.money, width: 15 },
+                { header: 'Outstanding', key: 'balance', transform: fmt.money, width: 15 },
+                { header: 'Collector', key: 'customer.assignedCollector', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
+                { header: 'Sales Manager', key: 'customer.salesManager', width: 18 },
+                { header: 'Grade', key: 'customer.grade', width: 8 },
+                { header: 'Status', key: 'status', transform: fmt.status, width: 12 },
+              ],
+              `Overdue_Invoices${suffix}_${new Date().toISOString().split('T')[0]}`,
+              'Overdue'
+            );
+          }}
+          disabled={invoices.length === 0}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Download className="w-4 h-4" />
+          {T.export}
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          placeholder={T.searchOverdue}
+          className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+        />
+      </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">{error}</div>
+      )}
+
+      {/* Table */}
+      <DataTable
+        columns={columns}
+        data={invoices}
+        onRowClick={(row: OverdueInvoice) => router.push(`/system/invoices/${row._id}`)}
+        emptyMessage={T.noOverdue}
+      />
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-gray-400 text-sm">{T.page} {page} {T.of} {totalPages} ({total} {T.invoices})</p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm disabled:opacity-40 hover:bg-gray-700 transition-colors"
+            >
+              {T.previous}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm disabled:opacity-40 hover:bg-gray-700 transition-colors"
+            >
+              {T.next}
+            </button>
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+}

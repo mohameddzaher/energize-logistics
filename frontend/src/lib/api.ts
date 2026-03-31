@@ -1,5 +1,5 @@
-// Use empty string so requests go through Next.js rewrites (same origin)
-// This ensures cookies are sent/received correctly
+// Empty baseUrl so requests go through Next.js rewrites (same origin)
+// This ensures cookies are sent/received correctly on both dev and Netlify SSR
 const API_URL = '';
 
 interface FetchOptions extends RequestInit {

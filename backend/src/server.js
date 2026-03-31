@@ -110,7 +110,30 @@ app.use((err, req, res, next) => {
 // Start server
 const PORT = process.env.PORT || 5001;
 
-connectDB().then(() => {
+// Auto-seed admin if none exists
+const autoSeedAdmin = async () => {
+  try {
+    const User = require('./models/User');
+    const existing = await User.findOne({ role: 'super_admin' });
+    if (!existing) {
+      await User.create({
+        email: process.env.SEED_ADMIN_EMAIL || 'admin@energize.com',
+        password: process.env.SEED_ADMIN_PASSWORD || 'Admin@123456',
+        firstName: process.env.SEED_ADMIN_FIRST_NAME || 'Super',
+        lastName: process.env.SEED_ADMIN_LAST_NAME || 'Admin',
+        role: 'super_admin',
+        isActive: true,
+      });
+      console.log('Auto-seeded super admin account');
+    }
+  } catch (err) {
+    console.error('Auto-seed admin error:', err.message);
+  }
+};
+
+connectDB().then(async () => {
+  await autoSeedAdmin();
+
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);

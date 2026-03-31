@@ -95,7 +95,7 @@ router.get('/dashboard', authorize('super_admin', 'admin', 'operations_manager',
 });
 
 // Aging
-router.get('/aging', authorize('super_admin', 'admin', 'employee', 'moderator'), async (req, res) => {
+router.get('/aging', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'), async (req, res) => {
   try {
     const report = await getAgingReport(req.query);
     res.json(report);
@@ -106,7 +106,7 @@ router.get('/aging', authorize('super_admin', 'admin', 'employee', 'moderator'),
 });
 
 // DSO
-router.get('/dso', authorize('super_admin', 'admin', 'employee', 'moderator'), async (req, res) => {
+router.get('/dso', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'), async (req, res) => {
   try {
     const results = await Promise.allSettled([
       calculateDSO(req.query),
@@ -134,7 +134,7 @@ router.get('/dso', authorize('super_admin', 'admin', 'employee', 'moderator'), a
 });
 
 // Risk
-router.get('/risk', authorize('super_admin', 'admin', 'employee', 'moderator'), async (req, res) => {
+router.get('/risk', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'), async (req, res) => {
   try {
     const [highRisk, distribution] = await Promise.all([
       getHighRiskClients(),
@@ -167,7 +167,7 @@ router.post('/risk/recalculate', authorize('super_admin', 'admin'), async (req, 
 });
 
 // Forecast
-router.get('/forecast', authorize('super_admin', 'admin', 'employee', 'moderator'), async (req, res) => {
+router.get('/forecast', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'), async (req, res) => {
   try {
     const [forecast, projected] = await Promise.all([
       getCashflowForecast(),
@@ -181,7 +181,7 @@ router.get('/forecast', authorize('super_admin', 'admin', 'employee', 'moderator
 });
 
 // Performance
-router.get('/performance', authorize('super_admin', 'admin', 'employee', 'moderator'), async (req, res) => {
+router.get('/performance', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'), async (req, res) => {
   try {
     const ranking = await getCollectorRanking(req.query.dateFrom, req.query.dateTo);
     res.json({ ranking });

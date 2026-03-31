@@ -49,19 +49,19 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     }
   }, [loading, isAuthenticated, router, pathname]);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchNotifications();
-    }
-  }, [isAuthenticated]);
-
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const data = await api.get<any>('/api/notifications?unreadOnly=true&limit=10');
       setNotifications(data.notifications || []);
       setUnreadCount(data.unreadCount || 0);
     } catch {}
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchNotifications();
+    }
+  }, [isAuthenticated, fetchNotifications]);
 
   const markAllRead = async () => {
     try {

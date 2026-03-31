@@ -130,7 +130,7 @@ export default function Header() {
                 onClick={handlePortalClick}
                 className="ml-1 px-3 py-1.5 rounded-md bg-[#f37121] text-white text-xs font-bold hover:bg-[#e06010] transition-all duration-200"
               >
-                Collections Portal
+                Staff Portal
               </button>
             </nav>
           </div>
@@ -195,12 +195,12 @@ export default function Header() {
                 </Link>
               ))}
 
-              {/* Collections Portal - Mobile */}
+              {/* Staff Portal - Mobile */}
               <button
                 onClick={handlePortalClick}
                 className="block w-full py-2 px-3 rounded text-sm font-bold transition-all duration-200 border text-center bg-[#f37121] text-white border-[#f37121] hover:bg-[#e06010]"
               >
-                Collections Portal
+                Staff Portal
               </button>
 
               {/* Social Icons */}

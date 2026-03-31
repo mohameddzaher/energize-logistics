@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  poweredByHeader: false,
+  compress: true,
+  reactStrictMode: false,
   images: {
     unoptimized: true,
     formats: ['image/webp', 'image/avif'],

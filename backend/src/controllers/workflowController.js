@@ -69,8 +69,15 @@ const isLocked = (workflow, userId) => {
 // GET /api/workflows
 exports.getWorkflows = async (req, res) => {
   try {
-    const { stage, search, page = 1, limit = 50, dateFrom, dateTo } = req.query;
+    const { stage, search, page = 1, limit = 50, dateFrom, dateTo, pendingOnly } = req.query;
     const filter = {};
+
+    if (pendingOnly === 'true') {
+      filter.$and = [
+        { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] },
+        { $or: [{ invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } }] },
+      ];
+    }
 
     if (stage) filter.stage = stage;
     if (dateFrom || dateTo) {

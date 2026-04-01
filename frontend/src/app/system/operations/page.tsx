@@ -8,7 +8,8 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import {
   ClipboardList, Plus, Search, Filter, Upload,
-  Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, Calendar, AlertCircle
+  Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, Calendar, AlertCircle,
+  CheckSquare, Check
 } from 'lucide-react';
 
 interface Workflow {
@@ -104,6 +105,10 @@ export default function OperationsWorkflowPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showPendingOnly, setShowPendingOnly] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<Partial<Workflow>>({});
+  const [showBulkReview, setShowBulkReview] = useState(false);
+  const [bulkReviewText, setBulkReviewText] = useState('تم');
 
   const role = user?.role || '';
   const canCreate = role === 'super_admin' || role === 'moderator';
@@ -120,8 +125,14 @@ export default function OperationsWorkflowPage() {
       if (search) params.append('search', search);
       if (dateFrom) params.append('dateFrom', dateFrom);
       if (dateTo) params.append('dateTo', dateTo);
-      params.append('page', String(page));
-      params.append('limit', '50');
+      if (showPendingOnly) {
+        params.append('pendingOnly', 'true');
+        params.append('page', '1');
+        params.append('limit', '10000');
+      } else {
+        params.append('page', String(page));
+        params.append('limit', '50');
+      }
       const data = await api.get<any>(`/api/workflows?${params.toString()}`);
       setWorkflows(data.workflows || []);
       setTotal(data.total || 0);
@@ -132,7 +143,7 @@ export default function OperationsWorkflowPage() {
       setSearching(false);
       initialLoadDone.current = true;
     }
-  }, [stageFilter, search, page, dateFrom, dateTo]);
+  }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly]);
 
   // Initial load
   useEffect(() => { fetchWorkflows(); }, [fetchWorkflows]);
@@ -218,6 +229,32 @@ export default function OperationsWorkflowPage() {
     }
   };
 
+  const handleInlineSave = async () => {
+    if (!editingId) return;
+    try {
+      await api.put(`/api/workflows/${editingId}`, editData);
+      setEditingId(null);
+      setEditData({});
+      fetchWorkflows(true);
+    } catch (err: any) { setError(err.message); }
+  };
+
+  const handleInlineCancel = () => {
+    setEditingId(null);
+    setEditData({});
+  };
+
+  const handleBulkReview = async () => {
+    try {
+      await Promise.all(Array.from(selectedIds).map(id =>
+        api.put(`/api/workflows/${id}`, { operationsReview: bulkReviewText })
+      ));
+      setSelectedIds(new Set());
+      setShowBulkReview(false);
+      fetchWorkflows(true);
+    } catch (err: any) { setError(err.message); }
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -227,9 +264,7 @@ export default function OperationsWorkflowPage() {
   };
 
   const toggleSelectAll = () => {
-    const displayed = showPendingOnly
-      ? workflows.filter(w => !w.paymentDate && !w.invoiceNumber)
-      : workflows;
+    const displayed = workflows;
     if (selectedIds.size === displayed.length) {
       setSelectedIds(new Set());
     } else {
@@ -249,10 +284,8 @@ export default function OperationsWorkflowPage() {
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('en-GB') : '-';
   const formatMoney = (v: number) => v ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
 
-  const pendingCount = workflows.filter(w => !w.paymentDate && !w.invoiceNumber).length;
-  const displayedWorkflows = showPendingOnly
-    ? workflows.filter(w => !w.paymentDate && !w.invoiceNumber)
-    : workflows;
+  const pendingCount = showPendingOnly ? total : workflows.filter(w => !w.paymentDate && !w.invoiceNumber).length;
+  const displayedWorkflows = showPendingOnly ? workflows : workflows;
 
   if (loading && workflows.length === 0) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>;
@@ -271,6 +304,34 @@ export default function OperationsWorkflowPage() {
             <button type="button" onClick={handleBulkDelete} disabled={bulkDeleting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors disabled:opacity-50">
               {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} {T.deleteCount} ({selectedIds.size})
             </button>
+          )}
+          {(role === 'operations_manager' || role === 'super_admin') && selectedIds.size > 0 && (
+            <div className="relative">
+              <button type="button" onClick={() => setShowBulkReview(prev => !prev)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium transition-colors">
+                <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'مراجعة' : 'Review'} ({selectedIds.size})
+              </button>
+              {showBulkReview && (
+                <div className="absolute top-full mt-2 right-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 p-3 min-w-[220px]">
+                  <label className="block text-xs text-gray-400 mb-1">{lang === 'ar' ? 'نص المراجعة:' : 'Review text:'}</label>
+                  <input
+                    type="text"
+                    value={bulkReviewText}
+                    onChange={(e) => setBulkReviewText(e.target.value)}
+                    placeholder={lang === 'ar' ? 'نص المراجعة' : 'Review text'}
+                    title={lang === 'ar' ? 'نص المراجعة' : 'Review text'}
+                    className="w-full px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#f37121] mb-2"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={handleBulkReview} className="flex-1 px-3 py-1.5 rounded bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-medium transition-colors">
+                      {lang === 'ar' ? 'تأكيد' : 'Confirm'}
+                    </button>
+                    <button type="button" onClick={() => setShowBulkReview(false)} className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs transition-colors">
+                      {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           <button type="button" onClick={handleExportExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors">
             <FileSpreadsheet className="w-4 h-4" /> {T.exportExcel}
@@ -456,8 +517,8 @@ export default function OperationsWorkflowPage() {
                 const sc = STAGE_CONFIG[wf.stage] || STAGE_CONFIG.draft;
                 const isSelected = selectedIds.has(wf._id);
                 return (
-                  <tr key={wf._id} className={`hover:bg-gray-700/30 transition-colors cursor-pointer ${locked ? 'opacity-60' : ''} ${isSelected ? 'bg-[#f37121]/5' : ''}`}
-                    onClick={() => router.push(`/system/operations/${wf._id}`)}>
+                  <tr key={wf._id} className={`hover:bg-gray-700/30 transition-colors ${editingId === wf._id ? '' : 'cursor-pointer'} ${locked ? 'opacity-60' : ''} ${isSelected ? 'bg-[#f37121]/5' : ''} ${editingId === wf._id ? 'ring-1 ring-[#f37121]/40' : ''}`}
+                    onClick={() => { if (editingId !== wf._id) router.push(`/system/operations/${wf._id}`); }}>
                     {/* Checkbox + Actions */}
                     <td className="px-3 py-2.5 sticky left-0 bg-gray-800 z-10" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
@@ -468,75 +529,109 @@ export default function OperationsWorkflowPage() {
                           onChange={() => toggleSelect(wf._id)}
                           className="w-4 h-4 appearance-none rounded border border-gray-600 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
                         />
-                        {!locked && (
-                          <button type="button" onClick={() => router.push(`/system/operations/${wf._id}?edit=1`)} className="p-1 text-gray-400 hover:text-[#f37121] rounded" title={T.edit}>
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {canDelete && (
-                          <button type="button" onClick={() => handleDelete(wf._id)} className="p-1 text-gray-400 hover:text-red-400 rounded" title={T.delete}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {transitions.length > 0 && (
-                          <div className="relative group">
-                            <button type="button" className="p-1 text-gray-400 hover:text-blue-400 rounded" title={T.stageTransition}>
-                              {transitioningId === wf._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                        {editingId === wf._id ? (
+                          <>
+                            <button type="button" onClick={handleInlineSave} className="p-1 text-green-400 hover:text-green-300 rounded" title={lang === 'ar' ? 'حفظ' : 'Save'}>
+                              <Check className="w-3.5 h-3.5" />
                             </button>
-                            <div className="absolute left-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[160px]">
-                              {transitions.map((t) => (
-                                <button key={t.stage} type="button" onClick={() => handleTransition(wf._id, t.stage)}
-                                  className="block w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                                  {t.label}
+                            <button type="button" onClick={handleInlineCancel} className="p-1 text-red-400 hover:text-red-300 rounded" title={lang === 'ar' ? 'إلغاء' : 'Cancel'}>
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {!locked && (
+                              <button type="button" onClick={() => { setEditingId(wf._id); setEditData({...wf}); }} className="p-1 text-gray-400 hover:text-[#f37121] rounded" title={T.edit}>
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button type="button" onClick={() => handleDelete(wf._id)} className="p-1 text-gray-400 hover:text-red-400 rounded" title={T.delete}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {transitions.length > 0 && (
+                              <div className="relative group">
+                                <button type="button" className="p-1 text-gray-400 hover:text-blue-400 rounded" title={T.stageTransition}>
+                                  {transitioningId === wf._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
                                 </button>
-                              ))}
-                            </div>
-                          </div>
+                                <div className="absolute left-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[160px]">
+                                  {transitions.map((t) => (
+                                    <button key={t.stage} type="button" onClick={() => handleTransition(wf._id, t.stage)}
+                                      className="block w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                      {t.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
-                    {/* Application Details */}
-                    <td className="px-3 py-2.5 text-sm text-[#f37121] font-medium whitespace-nowrap">{wf.reportNumber}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{formatDate(wf.reportDate)}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.fromLocation || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.toLocation || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.branch || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-white whitespace-nowrap">{wf.carOwner || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.carNumber || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.ownerType || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.executionStatus || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.applicationStatus || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.paymentMethod || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.username || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.userPhone || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.taxIndicator || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{formatMoney(wf.purchaseValue)}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{formatMoney(wf.sellingValue)}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.loadingTime || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.driverName || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.driverPhone || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.truckType || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.truckSize || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.loadType || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.quantity || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.reference || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-gray-300 whitespace-nowrap">{wf.representativeName || '-'}</td>
-                    {/* Operations Review */}
-                    <td className="px-3 py-2.5 text-sm text-yellow-300 whitespace-nowrap">{wf.operationsReview || '-'}</td>
-                    {/* Manual Moderator */}
-                    <td className="px-3 py-2.5 text-sm text-purple-300 whitespace-nowrap">{formatDate(wf.paymentDate)}</td>
-                    <td className="px-3 py-2.5 text-sm text-purple-300 whitespace-nowrap">{wf.payingBranch || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-purple-300 whitespace-nowrap">{wf.documentNumber || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-purple-300 whitespace-nowrap">{formatDate(wf.sendingDate)}</td>
-                    <td className="px-3 py-2.5 text-sm text-purple-300 whitespace-nowrap">{formatDate(wf.deliveryDate)}</td>
-                    <td className="px-3 py-2.5 text-sm text-purple-300 whitespace-nowrap">{wf.accountingReview || '-'}</td>
-                    {/* Collections */}
-                    <td className="px-3 py-2.5 text-sm text-green-300 whitespace-nowrap">{wf.invoiceNumber || '-'}</td>
-                    <td className="px-3 py-2.5 text-sm text-green-300 whitespace-nowrap">{formatMoney(wf.netInvoice)}</td>
-                    <td className="px-3 py-2.5 text-sm text-green-300 whitespace-nowrap">{formatMoney(wf.tax)}</td>
-                    <td className="px-3 py-2.5 text-sm text-green-300 whitespace-nowrap">{formatMoney(wf.totalInvoice)}</td>
-                    <td className="px-3 py-2.5 text-sm text-green-300 whitespace-nowrap">{formatDate(wf.invoiceDate)}</td>
-                    <td className="px-3 py-2.5 text-sm text-green-300 whitespace-nowrap">{formatDate(wf.collectionDate)}</td>
+                    {(() => {
+                      const isEditing = editingId === wf._id;
+                      const ic = "w-full px-1.5 py-1 rounded bg-gray-900 border border-gray-600 text-white text-xs focus:ring-1 focus:ring-[#f37121] focus:outline-none";
+                      const textCell = (field: keyof Workflow, color = 'text-gray-300') => (
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
+                          {isEditing ? <input type="text" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={color}>{(wf as any)[field] || '-'}</span>}
+                        </td>
+                      );
+                      const numCell = (field: keyof Workflow, color = 'text-gray-300') => (
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
+                          {isEditing ? <input type="number" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={color}>{formatMoney((wf as any)[field])}</span>}
+                        </td>
+                      );
+                      const dateCell = (field: keyof Workflow, color = 'text-gray-300') => (
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
+                          {isEditing ? <input type="date" title={field} className={`${ic} [&::-webkit-calendar-picker-indicator]:invert`} value={(editData as any)[field] ? (editData as any)[field].slice(0, 10) : ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={color}>{formatDate((wf as any)[field])}</span>}
+                        </td>
+                      );
+                      return (<>
+                        {/* Application Details */}
+                        {textCell('reportNumber', 'text-[#f37121] font-medium')}
+                        {dateCell('reportDate')}
+                        {textCell('fromLocation')}
+                        {textCell('toLocation')}
+                        {textCell('branch')}
+                        {textCell('carOwner', 'text-white')}
+                        {textCell('carNumber')}
+                        {textCell('ownerType')}
+                        {textCell('executionStatus')}
+                        {textCell('applicationStatus')}
+                        {textCell('paymentMethod')}
+                        {textCell('username')}
+                        {textCell('userPhone')}
+                        {textCell('taxIndicator')}
+                        {numCell('purchaseValue')}
+                        {numCell('sellingValue')}
+                        {textCell('loadingTime')}
+                        {textCell('driverName')}
+                        {textCell('driverPhone')}
+                        {textCell('truckType')}
+                        {textCell('truckSize')}
+                        {textCell('loadType')}
+                        {textCell('quantity')}
+                        {textCell('reference')}
+                        {textCell('representativeName')}
+                        {/* Operations Review */}
+                        {textCell('operationsReview', 'text-yellow-300')}
+                        {/* Manual Moderator */}
+                        {dateCell('paymentDate', 'text-purple-300')}
+                        {textCell('payingBranch', 'text-purple-300')}
+                        {textCell('documentNumber', 'text-purple-300')}
+                        {dateCell('sendingDate', 'text-purple-300')}
+                        {dateCell('deliveryDate', 'text-purple-300')}
+                        {textCell('accountingReview', 'text-purple-300')}
+                        {/* Collections */}
+                        {textCell('invoiceNumber', 'text-green-300')}
+                        {numCell('netInvoice', 'text-green-300')}
+                        {numCell('tax', 'text-green-300')}
+                        {numCell('totalInvoice', 'text-green-300')}
+                        {dateCell('invoiceDate', 'text-green-300')}
+                        {dateCell('collectionDate', 'text-green-300')}
+                      </>);
+                    })()}
                     {/* Meta */}
                     <td className="px-3 py-2.5 whitespace-nowrap"><span className={`px-2 py-0.5 rounded text-xs font-medium ${sc.bg} ${sc.color}`}>{stageLabels[wf.stage] || sc.label}</span></td>
                     <td className="px-3 py-2.5">
@@ -553,7 +648,7 @@ export default function OperationsWorkflowPage() {
           </table>
         </div>
 
-        {total > 50 && (
+        {!showPendingOnly && total > 50 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-700">
             <span className="text-gray-400 text-sm">{T.showing} {(page - 1) * 50 + 1}-{Math.min(page * 50, total)} {T.of} {total}</span>
             <div className="flex gap-2">

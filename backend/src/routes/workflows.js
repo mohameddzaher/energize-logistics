@@ -9,7 +9,7 @@ const validate = require('../middleware/validate');
 router.use(authenticate);
 
 // All workflow-related roles
-const allWorkflowRoles = ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'];
+const allWorkflowRoles = ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'];
 
 // List & export
 router.get('/export', authorize(...allWorkflowRoles), workflowController.exportWorkflows);

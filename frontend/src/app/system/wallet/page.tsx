@@ -838,7 +838,7 @@ export default function WalletPage() {
                     className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterAmountHave} />
                 </div>
 
-                {isManager && closeForm.actualCash && Number(closeForm.actualCash) !== wallet.closingBalance && (() => {
+                {closeForm.actualCash && Number(closeForm.actualCash) !== wallet.closingBalance && (() => {
                   const diff = wallet.closingBalance - Number(closeForm.actualCash);
                   const isDeficit = diff > 0;
                   return (

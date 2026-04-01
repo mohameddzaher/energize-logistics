@@ -36,16 +36,31 @@ class ApiClient {
   private async request<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
     const { skipAuth, ...fetchOptions } = options;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     const config: RequestInit = {
       ...fetchOptions,
       credentials: 'include',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         ...fetchOptions.headers,
       },
     };
 
-    const res = await fetch(`${this.baseUrl}${endpoint}`, config);
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${endpoint}`, config);
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error('Request timed out. Please check your connection and try again.');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (res.status === 401 && !skipAuth) {
       // If already refreshing, queue this request

@@ -86,7 +86,7 @@ function getRequiredApis(flags: ReturnType<typeof getRoleFlags>) {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loginKey } = useAuth();
   const router = useRouter();
   const { lang } = useLanguage();
   const T = getDashboardTranslations(lang);
@@ -229,6 +229,11 @@ export default function DashboardPage() {
     fetchAll();
   }, [fetchAll]);
 
+  // Clear cache when user changes (login/logout with different account)
+  useEffect(() => {
+    cacheRef.current = {};
+  }, [loginKey]);
+
   // Initial load (only on mount / user change)
   useEffect(() => {
     fetchAll().then(() => {
@@ -242,7 +247,7 @@ export default function DashboardPage() {
         fetchDateData(lastMonthQuery).catch(() => {});
       }
     });
-  }, [fetchAll, fetchDateData]);
+  }, [fetchAll, fetchDateData, loginKey]);
 
   // Date filter change — show cached data instantly, refresh in background
   useEffect(() => {

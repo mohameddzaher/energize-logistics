@@ -20,6 +20,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
+  loginKey: number;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -27,6 +28,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loginKey, setLoginKey] = useState(0);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -46,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<User> => {
     const data = await api.post<{ user: User }>('/api/auth/login', { email, password });
     setUser(data.user);
+    setLoginKey(k => k + 1);
     connectSocket();
     return data.user;
   };
@@ -69,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         refreshUser,
         isAuthenticated: !!user,
+        loginKey,
       }}
     >
       {children}

@@ -637,6 +637,32 @@ exports.bulkImport = async (req, res) => {
   }
 };
 
+// GET /api/workflows/pending-by-customer/:customerId
+exports.getPendingByCustomer = async (req, res) => {
+  try {
+    const customer = await Customer.findById(req.params.customerId);
+    if (!customer) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    const workflows = await OperationsWorkflow.find({
+      username: { $regex: `^${customer.companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+      $and: [
+        { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] },
+        { $or: [{ invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } }] },
+      ],
+    })
+      .select('reportNumber reportDate fromLocation toLocation branch carOwner sellingValue stage createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({ workflows, total: workflows.length });
+  } catch (error) {
+    console.error('Get pending invoices by customer error:', error);
+    res.status(500).json({ message: 'Failed to load pending invoices' });
+  }
+};
+
 // Return field permissions info for the frontend
 exports.getFieldPermissions = async (req, res) => {
   res.json({

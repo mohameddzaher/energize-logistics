@@ -11,6 +11,7 @@ import {
   ArrowLeft, Building2, Mail, Phone, CreditCard, Shield, MapPin,
   FileText, DollarSign, Clock, AlertTriangle, TrendingUp, X,
   Calendar, CheckCircle, Activity, Lightbulb, Edit3, User, Download, FileSpreadsheet,
+  ClipboardList,
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
@@ -71,6 +72,18 @@ interface CollectionActivity {
   status?: string;
   amountCollected?: number;
   nextFollowUpDate?: string;
+}
+
+interface PendingWorkflow {
+  _id: string;
+  reportNumber: string;
+  reportDate: string;
+  fromLocation: string;
+  toLocation: string;
+  branch: string;
+  carOwner: string;
+  sellingValue: number;
+  stage: string;
 }
 
 interface RiskAnalysis {
@@ -189,12 +202,13 @@ export default function CustomerDetailPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [collections, setCollections] = useState<CollectionActivity[]>([]);
+  const [pendingInvoices, setPendingInvoices] = useState<PendingWorkflow[]>([]);
   const [riskAnalysis, setRiskAnalysis] = useState<RiskAnalysis | null>(null);
   const [followUp, setFollowUp] = useState<FollowUpSuggestion | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'invoices' | 'payments' | 'collections'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'payments' | 'collections' | 'pendingInvoices'>('invoices');
 
   // Credit Term Edit Modal
   const [showCreditModal, setShowCreditModal] = useState(false);
@@ -244,6 +258,15 @@ export default function CustomerDetailPage() {
     }
   }, [customerId]);
 
+  const fetchPendingInvoices = useCallback(async () => {
+    try {
+      const res = await api.get<{ workflows: PendingWorkflow[] }>(`/api/workflows/pending-by-customer/${customerId}`);
+      setPendingInvoices(res.workflows || []);
+    } catch (err) {
+      console.error('Failed to load pending invoices:', err);
+    }
+  }, [customerId]);
+
   const fetchRiskAndFollowUp = useCallback(async () => {
     try {
       const [riskRes, followUpRes] = await Promise.allSettled([
@@ -262,11 +285,11 @@ export default function CustomerDetailPage() {
     const loadAll = async () => {
       setLoading(true);
       await fetchCustomer();
-      await Promise.all([fetchRelatedData(), fetchRiskAndFollowUp()]);
+      await Promise.all([fetchRelatedData(), fetchPendingInvoices(), fetchRiskAndFollowUp()]);
       setLoading(false);
     };
     loadAll();
-  }, [fetchCustomer, fetchRelatedData, fetchRiskAndFollowUp]);
+  }, [fetchCustomer, fetchRelatedData, fetchPendingInvoices, fetchRiskAndFollowUp]);
 
   // Real-time updates
   useSocket('customer:updated', fetchCustomer);
@@ -275,6 +298,11 @@ export default function CustomerDetailPage() {
   useSocket('payment:logged', fetchRelatedData);
   useSocket('invoice:deleted', fetchRelatedData);
   useSocket('payment:deleted', fetchRelatedData);
+  useSocket('workflow:created', fetchPendingInvoices);
+  useSocket('workflow:updated', fetchPendingInvoices);
+  useSocket('workflow:stageChanged', fetchPendingInvoices);
+  useSocket('workflow:deleted', fetchPendingInvoices);
+  useSocket('workflow:bulkImported', fetchPendingInvoices);
 
   const handleCreditTermUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -480,6 +508,44 @@ export default function CustomerDetailPage() {
       sortable: false,
       render: (_: any, row: CollectionActivity) =>
         row.collectedBy ? `${row.collectedBy.firstName} ${row.collectedBy.lastName}` : '-',
+    },
+  ];
+
+  const stageLabels: Record<string, string> = {
+    draft: lang === 'ar' ? 'مسودة' : 'Draft',
+    submitted_to_ops: lang === 'ar' ? 'مرسل للتشغيل' : 'Submitted to Ops',
+    ops_completed: lang === 'ar' ? 'تم التشغيل' : 'Ops Completed',
+    submitted_to_collections: lang === 'ar' ? 'مرسل للتحصيل' : 'Submitted to Collections',
+    completed: lang === 'ar' ? 'مكتمل' : 'Completed',
+  };
+
+  const pendingInvoiceColumns = [
+    { key: 'reportNumber', label: T.reportNumber, sortable: true },
+    {
+      key: 'reportDate',
+      label: T.reportDate,
+      sortable: true,
+      render: (value: string) => formatDate(value),
+    },
+    { key: 'fromLocation', label: T.from, sortable: true },
+    { key: 'toLocation', label: T.to, sortable: true },
+    { key: 'branch', label: T.branch, sortable: true },
+    { key: 'carOwner', label: T.carOwner, sortable: true },
+    {
+      key: 'sellingValue',
+      label: T.sellingValue,
+      sortable: true,
+      render: (value: number) => <span className="text-white font-medium">{formatCurrency(value)}</span>,
+    },
+    {
+      key: 'stage',
+      label: T.stage,
+      sortable: true,
+      render: (value: string) => (
+        <span className="px-2 py-0.5 rounded text-xs font-medium capitalize bg-purple-500/20 text-purple-400">
+          {stageLabels[value] || value?.replace(/_/g, ' ') || '-'}
+        </span>
+      ),
     },
   ];
 
@@ -732,6 +798,7 @@ export default function CustomerDetailPage() {
           <StatCard title={T.totalPaid} value={formatCurrency(summary.totalPaid)} icon={CheckCircle} color="#10b981" />
           <StatCard title={T.currentOutstanding} value={formatCurrency(summary.totalOutstanding)} icon={Clock} color="#ef4444" />
           <StatCard title={T.overdueDays} value={summary.overdueCount} icon={AlertTriangle} color="#f59e0b" />
+          <StatCard title={T.pendingInvoices} value={pendingInvoices.length} icon={ClipboardList} color="#8b5cf6" />
           {customer?.creditLimit > 0 && (
             <StatCard
               title={T.creditLimit}
@@ -785,6 +852,7 @@ export default function CustomerDetailPage() {
             { key: 'invoices' as const, label: T.invoices, icon: FileText, count: invoices.length },
             { key: 'payments' as const, label: T.payments, icon: DollarSign, count: payments.length },
             { key: 'collections' as const, label: T.collections, icon: Activity, count: collections.length },
+            { key: 'pendingInvoices' as const, label: T.pendingInvoices, icon: ClipboardList, count: pendingInvoices.length },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -857,6 +925,22 @@ export default function CustomerDetailPage() {
                   searchable
                   searchPlaceholder="Search collection activities..."
                   emptyMessage={T.noActivity}
+                />
+              </motion.div>
+            )}
+            {activeTab === 'pendingInvoices' && (
+              <motion.div
+                key="pendingInvoices"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+              >
+                <DataTable
+                  columns={pendingInvoiceColumns}
+                  data={pendingInvoices}
+                  searchable
+                  searchPlaceholder="Search pending invoices..."
+                  emptyMessage={T.noPendingInvoices}
                 />
               </motion.div>
             )}

@@ -8,7 +8,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import {
   ClipboardList, Plus, Search, Filter, Upload,
-  Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, Calendar
+  Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, Calendar, AlertCircle
 } from 'lucide-react';
 
 interface Workflow {
@@ -103,6 +103,7 @@ export default function OperationsWorkflowPage() {
   const initialLoadDone = useRef(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showPendingOnly, setShowPendingOnly] = useState(false);
 
   const role = user?.role || '';
   const canCreate = role === 'super_admin' || role === 'moderator';
@@ -226,10 +227,13 @@ export default function OperationsWorkflowPage() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === workflows.length) {
+    const displayed = showPendingOnly
+      ? workflows.filter(w => !w.paymentDate && !w.invoiceNumber)
+      : workflows;
+    if (selectedIds.size === displayed.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(workflows.map((w) => w._id)));
+      setSelectedIds(new Set(displayed.map((w) => w._id)));
     }
   };
 
@@ -244,6 +248,11 @@ export default function OperationsWorkflowPage() {
 
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('en-GB') : '-';
   const formatMoney = (v: number) => v ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
+
+  const pendingCount = workflows.filter(w => !w.paymentDate && !w.invoiceNumber).length;
+  const displayedWorkflows = showPendingOnly
+    ? workflows.filter(w => !w.paymentDate && !w.invoiceNumber)
+    : workflows;
 
   if (loading && workflows.length === 0) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>;
@@ -349,6 +358,30 @@ export default function OperationsWorkflowPage() {
         </div>
       </div>
 
+      {/* Pending Invoices Card */}
+      <button
+        type="button"
+        onClick={() => setShowPendingOnly(prev => !prev)}
+        className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-all duration-200 ${
+          showPendingOnly
+            ? 'bg-amber-500/20 border-amber-500/60 ring-2 ring-amber-500/30'
+            : 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-500/50'
+        }`}
+      >
+        <div className={`p-2 rounded-lg ${showPendingOnly ? 'bg-amber-500/30' : 'bg-amber-500/20'}`}>
+          <AlertCircle className="w-5 h-5 text-amber-400" />
+        </div>
+        <div className="flex flex-col items-start">
+          <span className="text-2xl font-bold text-amber-400">{pendingCount}</span>
+          <span className="text-xs text-amber-400/80">{lang === 'ar' ? 'فواتير لم تصل' : 'Pending Invoices'}</span>
+        </div>
+        {showPendingOnly && (
+          <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-300">
+            {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
+          </span>
+        )}
+      </button>
+
       {/* Table */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
@@ -360,7 +393,7 @@ export default function OperationsWorkflowPage() {
                     <input
                       type="checkbox"
                       title={T.selectAll}
-                      checked={workflows.length > 0 && selectedIds.size === workflows.length}
+                      checked={displayedWorkflows.length > 0 && selectedIds.size === displayedWorkflows.length}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 appearance-none rounded border border-gray-600 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
                     />
@@ -415,9 +448,9 @@ export default function OperationsWorkflowPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700/50">
-              {workflows.length === 0 ? (
-                <tr><td colSpan={41} className="px-4 py-12 text-center text-gray-500 text-sm">{T.noWorkflows}</td></tr>
-              ) : workflows.map((wf) => {
+              {displayedWorkflows.length === 0 ? (
+                <tr><td colSpan={41} className="px-4 py-12 text-center text-gray-500 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : T.noWorkflows}</td></tr>
+              ) : displayedWorkflows.map((wf) => {
                 const locked = isLockedByOther(wf);
                 const transitions = getTransitions(wf);
                 const sc = STAGE_CONFIG[wf.stage] || STAGE_CONFIG.draft;

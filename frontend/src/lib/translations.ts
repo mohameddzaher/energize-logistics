@@ -463,6 +463,9 @@ const customersPage = {
     invoiceNumber: 'Invoice #', dueDate: 'Due Date', balance: 'Balance', paidAmount: 'Paid',
     overdueDays: 'Overdue Days', paymentDate: 'Payment Date', paymentMethod: 'Payment Method',
     receivedBy: 'Received By',
+    pendingInvoices: 'Pending Invoices', noPendingInvoices: 'No pending invoices',
+    reportNumber: 'Report Number', reportDate: 'Report Date', from: 'From', to: 'To',
+    branch: 'Branch', carOwner: 'Car Owner', sellingValue: 'Selling Value', stage: 'Stage',
   },
   ar: {
     title: 'العملاء', addCustomer: 'إضافة عميل', editCustomer: 'تعديل عميل',
@@ -484,6 +487,9 @@ const customersPage = {
     invoiceNumber: 'رقم الفاتورة', dueDate: 'تاريخ الاستحقاق', balance: 'الرصيد', paidAmount: 'المدفوع',
     overdueDays: 'أيام التأخير', paymentDate: 'تاريخ الدفع', paymentMethod: 'طريقة الدفع',
     receivedBy: 'استلمها',
+    pendingInvoices: 'فواتير لم تصل', noPendingInvoices: 'لا توجد فواتير معلقة',
+    reportNumber: 'رقم الكشف', reportDate: 'تاريخ الكشف', from: 'من', to: 'الي',
+    branch: 'الفرع', carOwner: 'مالك السيارة', sellingValue: 'قيمة البيع', stage: 'المرحلة',
   },
 };
 

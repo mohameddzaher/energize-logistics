@@ -28,6 +28,9 @@ router.post(
   workflowController.bulkImport
 );
 
+// Pending invoices by customer (must be before /:id)
+router.get('/pending-by-customer/:customerId', authorize(...allWorkflowRoles), workflowController.getPendingByCustomer);
+
 router.get('/:id', authorize(...allWorkflowRoles), workflowController.getWorkflow);
 
 // Create (all workflow roles — field-level permissions handled in controller)

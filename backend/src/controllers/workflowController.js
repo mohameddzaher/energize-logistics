@@ -550,7 +550,31 @@ exports.bulkImport = async (req, res) => {
       return workflow;
     });
 
-    const createdWorkflows = await OperationsWorkflow.insertMany(workflowsToCreate);
+    // Use save() instead of insertMany to trigger pre-save hooks (auto reportNumber)
+    // and handle duplicates gracefully
+    const createdWorkflows = [];
+    const skipped = [];
+    for (const wfData of workflowsToCreate) {
+      try {
+        // Check for duplicate reportNumber
+        if (wfData.reportNumber) {
+          const existing = await OperationsWorkflow.findOne({ reportNumber: wfData.reportNumber });
+          if (existing) {
+            skipped.push(wfData.reportNumber);
+            continue;
+          }
+        }
+        const wf = new OperationsWorkflow(wfData);
+        await wf.save();
+        createdWorkflows.push(wf);
+      } catch (err) {
+        if (err.code === 11000) {
+          skipped.push(wfData.reportNumber || 'unknown');
+          continue;
+        }
+        throw err;
+      }
+    }
 
     // Create invoices and update customer outstanding based on sellingValue
     // username (اسم المستخدم) maps to the customer companyName
@@ -628,6 +652,8 @@ exports.bulkImport = async (req, res) => {
 
     res.status(201).json({
       imported: createdWorkflows.length,
+      skipped: skipped.length,
+      skippedReports: skipped,
       workflows: populated,
       customerUpdates: updatedCustomers,
     });

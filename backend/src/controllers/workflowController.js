@@ -234,8 +234,59 @@ exports.updateWorkflow = async (req, res) => {
     filteredBody.lastModifiedBy = req.user._id;
 
     const before = workflow.toObject();
+    const hadCollectionDate = !!workflow.collectionDate;
     Object.assign(workflow, filteredBody);
     await workflow.save();
+
+    // ─── AUTO-PAYMENT: If collectionDate was just set, record payment ───
+    if (!hadCollectionDate && workflow.collectionDate && workflow.username) {
+      const paymentAmount = Number(workflow.totalInvoice) || Number(workflow.sellingValue) || 0;
+      if (paymentAmount > 0) {
+        const custName = workflow.username.trim();
+        const customer = await Customer.findOne({
+          companyName: { $regex: `^${custName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+          isActive: true,
+        });
+
+        if (customer) {
+          // Find the matching invoice
+          const invNumber = workflow.invoiceNumber || workflow.reportNumber;
+          const invoice = invNumber ? await Invoice.findOne({ invoiceNumber: invNumber, customer: customer._id }) : null;
+
+          // Record payment
+          const Payment = require('../models/Payment');
+          await Payment.create({
+            invoice: invoice?._id || undefined,
+            customer: customer._id,
+            amount: paymentAmount,
+            paymentDate: new Date(workflow.collectionDate),
+            paymentMethod: 'bank_transfer',
+            receivedBy: req.user._id,
+            reference: `OPS-${workflow.reportNumber}`,
+            notes: `Auto-payment from operations collection - ${workflow.reportNumber}`,
+          });
+
+          // Update invoice if found
+          if (invoice) {
+            invoice.paidAmount = (invoice.paidAmount || 0) + paymentAmount;
+            invoice.balance = invoice.amount - invoice.paidAmount;
+            if (invoice.balance <= 0) { invoice.status = 'paid'; invoice.balance = 0; }
+            else { invoice.status = 'partial'; }
+            await invoice.save();
+            try { emitToAll('invoice:updated', { invoice }); } catch (e) { console.error('WebSocket emit error:', e); }
+          }
+
+          // Update customer outstanding
+          customer.currentOutstanding = Math.max(0, (Number(customer.currentOutstanding) || 0) - paymentAmount);
+          customer.lastPaymentDate = new Date(workflow.collectionDate);
+          customer.lastPaymentAmount = paymentAmount;
+          await customer.save();
+
+          try { emitToAll('payment:logged', { workflowPayment: true }); } catch (e) { console.error('WebSocket emit error:', e); }
+          try { emitToAll('customer:updated', { customer }); } catch (e) { console.error('WebSocket emit error:', e); }
+        }
+      }
+    }
 
     const populated = await OperationsWorkflow.findById(workflow._id)
       .populate('createdBy', 'firstName lastName')

@@ -106,8 +106,13 @@ const operationsWorkflowSchema = new mongoose.Schema(
 // Auto-generate report number before save
 operationsWorkflowSchema.pre('save', async function (next) {
   if (!this.reportNumber) {
-    const count = await mongoose.model('OperationsWorkflow').countDocuments();
-    this.reportNumber = `RPT-${String(count + 1).padStart(5, '0')}`;
+    const last = await mongoose.model('OperationsWorkflow')
+      .findOne({ reportNumber: /^RPT-/ })
+      .sort({ reportNumber: -1 })
+      .select('reportNumber')
+      .lean();
+    const lastNum = last ? parseInt(last.reportNumber.replace('RPT-', ''), 10) : 0;
+    this.reportNumber = `RPT-${String(lastNum + 1).padStart(5, '0')}`;
   }
   next();
 });

@@ -285,7 +285,6 @@ export default function OperationsWorkflowPage() {
   const formatMoney = (v: number) => v ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
 
   const pendingCount = showPendingOnly ? total : workflows.filter(w => !w.paymentDate && !w.invoiceNumber).length;
-  const displayedWorkflows = showPendingOnly ? workflows : workflows;
 
   if (loading && workflows.length === 0) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>;
@@ -454,7 +453,7 @@ export default function OperationsWorkflowPage() {
                     <input
                       type="checkbox"
                       title={T.selectAll}
-                      checked={displayedWorkflows.length > 0 && selectedIds.size === displayedWorkflows.length}
+                      checked={workflows.length > 0 && selectedIds.size === workflows.length}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 appearance-none rounded border border-gray-600 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
                     />
@@ -509,9 +508,9 @@ export default function OperationsWorkflowPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700/50">
-              {displayedWorkflows.length === 0 ? (
+              {workflows.length === 0 ? (
                 <tr><td colSpan={41} className="px-4 py-12 text-center text-gray-500 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : T.noWorkflows}</td></tr>
-              ) : displayedWorkflows.map((wf) => {
+              ) : workflows.map((wf) => {
                 const locked = isLockedByOther(wf);
                 const transitions = getTransitions(wf);
                 const sc = STAGE_CONFIG[wf.stage] || STAGE_CONFIG.draft;

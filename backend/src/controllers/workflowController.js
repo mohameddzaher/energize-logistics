@@ -171,12 +171,12 @@ exports.createWorkflow = async (req, res) => {
             notes: `Auto-created from operations workflow - ${filteredBody.fromLocation || ''} → ${filteredBody.toLocation || ''}`,
             createdBy: req.user._id,
           });
-          try { emitToAll('invoice:created', { invoice }); } catch (e) {}
+          try { emitToAll('invoice:created', { invoice }); } catch (e) { console.error('WebSocket emit error:', e); }
         }
 
         customer.currentOutstanding = (Number(customer.currentOutstanding) || 0) + sellingVal;
         await customer.save();
-        try { emitToAll('customer:updated', { customer }); } catch (e) {}
+        try { emitToAll('customer:updated', { customer }); } catch (e) { console.error('WebSocket emit error:', e); }
       }
     }
 
@@ -193,7 +193,7 @@ exports.createWorkflow = async (req, res) => {
       ipAddress: req.ip,
     });
 
-    try { emitToAll('workflow:created', populated); } catch (e) {}
+    try { emitToAll('workflow:created', populated); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.status(201).json(populated);
   } catch (error) {
@@ -238,7 +238,7 @@ exports.updateWorkflow = async (req, res) => {
       ipAddress: req.ip,
     });
 
-    try { emitToAll('workflow:updated', populated); } catch (e) {}
+    try { emitToAll('workflow:updated', populated); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json(populated);
   } catch (error) {
@@ -296,7 +296,9 @@ exports.updateStage = async (req, res) => {
     const before = { stage: workflow.stage };
     workflow.stage = stage;
     workflow.lastModifiedBy = req.user._id;
-    // Release lock on stage transition
+    await workflow.save();
+
+    // Release lock only after stage transition saved successfully
     workflow.lockedBy = null;
     workflow.lockedByName = '';
     workflow.lockedAt = null;
@@ -316,7 +318,7 @@ exports.updateStage = async (req, res) => {
       ipAddress: req.ip,
     });
 
-    try { emitToAll('workflow:stageChanged', populated); } catch (e) {}
+    try { emitToAll('workflow:stageChanged', populated); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json(populated);
   } catch (error) {
@@ -351,7 +353,7 @@ exports.lockWorkflow = async (req, res) => {
         lockedByName: workflow.lockedByName,
         lockedAt: workflow.lockedAt,
       });
-    } catch (e) {}
+    } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json({ message: 'Row locked successfully' });
   } catch (error) {
@@ -382,7 +384,7 @@ exports.unlockWorkflow = async (req, res) => {
     workflow.lockedAt = null;
     await workflow.save();
 
-    try { emitToAll('workflow:unlocked', { _id: workflow._id }); } catch (e) {}
+    try { emitToAll('workflow:unlocked', { _id: workflow._id }); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json({ message: 'Row unlocked successfully' });
   } catch (error) {
@@ -416,7 +418,7 @@ exports.deleteWorkflow = async (req, res) => {
       ipAddress: req.ip,
     });
 
-    try { emitToAll('workflow:deleted', { _id: req.params.id }); } catch (e) {}
+    try { emitToAll('workflow:deleted', { _id: req.params.id }); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json({ message: 'Workflow deleted successfully' });
   } catch (error) {
@@ -452,7 +454,7 @@ exports.bulkDelete = async (req, res) => {
     });
 
     ids.forEach((id) => {
-      try { emitToAll('workflow:deleted', { _id: id }); } catch (e) {}
+      try { emitToAll('workflow:deleted', { _id: id }); } catch (e) { console.error('WebSocket emit error:', e); }
     });
 
     res.json({ message: `${ids.length} workflow(s) deleted successfully`, deleted: ids.length });
@@ -590,6 +592,10 @@ exports.bulkImport = async (req, res) => {
 
     for (let i = 0; i < workflowsToCreate.length; i++) {
       const row = workflowsToCreate[i];
+      // Find the matching created workflow (createdWorkflows may be shorter due to skips)
+      const createdWf = createdWorkflows.find(w => w.reportNumber === row.reportNumber);
+      if (!createdWf) continue; // This row was skipped
+
       const sellingVal = Number(row.sellingValue) || 0;
       if (!row.username || sellingVal <= 0) continue;
 
@@ -605,7 +611,7 @@ exports.bulkImport = async (req, res) => {
       if (!customer) continue;
 
       // Create invoice using reportNumber as invoice number
-      const invoiceNumber = row.reportNumber || `WF-${createdWorkflows[i]._id.toString().slice(-8)}`;
+      const invoiceNumber = row.reportNumber || `WF-${createdWf._id.toString().slice(-8)}`;
       const invoiceDate = row.reportDate ? new Date(row.reportDate) : new Date();
       const dueDate = new Date(invoiceDate);
       dueDate.setDate(dueDate.getDate() + (customer.creditTerm || 30));
@@ -625,13 +631,13 @@ exports.bulkImport = async (req, res) => {
           notes: `Auto-created from operations import - ${row.fromLocation || ''} → ${row.toLocation || ''}`,
           createdBy: req.user._id,
         });
-        try { emitToAll('invoice:created', { invoice }); } catch (e) {}
+        try { emitToAll('invoice:created', { invoice }); } catch (e) { console.error('WebSocket emit error:', e); }
       }
 
       customer.currentOutstanding = (Number(customer.currentOutstanding) || 0) + sellingVal;
       await customer.save();
       updatedCustomers.push({ companyName: customer.companyName, added: sellingVal, newOutstanding: customer.currentOutstanding });
-      try { emitToAll('customer:updated', { customer }); } catch (e) {}
+      try { emitToAll('customer:updated', { customer }); } catch (e) { console.error('WebSocket emit error:', e); }
     }
 
     // Populate user references
@@ -655,7 +661,7 @@ exports.bulkImport = async (req, res) => {
         count: createdWorkflows.length,
         workflows: populated,
       });
-    } catch (e) {}
+    } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.status(201).json({
       imported: createdWorkflows.length,

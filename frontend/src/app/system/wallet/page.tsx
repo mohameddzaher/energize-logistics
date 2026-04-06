@@ -127,6 +127,9 @@ export default function WalletPage() {
   const [closeForm, setCloseForm] = useState({ actualCash: '', differenceReason: '', differenceNotes: '' });
   const [closing, setClosing] = useState(false);
 
+  // General error banner
+  const [actionError, setActionError] = useState('');
+
   // Purchase report lookup
   const [purchaseReportSearch, setPurchaseReportSearch] = useState('');
   const [purchaseReportMsg, setPurchaseReportMsg] = useState('');
@@ -139,7 +142,7 @@ export default function WalletPage() {
       const list = data.branches || data || [];
       setAllBranches(list);
       if (list.length > 0 && !selectedBranch) setSelectedBranch(list[0]._id);
-    }).catch(() => {});
+    }).catch((err: any) => { setActionError(err?.message || 'Failed to load branches'); });
   }, [canSelectBranch]);
 
   // ─── LOAD USERS FOR BRANCH ─────────────────────────────────
@@ -150,7 +153,7 @@ export default function WalletPage() {
       setBranchUsers(users);
       if (users.length > 0) setSelectedUser(users[0]._id);
       else setSelectedUser('');
-    }).catch(() => {});
+    }).catch((err: any) => { setActionError(err?.message || 'Failed to load users'); });
   }, [canSelectBranch, selectedBranch]);
 
   // ─── FETCH WALLET ──────────────────────────────────────────
@@ -218,7 +221,7 @@ export default function WalletPage() {
       await api.post('/api/wallet/transactions', payload);
       setShowTxModal(false);
       setTxForm({ amount: '', deliveryStatementNumber: '', itemName: '', notes: '', collectionSource: 'client', description: '', purchaseDeliveryStatementNumber: '', purchaseDriverName: '', purchaseReceiptNumber: '', purchaseBranch: '' });
-      fetchWallet();
+      fetchWallet(false);
     } catch (err: any) {
       setTxError(err.message || 'Failed to add transaction');
     }
@@ -228,10 +231,13 @@ export default function WalletPage() {
   // ─── DELETE TRANSACTION ────────────────────────────────────
   const handleDeleteTx = async (id: string) => {
     if (!confirm(L.deleteConfirm)) return;
+    setActionError('');
     try {
       await api.delete(`/api/wallet/transactions/${id}`);
-      fetchWallet();
-    } catch {}
+      fetchWallet(false);
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to delete transaction');
+    }
   };
 
   // ─── EDIT TRANSACTION ──────────────────────────────────────
@@ -247,6 +253,7 @@ export default function WalletPage() {
   const handleEditTx = async () => {
     if (!editingTx || !editForm.amount || Number(editForm.amount) <= 0) return;
     setSubmitting(true);
+    setActionError('');
     try {
       await api.put(`/api/wallet/transactions/${editingTx._id}`, {
         amount: Number(editForm.amount),
@@ -254,8 +261,10 @@ export default function WalletPage() {
         itemName: editForm.itemName || undefined,
       });
       setEditingTx(null);
-      fetchWallet();
-    } catch {}
+      fetchWallet(false);
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to update transaction');
+    }
     setSubmitting(false);
   };
 
@@ -277,19 +286,24 @@ export default function WalletPage() {
         const nextDateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
         setSelectedDate(nextDateStr);
       } else {
-        fetchWallet();
+        fetchWallet(false);
       }
-    } catch {}
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to close day');
+    }
     setClosing(false);
   };
 
   // ─── REOPEN DAY ────────────────────────────────────────────
   const handleReopenDay = async () => {
     if (!wallet || !confirm(L.reopenConfirm)) return;
+    setActionError('');
     try {
       await api.post(`/api/wallet/reopen/${wallet._id}`);
-      fetchWallet();
-    } catch {}
+      fetchWallet(false);
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to reopen day');
+    }
   };
 
   // Search by report number for purchases
@@ -418,6 +432,17 @@ export default function WalletPage() {
           </button>
         </div>
       </div>
+
+      {/* Error Banner */}
+      {actionError && (
+        <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+            <p className="text-red-400 text-sm">{actionError}</p>
+          </div>
+          <button type="button" onClick={() => setActionError('')} className="text-red-400 hover:text-red-300 shrink-0"><X className="w-4 h-4" /></button>
+        </div>
+      )}
 
       {!wallet && canSelectBranch && (
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">

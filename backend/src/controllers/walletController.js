@@ -99,7 +99,7 @@ const getOrCreateWallet = async (userId, branchId, date) => {
 
 // ─── RECALCULATE WALLET TOTALS ───────────────────────────────
 const recalcWallet = async (walletId) => {
-  const txns = await WalletTransaction.find({ wallet: walletId });
+  const txns = await WalletTransaction.find({ wallet: walletId }).select('type amount').lean();
   let totalCollections = 0;
   let totalExpenses = 0;
   let totalPurchases = 0;
@@ -161,6 +161,7 @@ exports.getDailyWallet = async (req, res) => {
 
     res.json({ wallet: populated, transactions });
   } catch (error) {
+    console.error('getDailyWallet error:', error);
     res.status(500).json({ message: error.message || 'Failed to load wallet' });
   }
 };
@@ -370,6 +371,7 @@ exports.addTransaction = async (req, res) => {
 
     res.status(201).json({ transaction: populated, wallet: updatedWallet });
   } catch (error) {
+    console.error('addTransaction error:', error);
     res.status(500).json({ message: error.message || 'Failed to add transaction' });
   }
 };
@@ -399,7 +401,14 @@ exports.deleteTransaction = async (req, res) => {
         if (invoiceDoc) {
           invoiceDoc.paidAmount = Math.max(0, invoiceDoc.paidAmount - transaction.amount);
           invoiceDoc.balance = invoiceDoc.amount - invoiceDoc.paidAmount;
-          invoiceDoc.status = invoiceDoc.balance >= invoiceDoc.amount ? 'pending' : 'partial';
+          if (invoiceDoc.balance <= 0) {
+            invoiceDoc.status = 'paid';
+            invoiceDoc.balance = 0;
+          } else if (invoiceDoc.balance >= invoiceDoc.amount) {
+            invoiceDoc.status = 'pending';
+          } else {
+            invoiceDoc.status = 'partial';
+          }
           await invoiceDoc.save();
         }
       }
@@ -447,6 +456,7 @@ exports.deleteTransaction = async (req, res) => {
 
     res.json({ message: 'Transaction deleted' });
   } catch (error) {
+    console.error('deleteTransaction error:', error);
     res.status(500).json({ message: 'Failed to delete transaction' });
   }
 };
@@ -479,7 +489,14 @@ exports.updateTransaction = async (req, res) => {
         if (oldInvoice) {
           oldInvoice.paidAmount = Math.max(0, oldInvoice.paidAmount - transaction.amount);
           oldInvoice.balance = oldInvoice.amount - oldInvoice.paidAmount;
-          oldInvoice.status = oldInvoice.balance >= oldInvoice.amount ? 'pending' : 'partial';
+          if (oldInvoice.balance <= 0) {
+            oldInvoice.status = 'paid';
+            oldInvoice.balance = 0;
+          } else if (oldInvoice.balance >= oldInvoice.amount) {
+            oldInvoice.status = 'pending';
+          } else {
+            oldInvoice.status = 'partial';
+          }
           await oldInvoice.save();
         }
       }
@@ -576,6 +593,7 @@ exports.updateTransaction = async (req, res) => {
 
     res.json({ transaction: populated, wallet: updatedWallet });
   } catch (error) {
+    console.error('updateTransaction error:', error);
     res.status(500).json({ message: error.message || 'Failed to update transaction' });
   }
 };
@@ -641,6 +659,7 @@ exports.closeDay = async (req, res) => {
 
     res.json({ wallet: populated });
   } catch (error) {
+    console.error('closeDay error:', error);
     res.status(500).json({ message: 'Failed to close day' });
   }
 };
@@ -670,6 +689,7 @@ exports.reopenDay = async (req, res) => {
 
     res.json({ wallet: populated });
   } catch (error) {
+    console.error('reopenDay error:', error);
     res.status(500).json({ message: 'Failed to reopen day' });
   }
 };
@@ -732,6 +752,7 @@ exports.getBranchDashboard = async (req, res) => {
       transactions,
     });
   } catch (error) {
+    console.error('getBranchDashboard error:', error);
     res.status(500).json({ message: 'Failed to load branch dashboard' });
   }
 };
@@ -755,10 +776,23 @@ exports.getAllBranchesDashboard = async (req, res) => {
     const Branch = require('../models/Branch');
     const branches = await Branch.find({ isActive: true }).sort({ name: 1 });
 
+    const allWallets = await DailyWallet.find({
+      branch: { $in: branches.map(b => b._id) },
+      date: dateFilter
+    });
+
+    // Group by branch
+    const walletsByBranch = {};
+    for (const w of allWallets) {
+      const bId = w.branch.toString();
+      if (!walletsByBranch[bId]) walletsByBranch[bId] = [];
+      walletsByBranch[bId].push(w);
+    }
+
     const branchData = [];
 
     for (const branch of branches) {
-      const wallets = await DailyWallet.find({ branch: branch._id, date: dateFilter });
+      const wallets = walletsByBranch[branch._id.toString()] || [];
       let totalCollections = 0;
       let totalExpenses = 0;
       let totalPurchases = 0;
@@ -798,6 +832,7 @@ exports.getAllBranchesDashboard = async (req, res) => {
 
     res.json({ date: typeof dateFilter === 'string' ? dateFilter : `${dateFrom} to ${dateTo}`, branches: branchData });
   } catch (error) {
+    console.error('getAllBranchesDashboard error:', error);
     res.status(500).json({ message: 'Failed to load dashboard' });
   }
 };
@@ -838,6 +873,7 @@ exports.getRiskAlerts = async (req, res) => {
 
     res.json({ transactionAlerts: alerts, cashDifferenceAlerts: cashDiffs });
   } catch (error) {
+    console.error('getRiskAlerts error:', error);
     res.status(500).json({ message: 'Failed to load risk alerts' });
   }
 };
@@ -876,6 +912,7 @@ exports.lookupByReport = async (req, res) => {
       invoices,
     });
   } catch (error) {
+    console.error('lookupByReport error:', error);
     res.status(500).json({ message: 'Failed to lookup report' });
   }
 };
@@ -884,7 +921,9 @@ exports.lookupByReport = async (req, res) => {
 exports.getWalletHistory = async (req, res) => {
   try {
     const userId = req.query.userId || req.user._id;
-    const { dateFrom, dateTo, page = 1, limit = 30 } = req.query;
+    const { dateFrom, dateTo } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
 
     if (req.user.role === 'operations' && userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Cannot view other wallets' });
@@ -897,18 +936,19 @@ exports.getWalletHistory = async (req, res) => {
       if (dateTo) filter.date.$lte = dateTo;
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const skip = (page - 1) * limit;
     const [wallets, total] = await Promise.all([
       DailyWallet.find(filter)
         .populate('branch', 'name')
         .sort({ date: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(limit),
       DailyWallet.countDocuments(filter),
     ]);
 
-    res.json({ wallets, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+    res.json({ wallets, total, page, pages: Math.ceil(total / limit) });
   } catch (error) {
+    console.error('getWalletHistory error:', error);
     res.status(500).json({ message: 'Failed to load wallet history' });
   }
 };

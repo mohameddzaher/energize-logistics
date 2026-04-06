@@ -172,9 +172,10 @@ export default function WalletPage() {
       setWallet(data.wallet);
       setTransactions(data.transactions || []);
     } catch (err: any) {
-      if (err?.message?.includes('No branch')) {
-        setWallet(null);
-        setTransactions([]);
+      setWallet(null);
+      setTransactions([]);
+      if (err?.message?.includes('No branch') || err?.message?.includes('branch')) {
+        setActionError(lang === 'ar' ? 'لم يتم تعيين فرع لهذا المستخدم. يرجى تعيين فرع من إعدادات المستخدمين.' : 'No branch assigned to this user. Please assign a branch in User Settings.');
       }
     }
     setLoading(false);

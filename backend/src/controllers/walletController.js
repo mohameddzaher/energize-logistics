@@ -140,7 +140,7 @@ exports.getDailyWallet = async (req, res) => {
     }
 
     if (!branchId) {
-      return res.status(400).json({ message: 'No branch assigned to this user' });
+      return res.status(400).json({ message: 'No branch assigned to this user. Please assign a branch in user settings.' });
     }
 
     const wallet = await getOrCreateWallet(userId, branchId, date);
@@ -254,7 +254,7 @@ exports.addTransaction = async (req, res) => {
           reportNumber: { $regex: `^${purchaseDeliveryStatementNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
         });
         if (wf && wf.sellingValue) purchaseInvoiceAmountVal = wf.sellingValue;
-      } catch (e) {}
+      } catch (e) { console.error('walletController silent catch:', e.message); }
     }
 
     // Check risk flags
@@ -367,7 +367,7 @@ exports.addTransaction = async (req, res) => {
         emitToAll('customer:updated', {});
         emitToAll('invoice:updated', {});
       }
-    } catch (e) {}
+    } catch (e) { console.error('walletController silent catch:', e.message); }
 
     res.status(201).json({ transaction: populated, wallet: updatedWallet });
   } catch (error) {
@@ -439,7 +439,7 @@ exports.deleteTransaction = async (req, res) => {
 
     if (wallet) {
       const updatedWallet = await recalcWallet(wallet._id);
-      try { emitToAll('wallet:transaction', { wallet: updatedWallet }); } catch (e) {}
+      try { emitToAll('wallet:transaction', { wallet: updatedWallet }); } catch (e) { console.error('walletController silent catch:', e.message); }
     }
 
     await logAudit({
@@ -452,12 +452,12 @@ exports.deleteTransaction = async (req, res) => {
       emitToAll('payment:logged', {});
       emitToAll('customer:updated', {});
       emitToAll('invoice:updated', {});
-    } catch (e) {}
+    } catch (e) { console.error('walletController silent catch:', e.message); }
 
     res.json({ message: 'Transaction deleted' });
   } catch (error) {
     console.error('deleteTransaction error:', error);
-    res.status(500).json({ message: 'Failed to delete transaction' });
+    res.status(500).json({ message: error.message || 'Failed to delete transaction' });
   }
 };
 
@@ -589,7 +589,7 @@ exports.updateTransaction = async (req, res) => {
       emitToAll('payment:logged', {});
       emitToAll('customer:updated', {});
       emitToAll('invoice:updated', {});
-    } catch (e) {}
+    } catch (e) { console.error('walletController silent catch:', e.message); }
 
     res.json({ transaction: populated, wallet: updatedWallet });
   } catch (error) {
@@ -655,12 +655,12 @@ exports.closeDay = async (req, res) => {
       entityId: wallet._id, changes: { after: { date: txDate, closingBalance: wallet.closingBalance, actualCash } }, ipAddress: req.ip,
     });
 
-    try { emitToAll('wallet:dayClosed', { wallet: populated }); } catch (e) {}
+    try { emitToAll('wallet:dayClosed', { wallet: populated }); } catch (e) { console.error('walletController silent catch:', e.message); }
 
     res.json({ wallet: populated });
   } catch (error) {
     console.error('closeDay error:', error);
-    res.status(500).json({ message: 'Failed to close day' });
+    res.status(500).json({ message: error.message || 'Failed to close day' });
   }
 };
 
@@ -685,12 +685,12 @@ exports.reopenDay = async (req, res) => {
       entityId: wallet._id, changes: { after: { date: wallet.date } }, ipAddress: req.ip,
     });
 
-    try { emitToAll('wallet:dayReopened', { wallet: populated }); } catch (e) {}
+    try { emitToAll('wallet:dayReopened', { wallet: populated }); } catch (e) { console.error('walletController silent catch:', e.message); }
 
     res.json({ wallet: populated });
   } catch (error) {
     console.error('reopenDay error:', error);
-    res.status(500).json({ message: 'Failed to reopen day' });
+    res.status(500).json({ message: error.message || 'Failed to reopen day' });
   }
 };
 
@@ -753,7 +753,7 @@ exports.getBranchDashboard = async (req, res) => {
     });
   } catch (error) {
     console.error('getBranchDashboard error:', error);
-    res.status(500).json({ message: 'Failed to load branch dashboard' });
+    res.status(500).json({ message: error.message || 'Failed to load branch dashboard' });
   }
 };
 
@@ -833,7 +833,7 @@ exports.getAllBranchesDashboard = async (req, res) => {
     res.json({ date: typeof dateFilter === 'string' ? dateFilter : `${dateFrom} to ${dateTo}`, branches: branchData });
   } catch (error) {
     console.error('getAllBranchesDashboard error:', error);
-    res.status(500).json({ message: 'Failed to load dashboard' });
+    res.status(500).json({ message: error.message || 'Failed to load dashboard' });
   }
 };
 
@@ -874,7 +874,7 @@ exports.getRiskAlerts = async (req, res) => {
     res.json({ transactionAlerts: alerts, cashDifferenceAlerts: cashDiffs });
   } catch (error) {
     console.error('getRiskAlerts error:', error);
-    res.status(500).json({ message: 'Failed to load risk alerts' });
+    res.status(500).json({ message: error.message || 'Failed to load risk alerts' });
   }
 };
 
@@ -913,7 +913,7 @@ exports.lookupByReport = async (req, res) => {
     });
   } catch (error) {
     console.error('lookupByReport error:', error);
-    res.status(500).json({ message: 'Failed to lookup report' });
+    res.status(500).json({ message: error.message || 'Failed to lookup report' });
   }
 };
 
@@ -949,6 +949,6 @@ exports.getWalletHistory = async (req, res) => {
     res.json({ wallets, total, page, pages: Math.ceil(total / limit) });
   } catch (error) {
     console.error('getWalletHistory error:', error);
-    res.status(500).json({ message: 'Failed to load wallet history' });
+    res.status(500).json({ message: error.message || 'Failed to load wallet history' });
   }
 };

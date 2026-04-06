@@ -119,7 +119,6 @@ operationsWorkflowSchema.pre('save', async function (next) {
 
 // Indexes
 operationsWorkflowSchema.index({ stage: 1 });
-operationsWorkflowSchema.index({ reportNumber: 1 });
 operationsWorkflowSchema.index({ branch: 1 });
 operationsWorkflowSchema.index({ carOwner: 1 });
 operationsWorkflowSchema.index({ createdAt: -1 });

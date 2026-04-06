@@ -60,8 +60,6 @@ const customerSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-customerSchema.index({ customerNumber: 1 });
-customerSchema.index({ companyName: 1 });
 customerSchema.index({ assignedCollector: 1 });
 customerSchema.index({ riskLevel: 1 });
 customerSchema.index({ office: 1 });

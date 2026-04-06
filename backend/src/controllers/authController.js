@@ -3,8 +3,8 @@ const User = require('../models/User');
 const logAudit = require('../utils/auditLogger');
 const { COOKIE_OPTIONS } = require('../config/constants');
 
-const generateAccessToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_ACCESS_SECRET, {
+const generateAccessToken = (userId, role) => {
+  return jwt.sign({ userId, role }, process.env.JWT_ACCESS_SECRET, {
     expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m',
   });
 };
@@ -37,7 +37,7 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    const accessToken = generateAccessToken(user._id);
+    const accessToken = generateAccessToken(user._id, user.role);
     const refreshToken = generateRefreshToken(user._id);
 
     user.refreshToken = refreshToken;
@@ -95,7 +95,7 @@ exports.refresh = async (req, res) => {
       return res.status(403).json({ message: 'Account is not accessible' });
     }
 
-    const newAccessToken = generateAccessToken(user._id);
+    const newAccessToken = generateAccessToken(user._id, user.role);
 
     res.cookie('accessToken', newAccessToken, {
       ...COOKIE_OPTIONS,

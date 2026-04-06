@@ -4,8 +4,8 @@ const customerSchema = new mongoose.Schema(
   {
     customerNumber: { type: String, unique: true, sparse: true, trim: true },
     companyName: { type: String, required: true, trim: true, unique: true },
-    contactPerson: { type: String, required: true, trim: true },
-    email: { type: String, required: true, lowercase: true, trim: true },
+    contactPerson: { type: String, trim: true },
+    email: { type: String, lowercase: true, trim: true },
     phone: { type: String, trim: true },
     address: { type: String, trim: true },
     creditTerm: {

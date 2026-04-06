@@ -146,10 +146,23 @@ exports.createWorkflow = async (req, res) => {
     // Create invoice and update customer outstanding if username matches a customer
     const sellingVal = Number(filteredBody.sellingValue) || 0;
     if (filteredBody.username && sellingVal > 0) {
-      const customer = await Customer.findOne({
+      let customer = await Customer.findOne({
         companyName: { $regex: `^${filteredBody.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
         isActive: true,
       });
+
+      if (!customer && filteredBody.username) {
+        // Auto-create customer from operations workflow
+        customer = await Customer.create({
+          companyName: filteredBody.username.trim(),
+          creditTerm: 30,
+          isActive: true,
+          clientStatus: 'new_client',
+          notes: 'Auto-created from operations workflow',
+        });
+        try { emitToAll('customer:created', { customer }); } catch (e) { console.error('WebSocket emit error:', e); }
+      }
+
       if (customer) {
         const invoiceNumber = filteredBody.reportNumber || `WF-${workflow._id.toString().slice(-8)}`;
         const invoiceDate = filteredBody.reportDate ? new Date(filteredBody.reportDate) : new Date();
@@ -600,15 +613,25 @@ exports.bulkImport = async (req, res) => {
       if (!row.username || sellingVal <= 0) continue;
 
       const name = row.username.trim();
-      // Cache customer lookups
+      // Cache customer lookups, auto-create if not found
       if (!customerCache[name.toLowerCase()]) {
-        customerCache[name.toLowerCase()] = await Customer.findOne({
+        let found = await Customer.findOne({
           companyName: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
           isActive: true,
         });
+        if (!found) {
+          found = await Customer.create({
+            companyName: name,
+            creditTerm: 30,
+            isActive: true,
+            clientStatus: 'new_client',
+            notes: 'Auto-created from operations import',
+          });
+          try { emitToAll('customer:created', { customer: found }); } catch (e) { console.error('WebSocket emit error:', e); }
+        }
+        customerCache[name.toLowerCase()] = found;
       }
       const customer = customerCache[name.toLowerCase()];
-      if (!customer) continue;
 
       // Create invoice using reportNumber as invoice number
       const invoiceNumber = row.reportNumber || `WF-${createdWf._id.toString().slice(-8)}`;

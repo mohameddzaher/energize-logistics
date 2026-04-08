@@ -120,7 +120,7 @@ export default function WalletPage() {
 
   // Edit transaction
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
-  const [editForm, setEditForm] = useState({ amount: '', notes: '', itemName: '' });
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
 
   // Close day modal
   const [showCloseModal, setShowCloseModal] = useState(false);
@@ -256,6 +256,12 @@ export default function WalletPage() {
       amount: String(tx.amount),
       notes: tx.notes || '',
       itemName: tx.itemName || '',
+      deliveryStatementNumber: tx.deliveryStatementNumber || '',
+      description: tx.description || '',
+      purchaseDeliveryStatementNumber: (tx as any).purchaseDeliveryStatementNumber || '',
+      purchaseDriverName: (tx as any).purchaseDriverName || '',
+      purchaseReceiptNumber: (tx as any).purchaseReceiptNumber || '',
+      purchaseBranch: (tx as any).purchaseBranch || '',
     });
   };
 
@@ -264,11 +270,24 @@ export default function WalletPage() {
     setSubmitting(true);
     setActionError('');
     try {
-      await api.put(`/api/wallet/transactions/${editingTx._id}`, {
+      const payload: Record<string, any> = {
         amount: Number(editForm.amount),
         notes: editForm.notes || undefined,
-        itemName: editForm.itemName || undefined,
-      });
+      };
+      if (editingTx.type === 'expense') {
+        payload.itemName = editForm.itemName || undefined;
+      }
+      if (editingTx.type === 'collection') {
+        payload.deliveryStatementNumber = editForm.deliveryStatementNumber || undefined;
+        payload.description = editForm.description || undefined;
+      }
+      if (editingTx.type === 'purchase') {
+        payload.purchaseDeliveryStatementNumber = editForm.purchaseDeliveryStatementNumber || undefined;
+        payload.purchaseDriverName = editForm.purchaseDriverName || undefined;
+        payload.purchaseReceiptNumber = editForm.purchaseReceiptNumber || undefined;
+        payload.purchaseBranch = editForm.purchaseBranch || undefined;
+      }
+      await api.put(`/api/wallet/transactions/${editingTx._id}`, payload);
       setEditingTx(null);
       fetchWallet(false);
     } catch (err: any) {
@@ -821,17 +840,63 @@ export default function WalletPage() {
                     onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                 </div>
+                {editingTx.type === 'collection' && (
+                  <>
+                    <div>
+                      <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatement}</label>
+                      <input type="text" value={editForm.deliveryStatementNumber || ''}
+                        onChange={(e) => setEditForm((f) => ({ ...f, deliveryStatementNumber: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                    </div>
+                    {editingTx.collectionSource === 'company' && (
+                      <div>
+                        <label className="text-gray-400 text-xs mb-1 block">{L.description}</label>
+                        <input type="text" value={editForm.description || ''}
+                          onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                          className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                      </div>
+                    )}
+                  </>
+                )}
                 {editingTx.type === 'expense' && (
                   <div>
                     <label className="text-gray-400 text-xs mb-1 block">{L.itemDescription}</label>
-                    <input type="text" value={editForm.itemName}
+                    <input type="text" value={editForm.itemName || ''}
                       onChange={(e) => setEditForm((f) => ({ ...f, itemName: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                   </div>
                 )}
+                {editingTx.type === 'purchase' && (
+                  <>
+                    <div>
+                      <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatement}</label>
+                      <input type="text" value={editForm.purchaseDeliveryStatementNumber || ''}
+                        onChange={(e) => setEditForm((f) => ({ ...f, purchaseDeliveryStatementNumber: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-xs mb-1 block">{L.driverName}</label>
+                      <input type="text" value={editForm.purchaseDriverName || ''}
+                        onChange={(e) => setEditForm((f) => ({ ...f, purchaseDriverName: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-xs mb-1 block">{L.receiptNumber}</label>
+                      <input type="text" value={editForm.purchaseReceiptNumber || ''}
+                        onChange={(e) => setEditForm((f) => ({ ...f, purchaseReceiptNumber: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-xs mb-1 block">{L.branch}</label>
+                      <input type="text" value={editForm.purchaseBranch || ''}
+                        onChange={(e) => setEditForm((f) => ({ ...f, purchaseBranch: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className="text-gray-400 text-xs mb-1 block">{L.notes}</label>
-                  <textarea value={editForm.notes} rows={2}
+                  <textarea value={editForm.notes || ''} rows={2}
                     onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none" />
                 </div>

@@ -8,7 +8,7 @@ interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client';
+  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing';
   linkedCustomer?: { _id: string; companyName: string; creditTerm: number };
   assignedCustomers?: { _id: string; companyName: string }[];
 }

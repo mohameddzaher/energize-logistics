@@ -32,6 +32,8 @@ const driverRoutes = require('./routes/drivers');
 const expenseCategoryRoutes = require('./routes/expenseCategories');
 const walletRoutes = require('./routes/wallet');
 const adminRoutes = require('./routes/admin');
+const workshopRoutes = require('./routes/workshop');
+const complaintRoutes = require('./routes/complaints');
 
 const app = express();
 const server = http.createServer(app);
@@ -90,6 +92,8 @@ app.use('/api/drivers', driverRoutes);
 app.use('/api/expense-categories', expenseCategoryRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/workshop', workshopRoutes);
+app.use('/api/complaints', complaintRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

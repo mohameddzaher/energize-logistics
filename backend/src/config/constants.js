@@ -5,6 +5,9 @@ module.exports = {
     EMPLOYEE: 'employee',
     OPERATIONS_MANAGER: 'operations_manager',
     CLIENT: 'client',
+    WORKSHOP_MANAGER: 'workshop_manager',
+    WORKSHOP_EMPLOYEE: 'workshop_employee',
+    PURCHASING: 'purchasing',
   },
 
   CREDIT_TERMS: [15, 30, 45, 60],

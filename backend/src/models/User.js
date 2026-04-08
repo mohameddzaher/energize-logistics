@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema(
     lastName: { type: String, required: true, trim: true },
     role: {
       type: String,
-      enum: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client'],
+      enum: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client', 'workshop_manager', 'workshop_employee', 'purchasing'],
       required: true,
     },
     branch: {

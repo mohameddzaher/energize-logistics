@@ -34,6 +34,11 @@ const layout = {
     noNewNotifications: 'No new notifications',
     system: 'System',
     lowVisitCustomers: 'Low Visit Customers',
+    workshop: 'Workshop',
+    workshopPurchases: 'Purchases',
+    workshopDashboard: 'Workshop Dashboard',
+    workshopTasks: 'Workshop Tasks',
+    complaints: 'Complaints',
   },
   ar: {
     dashboard: 'لوحة التحكم',
@@ -67,6 +72,11 @@ const layout = {
     noNewNotifications: 'لا توجد إشعارات جديدة',
     system: 'النظام',
     lowVisitCustomers: 'عملاء قليلي الزيارة',
+    workshop: 'الورشة',
+    workshopPurchases: 'المشتريات',
+    workshopDashboard: 'لوحة الورشة',
+    workshopTasks: 'مهام الورشة',
+    complaints: 'الشكاوى',
   },
 };
 
@@ -1211,4 +1221,9 @@ export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   '/system/portal': 'overview',
   '/system/portal/invoices': 'myInvoices',
   '/system/portal/payments': 'myPayments',
+  '/system/workshop': 'workshop',
+  '/system/workshop/purchases': 'workshopPurchases',
+  '/system/workshop/dashboard': 'workshopDashboard',
+  '/system/workshop/tasks': 'workshopTasks',
+  '/system/complaints': 'complaints',
 };

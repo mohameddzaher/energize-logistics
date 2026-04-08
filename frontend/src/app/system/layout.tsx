@@ -11,7 +11,7 @@ import {
   AlertTriangle, UserCog, ClipboardList, BarChart3, Settings,
   LogOut, Bell, Menu, X, ChevronDown, Shield, Bot,
   Briefcase, TrendingUp, ListTodo, Building2, Wallet,
-  Store, Truck, Tags, Languages,
+  Store, Truck, Tags, Languages, Wrench, ShoppingCart, MessageSquare,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -92,6 +92,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'] },
     { href: '/system/reports', label: L.reports, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin'] },
     { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin'] },
+    { href: '/system/workshop', label: L.workshop, icon: <Wrench className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'] },
+    { href: '/system/workshop/purchases', label: L.workshopPurchases, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'] },
+    { href: '/system/workshop/dashboard', label: L.workshopDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager'] },
+    { href: '/system/workshop/tasks', label: L.workshopTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'] },
+    { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'workshop_manager', 'operations_manager'] },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin'] },
     { href: '/system/settings', label: L.settings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'] },
     // Client portal

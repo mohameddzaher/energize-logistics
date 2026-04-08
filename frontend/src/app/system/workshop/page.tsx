@@ -7,8 +7,9 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wrench, Plus, Search, Filter, Loader2, X, Check, Trash2, Eye, Clock,
-  AlertCircle, ChevronLeft, ChevronRight, Send,
+  AlertCircle, ChevronLeft, ChevronRight, Send, CheckCircle2, Download,
 } from 'lucide-react';
+import { exportToExcel, fmt } from '@/utils/exportExcel';
 
 interface Part {
   name: string;
@@ -27,8 +28,10 @@ interface MaintenanceRequest {
   duration?: number;
   workDescription?: string;
   notes?: string;
-  partsNeeded?: Part[];
+  partsNeeded?: (Part & { status?: string })[];
   createdAt: string;
+  createdBy?: { firstName?: string; lastName?: string; _id?: string };
+  branch?: { name?: string; _id?: string } | string;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; labelAr: string; color: string; bg: string }> = {
@@ -55,6 +58,9 @@ export default function WorkshopPage() {
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  // Success notification
+  const [success, setSuccess] = useState('');
 
   // Stats
   const [stats, setStats] = useState({ open: 0, inProgress: 0, completedToday: 0, avgDuration: 0 });
@@ -182,7 +188,8 @@ export default function WorkshopPage() {
         itemName: part.name,
         quantity: part.quantity,
       });
-      alert(isAr ? 'تم إرسال الطلب للمشتريات' : 'Sent to purchasing');
+      setSuccess(isAr ? 'تم إرسال الطلب للمشتريات' : 'Sent to purchasing');
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       setError(err.message);
     }
@@ -201,6 +208,21 @@ export default function WorkshopPage() {
       ...prev,
       parts: prev.parts.map((p, i) => i === idx ? { ...p, [field]: value } : p),
     }));
+  };
+
+  const handleExport = () => {
+    exportToExcel(requests, [
+      { header: 'Vehicle #', key: 'vehicleNumber', width: 15 },
+      { header: 'Type', key: 'vehicleType', width: 15 },
+      { header: 'Driver', key: 'driverName', width: 20 },
+      { header: 'Technician', key: 'technicianName', width: 20 },
+      { header: 'Status', key: 'status', transform: fmt.status, width: 15 },
+      { header: 'Start Time', key: 'startTime', transform: fmt.datetime, width: 20 },
+      { header: 'End Time', key: 'endTime', transform: fmt.datetime, width: 20 },
+      { header: 'Duration (min)', key: 'duration', width: 15 },
+      { header: 'Work Description', key: 'workDescription', width: 30 },
+      { header: 'Notes', key: 'notes', width: 30 },
+    ], 'maintenance-requests', 'Maintenance');
   };
 
   const totalPages = Math.ceil(total / limit);
@@ -222,14 +244,32 @@ export default function WorkshopPage() {
             {isAr ? 'الورشة والصيانة' : 'Workshop & Maintenance'}
           </h1>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e0611a] text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          {isAr ? 'طلب صيانة جديد' : 'Add Request'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={requests.length === 0}
+            className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            {isAr ? 'تصدير' : 'Export'}
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e0611a] text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {isAr ? 'طلب صيانة جديد' : 'Add Request'}
+          </button>
+        </div>
       </div>
+
+      {/* Success */}
+      {success && (
+        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-400 text-sm flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4" />
+          {success}
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -582,6 +622,11 @@ export default function WorkshopPage() {
                     { label: isAr ? 'الفني' : 'Technician', value: showViewModal.technicianName || '-' },
                     { label: isAr ? 'الحالة' : 'Status', value: isAr ? STATUS_CONFIG[showViewModal.status]?.labelAr : STATUS_CONFIG[showViewModal.status]?.label },
                     { label: isAr ? 'المدة' : 'Duration', value: formatDuration(showViewModal.duration) },
+                    { label: isAr ? 'وقت البدء' : 'Start Time', value: showViewModal.startTime ? new Date(showViewModal.startTime).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '-' },
+                    { label: isAr ? 'وقت الانتهاء' : 'End Time', value: showViewModal.endTime ? new Date(showViewModal.endTime).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '-' },
+                    { label: isAr ? 'تاريخ الإنشاء' : 'Created At', value: showViewModal.createdAt ? new Date(showViewModal.createdAt).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '-' },
+                    { label: isAr ? 'أنشئ بواسطة' : 'Created By', value: showViewModal.createdBy ? `${showViewModal.createdBy.firstName || ''} ${showViewModal.createdBy.lastName || ''}`.trim() || '-' : '-' },
+                    { label: isAr ? 'الفرع' : 'Branch', value: typeof showViewModal.branch === 'object' ? showViewModal.branch?.name || '-' : showViewModal.branch || '-' },
                   ].map((item, i) => (
                     <div key={i}>
                       <p className="text-gray-500 text-xs">{item.label}</p>
@@ -603,12 +648,24 @@ export default function WorkshopPage() {
                 )}
                 {showViewModal.partsNeeded && showViewModal.partsNeeded.length > 0 && (
                   <div>
-                    <p className="text-gray-500 text-xs mb-2">{isAr ? 'قطع الغيار' : 'Parts'}</p>
+                    <p className="text-gray-500 text-xs mb-2">{isAr ? 'قطع الغيار' : 'Parts Needed'}</p>
                     <div className="space-y-1">
                       {showViewModal.partsNeeded.map((p, i) => (
                         <div key={i} className="flex items-center justify-between bg-gray-900 rounded-lg px-3 py-2">
                           <span className="text-white text-sm">{p.name}</span>
-                          <span className="text-gray-400 text-sm">x{p.quantity}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400 text-sm">x{p.quantity}</span>
+                            {p.status && (
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                p.status === 'delivered' ? 'bg-green-500/20 text-green-400' :
+                                p.status === 'ordered' ? 'bg-blue-500/20 text-blue-400' :
+                                p.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-gray-700 text-gray-400'
+                              }`}>
+                                {p.status}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>

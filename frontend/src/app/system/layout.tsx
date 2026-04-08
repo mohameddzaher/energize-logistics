@@ -21,6 +21,7 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   roles: string[];
+  section?: string;
 }
 
 export default function SystemLayout({ children }: { children: React.ReactNode }) {
@@ -72,37 +73,43 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   };
 
   const navItems: NavItem[] = [
-    { href: '/system/dashboard', label: L.dashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'] },
-    { href: '/system/overdue', label: L.overdue, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'] },
-    { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'employee', 'moderator'] },
-    { href: '/system/customers', label: L.customers, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'] },
-    { href: '/system/invoices', label: L.invoices, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'] },
-    { href: '/system/payments', label: L.payments, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'] },
-    { href: '/system/collections', label: L.collections, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'] },
-    { href: '/system/collectors', label: L.collectors, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin'] },
-    { href: '/system/tasks', label: L.tasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'] },
-    { href: '/system/disputes', label: L.disputes, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager'] },
-    { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'] },
-    { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations', 'moderator'] },
-    { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'moderator'] },
-    { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin'] },
-    { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'] },
-    { href: '/system/drivers', label: L.drivers, icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'] },
-    { href: '/system/expense-categories', label: L.expenseCategories, icon: <Tags className="w-5 h-5" />, roles: ['super_admin'] },
-    { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'] },
-    { href: '/system/reports', label: L.reports, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin'] },
-    { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin'] },
-    { href: '/system/workshop', label: L.workshop, icon: <Wrench className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'] },
-    { href: '/system/workshop/purchases', label: L.workshopPurchases, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'] },
-    { href: '/system/workshop/dashboard', label: L.workshopDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager'] },
-    { href: '/system/workshop/tasks', label: L.workshopTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'] },
-    { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'workshop_manager', 'operations_manager'] },
-    { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin'] },
-    { href: '/system/settings', label: L.settings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'] },
+    // Main
+    { href: '/system/dashboard', label: L.dashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Main' },
+    { href: '/system/overdue', label: L.overdue, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Main' },
+    { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'employee', 'moderator'], section: 'Main' },
+    // Customers & Finance
+    { href: '/system/customers', label: L.customers, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Customers & Finance' },
+    { href: '/system/invoices', label: L.invoices, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Customers & Finance' },
+    { href: '/system/payments', label: L.payments, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'], section: 'Customers & Finance' },
+    { href: '/system/collections', label: L.collections, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'], section: 'Customers & Finance' },
+    { href: '/system/collectors', label: L.collectors, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Customers & Finance' },
+    { href: '/system/tasks', label: L.tasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'], section: 'Customers & Finance' },
+    { href: '/system/disputes', label: L.disputes, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager'], section: 'Customers & Finance' },
+    // Operations
+    { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
+    { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
+    { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'moderator'], section: 'Operations' },
+    // Workshop
+    { href: '/system/workshop', label: L.workshop, icon: <Wrench className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
+    { href: '/system/workshop/purchases', label: L.workshopPurchases, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'], section: 'Workshop' },
+    { href: '/system/workshop/dashboard', label: L.workshopDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'], section: 'Workshop' },
+    { href: '/system/workshop/tasks', label: L.workshopTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
+    // Admin
+    { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
+    { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'], section: 'Admin' },
+    { href: '/system/drivers', label: L.drivers, icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'], section: 'Admin' },
+    { href: '/system/expense-categories', label: L.expenseCategories, icon: <Tags className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
+    { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
+    { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Admin' },
+    { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'workshop_manager', 'operations_manager'], section: 'Admin' },
+    { href: '/system/reports', label: L.reports, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Admin' },
+    // Tools
+    { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'], section: 'Tools' },
+    { href: '/system/settings', label: L.settings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Tools' },
     // Client portal
-    { href: '/system/portal', label: L.overview, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['client'] },
-    { href: '/system/portal/invoices', label: L.myInvoices, icon: <FileText className="w-5 h-5" />, roles: ['client'] },
-    { href: '/system/portal/payments', label: L.myPayments, icon: <CreditCard className="w-5 h-5" />, roles: ['client'] },
+    { href: '/system/portal', label: L.overview, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
+    { href: '/system/portal/invoices', label: L.myInvoices, icon: <FileText className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
+    { href: '/system/portal/payments', label: L.myPayments, icon: <CreditCard className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
   ];
 
   // Real-time notification updates
@@ -111,6 +118,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   }, []));
 
   const filteredNav = navItems.filter((item) => user && item.roles.includes(user.role));
+
+  // Group filtered nav items by section, preserving order
+  const groupedNav = filteredNav.reduce((acc, item) => {
+    const section = item.section || 'Other';
+    if (!acc[section]) acc[section] = [];
+    acc[section].push(item);
+    return acc;
+  }, {} as Record<string, NavItem[]>);
 
   const handleLogout = async () => {
     await logout();
@@ -126,6 +141,26 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated || !user) return null;
+
+  const renderNavLink = (item: NavItem, onClick?: () => void) => {
+    const hasChildren = filteredNav.some(other => other.href !== item.href && other.href.startsWith(item.href + '/'));
+    const isActive = hasChildren ? pathname === item.href : (pathname === item.href || pathname.startsWith(item.href + '/'));
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={onClick}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+          isActive
+            ? 'bg-[#f37121] text-white'
+            : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+        }`}
+      >
+        {item.icon}
+        {(onClick || sidebarOpen) && <span>{item.label}</span>}
+      </Link>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-900 flex" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -145,24 +180,18 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Nav Items */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
-          {filteredNav.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  isActive
-                    ? 'bg-[#f37121] text-white'
-                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                }`}
-              >
-                {item.icon}
-                {sidebarOpen && <span>{item.label}</span>}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto py-2 px-2">
+          {Object.entries(groupedNav).map(([section, items]) => (
+            <div key={section}>
+              {sidebarOpen && (
+                <p className="px-3 pt-4 pb-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{section}</p>
+              )}
+              {!sidebarOpen && <div className="my-2 mx-2 border-t border-gray-700" />}
+              <div className="space-y-0.5">
+                {items.map((item) => renderNavLink(item))}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* User Info + Logout */}
@@ -189,7 +218,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
               <Menu className="w-6 h-6" />
             </button>
             <h2 className="text-white font-semibold text-lg hidden sm:block">
-              {filteredNav.find((n) => pathname === n.href || pathname.startsWith(n.href + '/'))?.label || L.system}
+              {[...filteredNav].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(n.href + '/'))?.label || L.system}
             </h2>
           </div>
 
@@ -282,23 +311,15 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
-                {filteredNav.map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                        isActive ? 'bg-[#f37121] text-white' : 'text-gray-300 hover:bg-gray-700'
-                      }`}
-                    >
-                      {item.icon}
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
+              <nav className="flex-1 overflow-y-auto py-2 px-2">
+                {Object.entries(groupedNav).map(([section, items]) => (
+                  <div key={section}>
+                    <p className="px-3 pt-4 pb-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{section}</p>
+                    <div className="space-y-0.5">
+                      {items.map((item) => renderNavLink(item, () => setMobileMenuOpen(false)))}
+                    </div>
+                  </div>
+                ))}
               </nav>
               <div className="border-t border-gray-700 p-4">
                 <p className="text-white text-sm">{user.firstName} {user.lastName}</p>

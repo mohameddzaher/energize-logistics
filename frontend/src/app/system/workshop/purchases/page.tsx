@@ -7,8 +7,9 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart, Loader2, X, Check, Package, AlertCircle,
-  ChevronLeft, ChevronRight, FileText,
+  ChevronLeft, ChevronRight, FileText, Download,
 } from 'lucide-react';
+import { exportToExcel, fmt } from '@/utils/exportExcel';
 
 interface PurchaseRequest {
   _id: string;
@@ -111,14 +112,39 @@ export default function WorkshopPurchasesPage() {
     }
   };
 
+  const handleExport = () => {
+    exportToExcel(purchases, [
+      { header: 'Item', key: 'itemName', width: 25 },
+      { header: 'Quantity', key: 'quantity', width: 10 },
+      { header: 'Vehicle #', key: 'vehicleNumber', width: 15 },
+      { header: 'Requested By', key: 'requestedByName', width: 20 },
+      { header: 'Date', key: 'date', transform: fmt.date, width: 15 },
+      { header: 'Status', key: 'status', transform: fmt.status, width: 15 },
+      { header: 'Cost', key: 'cost', transform: fmt.money, width: 12 },
+      { header: 'Supplier', key: 'supplier', width: 20 },
+      { header: 'Invoice #', key: 'invoiceNumber', width: 15 },
+    ], 'workshop-purchases', 'Purchases');
+  };
+
   const totalPages = Math.ceil(total / limit);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <ShoppingCart className="w-7 h-7 text-[#f37121]" />
-        <h1 className="text-2xl font-bold text-white">{isAr ? 'مشتريات الورشة' : 'Workshop Purchases'}</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <ShoppingCart className="w-7 h-7 text-[#f37121]" />
+          <h1 className="text-2xl font-bold text-white">{isAr ? 'مشتريات الورشة' : 'Workshop Purchases'}</h1>
+        </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={purchases.length === 0}
+          className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+        >
+          <Download className="w-4 h-4" />
+          {isAr ? 'تصدير' : 'Export'}
+        </button>
       </div>
 
       {/* Error */}

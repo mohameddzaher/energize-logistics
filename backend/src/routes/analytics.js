@@ -17,7 +17,7 @@ const User = require('../models/User');
 router.use(authenticate);
 
 // Executive Dashboard Summary
-router.get('/dashboard', authorize('super_admin', 'admin', 'operations_manager', 'operations', 'employee', 'moderator'), async (req, res) => {
+router.get('/dashboard', authorize('super_admin', 'admin', 'operations_manager', 'operations', 'employee', 'moderator', 'workshop_manager', 'workshop_employee', 'purchasing'), async (req, res) => {
   try {
     const { dateFrom, dateTo, branch, collector } = req.query;
 

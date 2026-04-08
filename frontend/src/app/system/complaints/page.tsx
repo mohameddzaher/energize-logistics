@@ -7,8 +7,9 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare, Plus, Search, Loader2, X, Check, Trash2, AlertCircle,
-  ChevronLeft, ChevronRight, Phone, User, Flag, Eye,
+  ChevronLeft, ChevronRight, Phone, User, Flag, Eye, Download,
 } from 'lucide-react';
+import { exportToExcel, fmt } from '@/utils/exportExcel';
 
 interface Complaint {
   _id: string;
@@ -167,6 +168,21 @@ export default function ComplaintsPage() {
     }
   };
 
+  const handleExport = () => {
+    exportToExcel(complaints, [
+      { header: 'Subject', key: 'subject', width: 25 },
+      { header: 'Category', key: 'category', transform: fmt.status, width: 15 },
+      { header: 'Priority', key: 'priority', transform: fmt.status, width: 12 },
+      { header: 'Status', key: 'status', transform: fmt.status, width: 15 },
+      { header: 'Customer', key: 'customerName', width: 20 },
+      { header: 'Phone', key: 'customerPhone', width: 15 },
+      { header: 'Description', key: 'description', width: 35 },
+      { header: 'Resolution', key: 'resolution', width: 30 },
+      { header: 'Created', key: 'createdAt', transform: fmt.date, width: 15 },
+      { header: 'Resolved', key: 'resolvedAt', transform: fmt.date, width: 15 },
+    ], 'complaints', 'Complaints');
+  };
+
   const totalPages = Math.ceil(total / limit);
 
   const getCategoryLabel = (cat: string) => {
@@ -182,11 +198,22 @@ export default function ComplaintsPage() {
           <MessageSquare className="w-7 h-7 text-[#f37121]" />
           <h1 className="text-2xl font-bold text-white">{isAr ? 'الشكاوى' : 'Complaints'}</h1>
         </div>
-        <button onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e0611a] text-white px-4 py-2.5 rounded-lg font-medium transition-colors">
-          <Plus className="w-4 h-4" />
-          {isAr ? 'شكوى جديدة' : 'New Complaint'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={complaints.length === 0}
+            className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            {isAr ? 'تصدير' : 'Export'}
+          </button>
+          <button onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e0611a] text-white px-4 py-2.5 rounded-lg font-medium transition-colors">
+            <Plus className="w-4 h-4" />
+            {isAr ? 'شكوى جديدة' : 'New Complaint'}
+          </button>
+        </div>
       </div>
 
       {/* Error */}

@@ -19,7 +19,13 @@ function LoginForm() {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      const defaultRoute = user.role === 'client' ? '/system/portal' : '/system/dashboard';
+      const roleRoutes: Record<string, string> = {
+        client: '/system/portal',
+        workshop_manager: '/system/workshop/dashboard',
+        workshop_employee: '/system/workshop',
+        purchasing: '/system/workshop/purchases',
+      };
+      const defaultRoute = roleRoutes[user.role] || '/system/dashboard';
       router.push(returnTo || defaultRoute);
     }
   }, [isAuthenticated, user, router, returnTo]);
@@ -33,7 +39,13 @@ function LoginForm() {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const loggedInUser = await login(email, password);
-        const defaultRoute = loggedInUser.role === 'client' ? '/system/portal' : '/system/dashboard';
+        const roleRoutes: Record<string, string> = {
+          client: '/system/portal',
+          workshop_manager: '/system/workshop/dashboard',
+          workshop_employee: '/system/workshop',
+          purchasing: '/system/workshop/purchases',
+        };
+        const defaultRoute = roleRoutes[loggedInUser.role] || '/system/dashboard';
         router.push(returnTo || defaultRoute);
         return;
       } catch (err: any) {

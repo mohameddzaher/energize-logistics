@@ -87,10 +87,17 @@ export default function WorkshopPage() {
       if (dateTo) params.append('dateTo', dateTo);
       params.append('page', String(page));
       params.append('limit', String(limit));
-      const data = await api.get<any>(`/api/workshop/maintenance?${params.toString()}`);
+      const data = await api.get<any>(`/api/workshop/maintenance?${params.toString()}`) || {};
       setRequests(data.requests || []);
       setTotal(data.total || 0);
-      if (data.stats) setStats(data.stats);
+      if (data.stats) {
+        setStats({
+          open: data.stats.open ?? 0,
+          inProgress: data.stats.inProgress ?? 0,
+          completedToday: data.stats.completedToday ?? 0,
+          avgDuration: data.stats.avgDuration ?? 0,
+        });
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {

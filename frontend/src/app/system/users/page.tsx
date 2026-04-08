@@ -446,18 +446,14 @@ export default function UsersPage() {
           onChange={(e) => setFormData({ ...formData, role: e.target.value, linkedCustomer: '', assignedCustomers: [] })}
           className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
         >
-          <option value="super_admin">{T.superAdmin}</option>
-          <option value="admin">{T.admin}</option>
-          <option value="employee">{T.employee}</option>
-          <option value="operations_manager">{T.operationsManager}</option>
-          <option value="operations">{T.operationsRole}</option>
-          <option value="moderator">{T.moderator}</option>
-          <option value="client">{T.clientRole}</option>
+          {Object.entries(roleLabels).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
         </select>
       </div>
 
-      {/* Operations-specific: branch assignment */}
-      {formData.role === 'operations' && (
+      {/* Branch assignment for operations and workshop roles */}
+      {['operations', 'operations_manager', 'workshop_manager', 'workshop_employee', 'purchasing'].includes(formData.role) && (
         <div>
           <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.branch} *</label>
           <select

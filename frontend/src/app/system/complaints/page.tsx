@@ -95,7 +95,7 @@ export default function ComplaintsPage() {
       if (search) params.append('search', search);
       params.append('page', String(page));
       params.append('limit', String(limit));
-      const data = await api.get<any>(`/api/complaints?${params.toString()}`);
+      const data = await api.get<any>(`/api/complaints?${params.toString()}`) || {};
       setComplaints(data.complaints || []);
       setTotal(data.total || 0);
     } catch (err: any) {

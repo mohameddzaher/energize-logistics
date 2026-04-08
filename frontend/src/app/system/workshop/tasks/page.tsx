@@ -75,7 +75,7 @@ export default function WorkshopTasksPage() {
       if (search) params.append('search', search);
       params.append('page', String(page));
       params.append('limit', String(limit));
-      const data = await api.get<any>(`/api/workshop/tasks?${params.toString()}`);
+      const data = await api.get<any>(`/api/workshop/tasks?${params.toString()}`) || {};
       setTasks(data.tasks || []);
       setTotal(data.total || 0);
     } catch (err: any) {
@@ -91,7 +91,7 @@ export default function WorkshopTasksPage() {
   useEffect(() => {
     const loadUsers = async () => {
       try {
-        const data = await api.get<any>('/api/users?limit=200');
+        const data = await api.get<any>('/api/users?limit=200') || {};
         setUsers(data.users || []);
       } catch {}
     };

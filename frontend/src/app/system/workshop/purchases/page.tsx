@@ -57,7 +57,7 @@ export default function WorkshopPurchasesPage() {
       if (statusFilter) params.append('status', statusFilter);
       params.append('page', String(page));
       params.append('limit', String(limit));
-      const data = await api.get<any>(`/api/workshop/purchases?${params.toString()}`);
+      const data = await api.get<any>(`/api/workshop/purchases?${params.toString()}`) || {};
       setPurchases(data.purchases || []);
       setTotal(data.total || 0);
     } catch (err: any) {

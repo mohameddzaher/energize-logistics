@@ -93,7 +93,8 @@ export default function WorkshopDashboardPage() {
 
   if (!data) return null;
 
-  const { kpis, requestsPerDay, durationTrend, statusDistribution, recentActivity, pendingPurchasesList } = data;
+  const kpis = data.kpis || { totalRequests: 0, open: 0, inProgress: 0, completed: 0, avgDuration: 0, pendingPurchases: 0 };
+  const { requestsPerDay = [], durationTrend = [], statusDistribution = [], recentActivity = [], pendingPurchasesList = [] } = data;
 
   // Calculate max for bar chart scaling
   const maxDailyCount = Math.max(...(requestsPerDay?.map(d => d.count) || [1]), 1);

@@ -249,6 +249,7 @@ const getPurchaseRequests = async (req, res) => {
     // Transform to include flat fields the frontend expects
     const purchases = requests.map(r => ({
       ...r,
+      vehicleNumber: r.vehicleNumber || r.maintenanceRequest?.vehicleNumber || '-',
       requestedByName: r.requestedBy
         ? `${r.requestedBy.firstName || ''} ${r.requestedBy.lastName || ''}`.trim()
         : '',
@@ -279,6 +280,12 @@ const createPurchaseRequest = async (req, res) => {
       requestedBy: req.user._id,
       branch,
     };
+
+    // If linked to maintenance, auto-fill vehicleNumber if not provided
+    if (data.maintenanceRequest && !data.vehicleNumber) {
+      const mr = await MaintenanceRequest.findById(data.maintenanceRequest).select('vehicleNumber');
+      if (mr) data.vehicleNumber = mr.vehicleNumber;
+    }
 
     const request = await WorkshopPurchaseRequest.create(data);
 

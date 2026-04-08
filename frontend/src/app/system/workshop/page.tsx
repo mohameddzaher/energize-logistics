@@ -183,10 +183,12 @@ export default function WorkshopPage() {
 
   const sendPartToPurchasing = async (maintenanceId: string, part: Part) => {
     try {
+      const req = requests.find(r => r._id === maintenanceId);
       await api.post('/api/workshop/purchases', {
-        maintenanceId,
+        maintenanceRequest: maintenanceId,
         itemName: part.name,
         quantity: part.quantity,
+        vehicleNumber: req?.vehicleNumber || '',
       });
       setSuccess(isAr ? 'تم إرسال الطلب للمشتريات' : 'Sent to purchasing');
       setTimeout(() => setSuccess(''), 3000);
@@ -655,16 +657,11 @@ export default function WorkshopPage() {
                           <span className="text-white text-sm">{p.name}</span>
                           <div className="flex items-center gap-2">
                             <span className="text-gray-400 text-sm">x{p.quantity}</span>
-                            {p.status && (
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                p.status === 'delivered' ? 'bg-green-500/20 text-green-400' :
-                                p.status === 'ordered' ? 'bg-blue-500/20 text-blue-400' :
-                                p.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                                'bg-gray-700 text-gray-400'
-                              }`}>
-                                {p.status}
-                              </span>
-                            )}
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              p.sentToPurchasing ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-700 text-gray-400'
+                            }`}>
+                              {p.sentToPurchasing ? (isAr ? 'تم إرساله للمشتريات' : 'Sent to Purchasing') : (isAr ? 'لم يُرسل' : 'Not Sent')}
+                            </span>
                           </div>
                         </div>
                       ))}

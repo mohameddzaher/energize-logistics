@@ -18,7 +18,7 @@ interface UserRecord {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client';
+  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing';
   branch?: { _id: string; name: string };
   status?: 'active' | 'locked' | 'inactive';
   isLocked?: boolean;
@@ -304,6 +304,9 @@ export default function UsersPage() {
     super_admin: T.superAdmin, admin: T.admin, employee: T.employee,
     operations_manager: T.operationsManager, operations: T.operationsRole,
     moderator: T.moderator, client: T.clientRole,
+    workshop_manager: lang === 'ar' ? 'مدير الورشة' : 'Workshop Manager',
+    workshop_employee: lang === 'ar' ? 'موظف الورشة' : 'Workshop Employee',
+    purchasing: lang === 'ar' ? 'المشتريات' : 'Purchasing',
   };
 
   const statusLabels: Record<string, string> = {

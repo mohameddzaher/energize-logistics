@@ -29,15 +29,23 @@ function LoginForm() {
     setError('');
     setLoading(true);
 
-    try {
-      const loggedInUser = await login(email, password);
-      const defaultRoute = loggedInUser.role === 'client' ? '/system/portal' : '/system/dashboard';
-      router.push(returnTo || defaultRoute);
-    } catch (err: any) {
-      setError(err.message || 'Login failed');
-    } finally {
-      setLoading(false);
+    // Retry once on timeout (Render free tier cold start)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const loggedInUser = await login(email, password);
+        const defaultRoute = loggedInUser.role === 'client' ? '/system/portal' : '/system/dashboard';
+        router.push(returnTo || defaultRoute);
+        return;
+      } catch (err: any) {
+        const isTimeout = err.message?.includes('timed out') || err.message?.includes('aborted');
+        if (isTimeout && attempt === 0) {
+          setError('Server is waking up... retrying automatically');
+          continue;
+        }
+        setError(err.message || 'Login failed');
+      }
     }
+    setLoading(false);
   };
 
   return (

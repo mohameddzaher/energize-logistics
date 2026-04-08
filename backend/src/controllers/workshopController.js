@@ -1,6 +1,7 @@
 const MaintenanceRequest = require('../models/MaintenanceRequest');
 const WorkshopPurchaseRequest = require('../models/WorkshopPurchaseRequest');
 const WorkshopTask = require('../models/WorkshopTask');
+const User = require('../models/User');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 
@@ -22,7 +23,11 @@ const getMaintenanceRequests = async (req, res) => {
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [requests, total] = await Promise.all([
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [requests, total, openCount, inProgressCount, completedTodayCount, avgDurationResult] = await Promise.all([
       MaintenanceRequest.find(filter)
         .populate('createdBy', 'firstName lastName')
         .populate('completedBy', 'firstName lastName')
@@ -30,6 +35,13 @@ const getMaintenanceRequests = async (req, res) => {
         .skip(skip)
         .limit(parseInt(limit)),
       MaintenanceRequest.countDocuments(filter),
+      MaintenanceRequest.countDocuments({ status: 'open' }),
+      MaintenanceRequest.countDocuments({ status: 'in_progress' }),
+      MaintenanceRequest.countDocuments({ status: 'completed', endTime: { $gte: todayStart } }),
+      MaintenanceRequest.aggregate([
+        { $match: { status: 'completed', duration: { $exists: true, $ne: null } } },
+        { $group: { _id: null, avgDuration: { $avg: '$duration' } } },
+      ]),
     ]);
 
     res.json({
@@ -37,6 +49,14 @@ const getMaintenanceRequests = async (req, res) => {
       total,
       page: parseInt(page),
       pages: Math.ceil(total / parseInt(limit)),
+      stats: {
+        open: openCount,
+        inProgress: inProgressCount,
+        completedToday: completedTodayCount,
+        avgDuration: avgDurationResult[0]?.avgDuration
+          ? Math.round(avgDurationResult[0].avgDuration)
+          : 0,
+      },
     });
   } catch (error) {
     console.error('Error fetching maintenance requests:', error);
@@ -65,12 +85,15 @@ const getMaintenanceRequest = async (req, res) => {
 
 const createMaintenanceRequest = async (req, res) => {
   try {
+    const fullUser = await User.findById(req.user._id).select('branch');
+    const branch = fullUser?.branch || req.user.branch;
+
     const data = {
       ...req.body,
       startTime: new Date(),
       status: 'open',
       createdBy: req.user._id,
-      branch: req.user.branch,
+      branch,
     };
 
     const request = await MaintenanceRequest.create(data);
@@ -218,12 +241,23 @@ const getPurchaseRequests = async (req, res) => {
         .populate('maintenanceRequest', 'vehicleNumber status')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(parseInt(limit))
+        .lean(),
       WorkshopPurchaseRequest.countDocuments(filter),
     ]);
 
+    // Transform to include flat fields the frontend expects
+    const purchases = requests.map(r => ({
+      ...r,
+      requestedByName: r.requestedBy
+        ? `${r.requestedBy.firstName || ''} ${r.requestedBy.lastName || ''}`.trim()
+        : '',
+      date: r.createdAt,
+      maintenanceId: r.maintenanceRequest?._id || r.maintenanceRequest || null,
+    }));
+
     res.json({
-      requests,
+      purchases,
       total,
       page: parseInt(page),
       pages: Math.ceil(total / parseInt(limit)),
@@ -236,11 +270,14 @@ const getPurchaseRequests = async (req, res) => {
 
 const createPurchaseRequest = async (req, res) => {
   try {
+    const fullUser = await User.findById(req.user._id).select('branch');
+    const branch = fullUser?.branch || req.user.branch;
+
     const data = {
       ...req.body,
       status: 'pending',
       requestedBy: req.user._id,
-      branch: req.user.branch,
+      branch,
     };
 
     const request = await WorkshopPurchaseRequest.create(data);
@@ -430,10 +467,13 @@ const getMyWorkshopTasks = async (req, res) => {
 
 const createWorkshopTask = async (req, res) => {
   try {
+    const fullUser = await User.findById(req.user._id).select('branch');
+    const branch = fullUser?.branch || req.user.branch;
+
     const data = {
       ...req.body,
       createdBy: req.user._id,
-      branch: req.user.branch,
+      branch,
     };
 
     const task = await WorkshopTask.create(data);
@@ -530,30 +570,57 @@ const deleteWorkshopTask = async (req, res) => {
 
 const getWorkshopDashboard = async (req, res) => {
   try {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
     const [
       maintenanceByStatus,
-      purchaseByStatus,
-      tasksByStatus,
       avgDurationResult,
+      requestsPerDayAgg,
+      durationTrendAgg,
       recentMaintenance,
       recentPurchases,
+      pendingPurchases,
+      totalMaintenanceCount,
     ] = await Promise.all([
       // Maintenance counts by status
       MaintenanceRequest.aggregate([
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ]),
-      // Purchase counts by status
-      WorkshopPurchaseRequest.aggregate([
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ]),
-      // Task counts by status
-      WorkshopTask.aggregate([
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
       // Average maintenance duration (completed only)
       MaintenanceRequest.aggregate([
         { $match: { status: 'completed', duration: { $exists: true, $ne: null } } },
         { $group: { _id: null, avgDuration: { $avg: '$duration' } } },
+      ]),
+      // Requests per day (last 7 days)
+      MaintenanceRequest.aggregate([
+        { $match: { createdAt: { $gte: sevenDaysAgo } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+      // Duration trend (last 7 days, completed only)
+      MaintenanceRequest.aggregate([
+        {
+          $match: {
+            status: 'completed',
+            duration: { $exists: true, $ne: null },
+            endTime: { $gte: sevenDaysAgo },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$endTime' } },
+            avgMinutes: { $avg: '$duration' },
+          },
+        },
+        { $sort: { _id: 1 } },
       ]),
       // Recent maintenance (last 10)
       MaintenanceRequest.find()
@@ -567,32 +634,106 @@ const getWorkshopDashboard = async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(10)
         .lean(),
+      // Pending purchases list
+      WorkshopPurchaseRequest.find({ status: 'pending' })
+        .sort({ createdAt: -1 })
+        .lean(),
+      // Total maintenance count
+      MaintenanceRequest.countDocuments(),
     ]);
 
-    // Count active (non-completed) unique vehicles
-    const activeVehicles = await MaintenanceRequest.distinct('vehicleNumber', {
-      status: { $in: ['open', 'in_progress'] },
-    });
+    // Build status counts map
+    const statusMap = {};
+    maintenanceByStatus.forEach(({ _id, count }) => { statusMap[_id] = count; });
 
-    // Transform aggregation results to objects
-    const toStatusMap = (arr) => arr.reduce((acc, { _id, count }) => {
-      acc[_id] = count;
-      return acc;
-    }, {});
+    // Pending purchase count from status aggregation
+    const pendingPurchaseCount = await WorkshopPurchaseRequest.countDocuments({ status: 'pending' });
 
-    res.json({
-      maintenance: toStatusMap(maintenanceByStatus),
-      purchases: toStatusMap(purchaseByStatus),
-      tasks: toStatusMap(tasksByStatus),
-      avgMaintenanceDuration: avgDurationResult[0]?.avgDuration
+    // KPIs
+    const kpis = {
+      totalRequests: totalMaintenanceCount,
+      open: statusMap.open || 0,
+      inProgress: statusMap.in_progress || 0,
+      completed: statusMap.completed || 0,
+      avgDuration: avgDurationResult[0]?.avgDuration
         ? Math.round(avgDurationResult[0].avgDuration)
         : 0,
-      activeVehicleCount: activeVehicles.length,
-      pendingPurchaseCount: purchaseByStatus.find(s => s._id === 'pending')?.count || 0,
-      recentActivity: {
-        maintenance: recentMaintenance,
-        purchases: recentPurchases,
-      },
+      pendingPurchases: pendingPurchaseCount,
+    };
+
+    // Fill in missing days for requestsPerDay
+    const requestsPerDayMap = {};
+    requestsPerDayAgg.forEach(({ _id, count }) => { requestsPerDayMap[_id] = count; });
+    const requestsPerDay = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sevenDaysAgo);
+      d.setDate(d.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      requestsPerDay.push({ date: key, count: requestsPerDayMap[key] || 0 });
+    }
+
+    // Fill in missing days for durationTrend
+    const durationTrendMap = {};
+    durationTrendAgg.forEach(({ _id, avgMinutes }) => { durationTrendMap[_id] = Math.round(avgMinutes); });
+    const durationTrend = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sevenDaysAgo);
+      d.setDate(d.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      durationTrend.push({ date: key, avgMinutes: durationTrendMap[key] || 0 });
+    }
+
+    // Status distribution
+    const statusDistribution = ['open', 'in_progress', 'completed'].map(status => ({
+      status,
+      count: statusMap[status] || 0,
+    }));
+
+    // Merge recent activity: maintenance + purchases, sorted by date
+    const mergedActivity = [];
+    recentMaintenance.forEach(m => {
+      const userName = m.createdBy
+        ? `${m.createdBy.firstName || ''} ${m.createdBy.lastName || ''}`.trim()
+        : '';
+      mergedActivity.push({
+        _id: m._id.toString(),
+        action: 'maintenance',
+        description: `Maintenance ${m.status}: ${m.vehicleNumber}${m.workDescription ? ' - ' + m.workDescription : ''}`,
+        createdAt: m.createdAt,
+        user: userName,
+      });
+    });
+    recentPurchases.forEach(p => {
+      const userName = p.requestedBy
+        ? `${p.requestedBy.firstName || ''} ${p.requestedBy.lastName || ''}`.trim()
+        : '';
+      mergedActivity.push({
+        _id: p._id.toString(),
+        action: 'purchase',
+        description: `Purchase ${p.status}: ${p.itemName} (x${p.quantity})${p.vehicleNumber ? ' for ' + p.vehicleNumber : ''}`,
+        createdAt: p.createdAt,
+        user: userName,
+      });
+    });
+    mergedActivity.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const recentActivity = mergedActivity.slice(0, 10);
+
+    // Pending purchases list
+    const pendingPurchasesList = pendingPurchases.map(p => ({
+      _id: p._id.toString(),
+      itemName: p.itemName,
+      quantity: p.quantity,
+      vehicleNumber: p.vehicleNumber || '',
+      date: p.createdAt,
+    }));
+
+    res.json({
+      kpis,
+      requestsPerDay,
+      durationTrend,
+      statusDistribution,
+      recentActivity,
+      pendingPurchasesList,
     });
   } catch (error) {
     console.error('Error fetching workshop dashboard:', error);

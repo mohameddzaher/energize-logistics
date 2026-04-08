@@ -5,9 +5,11 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import StatCard from '@/components/system/StatCard';
 import { useSocket } from '@/hooks/useSocket';
+import Link from 'next/link';
 import {
   DollarSign, TrendingUp, Clock, AlertTriangle, Users,
-  BarChart3, Target, ArrowUpRight, Calendar, UserX, Download
+  BarChart3, Target, ArrowUpRight, Calendar, UserX, Download,
+  Wrench, ClipboardList, MessageSquare, ShoppingCart, CheckCircle, Loader2
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
@@ -98,6 +100,9 @@ export default function DashboardPage() {
   const [performance, setPerformance] = useState<any>(null);
   const [creditAlerts, setCreditAlerts] = useState<any>(null);
   const [lowVisitCustomers, setLowVisitCustomers] = useState<any>(null);
+  const [workshopSummary, setWorkshopSummary] = useState<any>(null);
+  const [workflowsTotal, setWorkflowsTotal] = useState<number>(0);
+  const [complaintsData, setComplaintsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -207,6 +212,19 @@ export default function DashboardPage() {
       if (apis.lowVisit) {
         fetches.push(
           api.get('/api/tasks/low-visit-customers').then(d => { setLowVisitCustomers(d); return null; }).catch(() => null)
+        );
+      }
+
+      // Super admin summary sections
+      if (user?.role === 'super_admin') {
+        fetches.push(
+          api.get('/api/workshop/dashboard').then(d => { setWorkshopSummary(d); return null; }).catch(() => null)
+        );
+        fetches.push(
+          api.get<any>('/api/workflows?limit=1').then(d => { setWorkflowsTotal(d.total || 0); return null; }).catch(() => null)
+        );
+        fetches.push(
+          api.get<any>('/api/complaints?limit=1').then(d => { setComplaintsData(d); return null; }).catch(() => null)
         );
       }
 
@@ -505,6 +523,66 @@ export default function DashboardPage() {
           {/* High Risk Clients */}
           {risk?.highRiskClients && risk.highRiskClients.length > 0 && (
             <HighRiskClientsPanel risk={risk} T={T} />
+          )}
+
+          {/* ── Super Admin Summary Sections ── */}
+          {user?.role === 'super_admin' && (
+            <>
+              {/* Workshop Summary */}
+              {workshopSummary && (
+                <div>
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    <Wrench className="w-5 h-5 text-[#f37121]" />
+                    Workshop Summary
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Link href="/system/workshop" className="hover:scale-[1.02] transition-transform">
+                      <StatCard title="Open Maintenance" value={workshopSummary.openMaintenance ?? workshopSummary.statusBreakdown?.open ?? 0} icon={Wrench} color="#f59e0b" />
+                    </Link>
+                    <Link href="/system/workshop" className="hover:scale-[1.02] transition-transform">
+                      <StatCard title="In Progress" value={workshopSummary.inProgress ?? workshopSummary.statusBreakdown?.in_progress ?? 0} icon={Loader2} color="#6366f1" />
+                    </Link>
+                    <Link href="/system/workshop" className="hover:scale-[1.02] transition-transform">
+                      <StatCard title="Completed" value={workshopSummary.completed ?? workshopSummary.statusBreakdown?.completed ?? 0} icon={CheckCircle} color="#10b981" />
+                    </Link>
+                    <Link href="/system/workshop/purchases" className="hover:scale-[1.02] transition-transform">
+                      <StatCard title="Pending Purchases" value={workshopSummary.pendingPurchases ?? 0} icon={ShoppingCart} color="#ef4444" />
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* Operations Summary */}
+              <div>
+                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5 text-[#f37121]" />
+                  Operations Summary
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Link href="/system/operations" className="hover:scale-[1.02] transition-transform">
+                    <StatCard title="Total Workflows" value={workflowsTotal} icon={ClipboardList} color="#6366f1" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* Complaints Summary */}
+              {complaintsData && (
+                <div>
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-[#f37121]" />
+                    Complaints Summary
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Link href="/system/complaints" className="hover:scale-[1.02] transition-transform">
+                      <StatCard title="Total Complaints" value={complaintsData.total || complaintsData.complaints?.length || 0} icon={MessageSquare} color="#f59e0b" />
+                    </Link>
+                    <Link href="/system/complaints" className="hover:scale-[1.02] transition-transform">
+                      <StatCard title="Open Complaints" value={complaintsData.openCount ?? complaintsData.complaints?.filter((c: any) => c.status === 'open' || c.status === 'in_progress').length ?? 0} icon={AlertTriangle} color="#ef4444" />
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

@@ -26,7 +26,9 @@ router.delete('/maintenance/:id', authorize(...managerRoles), workshopController
 router.get('/purchases', authorize(...allWorkshopRoles), workshopController.getPurchaseRequests);
 router.post('/purchases', authorize(...workshopRoles), workshopController.createPurchaseRequest);
 router.put('/purchases/:id/receive', authorize(...purchasingRoles), workshopController.receivePurchaseRequest);
+router.put('/purchases/:id/received', authorize(...purchasingRoles), workshopController.receivePurchaseRequest);
 router.put('/purchases/:id/fulfill', authorize(...purchasingRoles), workshopController.fulfillPurchaseRequest);
+router.put('/purchases/:id/fulfilled', authorize(...purchasingRoles), workshopController.fulfillPurchaseRequest);
 
 // ─── Workshop Tasks ─────────────────────────────────────
 router.get('/tasks', authorize(...workshopRoles), workshopController.getWorkshopTasks);

@@ -184,7 +184,7 @@ exports.addTransaction = async (req, res) => {
 
     // Check if day is closed (only managers can add to closed days)
     const wallet = await getOrCreateWallet(req.user._id, req.user.branch, txDate);
-    const isManager = ['super_admin', 'admin', 'operations_manager'].includes(req.user.role);
+    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(req.user.role);
 
     if (wallet.isClosed && !isManager) {
       return res.status(400).json({ message: 'Day is closed. Contact manager to reopen.' });
@@ -383,7 +383,7 @@ exports.deleteTransaction = async (req, res) => {
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
 
     const wallet = await DailyWallet.findById(transaction.wallet);
-    const isManager = ['super_admin', 'admin', 'operations_manager'].includes(req.user.role);
+    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
       return res.status(400).json({ message: 'Day is closed' });
@@ -468,7 +468,7 @@ exports.updateTransaction = async (req, res) => {
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
 
     const wallet = await DailyWallet.findById(transaction.wallet);
-    const isManager = ['super_admin', 'admin', 'operations_manager'].includes(req.user.role);
+    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
       return res.status(400).json({ message: 'Day is closed' });

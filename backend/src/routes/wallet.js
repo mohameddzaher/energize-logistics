@@ -42,8 +42,8 @@ router.delete('/transactions/:id', authorize(...walletRoles), walletController.d
 // Close day
 router.post('/close-day', authorize(...walletRoles), walletController.closeDay);
 
-// Reopen day (manager only)
-router.post('/reopen/:walletId', authorize(...managerRoles), walletController.reopenDay);
+// Reopen day (operations team + managers)
+router.post('/reopen/:walletId', authorize(...walletRoles), walletController.reopenDay);
 
 // Branch dashboard (moderator has read-only access for review)
 router.get('/branch/:branchId', authorize(...managerRoles, 'moderator'), walletController.getBranchDashboard);

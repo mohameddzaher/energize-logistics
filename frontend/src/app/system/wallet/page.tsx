@@ -86,7 +86,7 @@ const getTodayStr = () => {
 
 export default function WalletPage() {
   const { user } = useAuth();
-  const isManager = ['super_admin', 'admin', 'operations_manager'].includes(user?.role || '');
+  const isManager = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(user?.role || '');
   const isReadOnly = user?.role === 'moderator';
   const isSuperAdmin = user?.role === 'super_admin';
   const isOpsManager = user?.role === 'operations_manager';

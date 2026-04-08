@@ -612,9 +612,10 @@ exports.closeDay = async (req, res) => {
     wallet.closedAt = new Date();
     wallet.closedBy = req.user._id;
 
+    const cashAmount = (actualCash !== undefined && actualCash !== null) ? Number(actualCash) : wallet.closingBalance;
+    wallet.actualCash = cashAmount;
+    wallet.cashDifference = wallet.closingBalance - cashAmount;
     if (actualCash !== undefined && actualCash !== null) {
-      wallet.actualCash = actualCash;
-      wallet.cashDifference = wallet.closingBalance - actualCash;
       wallet.differenceReason = differenceReason || '';
       wallet.differenceNotes = differenceNotes || '';
 

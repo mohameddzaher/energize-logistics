@@ -476,7 +476,7 @@ export default function WalletPage() {
       </div>
 
       {/* Cash Difference (if day is closed and has difference) — only visible to managers */}
-      {isManager && wallet.isClosed && wallet.cashDifference !== null && wallet.cashDifference !== 0 && (
+      {isManager && wallet.isClosed && wallet.cashDifference != null && !isNaN(wallet.cashDifference) && wallet.cashDifference !== 0 && (
         <div className={`flex items-center gap-3 p-4 rounded-xl border ${wallet.cashDifference > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-green-500/10 border-green-500/30'}`}>
           <AlertTriangle className={`w-5 h-5 ${wallet.cashDifference > 0 ? 'text-red-400' : 'text-green-400'}`} />
           <div>
@@ -484,7 +484,7 @@ export default function WalletPage() {
               {wallet.cashDifference > 0 ? L.deficit : L.surplus}: {Math.abs(wallet.cashDifference).toLocaleString()} SAR
             </p>
             <p className="text-gray-400 text-xs">
-              {L.expected}: {wallet.closingBalance.toLocaleString()} SAR | {L.actual}: {wallet.actualCash?.toLocaleString()} SAR
+              {L.expected}: {wallet.closingBalance.toLocaleString()} SAR | {L.actual}: {(wallet.actualCash ?? 0).toLocaleString()} SAR
               {wallet.differenceReason && ` | ${L.reason}: ${wallet.differenceReason}`}
             </p>
           </div>

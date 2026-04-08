@@ -107,6 +107,7 @@ export default function OperationsWorkflowPage() {
   const [showPendingOnly, setShowPendingOnly] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
+  const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showBulkReview, setShowBulkReview] = useState(false);
   const [bulkReviewText, setBulkReviewText] = useState('تم');
 
@@ -210,23 +211,33 @@ export default function OperationsWorkflowPage() {
     }
   };
 
-  const handleDelete = async (wfId: string) => {
-    if (!confirm(T.deleteWorkflowConfirm)) return;
-    try { await api.delete(`/api/workflows/${wfId}`); } catch (err: any) { setError(err.message); }
+  const handleDelete = (wfId: string) => {
+    setConfirmModal({
+      message: T.deleteWorkflowConfirm,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try { await api.delete(`/api/workflows/${wfId}`); } catch (err: any) { setError(err.message); }
+      },
+    });
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(T.deleteBulkConfirm.replace('{count}', String(selectedIds.size)))) return;
-    try {
-      setBulkDeleting(true);
-      await api.post('/api/workflows/bulk-delete', { ids: Array.from(selectedIds) });
-      setSelectedIds(new Set());
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setBulkDeleting(false);
-    }
+    setConfirmModal({
+      message: T.deleteBulkConfirm.replace('{count}', String(selectedIds.size)),
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          setBulkDeleting(true);
+          await api.post('/api/workflows/bulk-delete', { ids: Array.from(selectedIds) });
+          setSelectedIds(new Set());
+        } catch (err: any) {
+          setError(err.message);
+        } finally {
+          setBulkDeleting(false);
+        }
+      },
+    });
   };
 
   const handleInlineSave = async () => {
@@ -667,6 +678,29 @@ export default function OperationsWorkflowPage() {
         ))}
         <div className="px-3 py-2 rounded-lg bg-gray-700 text-gray-300 text-xs font-medium">{T.total}: {total}</div>
       </div>
+
+      {/* Confirm Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm shadow-xl">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[#f37121]/20 flex items-center justify-center">
+                  <AlertCircle className="w-5 h-5 text-[#f37121]" />
+                </div>
+                <h3 className="text-white font-semibold">{lang === 'ar' ? 'تأكيد' : 'Confirm'}</h3>
+              </div>
+              <p className="text-gray-300 text-sm">{confirmModal.message}</p>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+              <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{T.cancel || 'Cancel'}</button>
+              <button type="button" onClick={confirmModal.onConfirm} className="px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
+                {lang === 'ar' ? 'تأكيد' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

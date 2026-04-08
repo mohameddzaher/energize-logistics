@@ -127,6 +127,9 @@ export default function WalletPage() {
   const [closeForm, setCloseForm] = useState({ actualCash: '', differenceReason: '', differenceNotes: '' });
   const [closing, setClosing] = useState(false);
 
+  // Confirm modal (replaces browser confirm())
+  const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
   // General error banner
   const [actionError, setActionError] = useState('');
 
@@ -231,14 +234,19 @@ export default function WalletPage() {
 
   // ─── DELETE TRANSACTION ────────────────────────────────────
   const handleDeleteTx = async (id: string) => {
-    if (!confirm(L.deleteConfirm)) return;
-    setActionError('');
-    try {
-      await api.delete(`/api/wallet/transactions/${id}`);
-      fetchWallet(false);
-    } catch (err: any) {
-      setActionError(err?.message || 'Failed to delete transaction');
-    }
+    setConfirmModal({
+      message: L.deleteConfirm,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setActionError('');
+        try {
+          await api.delete(`/api/wallet/transactions/${id}`);
+          fetchWallet(false);
+        } catch (err: any) {
+          setActionError(err?.message || 'Failed to delete transaction');
+        }
+      },
+    });
   };
 
   // ─── EDIT TRANSACTION ──────────────────────────────────────
@@ -296,15 +304,21 @@ export default function WalletPage() {
   };
 
   // ─── REOPEN DAY ────────────────────────────────────────────
-  const handleReopenDay = async () => {
-    if (!wallet || !confirm(L.reopenConfirm)) return;
-    setActionError('');
-    try {
-      await api.post(`/api/wallet/reopen/${wallet._id}`);
-      fetchWallet(false);
-    } catch (err: any) {
-      setActionError(err?.message || 'Failed to reopen day');
-    }
+  const handleReopenDay = () => {
+    if (!wallet) return;
+    setConfirmModal({
+      message: L.reopenConfirm,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setActionError('');
+        try {
+          await api.post(`/api/wallet/reopen/${wallet._id}`);
+          fetchWallet(false);
+        } catch (err: any) {
+          setActionError(err?.message || 'Failed to reopen day');
+        }
+      },
+    });
   };
 
   // Search by report number for purchases
@@ -897,6 +911,31 @@ export default function WalletPage() {
         )}
       </AnimatePresence>
       </>)}
+
+      {/* Confirm Modal (replaces browser confirm()) */}
+      <AnimatePresence>
+        {confirmModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm shadow-xl">
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-[#f37121]/20 flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5 text-[#f37121]" />
+                  </div>
+                  <h3 className="text-white font-semibold">{lang === 'ar' ? 'تأكيد' : 'Confirm'}</h3>
+                </div>
+                <p className="text-gray-300 text-sm">{confirmModal.message}</p>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+                <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{L.cancel}</button>
+                <button type="button" onClick={confirmModal.onConfirm} className="px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
+                  {lang === 'ar' ? 'تأكيد' : 'Confirm'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

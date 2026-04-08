@@ -227,10 +227,11 @@ const deleteMaintenanceRequest = async (req, res) => {
 
 const getPurchaseRequests = async (req, res) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status, maintenanceRequest, page = 1, limit = 20 } = req.query;
     const filter = {};
 
     if (status) filter.status = status;
+    if (maintenanceRequest) filter.maintenanceRequest = maintenanceRequest;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [requests, total] = await Promise.all([

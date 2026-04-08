@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
@@ -34,6 +35,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function WorkshopDashboardPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
+  const router = useRouter();
   const isAr = lang === 'ar';
 
   const [data, setData] = useState<DashboardData | null>(null);
@@ -111,14 +113,14 @@ export default function WorkshopDashboardPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
-          { label: isAr ? 'إجمالي الطلبات' : 'Total Requests', value: kpis.totalRequests, icon: <Wrench className="w-5 h-5" />, color: 'text-[#f37121]', bg: 'bg-[#f37121]/10' },
-          { label: isAr ? 'مفتوح' : 'Open', value: kpis.open, icon: <AlertCircle className="w-5 h-5" />, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
-          { label: isAr ? 'قيد التنفيذ' : 'In Progress', value: kpis.inProgress, icon: <Clock className="w-5 h-5" />, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-          { label: isAr ? 'مكتمل' : 'Completed', value: kpis.completed, icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-green-400', bg: 'bg-green-500/10' },
-          { label: isAr ? 'متوسط المدة' : 'Avg Duration', value: formatDuration(kpis.avgDuration), icon: <TrendingUp className="w-5 h-5" />, color: 'text-purple-400', bg: 'bg-purple-500/10' },
-          { label: isAr ? 'مشتريات معلقة' : 'Pending Purchases', value: kpis.pendingPurchases, icon: <ShoppingCart className="w-5 h-5" />, color: 'text-orange-400', bg: 'bg-orange-500/10' },
+          { label: isAr ? 'إجمالي الطلبات' : 'Total Requests', value: kpis.totalRequests, icon: <Wrench className="w-5 h-5" />, color: 'text-[#f37121]', bg: 'bg-[#f37121]/10', href: '/system/workshop' },
+          { label: isAr ? 'مفتوح' : 'Open', value: kpis.open, icon: <AlertCircle className="w-5 h-5" />, color: 'text-yellow-400', bg: 'bg-yellow-500/10', href: '/system/workshop?status=open' },
+          { label: isAr ? 'قيد التنفيذ' : 'In Progress', value: kpis.inProgress, icon: <Clock className="w-5 h-5" />, color: 'text-blue-400', bg: 'bg-blue-500/10', href: '/system/workshop?status=in_progress' },
+          { label: isAr ? 'مكتمل' : 'Completed', value: kpis.completed, icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-green-400', bg: 'bg-green-500/10', href: '/system/workshop?status=completed' },
+          { label: isAr ? 'متوسط المدة' : 'Avg Duration', value: formatDuration(kpis.avgDuration), icon: <TrendingUp className="w-5 h-5" />, color: 'text-purple-400', bg: 'bg-purple-500/10', href: '/system/workshop' },
+          { label: isAr ? 'مشتريات معلقة' : 'Pending Purchases', value: kpis.pendingPurchases, icon: <ShoppingCart className="w-5 h-5" />, color: 'text-orange-400', bg: 'bg-orange-500/10', href: '/system/workshop/purchases?status=pending' },
         ].map((kpi, i) => (
-          <div key={i} className={`${kpi.bg} border border-gray-700 rounded-lg p-4`}>
+          <div key={i} onClick={() => router.push(kpi.href)} className={`${kpi.bg} border border-gray-700 rounded-lg p-4 cursor-pointer hover:scale-[1.02] transition-transform`}>
             <div className="flex items-center justify-between mb-2">
               <span className={kpi.color}>{kpi.icon}</span>
             </div>

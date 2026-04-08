@@ -69,6 +69,7 @@ export default function WorkshopPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState<string | null>(null);
   const [showViewModal, setShowViewModal] = useState<MaintenanceRequest | null>(null);
+  const [viewPurchases, setViewPurchases] = useState<any[]>([]);
 
   // Create form
   const [createForm, setCreateForm] = useState({
@@ -194,6 +195,16 @@ export default function WorkshopPage() {
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  const openViewModal = async (req: MaintenanceRequest) => {
+    setShowViewModal(req);
+    try {
+      const data = await api.get<any>(`/api/workshop/purchases?maintenanceRequest=${req._id}`);
+      setViewPurchases(data.purchases || []);
+    } catch {
+      setViewPurchases([]);
     }
   };
 
@@ -399,7 +410,7 @@ export default function WorkshopPage() {
                           </button>
                         )}
                         <button
-                          onClick={() => setShowViewModal(r)}
+                          onClick={() => openViewModal(r)}
                           className="p-1.5 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
                           title={isAr ? 'عرض' : 'View'}
                         >
@@ -605,7 +616,7 @@ export default function WorkshopPage() {
           <>
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-50" onClick={() => setShowViewModal(null)}
+              className="fixed inset-0 bg-black/60 z-50" onClick={() => { setShowViewModal(null); setViewPurchases([]); }}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
@@ -614,7 +625,7 @@ export default function WorkshopPage() {
               <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-bold text-white">{isAr ? 'تفاصيل طلب الصيانة' : 'Maintenance Request Details'}</h2>
-                  <button onClick={() => setShowViewModal(null)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+                  <button onClick={() => { setShowViewModal(null); setViewPurchases([]); }} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {[
@@ -668,8 +679,33 @@ export default function WorkshopPage() {
                     </div>
                   </div>
                 )}
+                {viewPurchases.length > 0 && (
+                  <div>
+                    <p className="text-gray-500 text-xs mb-2">{isAr ? 'طلبات المشتريات' : 'Purchase Requests'}</p>
+                    <div className="space-y-2">
+                      {viewPurchases.map((pr: any) => (
+                        <div key={pr._id} className="bg-gray-900 rounded-lg p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-white text-sm font-medium">{pr.itemName} x{pr.quantity}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              pr.status === 'fulfilled' ? 'bg-green-500/20 text-green-400' :
+                              pr.status === 'received' ? 'bg-blue-500/20 text-blue-400' :
+                              'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {pr.status === 'fulfilled' ? (isAr ? 'تم التوفير' : 'Fulfilled') :
+                               pr.status === 'received' ? (isAr ? 'تم الاستلام' : 'Received') :
+                               (isAr ? 'قيد الانتظار' : 'Pending')}
+                            </span>
+                          </div>
+                          {pr.cost && <p className="text-gray-400 text-xs mt-1">{isAr ? 'التكلفة' : 'Cost'}: {pr.cost} SAR</p>}
+                          {pr.supplier && <p className="text-gray-400 text-xs">{isAr ? 'المورد' : 'Supplier'}: {pr.supplier}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-end pt-2">
-                  <button onClick={() => setShowViewModal(null)} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm font-medium">
+                  <button onClick={() => { setShowViewModal(null); setViewPurchases([]); }} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm font-medium">
                     {isAr ? 'إغلاق' : 'Close'}
                   </button>
                 </div>

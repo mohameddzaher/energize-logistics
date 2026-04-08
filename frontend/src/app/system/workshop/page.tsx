@@ -627,78 +627,125 @@ export default function WorkshopPage() {
                   <h2 className="text-lg font-bold text-white">{isAr ? 'تفاصيل طلب الصيانة' : 'Maintenance Request Details'}</h2>
                   <button onClick={() => { setShowViewModal(null); setViewPurchases([]); }} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: isAr ? 'رقم المركبة' : 'Vehicle #', value: showViewModal.vehicleNumber },
-                    { label: isAr ? 'النوع' : 'Type', value: showViewModal.vehicleType || '-' },
-                    { label: isAr ? 'السائق' : 'Driver', value: showViewModal.driverName || '-' },
-                    { label: isAr ? 'الفني' : 'Technician', value: showViewModal.technicianName || '-' },
-                    { label: isAr ? 'الحالة' : 'Status', value: isAr ? STATUS_CONFIG[showViewModal.status]?.labelAr : STATUS_CONFIG[showViewModal.status]?.label },
-                    { label: isAr ? 'المدة' : 'Duration', value: formatDuration(showViewModal.duration) },
-                    { label: isAr ? 'وقت البدء' : 'Start Time', value: showViewModal.startTime ? new Date(showViewModal.startTime).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '-' },
-                    { label: isAr ? 'وقت الانتهاء' : 'End Time', value: showViewModal.endTime ? new Date(showViewModal.endTime).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '-' },
-                    { label: isAr ? 'تاريخ الإنشاء' : 'Created At', value: showViewModal.createdAt ? new Date(showViewModal.createdAt).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '-' },
-                    { label: isAr ? 'أنشئ بواسطة' : 'Created By', value: showViewModal.createdBy ? `${showViewModal.createdBy.firstName || ''} ${showViewModal.createdBy.lastName || ''}`.trim() || '-' : '-' },
-                    { label: isAr ? 'الفرع' : 'Branch', value: typeof showViewModal.branch === 'object' ? showViewModal.branch?.name || '-' : showViewModal.branch || '-' },
-                  ].map((item, i) => (
-                    <div key={i}>
-                      <p className="text-gray-500 text-xs">{item.label}</p>
-                      <p className="text-white text-sm mt-0.5">{item.value}</p>
-                    </div>
-                  ))}
+                {/* Status Badge */}
+                {(() => { const sc = STATUS_CONFIG[showViewModal.status] || STATUS_CONFIG.open; return (
+                  <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${sc.bg} ${sc.color} text-sm font-medium`}>
+                    <span className={`w-2 h-2 rounded-full ${showViewModal.status === 'completed' ? 'bg-green-400' : showViewModal.status === 'in_progress' ? 'bg-blue-400' : 'bg-yellow-400'}`} />
+                    {isAr ? sc.labelAr : sc.label}
+                    {showViewModal.duration ? ` • ${formatDuration(showViewModal.duration)}` : ''}
+                  </div>
+                ); })()}
+
+                {/* Vehicle & Staff */}
+                <div className="bg-gray-900 rounded-lg p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><p className="text-gray-500 text-[10px] uppercase tracking-wider">{isAr ? 'رقم المركبة' : 'Vehicle'}</p><p className="text-white text-lg font-bold mt-0.5">{showViewModal.vehicleNumber}</p></div>
+                    <div><p className="text-gray-500 text-[10px] uppercase tracking-wider">{isAr ? 'النوع' : 'Type'}</p><p className="text-white text-sm mt-0.5">{showViewModal.vehicleType || '-'}</p></div>
+                    <div><p className="text-gray-500 text-[10px] uppercase tracking-wider">{isAr ? 'السائق' : 'Driver'}</p><p className="text-white text-sm mt-0.5">{showViewModal.driverName || '-'}</p></div>
+                    <div><p className="text-gray-500 text-[10px] uppercase tracking-wider">{isAr ? 'الفني' : 'Technician'}</p><p className="text-white text-sm mt-0.5">{showViewModal.technicianName || '-'}</p></div>
+                  </div>
                 </div>
-                {showViewModal.workDescription && (
-                  <div>
-                    <p className="text-gray-500 text-xs">{isAr ? 'وصف العمل' : 'Work Description'}</p>
-                    <p className="text-white text-sm mt-0.5">{showViewModal.workDescription}</p>
-                  </div>
-                )}
-                {showViewModal.notes && (
-                  <div>
-                    <p className="text-gray-500 text-xs">{isAr ? 'ملاحظات' : 'Notes'}</p>
-                    <p className="text-white text-sm mt-0.5">{showViewModal.notes}</p>
-                  </div>
-                )}
-                {showViewModal.partsNeeded && showViewModal.partsNeeded.length > 0 && (
-                  <div>
-                    <p className="text-gray-500 text-xs mb-2">{isAr ? 'قطع الغيار' : 'Parts Needed'}</p>
-                    <div className="space-y-1">
-                      {showViewModal.partsNeeded.map((p, i) => (
-                        <div key={i} className="flex items-center justify-between bg-gray-900 rounded-lg px-3 py-2">
-                          <span className="text-white text-sm">{p.name}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400 text-sm">x{p.quantity}</span>
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${
-                              p.sentToPurchasing ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-700 text-gray-400'
-                            }`}>
-                              {p.sentToPurchasing ? (isAr ? 'تم إرساله للمشتريات' : 'Sent to Purchasing') : (isAr ? 'لم يُرسل' : 'Not Sent')}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+
+                {/* Timeline */}
+                <div className="bg-gray-900 rounded-lg p-4">
+                  <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-3">{isAr ? 'المواعيد' : 'Timeline'}</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-green-400" />
+                      <span className="text-gray-400 text-xs w-16">{isAr ? 'البداية' : 'Start'}</span>
+                      <span className="text-white text-sm">{showViewModal.startTime ? new Date(showViewModal.startTime).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '-'}</span>
+                    </div>
+                    {showViewModal.endTime && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-red-400" />
+                        <span className="text-gray-400 text-xs w-16">{isAr ? 'النهاية' : 'End'}</span>
+                        <span className="text-white text-sm">{new Date(showViewModal.endTime).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-gray-500" />
+                      <span className="text-gray-400 text-xs w-16">{isAr ? 'الإنشاء' : 'Created'}</span>
+                      <span className="text-white text-sm">{showViewModal.createdAt ? new Date(showViewModal.createdAt).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '-'}</span>
                     </div>
                   </div>
+                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-800 text-xs text-gray-400">
+                    <span>{isAr ? 'بواسطة' : 'By'}: <span className="text-white">{showViewModal.createdBy ? `${showViewModal.createdBy.firstName || ''} ${showViewModal.createdBy.lastName || ''}`.trim() : '-'}</span></span>
+                    <span>{isAr ? 'الفرع' : 'Branch'}: <span className="text-white">{typeof showViewModal.branch === 'object' ? showViewModal.branch?.name || '-' : '-'}</span></span>
+                  </div>
+                </div>
+
+                {/* Work Details */}
+                {(showViewModal.workDescription || showViewModal.notes) && (
+                  <div className="bg-gray-900 rounded-lg p-4 space-y-2">
+                    {showViewModal.workDescription && (
+                      <div><p className="text-gray-500 text-[10px] uppercase tracking-wider">{isAr ? 'وصف العمل' : 'Work Description'}</p><p className="text-white text-sm mt-1">{showViewModal.workDescription}</p></div>
+                    )}
+                    {showViewModal.notes && (
+                      <div><p className="text-gray-500 text-[10px] uppercase tracking-wider">{isAr ? 'ملاحظات' : 'Notes'}</p><p className="text-white text-sm mt-1">{showViewModal.notes}</p></div>
+                    )}
+                  </div>
                 )}
-                {viewPurchases.length > 0 && (
-                  <div>
-                    <p className="text-gray-500 text-xs mb-2">{isAr ? 'طلبات المشتريات' : 'Purchase Requests'}</p>
+
+                {/* Parts & Purchase Requests - Combined */}
+                {((showViewModal.partsNeeded && showViewModal.partsNeeded.length > 0) || viewPurchases.length > 0) && (
+                  <div className="bg-gray-900 rounded-lg p-4">
+                    <p className="text-gray-500 text-[10px] uppercase tracking-wider mb-3">{isAr ? 'قطع الغيار وطلبات المشتريات' : 'Parts & Purchase Requests'}</p>
                     <div className="space-y-2">
-                      {viewPurchases.map((pr: any) => (
-                        <div key={pr._id} className="bg-gray-900 rounded-lg p-3">
+                      {showViewModal.partsNeeded?.map((p, i) => {
+                        const pr = viewPurchases.find(vp => vp.itemName?.toLowerCase() === p.name?.toLowerCase());
+                        return (
+                          <div key={i} className="border border-gray-800 rounded-lg p-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-white text-sm font-medium">{p.name}</span>
+                                <span className="text-gray-500 text-xs">x{p.quantity}</span>
+                              </div>
+                              {pr ? (
+                                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                                  pr.status === 'fulfilled' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                                  pr.status === 'received' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                                  'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                                }`}>
+                                  {pr.status === 'fulfilled' ? (isAr ? '✓ تم التوفير' : '✓ Fulfilled') :
+                                   pr.status === 'received' ? (isAr ? '↓ تم الاستلام' : '↓ Received by Purchasing') :
+                                   (isAr ? '⏳ في انتظار المشتريات' : '⏳ Waiting for Purchasing')}
+                                </span>
+                              ) : p.sentToPurchasing ? (
+                                <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">{isAr ? 'تم الإرسال' : 'Sent'}</span>
+                              ) : (
+                                <span className="text-xs px-2.5 py-1 rounded-full bg-gray-700 text-gray-400">{isAr ? 'لم يُرسل' : 'Not Sent'}</span>
+                              )}
+                            </div>
+                            {pr && (
+                              <div className="mt-2 pt-2 border-t border-gray-800 flex flex-wrap gap-3 text-xs text-gray-400">
+                                {pr.cost != null && <span>{isAr ? 'التكلفة' : 'Cost'}: <span className="text-white font-medium">{pr.cost} SAR</span></span>}
+                                {pr.supplier && <span>{isAr ? 'المورد' : 'Supplier'}: <span className="text-white">{pr.supplier}</span></span>}
+                                {pr.invoiceNumber && <span>{isAr ? 'فاتورة' : 'Invoice'}: <span className="text-white">{pr.invoiceNumber}</span></span>}
+                                {pr.receivedAt && <span>{isAr ? 'استُلم' : 'Received'}: <span className="text-white">{new Date(pr.receivedAt).toLocaleDateString()}</span></span>}
+                                {pr.fulfilledAt && <span>{isAr ? 'تم التوفير' : 'Fulfilled'}: <span className="text-white">{new Date(pr.fulfilledAt).toLocaleDateString()}</span></span>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {/* Show purchase requests not matched to parts */}
+                      {viewPurchases.filter(pr => !showViewModal.partsNeeded?.some(p => p.name?.toLowerCase() === pr.itemName?.toLowerCase())).map((pr: any) => (
+                        <div key={pr._id} className="border border-gray-800 rounded-lg p-3">
                           <div className="flex items-center justify-between">
-                            <span className="text-white text-sm font-medium">{pr.itemName} x{pr.quantity}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              pr.status === 'fulfilled' ? 'bg-green-500/20 text-green-400' :
-                              pr.status === 'received' ? 'bg-blue-500/20 text-blue-400' :
-                              'bg-yellow-500/20 text-yellow-400'
+                            <div className="flex items-center gap-2">
+                              <span className="text-white text-sm font-medium">{pr.itemName}</span>
+                              <span className="text-gray-500 text-xs">x{pr.quantity}</span>
+                            </div>
+                            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                              pr.status === 'fulfilled' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                              pr.status === 'received' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                              'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                             }`}>
-                              {pr.status === 'fulfilled' ? (isAr ? 'تم التوفير' : 'Fulfilled') :
-                               pr.status === 'received' ? (isAr ? 'تم الاستلام' : 'Received') :
-                               (isAr ? 'قيد الانتظار' : 'Pending')}
+                              {pr.status === 'fulfilled' ? (isAr ? '✓ تم التوفير' : '✓ Fulfilled') :
+                               pr.status === 'received' ? (isAr ? '↓ تم الاستلام' : '↓ Received') :
+                               (isAr ? '⏳ في انتظار المشتريات' : '⏳ Pending')}
                             </span>
                           </div>
-                          {pr.cost && <p className="text-gray-400 text-xs mt-1">{isAr ? 'التكلفة' : 'Cost'}: {pr.cost} SAR</p>}
-                          {pr.supplier && <p className="text-gray-400 text-xs">{isAr ? 'المورد' : 'Supplier'}: {pr.supplier}</p>}
                         </div>
                       ))}
                     </div>

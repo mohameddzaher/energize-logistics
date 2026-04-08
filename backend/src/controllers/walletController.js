@@ -117,7 +117,28 @@ const recalcWallet = async (walletId) => {
   wallet.closingBalance = wallet.openingBalance + totalCollections - totalExpenses - totalPurchases;
   await wallet.save();
 
+  // Cascade: update opening balance of all future days for this user
+  await cascadeBalances(wallet.user, wallet.date, wallet.closingBalance);
+
   return wallet;
+};
+
+// ─── CASCADE BALANCES TO FUTURE DAYS ─────────────────────────
+const cascadeBalances = async (userId, fromDate, newClosingBalance) => {
+  const futureDays = await DailyWallet.find({
+    user: userId,
+    date: { $gt: fromDate },
+  }).sort({ date: 1 });
+
+  let prevClosing = newClosingBalance;
+  for (const day of futureDays) {
+    if (day.openingBalance !== prevClosing) {
+      day.openingBalance = prevClosing;
+      day.closingBalance = prevClosing + day.totalCollections - day.totalExpenses - day.totalPurchases;
+      await day.save();
+    }
+    prevClosing = day.closingBalance;
+  }
 };
 
 // ─── GET DAILY WALLET ────────────────────────────────────────
@@ -644,6 +665,9 @@ exports.closeDay = async (req, res) => {
         openingBalance: wallet.closingBalance,
         closingBalance: wallet.closingBalance,
       });
+    } else if (existingNext.openingBalance !== wallet.closingBalance) {
+      // Update existing next day and cascade forward
+      await cascadeBalances(req.user._id, txDate, wallet.closingBalance);
     }
 
     const populated = await DailyWallet.findById(wallet._id)

@@ -208,7 +208,7 @@ export default function WorkshopPurchasesPage() {
                     <td className="py-3 px-3 text-white font-medium">{p.itemName}</td>
                     <td className="py-3 px-3 text-gray-300">{p.quantity}</td>
                     <td className="py-3 px-3 text-gray-300">{p.vehicleNumber || '-'}</td>
-                    <td className="py-3 px-3 text-gray-300">{p.requestedByName || p.requestedBy || '-'}</td>
+                    <td className="py-3 px-3 text-gray-300">{p.requestedByName || (typeof p.requestedBy === 'object' && p.requestedBy ? `${p.requestedBy.firstName || ''} ${p.requestedBy.lastName || ''}`.trim() : '') || '-'}</td>
                     <td className="py-3 px-3 text-gray-300 whitespace-nowrap">
                       {new Date(p.date || p.createdAt).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}
                     </td>

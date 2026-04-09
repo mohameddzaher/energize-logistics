@@ -7,7 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wrench, Plus, Search, Loader2, X, Check, Trash2, Eye,
-  AlertCircle, ChevronLeft, ChevronRight, CheckCircle2, Download,
+  AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, CheckCircle2, Download,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 
@@ -66,6 +66,9 @@ export default function WorkshopPage() {
 
   // Stats
   const [stats, setStats] = useState({ open: 0, inProgress: 0, completedToday: 0, avgDuration: 0 });
+
+  // Confirm modal
+  const [confirmModal, setConfirmModal] = useState<{message: string; onConfirm: () => void} | null>(null);
 
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -181,13 +184,14 @@ export default function WorkshopPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm(isAr ? 'هل أنت متأكد من الحذف؟' : 'Are you sure you want to delete?')) return;
-    try {
-      await api.delete(`/api/workshop/maintenance/${id}`);
-    } catch (err: any) {
-      setError(err.message);
-    }
+  const handleDelete = (id: string) => {
+    setConfirmModal({
+      message: isAr ? 'هل أنت متأكد من الحذف؟' : 'Are you sure you want to delete this request?',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try { await api.delete(`/api/workshop/maintenance/${id}`); } catch (err: any) { setError(err.message); }
+      },
+    });
   };
 
 
@@ -755,6 +759,28 @@ export default function WorkshopPage() {
           </>
         )}
       </AnimatePresence>
+
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm shadow-xl">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <h3 className="text-white font-semibold">{isAr ? 'تأكيد' : 'Confirm'}</h3>
+              </div>
+              <p className="text-gray-300 text-sm">{confirmModal.message}</p>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+              <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{isAr ? 'إلغاء' : 'Cancel'}</button>
+              <button type="button" onClick={confirmModal.onConfirm} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+                {isAr ? 'حذف' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

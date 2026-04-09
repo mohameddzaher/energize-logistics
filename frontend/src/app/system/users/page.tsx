@@ -166,7 +166,7 @@ export default function UsersPage() {
       if (formData.role === 'employee') {
         if (formData.assignedCustomers.length > 0) payload.assignedCustomers = formData.assignedCustomers;
       }
-      if (formData.role === 'operations' && formData.branch) {
+      if (formData.branch) {
         payload.branch = formData.branch;
       }
       await api.post('/api/users', payload);
@@ -218,9 +218,7 @@ export default function UsersPage() {
       if (formData.role === 'employee') {
         payload.assignedCustomers = formData.assignedCustomers;
       }
-      if (formData.role === 'operations') {
-        payload.branch = formData.branch || null;
-      }
+      payload.branch = formData.branch || null;
       await api.put(`/api/users/${selectedUser._id}`, payload);
       setShowEditModal(false);
       setSelectedUser(null);

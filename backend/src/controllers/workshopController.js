@@ -2,7 +2,6 @@ const MaintenanceRequest = require('../models/MaintenanceRequest');
 const WorkshopPurchaseRequest = require('../models/WorkshopPurchaseRequest');
 const WorkshopTask = require('../models/WorkshopTask');
 const InventoryItem = require('../models/InventoryItem');
-const User = require('../models/User');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 
@@ -91,8 +90,7 @@ const createMaintenanceRequest = async (req, res) => {
       return res.status(400).json({ message: 'Vehicle number is required' });
     }
 
-    const fullUser = await User.findById(req.user._id).select('branch');
-    const branch = fullUser?.branch || req.user.branch;
+    const branch = req.user.branch;
 
     if (!branch) {
       return res.status(400).json({ message: 'User branch not found. Please contact an administrator to assign you to a branch.' });
@@ -290,8 +288,7 @@ const getPurchaseRequests = async (req, res) => {
 
 const createPurchaseRequest = async (req, res) => {
   try {
-    const fullUser = await User.findById(req.user._id).select('branch');
-    const branch = fullUser?.branch || req.user.branch;
+    const branch = req.user.branch;
 
     const data = {
       ...req.body,
@@ -505,8 +502,7 @@ const getMyWorkshopTasks = async (req, res) => {
 
 const createWorkshopTask = async (req, res) => {
   try {
-    const fullUser = await User.findById(req.user._id).select('branch');
-    const branch = fullUser?.branch || req.user.branch;
+    const branch = req.user.branch;
 
     const data = {
       ...req.body,
@@ -765,6 +761,24 @@ const getWorkshopDashboard = async (req, res) => {
       date: p.createdAt,
     }));
 
+    // Employee performance stats
+    const employeeStats = await MaintenanceRequest.aggregate([
+      { $match: { status: 'completed' } },
+      { $group: {
+        _id: '$createdBy',
+        totalRequests: { $sum: 1 },
+        avgDuration: { $avg: '$duration' },
+        completedCount: { $sum: 1 },
+      }},
+      { $sort: { totalRequests: -1 } },
+      { $limit: 20 },
+    ]);
+    // Populate user names for employee stats
+    for (const stat of employeeStats) {
+      const empUser = await User.findById(stat._id).select('firstName lastName').lean();
+      stat.employeeName = empUser ? `${empUser.firstName} ${empUser.lastName}` : 'Unknown';
+    }
+
     res.json({
       kpis,
       requestsPerDay,
@@ -772,6 +786,7 @@ const getWorkshopDashboard = async (req, res) => {
       statusDistribution,
       recentActivity,
       pendingPurchasesList,
+      employeeStats,
     });
   } catch (error) {
     console.error('Error fetching workshop dashboard:', error);
@@ -825,8 +840,7 @@ const getInventory = async (req, res) => {
 
 const createInventoryItem = async (req, res) => {
   try {
-    const fullUser = await User.findById(req.user._id).select('branch');
-    const branch = fullUser?.branch || req.user.branch;
+    const branch = req.user.branch;
 
     const data = {
       ...req.body,

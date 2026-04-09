@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import {
   BarChart3, Wrench, Clock, CheckCircle2, ShoppingCart, Loader2,
-  AlertCircle, X, TrendingUp, Activity,
+  AlertCircle, X, TrendingUp, Activity, Users,
 } from 'lucide-react';
 
 interface DashboardData {
@@ -24,6 +24,7 @@ interface DashboardData {
   statusDistribution: { status: string; count: number }[];
   recentActivity: { _id: string; action: string; description: string; createdAt: string; user?: string }[];
   pendingPurchasesList: { _id: string; itemName: string; quantity: number; vehicleNumber: string; date: string }[];
+  employeeStats: { _id: string; employeeName: string; totalRequests: number; avgDuration: number; completedCount: number }[];
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -96,7 +97,7 @@ export default function WorkshopDashboardPage() {
   if (!data) return null;
 
   const kpis = data.kpis || { totalRequests: 0, open: 0, inProgress: 0, completed: 0, avgDuration: 0, pendingPurchases: 0 };
-  const { requestsPerDay = [], durationTrend = [], statusDistribution = [], recentActivity = [], pendingPurchasesList = [] } = data;
+  const { requestsPerDay = [], durationTrend = [], statusDistribution = [], recentActivity = [], pendingPurchasesList = [], employeeStats = [] } = data;
 
   // Calculate max for bar chart scaling
   const maxDailyCount = Math.max(...(requestsPerDay?.map(d => d.count) || [1]), 1);
@@ -265,6 +266,38 @@ export default function WorkshopDashboardPage() {
             <p className="text-gray-500 text-sm text-center py-8">{isAr ? 'لا توجد مشتريات معلقة' : 'No pending purchases'}</p>
           )}
         </div>
+      </div>
+
+      {/* Employee Performance */}
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        <h3 className="text-white font-medium mb-4 flex items-center gap-2">
+          <Users className="w-4 h-4 text-[#f37121]" />
+          {isAr ? 'أداء الموظفين' : 'Employee Performance'}
+        </h3>
+        {employeeStats && employeeStats.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'الموظف' : 'Employee'}</th>
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'الطلبات المنجزة' : 'Completed'}</th>
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'متوسط المدة' : 'Avg Duration'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employeeStats.map((emp, i) => (
+                  <tr key={emp._id || i} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
+                    <td className="py-2.5 px-3 text-white font-medium">{emp.employeeName}</td>
+                    <td className="py-2.5 px-3 text-gray-300">{emp.completedCount}</td>
+                    <td className="py-2.5 px-3 text-gray-300">{formatDuration(emp.avgDuration)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data yet'}</p>
+        )}
       </div>
     </div>
   );

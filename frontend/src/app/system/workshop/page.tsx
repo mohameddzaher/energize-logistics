@@ -7,7 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wrench, Plus, Search, Loader2, X, Check, Trash2, Eye,
-  AlertCircle, ChevronLeft, ChevronRight, Send, CheckCircle2, Download,
+  AlertCircle, ChevronLeft, ChevronRight, CheckCircle2, Download,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 
@@ -149,12 +149,29 @@ export default function WorkshopPage() {
     if (!showCompleteModal) return;
     try {
       setCompleting(true);
+      const filledParts = completeForm.parts.filter(p => p.name.trim());
       await api.put(`/api/workshop/maintenance/${showCompleteModal}/complete`, {
         workDescription: completeForm.workDescription,
         technicianName: completeForm.technicianName,
         notes: completeForm.notes,
-        partsNeeded: completeForm.parts.filter(p => p.name.trim()),
+        partsNeeded: filledParts,
       });
+
+      // Auto-send all filled parts to purchasing
+      if (filledParts.length > 0) {
+        const vehicleNumber = requests.find(r => r._id === showCompleteModal)?.vehicleNumber || '';
+        for (const part of filledParts) {
+          try {
+            await api.post('/api/workshop/purchases', {
+              maintenanceRequest: showCompleteModal,
+              itemName: part.name,
+              quantity: part.quantity,
+              vehicleNumber,
+            });
+          } catch {}
+        }
+      }
+
       setShowCompleteModal(null);
       setCompleteForm({ workDescription: '', technicianName: '', notes: '', parts: [{ name: '', quantity: 1 }] });
     } catch (err: any) {
@@ -173,21 +190,6 @@ export default function WorkshopPage() {
     }
   };
 
-  const sendPartToPurchasing = async (maintenanceId: string, part: Part) => {
-    try {
-      const req = requests.find(r => r._id === maintenanceId);
-      await api.post('/api/workshop/purchases', {
-        maintenanceRequest: maintenanceId,
-        itemName: part.name,
-        quantity: part.quantity,
-        vehicleNumber: req?.vehicleNumber || '',
-      });
-      setSuccess(isAr ? 'تم إرسال الطلب للمشتريات' : 'Sent to purchasing');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
 
   const openViewModal = async (req: MaintenanceRequest) => {
     setShowViewModal(req);
@@ -572,17 +574,9 @@ export default function WorkshopPage() {
                           <input
                             type="number" min={1} value={part.quantity}
                             onChange={e => updatePart(idx, 'quantity', parseInt(e.target.value) || 1)}
+                            onFocus={e => e.target.select()}
                             className="w-20 bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm focus:outline-none focus:border-[#f37121]"
                           />
-                          {part.name.trim() && (
-                            <button
-                              onClick={() => sendPartToPurchasing(showCompleteModal, part)}
-                              className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
-                              title={isAr ? 'إرسال للمشتريات' : 'Send to Purchasing'}
-                            >
-                              <Send className="w-4 h-4" />
-                            </button>
-                          )}
                           {completeForm.parts.length > 1 && (
                             <button onClick={() => removePart(idx)} className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30">
                               <X className="w-4 h-4" />

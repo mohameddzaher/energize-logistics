@@ -14,6 +14,13 @@ router.use(authenticate);
 // ─── Dashboard ──────────────────────────────────────────
 router.get('/dashboard', authorize(...allWorkshopRoles), workshopController.getWorkshopDashboard);
 
+// ─── Inventory ─────────────────────────────────────────
+router.get('/inventory/search', authorize(...allWorkshopRoles), workshopController.searchInventory);
+router.get('/inventory', authorize(...allWorkshopRoles), workshopController.getInventory);
+router.post('/inventory', authorize(...purchasingRoles), workshopController.createInventoryItem);
+router.put('/inventory/:id', authorize(...purchasingRoles), workshopController.updateInventoryItem);
+router.delete('/inventory/:id', authorize(...managerRoles), workshopController.deleteInventoryItem);
+
 // ─── Maintenance Requests ───────────────────────────────
 router.get('/maintenance', authorize(...workshopRoles), workshopController.getMaintenanceRequests);
 router.get('/maintenance/:id', authorize(...workshopRoles), workshopController.getMaintenanceRequest);

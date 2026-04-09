@@ -6,7 +6,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Wrench, Plus, Search, Filter, Loader2, X, Check, Trash2, Eye, Clock,
+  Wrench, Plus, Search, Loader2, X, Check, Trash2, Eye,
   AlertCircle, ChevronLeft, ChevronRight, Send, CheckCircle2, Download,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
@@ -14,6 +14,8 @@ import { exportToExcel, fmt } from '@/utils/exportExcel';
 interface Part {
   name: string;
   quantity: number;
+  sentToPurchasing?: boolean;
+  purchaseRequestId?: string;
 }
 
 interface MaintenanceRequest {
@@ -120,26 +122,15 @@ export default function WorkshopPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  // WebSocket
-  const handleCreated = useCallback((r: MaintenanceRequest) => {
-    setRequests(prev => [r, ...prev]);
-    setTotal(t => t + 1);
-  }, []);
-  const handleUpdated = useCallback((r: MaintenanceRequest) => {
-    setRequests(prev => prev.map(x => x._id === r._id ? r : x));
-  }, []);
-  const handleCompleted = useCallback((r: MaintenanceRequest) => {
-    setRequests(prev => prev.map(x => x._id === r._id ? r : x));
-  }, []);
-  const handleDeleted = useCallback((d: { _id: string }) => {
-    setRequests(prev => prev.filter(x => x._id !== d._id));
-    setTotal(t => Math.max(0, t - 1));
-  }, []);
+  // WebSocket - refetch all data (including stats) on any change
+  const handleSocketRefresh = useCallback(() => {
+    fetchRequests();
+  }, [fetchRequests]);
 
-  useSocket('maintenance:created', handleCreated);
-  useSocket('maintenance:updated', handleUpdated);
-  useSocket('maintenance:completed', handleCompleted);
-  useSocket('maintenance:deleted', handleDeleted);
+  useSocket('maintenance:created', handleSocketRefresh);
+  useSocket('maintenance:updated', handleSocketRefresh);
+  useSocket('maintenance:completed', handleSocketRefresh);
+  useSocket('maintenance:deleted', handleSocketRefresh);
 
   const handleCreate = async () => {
     try {
@@ -200,9 +191,18 @@ export default function WorkshopPage() {
 
   const openViewModal = async (req: MaintenanceRequest) => {
     setShowViewModal(req);
+    setViewPurchases([]);
     try {
-      const data = await api.get<any>(`/api/workshop/purchases?maintenanceRequest=${req._id}`);
-      setViewPurchases(data.purchases || []);
+      // Fetch detailed request and purchases in parallel
+      const [detailData, purchaseData] = await Promise.all([
+        api.get<any>(`/api/workshop/maintenance/${req._id}`).catch(() => null),
+        api.get<any>(`/api/workshop/purchases?maintenanceRequest=${req._id}`).catch(() => ({ purchases: [] })),
+      ]);
+      // Update modal with full details if available
+      if (detailData) {
+        setShowViewModal(detailData);
+      }
+      setViewPurchases(purchaseData?.purchases || []);
     } catch {
       setViewPurchases([]);
     }

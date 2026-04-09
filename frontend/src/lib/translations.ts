@@ -38,6 +38,7 @@ const layout = {
     workshopPurchases: 'Purchases',
     workshopDashboard: 'Workshop Dashboard',
     workshopTasks: 'Workshop Tasks',
+    inventory: 'Inventory',
     complaints: 'Complaints',
   },
   ar: {
@@ -76,6 +77,7 @@ const layout = {
     workshopPurchases: 'المشتريات',
     workshopDashboard: 'لوحة الورشة',
     workshopTasks: 'مهام الورشة',
+    inventory: 'المخزون',
     complaints: 'الشكاوى',
   },
 };
@@ -1225,5 +1227,6 @@ export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   '/system/workshop/purchases': 'workshopPurchases',
   '/system/workshop/dashboard': 'workshopDashboard',
   '/system/workshop/tasks': 'workshopTasks',
+  '/system/workshop/inventory': 'inventory',
   '/system/complaints': 'complaints',
 };

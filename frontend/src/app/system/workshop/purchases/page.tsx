@@ -7,7 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart, Loader2, X, Check, Package, AlertCircle,
-  ChevronLeft, ChevronRight, FileText, Download,
+  ChevronLeft, ChevronRight, Download,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 
@@ -16,7 +16,7 @@ interface PurchaseRequest {
   itemName: string;
   quantity: number;
   vehicleNumber: string;
-  requestedBy: string;
+  requestedBy: string | { firstName?: string; lastName?: string };
   requestedByName?: string;
   date: string;
   status: 'pending' | 'received' | 'fulfilled';
@@ -46,6 +46,9 @@ export default function WorkshopPurchasesPage() {
   const limit = 20;
   const [statusFilter, setStatusFilter] = useState('');
 
+  // Per-item loading state for Mark Received
+  const [receivingIds, setReceivingIds] = useState<Set<string>>(new Set());
+
   // Fulfill modal
   const [fulfillModal, setFulfillModal] = useState<string | null>(null);
   const [fulfillForm, setFulfillForm] = useState({ cost: '', supplier: '', invoiceNumber: '' });
@@ -70,27 +73,27 @@ export default function WorkshopPurchasesPage() {
 
   useEffect(() => { fetchPurchases(); }, [fetchPurchases]);
 
-  // WebSocket
-  const handleCreated = useCallback((p: PurchaseRequest) => {
-    setPurchases(prev => [p, ...prev]);
-    setTotal(t => t + 1);
-  }, []);
-  const handleReceived = useCallback((p: PurchaseRequest) => {
-    setPurchases(prev => prev.map(x => x._id === p._id ? p : x));
-  }, []);
-  const handleFulfilled = useCallback((p: PurchaseRequest) => {
-    setPurchases(prev => prev.map(x => x._id === p._id ? p : x));
-  }, []);
+  // WebSocket - refetch all data on any change for reliable updates
+  const handleSocketRefresh = useCallback(() => {
+    fetchPurchases();
+  }, [fetchPurchases]);
 
-  useSocket('purchase:created', handleCreated);
-  useSocket('purchase:received', handleReceived);
-  useSocket('purchase:fulfilled', handleFulfilled);
+  useSocket('purchase:created', handleSocketRefresh);
+  useSocket('purchase:received', handleSocketRefresh);
+  useSocket('purchase:fulfilled', handleSocketRefresh);
 
   const markReceived = async (id: string) => {
     try {
+      setReceivingIds(prev => new Set(prev).add(id));
       await api.put(`/api/workshop/purchases/${id}/received`);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setReceivingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -208,7 +211,7 @@ export default function WorkshopPurchasesPage() {
                     <td className="py-3 px-3 text-white font-medium">{p.itemName}</td>
                     <td className="py-3 px-3 text-gray-300">{p.quantity}</td>
                     <td className="py-3 px-3 text-gray-300">{p.vehicleNumber || '-'}</td>
-                    <td className="py-3 px-3 text-gray-300">{p.requestedByName || (typeof p.requestedBy === 'object' && p.requestedBy ? `${p.requestedBy.firstName || ''} ${p.requestedBy.lastName || ''}`.trim() : '') || '-'}</td>
+                    <td className="py-3 px-3 text-gray-300">{p.requestedByName || (typeof p.requestedBy === 'object' && p.requestedBy ? `${(p.requestedBy as {firstName?: string; lastName?: string}).firstName || ''} ${(p.requestedBy as {firstName?: string; lastName?: string}).lastName || ''}`.trim() : '') || '-'}</td>
                     <td className="py-3 px-3 text-gray-300 whitespace-nowrap">
                       {new Date(p.date || p.createdAt).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}
                     </td>
@@ -224,9 +227,10 @@ export default function WorkshopPurchasesPage() {
                         {p.status === 'pending' && (
                           <button
                             onClick={() => markReceived(p._id)}
-                            className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 text-xs font-medium transition-colors flex items-center gap-1"
+                            disabled={receivingIds.has(p._id)}
+                            className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 text-xs font-medium transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            <Package className="w-3 h-3" />
+                            {receivingIds.has(p._id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Package className="w-3 h-3" />}
                             {isAr ? 'استلام' : 'Mark Received'}
                           </button>
                         )}

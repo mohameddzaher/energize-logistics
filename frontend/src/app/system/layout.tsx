@@ -11,7 +11,7 @@ import {
   AlertTriangle, UserCog, ClipboardList, BarChart3, Settings,
   LogOut, Bell, Menu, X, ChevronDown, Shield, Bot,
   Briefcase, TrendingUp, ListTodo, Building2, Wallet,
-  Store, Truck, Tags, Languages, Wrench, ShoppingCart, MessageSquare,
+  Store, Truck, Tags, Languages, Wrench, ShoppingCart, MessageSquare, Package,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -94,6 +94,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/workshop/purchases', label: L.workshopPurchases, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'], section: 'Workshop' },
     { href: '/system/workshop/dashboard', label: L.workshopDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'], section: 'Workshop' },
     { href: '/system/workshop/tasks', label: L.workshopTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
+    { href: '/system/workshop/inventory', label: L.inventory, icon: <Package className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'], section: 'Workshop' },
     // Admin
     { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'], section: 'Admin' },

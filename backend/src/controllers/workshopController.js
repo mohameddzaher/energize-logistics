@@ -1,6 +1,7 @@
 const MaintenanceRequest = require('../models/MaintenanceRequest');
 const WorkshopPurchaseRequest = require('../models/WorkshopPurchaseRequest');
 const WorkshopTask = require('../models/WorkshopTask');
+const InventoryItem = require('../models/InventoryItem');
 const User = require('../models/User');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
@@ -85,11 +86,24 @@ const getMaintenanceRequest = async (req, res) => {
 
 const createMaintenanceRequest = async (req, res) => {
   try {
+    // Validate required fields - only vehicleNumber is truly required
+    if (!req.body.vehicleNumber || !req.body.vehicleNumber.trim()) {
+      return res.status(400).json({ message: 'Vehicle number is required' });
+    }
+
     const fullUser = await User.findById(req.user._id).select('branch');
     const branch = fullUser?.branch || req.user.branch;
 
+    if (!branch) {
+      return res.status(400).json({ message: 'User branch not found. Please contact an administrator to assign you to a branch.' });
+    }
+
     const data = {
-      ...req.body,
+      vehicleNumber: req.body.vehicleNumber.trim(),
+      vehicleType: req.body.vehicleType || '',
+      driverName: req.body.driverName || '',
+      technicianName: req.body.technicianName || '',
+      notes: req.body.notes || '',
       startTime: new Date(),
       status: 'open',
       createdBy: req.user._id,
@@ -114,7 +128,11 @@ const createMaintenanceRequest = async (req, res) => {
     res.status(201).json(populated);
   } catch (error) {
     console.error('Error creating maintenance request:', error);
-    res.status(500).json({ message: 'Failed to create maintenance request' });
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ message: messages.join('. ') });
+    }
+    res.status(500).json({ message: 'Failed to create maintenance request. Please try again.' });
   }
 };
 
@@ -341,6 +359,18 @@ const receivePurchaseRequest = async (req, res) => {
     request.receivedBy = req.user._id;
     await request.save();
 
+    // If an inventory item is specified, decrease its quantity
+    const { inventoryItemId } = req.body || {};
+    if (inventoryItemId) {
+      const invItem = await InventoryItem.findById(inventoryItemId);
+      if (invItem) {
+        const deductQty = request.quantity || 1;
+        invItem.quantity = Math.max(0, invItem.quantity - deductQty);
+        await invItem.save();
+        emitToAll('inventory:updated', invItem);
+      }
+    }
+
     const populated = await WorkshopPurchaseRequest.findById(request._id)
       .populate('requestedBy', 'firstName lastName')
       .populate('receivedBy', 'firstName lastName')
@@ -353,7 +383,7 @@ const receivePurchaseRequest = async (req, res) => {
       action: 'receive',
       entity: 'WorkshopPurchaseRequest',
       entityId: request._id,
-      changes: { status: 'received' },
+      changes: { status: 'received', inventoryItemId },
       ipAddress: req.ip,
     });
 
@@ -749,6 +779,170 @@ const getWorkshopDashboard = async (req, res) => {
   }
 };
 
+// ═══════════════════════════════════════════════════════════
+// INVENTORY
+// ═══════════════════════════════════════════════════════════
+
+const getInventory = async (req, res) => {
+  try {
+    const { search, category, page = 1, limit = 20 } = req.query;
+    const filter = { isActive: true };
+
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      filter.$or = [{ name: regex }, { code: regex }];
+    }
+    if (category) filter.category = category;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [items, total] = await Promise.all([
+      InventoryItem.find(filter)
+        .populate('createdBy', 'firstName lastName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      InventoryItem.countDocuments(filter),
+    ]);
+
+    // Add lowStock flag
+    const enriched = items.map(item => ({
+      ...item,
+      lowStock: item.quantity <= item.minQuantity,
+    }));
+
+    res.json({
+      items: enriched,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / parseInt(limit)),
+    });
+  } catch (error) {
+    console.error('Error fetching inventory:', error);
+    res.status(500).json({ message: 'Failed to fetch inventory' });
+  }
+};
+
+const createInventoryItem = async (req, res) => {
+  try {
+    const fullUser = await User.findById(req.user._id).select('branch');
+    const branch = fullUser?.branch || req.user.branch;
+
+    const data = {
+      ...req.body,
+      createdBy: req.user._id,
+      branch,
+    };
+
+    const item = await InventoryItem.create(data);
+    const populated = await InventoryItem.findById(item._id)
+      .populate('createdBy', 'firstName lastName');
+
+    emitToAll('inventory:created', populated);
+
+    await logAudit({
+      user: req.user,
+      action: 'create',
+      entity: 'InventoryItem',
+      entityId: item._id,
+      changes: { code: data.code, name: data.name },
+      ipAddress: req.ip,
+    });
+
+    res.status(201).json(populated);
+  } catch (error) {
+    console.error('Error creating inventory item:', error);
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'An item with this code already exists' });
+    }
+    res.status(500).json({ message: 'Failed to create inventory item' });
+  }
+};
+
+const updateInventoryItem = async (req, res) => {
+  try {
+    const item = await InventoryItem.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      { new: true, runValidators: true }
+    ).populate('createdBy', 'firstName lastName');
+
+    if (!item) {
+      return res.status(404).json({ message: 'Inventory item not found' });
+    }
+
+    emitToAll('inventory:updated', item);
+
+    await logAudit({
+      user: req.user,
+      action: 'update',
+      entity: 'InventoryItem',
+      entityId: item._id,
+      changes: req.body,
+      ipAddress: req.ip,
+    });
+
+    res.json(item);
+  } catch (error) {
+    console.error('Error updating inventory item:', error);
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'An item with this code already exists' });
+    }
+    res.status(500).json({ message: 'Failed to update inventory item' });
+  }
+};
+
+const deleteInventoryItem = async (req, res) => {
+  try {
+    const item = await InventoryItem.findByIdAndUpdate(
+      req.params.id,
+      { $set: { isActive: false } },
+      { new: true }
+    );
+
+    if (!item) {
+      return res.status(404).json({ message: 'Inventory item not found' });
+    }
+
+    emitToAll('inventory:deleted', { _id: req.params.id });
+
+    await logAudit({
+      user: req.user,
+      action: 'delete',
+      entity: 'InventoryItem',
+      entityId: req.params.id,
+      changes: { code: item.code, name: item.name },
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: 'Inventory item deleted' });
+  } catch (error) {
+    console.error('Error deleting inventory item:', error);
+    res.status(500).json({ message: 'Failed to delete inventory item' });
+  }
+};
+
+const searchInventory = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.json([]);
+
+    const regex = new RegExp(q, 'i');
+    const items = await InventoryItem.find({
+      isActive: true,
+      $or: [{ name: regex }, { code: regex }],
+    })
+      .select('name code quantity _id')
+      .limit(20)
+      .lean();
+
+    res.json(items);
+  } catch (error) {
+    console.error('Error searching inventory:', error);
+    res.status(500).json({ message: 'Failed to search inventory' });
+  }
+};
+
 module.exports = {
   // Maintenance
   getMaintenanceRequests,
@@ -770,4 +964,10 @@ module.exports = {
   deleteWorkshopTask,
   // Dashboard
   getWorkshopDashboard,
+  // Inventory
+  getInventory,
+  createInventoryItem,
+  updateInventoryItem,
+  deleteInventoryItem,
+  searchInventory,
 };

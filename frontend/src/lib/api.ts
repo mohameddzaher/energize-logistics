@@ -1,6 +1,8 @@
-// Empty baseUrl so requests go through Next.js rewrites (same origin)
-// This ensures cookies are sent/received correctly on both dev and Netlify SSR
-const API_URL = '';
+// In production: call backend directly (cross-origin with credentials)
+// In dev: empty string uses Next.js rewrites (same origin)
+const API_URL = typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
+  ? process.env.NEXT_PUBLIC_API_URL
+  : '';
 
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;

@@ -101,12 +101,6 @@ const createMaintenanceRequest = async (req, res) => {
       return res.status(400).json({ message: 'Vehicle number is required' });
     }
 
-    const branch = req.user.branch;
-
-    if (!branch) {
-      return res.status(400).json({ message: 'User branch not found. Please contact an administrator to assign you to a branch.' });
-    }
-
     const data = {
       vehicleNumber: req.body.vehicleNumber.trim(),
       vehicleType: req.body.vehicleType || '',
@@ -116,8 +110,8 @@ const createMaintenanceRequest = async (req, res) => {
       startTime: new Date(),
       status: 'open',
       createdBy: req.user._id,
-      branch,
     };
+    if (req.user.branch) data.branch = req.user.branch;
 
     const request = await MaintenanceRequest.create(data);
     const populated = await MaintenanceRequest.findById(request._id)
@@ -299,14 +293,12 @@ const getPurchaseRequests = async (req, res) => {
 
 const createPurchaseRequest = async (req, res) => {
   try {
-    const branch = req.user.branch;
-
     const data = {
       ...req.body,
       status: 'pending',
       requestedBy: req.user._id,
-      branch,
     };
+    if (req.user.branch) data.branch = req.user.branch;
 
     // If linked to maintenance, auto-fill vehicleNumber if not provided
     if (data.maintenanceRequest && !data.vehicleNumber) {
@@ -513,13 +505,11 @@ const getMyWorkshopTasks = async (req, res) => {
 
 const createWorkshopTask = async (req, res) => {
   try {
-    const branch = req.user.branch;
-
     const data = {
       ...req.body,
       createdBy: req.user._id,
-      branch,
     };
+    if (req.user.branch) data.branch = req.user.branch;
 
     const task = await WorkshopTask.create(data);
     const populated = await WorkshopTask.findById(task._id)
@@ -895,13 +885,11 @@ const getInventory = async (req, res) => {
 
 const createInventoryItem = async (req, res) => {
   try {
-    const branch = req.user.branch;
-
     const data = {
       ...req.body,
       createdBy: req.user._id,
-      branch,
     };
+    if (req.user.branch) data.branch = req.user.branch;
 
     const item = await InventoryItem.create(data);
     const populated = await InventoryItem.findById(item._id)

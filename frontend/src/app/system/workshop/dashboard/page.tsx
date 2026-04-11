@@ -6,8 +6,8 @@ import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import {
-  BarChart3, Wrench, Clock, CheckCircle2, ShoppingCart, Loader2,
-  AlertCircle, X, TrendingUp, Activity, Users,
+  BarChart3, Wrench, CheckCircle2, ShoppingCart, Loader2,
+  AlertCircle, X, TrendingUp, Activity, Users, Clock, AlertTriangle,
 } from 'lucide-react';
 
 interface DashboardData {
@@ -25,6 +25,10 @@ interface DashboardData {
   recentActivity: { _id: string; action: string; description: string; createdAt: string; user?: string }[];
   pendingPurchasesList: { _id: string; itemName: string; quantity: number; vehicleNumber: string; date: string }[];
   employeeStats: { _id: string; employeeName: string; totalRequests: number; avgDuration: number; completedCount: number }[];
+  technicianStats: { _id: string; totalRequests: number; avgDuration: number; minDuration: number; maxDuration: number }[];
+  topVehicles: { _id: string; visits: number; totalDuration: number; lastVisit: string }[];
+  weekComparison: { thisWeek: number; lastWeek: number; change: number };
+  lowStockCount: number;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -97,7 +101,7 @@ export default function WorkshopDashboardPage() {
   if (!data) return null;
 
   const kpis = data.kpis || { totalRequests: 0, open: 0, inProgress: 0, completed: 0, avgDuration: 0, pendingPurchases: 0 };
-  const { requestsPerDay = [], durationTrend = [], statusDistribution = [], recentActivity = [], pendingPurchasesList = [], employeeStats = [] } = data;
+  const { requestsPerDay = [], durationTrend = [], statusDistribution = [], recentActivity = [], pendingPurchasesList = [], employeeStats = [], technicianStats = [], topVehicles = [], weekComparison = { thisWeek: 0, lastWeek: 0, change: 0 }, lowStockCount = 0 } = data;
 
   // Calculate max for bar chart scaling
   const maxDailyCount = Math.max(...(requestsPerDay?.map(d => d.count) || [1]), 1);
@@ -298,6 +302,120 @@ export default function WorkshopDashboardPage() {
         ) : (
           <p className="text-gray-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data yet'}</p>
         )}
+      </div>
+
+      {/* Technician Team Performance */}
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        <h3 className="text-white font-medium mb-4 flex items-center gap-2">
+          <Wrench className="w-4 h-4 text-[#f37121]" />
+          {isAr ? 'أداء فريق الفنيين' : 'Technician Team Performance'}
+        </h3>
+        {technicianStats && technicianStats.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'الفني' : 'Technician'}</th>
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'إجمالي الطلبات' : 'Total Jobs'}</th>
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'متوسط المدة' : 'Avg Duration'}</th>
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'أسرع' : 'Fastest'}</th>
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'أبطأ' : 'Slowest'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {technicianStats.map((t, i) => (
+                  <tr key={t._id || i} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
+                    <td className="py-2.5 px-3 text-white font-medium">{t._id}</td>
+                    <td className="py-2.5 px-3 text-gray-300">{t.totalRequests}</td>
+                    <td className="py-2.5 px-3 text-gray-300">{formatDuration(t.avgDuration)}</td>
+                    <td className="py-2.5 px-3 text-green-400">{formatDuration(t.minDuration)}</td>
+                    <td className="py-2.5 px-3 text-red-400">{formatDuration(t.maxDuration)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data yet'}</p>
+        )}
+      </div>
+
+      {/* Top Vehicles */}
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        <h3 className="text-white font-medium mb-4 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-[#f37121]" />
+          {isAr ? 'أكثر المركبات صيانة' : 'Top Vehicles by Visits'}
+        </h3>
+        {topVehicles && topVehicles.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'رقم المركبة' : 'Vehicle #'}</th>
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'عدد الزيارات' : 'Visits'}</th>
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'إجمالي وقت الصيانة' : 'Total Time'}</th>
+                  <th className="text-left text-gray-400 font-medium py-2.5 px-3">{isAr ? 'آخر زيارة' : 'Last Visit'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topVehicles.map((v) => (
+                  <tr key={v._id} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
+                    <td className="py-2.5 px-3 text-white font-medium">{v._id}</td>
+                    <td className="py-2.5 px-3"><span className="px-2 py-0.5 rounded bg-[#f37121]/20 text-[#f37121] text-xs font-medium">{v.visits}x</span></td>
+                    <td className="py-2.5 px-3 text-gray-300">{formatDuration(v.totalDuration)}</td>
+                    <td className="py-2.5 px-3 text-gray-400 text-xs">{v.lastVisit ? new Date(v.lastVisit).toLocaleDateString(isAr ? 'ar-EG' : 'en-US') : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data yet'}</p>
+        )}
+      </div>
+
+      {/* Week Comparison & Low Stock */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+            <Activity className="w-4 h-4 text-[#f37121]" />
+            {isAr ? 'مقارنة الأسبوع' : 'Weekly Comparison'}
+          </h3>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-xs">{isAr ? 'هذا الأسبوع' : 'This Week'}</p>
+              <p className="text-2xl font-bold text-white">{weekComparison.thisWeek}</p>
+            </div>
+            <div>
+              <p className="text-gray-400 text-xs">{isAr ? 'الأسبوع السابق' : 'Last Week'}</p>
+              <p className="text-2xl font-bold text-gray-400">{weekComparison.lastWeek}</p>
+            </div>
+            <div>
+              <p className="text-gray-400 text-xs">{isAr ? 'التغيير' : 'Change'}</p>
+              <p className={`text-2xl font-bold ${weekComparison.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {weekComparison.change >= 0 ? '+' : ''}{weekComparison.change}%
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className={`border rounded-lg p-4 ${lowStockCount > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-gray-800 border-gray-700'}`}>
+          <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+            <AlertCircle className={`w-4 h-4 ${lowStockCount > 0 ? 'text-red-400' : 'text-[#f37121]'}`} />
+            {isAr ? 'تنبيه المخزون' : 'Inventory Alert'}
+          </h3>
+          <div className="flex items-center gap-3">
+            <p className={`text-3xl font-bold ${lowStockCount > 0 ? 'text-red-400' : 'text-gray-400'}`}>{lowStockCount}</p>
+            <p className="text-gray-400 text-sm">
+              {isAr ? 'منتج بمخزون منخفض' : 'items low on stock'}
+            </p>
+          </div>
+          {lowStockCount > 0 && (
+            <button type="button" onClick={() => router.push('/system/workshop/inventory')} className="mt-3 text-xs text-red-400 hover:text-red-300 underline">
+              {isAr ? 'عرض المخزون →' : 'View Inventory →'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

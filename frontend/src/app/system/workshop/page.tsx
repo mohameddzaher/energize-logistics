@@ -82,6 +82,11 @@ export default function WorkshopPage() {
   });
   const [creating, setCreating] = useState(false);
 
+  // Technicians list (for dropdowns)
+  const [technicians, setTechnicians] = useState<{ _id: string; name: string }[]>([]);
+  const [showAddTechnician, setShowAddTechnician] = useState(false);
+  const [newTechnicianName, setNewTechnicianName] = useState('');
+
   // Complete form
   const [completeForm, setCompleteForm] = useState({
     workDescription: '', technicianName: '', notes: '',
@@ -119,6 +124,34 @@ export default function WorkshopPage() {
 
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
+  // Fetch technicians for dropdown
+  const fetchTechnicians = useCallback(async () => {
+    try {
+      const data = await api.get<any>('/api/workshop/technicians');
+      setTechnicians(Array.isArray(data) ? data : []);
+    } catch {}
+  }, []);
+  useEffect(() => { fetchTechnicians(); }, [fetchTechnicians]);
+
+  // Add technician inline
+  const handleAddTechnician = async () => {
+    if (!newTechnicianName.trim()) return;
+    try {
+      const tech = await api.post<any>('/api/workshop/technicians', { name: newTechnicianName.trim() });
+      setTechnicians(prev => [...prev, tech]);
+      setNewTechnicianName('');
+      setShowAddTechnician(false);
+      // Auto-select in current form
+      if (showCompleteModal) {
+        setCompleteForm(p => ({ ...p, technicianName: tech.name }));
+      } else {
+        setCreateForm(p => ({ ...p, technicianName: tech.name }));
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to add technician');
+    }
+  };
+
   // Search debounce
   useEffect(() => {
     const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
@@ -134,6 +167,9 @@ export default function WorkshopPage() {
   useSocket('maintenance:updated', handleSocketRefresh);
   useSocket('maintenance:completed', handleSocketRefresh);
   useSocket('maintenance:deleted', handleSocketRefresh);
+  useSocket('technician:created', fetchTechnicians);
+  useSocket('technician:updated', fetchTechnicians);
+  useSocket('technician:deleted', fetchTechnicians);
 
   const handleCreate = async () => {
     try {
@@ -500,8 +536,19 @@ export default function WorkshopPage() {
                   </div>
                   <div>
                     <label className="text-gray-400 text-sm block mb-1">{isAr ? 'اسم الفني' : 'Technician Name'}</label>
-                    <input type="text" value={createForm.technicianName} onChange={e => setCreateForm(p => ({ ...p, technicianName: e.target.value }))}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                    <div className="flex gap-2">
+                      <select title={isAr ? 'اسم الفني' : 'Technician Name'} value={createForm.technicianName} onChange={e => setCreateForm(p => ({ ...p, technicianName: e.target.value }))}
+                        className="flex-1 bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
+                        <option value="">{isAr ? '— اختر فني —' : '— Select Technician —'}</option>
+                        {technicians.map(t => (
+                          <option key={t._id} value={t.name}>{t.name}</option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => setShowAddTechnician(true)}
+                        className="px-3 py-2.5 rounded-lg bg-[#f37121]/20 text-[#f37121] hover:bg-[#f37121]/30 text-sm font-medium" title={isAr ? 'إضافة فني جديد' : 'Add new technician'}>
+                        + {isAr ? 'جديد' : 'New'}
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="text-gray-400 text-sm block mb-1">{isAr ? 'ملاحظات' : 'Notes'}</label>
@@ -550,8 +597,19 @@ export default function WorkshopPage() {
                   </div>
                   <div>
                     <label className="text-gray-400 text-sm block mb-1">{isAr ? 'اسم الفني' : 'Technician Name'}</label>
-                    <input type="text" value={completeForm.technicianName} onChange={e => setCompleteForm(p => ({ ...p, technicianName: e.target.value }))}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                    <div className="flex gap-2">
+                      <select title={isAr ? 'اسم الفني' : 'Technician Name'} value={completeForm.technicianName} onChange={e => setCompleteForm(p => ({ ...p, technicianName: e.target.value }))}
+                        className="flex-1 bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
+                        <option value="">{isAr ? '— اختر فني —' : '— Select Technician —'}</option>
+                        {technicians.map(t => (
+                          <option key={t._id} value={t.name}>{t.name}</option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => setShowAddTechnician(true)}
+                        className="px-3 py-2.5 rounded-lg bg-[#f37121]/20 text-[#f37121] hover:bg-[#f37121]/30 text-sm font-medium">
+                        + {isAr ? 'جديد' : 'New'}
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="text-gray-400 text-sm block mb-1">{isAr ? 'ملاحظات' : 'Notes'}</label>
@@ -759,6 +817,29 @@ export default function WorkshopPage() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Add Technician Modal */}
+      {showAddTechnician && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm shadow-xl">
+            <div className="p-6">
+              <h3 className="text-white font-semibold mb-4">{isAr ? 'إضافة فني جديد' : 'Add New Technician'}</h3>
+              <input type="text" autoFocus value={newTechnicianName}
+                onChange={e => setNewTechnicianName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddTechnician(); }}
+                placeholder={isAr ? 'اسم الفني' : 'Technician name'}
+                className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:border-[#f37121]" />
+            </div>
+            <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+              <button type="button" onClick={() => { setShowAddTechnician(false); setNewTechnicianName(''); }} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{isAr ? 'إلغاء' : 'Cancel'}</button>
+              <button type="button" onClick={handleAddTechnician} disabled={!newTechnicianName.trim()}
+                className="px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] disabled:opacity-50">
+                {isAr ? 'إضافة' : 'Add'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">

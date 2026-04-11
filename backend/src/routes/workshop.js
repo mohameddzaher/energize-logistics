@@ -37,6 +37,12 @@ router.put('/purchases/:id/received', authorize(...purchasingRoles), workshopCon
 router.put('/purchases/:id/fulfill', authorize(...purchasingRoles), workshopController.fulfillPurchaseRequest);
 router.put('/purchases/:id/fulfilled', authorize(...purchasingRoles), workshopController.fulfillPurchaseRequest);
 
+// ─── Technicians ────────────────────────────────────────
+router.get('/technicians', authorize(...allWorkshopRoles), workshopController.getTechnicians);
+router.post('/technicians', authorize(...workshopRoles), workshopController.createTechnician);
+router.put('/technicians/:id', authorize(...workshopRoles), workshopController.updateTechnician);
+router.delete('/technicians/:id', authorize(...managerRoles), workshopController.deleteTechnician);
+
 // ─── Workshop Tasks ─────────────────────────────────────
 router.get('/tasks', authorize(...workshopRoles), workshopController.getWorkshopTasks);
 router.get('/tasks/my', authorize(...workshopRoles), workshopController.getMyWorkshopTasks);

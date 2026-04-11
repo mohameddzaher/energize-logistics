@@ -2,6 +2,7 @@ const MaintenanceRequest = require('../models/MaintenanceRequest');
 const WorkshopPurchaseRequest = require('../models/WorkshopPurchaseRequest');
 const WorkshopTask = require('../models/WorkshopTask');
 const InventoryItem = require('../models/InventoryItem');
+const Technician = require('../models/Technician');
 const User = require('../models/User');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
@@ -12,11 +13,20 @@ const logAudit = require('../utils/auditLogger');
 
 const getMaintenanceRequests = async (req, res) => {
   try {
-    const { status, vehicleNumber, dateFrom, dateTo, page = 1, limit = 20 } = req.query;
+    const { status, vehicleNumber, search, dateFrom, dateTo, page = 1, limit = 20 } = req.query;
     const filter = {};
 
     if (status) filter.status = status;
     if (vehicleNumber) filter.vehicleNumber = new RegExp(vehicleNumber, 'i');
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      filter.$or = [
+        { vehicleNumber: regex },
+        { technicianName: regex },
+        { driverName: regex },
+        { vehicleType: regex },
+      ];
+    }
     if (dateFrom || dateTo) {
       filter.createdAt = {};
       if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
@@ -762,7 +772,7 @@ const getWorkshopDashboard = async (req, res) => {
       date: p.createdAt,
     }));
 
-    // Employee performance stats
+    // Employee performance stats (system users who created requests)
     const employeeStats = await MaintenanceRequest.aggregate([
       { $match: { status: 'completed' } },
       { $group: {
@@ -774,11 +784,51 @@ const getWorkshopDashboard = async (req, res) => {
       { $sort: { totalRequests: -1 } },
       { $limit: 20 },
     ]);
-    // Populate user names for employee stats
     for (const stat of employeeStats) {
       const empUser = await User.findById(stat._id).select('firstName lastName').lean();
       stat.employeeName = empUser ? `${empUser.firstName} ${empUser.lastName}` : 'Unknown';
     }
+
+    // Technician performance stats (actual technicians who did the work)
+    const technicianStats = await MaintenanceRequest.aggregate([
+      { $match: { status: 'completed', technicianName: { $exists: true, $ne: '' } } },
+      { $group: {
+        _id: '$technicianName',
+        totalRequests: { $sum: 1 },
+        avgDuration: { $avg: '$duration' },
+        minDuration: { $min: '$duration' },
+        maxDuration: { $max: '$duration' },
+      }},
+      { $sort: { totalRequests: -1 } },
+      { $limit: 20 },
+    ]);
+
+    // Top vehicles requiring maintenance
+    const topVehicles = await MaintenanceRequest.aggregate([
+      { $group: {
+        _id: '$vehicleNumber',
+        visits: { $sum: 1 },
+        totalDuration: { $sum: '$duration' },
+        lastVisit: { $max: '$createdAt' },
+      }},
+      { $sort: { visits: -1 } },
+      { $limit: 10 },
+    ]);
+
+    // This week vs last week comparison
+    const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7);
+    const lastWeekStart = new Date(); lastWeekStart.setDate(lastWeekStart.getDate() - 14);
+    const [thisWeek, lastWeek] = await Promise.all([
+      MaintenanceRequest.countDocuments({ createdAt: { $gte: weekStart } }),
+      MaintenanceRequest.countDocuments({ createdAt: { $gte: lastWeekStart, $lt: weekStart } }),
+    ]);
+    const weekChange = lastWeek > 0 ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : 0;
+
+    // Inventory low stock alert
+    const lowStockCount = await InventoryItem.countDocuments({
+      isActive: true,
+      $expr: { $lte: ['$quantity', '$minQuantity'] },
+    });
 
     res.json({
       kpis,
@@ -788,6 +838,10 @@ const getWorkshopDashboard = async (req, res) => {
       recentActivity,
       pendingPurchasesList,
       employeeStats,
+      technicianStats,
+      topVehicles,
+      weekComparison: { thisWeek, lastWeek, change: weekChange },
+      lowStockCount,
     });
   } catch (error) {
     console.error('Error fetching workshop dashboard:', error);
@@ -958,6 +1012,75 @@ const searchInventory = async (req, res) => {
   }
 };
 
+// ═══════════════════════════════════════════════════════════
+// TECHNICIANS
+// ═══════════════════════════════════════════════════════════
+
+const getTechnicians = async (req, res) => {
+  try {
+    const technicians = await Technician.find({ isActive: true })
+      .sort({ name: 1 })
+      .lean();
+    res.json(technicians);
+  } catch (error) {
+    console.error('Error fetching technicians:', error);
+    res.status(500).json({ message: 'Failed to fetch technicians' });
+  }
+};
+
+const createTechnician = async (req, res) => {
+  try {
+    if (!req.body.name || !req.body.name.trim()) {
+      return res.status(400).json({ message: 'Technician name is required' });
+    }
+    const tech = await Technician.create({
+      name: req.body.name.trim(),
+      phone: req.body.phone || '',
+      specialization: req.body.specialization || '',
+      notes: req.body.notes || '',
+      branch: req.user.branch,
+      createdBy: req.user._id,
+    });
+    emitToAll('technician:created', tech);
+    res.status(201).json(tech);
+  } catch (error) {
+    console.error('Error creating technician:', error);
+    res.status(500).json({ message: 'Failed to create technician' });
+  }
+};
+
+const updateTechnician = async (req, res) => {
+  try {
+    const tech = await Technician.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      { new: true }
+    );
+    if (!tech) return res.status(404).json({ message: 'Technician not found' });
+    emitToAll('technician:updated', tech);
+    res.json(tech);
+  } catch (error) {
+    console.error('Error updating technician:', error);
+    res.status(500).json({ message: 'Failed to update technician' });
+  }
+};
+
+const deleteTechnician = async (req, res) => {
+  try {
+    const tech = await Technician.findByIdAndUpdate(
+      req.params.id,
+      { $set: { isActive: false } },
+      { new: true }
+    );
+    if (!tech) return res.status(404).json({ message: 'Technician not found' });
+    emitToAll('technician:deleted', { _id: req.params.id });
+    res.json({ message: 'Technician deleted' });
+  } catch (error) {
+    console.error('Error deleting technician:', error);
+    res.status(500).json({ message: 'Failed to delete technician' });
+  }
+};
+
 module.exports = {
   // Maintenance
   getMaintenanceRequests,
@@ -985,4 +1108,9 @@ module.exports = {
   updateInventoryItem,
   deleteInventoryItem,
   searchInventory,
+  // Technicians
+  getTechnicians,
+  createTechnician,
+  updateTechnician,
+  deleteTechnician,
 };

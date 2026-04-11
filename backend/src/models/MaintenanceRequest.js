@@ -37,5 +37,7 @@ maintenanceRequestSchema.index({ status: 1 });
 maintenanceRequestSchema.index({ vehicleNumber: 1 });
 maintenanceRequestSchema.index({ createdAt: -1 });
 maintenanceRequestSchema.index({ branch: 1 });
+maintenanceRequestSchema.index({ status: 1, createdAt: -1 });
+maintenanceRequestSchema.index({ technicianName: 1 });
 
 module.exports = mongoose.model('MaintenanceRequest', maintenanceRequestSchema);

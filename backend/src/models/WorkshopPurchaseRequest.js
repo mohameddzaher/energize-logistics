@@ -32,5 +32,6 @@ workshopPurchaseRequestSchema.index({ status: 1 });
 workshopPurchaseRequestSchema.index({ maintenanceRequest: 1 });
 workshopPurchaseRequestSchema.index({ createdAt: -1 });
 workshopPurchaseRequestSchema.index({ requestedBy: 1 });
+workshopPurchaseRequestSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('WorkshopPurchaseRequest', workshopPurchaseRequestSchema);

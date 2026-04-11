@@ -45,7 +45,8 @@ const getMaintenanceRequests = async (req, res) => {
         .populate('completedBy', 'firstName lastName')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(parseInt(limit))
+        .lean(),
       MaintenanceRequest.countDocuments(filter),
       MaintenanceRequest.countDocuments({ status: 'open' }),
       MaintenanceRequest.countDocuments({ status: 'in_progress' }),
@@ -82,7 +83,8 @@ const getMaintenanceRequest = async (req, res) => {
       .populate('createdBy', 'firstName lastName')
       .populate('completedBy', 'firstName lastName')
       .populate('partsNeeded.purchaseRequestId')
-      .populate('branch', 'name');
+      .populate('branch', 'name')
+      .lean();
 
     if (!request) {
       return res.status(404).json({ message: 'Maintenance request not found' });
@@ -459,7 +461,8 @@ const getWorkshopTasks = async (req, res) => {
         .populate('maintenanceType', 'name estimatedDuration')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(parseInt(limit))
+        .lean(),
       WorkshopTask.countDocuments(filter),
     ]);
 
@@ -490,7 +493,8 @@ const getMyWorkshopTasks = async (req, res) => {
         .populate('maintenanceType', 'name estimatedDuration')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(parseInt(limit))
+        .lean(),
       WorkshopTask.countDocuments(filter),
     ]);
 
@@ -613,6 +617,8 @@ const getWorkshopDashboard = async (req, res) => {
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
     sevenDaysAgo.setHours(0, 0, 0, 0);
+    const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7);
+    const lastWeekStart = new Date(); lastWeekStart.setDate(lastWeekStart.getDate() - 14);
 
     const [
       maintenanceByStatus,
@@ -623,6 +629,13 @@ const getWorkshopDashboard = async (req, res) => {
       recentPurchases,
       pendingPurchases,
       totalMaintenanceCount,
+      pendingPurchaseCount,
+      employeeStatsRaw,
+      technicianStats,
+      topVehicles,
+      thisWeek,
+      lastWeek,
+      lowStockCount,
     ] = await Promise.all([
       // Maintenance counts by status
       MaintenanceRequest.aggregate([
@@ -679,14 +692,68 @@ const getWorkshopDashboard = async (req, res) => {
         .lean(),
       // Total maintenance count
       MaintenanceRequest.countDocuments(),
+      // Pending purchase count
+      WorkshopPurchaseRequest.countDocuments({ status: 'pending' }),
+      // Employee performance stats (system users who created requests)
+      MaintenanceRequest.aggregate([
+        { $match: { status: 'completed' } },
+        { $group: {
+          _id: '$createdBy',
+          totalRequests: { $sum: 1 },
+          avgDuration: { $avg: '$duration' },
+          completedCount: { $sum: 1 },
+        }},
+        { $sort: { totalRequests: -1 } },
+        { $limit: 20 },
+      ]),
+      // Technician performance stats
+      MaintenanceRequest.aggregate([
+        { $match: { status: 'completed', technicianName: { $exists: true, $ne: '' } } },
+        { $group: {
+          _id: '$technicianName',
+          totalRequests: { $sum: 1 },
+          avgDuration: { $avg: '$duration' },
+          minDuration: { $min: '$duration' },
+          maxDuration: { $max: '$duration' },
+        }},
+        { $sort: { totalRequests: -1 } },
+        { $limit: 20 },
+      ]),
+      // Top vehicles requiring maintenance
+      MaintenanceRequest.aggregate([
+        { $group: {
+          _id: '$vehicleNumber',
+          visits: { $sum: 1 },
+          totalDuration: { $sum: '$duration' },
+          lastVisit: { $max: '$createdAt' },
+        }},
+        { $sort: { visits: -1 } },
+        { $limit: 10 },
+      ]),
+      // This week count
+      MaintenanceRequest.countDocuments({ createdAt: { $gte: weekStart } }),
+      // Last week count
+      MaintenanceRequest.countDocuments({ createdAt: { $gte: lastWeekStart, $lt: weekStart } }),
+      // Inventory low stock alert
+      InventoryItem.countDocuments({
+        isActive: true,
+        $expr: { $lte: ['$quantity', '$minQuantity'] },
+      }),
     ]);
+
+    // Employee stats needs User lookup (done after Promise.all to avoid N+1)
+    const employeeStats = employeeStatsRaw;
+    const empUserIds = employeeStats.map(s => s._id).filter(Boolean);
+    const empUsers = await User.find({ _id: { $in: empUserIds } }).select('firstName lastName').lean();
+    const empUserMap = Object.fromEntries(empUsers.map(u => [u._id.toString(), u]));
+    for (const stat of employeeStats) {
+      const u = stat._id ? empUserMap[stat._id.toString()] : null;
+      stat.employeeName = u ? `${u.firstName} ${u.lastName}` : 'Unknown';
+    }
 
     // Build status counts map
     const statusMap = {};
     maintenanceByStatus.forEach(({ _id, count }) => { statusMap[_id] = count; });
-
-    // Pending purchase count from status aggregation
-    const pendingPurchaseCount = await WorkshopPurchaseRequest.countDocuments({ status: 'pending' });
 
     // KPIs
     const kpis = {
@@ -766,63 +833,7 @@ const getWorkshopDashboard = async (req, res) => {
       date: p.createdAt,
     }));
 
-    // Employee performance stats (system users who created requests)
-    const employeeStats = await MaintenanceRequest.aggregate([
-      { $match: { status: 'completed' } },
-      { $group: {
-        _id: '$createdBy',
-        totalRequests: { $sum: 1 },
-        avgDuration: { $avg: '$duration' },
-        completedCount: { $sum: 1 },
-      }},
-      { $sort: { totalRequests: -1 } },
-      { $limit: 20 },
-    ]);
-    for (const stat of employeeStats) {
-      const empUser = await User.findById(stat._id).select('firstName lastName').lean();
-      stat.employeeName = empUser ? `${empUser.firstName} ${empUser.lastName}` : 'Unknown';
-    }
-
-    // Technician performance stats (actual technicians who did the work)
-    const technicianStats = await MaintenanceRequest.aggregate([
-      { $match: { status: 'completed', technicianName: { $exists: true, $ne: '' } } },
-      { $group: {
-        _id: '$technicianName',
-        totalRequests: { $sum: 1 },
-        avgDuration: { $avg: '$duration' },
-        minDuration: { $min: '$duration' },
-        maxDuration: { $max: '$duration' },
-      }},
-      { $sort: { totalRequests: -1 } },
-      { $limit: 20 },
-    ]);
-
-    // Top vehicles requiring maintenance
-    const topVehicles = await MaintenanceRequest.aggregate([
-      { $group: {
-        _id: '$vehicleNumber',
-        visits: { $sum: 1 },
-        totalDuration: { $sum: '$duration' },
-        lastVisit: { $max: '$createdAt' },
-      }},
-      { $sort: { visits: -1 } },
-      { $limit: 10 },
-    ]);
-
-    // This week vs last week comparison
-    const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7);
-    const lastWeekStart = new Date(); lastWeekStart.setDate(lastWeekStart.getDate() - 14);
-    const [thisWeek, lastWeek] = await Promise.all([
-      MaintenanceRequest.countDocuments({ createdAt: { $gte: weekStart } }),
-      MaintenanceRequest.countDocuments({ createdAt: { $gte: lastWeekStart, $lt: weekStart } }),
-    ]);
     const weekChange = lastWeek > 0 ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : 0;
-
-    // Inventory low stock alert
-    const lowStockCount = await InventoryItem.countDocuments({
-      isActive: true,
-      $expr: { $lte: ['$quantity', '$minQuantity'] },
-    });
 
     res.json({
       kpis,

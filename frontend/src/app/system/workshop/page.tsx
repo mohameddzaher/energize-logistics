@@ -196,19 +196,19 @@ export default function WorkshopPage() {
         partsNeeded: filledParts,
       });
 
-      // Auto-send all filled parts to purchasing
+      // Auto-send all filled parts to purchasing (in parallel)
       if (filledParts.length > 0) {
         const vehicleNumber = requests.find(r => r._id === showCompleteModal)?.vehicleNumber || '';
-        for (const part of filledParts) {
-          try {
-            await api.post('/api/workshop/purchases', {
+        await Promise.all(
+          filledParts.map(part =>
+            api.post('/api/workshop/purchases', {
               maintenanceRequest: showCompleteModal,
               itemName: part.name,
               quantity: part.quantity,
               vehicleNumber,
-            });
-          } catch {}
-        }
+            }).catch(() => {})
+          )
+        );
       }
 
       setShowCompleteModal(null);

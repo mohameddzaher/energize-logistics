@@ -14,8 +14,11 @@ interface WorkshopTask {
   _id: string;
   title: string;
   description: string;
-  assignedTo: string;
+  assignedTo: string | { _id: string; firstName?: string; lastName?: string; role?: string };
   assignedToName?: string;
+  technicianName?: string;
+  vehicleNumber?: string;
+  maintenanceType?: { _id: string; name: string; estimatedDuration?: number } | string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   dueDate?: string;
@@ -56,8 +59,10 @@ export default function WorkshopTasksPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
 
-  // Users for assignment
-  const [users, setUsers] = useState<{ _id: string; firstName: string; lastName: string }[]>([]);
+  // Workshop users + technicians + maintenance types for dropdowns
+  const [workshopUsers, setWorkshopUsers] = useState<{ _id: string; firstName: string; lastName: string; role: string }[]>([]);
+  const [technicians, setTechnicians] = useState<{ _id: string; name: string }[]>([]);
+  const [maintenanceTypes, setMaintenanceTypes] = useState<{ _id: string; name: string }[]>([]);
 
   // Confirm modal
   const [confirmModal, setConfirmModal] = useState<{message: string; onConfirm: () => void} | null>(null);
@@ -65,7 +70,7 @@ export default function WorkshopTasksPage() {
   // Create modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState({
-    title: '', description: '', assignedTo: '', priority: 'medium', dueDate: '',
+    title: '', description: '', assignedTo: '', technicianName: '', maintenanceType: '', vehicleNumber: '', priority: 'medium', dueDate: '',
   });
   const [creating, setCreating] = useState(false);
 
@@ -90,15 +95,21 @@ export default function WorkshopTasksPage() {
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
-  // Fetch users for assignment dropdown
+  // Fetch workshop users (filtered to workshop roles only) + technicians + maintenance types
   useEffect(() => {
-    const loadUsers = async () => {
+    const loadDropdowns = async () => {
       try {
-        const data = await api.get<any>('/api/users?limit=200') || {};
-        setUsers(data.users || []);
+        const [users, techs, types] = await Promise.all([
+          api.get<any>('/api/workshop/users').catch(() => []),
+          api.get<any>('/api/workshop/technicians').catch(() => []),
+          api.get<any>('/api/workshop/maintenance-types').catch(() => []),
+        ]);
+        setWorkshopUsers(Array.isArray(users) ? users : []);
+        setTechnicians(Array.isArray(techs) ? techs : []);
+        setMaintenanceTypes(Array.isArray(types) ? types : []);
       } catch {}
     };
-    loadUsers();
+    loadDropdowns();
   }, []);
 
   // Search debounce
@@ -120,16 +131,38 @@ export default function WorkshopTasksPage() {
     setTotal(tot => Math.max(0, tot - 1));
   }, []);
 
-  useSocket('workshop-task:created', handleCreated);
-  useSocket('workshop-task:updated', handleUpdated);
-  useSocket('workshop-task:deleted', handleDeleted);
+  useSocket('workshopTask:created', handleCreated);
+  useSocket('workshopTask:updated', handleUpdated);
+  useSocket('workshopTask:deleted', handleDeleted);
+  // Refetch dropdowns on changes
+  const refetchDropdowns = useCallback(async () => {
+    try {
+      const [techs, types] = await Promise.all([
+        api.get<any>('/api/workshop/technicians').catch(() => []),
+        api.get<any>('/api/workshop/maintenance-types').catch(() => []),
+      ]);
+      setTechnicians(Array.isArray(techs) ? techs : []);
+      setMaintenanceTypes(Array.isArray(types) ? types : []);
+    } catch {}
+  }, []);
+  useSocket('technician:created', refetchDropdowns);
+  useSocket('technician:deleted', refetchDropdowns);
+  useSocket('maintenanceType:created', refetchDropdowns);
+  useSocket('maintenanceType:updated', refetchDropdowns);
+  useSocket('maintenanceType:deleted', refetchDropdowns);
 
   const handleCreate = async () => {
     try {
       setCreating(true);
-      await api.post('/api/workshop/tasks', createForm);
+      const payload: any = { ...createForm };
+      if (!payload.maintenanceType) delete payload.maintenanceType;
+      if (!payload.technicianName) delete payload.technicianName;
+      if (!payload.vehicleNumber) delete payload.vehicleNumber;
+      if (!payload.dueDate) delete payload.dueDate;
+      await api.post('/api/workshop/tasks', payload);
       setShowCreateModal(false);
-      setCreateForm({ title: '', description: '', assignedTo: '', priority: 'medium', dueDate: '' });
+      setCreateForm({ title: '', description: '', assignedTo: '', technicianName: '', maintenanceType: '', vehicleNumber: '', priority: 'medium', dueDate: '' });
+      fetchTasks();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -238,9 +271,30 @@ export default function WorkshopTasksPage() {
                     {task.description && (
                       <p className="text-gray-400 text-sm mt-1 line-clamp-2">{task.description}</p>
                     )}
-                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                      {task.assignedToName && (
-                        <span className="flex items-center gap-1"><User className="w-3 h-3" /> {task.assignedToName}</span>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 flex-wrap">
+                      {(() => {
+                        const at = typeof task.assignedTo === 'object' ? task.assignedTo : null;
+                        const name = at ? `${at.firstName || ''} ${at.lastName || ''}`.trim() : task.assignedToName;
+                        return name && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                            <User className="w-3 h-3" /> {isAr ? 'موظف:' : 'Employee:'} {name}
+                          </span>
+                        );
+                      })()}
+                      {task.technicianName && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 text-purple-400">
+                          <User className="w-3 h-3" /> {isAr ? 'فني:' : 'Tech:'} {task.technicianName}
+                        </span>
+                      )}
+                      {task.maintenanceType && typeof task.maintenanceType === 'object' && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-orange-500/10 text-orange-400">
+                          <Flag className="w-3 h-3" /> {task.maintenanceType.name}
+                        </span>
+                      )}
+                      {task.vehicleNumber && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-gray-700 text-gray-300">
+                          🚗 {task.vehicleNumber}
+                        </span>
                       )}
                       {task.dueDate && (
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(task.dueDate).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</span>
@@ -318,14 +372,41 @@ export default function WorkshopTasksPage() {
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121] resize-none" rows={3} />
                   </div>
                   <div>
-                    <label className="text-gray-400 text-sm block mb-1">{isAr ? 'تعيين إلى' : 'Assign To'}</label>
-                    <select value={createForm.assignedTo} onChange={e => setCreateForm(p => ({ ...p, assignedTo: e.target.value }))}
+                    <label className="text-gray-400 text-sm block mb-1">{isAr ? 'تعيين إلى موظف الورشة' : 'Assign to Workshop Employee'} *</label>
+                    <select title="Assign to Workshop Employee" value={createForm.assignedTo} onChange={e => setCreateForm(p => ({ ...p, assignedTo: e.target.value }))}
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
-                      <option value="">{isAr ? 'اختر مستخدم' : 'Select User'}</option>
-                      {users.map(u => (
-                        <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>
+                      <option value="">{isAr ? '— اختر موظف ورشة —' : '— Select Workshop Employee —'}</option>
+                      {workshopUsers.map(u => (
+                        <option key={u._id} value={u._id}>{u.firstName} {u.lastName} ({u.role.replace('_', ' ')})</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="text-gray-400 text-sm block mb-1">{isAr ? 'تنفيذ بواسطة الفني' : 'To be done by Technician'}</label>
+                    <select title="Technician" value={createForm.technicianName} onChange={e => setCreateForm(p => ({ ...p, technicianName: e.target.value }))}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
+                      <option value="">{isAr ? '— اختياري —' : '— Optional —'}</option>
+                      {technicians.map(t => (
+                        <option key={t._id} value={t.name}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-gray-400 text-sm block mb-1">{isAr ? 'نوع الصيانة' : 'Maintenance Type'}</label>
+                      <select title="Maintenance Type" value={createForm.maintenanceType} onChange={e => setCreateForm(p => ({ ...p, maintenanceType: e.target.value }))}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
+                        <option value="">{isAr ? '— اختياري —' : '— Optional —'}</option>
+                        {maintenanceTypes.map(t => (
+                          <option key={t._id} value={t._id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-sm block mb-1">{isAr ? 'رقم المركبة' : 'Vehicle #'}</label>
+                      <input type="text" value={createForm.vehicleNumber} onChange={e => setCreateForm(p => ({ ...p, vehicleNumber: e.target.value }))}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>

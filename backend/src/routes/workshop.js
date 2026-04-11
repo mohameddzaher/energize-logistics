@@ -43,6 +43,15 @@ router.post('/technicians', authorize(...workshopRoles), workshopController.crea
 router.put('/technicians/:id', authorize(...workshopRoles), workshopController.updateTechnician);
 router.delete('/technicians/:id', authorize(...managerRoles), workshopController.deleteTechnician);
 
+// ─── Maintenance Types ──────────────────────────────────
+router.get('/maintenance-types', authorize(...allWorkshopRoles), workshopController.getMaintenanceTypes);
+router.post('/maintenance-types', authorize(...managerRoles), workshopController.createMaintenanceType);
+router.put('/maintenance-types/:id', authorize(...managerRoles), workshopController.updateMaintenanceType);
+router.delete('/maintenance-types/:id', authorize(...managerRoles), workshopController.deleteMaintenanceType);
+
+// ─── Workshop Users (for assignment dropdowns) ──────────
+router.get('/users', authorize(...allWorkshopRoles), workshopController.getWorkshopUsers);
+
 // ─── Workshop Tasks ─────────────────────────────────────
 router.get('/tasks', authorize(...workshopRoles), workshopController.getWorkshopTasks);
 router.get('/tasks/my', authorize(...workshopRoles), workshopController.getMyWorkshopTasks);

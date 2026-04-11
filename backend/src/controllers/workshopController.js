@@ -3,6 +3,7 @@ const WorkshopPurchaseRequest = require('../models/WorkshopPurchaseRequest');
 const WorkshopTask = require('../models/WorkshopTask');
 const InventoryItem = require('../models/InventoryItem');
 const Technician = require('../models/Technician');
+const MaintenanceType = require('../models/MaintenanceType');
 const User = require('../models/User');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
@@ -453,8 +454,9 @@ const getWorkshopTasks = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [tasks, total] = await Promise.all([
       WorkshopTask.find(filter)
-        .populate('assignedTo', 'firstName lastName')
+        .populate('assignedTo', 'firstName lastName role')
         .populate('createdBy', 'firstName lastName')
+        .populate('maintenanceType', 'name estimatedDuration')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
@@ -483,8 +485,9 @@ const getMyWorkshopTasks = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [tasks, total] = await Promise.all([
       WorkshopTask.find(filter)
-        .populate('assignedTo', 'firstName lastName')
+        .populate('assignedTo', 'firstName lastName role')
         .populate('createdBy', 'firstName lastName')
+        .populate('maintenanceType', 'name estimatedDuration')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
@@ -513,8 +516,9 @@ const createWorkshopTask = async (req, res) => {
 
     const task = await WorkshopTask.create(data);
     const populated = await WorkshopTask.findById(task._id)
-      .populate('assignedTo', 'firstName lastName')
-      .populate('createdBy', 'firstName lastName');
+      .populate('assignedTo', 'firstName lastName role')
+      .populate('createdBy', 'firstName lastName')
+      .populate('maintenanceType', 'name estimatedDuration');
 
     emitToAll('workshopTask:created', populated);
 
@@ -1069,6 +1073,91 @@ const deleteTechnician = async (req, res) => {
   }
 };
 
+// ═══════════════════════════════════════════════════════════
+// MAINTENANCE TYPES
+// ═══════════════════════════════════════════════════════════
+
+const getMaintenanceTypes = async (req, res) => {
+  try {
+    const types = await MaintenanceType.find({ isActive: true }).sort({ name: 1 }).lean();
+    res.json(types);
+  } catch (error) {
+    console.error('Error fetching maintenance types:', error);
+    res.status(500).json({ message: 'Failed to fetch maintenance types' });
+  }
+};
+
+const createMaintenanceType = async (req, res) => {
+  try {
+    if (!req.body.name || !req.body.name.trim()) {
+      return res.status(400).json({ message: 'Maintenance type name is required' });
+    }
+    const type = await MaintenanceType.create({
+      name: req.body.name.trim(),
+      description: req.body.description || '',
+      estimatedDuration: req.body.estimatedDuration || undefined,
+      createdBy: req.user._id,
+    });
+    emitToAll('maintenanceType:created', type);
+    res.status(201).json(type);
+  } catch (error) {
+    console.error('Error creating maintenance type:', error);
+    res.status(500).json({ message: 'Failed to create maintenance type' });
+  }
+};
+
+const updateMaintenanceType = async (req, res) => {
+  try {
+    const type = await MaintenanceType.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      { new: true }
+    );
+    if (!type) return res.status(404).json({ message: 'Maintenance type not found' });
+    emitToAll('maintenanceType:updated', type);
+    res.json(type);
+  } catch (error) {
+    console.error('Error updating maintenance type:', error);
+    res.status(500).json({ message: 'Failed to update maintenance type' });
+  }
+};
+
+const deleteMaintenanceType = async (req, res) => {
+  try {
+    const type = await MaintenanceType.findByIdAndUpdate(
+      req.params.id,
+      { $set: { isActive: false } },
+      { new: true }
+    );
+    if (!type) return res.status(404).json({ message: 'Maintenance type not found' });
+    emitToAll('maintenanceType:deleted', { _id: req.params.id });
+    res.json({ message: 'Maintenance type deleted' });
+  } catch (error) {
+    console.error('Error deleting maintenance type:', error);
+    res.status(500).json({ message: 'Failed to delete maintenance type' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// WORKSHOP USERS (filtered by role)
+// ═══════════════════════════════════════════════════════════
+
+const getWorkshopUsers = async (req, res) => {
+  try {
+    const users = await User.find({
+      role: { $in: ['workshop_manager', 'workshop_employee', 'purchasing'] },
+      isActive: true,
+    })
+      .select('firstName lastName email role')
+      .sort({ firstName: 1 })
+      .lean();
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching workshop users:', error);
+    res.status(500).json({ message: 'Failed to fetch workshop users' });
+  }
+};
+
 module.exports = {
   // Maintenance
   getMaintenanceRequests,
@@ -1101,4 +1190,11 @@ module.exports = {
   createTechnician,
   updateTechnician,
   deleteTechnician,
+  // Maintenance Types
+  getMaintenanceTypes,
+  createMaintenanceType,
+  updateMaintenanceType,
+  deleteMaintenanceType,
+  // Workshop Users
+  getWorkshopUsers,
 };

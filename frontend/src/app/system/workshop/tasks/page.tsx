@@ -172,7 +172,7 @@ export default function WorkshopTasksPage() {
 
   const updateStatus = async (id: string, status: string) => {
     try {
-      await api.put(`/api/workshop/tasks/${id}`, { status });
+      await api.put(`/api/workshop/tasks/${id}/status`, { status });
     } catch (err: any) {
       setError(err.message);
     }

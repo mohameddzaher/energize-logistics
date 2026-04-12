@@ -251,11 +251,20 @@ const deleteMaintenanceRequest = async (req, res) => {
 
 const getPurchaseRequests = async (req, res) => {
   try {
-    const { status, maintenanceRequest, page = 1, limit = 20 } = req.query;
+    const { status, maintenanceRequest, search, page = 1, limit = 20 } = req.query;
     const filter = {};
 
     if (status) filter.status = status;
     if (maintenanceRequest) filter.maintenanceRequest = maintenanceRequest;
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      filter.$or = [
+        { itemName: regex },
+        { vehicleNumber: regex },
+        { supplier: regex },
+        { invoiceNumber: regex },
+      ];
+    }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [requests, total] = await Promise.all([
@@ -447,11 +456,20 @@ const fulfillPurchaseRequest = async (req, res) => {
 
 const getWorkshopTasks = async (req, res) => {
   try {
-    const { status, priority, page = 1, limit = 20 } = req.query;
+    const { status, priority, search, page = 1, limit = 20 } = req.query;
     const filter = {};
 
     if (status) filter.status = status;
     if (priority) filter.priority = priority;
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      filter.$or = [
+        { title: regex },
+        { description: regex },
+        { technicianName: regex },
+        { vehicleNumber: regex },
+      ];
+    }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [tasks, total] = await Promise.all([
@@ -860,8 +878,16 @@ const getWorkshopDashboard = async (req, res) => {
 
 const getInventory = async (req, res) => {
   try {
-    const { search, category, page = 1, limit = 20 } = req.query;
+    const { search, category, approvalStatus, page = 1, limit = 20 } = req.query;
     const filter = { isActive: true };
+
+    // Managers see all, others see only approved
+    const isManager = ['super_admin', 'workshop_manager'].includes(req.user.role);
+    if (approvalStatus) {
+      filter.approvalStatus = approvalStatus;
+    } else if (!isManager) {
+      filter.approvalStatus = 'approved';
+    }
 
     if (search) {
       const regex = new RegExp(search, 'i');
@@ -900,10 +926,16 @@ const getInventory = async (req, res) => {
 
 const createInventoryItem = async (req, res) => {
   try {
+    const isManager = ['super_admin', 'workshop_manager'].includes(req.user.role);
     const data = {
       ...req.body,
       createdBy: req.user._id,
+      approvalStatus: isManager ? 'approved' : 'pending',
     };
+    if (isManager) {
+      data.approvedBy = req.user._id;
+      data.approvedAt = new Date();
+    }
     if (req.user.branch) data.branch = req.user.branch;
 
     const item = await InventoryItem.create(data);
@@ -1002,6 +1034,7 @@ const searchInventory = async (req, res) => {
     const regex = new RegExp(q, 'i');
     const items = await InventoryItem.find({
       isActive: true,
+      approvalStatus: 'approved',
       $or: [{ name: regex }, { code: regex }],
     })
       .select('name code quantity _id')
@@ -1081,6 +1114,49 @@ const deleteTechnician = async (req, res) => {
   } catch (error) {
     console.error('Error deleting technician:', error);
     res.status(500).json({ message: 'Failed to delete technician' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// INVENTORY APPROVAL
+// ═══════════════════════════════════════════════════════════
+
+const approveInventoryItem = async (req, res) => {
+  try {
+    const { status, note } = req.body; // status = 'approved' or 'rejected'
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Status must be approved or rejected' });
+    }
+
+    const item = await InventoryItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Inventory item not found' });
+
+    item.approvalStatus = status;
+    item.approvedBy = req.user._id;
+    item.approvedAt = new Date();
+    if (note) item.approvalNote = note;
+    await item.save();
+
+    const populated = await InventoryItem.findById(item._id)
+      .populate('createdBy', 'firstName lastName')
+      .populate('approvedBy', 'firstName lastName')
+      .lean();
+
+    emitToAll('inventory:updated', populated);
+
+    await logAudit({
+      user: req.user,
+      action: `inventory_${status}`,
+      entity: 'InventoryItem',
+      entityId: item._id,
+      changes: { approvalStatus: status, note },
+      ipAddress: req.ip,
+    });
+
+    res.json(populated);
+  } catch (error) {
+    console.error('Error approving inventory item:', error);
+    res.status(500).json({ message: 'Failed to update inventory approval' });
   }
 };
 
@@ -1201,6 +1277,7 @@ module.exports = {
   createTechnician,
   updateTechnician,
   deleteTechnician,
+  approveInventoryItem,
   // Maintenance Types
   getMaintenanceTypes,
   createMaintenanceType,

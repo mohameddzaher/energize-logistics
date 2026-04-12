@@ -19,6 +19,7 @@ router.get('/inventory/search', authorize(...allWorkshopRoles), workshopControll
 router.get('/inventory', authorize(...allWorkshopRoles), workshopController.getInventory);
 router.post('/inventory', authorize(...purchasingRoles), workshopController.createInventoryItem);
 router.put('/inventory/:id', authorize(...purchasingRoles), workshopController.updateInventoryItem);
+router.put('/inventory/:id/approve', authorize(...managerRoles), workshopController.approveInventoryItem);
 router.delete('/inventory/:id', authorize(...managerRoles), workshopController.deleteInventoryItem);
 
 // ─── Maintenance Requests ───────────────────────────────

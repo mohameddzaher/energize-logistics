@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Loader2, X, Plus, Pencil, Trash2, AlertCircle,
   ChevronLeft, ChevronRight, Download, Search, AlertTriangle,
+  Check, XCircle,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 
@@ -25,6 +26,7 @@ interface InventoryItem {
   notes: string;
   lowStock: boolean;
   createdAt: string;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
 }
 
 const EMPTY_FORM = {
@@ -64,8 +66,15 @@ export default function InventoryPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Approval state
+  const [approvalFilter, setApprovalFilter] = useState('');
+  const [rejectModalId, setRejectModalId] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState('');
+  const [approving, setApproving] = useState<string | null>(null);
+
   const canEdit = user && ['super_admin', 'workshop_manager', 'purchasing'].includes(user.role);
   const canDelete = user && ['super_admin', 'workshop_manager'].includes(user.role);
+  const canApprove = user && ['super_admin', 'workshop_manager'].includes(user.role);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -73,6 +82,7 @@ export default function InventoryPage() {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (categoryFilter) params.append('category', categoryFilter);
+      if (approvalFilter) params.append('approvalStatus', approvalFilter);
       params.append('page', String(page));
       params.append('limit', String(limit));
       const data = await api.get<any>(`/api/workshop/inventory?${params.toString()}`);
@@ -83,7 +93,7 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, categoryFilter, page]);
+  }, [searchTerm, categoryFilter, approvalFilter, page]);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
@@ -163,6 +173,20 @@ export default function InventoryPage() {
       setError(err.message);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleApproval = async (id: string, status: 'approved' | 'rejected', note?: string) => {
+    try {
+      setApproving(id);
+      await api.put(`/api/workshop/inventory/${id}/approve`, { status, ...(note ? { note } : {}) });
+      setItems(prev => prev.map(x => x._id === id ? { ...x, approvalStatus: status } : x));
+      setRejectModalId(null);
+      setRejectNote('');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setApproving(null);
     }
   };
 
@@ -251,6 +275,19 @@ export default function InventoryPage() {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
+        {canApprove && (
+          <select
+            value={approvalFilter}
+            onChange={e => { setApprovalFilter(e.target.value); setPage(1); }}
+            aria-label={isAr ? 'تصفية حالة الموافقة' : 'Filter by approval status'}
+            className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
+          >
+            <option value="">{isAr ? 'كل الحالات' : 'All Statuses'}</option>
+            <option value="pending">{isAr ? 'قيد الانتظار' : 'Pending'}</option>
+            <option value="approved">{isAr ? 'موافق عليه' : 'Approved'}</option>
+            <option value="rejected">{isAr ? 'مرفوض' : 'Rejected'}</option>
+          </select>
+        )}
       </div>
 
       {/* Table */}
@@ -278,6 +315,7 @@ export default function InventoryPage() {
                   isAr ? 'التكلفة' : 'Cost',
                   isAr ? 'الموقع' : 'Location',
                   isAr ? 'المورد' : 'Supplier',
+                  isAr ? 'الموافقة' : 'Approval',
                   isAr ? 'إجراءات' : 'Actions',
                 ].map((h, i) => (
                   <th key={i} className="text-left text-gray-400 font-medium py-3 px-3 whitespace-nowrap">{h}</th>
@@ -310,6 +348,47 @@ export default function InventoryPage() {
                   <td className="py-3 px-3 text-gray-300">{item.costPrice ? item.costPrice.toLocaleString() : '-'}</td>
                   <td className="py-3 px-3 text-gray-300">{item.location || '-'}</td>
                   <td className="py-3 px-3 text-gray-300">{item.supplier || '-'}</td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-2">
+                      {item.approvalStatus === 'approved' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
+                          {isAr ? 'موافق عليه' : 'Approved'}
+                        </span>
+                      )}
+                      {item.approvalStatus === 'rejected' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400">
+                          {isAr ? 'مرفوض' : 'Rejected'}
+                        </span>
+                      )}
+                      {(!item.approvalStatus || item.approvalStatus === 'pending') && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
+                          {isAr ? 'قيد الانتظار' : 'Pending Approval'}
+                        </span>
+                      )}
+                      {canApprove && (!item.approvalStatus || item.approvalStatus === 'pending') && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleApproval(item._id, 'approved')}
+                            disabled={approving === item._id}
+                            className="p-1 rounded-md bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors disabled:opacity-50"
+                            title={isAr ? 'موافقة' : 'Approve'}
+                          >
+                            {approving === item._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setRejectModalId(item._id); setRejectNote(''); }}
+                            disabled={approving === item._id}
+                            className="p-1 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                            title={isAr ? 'رفض' : 'Reject'}
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2">
                       {canEdit && (
@@ -472,6 +551,54 @@ export default function InventoryPage() {
                     className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2">
                     {deleting && <Loader2 className="w-4 h-4 animate-spin" />}
                     {isAr ? 'حذف' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+      {/* Reject Modal */}
+      <AnimatePresence>
+        {rejectModalId && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-50" onClick={() => setRejectModalId(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                    <XCircle className="w-5 h-5 text-red-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-bold">{isAr ? 'رفض الصنف' : 'Reject Item'}</h3>
+                    <p className="text-gray-400 text-sm">{isAr ? 'أضف ملاحظة (اختياري)' : 'Add a note (optional)'}</p>
+                  </div>
+                </div>
+                <textarea
+                  value={rejectNote}
+                  onChange={e => setRejectNote(e.target.value)}
+                  placeholder={isAr ? 'سبب الرفض...' : 'Reason for rejection...'}
+                  rows={3}
+                  className={inputClass}
+                />
+                <div className="flex justify-end gap-3">
+                  <button type="button" onClick={() => setRejectModalId(null)} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm font-medium">
+                    {isAr ? 'إلغاء' : 'Cancel'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApproval(rejectModalId, 'rejected', rejectNote || undefined)}
+                    disabled={approving === rejectModalId}
+                    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {approving === rejectModalId && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {isAr ? 'رفض' : 'Reject'}
                   </button>
                 </div>
               </div>

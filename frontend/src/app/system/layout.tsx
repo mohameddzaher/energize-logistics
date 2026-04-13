@@ -89,6 +89,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'moderator'], section: 'Operations' },
+    { href: '/system/vehicle-analytics', label: lang === 'ar' ? 'تحليلات المركبات' : 'Vehicle Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    { href: '/system/vehicle-analytics/fuel', label: lang === 'ar' ? 'تحليل الوقود' : 'Fuel Analysis', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    { href: '/system/vehicle-analytics/tracking', label: lang === 'ar' ? 'تتبع GPS' : 'GPS Tracking', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    { href: '/system/vehicle-analytics/trips', label: lang === 'ar' ? 'الرحلات' : 'Trips', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    { href: '/system/vehicle-analytics/upload', label: lang === 'ar' ? 'رفع البيانات' : 'Data Upload', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
     // Workshop
     { href: '/system/workshop', label: L.workshop, icon: <Wrench className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
     { href: '/system/workshop/purchases', label: L.workshopPurchases, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'], section: 'Workshop' },

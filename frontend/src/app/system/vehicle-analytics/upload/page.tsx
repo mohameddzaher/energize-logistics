@@ -39,96 +39,181 @@ const initialSection: SectionState = {
 };
 
 function parsePetro(wb: XLSX.WorkBook): Record<string, any>[] {
-  const ws = wb.Sheets['Worksheet'];
-  if (!ws) throw new Error('Sheet "Worksheet" not found');
+  const ws = wb.Sheets['Worksheet'] || wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error('No worksheet found');
+
+  // Use raw array format, skip row 0 (company header), use row 1 as headers
   const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
-  if (raw.length < 3) throw new Error('Not enough rows in Worksheet');
-  const headers = ['num', 'branch', 'vehicle', 'model', 'year', 'fuel', 'consType', 'maxConsump', 'currentRate', 'status', 'category'];
+  if (raw.length < 3) throw new Error('Not enough rows');
+
+  // Row 1 (index 1) has headers - build header map
+  const headerRow = (raw[1] as any[]).map(h => String(h || '').trim().toLowerCase());
+
+  // Map possible header names to our field names
+  const headerMap: Record<string, string[]> = {
+    num: ['#', 'id', 'number', 'رقم'],
+    branch: ['branch', 'الفرع'],
+    vehicle: ['vehicle', 'plate', 'رقم اللوحة', 'المركبة'],
+    model: ['model', 'الموديل', 'النوع'],
+    year: ['year', 'السنة', 'سنة الصنع'],
+    fuel: ['fuel', 'الوقود', 'fuel type'],
+    consType: ['constype', 'consumption type', 'نوع الاستهلاك', 'type'],
+    maxConsump: ['maxconsump', 'max consumption', 'max', 'الحد الأقصى', 'maximum consumption'],
+    currentRate: ['currentrate', 'current rate', 'current', 'المعدل الحالي', 'current consumption'],
+    status: ['status', 'الحالة'],
+    category: ['category', 'الفئة', 'vehicle category'],
+  };
+
+  // Find column index for each field
+  const colIndex: Record<string, number> = {};
+  for (const [field, possibleNames] of Object.entries(headerMap)) {
+    const idx = headerRow.findIndex(h => possibleNames.some(n => h.includes(n.toLowerCase())));
+    if (idx >= 0) colIndex[field] = idx;
+  }
+
+  // If no header matching worked, fall back to position-based (original behavior)
+  if (Object.keys(colIndex).length < 5) {
+    const fallbackHeaders = ['num', 'branch', 'vehicle', 'model', 'year', 'fuel', 'consType', 'maxConsump', 'currentRate', 'status', 'category'];
+    fallbackHeaders.forEach((h, i) => { colIndex[h] = i; });
+  }
+
   const rows: Record<string, any>[] = [];
   for (let i = 2; i < raw.length; i++) {
     const r = raw[i] as any[];
-    if (!r || !r[2]) continue; // skip empty vehicle rows
+    if (!r || r.every(c => !c && c !== 0)) continue; // skip completely empty rows
+
     const obj: Record<string, any> = {};
-    headers.forEach((h, idx) => { obj[h] = r[idx] ?? ''; });
-    obj.vehicleId = vehicleDB.extractVehicleId('petro_app', String(r[2]));
+    for (const [field, idx] of Object.entries(colIndex)) {
+      obj[field] = r[idx] ?? '';
+    }
+
+    // Normalize vehicle ID
+    const vehiclePlate = String(obj.vehicle || '');
+    if (!vehiclePlate) continue;
+    obj.vehicleId = vehicleDB.extractVehicleId('petro_app', vehiclePlate);
+
+    // Parse numbers
+    obj.maxConsump = Number(obj.maxConsump) || 0;
+    obj.currentRate = Number(obj.currentRate) || 0;
+    obj.year = Number(obj.year) || 0;
+
     rows.push(obj);
   }
   return rows;
 }
 
 function parseLocationSolution(wb: XLSX.WorkBook): { movements: Record<string, any>[]; odometer: Record<string, any>[] } {
-  // Movements from "DISTANCE,SPEED" sheet
-  const movSheet = wb.Sheets['DISTANCE,SPEED'];
   const movements: Record<string, any>[] = [];
+  const odometer: Record<string, any>[] = [];
+
+  // Parse DISTANCE,SPEED sheet
+  const movSheet = wb.Sheets['DISTANCE,SPEED'];
   if (movSheet) {
     const data = XLSX.utils.sheet_to_json<any>(movSheet, { defval: '' });
-    const colMap: Record<string, string> = {
-      'Beginning': 'beginning', 'Initial location': 'initialLocation', 'End': 'end',
-      'Final location': 'finalLocation', 'Duration': 'duration', 'Distance': 'distance',
-      'Max speed': 'maxSpeed', 'Avg speed': 'avgSpeed',
-    };
     for (const row of data) {
-      const obj: Record<string, any> = {};
-      for (const [excelCol, key] of Object.entries(colMap)) {
-        obj[key] = row[excelCol] ?? '';
-      }
-      // Try to extract vehicleId from the row context or group name
-      obj.vehicleId = vehicleDB.extractVehicleId('gps_grouping', String(row['Unit'] || row['Vehicle'] || ''));
-      movements.push(obj);
+      const beginning = String(row['Beginning'] || row['بداية'] || '');
+      const end = String(row['End'] || row['نهاية'] || '');
+      const distance = Number(String(row['Distance'] || row['المسافة'] || '0').replace(/[^\d.]/g, '')) || 0;
+      const maxSpeed = Number(String(row['Max speed'] || row['أقصى سرعة'] || '0').replace(/[^\d.]/g, '')) || 0;
+      const avgSpeed = Number(String(row['Avg speed'] || row['متوسط السرعة'] || '0').replace(/[^\d.]/g, '')) || 0;
+
+      movements.push({
+        vehicleId: vehicleDB.extractVehicleId('gps_grouping', String(row['Unit'] || row['Grouping'] || row['المجموعة'] || '')),
+        beginning,
+        initialLocation: String(row['Initial location'] || row['الموقع الأول'] || ''),
+        end,
+        finalLocation: String(row['Final location'] || row['الموقع النهائي'] || ''),
+        duration: String(row['Duration'] || row['المدة'] || ''),
+        distance,
+        maxSpeed,
+        avgSpeed,
+      });
     }
   }
 
-  // Odometer from "Odometer Report" sheet
-  const odoSheet = wb.Sheets['Odometer Report'];
-  const odometer: Record<string, any>[] = [];
+  // Parse Odometer Report
+  const odoSheet = wb.Sheets['Odometer Report'] || wb.Sheets['تقرير العداد'];
   if (odoSheet) {
-    const raw = XLSX.utils.sheet_to_json<any[]>(odoSheet, { header: 1, defval: '' });
-    let currentVehicle = '';
-    let currentDriver = '';
-    for (const row of raw) {
-      const firstCell = String(row[0] || '').trim();
-      // Grouping rows contain vehicle info - e.g. "1234 - Driver Name"
-      if (firstCell && !firstCell.match(/^\d{4}[-/]/) && firstCell.match(/\d/)) {
-        const parts = firstCell.split(/\s*[-–]\s*/);
-        currentVehicle = vehicleDB.extractVehicleId('gps_grouping', parts[0] || '');
-        currentDriver = parts[1] || '';
-        continue;
-      }
-      // Data rows with date-like first cell
-      if (firstCell.match(/^\d{4}[-/]\d{2}/) && currentVehicle) {
+    const data = XLSX.utils.sheet_to_json<any>(odoSheet, { defval: '' });
+    for (const row of data) {
+      // The "Grouping" column has format: "1080 RXA سعيد اقبال"
+      const grouping = String(row['Grouping'] || row['التجميع'] || row[Object.keys(row)[0]] || '');
+      if (!grouping || !grouping.match(/\d/)) continue;
+
+      const vehicleId = vehicleDB.extractVehicleId('gps_grouping', grouping);
+      const parts = grouping.split(/\s+/);
+      const plateLetters = parts[1] || '';
+      const driver = parts.slice(2).join(' ');
+
+      // Total distance for this vehicle
+      const totalKm = Number(String(row['Total km'] || row['إجمالي الكم'] || row[Object.keys(row)[1]] || '0').replace(/[^\d.]/g, '')) || 0;
+      const beginOdo = Number(String(row['Begin odometer'] || row[Object.keys(row)[2]] || '0').replace(/[^\d.]/g, '')) || 0;
+      const endOdo = Number(String(row['End odometer'] || row[Object.keys(row)[3]] || '0').replace(/[^\d.]/g, '')) || 0;
+
+      if (vehicleId && (totalKm > 0 || endOdo > 0)) {
         odometer.push({
-          vehicleId: currentVehicle, driver: currentDriver,
-          date: row[0], initial: row[1], final: row[2], distance: row[3],
+          vehicleId,
+          plateLetters,
+          driver,
+          distance: totalKm,
+          beginOdometer: beginOdo,
+          endOdometer: endOdo,
         });
       }
     }
   }
+
   return { movements, odometer };
 }
 
 function parseHTTrips(wb: XLSX.WorkBook): { trips: Record<string, any>[]; kms: Record<string, any>[] } {
-  // Trips from "Row Data (2)"
-  const tripSheet = wb.Sheets['Row Data (2)'];
+  const tripSheet = wb.Sheets['Row Data (2)'] || wb.Sheets[wb.SheetNames[0]];
   const trips: Record<string, any>[] = [];
   if (tripSheet) {
     const data = XLSX.utils.sheet_to_json<any>(tripSheet, { defval: '' });
     const colMap: Record<string, string> = {
-      'الشهر': 'month', 'مسلسل': 'serial', 'نوع السياره': 'vehicleType',
-      'رقم السياره': 'vehicleNumber', 'سائق اول': 'driver1',
+      '#': 'num', 'الشهر': 'month', 'مسلسل': 'serial', 'نوع السياره': 'vehicleType',
+      'رقم السياره': 'vehicleNumber', 'سائق اول': 'driver1', 'سائق ثاني': 'driver2',
       'بدايه ال trip': 'tripStart', 'نهايه ال trip': 'tripEnd',
       'عدد الايام': 'days', 'الفرع': 'branch',
       'مكان التحميل': 'loadingPlace', 'مكان التنزيل': 'unloadingPlace',
       'نوع الدفع للايجار': 'rentalPaymentType', 'الايجار كامل': 'fullRental',
       'revenue': 'revenue', 'البيع': 'selling',
       'مصروف السائق الفعلي': 'actualDriverExpense',
+      'بانشر': 'puncture', 'قطع غيار': 'spareParts', 'غسيل / شحم': 'washing',
+      'وقود': 'fuelCost', 'عموله البيع قدام': 'salesCommission',
+      'عموله الدلال': 'brokerCommission', 'الجمعه': 'fridayBonus',
+      'بونص': 'bonus', 'اجمالى المصروفات': 'totalExpenses',
+      'اسم المصنع': 'manufacturer', 'نوع الحموله': 'cargoType',
+      'نوع العميل': 'clientType', 'العميل': 'client',
+      'المستحق': 'amountDue', 'علي عهده': 'custody',
+      'تم التحميل': 'loadedDone', 'تم النزيل': 'unloadedDone',
+      'تم ارسال صوره السند': 'receiptSent', 'تم تسليم السند': 'receiptDelivered',
+      'ملاحظات': 'notes', 'المسئول': 'supervisor',
+      'How to Collect': 'collectionMethod', 'مكان التحصيل': 'collectionPlace',
     };
+
+    const numericFields = new Set(['fullRental', 'revenue', 'selling', 'actualDriverExpense', 'puncture', 'spareParts', 'washing', 'fuelCost', 'salesCommission', 'brokerCommission', 'fridayBonus', 'bonus', 'totalExpenses', 'amountDue', 'days']);
+
     for (const row of data) {
       const obj: Record<string, any> = {};
+      // Map known Arabic columns
       for (const [arCol, key] of Object.entries(colMap)) {
-        obj[key] = row[arCol] ?? '';
+        if (row[arCol] !== undefined) obj[key] = row[arCol];
       }
-      for (const [k, v] of Object.entries(row)) { if (!Object.keys(colMap).includes(k) && !obj[k]) obj[k] = v; }
-      obj.vehicleId = String(obj.vehicleNumber || '');
+      // Also keep unmapped columns with their original names
+      for (const [k, v] of Object.entries(row)) {
+        if (!Object.keys(colMap).includes(k)) obj[k] = v;
+      }
+
+      // Parse numeric fields
+      for (const field of numericFields) {
+        if (obj[field] !== undefined) obj[field] = Number(obj[field]) || 0;
+      }
+
+      obj.vehicleId = String(obj.vehicleNumber || '').trim();
+      if (!obj.vehicleId) continue; // Skip rows with no vehicle
+
       trips.push(obj);
     }
   }
@@ -139,7 +224,9 @@ function parseHTTrips(wb: XLSX.WorkBook): { trips: Record<string, any>[]; kms: R
   if (kmsSheet) {
     const data = XLSX.utils.sheet_to_json<any>(kmsSheet, { defval: '' });
     for (const row of data) {
-      kms.push({ ...row, vehicleId: String(row['رقم السياره'] || row['Vehicle'] || '') });
+      const vehicleId = String(row['رقم السياره'] || row['Vehicle'] || row['Vehicle ID'] || row[Object.keys(row)[0]] || '').trim();
+      if (!vehicleId || !vehicleId.match(/\d/)) continue;
+      kms.push({ ...row, vehicleId });
     }
   }
   return { trips, kms };

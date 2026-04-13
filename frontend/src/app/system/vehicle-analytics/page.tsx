@@ -1,8 +1,10 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
-import { Truck, Activity, DollarSign, MapPin, Navigation, Route, TrendingUp, AlertTriangle, Search, Filter, ChevronUp, ChevronDown } from 'lucide-react';
+import { exportToExcel } from '@/utils/exportExcel';
+import { Truck, Activity, DollarSign, MapPin, Navigation, Route, TrendingUp, AlertTriangle, Search, Filter, ChevronUp, ChevronDown, Download } from 'lucide-react';
 
 const T = (lang: string) => lang === 'ar' ? {
   title: 'تحليلات المركبات', totalFleet: 'إجمالي الأسطول', activeVehicles: 'المركبات النشطة',
@@ -15,6 +17,15 @@ const T = (lang: string) => lang === 'ar' ? {
   trips: 'الرحلات', revenue: 'الإيرادات', expenses: 'المصروفات', allVehicles: 'كل المركبات',
   allBranches: 'كل الفروع', allTypes: 'كل الأنواع', from: 'من', to: 'إلى', noData: 'لا توجد بيانات',
   loading: 'جاري التحميل...', search: 'بحث...', top15: 'أعلى 15',
+  manageData: 'إدارة البيانات', clearAll: 'مسح الكل', clearConfirm: 'هل أنت متأكد من مسح جميع بيانات تحليلات المركبات؟ لا يمكن التراجع.',
+  cancel: 'إلغاء', confirm: 'نعم، مسح الكل', exportExcel: 'تصدير Excel',
+  revenuePerKm: 'الإيراد لكل كم', driverLeaderboard: 'ترتيب السائقين', totalRev: 'إجمالي الإيرادات',
+  revenuePerTrip: 'الإيراد/رحلة', totalKms: 'إجمالي الكم', routeAnalysis: 'تحليل المسارات',
+  route: 'المسار', tripCount: 'عدد الرحلات', avgRevenue: 'متوسط الإيراد', avgDays: 'متوسط الأيام',
+  branchComparison: 'مقارنة الفروع', vehicles: 'المركبات', vehicleUtilization: 'استخدام المركبات',
+  activeDays: 'أيام نشطة', idleDays: 'أيام خمول', utilization: 'نسبة الاستخدام %',
+  complianceOverview: 'نظرة على الامتثال', loaded: 'تم التحميل', unloaded: 'تم النزيل',
+  photoSent: 'تم إرسال الصورة', receiptDelivered: 'تم تسليم السند',
 } : {
   title: 'Vehicle Analytics', totalFleet: 'Total Fleet', activeVehicles: 'Active Vehicles',
   totalRevenue: 'Total Revenue', totalGpsKm: 'Total GPS KMs', totalTrips: 'Total Trips',
@@ -26,24 +37,37 @@ const T = (lang: string) => lang === 'ar' ? {
   trips: 'Trips', revenue: 'Revenue', expenses: 'Expenses', allVehicles: 'All Vehicles',
   allBranches: 'All Branches', allTypes: 'All Types', from: 'From', to: 'To', noData: 'No data uploaded yet',
   loading: 'Loading...', search: 'Search...', top15: 'Top 15',
+  manageData: 'Manage Data', clearAll: 'Clear All', clearConfirm: 'Are you sure you want to clear ALL vehicle analytics data? This cannot be undone.',
+  cancel: 'Cancel', confirm: 'Yes, Clear All', exportExcel: 'Export Excel',
+  revenuePerKm: 'Revenue per KM', driverLeaderboard: 'Driver Leaderboard', totalRev: 'Total Revenue',
+  revenuePerTrip: 'Rev/Trip', totalKms: 'Total KMs', routeAnalysis: 'Route Analysis',
+  route: 'Route', tripCount: 'Trip Count', avgRevenue: 'Avg Revenue', avgDays: 'Avg Days',
+  branchComparison: 'Branch Comparison', vehicles: 'Vehicles', vehicleUtilization: 'Vehicle Utilization',
+  activeDays: 'Active Days', idleDays: 'Idle Days', utilization: 'Utilization %',
+  complianceOverview: 'Compliance Overview', loaded: 'Loaded', unloaded: 'Unloaded',
+  photoSent: 'Photo Sent', receiptDelivered: 'Receipt Delivered',
 };
 
-interface RawPetro { vehicleId: string; vehicleModel?: string; branch?: string; driver?: string; status?: string; fuelConsumption?: number; vehicleType?: string; [k: string]: any }
-interface RawGpsOdo { vehicleId: string; totalKm?: number; avgSpeed?: number; [k: string]: any }
-interface RawHtTrip { vehicleId: string; driver?: string; revenue?: number; expenses?: number; month?: string; tripCount?: number; [k: string]: any }
-interface RawHtKms { vehicleId: string; totalKm?: number; [k: string]: any }
+interface RawPetro { vehicleId: string; vehicle?: string; model?: string; branch?: string; driver?: string; status?: string; maxConsump?: number; currentRate?: number; fuel?: string; category?: string; consType?: string; [k: string]: any }
+interface RawGpsOdo { vehicleId: string; distance?: number | string; driver?: string; date?: string; initial?: number | string; final?: number | string; [k: string]: any }
+interface RawGpsMov { vehicleId: string; distance?: number | string; maxSpeed?: number | string; avgSpeed?: number | string; [k: string]: any }
+interface RawHtTrip { vehicleId: string; driver1?: string; revenue?: number; selling?: number; actualDriverExpense?: number; month?: string; branch?: string; [k: string]: any }
+interface RawHtKms { vehicleId: string; [k: string]: any }
 
 type SortKey = 'vehicleId' | 'revenue' | 'gpsKm' | 'trips' | 'fuelPct';
 
 export default function VehicleAnalyticsPage() {
   const { lang } = useLanguage();
   const t = T(lang);
+  const router = useRouter();
 
   const [petro, setPetro] = useState<RawPetro[]>([]);
   const [gpsOdo, setGpsOdo] = useState<RawGpsOdo[]>([]);
+  const [gpsMov, setGpsMov] = useState<RawGpsMov[]>([]);
   const [htTrips, setHtTrips] = useState<RawHtTrip[]>([]);
   const [htKms, setHtKms] = useState<RawHtKms[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Filters
   const [vehicleFilter, setVehicleFilter] = useState('');
@@ -57,92 +81,121 @@ export default function VehicleAnalyticsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [p, g, h, k] = await Promise.all([
+        const [p, g, gm, h, k] = await Promise.all([
           vehicleDB.getAll<RawPetro>(vehicleDB.STORES.PETRO),
           vehicleDB.getAll<RawGpsOdo>(vehicleDB.STORES.GPS_ODOMETER),
+          vehicleDB.getAll<RawGpsMov>(vehicleDB.STORES.GPS_MOVEMENTS),
           vehicleDB.getAll<RawHtTrip>(vehicleDB.STORES.HT_TRIPS),
           vehicleDB.getAll<RawHtKms>(vehicleDB.STORES.HT_KMS),
         ]);
-        setPetro(p); setGpsOdo(g); setHtTrips(h); setHtKms(k);
+        setPetro(p); setGpsOdo(g); setGpsMov(gm); setHtTrips(h); setHtKms(k);
       } catch { /* empty db */ }
       setLoading(false);
     })();
   }, []);
 
+  const handleClearAll = async () => {
+    await vehicleDB.clearAll();
+    setPetro([]); setGpsOdo([]); setGpsMov([]); setHtTrips([]); setHtKms([]);
+    setShowClearConfirm(false);
+  };
+
+  const handleExport = () => {
+    exportToExcel(vehicleTable, [
+      { header: t.vehicle, key: 'vehicleId' }, { header: t.model, key: 'model' },
+      { header: t.branch, key: 'branch' }, { header: t.driver, key: 'driver' },
+      { header: t.status, key: 'status' }, { header: t.fuelPct, key: 'fuelPct', transform: (v: number) => v > 0 ? v.toFixed(0) + '%' : '' },
+      { header: t.gpsKm, key: 'gpsKm', transform: (v: number) => v > 0 ? Math.round(v) : '' },
+      { header: t.avgSpeed, key: 'avgSpeed', transform: (v: number) => v > 0 ? v.toFixed(0) : '' },
+      { header: t.trips, key: 'trips' }, { header: t.revenue, key: 'revenue' }, { header: t.expenses, key: 'expenses' },
+    ], 'vehicle-analytics-dashboard', 'Dashboard');
+  };
+
   // Derive filter options
-  const allVehicleIds = useMemo(() => [...new Set([...petro.map(r => r.vehicleId), ...gpsOdo.map(r => r.vehicleId), ...htTrips.map(r => r.vehicleId)])].sort(), [petro, gpsOdo, htTrips]);
-  const allBranches = useMemo(() => [...new Set(petro.map(r => r.branch).filter(Boolean))].sort() as string[], [petro]);
-  const allTypes = useMemo(() => [...new Set(petro.map(r => r.vehicleType).filter(Boolean))].sort() as string[], [petro]);
+  const parseNum = (v: any): number => { const n = parseFloat(String(v || '0').replace(/[^\d.-]/g, '')); return isNaN(n) ? 0 : n; };
+
+  const allVehicleIds = useMemo(() => [...new Set([...petro.map(r => r.vehicleId), ...gpsOdo.map(r => r.vehicleId), ...gpsMov.map(r => r.vehicleId), ...htTrips.map(r => r.vehicleId)])].sort(), [petro, gpsOdo, gpsMov, htTrips]);
+  const allBranches = useMemo(() => [...new Set(petro.map(r => String(r.branch || '')).filter(Boolean))].sort() as string[], [petro]);
+  const allTypes = useMemo(() => [...new Set(petro.map(r => String(r.category || '')).filter(Boolean))].sort() as string[], [petro]);
 
   // Filtered data
   const filtered = useMemo(() => {
     const vSet = vehicleFilter ? new Set([vehicleFilter]) : null;
     const bSet = branchFilter ? new Set(petro.filter(r => r.branch === branchFilter).map(r => r.vehicleId)) : null;
-    const tSet = typeFilter ? new Set(petro.filter(r => r.vehicleType === typeFilter).map(r => r.vehicleId)) : null;
+    const tSet = typeFilter ? new Set(petro.filter(r => String(r.category || '') === typeFilter).map(r => r.vehicleId)) : null;
     const pass = (vid: string) => (!vSet || vSet.has(vid)) && (!bSet || bSet.has(vid)) && (!tSet || tSet.has(vid));
     const inDateRange = (m?: string) => { if (!dateFrom && !dateTo) return true; if (!m) return true; return (!dateFrom || m >= dateFrom) && (!dateTo || m <= dateTo); };
     return {
       petro: petro.filter(r => pass(r.vehicleId)),
       gpsOdo: gpsOdo.filter(r => pass(r.vehicleId)),
-      htTrips: htTrips.filter(r => pass(r.vehicleId) && inDateRange(r.month)),
+      gpsMov: gpsMov.filter(r => pass(r.vehicleId)),
+      htTrips: htTrips.filter(r => pass(r.vehicleId) && inDateRange(String(r.month || ''))),
       htKms: htKms.filter(r => pass(r.vehicleId)),
     };
-  }, [petro, gpsOdo, htTrips, htKms, vehicleFilter, branchFilter, typeFilter, dateFrom, dateTo]);
+  }, [petro, gpsOdo, gpsMov, htTrips, htKms, vehicleFilter, branchFilter, typeFilter, dateFrom, dateTo]);
 
   // KPIs
   const kpis = useMemo(() => {
     const totalFleet = new Set(filtered.petro.map(r => r.vehicleId)).size || allVehicleIds.length;
-    const activeVehicles = filtered.petro.filter(r => r.status?.toLowerCase() === 'active').length;
-    const totalRevenue = filtered.htTrips.reduce((s, r) => s + (r.revenue || 0), 0);
-    const totalExpenses = filtered.htTrips.reduce((s, r) => s + (r.expenses || 0), 0);
-    const totalGpsKm = filtered.gpsOdo.reduce((s, r) => s + (r.totalKm || 0), 0);
-    const totalTrips = filtered.htTrips.reduce((s, r) => s + (r.tripCount || 1), 0);
-    const fleetKms = filtered.htKms.reduce((s, r) => s + (r.totalKm || 0), 0);
+    const activeVehicles = filtered.petro.filter(r => String(r.status || '').toLowerCase() === 'active').length;
+    const totalRevenue = filtered.htTrips.reduce((s, r) => s + parseNum(r.revenue || r.selling), 0);
+    const totalExpenses = filtered.htTrips.reduce((s, r) => s + parseNum(r.actualDriverExpense), 0);
+    const totalGpsKm = filtered.gpsOdo.reduce((s, r) => s + parseNum(r.distance), 0);
+    const totalTrips = filtered.htTrips.length;
+    const fleetKms = filtered.htKms.reduce((s, r) => {
+      // HT KMs rows may have various column names from Arabic headers
+      const vals = Object.values(r).filter(v => typeof v === 'number' && v > 0);
+      return s + (vals.length > 0 ? Math.max(...vals) : 0);
+    }, 0);
     const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue * 100) : 0;
-    const fuelAlerts = filtered.petro.filter(r => (r.fuelConsumption || 0) > 90).length;
-    const speedAlerts = filtered.gpsOdo.filter(r => (r.avgSpeed || 0) > 120).length;
-    const inactiveAlerts = filtered.petro.filter(r => r.status?.toLowerCase() !== 'active').length;
+    const fuelAlerts = filtered.petro.filter(r => {
+      const max = parseNum(r.maxConsump);
+      const cur = parseNum(r.currentRate);
+      return max > 0 && (cur / max) * 100 > 90;
+    }).length;
+    const speedAlerts = filtered.gpsMov.filter(r => parseNum(r.maxSpeed) > 120).length;
+    const inactiveAlerts = filtered.petro.filter(r => String(r.status || '').toLowerCase() !== 'active').length;
     return { totalFleet, activeVehicles, totalRevenue, totalGpsKm, totalTrips, fleetKms, profitMargin, alerts: fuelAlerts + speedAlerts + inactiveAlerts };
   }, [filtered, allVehicleIds]);
 
   // Chart data
   const revenueByVehicle = useMemo(() => {
     const map: Record<string, number> = {};
-    filtered.htTrips.forEach(r => { map[r.vehicleId] = (map[r.vehicleId] || 0) + (r.revenue || 0); });
+    filtered.htTrips.forEach(r => { map[r.vehicleId] = (map[r.vehicleId] || 0) + parseNum(r.revenue || r.selling); });
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 15);
   }, [filtered.htTrips]);
 
   const monthlyRevenue = useMemo(() => {
     const map: Record<string, number> = {};
-    filtered.htTrips.forEach(r => { if (r.month) map[r.month] = (map[r.month] || 0) + (r.revenue || 0); });
+    filtered.htTrips.forEach(r => { const m = String(r.month || ''); if (m) map[m] = (map[m] || 0) + parseNum(r.revenue || r.selling); });
     return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filtered.htTrips]);
 
   const fleetByCategory = useMemo(() => {
     const map: Record<string, number> = {};
-    filtered.petro.forEach(r => { const cat = r.vehicleType || 'Other'; map[cat] = (map[cat] || 0) + 1; });
+    filtered.petro.forEach(r => { const cat = String(r.category || '') || 'Other'; map[cat] = (map[cat] || 0) + 1; });
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [filtered.petro]);
 
   const distanceRanking = useMemo(() => {
     const map: Record<string, number> = {};
-    filtered.gpsOdo.forEach(r => { map[r.vehicleId] = (map[r.vehicleId] || 0) + (r.totalKm || 0); });
+    filtered.gpsOdo.forEach(r => { map[r.vehicleId] = (map[r.vehicleId] || 0) + parseNum(r.distance); });
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 15);
   }, [filtered.gpsOdo]);
 
   const driverPerf = useMemo(() => {
     const map: Record<string, { revenue: number; trips: number; km: number }> = {};
     filtered.htTrips.forEach(r => {
-      const d = r.driver || 'Unknown';
+      const d = String(r.driver1 || '') || 'Unknown';
       if (!map[d]) map[d] = { revenue: 0, trips: 0, km: 0 };
-      map[d].revenue += r.revenue || 0;
-      map[d].trips += r.tripCount || 1;
+      map[d].revenue += parseNum(r.revenue || r.selling);
+      map[d].trips += 1;
     });
     filtered.gpsOdo.forEach(r => {
       const pet = petro.find(p => p.vehicleId === r.vehicleId);
-      const d = pet?.driver || 'Unknown';
+      const d = String(pet?.driver || r.driver || '') || 'Unknown';
       if (!map[d]) map[d] = { revenue: 0, trips: 0, km: 0 };
-      map[d].km += r.totalKm || 0;
+      map[d].km += parseNum(r.distance);
     });
     return Object.entries(map).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 20);
   }, [filtered, petro]);
@@ -151,13 +204,80 @@ export default function VehicleAnalyticsPage() {
   const vehicleTable = useMemo(() => {
     const map: Record<string, { vehicleId: string; model: string; branch: string; driver: string; status: string; fuelPct: number; gpsKm: number; avgSpeed: number; trips: number; revenue: number; expenses: number }> = {};
     const ensure = (vid: string) => { if (!map[vid]) map[vid] = { vehicleId: vid, model: '', branch: '', driver: '', status: '', fuelPct: 0, gpsKm: 0, avgSpeed: 0, trips: 0, revenue: 0, expenses: 0 }; };
-    filtered.petro.forEach(r => { ensure(r.vehicleId); map[r.vehicleId].model = r.vehicleModel || ''; map[r.vehicleId].branch = r.branch || ''; map[r.vehicleId].driver = r.driver || ''; map[r.vehicleId].status = r.status || ''; map[r.vehicleId].fuelPct = r.fuelConsumption || 0; });
-    filtered.gpsOdo.forEach(r => { ensure(r.vehicleId); map[r.vehicleId].gpsKm += r.totalKm || 0; map[r.vehicleId].avgSpeed = r.avgSpeed || map[r.vehicleId].avgSpeed; });
-    filtered.htTrips.forEach(r => { ensure(r.vehicleId); map[r.vehicleId].trips += r.tripCount || 1; map[r.vehicleId].revenue += r.revenue || 0; map[r.vehicleId].expenses += r.expenses || 0; if (r.driver && !map[r.vehicleId].driver) map[r.vehicleId].driver = r.driver; });
+    filtered.petro.forEach(r => {
+      ensure(r.vehicleId);
+      map[r.vehicleId].model = String(r.model || '');
+      map[r.vehicleId].branch = String(r.branch || '');
+      map[r.vehicleId].status = String(r.status || '');
+      const max = parseNum(r.maxConsump);
+      const cur = parseNum(r.currentRate);
+      map[r.vehicleId].fuelPct = max > 0 ? (cur / max) * 100 : 0;
+    });
+    filtered.gpsOdo.forEach(r => { ensure(r.vehicleId); map[r.vehicleId].gpsKm += parseNum(r.distance); if (r.driver && !map[r.vehicleId].driver) map[r.vehicleId].driver = String(r.driver); });
+    filtered.gpsMov.forEach(r => { ensure(r.vehicleId); const spd = parseNum(r.avgSpeed); if (spd > map[r.vehicleId].avgSpeed) map[r.vehicleId].avgSpeed = spd; });
+    filtered.htTrips.forEach(r => { ensure(r.vehicleId); map[r.vehicleId].trips += 1; map[r.vehicleId].revenue += parseNum(r.revenue || r.selling); map[r.vehicleId].expenses += parseNum(r.actualDriverExpense); if (r.driver1 && !map[r.vehicleId].driver) map[r.vehicleId].driver = String(r.driver1); });
     const arr = Object.values(map);
     arr.sort((a, b) => sortAsc ? (a[sortKey] > b[sortKey] ? 1 : -1) : (a[sortKey] < b[sortKey] ? 1 : -1));
     return arr;
   }, [filtered, sortKey, sortAsc]);
+
+  // Revenue per KM
+  const revenuePerKm = useMemo(() => {
+    return vehicleTable.filter(v => v.gpsKm > 0 && v.revenue > 0).map(v => ({ vehicleId: v.vehicleId, ratio: v.revenue / v.gpsKm })).sort((a, b) => b.ratio - a.ratio).slice(0, 15);
+  }, [vehicleTable]);
+
+  // Route Analysis
+  const routeAnalysis = useMemo(() => {
+    const map: Record<string, { count: number; totalRev: number; totalDays: number }> = {};
+    filtered.htTrips.forEach(r => {
+      const from = String((r as any).loadingPlace || '').trim() || '?';
+      const to = String((r as any).unloadingPlace || '').trim() || '?';
+      const key = `${from} → ${to}`;
+      if (!map[key]) map[key] = { count: 0, totalRev: 0, totalDays: 0 };
+      map[key].count += 1;
+      map[key].totalRev += parseNum(r.revenue || r.selling);
+      map[key].totalDays += parseNum((r as any).days);
+    });
+    return Object.entries(map).sort((a, b) => b[1].totalRev - a[1].totalRev).slice(0, 15);
+  }, [filtered.htTrips]);
+
+  // Branch Comparison
+  const branchComparison = useMemo(() => {
+    const map: Record<string, { vehicles: Set<string>; revenue: number; trips: number }> = {};
+    filtered.petro.forEach(r => { const b = String(r.branch || '') || 'Other'; if (!map[b]) map[b] = { vehicles: new Set(), revenue: 0, trips: 0 }; map[b].vehicles.add(r.vehicleId); });
+    filtered.htTrips.forEach(r => { const b = String(r.branch || '') || 'Other'; if (!map[b]) map[b] = { vehicles: new Set(), revenue: 0, trips: 0 }; map[b].vehicles.add(r.vehicleId); map[b].revenue += parseNum(r.revenue || r.selling); map[b].trips += 1; });
+    return Object.entries(map).map(([branch, d]) => ({ branch, vehicles: d.vehicles.size, revenue: d.revenue, trips: d.trips, avgRev: d.vehicles.size > 0 ? d.revenue / d.vehicles.size : 0 })).sort((a, b) => b.revenue - a.revenue);
+  }, [filtered.petro, filtered.htTrips]);
+
+  // Vehicle Utilization
+  const vehicleUtilization = useMemo(() => {
+    const tripDays: Record<string, Set<string>> = {};
+    filtered.htTrips.forEach(r => { if (!tripDays[r.vehicleId]) tripDays[r.vehicleId] = new Set(); const m = String(r.month || ''); if (m) tripDays[r.vehicleId].add(m); });
+    const allMonths = new Set<string>();
+    filtered.htTrips.forEach(r => { const m = String(r.month || ''); if (m) allMonths.add(m); });
+    const totalPeriods = Math.max(allMonths.size, 1);
+    return Object.entries(tripDays).map(([vid, months]) => {
+      const active = months.size;
+      const idle = totalPeriods - active;
+      const pct = (active / totalPeriods) * 100;
+      return { vehicleId: vid, active, idle, pct };
+    }).sort((a, b) => b.pct - a.pct).slice(0, 20);
+  }, [filtered.htTrips]);
+
+  // Compliance Overview
+  const compliance = useMemo(() => {
+    const total = filtered.htTrips.length || 1;
+    const check = (field: string, keyword: string) => filtered.htTrips.filter(r => String((r as any)[field] || '').includes(keyword)).length;
+    // Check all string fields for compliance flags
+    const checkAny = (keyword: string) => filtered.htTrips.filter(r => Object.values(r).some(v => String(v || '').includes(keyword))).length;
+    return {
+      loaded: checkAny('تم التحميل'),
+      unloaded: checkAny('تم النزيل'),
+      photoSent: checkAny('تم ارسال صوره السند') || checkAny('تم ارسال صورة السند'),
+      receiptDelivered: checkAny('تم تسليم السند'),
+      total,
+    };
+  }, [filtered.htTrips]);
 
   const toggleSort = (key: SortKey) => { if (sortKey === key) setSortAsc(!sortAsc); else { setSortKey(key); setSortAsc(false); } };
   const SortIcon = ({ k }: { k: SortKey }) => sortKey === k ? (sortAsc ? <ChevronUp className="w-3 h-3 inline" /> : <ChevronDown className="w-3 h-3 inline" />) : null;
@@ -177,12 +297,36 @@ export default function VehicleAnalyticsPage() {
     { label: t.alerts, value: kpis.alerts, icon: AlertTriangle, color: kpis.alerts > 0 ? 'text-amber-400' : 'text-gray-400', bg: kpis.alerts > 0 ? 'bg-amber-400/10' : 'bg-gray-700/50' },
   ];
 
-  const hasData = petro.length > 0 || gpsOdo.length > 0 || htTrips.length > 0;
+  const hasData = petro.length > 0 || gpsOdo.length > 0 || gpsMov.length > 0 || htTrips.length > 0;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+      {/* Header + Actions */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+        <div className="flex items-center gap-2">
+          {hasData && <button onClick={handleExport} className="px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1"><Download className="w-4 h-4" /> {t.exportExcel}</button>}
+          <button onClick={() => router.push('/system/vehicle-analytics/upload')} className="px-3 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm hover:bg-gray-600">
+            {lang === 'ar' ? 'إدارة البيانات' : 'Manage Data'}
+          </button>
+          <button onClick={() => setShowClearConfirm(true)} className="px-3 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30">
+            {t.clearAll}
+          </button>
+        </div>
+      </div>
+
+      {/* Clear Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setShowClearConfirm(false)}>
+          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <p className="text-white mb-4">{t.clearConfirm}</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowClearConfirm(false)} className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm hover:bg-gray-600">{t.cancel}</button>
+              <button onClick={handleClearAll} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">{t.confirm}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="sticky top-0 z-20 bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-wrap gap-3 items-center">
@@ -322,7 +466,7 @@ export default function VehicleAnalyticsPage() {
                       <td className="py-2 px-2 text-gray-300">{row.branch || '-'}</td>
                       <td className="py-2 px-2 text-gray-300">{row.driver || '-'}</td>
                       <td className="py-2 px-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${row.status?.toLowerCase() === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-gray-600 text-gray-300'}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${String(row.status || '').toLowerCase() === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-gray-600 text-gray-300'}`}>
                           {row.status || '-'}
                         </span>
                       </td>
@@ -338,6 +482,128 @@ export default function VehicleAnalyticsPage() {
               </table>
             </div>
           </div>
+
+          {/* Revenue per KM */}
+          {revenuePerKm.length > 0 && (
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <h3 className="text-white font-semibold mb-3">{t.revenuePerKm}</h3>
+              <div className="space-y-2 max-h-[360px] overflow-y-auto">
+                {revenuePerKm.map((item, i) => (
+                  <div key={item.vehicleId} className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-500 w-6 text-right shrink-0">{i + 1}</span>
+                    <span className="text-gray-300 w-24 shrink-0 truncate">{item.vehicleId}</span>
+                    <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
+                      <div className="bg-amber-500 h-full rounded-full" style={{ width: `${(item.ratio / (revenuePerKm[0]?.ratio || 1)) * 100}%` }} />
+                    </div>
+                    <span className="text-amber-400 w-20 text-right">{item.ratio.toFixed(1)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Driver Leaderboard */}
+          {driverPerf.length > 0 && (
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <h3 className="text-white font-semibold mb-3">{t.driverLeaderboard}</h3>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-gray-400 border-b border-gray-700">
+                  <th className="text-left py-2 px-3">#</th><th className="text-left py-2 px-3">{t.driver}</th>
+                  <th className="text-right py-2 px-3">{t.totalRev}</th><th className="text-right py-2 px-3">{t.trips}</th>
+                  <th className="text-right py-2 px-3">{t.revenuePerTrip}</th><th className="text-right py-2 px-3">{t.totalKms}</th>
+                </tr></thead>
+                <tbody>{driverPerf.map(([driver, data], i) => (
+                  <tr key={driver} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                    <td className="py-2 px-3 text-gray-500">{i + 1}</td><td className="py-2 px-3 text-white">{driver}</td>
+                    <td className="py-2 px-3 text-right text-emerald-400">{fmtNum(data.revenue)}</td>
+                    <td className="py-2 px-3 text-right text-gray-300">{data.trips}</td>
+                    <td className="py-2 px-3 text-right text-cyan-400">{data.trips > 0 ? fmtNum(data.revenue / data.trips) : '-'}</td>
+                    <td className="py-2 px-3 text-right text-purple-400">{fmtNum(data.km)}</td>
+                  </tr>))}
+                </tbody>
+              </table></div>
+            </div>
+          )}
+
+          {/* Route Analysis */}
+          {routeAnalysis.length > 0 && (
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <h3 className="text-white font-semibold mb-3">{t.routeAnalysis}</h3>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-gray-400 border-b border-gray-700">
+                  <th className="text-left py-2 px-3">{t.route}</th><th className="text-right py-2 px-3">{t.tripCount}</th>
+                  <th className="text-right py-2 px-3">{t.avgRevenue}</th><th className="text-right py-2 px-3">{t.avgDays}</th>
+                  <th className="text-right py-2 px-3">{t.totalRev}</th>
+                </tr></thead>
+                <tbody>{routeAnalysis.map(([route, data]) => (
+                  <tr key={route} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                    <td className="py-2 px-3 text-white text-xs">{route}</td>
+                    <td className="py-2 px-3 text-right text-gray-300">{data.count}</td>
+                    <td className="py-2 px-3 text-right text-cyan-400">{fmtNum(data.totalRev / data.count)}</td>
+                    <td className="py-2 px-3 text-right text-gray-300">{data.count > 0 ? (data.totalDays / data.count).toFixed(1) : '-'}</td>
+                    <td className="py-2 px-3 text-right text-emerald-400">{fmtNum(data.totalRev)}</td>
+                  </tr>))}
+                </tbody>
+              </table></div>
+            </div>
+          )}
+
+          {/* Branch Comparison */}
+          {branchComparison.length > 0 && (
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <h3 className="text-white font-semibold mb-3">{t.branchComparison}</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {branchComparison.map(b => (
+                  <div key={b.branch} className="bg-gray-700/40 rounded-lg p-3 border border-gray-600/50">
+                    <p className="text-white font-medium mb-2 truncate">{b.branch}</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div><span className="text-gray-400">{t.vehicles}:</span> <span className="text-blue-400 font-bold">{b.vehicles}</span></div>
+                      <div><span className="text-gray-400">{t.trips}:</span> <span className="text-cyan-400 font-bold">{b.trips}</span></div>
+                      <div><span className="text-gray-400">{t.totalRev}:</span> <span className="text-emerald-400 font-bold">{fmtNum(b.revenue)}</span></div>
+                      <div><span className="text-gray-400">{t.avgRevenue}:</span> <span className="text-amber-400 font-bold">{fmtNum(b.avgRev)}</span></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Vehicle Utilization */}
+          {vehicleUtilization.length > 0 && (
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <h3 className="text-white font-semibold mb-3">{t.vehicleUtilization}</h3>
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {vehicleUtilization.map(v => (
+                  <div key={v.vehicleId} className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-300 w-24 shrink-0 truncate">{v.vehicleId}</span>
+                    <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
+                      <div className={`h-full rounded-full ${v.pct >= 75 ? 'bg-green-500' : v.pct >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${v.pct}%` }} />
+                    </div>
+                    <span className={`w-14 text-right text-xs font-medium ${v.pct >= 75 ? 'text-green-400' : v.pct >= 40 ? 'text-amber-400' : 'text-red-400'}`}>{v.pct.toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Compliance Overview */}
+          {filtered.htTrips.length > 0 && (
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <h3 className="text-white font-semibold mb-3">{t.complianceOverview}</h3>
+              <div className="space-y-3">
+                {[{ label: t.loaded, value: compliance.loaded }, { label: t.unloaded, value: compliance.unloaded },
+                  { label: t.photoSent, value: compliance.photoSent }, { label: t.receiptDelivered, value: compliance.receiptDelivered }].map(item => {
+                  const pct = (item.value / compliance.total) * 100;
+                  return (
+                    <div key={item.label}>
+                      <div className="flex justify-between text-sm mb-1"><span className="text-gray-300">{item.label}</span><span className="text-gray-400">{item.value}/{compliance.total} ({pct.toFixed(0)}%)</span></div>
+                      <div className="bg-gray-700 rounded-full h-3 overflow-hidden"><div className={`h-full rounded-full ${pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${pct}%` }} /></div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

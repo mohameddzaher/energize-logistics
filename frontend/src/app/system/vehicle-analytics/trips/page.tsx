@@ -2,7 +2,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
-import { Truck, DollarSign, TrendingUp, Calendar, Users, Building2, Search, Filter, ArrowRight, Receipt } from 'lucide-react';
+import { exportToExcel } from '@/utils/exportExcel';
+import { Truck, DollarSign, TrendingUp, Calendar, Users, Building2, Search, Filter, ArrowRight, Receipt, Download } from 'lucide-react';
 
 const T = (lang: string) => lang === 'ar' ? {
   title: 'الرحلات', totalTrips: 'إجمالي الرحلات', totalRevenue: 'إجمالي الإيرادات',
@@ -129,7 +130,24 @@ export default function TripsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+        {filtered.length > 0 && (
+          <button type="button" onClick={() => exportToExcel(filtered.map(r => ({
+            month: r.month || '', vehicle: r.vehicleNumber || r.vehicleId, driver: r.driver1 || '',
+            from: r.loadingPlace || '', to: r.unloadingPlace || '', days: parseNum(r.days),
+            revenue: parseNum(r.revenue), expenses: parseNum(r.actualDriverExpense),
+            client: r.rentalPaymentType || '', branch: r.branch || '',
+          })), [
+            { header: t.month, key: 'month' }, { header: t.vehicle, key: 'vehicle' }, { header: t.driver, key: 'driver' },
+            { header: t.from, key: 'from' }, { header: t.to, key: 'to' }, { header: t.days, key: 'days' },
+            { header: t.revenue, key: 'revenue' }, { header: t.expenses, key: 'expenses' },
+            { header: t.client, key: 'client' }, { header: t.branch, key: 'branch' },
+          ], 'trips-data', 'Trips')} className="px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
+            <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+          </button>
+        )}
+      </div>
 
       {/* Filters */}
       <div className="sticky top-0 z-20 bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-wrap gap-3 items-center">

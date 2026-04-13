@@ -2,7 +2,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
-import { Fuel, Truck, Activity, AlertTriangle, Search, Filter, Droplets, Gauge, Building2 } from 'lucide-react';
+import { exportToExcel } from '@/utils/exportExcel';
+import { Fuel, Truck, Activity, AlertTriangle, Search, Filter, Droplets, Gauge, Building2, Download } from 'lucide-react';
 
 const T = (lang: string) => lang === 'ar' ? {
   title: 'تحليل الوقود', totalVehicles: 'إجمالي المركبات', active: 'نشطة', diesel: 'ديزل',
@@ -81,7 +82,7 @@ export default function FuelAnalysisPage() {
       if (alertFilter && getAlertLevel(r) !== alertFilter) return false;
       if (search) {
         const q = search.toLowerCase();
-        const hay = `${r.vehicleId} ${r.vehicle || ''} ${r.model || ''}`.toLowerCase();
+        const hay = `${String(r.vehicleId || '')} ${String(r.vehicle || '')} ${String(r.model || '')}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -92,12 +93,12 @@ export default function FuelAnalysisPage() {
 
   const kpis = useMemo(() => {
     const total = filtered.length;
-    const active = filtered.filter(r => r.status?.toLowerCase() === 'active').length;
-    const dieselCount = filtered.filter(r => (r.fuel || '').toLowerCase().includes('diesel') || (r.fuel || '').includes('ديزل')).length;
-    const gasolineCount = filtered.filter(r => (r.fuel || '').toLowerCase().includes('gasoline') || (r.fuel || '').toLowerCase().includes('benzin') || (r.fuel || '').includes('بنزين')).length;
+    const active = filtered.filter(r => String(r.status || '').toLowerCase() === 'active').length;
+    const dieselCount = filtered.filter(r => String(r.fuel || '').toLowerCase().includes('diesel') || String(r.fuel || '').includes('ديزل')).length;
+    const gasolineCount = filtered.filter(r => String(r.fuel || '').toLowerCase().includes('gasoline') || String(r.fuel || '').toLowerCase().includes('benzin') || String(r.fuel || '').includes('بنزين')).length;
     const overLimit = filtered.filter(r => getConsumptionPct(r) > 90).length;
-    const monthlyAccounts = filtered.filter(r => (r.consType || '').toLowerCase().includes('month') || (r.consType || '').includes('شهري')).length;
-    const openedAccounts = filtered.filter(r => (r.status || '').toLowerCase() === 'opened' || (r.status || '').toLowerCase() === 'open').length;
+    const monthlyAccounts = filtered.filter(r => String(r.consType || '').toLowerCase().includes('month') || String(r.consType || '').includes('شهري')).length;
+    const openedAccounts = filtered.filter(r => String(r.status || '').toLowerCase() === 'opened' || String(r.status || '').toLowerCase() === 'open').length;
     return { total, active, dieselCount, gasolineCount, overLimit, monthlyAccounts, openedAccounts };
   }, [filtered]);
 
@@ -115,7 +116,21 @@ export default function FuelAnalysisPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+        {filtered.length > 0 && (
+          <button type="button" onClick={() => exportToExcel(filtered.map((r, i) => ({
+            num: r.num || i + 1, branch: r.branch || '', vehicle: r.vehicle || r.vehicleId, model: r.model || '',
+            year: r.year || '', fuel: r.fuel || '', consumption: getConsumptionPct(r).toFixed(0) + '%', status: r.status || '', category: r.category || '',
+          })), [
+            { header: '#', key: 'num' }, { header: t.branch, key: 'branch' }, { header: t.vehicle, key: 'vehicle' },
+            { header: t.model, key: 'model' }, { header: t.year, key: 'year' }, { header: t.fuelType, key: 'fuel' },
+            { header: t.consumption, key: 'consumption' }, { header: t.status, key: 'status' }, { header: t.category, key: 'category' },
+          ], 'fuel-analysis', 'Fuel')} className="px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
+            <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+          </button>
+        )}
+      </div>
 
       {/* Filters */}
       <div className="sticky top-0 z-20 bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-wrap gap-3 items-center">
@@ -246,7 +261,7 @@ export default function FuelAnalysisPage() {
                           </div>
                         </td>
                         <td className="py-2 px-2 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${r.status?.toLowerCase() === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-gray-600 text-gray-300'}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-xs ${String(r.status || '').toLowerCase() === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-gray-600 text-gray-300'}`}>
                             {r.status || '-'}
                           </span>
                         </td>

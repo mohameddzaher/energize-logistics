@@ -2,7 +2,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
-import { MapPin, Truck, Gauge, AlertTriangle, Search, Filter, Navigation, Activity, Zap } from 'lucide-react';
+import { exportToExcel } from '@/utils/exportExcel';
+import { MapPin, Truck, Gauge, AlertTriangle, Search, Filter, Navigation, Activity, Zap, Download } from 'lucide-react';
 
 const T = (lang: string) => lang === 'ar' ? {
   title: 'تتبع GPS', totalTracked: 'المركبات المتتبعة', totalKm: 'إجمالي الكيلومترات',
@@ -123,7 +124,23 @@ export default function GpsTrackingPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+        {(filteredMovements.length > 0 || filteredOdometer.length > 0) && (
+          <button type="button" onClick={() => exportToExcel(filteredMovements.map(r => ({
+            vehicleId: r.vehicleId, beginning: r.beginning || '', end: r.end || '',
+            initialLocation: r.initialLocation || '', finalLocation: r.finalLocation || '',
+            duration: r.duration || '', distance: parseNum(r.distance), maxSpeed: parseNum(r.maxSpeed), avgSpeed: parseNum(r.avgSpeed),
+          })), [
+            { header: t.vehicle, key: 'vehicleId' }, { header: t.start, key: 'beginning' }, { header: t.end, key: 'end' },
+            { header: t.initialLocation, key: 'initialLocation' }, { header: t.finalLocation, key: 'finalLocation' },
+            { header: t.duration, key: 'duration' }, { header: t.distance, key: 'distance' },
+            { header: t.maxSpeedCol, key: 'maxSpeed' }, { header: t.avgSpeedCol, key: 'avgSpeed' },
+          ], 'gps-tracking', 'GPS')} className="px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
+            <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+          </button>
+        )}
+      </div>
 
       {/* Filters */}
       <div className="sticky top-0 z-20 bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-wrap gap-3 items-center">

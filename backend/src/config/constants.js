@@ -62,10 +62,15 @@ module.exports = {
     'invoice_refunded',
   ],
 
-  COOKIE_OPTIONS: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    path: '/',
-  },
+  // For cross-origin (Netlify ↔ Render), cookies MUST be sameSite=none+secure.
+  // On localhost dev we use sameSite=lax with secure=false so they work over HTTP.
+  COOKIE_OPTIONS: (() => {
+    const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.FRONTEND_URL?.startsWith('https');
+    return {
+      httpOnly: true,
+      secure: !isLocalDev,
+      sameSite: isLocalDev ? 'lax' : 'none',
+      path: '/',
+    };
+  })(),
 };

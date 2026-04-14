@@ -75,10 +75,10 @@ export default function FuelAnalysisPage() {
 
   const filtered = useMemo(() => {
     return data.filter(r => {
-      if (branchFilter && r.branch !== branchFilter) return false;
-      if (fuelFilter && r.fuel !== fuelFilter) return false;
-      if (statusFilter && r.status !== statusFilter) return false;
-      if (categoryFilter && r.category !== categoryFilter) return false;
+      if (branchFilter && String(r.branch || '').trim() !== branchFilter) return false;
+      if (fuelFilter && String(r.fuel || '').trim() !== fuelFilter) return false;
+      if (statusFilter && String(r.status || '').trim() !== statusFilter) return false;
+      if (categoryFilter && String(r.category || '').trim() !== categoryFilter) return false;
       if (alertFilter && getAlertLevel(r) !== alertFilter) return false;
       if (search) {
         const q = search.toLowerCase();

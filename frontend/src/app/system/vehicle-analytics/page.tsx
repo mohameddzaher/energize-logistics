@@ -121,10 +121,10 @@ export default function VehicleAnalyticsPage() {
   // Filtered data
   const filtered = useMemo(() => {
     const vSet = vehicleFilter ? new Set([vehicleFilter]) : null;
-    const bSet = branchFilter ? new Set(petro.filter(r => r.branch === branchFilter).map(r => r.vehicleId)) : null;
-    const tSet = typeFilter ? new Set(petro.filter(r => String(r.category || '') === typeFilter).map(r => r.vehicleId)) : null;
+    const bSet = branchFilter ? new Set(petro.filter(r => String(r.branch || '').trim() === branchFilter).map(r => r.vehicleId)) : null;
+    const tSet = typeFilter ? new Set(petro.filter(r => String(r.category || '').trim() === typeFilter).map(r => r.vehicleId)) : null;
     const pass = (vid: string) => (!vSet || vSet.has(vid)) && (!bSet || bSet.has(vid)) && (!tSet || tSet.has(vid));
-    const inDateRange = (m?: string) => { if (!dateFrom && !dateTo) return true; if (!m) return true; return (!dateFrom || m >= dateFrom) && (!dateTo || m <= dateTo); };
+    const inDateRange = (m?: any) => { if (!dateFrom && !dateTo) return true; const ms = String(m || ''); if (!ms) return true; return (!dateFrom || ms >= dateFrom) && (!dateTo || ms <= dateTo); };
     return {
       petro: petro.filter(r => pass(r.vehicleId)),
       gpsOdo: gpsOdo.filter(r => pass(r.vehicleId)),
@@ -136,17 +136,38 @@ export default function VehicleAnalyticsPage() {
 
   // KPIs
   const kpis = useMemo(() => {
-    const totalFleet = new Set(filtered.petro.map(r => r.vehicleId)).size || allVehicleIds.length;
+    const petroVehicles = new Set(filtered.petro.map(r => r.vehicleId));
+    const gpsVehicles = new Set(filtered.gpsOdo.map(r => r.vehicleId));
+    const tripsVehicles = new Set(filtered.htTrips.map(r => r.vehicleId));
+    const allVehicles = new Set([...petroVehicles, ...gpsVehicles, ...tripsVehicles]);
+
+    const totalFleet = allVehicles.size;
     const activeVehicles = filtered.petro.filter(r => String(r.status || '').toLowerCase() === 'active').length;
+
     const totalRevenue = filtered.htTrips.reduce((s, r) => s + parseNum(r.revenue || r.selling), 0);
-    const totalExpenses = filtered.htTrips.reduce((s, r) => s + parseNum(r.actualDriverExpense), 0);
+
+    // Full expense calculation - use totalExpenses field if available, else sum individual fields
+    const totalExpenses = filtered.htTrips.reduce((s, r) => {
+      const te = parseNum((r as any).totalExpenses);
+      if (te > 0) return s + te;
+      return s + parseNum(r.actualDriverExpense) + parseNum((r as any).fuelCost) +
+             parseNum((r as any).puncture) + parseNum((r as any).spareParts) + parseNum((r as any).washing) +
+             parseNum((r as any).salesCommission) + parseNum((r as any).brokerCommission) +
+             parseNum((r as any).fridayBonus) + parseNum((r as any).bonus);
+    }, 0);
+
     const totalGpsKm = filtered.gpsOdo.reduce((s, r) => s + parseNum(r.distance), 0);
     const totalTrips = filtered.htTrips.length;
+
+    // Fleet KMs from HT KMs Record - sum monthly KM columns
     const fleetKms = filtered.htKms.reduce((s, r) => {
-      // HT KMs rows may have various column names from Arabic headers
-      const vals = Object.values(r).filter(v => typeof v === 'number' && v > 0);
-      return s + (vals.length > 0 ? Math.max(...vals) : 0);
+      const monthKms = Object.entries(r)
+        .filter(([k]) => /kms?$/i.test(String(k)) && !/odometer/i.test(String(k)))
+        .map(([, v]) => parseNum(v))
+        .reduce((a, b) => a + b, 0);
+      return s + monthKms;
     }, 0);
+
     const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue * 100) : 0;
     const fuelAlerts = filtered.petro.filter(r => {
       const max = parseNum(r.maxConsump);
@@ -154,8 +175,11 @@ export default function VehicleAnalyticsPage() {
       return max > 0 && (cur / max) * 100 > 90;
     }).length;
     const speedAlerts = filtered.gpsMov.filter(r => parseNum(r.maxSpeed) > 120).length;
-    const inactiveAlerts = filtered.petro.filter(r => String(r.status || '').toLowerCase() !== 'active').length;
-    return { totalFleet, activeVehicles, totalRevenue, totalGpsKm, totalTrips, fleetKms, profitMargin, alerts: fuelAlerts + speedAlerts + inactiveAlerts };
+    const inactiveAlerts = filtered.petro.filter(r => {
+      const st = String(r.status || '').toLowerCase();
+      return st && st !== 'active';
+    }).length;
+    return { totalFleet, activeVehicles, totalRevenue, totalExpenses, totalGpsKm, totalTrips, fleetKms, profitMargin, alerts: fuelAlerts + speedAlerts + inactiveAlerts, tripsVehicleCount: tripsVehicles.size };
   }, [filtered, allVehicleIds]);
 
   // Chart data

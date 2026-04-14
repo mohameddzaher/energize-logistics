@@ -67,10 +67,10 @@ export default function TripsPage() {
 
   const filtered = useMemo(() => {
     return data.filter(r => {
-      if (monthFilter && r.month !== monthFilter) return false;
-      if (branchFilter && r.branch !== branchFilter) return false;
-      if (typeFilter && r.vehicleType !== typeFilter) return false;
-      if (clientFilter && String(r.rentalPaymentType || '') !== clientFilter) return false;
+      if (monthFilter && String(r.month || '').trim() !== monthFilter) return false;
+      if (branchFilter && String(r.branch || '').trim() !== branchFilter) return false;
+      if (typeFilter && String(r.vehicleType || '').trim() !== typeFilter) return false;
+      if (clientFilter && String(r.rentalPaymentType || '').trim() !== clientFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         const hay = `${r.vehicleId} ${r.vehicleNumber || ''} ${r.driver1 || ''} ${r.loadingPlace || ''} ${r.unloadingPlace || ''}`.toLowerCase();
@@ -83,7 +83,14 @@ export default function TripsPage() {
   const kpis = useMemo(() => {
     const totalTrips = filtered.length;
     const totalRevenue = filtered.reduce((s, r) => s + parseNum(r.revenue), 0);
-    const totalExpenses = filtered.reduce((s, r) => s + parseNum(r.actualDriverExpense), 0);
+    const totalExpenses = filtered.reduce((s, r) => {
+      const te = parseNum((r as any).totalExpenses);
+      if (te > 0) return s + te;
+      return s + parseNum(r.actualDriverExpense) + parseNum((r as any).fuelCost) +
+             parseNum((r as any).puncture) + parseNum((r as any).spareParts) + parseNum((r as any).washing) +
+             parseNum((r as any).salesCommission) + parseNum((r as any).brokerCommission) +
+             parseNum((r as any).fridayBonus) + parseNum((r as any).bonus);
+    }, 0);
     const profit = totalRevenue - totalExpenses;
     const avgRevenue = totalTrips > 0 ? totalRevenue / totalTrips : 0;
     const totalDays = filtered.reduce((s, r) => s + parseNum(r.days), 0);

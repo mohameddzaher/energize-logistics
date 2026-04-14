@@ -134,31 +134,52 @@ function parseLocationSolution(wb: XLSX.WorkBook): { movements: Record<string, a
   // Parse Odometer Report
   const odoSheet = wb.Sheets['Odometer Report'] || wb.Sheets['تقرير العداد'];
   if (odoSheet) {
-    const data = XLSX.utils.sheet_to_json<any>(odoSheet, { defval: '' });
-    for (const row of data) {
-      // The "Grouping" column has format: "1080 RXA سعيد اقبال"
-      const grouping = String(row['Grouping'] || row['التجميع'] || row[Object.keys(row)[0]] || '');
-      if (!grouping || !grouping.match(/\d/)) continue;
+    const raw = XLSX.utils.sheet_to_json<any[]>(odoSheet, { header: 1, defval: '' });
+    if (raw.length > 0) {
+      // Find header row (usually row 0 or 1)
+      let headerRowIdx = 0;
+      for (let i = 0; i < Math.min(3, raw.length); i++) {
+        const r = raw[i] as any[];
+        const joined = r.map(c => String(c || '')).join(' ').toLowerCase();
+        if (joined.includes('km') || joined.includes('odometer') || joined.includes('grouping') || joined.includes('مجموعة') || joined.includes('كم')) {
+          headerRowIdx = i;
+          break;
+        }
+      }
 
-      const vehicleId = vehicleDB.extractVehicleId('gps_grouping', grouping);
-      const parts = grouping.split(/\s+/);
-      const plateLetters = parts[1] || '';
-      const driver = parts.slice(2).join(' ');
+      const headers = (raw[headerRowIdx] as any[]).map(h => String(h || '').toLowerCase());
 
-      // Total distance for this vehicle
-      const totalKm = Number(String(row['Total km'] || row['إجمالي الكم'] || row[Object.keys(row)[1]] || '0').replace(/[^\d.]/g, '')) || 0;
-      const beginOdo = Number(String(row['Begin odometer'] || row[Object.keys(row)[2]] || '0').replace(/[^\d.]/g, '')) || 0;
-      const endOdo = Number(String(row['End odometer'] || row[Object.keys(row)[3]] || '0').replace(/[^\d.]/g, '')) || 0;
+      // Detect column indexes
+      const findCol = (keywords: string[]) => headers.findIndex(h => keywords.some(k => h.includes(k)));
+      const groupingCol = findCol(['grouping', 'vehicle', 'unit', 'مجموعة', 'مركبة', 'تجميع']);
+      const totalKmCol = findCol(['total km', 'total kilometers', 'totalkm', 'إجمالي الكم', 'المسافة الإجمالية']);
+      const beginOdoCol = findCol(['begin odometer', 'begin', 'initial', 'بداية', 'البداية']);
+      const endOdoCol = findCol(['end odometer', 'end', 'final', 'نهاية', 'النهاية']);
 
-      if (vehicleId && (totalKm > 0 || endOdo > 0)) {
-        odometer.push({
-          vehicleId,
-          plateLetters,
-          driver,
-          distance: totalKm,
-          beginOdometer: beginOdo,
-          endOdometer: endOdo,
-        });
+      for (let i = headerRowIdx + 1; i < raw.length; i++) {
+        const r = raw[i] as any[];
+        const grouping = String(r[groupingCol >= 0 ? groupingCol : 0] || '').trim();
+        if (!grouping || !grouping.match(/\d/)) continue;
+
+        const vehicleId = vehicleDB.extractVehicleId('gps_grouping', grouping);
+        const parts = grouping.split(/\s+/);
+        const plateLetters = parts[1] || '';
+        const driver = parts.slice(2).join(' ');
+
+        const totalKm = totalKmCol >= 0 ? Number(String(r[totalKmCol] || '0').replace(/[^\d.-]/g, '')) || 0 : 0;
+        const beginOdo = beginOdoCol >= 0 ? Number(String(r[beginOdoCol] || '0').replace(/[^\d.-]/g, '')) || 0 : 0;
+        const endOdo = endOdoCol >= 0 ? Number(String(r[endOdoCol] || '0').replace(/[^\d.-]/g, '')) || 0 : 0;
+
+        if (vehicleId && (totalKm > 0 || endOdo > 0)) {
+          odometer.push({
+            vehicleId,
+            plateLetters,
+            driver,
+            distance: totalKm,
+            beginOdometer: beginOdo,
+            endOdometer: endOdo,
+          });
+        }
       }
     }
   }

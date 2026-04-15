@@ -3,7 +3,8 @@ import { useState, useEffect, useMemo } from 'react';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
 import { exportToExcel } from '@/utils/exportExcel';
-import { MapPin, Truck, Gauge, AlertTriangle, Search, Filter, Navigation, Activity, Zap, Download } from 'lucide-react';
+import { detectTrips, type GPSMovement } from '@/lib/tripDetection';
+import { MapPin, Truck, Gauge, AlertTriangle, Search, Filter, Navigation, Activity, Zap, Download, Route } from 'lucide-react';
 
 const T = (lang: string) => lang === 'ar' ? {
   title: 'تتبع GPS', totalTracked: 'المركبات المتتبعة', totalKm: 'إجمالي الكيلومترات',
@@ -14,6 +15,13 @@ const T = (lang: string) => lang === 'ar' ? {
   allVehicles: 'كل المركبات', search: 'بحث بالمركبة...', noData: 'لا توجد بيانات GPS',
   loading: 'جاري التحميل...', date: 'التاريخ', driver: 'السائق', km: 'كم',
   initialLocation: 'الموقع الأولي', finalLocation: 'الموقع النهائي',
+  detectedTrips: 'الرحلات المكتشفة', totalDetected: 'إجمالي الرحلات المكتشفة',
+  totalTripDistance: 'إجمالي مسافة الرحلات', avgTripDuration: 'متوسط مدة الرحلة',
+  rawSegments: 'مقاطع GPS الخام', detectedTripsLabel: 'الرحلات المكتشفة',
+  note: 'ملاحظة: مقاطع GPS تعد كل تشغيل/إيقاف للمحرك. الرحلات المكتشفة تستخدم خوارزميتنا لتحديد الرحلات المنطقية من مدينة إلى مدينة.',
+  fromCity: 'من', toCity: 'إلى', startTime: 'وقت البدء', endTime: 'وقت الانتهاء',
+  segments: 'المقاطع', violations: 'تجاوزات', route: 'المسار', allRoutes: 'كل المسارات',
+  tripsTable: 'جدول الرحلات المكتشفة',
 } : {
   title: 'GPS Tracking', totalTracked: 'Tracked Vehicles', totalKm: 'Total KMs',
   avgKm: 'Avg KM/Vehicle', maxSpeed: 'Max Speed Recorded', speedViolations: 'Speed Violations',
@@ -23,6 +31,13 @@ const T = (lang: string) => lang === 'ar' ? {
   allVehicles: 'All Vehicles', search: 'Search vehicle...', noData: 'No GPS data uploaded yet',
   loading: 'Loading...', date: 'Date', driver: 'Driver', km: 'KM',
   initialLocation: 'Initial Location', finalLocation: 'Final Location',
+  detectedTrips: 'Detected Trips', totalDetected: 'Total Detected Trips',
+  totalTripDistance: 'Total Trip Distance', avgTripDuration: 'Avg Trip Duration',
+  rawSegments: 'Raw GPS Segments', detectedTripsLabel: 'Detected Trips',
+  note: 'GPS segments count every engine start/stop. Detected Trips use our algorithm to identify logical trips from city to city.',
+  fromCity: 'From', toCity: 'To', startTime: 'Start Time', endTime: 'End Time',
+  segments: 'Segments', violations: 'Violations', route: 'Route', allRoutes: 'All Routes',
+  tripsTable: 'Detected Trips Table',
 };
 
 interface GpsMovement { vehicleId: string; beginning?: string; end?: string; initialLocation?: string; finalLocation?: string; duration?: string; distance?: number | string; maxSpeed?: number | string; avgSpeed?: number | string; [k: string]: any }
@@ -38,6 +53,7 @@ export default function GpsTrackingPage() {
   const [loading, setLoading] = useState(true);
   const [vehicleFilter, setVehicleFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [routeFilter, setRouteFilter] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -110,6 +126,49 @@ export default function GpsTrackingPage() {
   const maxDaily = useMemo(() => Math.max(...dailyDistance.map(d => d[1]), 1), [dailyDistance]);
   const maxMover = useMemo(() => (topMovers.length > 0 ? topMovers[0][1] : 1), [topMovers]);
 
+  // Detected trips from algorithm
+  const detectedTrips = useMemo(() => {
+    const movs: GPSMovement[] = filteredMovements.map(r => ({
+      vehicleId: r.vehicleId,
+      beginning: String(r.beginning || ''),
+      end: String(r.end || ''),
+      initialLocation: String(r.initialLocation || ''),
+      finalLocation: String(r.finalLocation || ''),
+      duration: String(r.duration || ''),
+      distance: parseNum(r.distance),
+      maxSpeed: parseNum(r.maxSpeed),
+      avgSpeed: parseNum(r.avgSpeed),
+    }));
+    return detectTrips(movs);
+  }, [filteredMovements]);
+
+  const allRoutes = useMemo(() => {
+    const set = new Set<string>();
+    detectedTrips.forEach(tr => set.add(`${tr.startCity} → ${tr.endCity}`));
+    return [...set].sort();
+  }, [detectedTrips]);
+
+  const filteredTrips = useMemo(() => {
+    if (!routeFilter) return detectedTrips;
+    return detectedTrips.filter(tr => `${tr.startCity} → ${tr.endCity}` === routeFilter);
+  }, [detectedTrips, routeFilter]);
+
+  const tripKpis = useMemo(() => {
+    const total = filteredTrips.length;
+    const totalDist = filteredTrips.reduce((s, t) => s + t.totalDistance, 0);
+    const totalDur = filteredTrips.reduce((s, t) => s + t.durationMinutes, 0);
+    const avgDur = total > 0 ? totalDur / total : 0;
+    const violations = filteredTrips.reduce((s, t) => s + t.speedViolations, 0);
+    return { total, totalDist, avgDur, violations };
+  }, [filteredTrips]);
+
+  const fmtDur = (min: number) => {
+    if (min <= 0) return '-';
+    const h = Math.floor(min / 60);
+    const m = Math.round(min % 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">{t.loading}</div>;
 
   const hasData = movements.length > 0 || odometer.length > 0;
@@ -171,6 +230,21 @@ export default function GpsTrackingPage() {
                 <p className="text-gray-400 text-[10px] text-center">{c.label}</p>
               </div>
             ))}
+          </div>
+
+          {/* Segments vs Detected Trips comparison */}
+          <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/30 rounded-xl p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+                <p className="text-gray-400 text-xs">{t.rawSegments}</p>
+                <p className="text-2xl font-bold text-gray-300">{fmtNum(filteredMovements.length)}</p>
+              </div>
+              <div className="bg-indigo-500/20 rounded-lg p-3 border border-indigo-500/40">
+                <p className="text-indigo-300 text-xs">{t.detectedTripsLabel}</p>
+                <p className="text-2xl font-bold text-indigo-300">{fmtNum(tripKpis.total)}</p>
+              </div>
+            </div>
+            <p className="text-gray-400 text-xs mt-3 italic">{t.note}</p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -248,6 +322,82 @@ export default function GpsTrackingPage() {
               </div>
             </div>
           )}
+
+          {/* Detected Trips Section */}
+          <div className="bg-gray-800 border border-indigo-500/40 rounded-xl p-4">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+              <h3 className="text-white font-semibold flex items-center gap-2">
+                <Route className="w-5 h-5 text-indigo-400" /> {t.detectedTrips}
+              </h3>
+              <select title={t.route} value={routeFilter} onChange={e => setRouteFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none max-w-[260px]">
+                <option value="">{t.allRoutes}</option>
+                {allRoutes.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+
+            {/* Detected Trip KPIs */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-3 flex flex-col items-center">
+                <Route className="w-5 h-5 text-indigo-400" />
+                <p className="text-xl font-bold text-indigo-300">{fmtNum(tripKpis.total)}</p>
+                <p className="text-gray-400 text-[10px] text-center">{t.totalDetected}</p>
+              </div>
+              <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3 flex flex-col items-center">
+                <MapPin className="w-5 h-5 text-purple-400" />
+                <p className="text-xl font-bold text-purple-300">{fmtNum(tripKpis.totalDist)}</p>
+                <p className="text-gray-400 text-[10px] text-center">{t.totalTripDistance}</p>
+              </div>
+              <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-3 flex flex-col items-center">
+                <Activity className="w-5 h-5 text-cyan-400" />
+                <p className="text-xl font-bold text-cyan-300">{fmtDur(tripKpis.avgDur)}</p>
+                <p className="text-gray-400 text-[10px] text-center">{t.avgTripDuration}</p>
+              </div>
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex flex-col items-center">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+                <p className="text-xl font-bold text-red-300">{fmtNum(tripKpis.violations)}</p>
+                <p className="text-gray-400 text-[10px] text-center">{t.speedViolations}</p>
+              </div>
+            </div>
+
+            {/* Trips Table */}
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-gray-800">
+                  <tr className="text-gray-400 border-b border-gray-700">
+                    <th className="text-left py-2 px-2">{t.vehicle}</th>
+                    <th className="text-left py-2 px-2">{t.route}</th>
+                    <th className="text-left py-2 px-2">{t.startTime}</th>
+                    <th className="text-left py-2 px-2">{t.endTime}</th>
+                    <th className="text-right py-2 px-2">{t.duration}</th>
+                    <th className="text-right py-2 px-2">{t.distance}</th>
+                    <th className="text-right py-2 px-2">{t.maxSpeedCol}</th>
+                    <th className="text-right py-2 px-2">{t.avgSpeedCol}</th>
+                    <th className="text-right py-2 px-2">{t.violations}</th>
+                    <th className="text-right py-2 px-2">{t.segments}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTrips.slice(0, 500).map((tr, i) => (
+                    <tr key={i} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                      <td className="py-2 px-2 text-white font-medium">{tr.vehicleId}</td>
+                      <td className="py-2 px-2 text-indigo-300 text-xs">{tr.startCity} → {tr.endCity}</td>
+                      <td className="py-2 px-2 text-gray-300 text-xs">{tr.startTime}</td>
+                      <td className="py-2 px-2 text-gray-300 text-xs">{tr.endTime}</td>
+                      <td className="py-2 px-2 text-right text-cyan-400">{fmtDur(tr.durationMinutes)}</td>
+                      <td className="py-2 px-2 text-right text-purple-400">{tr.totalDistance.toFixed(1)}</td>
+                      <td className={`py-2 px-2 text-right ${tr.maxSpeed > 120 ? 'text-red-400 font-bold' : 'text-gray-300'}`}>{tr.maxSpeed.toFixed(0)}</td>
+                      <td className="py-2 px-2 text-right text-gray-300">{tr.avgSpeed.toFixed(0)}</td>
+                      <td className={`py-2 px-2 text-right ${tr.speedViolations > 0 ? 'text-red-400' : 'text-gray-500'}`}>{tr.speedViolations}</td>
+                      <td className="py-2 px-2 text-right text-gray-400">{tr.segmentCount}</td>
+                    </tr>
+                  ))}
+                  {filteredTrips.length === 0 && (
+                    <tr><td colSpan={10} className="text-center text-gray-500 py-4">--</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </>
       )}
     </div>

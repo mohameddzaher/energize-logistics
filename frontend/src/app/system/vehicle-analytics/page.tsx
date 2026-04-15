@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
 import { exportToExcel } from '@/utils/exportExcel';
+import { detectTrips, type GPSMovement } from '@/lib/tripDetection';
 import { Truck, Activity, DollarSign, MapPin, Navigation, Route, TrendingUp, AlertTriangle, Search, Filter, ChevronUp, ChevronDown, Download } from 'lucide-react';
 
 const T = (lang: string) => lang === 'ar' ? {
@@ -26,6 +27,8 @@ const T = (lang: string) => lang === 'ar' ? {
   activeDays: 'أيام نشطة', idleDays: 'أيام خمول', utilization: 'نسبة الاستخدام %',
   complianceOverview: 'نظرة على الامتثال', loaded: 'تم التحميل', unloaded: 'تم النزيل',
   photoSent: 'تم إرسال الصورة', receiptDelivered: 'تم تسليم السند',
+  topRoutes: 'أعلى المسارات (من الرحلات المكتشفة)', totalDistance: 'إجمالي المسافة',
+  avgDuration: 'متوسط المدة',
 } : {
   title: 'Vehicle Analytics', totalFleet: 'Total Fleet', activeVehicles: 'Active Vehicles',
   totalRevenue: 'Total Revenue', totalGpsKm: 'Total GPS KMs', totalTrips: 'Total Trips',
@@ -46,6 +49,8 @@ const T = (lang: string) => lang === 'ar' ? {
   activeDays: 'Active Days', idleDays: 'Idle Days', utilization: 'Utilization %',
   complianceOverview: 'Compliance Overview', loaded: 'Loaded', unloaded: 'Unloaded',
   photoSent: 'Photo Sent', receiptDelivered: 'Receipt Delivered',
+  topRoutes: 'Top Routes (from Detected Trips)', totalDistance: 'Total Distance',
+  avgDuration: 'Avg Duration',
 };
 
 interface RawPetro { vehicleId: string; vehicle?: string; model?: string; branch?: string; driver?: string; status?: string; maxConsump?: number; currentRate?: number; fuel?: string; category?: string; consType?: string; [k: string]: any }
@@ -303,6 +308,38 @@ export default function VehicleAnalyticsPage() {
     };
   }, [filtered.htTrips]);
 
+  // Top Routes from detected trips
+  const topDetectedRoutes = useMemo(() => {
+    const movs: GPSMovement[] = filtered.gpsMov.map(r => ({
+      vehicleId: r.vehicleId,
+      beginning: String((r as any).beginning || ''),
+      end: String((r as any).end || ''),
+      initialLocation: String((r as any).initialLocation || ''),
+      finalLocation: String((r as any).finalLocation || ''),
+      duration: String((r as any).duration || ''),
+      distance: parseNum(r.distance),
+      maxSpeed: parseNum(r.maxSpeed),
+      avgSpeed: parseNum(r.avgSpeed),
+    }));
+    const trips = detectTrips(movs);
+    const map: Record<string, { count: number; totalDist: number; totalDur: number }> = {};
+    trips.forEach(tr => {
+      const key = `${tr.startCity} → ${tr.endCity}`;
+      if (!map[key]) map[key] = { count: 0, totalDist: 0, totalDur: 0 };
+      map[key].count += 1;
+      map[key].totalDist += tr.totalDistance;
+      map[key].totalDur += tr.durationMinutes;
+    });
+    return Object.entries(map).sort((a, b) => b[1].count - a[1].count).slice(0, 20);
+  }, [filtered.gpsMov]);
+
+  const fmtDur = (min: number) => {
+    if (min <= 0) return '-';
+    const h = Math.floor(min / 60);
+    const m = Math.round(min % 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
   const toggleSort = (key: SortKey) => { if (sortKey === key) setSortAsc(!sortAsc); else { setSortKey(key); setSortAsc(false); } };
   const SortIcon = ({ k }: { k: SortKey }) => sortKey === k ? (sortAsc ? <ChevronUp className="w-3 h-3 inline" /> : <ChevronDown className="w-3 h-3 inline" />) : null;
   const fmtNum = (n: number) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : n.toFixed(0);
@@ -484,7 +521,7 @@ export default function VehicleAnalyticsPage() {
                 </tr></thead>
                 <tbody>
                   {vehicleTable.map(row => (
-                    <tr key={row.vehicleId} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                    <tr key={row.vehicleId} onClick={() => router.push(`/system/vehicle-analytics/vehicle/${row.vehicleId}`)} className="border-b border-gray-700/50 hover:bg-gray-800 cursor-pointer">
                       <td className="py-2 px-2 text-white font-medium">{row.vehicleId}</td>
                       <td className="py-2 px-2 text-gray-300">{row.model || '-'}</td>
                       <td className="py-2 px-2 text-gray-300">{row.branch || '-'}</td>
@@ -607,6 +644,35 @@ export default function VehicleAnalyticsPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Top Detected Routes */}
+          {topDetectedRoutes.length > 0 && (
+            <div className="bg-gray-800 border border-indigo-500/40 rounded-xl p-4">
+              <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                <Route className="w-5 h-5 text-indigo-400" /> {t.topRoutes}
+              </h3>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-gray-400 border-b border-gray-700">
+                  <th className="text-left py-2 px-3">#</th>
+                  <th className="text-left py-2 px-3">{t.route}</th>
+                  <th className="text-right py-2 px-3">{t.tripCount}</th>
+                  <th className="text-right py-2 px-3">{t.totalDistance}</th>
+                  <th className="text-right py-2 px-3">{t.avgDuration}</th>
+                </tr></thead>
+                <tbody>
+                  {topDetectedRoutes.map(([route, d], i) => (
+                    <tr key={route} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                      <td className="py-2 px-3 text-gray-500">{i + 1}</td>
+                      <td className="py-2 px-3 text-indigo-300">{route}</td>
+                      <td className="py-2 px-3 text-right text-cyan-400">{d.count}</td>
+                      <td className="py-2 px-3 text-right text-purple-400">{fmtNum(d.totalDist)} km</td>
+                      <td className="py-2 px-3 text-right text-gray-300">{fmtDur(d.totalDur / d.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
             </div>
           )}
 

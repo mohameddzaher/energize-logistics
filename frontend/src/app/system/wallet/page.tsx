@@ -8,8 +8,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, X, Check, Loader2, ArrowUpCircle, ArrowDownCircle,
   ShoppingCart, Lock, Unlock, AlertTriangle, Search,
-  Receipt, Download, Pencil,
+  Receipt, Download, Pencil, Upload,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
 import { getWalletTranslations } from '@/lib/translations';
@@ -133,6 +134,14 @@ export default function WalletPage() {
   // General error banner
   const [actionError, setActionError] = useState('');
 
+  // Bulk upload purchases
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [bulkRows, setBulkRows] = useState<any[]>([]);
+  const [bulkFileName, setBulkFileName] = useState('');
+  const [bulkError, setBulkError] = useState('');
+  const [bulkProgress, setBulkProgress] = useState(0);
+  const [bulkUploading, setBulkUploading] = useState(false);
+
   // Purchase report lookup
   const [purchaseReportSearch, setPurchaseReportSearch] = useState('');
   const [purchaseReportMsg, setPurchaseReportMsg] = useState('');
@@ -230,6 +239,80 @@ export default function WalletPage() {
       setTxError(err.message || 'Failed to add transaction');
     }
     setSubmitting(false);
+  };
+
+  // ─── BULK UPLOAD PURCHASES ─────────────────────────────────
+  const handleBulkFile = (file: File) => {
+    setBulkError('');
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: '' });
+
+        const mapped = rows.map((row: any) => {
+          const keys = Object.keys(row);
+          const deliveryKey = keys.find(k => /كشف|تخريج|delivery|statement/i.test(k)) || keys[0];
+          const valueKey = keys.find(k => /قيمة|value|amount|مبلغ|السعر/i.test(k)) || keys[1];
+          const branchKey = keys.find(k => /فرع|branch/i.test(k)) || keys[2];
+
+          return {
+            deliveryStatement: String(row[deliveryKey] || '').trim(),
+            value: Number(row[valueKey]) || 0,
+            branch: String(row[branchKey] || '').trim(),
+          };
+        }).filter((r: any) => r.deliveryStatement && r.value > 0);
+
+        if (mapped.length === 0) {
+          setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات صالحة' : 'No valid data found');
+          return;
+        }
+        setBulkRows(mapped);
+        setBulkFileName(file.name);
+      } catch (err: any) {
+        setBulkError(err.message || 'Failed to parse Excel file');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleBulkSubmit = async () => {
+    if (bulkRows.length === 0) return;
+    setBulkUploading(true);
+    setBulkProgress(0);
+    let succeeded = 0;
+    let failed = 0;
+
+    for (let i = 0; i < bulkRows.length; i++) {
+      const row = bulkRows[i];
+      try {
+        await api.post('/api/wallet/transactions', {
+          date: selectedDate,
+          type: 'purchase',
+          amount: row.value,
+          purchaseDeliveryStatementNumber: row.deliveryStatement,
+          purchaseBranch: row.branch,
+        });
+        succeeded++;
+      } catch {
+        failed++;
+      }
+      setBulkProgress(Math.round(((i + 1) / bulkRows.length) * 100));
+    }
+
+    setBulkUploading(false);
+    if (succeeded > 0) {
+      setShowBulkUpload(false);
+      setBulkRows([]);
+      setBulkFileName('');
+      fetchWallet(false);
+      setActionError('');
+    }
+    if (failed > 0) {
+      setActionError((lang === 'ar' ? `فشل في ${failed} معاملة. نجح ${succeeded}` : `${failed} failed, ${succeeded} succeeded`));
+    }
   };
 
   // ─── DELETE TRANSACTION ────────────────────────────────────
@@ -742,6 +825,14 @@ export default function WalletPage() {
                 {/* Purchase Fields (dispatch sheet related payments) */}
                 {txType === 'purchase' && (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => { setShowTxModal(false); setShowBulkUpload(true); }}
+                      className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 text-sm font-medium hover:bg-blue-500/30"
+                    >
+                      <Upload className="w-4 h-4" />
+                      {lang === 'ar' ? 'رفع ملف اكسل جماعي' : 'Bulk Upload Excel'}
+                    </button>
                     {/* Search by Delivery Statement Number */}
                     <div>
                       <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatementNumber} *</label>
@@ -1001,6 +1092,108 @@ export default function WalletPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showBulkUpload && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => !bulkUploading && setShowBulkUpload(false)}>
+          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-white font-semibold text-lg">
+                  {lang === 'ar' ? 'رفع مشتريات جماعية من اكسل' : 'Bulk Upload Purchases'}
+                </h3>
+                {!bulkUploading && (
+                  <button type="button" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'} title={lang === 'ar' ? 'إغلاق' : 'Close'} onClick={() => setShowBulkUpload(false)} className="text-gray-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="text-gray-400 text-sm mb-3">
+                {lang === 'ar'
+                  ? 'الملف لازم يحتوي على 3 أعمدة: رقم كشف التخريج - القيمة - الفرع'
+                  : 'File must have 3 columns: Delivery Statement # - Value - Branch'}
+              </div>
+
+              {bulkRows.length === 0 ? (
+                <label className="block border-2 border-dashed border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-[#f37121]/50 transition-colors">
+                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                    onChange={(e) => e.target.files?.[0] && handleBulkFile(e.target.files[0])} />
+                  <Upload className="w-10 h-10 text-gray-500 mx-auto mb-2" />
+                  <p className="text-gray-300 text-sm">{lang === 'ar' ? 'اضغط لاختيار ملف اكسل' : 'Click to select Excel file'}</p>
+                  <p className="text-gray-500 text-xs mt-1">.xlsx .xls .csv</p>
+                </label>
+              ) : (
+                <div>
+                  <div className="bg-gray-900 rounded-lg p-3 mb-3 flex items-center justify-between">
+                    <span className="text-white text-sm">{bulkFileName}</span>
+                    <span className="text-[#f37121] text-sm font-medium">{bulkRows.length} {lang === 'ar' ? 'سطر' : 'rows'}</span>
+                  </div>
+
+                  {bulkUploading && (
+                    <div className="mb-3">
+                      <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#f37121] transition-all" style={{ width: `${bulkProgress}%` }} />
+                      </div>
+                      <p className="text-center text-gray-400 text-sm mt-2">{bulkProgress}%</p>
+                    </div>
+                  )}
+
+                  <div className="max-h-60 overflow-y-auto bg-gray-900 rounded-lg">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-800 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-gray-400">#</th>
+                          <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'رقم كشف التخريج' : 'Delivery Statement'}</th>
+                          <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'القيمة' : 'Value'}</th>
+                          <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'الفرع' : 'Branch'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkRows.map((r: any, i: number) => (
+                          <tr key={i} className="border-t border-gray-800">
+                            <td className="px-3 py-2 text-gray-500">{i + 1}</td>
+                            <td className="px-3 py-2 text-white">{r.deliveryStatement}</td>
+                            <td className="px-3 py-2 text-green-400">{r.value.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-gray-300">{r.branch}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {bulkError && (
+                <div className="mt-3 bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-red-400 text-sm">
+                  {bulkError}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+              {bulkRows.length > 0 && !bulkUploading && (
+                <button type="button" onClick={() => { setBulkRows([]); setBulkFileName(''); }}
+                  className="px-4 py-2 text-gray-400 hover:text-white text-sm">
+                  {lang === 'ar' ? 'إعادة التحديد' : 'Reset'}
+                </button>
+              )}
+              {!bulkUploading && (
+                <button type="button" onClick={() => setShowBulkUpload(false)}
+                  className="px-4 py-2 text-gray-400 hover:text-white text-sm">
+                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+              )}
+              {bulkRows.length > 0 && (
+                <button type="button" onClick={handleBulkSubmit} disabled={bulkUploading}
+                  className="px-4 py-2 bg-[#f37121] hover:bg-[#e06010] text-white rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50">
+                  {bulkUploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {bulkUploading ? (lang === 'ar' ? 'جاري الرفع...' : 'Uploading...') : (lang === 'ar' ? `رفع ${bulkRows.length} معاملة` : `Upload ${bulkRows.length} transactions`)}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

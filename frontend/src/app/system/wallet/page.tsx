@@ -265,44 +265,71 @@ export default function WalletPage() {
     return null;
   };
 
-  // Parse a single sheet using positional columns (header row 3, data from row 4, cols 10/13/14)
-  // Returns null if the sheet doesn't match this layout (no valid rows found at those indices)
-  const parsePositionalSheet = (ws: XLSX.WorkSheet): Array<{ delivery: string; value: number; branch: string }> => {
-    const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
-    const out: Array<{ delivery: string; value: number; branch: string }> = [];
-    for (let i = 4; i < raw.length; i++) {
+  // Smart parser: scans all rows to find a header row, then detects delivery/value/branch columns
+  // Falls back to positional indices (10/13/14) if no header detected
+  const parseSheetSmart = (ws: XLSX.WorkSheet): Array<{ delivery: string; value: number; branch: string }> => {
+    // Read EVERYTHING using sheet_ref to preserve original column indices
+    const ref = ws['!ref'];
+    if (!ref) return [];
+    const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '', blankrows: false });
+    if (raw.length === 0) return [];
+
+    // Try to find a header row within the first 10 rows
+    // Look for cells containing "تخريج" or "delivery" etc.
+    let headerRowIdx = -1;
+    let deliveryCol = -1;
+    let valueCol = -1;
+    let branchCol = -1;
+
+    for (let i = 0; i < Math.min(10, raw.length); i++) {
       const row = raw[i] as any[];
-      if (!row || row.length === 0) continue;
-      const deliveryRaw = row[10];
-      const valueRaw = row[13];
-      const branchRaw = row[14];
+      if (!row || !Array.isArray(row)) continue;
+
+      for (let c = 0; c < row.length; c++) {
+        const cell = String(row[c] || '').trim().toLowerCase();
+        if (!cell) continue;
+        if (deliveryCol < 0 && /كشف|تخريج|delivery|statement/i.test(cell)) { deliveryCol = c; headerRowIdx = i; }
+        if (valueCol < 0 && /قيمة|قيمه|value|amount|مبلغ|السعر|الاجمالي|total/i.test(cell)) { valueCol = c; headerRowIdx = i; }
+        if (branchCol < 0 && /فرع|branch/i.test(cell)) { branchCol = c; headerRowIdx = i; }
+      }
+
+      // If we found all 3 columns in this row, we're done
+      if (deliveryCol >= 0 && valueCol >= 0 && branchCol >= 0) break;
+    }
+
+    const out: Array<{ delivery: string; value: number; branch: string }> = [];
+
+    // Determine which indices to use for extraction
+    // Use detected columns if we found them, otherwise fall back to the standard layout (10/13/14)
+    const useDelivery = deliveryCol >= 0 ? deliveryCol : 10;
+    const useValue = valueCol >= 0 ? valueCol : 13;
+    const useBranch = branchCol >= 0 ? branchCol : 14;
+
+    // Data starts after the header row (or at row 4 if no header found)
+    const dataStart = headerRowIdx >= 0 ? headerRowIdx + 1 : 4;
+
+    for (let i = dataStart; i < raw.length; i++) {
+      const row = raw[i] as any[];
+      if (!row || !Array.isArray(row) || row.length === 0) continue;
+
+      const deliveryRaw = row[useDelivery];
+      const valueRaw = row[useValue];
+      const branchRaw = row[useBranch];
+
       if (deliveryRaw === '' || deliveryRaw === null || deliveryRaw === undefined) continue;
       const delivery = String(deliveryRaw).trim();
       if (!delivery || delivery.toLowerCase() === 'nan') continue;
-      const value = Number(valueRaw);
+
+      // If it looks like a header row or label, skip
+      if (/^(total|إجمالي|اجمالي|المجموع)/i.test(delivery)) continue;
+
+      const value = Number(String(valueRaw).replace(/[^\d.-]/g, ''));
       if (!value || isNaN(value) || value <= 0) continue;
+
       const branch = String(branchRaw || '').trim();
       out.push({ delivery, value, branch });
     }
-    return out;
-  };
 
-  // Parse a sheet using header-based detection (flexible column names)
-  const parseHeaderSheet = (ws: XLSX.WorkSheet): Array<{ delivery: string; value: number; branch: string }> => {
-    const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: '' });
-    const out: Array<{ delivery: string; value: number; branch: string }> = [];
-    for (const row of rows) {
-      const keys = Object.keys(row);
-      if (keys.length === 0) continue;
-      const deliveryKey = keys.find(k => /كشف|تخريج|delivery|statement/i.test(k)) || keys[0];
-      const valueKey = keys.find(k => /قيمة|قيمه|value|amount|مبلغ|السعر/i.test(k)) || keys[1];
-      const branchKey = keys.find(k => /فرع|branch/i.test(k)) || keys[2];
-      const delivery = String(row[deliveryKey] || '').trim();
-      const value = Number(row[valueKey]) || 0;
-      const branch = String(row[branchKey] || '').trim();
-      if (!delivery || value <= 0) continue;
-      out.push({ delivery, value, branch });
-    }
     return out;
   };
 
@@ -335,13 +362,8 @@ export default function WalletPage() {
           const day = isDaySheet ? parseInt(sheetName, 10) : null;
           if (isDaySheet && (day! < 1 || day! > 31)) continue;
 
-          // Try positional parsing (this file format)
-          let parsed = parsePositionalSheet(ws);
-
-          // For non-day sheets, fall back to header-based if positional found nothing
-          if (parsed.length === 0 && !isDaySheet) {
-            parsed = parseHeaderSheet(ws);
-          }
+          // Smart parser: auto-detects headers and columns
+          const parsed = parseSheetSmart(ws);
 
           // Determine date for each row
           const dateStr = isDaySheet
@@ -360,7 +382,21 @@ export default function WalletPage() {
         }
 
         if (allRows.length === 0) {
-          setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات صالحة' : 'No valid data found');
+          const sheetsChecked = wb.SheetNames.length;
+          const sampleSheet = wb.Sheets[wb.SheetNames[0]];
+          let sampleInfo = '';
+          if (sampleSheet) {
+            const rawSample = XLSX.utils.sheet_to_json<any[]>(sampleSheet, { header: 1, defval: '' });
+            sampleInfo = ` (${rawSample.length} rows in first sheet)`;
+            // Log to console for debugging
+            console.log('[BulkUpload] Sheets:', wb.SheetNames);
+            console.log('[BulkUpload] First 8 rows of first sheet:', rawSample.slice(0, 8));
+          }
+          setBulkError(
+            lang === 'ar'
+              ? `لم يتم العثور على بيانات صالحة في ${sheetsChecked} شيت${sampleInfo}. افتح Console لمعرفة التفاصيل.`
+              : `No valid data found across ${sheetsChecked} sheet(s)${sampleInfo}. Check console for details.`
+          );
           return;
         }
 

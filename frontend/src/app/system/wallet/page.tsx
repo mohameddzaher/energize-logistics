@@ -282,54 +282,93 @@ export default function WalletPage() {
     const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
     if (raw.length === 0) return [];
 
-    // Keywords to match (longer/more specific first)
-    const deliveryKeywords = ['رقم التخريج', 'كشف التخريج', 'تخريج', 'كشف', 'delivery', 'statement', 'رقم كشف'];
-    const valueKeywords = ['القيمه', 'القيمة', 'قيمه', 'قيمة', 'المبلغ', 'value', 'amount'];
-    const branchKeywords = ['الفرع', 'فرع', 'branch'];
+    const cleanCell = (cell: any): string => String(cell || '').replace(/\s+/g, ' ').trim();
 
-    const matchesAny = (cell: string, keywords: string[]): boolean => {
-      const c = cell.toLowerCase().replace(/\s+/g, ' ').trim();
-      return keywords.some(k => c.includes(k.toLowerCase()));
-    };
-
-    // Scan ALL rows to find the best header row
+    // Scan ALL rows to find the header row - identify candidate columns for each field
+    // We collect MULTIPLE candidates per field (e.g. there may be 2 "القيمه" columns)
     let headerRowIdx = -1;
     let deliveryCol = -1;
-    let valueCol = -1;
     let branchCol = -1;
+    const valueCandidates: number[] = []; // list of candidate columns for "القيمه"
 
     for (let i = 0; i < raw.length; i++) {
       const row = raw[i] as any[];
       if (!row || !Array.isArray(row)) continue;
 
-      let foundInThisRow = 0;
-      const thisRowDelivery = -1;
-      const thisRowValue = -1;
-      const thisRowBranch = -1;
-      let rowDelivery = -1, rowValue = -1, rowBranch = -1;
+      let rowDelivery = -1;
+      let rowBranch = -1;
+      const rowValueCandidates: number[] = [];
+      // Prefer exact "رقم التخريج" over "رقم كشف التخريج" (both match keyword 'تخريج')
+      let foundExactDelivery = false;
 
       for (let c = 0; c < row.length; c++) {
-        const cell = String(row[c] || '').trim();
+        const cell = cleanCell(row[c]);
         if (!cell) continue;
-        if (rowDelivery < 0 && matchesAny(cell, deliveryKeywords)) { rowDelivery = c; foundInThisRow++; }
-        if (rowValue < 0 && matchesAny(cell, valueKeywords)) { rowValue = c; foundInThisRow++; }
-        if (rowBranch < 0 && matchesAny(cell, branchKeywords)) { rowBranch = c; foundInThisRow++; }
+        const cLower = cell.toLowerCase();
+
+        // Delivery column - prefer EXACT match for "رقم التخريج"
+        if (!foundExactDelivery && (cell === 'رقم التخريج' || cell.includes('رقم التخريج'))) {
+          // Make sure it's not "رقم كشف التخريج" (longer form)
+          if (!cell.includes('كشف')) {
+            rowDelivery = c;
+            foundExactDelivery = true;
+          }
+        }
+        // Fallback delivery keywords (only if exact not found)
+        else if (rowDelivery < 0 && !foundExactDelivery && /تخريج|delivery|statement/i.test(cell)) {
+          rowDelivery = c;
+        }
+
+        // Value column - can have multiple candidates
+        if (/^(ال)?قيمه|^(ال)?قيمة|المبلغ|value|amount/i.test(cell) || cLower === 'القيمه' || cLower === 'القيمة' || cLower === 'قيمه' || cLower === 'قيمة') {
+          rowValueCandidates.push(c);
+        }
+
+        // Branch column
+        if (rowBranch < 0 && (cell === 'الفرع' || cell === 'فرع' || /^(ال)?فرع\b|branch/i.test(cell))) {
+          rowBranch = c;
+        }
       }
 
-      // Prefer row that has the most matches. If this row beats the current best, use it.
-      const currentBest = (deliveryCol >= 0 ? 1 : 0) + (valueCol >= 0 ? 1 : 0) + (branchCol >= 0 ? 1 : 0);
-      if (foundInThisRow > currentBest) {
+      const matches = (rowDelivery >= 0 ? 1 : 0) + (rowValueCandidates.length > 0 ? 1 : 0) + (rowBranch >= 0 ? 1 : 0);
+      const currentBest = (deliveryCol >= 0 ? 1 : 0) + (valueCandidates.length > 0 ? 1 : 0) + (branchCol >= 0 ? 1 : 0);
+      if (matches > currentBest) {
         headerRowIdx = i;
         deliveryCol = rowDelivery;
-        valueCol = rowValue;
         branchCol = rowBranch;
+        valueCandidates.length = 0;
+        valueCandidates.push(...rowValueCandidates);
       }
 
-      // If we found all 3, stop
-      if (deliveryCol >= 0 && valueCol >= 0 && branchCol >= 0) break;
+      // If we found all fields, stop scanning
+      if (deliveryCol >= 0 && valueCandidates.length > 0 && branchCol >= 0) break;
     }
 
-    console.log(`[BulkUpload][${sheetName}] Header row: ${headerRowIdx}, Cols: delivery=${deliveryCol}, value=${valueCol}, branch=${branchCol}`);
+    // Pick the best value column: the one where data rows have numeric values
+    // matching where delivery column has non-empty values
+    let valueCol = -1;
+    if (valueCandidates.length === 1) {
+      valueCol = valueCandidates[0];
+    } else if (valueCandidates.length > 1 && deliveryCol >= 0 && headerRowIdx >= 0) {
+      // Score each candidate by counting rows where it has a positive number
+      // in the same row where delivery column has a value
+      let bestScore = -1;
+      for (const cand of valueCandidates) {
+        let score = 0;
+        for (let i = headerRowIdx + 1; i < Math.min(headerRowIdx + 30, raw.length); i++) {
+          const row = raw[i] as any[];
+          if (!row) continue;
+          const delRaw = row[deliveryCol];
+          const valRaw = row[cand];
+          if (delRaw === '' || delRaw === null || delRaw === undefined) continue;
+          const n = Number(String(valRaw).replace(/[^\d.-]/g, ''));
+          if (n && !isNaN(n) && n > 0) score++;
+        }
+        if (score > bestScore) { bestScore = score; valueCol = cand; }
+      }
+    }
+
+    console.log(`[BulkUpload][${sheetName}] Header row: ${headerRowIdx}, Cols: delivery=${deliveryCol}, value=${valueCol} (from candidates ${JSON.stringify(valueCandidates)}), branch=${branchCol}`);
     if (headerRowIdx >= 0) {
       console.log(`[BulkUpload][${sheetName}] Header content:`, raw[headerRowIdx]);
     }

@@ -265,6 +265,47 @@ export default function WalletPage() {
     return null;
   };
 
+  // Parse a single sheet using positional columns (header row 3, data from row 4, cols 10/13/14)
+  // Returns null if the sheet doesn't match this layout (no valid rows found at those indices)
+  const parsePositionalSheet = (ws: XLSX.WorkSheet): Array<{ delivery: string; value: number; branch: string }> => {
+    const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+    const out: Array<{ delivery: string; value: number; branch: string }> = [];
+    for (let i = 4; i < raw.length; i++) {
+      const row = raw[i] as any[];
+      if (!row || row.length === 0) continue;
+      const deliveryRaw = row[10];
+      const valueRaw = row[13];
+      const branchRaw = row[14];
+      if (deliveryRaw === '' || deliveryRaw === null || deliveryRaw === undefined) continue;
+      const delivery = String(deliveryRaw).trim();
+      if (!delivery || delivery.toLowerCase() === 'nan') continue;
+      const value = Number(valueRaw);
+      if (!value || isNaN(value) || value <= 0) continue;
+      const branch = String(branchRaw || '').trim();
+      out.push({ delivery, value, branch });
+    }
+    return out;
+  };
+
+  // Parse a sheet using header-based detection (flexible column names)
+  const parseHeaderSheet = (ws: XLSX.WorkSheet): Array<{ delivery: string; value: number; branch: string }> => {
+    const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: '' });
+    const out: Array<{ delivery: string; value: number; branch: string }> = [];
+    for (const row of rows) {
+      const keys = Object.keys(row);
+      if (keys.length === 0) continue;
+      const deliveryKey = keys.find(k => /كشف|تخريج|delivery|statement/i.test(k)) || keys[0];
+      const valueKey = keys.find(k => /قيمة|قيمه|value|amount|مبلغ|السعر/i.test(k)) || keys[1];
+      const branchKey = keys.find(k => /فرع|branch/i.test(k)) || keys[2];
+      const delivery = String(row[deliveryKey] || '').trim();
+      const value = Number(row[valueKey]) || 0;
+      const branch = String(row[branchKey] || '').trim();
+      if (!delivery || value <= 0) continue;
+      out.push({ delivery, value, branch });
+    }
+    return out;
+  };
+
   const handleBulkFile = (file: File) => {
     setBulkError('');
     const reader = new FileReader();
@@ -273,86 +314,54 @@ export default function WalletPage() {
         const data = new Uint8Array(evt.target?.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
 
-        // Detect format: multi-day sheets (1-31) vs single sheet
-        const numericSheets = wb.SheetNames.filter(n => /^\d{1,2}$/.test(n));
-        const isMultiDay = numericSheets.length >= 3;
-
         // Determine base month/year (from file name, fallback to selectedDate)
         const selectedD = new Date(selectedDate);
-        let baseYear = selectedD.getFullYear();
+        const baseYear = selectedD.getFullYear();
         let baseMonth = selectedD.getMonth() + 1;
         const detectedMonth = detectMonthFromName(file.name.replace(/\.xlsx?$/i, ''));
         if (detectedMonth) baseMonth = detectedMonth;
 
         const allRows: Array<{ deliveryStatement: string; value: number; branch: string; date: string; sheet?: string }> = [];
 
-        if (isMultiDay) {
-          // Parse each day sheet
-          for (const sheetName of numericSheets) {
-            const day = parseInt(sheetName, 10);
-            if (day < 1 || day > 31) continue;
+        // Go through every sheet. For each sheet:
+        // 1. If sheet name is numeric (1-31) → use positional columns (10/13/14) and date from sheet name
+        // 2. Otherwise → try positional columns first; if no data found, fall back to header-based
+        // 3. Skip sheets named DATA or similar metadata sheets unless they contain data
+        for (const sheetName of wb.SheetNames) {
+          const ws = wb.Sheets[sheetName];
+          if (!ws) continue;
 
-            const ws = wb.Sheets[sheetName];
-            if (!ws) continue;
+          const isDaySheet = /^\d{1,2}$/.test(sheetName);
+          const day = isDaySheet ? parseInt(sheetName, 10) : null;
+          if (isDaySheet && (day! < 1 || day! > 31)) continue;
 
-            // Read as raw array (no header mapping)
-            const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+          // Try positional parsing (this file format)
+          let parsed = parsePositionalSheet(ws);
 
-            // Data starts at row index 4 (row 5 in Excel), header is at row 3 (row 4 in Excel)
-            // Columns: رقم التخريج = index 10, القيمه = index 13, الفرع = index 14
-            for (let i = 4; i < raw.length; i++) {
-              const row = raw[i] as any[];
-              if (!row || row.length === 0) continue;
-
-              const deliveryRaw = row[10];
-              const valueRaw = row[13];
-              const branchRaw = row[14];
-
-              // Skip if delivery statement is empty/NaN
-              if (deliveryRaw === '' || deliveryRaw === null || deliveryRaw === undefined) continue;
-              const delivery = String(deliveryRaw).trim();
-              if (!delivery || delivery.toLowerCase() === 'nan') continue;
-
-              // Skip if value is empty/zero
-              const value = Number(valueRaw);
-              if (!value || isNaN(value) || value <= 0) continue;
-
-              const branch = String(branchRaw || '').trim();
-
-              // Construct date as YYYY-MM-DD
-              const dateStr = `${baseYear}-${String(baseMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-              allRows.push({ deliveryStatement: delivery, value, branch, date: dateStr, sheet: sheetName });
-            }
+          // For non-day sheets, fall back to header-based if positional found nothing
+          if (parsed.length === 0 && !isDaySheet) {
+            parsed = parseHeaderSheet(ws);
           }
 
-          if (allRows.length === 0) {
-            setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات صالحة في الشيتات' : 'No valid data found in sheets');
-            return;
+          // Determine date for each row
+          const dateStr = isDaySheet
+            ? `${baseYear}-${String(baseMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+            : selectedDate;
+
+          for (const r of parsed) {
+            allRows.push({
+              deliveryStatement: r.delivery,
+              value: r.value,
+              branch: r.branch,
+              date: dateStr,
+              sheet: sheetName,
+            });
           }
-        } else {
-          // Single sheet format - existing flexible column detection
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: '' });
+        }
 
-          for (const row of rows) {
-            const keys = Object.keys(row);
-            const deliveryKey = keys.find(k => /كشف|تخريج|delivery|statement/i.test(k)) || keys[0];
-            const valueKey = keys.find(k => /قيمة|value|amount|مبلغ|السعر/i.test(k)) || keys[1];
-            const branchKey = keys.find(k => /فرع|branch/i.test(k)) || keys[2];
-
-            const delivery = String(row[deliveryKey] || '').trim();
-            const value = Number(row[valueKey]) || 0;
-            const branch = String(row[branchKey] || '').trim();
-
-            if (!delivery || value <= 0) continue;
-            allRows.push({ deliveryStatement: delivery, value, branch, date: selectedDate });
-          }
-
-          if (allRows.length === 0) {
-            setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات صالحة' : 'No valid data found');
-            return;
-          }
+        if (allRows.length === 0) {
+          setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات صالحة' : 'No valid data found');
+          return;
         }
 
         setBulkRows(allRows);

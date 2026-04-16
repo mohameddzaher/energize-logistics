@@ -265,71 +265,152 @@ export default function WalletPage() {
     return null;
   };
 
-  // Smart parser: scans all rows to find a header row, then detects delivery/value/branch columns
-  // Falls back to positional indices (10/13/14) if no header detected
-  const parseSheetSmart = (ws: XLSX.WorkSheet): Array<{ delivery: string; value: number; branch: string }> => {
-    // Read EVERYTHING using sheet_ref to preserve original column indices
+  // Smart parser: scans ALL rows to find headers, then detects delivery/value/branch columns
+  // Very flexible - works regardless of header position or column order
+  const parseSheetSmart = (ws: XLSX.WorkSheet, sheetName: string = ''): Array<{ delivery: string; value: number; branch: string }> => {
     const ref = ws['!ref'];
     if (!ref) return [];
-    const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '', blankrows: false });
+
+    // Read with full range preserved (no blank row skipping, all cells)
+    const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
     if (raw.length === 0) return [];
 
-    // Try to find a header row within the first 10 rows
-    // Look for cells containing "تخريج" or "delivery" etc.
+    // Keywords to match (longer/more specific first)
+    const deliveryKeywords = ['رقم التخريج', 'كشف التخريج', 'تخريج', 'كشف', 'delivery', 'statement', 'رقم كشف'];
+    const valueKeywords = ['القيمه', 'القيمة', 'قيمه', 'قيمة', 'المبلغ', 'value', 'amount'];
+    const branchKeywords = ['الفرع', 'فرع', 'branch'];
+
+    const matchesAny = (cell: string, keywords: string[]): boolean => {
+      const c = cell.toLowerCase().replace(/\s+/g, ' ').trim();
+      return keywords.some(k => c.includes(k.toLowerCase()));
+    };
+
+    // Scan ALL rows to find the best header row
     let headerRowIdx = -1;
     let deliveryCol = -1;
     let valueCol = -1;
     let branchCol = -1;
 
-    for (let i = 0; i < Math.min(10, raw.length); i++) {
+    for (let i = 0; i < raw.length; i++) {
       const row = raw[i] as any[];
       if (!row || !Array.isArray(row)) continue;
 
+      let foundInThisRow = 0;
+      const thisRowDelivery = -1;
+      const thisRowValue = -1;
+      const thisRowBranch = -1;
+      let rowDelivery = -1, rowValue = -1, rowBranch = -1;
+
       for (let c = 0; c < row.length; c++) {
-        const cell = String(row[c] || '').trim().toLowerCase();
+        const cell = String(row[c] || '').trim();
         if (!cell) continue;
-        if (deliveryCol < 0 && /كشف|تخريج|delivery|statement/i.test(cell)) { deliveryCol = c; headerRowIdx = i; }
-        if (valueCol < 0 && /قيمة|قيمه|value|amount|مبلغ|السعر|الاجمالي|total/i.test(cell)) { valueCol = c; headerRowIdx = i; }
-        if (branchCol < 0 && /فرع|branch/i.test(cell)) { branchCol = c; headerRowIdx = i; }
+        if (rowDelivery < 0 && matchesAny(cell, deliveryKeywords)) { rowDelivery = c; foundInThisRow++; }
+        if (rowValue < 0 && matchesAny(cell, valueKeywords)) { rowValue = c; foundInThisRow++; }
+        if (rowBranch < 0 && matchesAny(cell, branchKeywords)) { rowBranch = c; foundInThisRow++; }
       }
 
-      // If we found all 3 columns in this row, we're done
+      // Prefer row that has the most matches. If this row beats the current best, use it.
+      const currentBest = (deliveryCol >= 0 ? 1 : 0) + (valueCol >= 0 ? 1 : 0) + (branchCol >= 0 ? 1 : 0);
+      if (foundInThisRow > currentBest) {
+        headerRowIdx = i;
+        deliveryCol = rowDelivery;
+        valueCol = rowValue;
+        branchCol = rowBranch;
+      }
+
+      // If we found all 3, stop
       if (deliveryCol >= 0 && valueCol >= 0 && branchCol >= 0) break;
+    }
+
+    console.log(`[BulkUpload][${sheetName}] Header row: ${headerRowIdx}, Cols: delivery=${deliveryCol}, value=${valueCol}, branch=${branchCol}`);
+    if (headerRowIdx >= 0) {
+      console.log(`[BulkUpload][${sheetName}] Header content:`, raw[headerRowIdx]);
     }
 
     const out: Array<{ delivery: string; value: number; branch: string }> = [];
 
-    // Determine which indices to use for extraction
-    // Use detected columns if we found them, otherwise fall back to the standard layout (10/13/14)
-    const useDelivery = deliveryCol >= 0 ? deliveryCol : 10;
-    const useValue = valueCol >= 0 ? valueCol : 13;
-    const useBranch = branchCol >= 0 ? branchCol : 14;
+    // Strategy A: If we found a header, use detected columns
+    if (deliveryCol >= 0 && valueCol >= 0 && headerRowIdx >= 0) {
+      for (let i = headerRowIdx + 1; i < raw.length; i++) {
+        const row = raw[i] as any[];
+        if (!row || !Array.isArray(row) || row.length === 0) continue;
 
-    // Data starts after the header row (or at row 4 if no header found)
-    const dataStart = headerRowIdx >= 0 ? headerRowIdx + 1 : 4;
+        const deliveryRaw = row[deliveryCol];
+        const valueRaw = row[valueCol];
+        const branchRaw = branchCol >= 0 ? row[branchCol] : '';
 
-    for (let i = dataStart; i < raw.length; i++) {
+        if (deliveryRaw === '' || deliveryRaw === null || deliveryRaw === undefined) continue;
+        const delivery = String(deliveryRaw).trim();
+        if (!delivery || delivery.toLowerCase() === 'nan') continue;
+        if (/^(total|إجمالي|اجمالي|المجموع|sum)/i.test(delivery)) continue;
+
+        const cleanValue = String(valueRaw).replace(/[^\d.-]/g, '');
+        const value = Number(cleanValue);
+        if (!value || isNaN(value) || value <= 0) continue;
+
+        const branch = String(branchRaw || '').trim();
+        out.push({ delivery, value, branch });
+      }
+
+      if (out.length > 0) {
+        console.log(`[BulkUpload][${sheetName}] Strategy A (headers) found ${out.length} rows`);
+        return out;
+      }
+    }
+
+    // Strategy B: Brute-force scan every row for a pattern:
+    // look for any cell that is a non-empty short string (delivery-like) followed by
+    // a cell that is a positive number (value-like), with an optional city name nearby (branch)
+    console.log(`[BulkUpload][${sheetName}] Falling back to Strategy B (pattern scan)`);
+    const cityHints = ['جده', 'جدة', 'الرياض', 'الدمام', 'ينبع', 'مكة', 'مكه', 'المدينة', 'المدينه', 'الخبر', 'الطائف', 'تبوك', 'ابها', 'أبها', 'حائل', 'نجران', 'جازان', 'بريدة', 'بريده', 'الخرج'];
+
+    for (let i = 0; i < raw.length; i++) {
       const row = raw[i] as any[];
       if (!row || !Array.isArray(row) || row.length === 0) continue;
 
-      const deliveryRaw = row[useDelivery];
-      const valueRaw = row[useValue];
-      const branchRaw = row[useBranch];
+      // Find a numeric cell > 0 and a non-numeric short cell (possibly delivery)
+      let foundDelivery: string | null = null;
+      let foundValue: number | null = null;
+      let foundBranch = '';
 
-      if (deliveryRaw === '' || deliveryRaw === null || deliveryRaw === undefined) continue;
-      const delivery = String(deliveryRaw).trim();
-      if (!delivery || delivery.toLowerCase() === 'nan') continue;
+      for (let c = 0; c < row.length; c++) {
+        const cell = row[c];
+        if (cell === '' || cell === null || cell === undefined) continue;
+        const str = String(cell).trim();
 
-      // If it looks like a header row or label, skip
-      if (/^(total|إجمالي|اجمالي|المجموع)/i.test(delivery)) continue;
+        // Try to parse as number
+        const cleanNum = str.replace(/[^\d.-]/g, '');
+        const num = cleanNum ? Number(cleanNum) : NaN;
+        const isPureNumber = !isNaN(num) && /^[\d.,\s-]+$/.test(str);
 
-      const value = Number(String(valueRaw).replace(/[^\d.-]/g, ''));
-      if (!value || isNaN(value) || value <= 0) continue;
+        if (isPureNumber && num > 0) {
+          // Largest positive number in the row = likely the value (but also delivery number could be pure digits)
+          // We'll pick the biggest one as value, the other pure-digit cells could be delivery
+          if (foundValue === null || num > foundValue) {
+            // Save previous as candidate delivery if it was different
+            if (foundValue !== null && foundDelivery === null) {
+              foundDelivery = String(foundValue);
+            }
+            foundValue = num;
+          } else if (foundDelivery === null) {
+            foundDelivery = str;
+          }
+        } else if (!isPureNumber && str.length <= 50) {
+          // Non-numeric: could be delivery ID or branch
+          if (cityHints.some(city => str.includes(city))) {
+            foundBranch = str;
+          } else if (!foundDelivery && /[a-zA-Z\d]/.test(str)) {
+            foundDelivery = str;
+          }
+        }
+      }
 
-      const branch = String(branchRaw || '').trim();
-      out.push({ delivery, value, branch });
+      if (foundDelivery && foundValue && foundValue > 0 && !/^(total|إجمالي|اجمالي|المجموع|sum|رقم|القيمه|القيمة|الفرع|date|التاريخ)/i.test(foundDelivery)) {
+        out.push({ delivery: foundDelivery, value: foundValue, branch: foundBranch });
+      }
     }
 
+    console.log(`[BulkUpload][${sheetName}] Strategy B found ${out.length} rows`);
     return out;
   };
 
@@ -363,7 +444,7 @@ export default function WalletPage() {
           if (isDaySheet && (day! < 1 || day! > 31)) continue;
 
           // Smart parser: auto-detects headers and columns
-          const parsed = parseSheetSmart(ws);
+          const parsed = parseSheetSmart(ws, sheetName);
 
           // Determine date for each row
           const dateStr = isDaySheet

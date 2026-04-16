@@ -242,6 +242,29 @@ export default function WalletPage() {
   };
 
   // ─── BULK UPLOAD PURCHASES ─────────────────────────────────
+  // Detect Arabic month name → month number (1-12)
+  const detectMonthFromName = (name: string): number | null => {
+    const n = name.toLowerCase();
+    const months: Record<string, number> = {
+      'يناير': 1, 'january': 1, 'jan': 1,
+      'فبراير': 2, 'february': 2, 'feb': 2,
+      'مارس': 3, 'march': 3, 'mar': 3,
+      'ابريل': 4, 'أبريل': 4, 'april': 4, 'apr': 4,
+      'مايو': 5, 'may': 5,
+      'يونيو': 6, 'june': 6, 'jun': 6,
+      'يوليو': 7, 'july': 7, 'jul': 7,
+      'اغسطس': 8, 'أغسطس': 8, 'august': 8, 'aug': 8,
+      'سبتمبر': 9, 'september': 9, 'sep': 9,
+      'اكتوبر': 10, 'أكتوبر': 10, 'october': 10, 'oct': 10,
+      'نوفمبر': 11, 'november': 11, 'nov': 11,
+      'ديسمبر': 12, 'december': 12, 'dec': 12,
+    };
+    for (const [key, m] of Object.entries(months)) {
+      if (n.includes(key)) return m;
+    }
+    return null;
+  };
+
   const handleBulkFile = (file: File) => {
     setBulkError('');
     const reader = new FileReader();
@@ -249,27 +272,90 @@ export default function WalletPage() {
       try {
         const data = new Uint8Array(evt.target?.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: '' });
 
-        const mapped = rows.map((row: any) => {
-          const keys = Object.keys(row);
-          const deliveryKey = keys.find(k => /كشف|تخريج|delivery|statement/i.test(k)) || keys[0];
-          const valueKey = keys.find(k => /قيمة|value|amount|مبلغ|السعر/i.test(k)) || keys[1];
-          const branchKey = keys.find(k => /فرع|branch/i.test(k)) || keys[2];
+        // Detect format: multi-day sheets (1-31) vs single sheet
+        const numericSheets = wb.SheetNames.filter(n => /^\d{1,2}$/.test(n));
+        const isMultiDay = numericSheets.length >= 3;
 
-          return {
-            deliveryStatement: String(row[deliveryKey] || '').trim(),
-            value: Number(row[valueKey]) || 0,
-            branch: String(row[branchKey] || '').trim(),
-          };
-        }).filter((r: any) => r.deliveryStatement && r.value > 0);
+        // Determine base month/year (from file name, fallback to selectedDate)
+        const selectedD = new Date(selectedDate);
+        let baseYear = selectedD.getFullYear();
+        let baseMonth = selectedD.getMonth() + 1;
+        const detectedMonth = detectMonthFromName(file.name.replace(/\.xlsx?$/i, ''));
+        if (detectedMonth) baseMonth = detectedMonth;
 
-        if (mapped.length === 0) {
-          setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات صالحة' : 'No valid data found');
-          return;
+        const allRows: Array<{ deliveryStatement: string; value: number; branch: string; date: string; sheet?: string }> = [];
+
+        if (isMultiDay) {
+          // Parse each day sheet
+          for (const sheetName of numericSheets) {
+            const day = parseInt(sheetName, 10);
+            if (day < 1 || day > 31) continue;
+
+            const ws = wb.Sheets[sheetName];
+            if (!ws) continue;
+
+            // Read as raw array (no header mapping)
+            const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+
+            // Data starts at row index 4 (row 5 in Excel), header is at row 3 (row 4 in Excel)
+            // Columns: رقم التخريج = index 10, القيمه = index 13, الفرع = index 14
+            for (let i = 4; i < raw.length; i++) {
+              const row = raw[i] as any[];
+              if (!row || row.length === 0) continue;
+
+              const deliveryRaw = row[10];
+              const valueRaw = row[13];
+              const branchRaw = row[14];
+
+              // Skip if delivery statement is empty/NaN
+              if (deliveryRaw === '' || deliveryRaw === null || deliveryRaw === undefined) continue;
+              const delivery = String(deliveryRaw).trim();
+              if (!delivery || delivery.toLowerCase() === 'nan') continue;
+
+              // Skip if value is empty/zero
+              const value = Number(valueRaw);
+              if (!value || isNaN(value) || value <= 0) continue;
+
+              const branch = String(branchRaw || '').trim();
+
+              // Construct date as YYYY-MM-DD
+              const dateStr = `${baseYear}-${String(baseMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+              allRows.push({ deliveryStatement: delivery, value, branch, date: dateStr, sheet: sheetName });
+            }
+          }
+
+          if (allRows.length === 0) {
+            setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات صالحة في الشيتات' : 'No valid data found in sheets');
+            return;
+          }
+        } else {
+          // Single sheet format - existing flexible column detection
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: '' });
+
+          for (const row of rows) {
+            const keys = Object.keys(row);
+            const deliveryKey = keys.find(k => /كشف|تخريج|delivery|statement/i.test(k)) || keys[0];
+            const valueKey = keys.find(k => /قيمة|value|amount|مبلغ|السعر/i.test(k)) || keys[1];
+            const branchKey = keys.find(k => /فرع|branch/i.test(k)) || keys[2];
+
+            const delivery = String(row[deliveryKey] || '').trim();
+            const value = Number(row[valueKey]) || 0;
+            const branch = String(row[branchKey] || '').trim();
+
+            if (!delivery || value <= 0) continue;
+            allRows.push({ deliveryStatement: delivery, value, branch, date: selectedDate });
+          }
+
+          if (allRows.length === 0) {
+            setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات صالحة' : 'No valid data found');
+            return;
+          }
         }
-        setBulkRows(mapped);
+
+        setBulkRows(allRows);
         setBulkFileName(file.name);
       } catch (err: any) {
         setBulkError(err.message || 'Failed to parse Excel file');
@@ -289,7 +375,7 @@ export default function WalletPage() {
       const row = bulkRows[i];
       try {
         await api.post('/api/wallet/transactions', {
-          date: selectedDate,
+          date: row.date || selectedDate,
           type: 'purchase',
           amount: row.value,
           purchaseDeliveryStatementNumber: row.deliveryStatement,
@@ -1108,10 +1194,18 @@ export default function WalletPage() {
                 )}
               </div>
 
-              <div className="text-gray-400 text-sm mb-3">
-                {lang === 'ar'
-                  ? 'الملف لازم يحتوي على 3 أعمدة: رقم كشف التخريج - القيمة - الفرع'
-                  : 'File must have 3 columns: Delivery Statement # - Value - Branch'}
+              <div className="text-gray-400 text-sm mb-3 space-y-1">
+                <p>{lang === 'ar'
+                  ? '✓ شكل 1: ملف فيه شيت واحد ب 3 أعمدة (رقم كشف التخريج - القيمة - الفرع)'
+                  : '✓ Format 1: Single sheet with 3 columns (Delivery # / Value / Branch)'}</p>
+                <p>{lang === 'ar'
+                  ? '✓ شكل 2: ملف شهري فيه 31 شيت (1 إلى 31 = أيام الشهر) + شيت DATA'
+                  : '✓ Format 2: Monthly file with 31 sheets (1-31 = days) + DATA sheet'}</p>
+                <p className="text-gray-500 text-xs">
+                  {lang === 'ar'
+                    ? 'للشكل الشهري: الشهر هيتحدد من اسم الملف (مثلاً "ابريل"), والتاريخ لكل معاملة هيكون من رقم الشيت'
+                    : 'Monthly: month detected from filename (e.g. "ابريل"=April), each transaction dated by its sheet number'}
+                </p>
               </div>
 
               {bulkRows.length === 0 ? (
@@ -1143,6 +1237,7 @@ export default function WalletPage() {
                       <thead className="bg-gray-800 sticky top-0">
                         <tr>
                           <th className="px-3 py-2 text-left text-gray-400">#</th>
+                          <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
                           <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'رقم كشف التخريج' : 'Delivery Statement'}</th>
                           <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'القيمة' : 'Value'}</th>
                           <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'الفرع' : 'Branch'}</th>
@@ -1152,6 +1247,7 @@ export default function WalletPage() {
                         {bulkRows.map((r: any, i: number) => (
                           <tr key={i} className="border-t border-gray-800">
                             <td className="px-3 py-2 text-gray-500">{i + 1}</td>
+                            <td className="px-3 py-2 text-gray-400">{r.date}</td>
                             <td className="px-3 py-2 text-white">{r.deliveryStatement}</td>
                             <td className="px-3 py-2 text-green-400">{r.value.toLocaleString()}</td>
                             <td className="px-3 py-2 text-gray-300">{r.branch}</td>

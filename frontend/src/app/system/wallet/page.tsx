@@ -141,6 +141,13 @@ export default function WalletPage() {
   const [bulkError, setBulkError] = useState('');
   const [bulkProgress, setBulkProgress] = useState(0);
   const [bulkUploading, setBulkUploading] = useState(false);
+  // Manual column mapping (when auto-detection fails)
+  const [bulkRawPreview, setBulkRawPreview] = useState<{ sheetName: string; rows: any[][] } | null>(null);
+  const [bulkWorkbook, setBulkWorkbook] = useState<XLSX.WorkBook | null>(null);
+  const [manualDeliveryCol, setManualDeliveryCol] = useState<number>(-1);
+  const [manualValueCol, setManualValueCol] = useState<number>(-1);
+  const [manualBranchCol, setManualBranchCol] = useState<number>(-1);
+  const [manualDataStart, setManualDataStart] = useState<number>(0);
 
   // Purchase report lookup
   const [purchaseReportSearch, setPurchaseReportSearch] = useState('');
@@ -463,21 +470,24 @@ export default function WalletPage() {
         }
 
         if (allRows.length === 0) {
-          const sheetsChecked = wb.SheetNames.length;
-          const sampleSheet = wb.Sheets[wb.SheetNames[0]];
-          let sampleInfo = '';
-          if (sampleSheet) {
-            const rawSample = XLSX.utils.sheet_to_json<any[]>(sampleSheet, { header: 1, defval: '' });
-            sampleInfo = ` (${rawSample.length} rows in first sheet)`;
-            // Log to console for debugging
-            console.log('[BulkUpload] Sheets:', wb.SheetNames);
-            console.log('[BulkUpload] First 8 rows of first sheet:', rawSample.slice(0, 8));
-          }
-          setBulkError(
-            lang === 'ar'
-              ? `لم يتم العثور على بيانات صالحة في ${sheetsChecked} شيت${sampleInfo}. افتح Console لمعرفة التفاصيل.`
-              : `No valid data found across ${sheetsChecked} sheet(s)${sampleInfo}. Check console for details.`
-          );
+          // Auto-detection failed - show manual column picker
+          const firstSheet = wb.Sheets[wb.SheetNames[0]];
+          const rawSample = XLSX.utils.sheet_to_json<any[]>(firstSheet, { header: 1, defval: '' });
+
+          console.log('[BulkUpload] Sheets:', wb.SheetNames);
+          console.log('[BulkUpload] All rows of first sheet:');
+          rawSample.forEach((r, i) => console.log(`  Row ${i}:`, r));
+
+          // Store workbook and show manual picker UI
+          setBulkWorkbook(wb);
+          setBulkRawPreview({ sheetName: wb.SheetNames[0], rows: rawSample });
+          setBulkFileName(file.name);
+          // Suggest defaults based on fixed layout (columns 10/13/14, data from row 4)
+          setManualDeliveryCol(10);
+          setManualValueCol(13);
+          setManualBranchCol(14);
+          setManualDataStart(4);
+          setBulkError('');
           return;
         }
 
@@ -488,6 +498,69 @@ export default function WalletPage() {
       }
     };
     reader.readAsArrayBuffer(file);
+  };
+
+  // Apply manual column selection and extract rows from ALL sheets in workbook
+  const handleManualExtract = () => {
+    if (!bulkWorkbook) return;
+    if (manualDeliveryCol < 0 || manualValueCol < 0) {
+      setBulkError(lang === 'ar' ? 'يجب اختيار عمود رقم التخريج وعمود القيمة' : 'You must pick delivery and value columns');
+      return;
+    }
+
+    const selectedD = new Date(selectedDate);
+    const baseYear = selectedD.getFullYear();
+    let baseMonth = selectedD.getMonth() + 1;
+    const detectedMonth = detectMonthFromName((bulkFileName || '').replace(/\.xlsx?$/i, ''));
+    if (detectedMonth) baseMonth = detectedMonth;
+
+    const allRows: Array<{ deliveryStatement: string; value: number; branch: string; date: string; sheet?: string }> = [];
+
+    for (const sheetName of bulkWorkbook.SheetNames) {
+      const ws = bulkWorkbook.Sheets[sheetName];
+      if (!ws) continue;
+
+      const isDaySheet = /^\d{1,2}$/.test(sheetName);
+      const day = isDaySheet ? parseInt(sheetName, 10) : null;
+      if (isDaySheet && (day! < 1 || day! > 31)) continue;
+
+      const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+      if (raw.length === 0) continue;
+
+      const dateStr = isDaySheet
+        ? `${baseYear}-${String(baseMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        : selectedDate;
+
+      for (let i = manualDataStart; i < raw.length; i++) {
+        const row = raw[i] as any[];
+        if (!row || !Array.isArray(row) || row.length === 0) continue;
+
+        const deliveryRaw = row[manualDeliveryCol];
+        const valueRaw = row[manualValueCol];
+        const branchRaw = manualBranchCol >= 0 ? row[manualBranchCol] : '';
+
+        if (deliveryRaw === '' || deliveryRaw === null || deliveryRaw === undefined) continue;
+        const delivery = String(deliveryRaw).trim();
+        if (!delivery || delivery.toLowerCase() === 'nan') continue;
+        if (/^(total|إجمالي|اجمالي|المجموع|sum|رصيد الخزينه|اجمال)/i.test(delivery)) continue;
+
+        const cleanValue = String(valueRaw).replace(/[^\d.-]/g, '');
+        const value = Number(cleanValue);
+        if (!value || isNaN(value) || value <= 0) continue;
+
+        const branch = String(branchRaw || '').trim();
+        allRows.push({ deliveryStatement: delivery, value, branch, date: dateStr, sheet: sheetName });
+      }
+    }
+
+    if (allRows.length === 0) {
+      setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات بالأعمدة المختارة' : 'No data found with selected columns');
+      return;
+    }
+
+    setBulkRows(allRows);
+    setBulkRawPreview(null);
+    setBulkError('');
   };
 
   const handleBulkSubmit = async () => {
@@ -1334,7 +1407,94 @@ export default function WalletPage() {
                 </p>
               </div>
 
-              {bulkRows.length === 0 ? (
+              {bulkRawPreview ? (
+                <div className="space-y-3">
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-400 text-sm">
+                    {lang === 'ar'
+                      ? '⚠️ مش قادر أكتشف الأعمدة تلقائياً. اختار الأعمدة يدوياً من الجدول تحت:'
+                      : '⚠️ Auto-detection failed. Pick columns manually from the preview below:'}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-gray-400 text-xs block mb-1">{lang === 'ar' ? 'عمود رقم التخريج' : 'Delivery Column'}</label>
+                      <select aria-label="delivery column" value={manualDeliveryCol} onChange={(e) => setManualDeliveryCol(Number(e.target.value))}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-2 py-2 text-sm">
+                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>Col {i}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-xs block mb-1">{lang === 'ar' ? 'عمود القيمة' : 'Value Column'}</label>
+                      <select aria-label="value column" value={manualValueCol} onChange={(e) => setManualValueCol(Number(e.target.value))}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-2 py-2 text-sm">
+                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>Col {i}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-xs block mb-1">{lang === 'ar' ? 'عمود الفرع (اختياري)' : 'Branch Column (optional)'}</label>
+                      <select aria-label="branch column" value={manualBranchCol} onChange={(e) => setManualBranchCol(Number(e.target.value))}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-2 py-2 text-sm">
+                        <option value={-1}>{lang === 'ar' ? '— بدون —' : '— None —'}</option>
+                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>Col {i}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-xs block mb-1">{lang === 'ar' ? 'البيانات تبدأ من صف' : 'Data starts at row'}</label>
+                      <input type="number" min="0" aria-label="data start row" title="Data starts at row" placeholder="0"
+                        value={manualDataStart} onChange={(e) => setManualDataStart(Number(e.target.value) || 0)}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {lang === 'ar' ? 'شوف البيانات تحت واعرف كل عمود رقمه كام:' : 'Look at the preview to identify column indices:'}
+                  </div>
+                  <div className="max-h-72 overflow-auto bg-gray-900 rounded-lg border border-gray-700">
+                    <table className="text-xs">
+                      <thead className="bg-gray-800 sticky top-0">
+                        <tr>
+                          <th className="px-2 py-1 text-gray-500">Row</th>
+                          {bulkRawPreview.rows[0]?.map((_: any, i: number) => (
+                            <th key={i} className={`px-2 py-1 whitespace-nowrap ${
+                              i === manualDeliveryCol ? 'bg-orange-500/30 text-orange-300' :
+                              i === manualValueCol ? 'bg-green-500/30 text-green-300' :
+                              i === manualBranchCol ? 'bg-blue-500/30 text-blue-300' :
+                              'text-gray-400'
+                            }`}>
+                              Col {i}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkRawPreview.rows.slice(0, 25).map((row: any[], ri: number) => (
+                          <tr key={ri} className={`border-t border-gray-800 ${ri === manualDataStart ? 'bg-gray-800/50' : ''}`}>
+                            <td className="px-2 py-1 text-gray-500">{ri}</td>
+                            {row.map((cell: any, ci: number) => (
+                              <td key={ci} className={`px-2 py-1 whitespace-nowrap max-w-[150px] truncate ${
+                                ci === manualDeliveryCol ? 'bg-orange-500/10 text-orange-300' :
+                                ci === manualValueCol ? 'bg-green-500/10 text-green-300' :
+                                ci === manualBranchCol ? 'bg-blue-500/10 text-blue-300' :
+                                'text-gray-300'
+                              }`}>
+                                {cell === '' || cell === null ? '' : String(cell)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => { setBulkRawPreview(null); setBulkWorkbook(null); setBulkFileName(''); }}
+                      className="px-4 py-2 text-gray-400 hover:text-white text-sm">
+                      {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                    </button>
+                    <button type="button" onClick={handleManualExtract}
+                      className="px-4 py-2 bg-[#f37121] hover:bg-[#e06010] text-white rounded-lg text-sm font-medium">
+                      {lang === 'ar' ? 'استخراج البيانات' : 'Extract Data'}
+                    </button>
+                  </div>
+                </div>
+              ) : bulkRows.length === 0 ? (
                 <label className="block border-2 border-dashed border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-[#f37121]/50 transition-colors">
                   <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
                     onChange={(e) => e.target.files?.[0] && handleBulkFile(e.target.files[0])} />

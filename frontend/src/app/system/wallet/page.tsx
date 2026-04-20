@@ -190,7 +190,11 @@ export default function WalletPage() {
       const data = await api.get<any>(url);
       setWallet(data.wallet);
       setTransactions(data.transactions || []);
+      // Clear any stale error banner on successful load
+      setActionError('');
     } catch (err: any) {
+      // Silently ignore auth-required errors on initial load (auth may still be settling)
+      if (err?.message === 'Authentication required') return;
       setWallet(null);
       setTransactions([]);
       if (err?.message?.includes('No branch') || err?.message?.includes('branch')) {
@@ -198,9 +202,13 @@ export default function WalletPage() {
       }
     }
     setLoading(false);
-  }, [selectedDate, canSelectBranch, selectedBranch, selectedUser]);
+  }, [selectedDate, canSelectBranch, selectedBranch, selectedUser, lang]);
 
-  useEffect(() => { fetchWallet(); }, [fetchWallet]);
+  // Wait for auth before fetching
+  useEffect(() => {
+    if (!user) return;
+    fetchWallet();
+  }, [fetchWallet, user]);
 
   // WebSocket
   const handleWalletEvent = useCallback(() => { fetchWallet(false); }, [fetchWallet]);

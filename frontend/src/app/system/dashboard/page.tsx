@@ -164,6 +164,8 @@ export default function DashboardPage() {
         fetches[i].setter(r.value);
         data[fetches[i].name] = r.value;
       } else {
+        // Silently ignore auth-required errors (auth may still be settling on fresh login)
+        if (r.reason?.message === 'Authentication required') return;
         console.error(`Dashboard API failed: ${fetches[i].name}`, r.reason?.message);
         failed.push(fetches[i].name);
       }
@@ -232,6 +234,12 @@ export default function DashboardPage() {
       const allFailed = [...dateFailed, ...staticResults.filter(Boolean) as string[]];
       if (allFailed.length > 0) setError(`Failed to load: ${allFailed.join(', ')}`);
     } catch (err: any) {
+      // Silently ignore auth-required errors (auth still settling on fresh login)
+      if (err?.message === 'Authentication required') {
+        setLoading(false);
+        setInitialLoaded(true);
+        return;
+      }
       console.error('Dashboard fetch error:', err);
       setError(err.message || 'Failed to load dashboard');
     } finally {
@@ -252,8 +260,9 @@ export default function DashboardPage() {
     cacheRef.current = {};
   }, [loginKey]);
 
-  // Initial load (only on mount / user change)
+  // Initial load - ONLY after user is authenticated (prevents 401 race condition on fresh login)
   useEffect(() => {
+    if (!user) return; // wait for auth
     fetchAll().then(() => {
       // Prefetch "Last Month" data in background so switching is instant
       const now = new Date();
@@ -265,7 +274,7 @@ export default function DashboardPage() {
         fetchDateData(lastMonthQuery).catch(() => {});
       }
     });
-  }, [fetchAll, fetchDateData, loginKey]);
+  }, [fetchAll, fetchDateData, loginKey, user]);
 
   // Date filter change — show cached data instantly, refresh in background
   useEffect(() => {

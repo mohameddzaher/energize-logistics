@@ -25,14 +25,23 @@ function extractSheetId(url) {
 }
 
 function buildExportUrl(sheetId) {
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+  // `nocache` plus a unique timestamp defeat any CDN/edge caching so we always
+  // see the latest edits the user just made in Google Sheets.
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&nocache=${Date.now()}`;
 }
 
 // Download the sheet as XLSX. Requires the sheet to be set to "Anyone with the link
 // can view". Returns a Buffer ready to feed into parseRepsExcel.
 async function downloadSheet(sheetId) {
   const url = buildExportUrl(sheetId);
-  const res = await fetch(url, { redirect: 'follow' });
+  const res = await fetch(url, {
+    redirect: 'follow',
+    headers: {
+      // Browsers/proxies sometimes serve a cached response for repeated requests.
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+    },
+  });
   if (!res.ok) {
     throw new Error(`Google Sheets returned HTTP ${res.status}. Make sure the sheet is set to "Anyone with the link can view".`);
   }
@@ -46,12 +55,16 @@ async function downloadSheet(sheetId) {
 }
 
 // Run one sync pass: download → parse → resolve reps → bulk upsert daily orders.
-// Returns sync stats for storage in the config doc.
-async function syncOnce({ user, mode = 'merge_new_only' } = {}) {
+// Returns sync stats for storage in the config doc. Uses the syncMode from config
+// when not explicitly overridden — default is 'overwrite' so any sheet edit
+// reflects in the dashboard.
+async function syncOnce({ user, mode } = {}) {
   const started = Date.now();
   const config = await B2CGoogleSheetSync.findOne({ singleton: 'config' });
   if (!config) throw new Error('No Google Sheet sync config found');
   if (!config.sheetId) throw new Error('Sheet ID not set on config');
+  // Mode resolution: explicit param > config.syncMode > 'overwrite'
+  const effectiveMode = mode || config.syncMode || 'overwrite';
 
   // Step 1: download
   const buffer = await downloadSheet(config.sheetId);
@@ -183,7 +196,7 @@ async function syncOnce({ user, mode = 'merge_new_only' } = {}) {
   for (const e of entries) {
     const pairKey = `${e.rep}:${e.dateKey}`;
     const exists = existingSet.has(pairKey);
-    if (exists && mode === 'merge_new_only') { skipped++; continue; }
+    if (exists && effectiveMode === 'merge_new_only') { skipped++; continue; }
     const computedWorked = e.orders !== null && e.orders > 0;
     ops.push({
       updateOne: {
@@ -227,7 +240,7 @@ async function syncOnce({ user, mode = 'merge_new_only' } = {}) {
     daysSkipped: skipped,
     warnings: parsed.warnings.slice(0, 100),
     uploadedBy: user ? user._id : undefined,
-    mode,
+    mode: effectiveMode,
   });
 
   // Update sync config with stats
@@ -266,7 +279,7 @@ function startSyncScheduler() {
       const due = (now - last) >= (config.intervalMinutes * 60 * 1000);
       if (!due) return;
       try {
-        await syncOnce({ mode: 'merge_new_only' });
+        await syncOnce(); // mode resolves from config (default: overwrite)
       } catch (e) {
         await B2CGoogleSheetSync.updateOne(
           { singleton: 'config' },

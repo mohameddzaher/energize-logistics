@@ -58,6 +58,7 @@ export default function RepsPerformancePage() {
   const [sheetConfig, setSheetConfig] = useState<any>(null);
   const [sheetUrlInput, setSheetUrlInput] = useState('');
   const [sheetIntervalInput, setSheetIntervalInput] = useState(15);
+  const [sheetSyncModeInput, setSheetSyncModeInput] = useState<'overwrite' | 'merge_new_only'>('overwrite');
   const [sheetSavingConfig, setSheetSavingConfig] = useState(false);
   const [sheetSyncing, setSheetSyncing] = useState(false);
   const [sheetError, setSheetError] = useState('');
@@ -77,6 +78,7 @@ export default function RepsPerformancePage() {
         setSheetConfig(sheetData.config);
         setSheetUrlInput(sheetData.config.sheetUrl || '');
         setSheetIntervalInput(sheetData.config.intervalMinutes || 15);
+        setSheetSyncModeInput(sheetData.config.syncMode || 'overwrite');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load');
@@ -96,6 +98,7 @@ export default function RepsPerformancePage() {
       const payload: any = {
         sheetUrl: sheetUrlInput,
         intervalMinutes: sheetIntervalInput,
+        syncMode: sheetSyncModeInput,
       };
       if (overrides.enabled !== undefined) payload.enabled = overrides.enabled;
       const data = await api.put<any>('/api/b2c/google-sheet/config', payload);
@@ -113,12 +116,19 @@ export default function RepsPerformancePage() {
   const handleSheetSyncNow = async () => {
     setSheetSyncing(true); setSheetError('');
     try {
-      // Save current settings first to make sure URL changes take effect
-      if (sheetUrlInput && (!sheetConfig || sheetConfig.sheetUrl !== sheetUrlInput)) {
+      // Save current settings first so URL/interval/syncMode changes take effect
+      if (
+        sheetUrlInput && (
+          !sheetConfig
+          || sheetConfig.sheetUrl !== sheetUrlInput
+          || sheetConfig.syncMode !== sheetSyncModeInput
+          || sheetConfig.intervalMinutes !== sheetIntervalInput
+        )
+      ) {
         await handleSaveSheetConfig();
       }
-      await api.post<any>('/api/b2c/google-sheet/sync-now', { mode }, { timeoutMs: 180000 });
-      // Refresh config to show updated lastSync stats
+      // Backend uses the configured syncMode (default 'overwrite' so edits flow through)
+      await api.post<any>('/api/b2c/google-sheet/sync-now', {}, { timeoutMs: 180000 });
       const data = await api.get<any>('/api/b2c/google-sheet/config');
       if (data?.config) setSheetConfig(data.config);
       await fetchAll();
@@ -767,7 +777,7 @@ export default function RepsPerformancePage() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-          <div className="md:col-span-2">
+          <div className="md:col-span-3">
             <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
               <Link2 className="w-3.5 h-3.5 inline mr-1" />
               {lang === 'ar' ? 'رابط Google Sheet' : 'Google Sheet URL'}
@@ -789,6 +799,20 @@ export default function RepsPerformancePage() {
               <option value={30}>{lang === 'ar' ? 'كل 30 دقيقة' : 'Every 30 min'}</option>
               <option value={60}>{lang === 'ar' ? 'كل ساعة' : 'Every hour'}</option>
               <option value={180}>{lang === 'ar' ? 'كل 3 ساعات' : 'Every 3 hours'}</option>
+            </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+              {lang === 'ar' ? 'تحديثات الشيت' : 'Sheet updates'}
+            </label>
+            <select aria-label="Sync mode" value={sheetSyncModeInput} onChange={(e) => setSheetSyncModeInput(e.target.value as any)}
+              className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50">
+              <option value="overwrite">
+                {lang === 'ar' ? '🔄 الشيت هو المصدر — أي تعديل يتعكس (موصى به)' : '🔄 Sheet is source of truth — overwrite (recommended)'}
+              </option>
+              <option value="merge_new_only">
+                {lang === 'ar' ? '➕ أيام جديدة فقط — لا يحدّث الموجود' : '➕ New days only — never overwrite existing'}
+              </option>
             </select>
           </div>
         </div>

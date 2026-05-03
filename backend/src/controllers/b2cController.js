@@ -1464,7 +1464,7 @@ exports.getSheetConfig = async (req, res) => {
 
 exports.updateSheetConfig = async (req, res) => {
   try {
-    const { sheetUrl, enabled, intervalMinutes, project, branch } = req.body;
+    const { sheetUrl, enabled, intervalMinutes, syncMode, project, branch } = req.body;
     const updates = { updatedBy: req.user._id };
     if (sheetUrl !== undefined) {
       updates.sheetUrl = sheetUrl;
@@ -1474,6 +1474,12 @@ exports.updateSheetConfig = async (req, res) => {
     }
     if (enabled !== undefined) updates.enabled = !!enabled;
     if (intervalMinutes !== undefined) updates.intervalMinutes = Math.max(1, Math.min(1440, Number(intervalMinutes)));
+    if (syncMode !== undefined) {
+      if (!['merge_new_only', 'overwrite'].includes(syncMode)) {
+        return res.status(400).json({ message: "syncMode must be 'merge_new_only' or 'overwrite'" });
+      }
+      updates.syncMode = syncMode;
+    }
     if (project !== undefined) updates.project = project || null;
     if (branch !== undefined) updates.branch = branch || null;
 
@@ -1494,8 +1500,9 @@ exports.syncSheetNow = async (req, res) => {
     if (!config || !config.sheetId) {
       return res.status(400).json({ message: 'No Google Sheet configured. Set the URL first.' });
     }
-    const mode = (req.body && req.body.mode) || 'merge_new_only';
-    const stats = await syncOnce({ user: req.user, mode });
+    // Caller may override the configured mode (rare); otherwise the service
+    // resolves it from config.syncMode (default 'overwrite').
+    const stats = await syncOnce({ user: req.user, mode: req.body && req.body.mode });
     res.json({ ok: true, stats });
   } catch (error) {
     // Persist the error so the dashboard can show what went wrong

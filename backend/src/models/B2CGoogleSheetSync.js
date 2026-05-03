@@ -9,6 +9,9 @@ const b2cGoogleSheetSyncSchema = new mongoose.Schema(
     sheetId: { type: String, trim: true },         // extracted Google Sheets ID
     enabled: { type: Boolean, default: false },
     intervalMinutes: { type: Number, default: 15, min: 1, max: 1440 },
+    // Sync mode: overwrite reflects every edit in the sheet (default — the sheet is the
+    // source of truth). merge_new_only only adds days that don't already exist.
+    syncMode: { type: String, enum: ['merge_new_only', 'overwrite'], default: 'overwrite' },
     project: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' }, // optional default scope
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
     lastSyncAt: { type: Date },

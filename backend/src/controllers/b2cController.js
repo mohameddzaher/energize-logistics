@@ -1440,6 +1440,75 @@ exports.getDayDetails = async (req, res) => {
   }
 };
 
+// ────────────────────────────────────────────────────────────────────────────
+// GOOGLE SHEET SYNC
+// ────────────────────────────────────────────────────────────────────────────
+
+const B2CGoogleSheetSync = require('../models/B2CGoogleSheetSync');
+const { syncOnce, extractSheetId } = require('../services/b2cGoogleSheetSyncService');
+
+exports.getSheetConfig = async (req, res) => {
+  try {
+    let config = await B2CGoogleSheetSync.findOne({ singleton: 'config' })
+      .populate('project', 'name code color')
+      .populate('branch', 'name city');
+    if (!config) {
+      // Create default empty config so the UI has something to bind against
+      config = await B2CGoogleSheetSync.create({ singleton: 'config' });
+    }
+    res.json({ config });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to load sheet config' });
+  }
+};
+
+exports.updateSheetConfig = async (req, res) => {
+  try {
+    const { sheetUrl, enabled, intervalMinutes, project, branch } = req.body;
+    const updates = { updatedBy: req.user._id };
+    if (sheetUrl !== undefined) {
+      updates.sheetUrl = sheetUrl;
+      const id = extractSheetId(sheetUrl);
+      if (!id && sheetUrl) return res.status(400).json({ message: 'Could not extract a Google Sheet ID from this URL' });
+      updates.sheetId = id;
+    }
+    if (enabled !== undefined) updates.enabled = !!enabled;
+    if (intervalMinutes !== undefined) updates.intervalMinutes = Math.max(1, Math.min(1440, Number(intervalMinutes)));
+    if (project !== undefined) updates.project = project || null;
+    if (branch !== undefined) updates.branch = branch || null;
+
+    const config = await B2CGoogleSheetSync.findOneAndUpdate(
+      { singleton: 'config' },
+      { $set: updates },
+      { upsert: true, new: true }
+    );
+    res.json({ config });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to update sheet config' });
+  }
+};
+
+exports.syncSheetNow = async (req, res) => {
+  try {
+    const config = await B2CGoogleSheetSync.findOne({ singleton: 'config' });
+    if (!config || !config.sheetId) {
+      return res.status(400).json({ message: 'No Google Sheet configured. Set the URL first.' });
+    }
+    const mode = (req.body && req.body.mode) || 'merge_new_only';
+    const stats = await syncOnce({ user: req.user, mode });
+    res.json({ ok: true, stats });
+  } catch (error) {
+    // Persist the error so the dashboard can show what went wrong
+    try {
+      await B2CGoogleSheetSync.updateOne(
+        { singleton: 'config' },
+        { $set: { lastSyncAt: new Date(), lastSyncStatus: 'error', lastSyncMessage: error.message || 'Sync failed' } }
+      );
+    } catch (_) {}
+    res.status(500).json({ message: error.message || 'Sync failed' });
+  }
+};
+
 exports.getUploadHistory = async (req, res) => {
   try {
     const uploads = await B2CExcelUpload.find({})

@@ -43,4 +43,9 @@ router.get('/uploads', authorize(...READ), b2cController.getUploadHistory);
 // Cleanup — destructive; only super_admin and b2c_head can wipe data
 router.post('/cleanup', authorize('super_admin', 'admin', 'b2c_head'), b2cController.cleanupB2CData);
 
+// Google Sheet sync configuration + manual trigger
+router.get('/google-sheet/config', authorize(...READ), b2cController.getSheetConfig);
+router.put('/google-sheet/config', authorize('super_admin', 'admin', 'b2c_head'), b2cController.updateSheetConfig);
+router.post('/google-sheet/sync-now', authorize('super_admin', 'admin', 'b2c_head'), b2cController.syncSheetNow);
+
 module.exports = router;

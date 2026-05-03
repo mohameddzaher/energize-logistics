@@ -107,6 +107,10 @@ export default function B2CDashboard() {
   // immediately and refetch in the background.
   const dashCacheRef = useRef<Map<string, Dashboard>>(new Map());
   const [refreshing, setRefreshing] = useState(false);
+  // Token to discard stale responses — the user can flip months faster than the
+  // network can return; without this, an old Overview response can land AFTER
+  // a newer May response and overwrite the state.
+  const dashReqIdRef = useRef(0);
 
   // Drilldowns — the modal fetches its own data based on the rep id
   const [selectedRepId, setSelectedRepId] = useState<string | null>(null);
@@ -127,6 +131,7 @@ export default function B2CDashboard() {
   }, []);
 
   const fetchDashboard = useCallback(async () => {
+    const reqId = ++dashReqIdRef.current;
     const params = new URLSearchParams();
     if (year) params.set('year', String(year));
     if (month) params.set('month', String(month));
@@ -150,6 +155,9 @@ export default function B2CDashboard() {
 
     try {
       const data = await api.get<Dashboard>(`/api/b2c/dashboard?${cacheKey}`);
+      // Discard stale responses — only the latest in-flight request wins.
+      // Without this, switching months fast can leave the dashboard showing the wrong scope.
+      if (reqId !== dashReqIdRef.current) return;
       dashCacheRef.current.set(cacheKey, data);
       // Cap cache size to last 8 entries
       if (dashCacheRef.current.size > 8) {
@@ -158,8 +166,10 @@ export default function B2CDashboard() {
       }
       setDashboard(data);
     } catch {} finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (reqId === dashReqIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [year, month, project, branch, rep, dateFrom, dateTo]);
 
@@ -187,10 +197,18 @@ export default function B2CDashboard() {
 
   useEffect(() => { fetchOptions(); }, [fetchOptions]);
   useEffect(() => { fetchMonths(); }, [fetchMonths]);
-  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+  // Skip the first fetchDashboard call until allMonths loads — otherwise a brief
+  // Overview request fires before auto-pick sets the latest month, racing the
+  // proper month-filtered request and sometimes overwriting it.
+  useEffect(() => {
+    if (!monthPickerInitialized && allMonths.length === 0) return;
+    fetchDashboard();
+  }, [fetchDashboard, monthPickerInitialized, allMonths.length]);
   useEffect(() => { if (activeTab === 'evaluation') fetchEvaluations(); }, [activeTab, fetchEvaluations]);
 
   // On first load only: auto-pick the latest month so the user lands in the current month.
+  // This synchronously sets year/month BEFORE the first fetchDashboard fires, avoiding
+  // the race condition.
   useEffect(() => {
     if (monthPickerInitialized) return;
     if (allMonths.length === 0) return;

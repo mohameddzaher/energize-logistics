@@ -11,6 +11,7 @@ const connectDB = require('./config/db');
 const { generalLimiter } = require('./middleware/rateLimiter');
 const { initializeSocket } = require('./websocket/socketManager');
 const { startWalletAutoCloseJob } = require('./jobs/walletAutoClose');
+const { startSyncScheduler: startB2CSheetSync } = require('./services/b2cGoogleSheetSyncService');
 
 // Route imports
 const authRoutes = require('./routes/auth');
@@ -148,6 +149,7 @@ connectDB().then(async () => {
 
     // Start scheduled jobs
     startWalletAutoCloseJob();
+    startB2CSheetSync();
   });
 });
 

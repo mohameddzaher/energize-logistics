@@ -5,7 +5,8 @@ import { getB2CTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2, Cloud, Link2, Power } from 'lucide-react';
+import { useSocket } from '@/hooks/useSocket';
 import { useAuth } from '@/context/AuthContext';
 import { parseRepsExcel, buildBulkPayload, buildDiagnosticReport, type ExcelParseResult } from '@/lib/b2cExcelParser';
 
@@ -53,20 +54,80 @@ export default function RepsPerformancePage() {
   const [cleaningUp, setCleaningUp] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<any | null>(null);
 
+  // Google Sheet sync config
+  const [sheetConfig, setSheetConfig] = useState<any>(null);
+  const [sheetUrlInput, setSheetUrlInput] = useState('');
+  const [sheetIntervalInput, setSheetIntervalInput] = useState(15);
+  const [sheetSavingConfig, setSheetSavingConfig] = useState(false);
+  const [sheetSyncing, setSheetSyncing] = useState(false);
+  const [sheetError, setSheetError] = useState('');
+
   const fetchAll = useCallback(async () => {
     try {
-      const [projData, branchData, uploadsData] = await Promise.all([
+      const [projData, branchData, uploadsData, sheetData] = await Promise.all([
         api.get<any>('/api/b2c/projects'),
         api.get<any>('/api/branches?active=true'),
         api.get<any>('/api/b2c/uploads'),
+        api.get<any>('/api/b2c/google-sheet/config').catch(() => ({ config: null })),
       ]);
       setProjects(projData.projects || []);
       setBranches(branchData.branches || []);
       setUploads(uploadsData.uploads || []);
+      if (sheetData?.config) {
+        setSheetConfig(sheetData.config);
+        setSheetUrlInput(sheetData.config.sheetUrl || '');
+        setSheetIntervalInput(sheetData.config.intervalMinutes || 15);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load');
     }
   }, []);
+
+  // Refresh sheet status whenever the backend cron runs a sync
+  useSocket('b2c:sheet:synced', useCallback(() => {
+    api.get<any>('/api/b2c/google-sheet/config').then((d) => {
+      if (d?.config) setSheetConfig(d.config);
+    }).catch(() => {});
+  }, []));
+
+  const handleSaveSheetConfig = async (overrides: Partial<{ enabled: boolean }> = {}) => {
+    setSheetSavingConfig(true); setSheetError('');
+    try {
+      const payload: any = {
+        sheetUrl: sheetUrlInput,
+        intervalMinutes: sheetIntervalInput,
+      };
+      if (overrides.enabled !== undefined) payload.enabled = overrides.enabled;
+      const data = await api.put<any>('/api/b2c/google-sheet/config', payload);
+      if (data?.config) {
+        setSheetConfig(data.config);
+        setSheetUrlInput(data.config.sheetUrl || '');
+      }
+    } catch (err: any) {
+      setSheetError(err.message || 'Failed to save sheet config');
+    } finally {
+      setSheetSavingConfig(false);
+    }
+  };
+
+  const handleSheetSyncNow = async () => {
+    setSheetSyncing(true); setSheetError('');
+    try {
+      // Save current settings first to make sure URL changes take effect
+      if (sheetUrlInput && (!sheetConfig || sheetConfig.sheetUrl !== sheetUrlInput)) {
+        await handleSaveSheetConfig();
+      }
+      await api.post<any>('/api/b2c/google-sheet/sync-now', { mode }, { timeoutMs: 180000 });
+      // Refresh config to show updated lastSync stats
+      const data = await api.get<any>('/api/b2c/google-sheet/config');
+      if (data?.config) setSheetConfig(data.config);
+      await fetchAll();
+    } catch (err: any) {
+      setSheetError(err.message || 'Sync failed');
+    } finally {
+      setSheetSyncing(false);
+    }
+  };
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -653,6 +714,136 @@ export default function RepsPerformancePage() {
               {uploading ? (lang === 'ar' ? 'جاري الرفع...' : 'Uploading...') : T.confirmUpload}
             </button>
           </motion.div>
+        )}
+      </div>
+
+      {/* Google Sheet sync — third option alongside file upload and manual entry */}
+      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+          <div>
+            <h2 className="text-white font-semibold flex items-center gap-2">
+              <Cloud className="w-5 h-5 text-blue-400" />
+              {lang === 'ar' ? '🔄 مزامنة من Google Sheet' : '🔄 Google Sheet Auto-Sync'}
+            </h2>
+            <p className="text-gray-500 text-xs mt-1">
+              {lang === 'ar'
+                ? 'الصق رابط Google Sheet (مفتوح للجميع بصلاحية القراءة) — السيستم بيسحبه ويحدث البيانات تلقائياً'
+                : 'Paste a Google Sheet share link (anyone-with-link can view) — system fetches and updates automatically'}
+            </p>
+          </div>
+          {sheetConfig && (
+            <div className="text-right">
+              <div className="flex items-center gap-2 justify-end">
+                <span className={`inline-block w-2 h-2 rounded-full ${sheetConfig.enabled ? 'bg-green-400' : 'bg-gray-500'}`} />
+                <span className={`text-xs font-medium ${sheetConfig.enabled ? 'text-green-400' : 'text-gray-400'}`}>
+                  {sheetConfig.enabled
+                    ? (lang === 'ar' ? 'مزامنة نشطة' : 'Auto-sync ON')
+                    : (lang === 'ar' ? 'مزامنة موقوفة' : 'Auto-sync OFF')}
+                </span>
+              </div>
+              {sheetConfig.lastSyncAt && (
+                <p className="text-gray-500 text-[10px] mt-0.5">
+                  {lang === 'ar' ? 'آخر مزامنة' : 'Last sync'}: {new Date(sheetConfig.lastSyncAt).toLocaleString()}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {sheetError && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm mb-3 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>{sheetError}</span>
+            <button type="button" onClick={() => setSheetError('')} className="ml-auto text-red-400 hover:text-red-300" title="Close">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {sheetConfig?.lastSyncStatus === 'error' && sheetConfig.lastSyncMessage && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-amber-300 text-xs mb-3">
+            ⚠️ {lang === 'ar' ? 'آخر محاولة مزامنة فشلت:' : 'Last sync attempt failed:'} {sheetConfig.lastSyncMessage}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <div className="md:col-span-2">
+            <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+              <Link2 className="w-3.5 h-3.5 inline mr-1" />
+              {lang === 'ar' ? 'رابط Google Sheet' : 'Google Sheet URL'}
+            </label>
+            <input type="url" value={sheetUrlInput} onChange={(e) => setSheetUrlInput(e.target.value)}
+              placeholder="https://docs.google.com/spreadsheets/d/..."
+              aria-label="Google Sheet URL"
+              className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-mono" />
+          </div>
+          <div>
+            <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+              {lang === 'ar' ? 'فترة المزامنة' : 'Sync interval'}
+            </label>
+            <select aria-label="Sync interval" value={sheetIntervalInput} onChange={(e) => setSheetIntervalInput(Number(e.target.value))}
+              className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50">
+              <option value={5}>{lang === 'ar' ? 'كل 5 دقايق' : 'Every 5 min'}</option>
+              <option value={10}>{lang === 'ar' ? 'كل 10 دقايق' : 'Every 10 min'}</option>
+              <option value={15}>{lang === 'ar' ? 'كل 15 دقيقة' : 'Every 15 min'}</option>
+              <option value={30}>{lang === 'ar' ? 'كل 30 دقيقة' : 'Every 30 min'}</option>
+              <option value={60}>{lang === 'ar' ? 'كل ساعة' : 'Every hour'}</option>
+              <option value={180}>{lang === 'ar' ? 'كل 3 ساعات' : 'Every 3 hours'}</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" onClick={() => handleSaveSheetConfig()} disabled={sheetSavingConfig || !sheetUrlInput}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+            {sheetSavingConfig && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            {lang === 'ar' ? 'حفظ الإعدادات' : 'Save Config'}
+          </button>
+          <button type="button"
+            onClick={() => handleSaveSheetConfig({ enabled: !sheetConfig?.enabled })}
+            disabled={sheetSavingConfig || !sheetConfig?.sheetId}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              sheetConfig?.enabled
+                ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                : 'bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/40'
+            } disabled:opacity-50`}>
+            <Power className="w-4 h-4" />
+            {sheetConfig?.enabled
+              ? (lang === 'ar' ? 'إيقاف المزامنة التلقائية' : 'Disable Auto-Sync')
+              : (lang === 'ar' ? 'تفعيل المزامنة التلقائية' : 'Enable Auto-Sync')}
+          </button>
+          <button type="button" onClick={handleSheetSyncNow} disabled={sheetSyncing || !sheetUrlInput}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white text-sm font-medium transition-colors ml-auto">
+            <RefreshCw className={`w-4 h-4 ${sheetSyncing ? 'animate-spin' : ''}`} />
+            {sheetSyncing
+              ? (lang === 'ar' ? 'جاري المزامنة...' : 'Syncing...')
+              : (lang === 'ar' ? 'مزامنة الآن' : 'Sync Now')}
+          </button>
+        </div>
+
+        {sheetConfig?.lastSyncStats && sheetConfig.lastSyncStatus === 'ok' && (
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="bg-gray-900 rounded-lg p-2 text-center">
+              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'الشهور' : 'Months'}</p>
+              <p className="text-white text-sm font-bold">{sheetConfig.lastSyncStats.monthsDetected?.length || 0}</p>
+            </div>
+            <div className="bg-gray-900 rounded-lg p-2 text-center">
+              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'صفوف' : 'Records'}</p>
+              <p className="text-white text-sm font-bold">{sheetConfig.lastSyncStats.recordsParsed || 0}</p>
+            </div>
+            <div className="bg-gray-900 rounded-lg p-2 text-center">
+              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'مضاف' : 'Inserted'}</p>
+              <p className="text-green-400 text-sm font-bold">{sheetConfig.lastSyncStats.daysInserted || 0}</p>
+            </div>
+            <div className="bg-gray-900 rounded-lg p-2 text-center">
+              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'محدث' : 'Updated'}</p>
+              <p className="text-blue-400 text-sm font-bold">{sheetConfig.lastSyncStats.daysUpdated || 0}</p>
+            </div>
+            <div className="bg-gray-900 rounded-lg p-2 text-center">
+              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'وقت' : 'Duration'}</p>
+              <p className="text-gray-300 text-sm font-bold">{((sheetConfig.lastSyncStats.durationMs || 0) / 1000).toFixed(1)}s</p>
+            </div>
+          </div>
         )}
       </div>
 

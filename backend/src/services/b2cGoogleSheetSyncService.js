@@ -264,6 +264,46 @@ async function syncOnce({ user, mode } = {}) {
   return stats;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Real-time webhook sync (debounced)
+// ────────────────────────────────────────────────────────────────────────────
+// Apps Script in the user's sheet pings our webhook on every edit. We debounce
+// for a couple of seconds so a flurry of edits triggers ONE sync, not many.
+let webhookDebounceTimer = null;
+let webhookSyncing = false;
+let webhookPendingAfterCurrent = false;
+
+function enqueueWebhookSync() {
+  // If a sync is already running, just remember to run another one when it's done
+  // (covers the case where edits arrive while we're mid-sync).
+  if (webhookSyncing) {
+    webhookPendingAfterCurrent = true;
+    return;
+  }
+  if (webhookDebounceTimer) clearTimeout(webhookDebounceTimer);
+  webhookDebounceTimer = setTimeout(async () => {
+    webhookDebounceTimer = null;
+    webhookSyncing = true;
+    try {
+      await syncOnce();
+    } catch (e) {
+      console.error('[B2C webhook sync] FAILED:', e.message);
+      try {
+        await B2CGoogleSheetSync.updateOne(
+          { singleton: 'config' },
+          { $set: { lastSyncAt: new Date(), lastSyncStatus: 'error', lastSyncMessage: e.message } }
+        );
+      } catch (_) {}
+    } finally {
+      webhookSyncing = false;
+      if (webhookPendingAfterCurrent) {
+        webhookPendingAfterCurrent = false;
+        enqueueWebhookSync();
+      }
+    }
+  }, 2000); // 2-second debounce window — short enough to feel instant
+}
+
 // Cron-driven scheduler. Reads the singleton config and re-fires syncOnce when
 // (now - lastSyncAt) >= intervalMinutes. Cheap: runs every minute, only does work when due.
 let cronTimer = null;
@@ -297,4 +337,4 @@ function startSyncScheduler() {
   console.log('[B2C google-sheet sync] scheduler started');
 }
 
-module.exports = { syncOnce, startSyncScheduler, extractSheetId };
+module.exports = { syncOnce, startSyncScheduler, extractSheetId, enqueueWebhookSync };

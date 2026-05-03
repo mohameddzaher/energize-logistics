@@ -4,6 +4,11 @@ const b2cController = require('../controllers/b2cController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
+// PUBLIC webhook for Google Apps Script — no JWT auth (Apps Script can't carry one).
+// Authentication is via the shared `secret` in the body or `X-Sync-Secret` header.
+// This MUST be declared BEFORE router.use(authenticate) so it bypasses auth.
+router.post('/google-sheet/webhook', b2cController.googleSheetWebhook);
+
 router.use(authenticate);
 
 // Roles allowed to read B2C data
@@ -47,5 +52,6 @@ router.post('/cleanup', authorize('super_admin', 'admin', 'b2c_head'), b2cContro
 router.get('/google-sheet/config', authorize(...READ), b2cController.getSheetConfig);
 router.put('/google-sheet/config', authorize('super_admin', 'admin', 'b2c_head'), b2cController.updateSheetConfig);
 router.post('/google-sheet/sync-now', authorize('super_admin', 'admin', 'b2c_head'), b2cController.syncSheetNow);
+router.get('/google-sheet/setup-script', authorize('super_admin', 'admin', 'b2c_head'), b2cController.getSheetSetupScript);
 
 module.exports = router;

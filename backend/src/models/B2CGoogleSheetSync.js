@@ -14,6 +14,9 @@ const b2cGoogleSheetSyncSchema = new mongoose.Schema(
     syncMode: { type: String, enum: ['merge_new_only', 'overwrite'], default: 'overwrite' },
     project: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' }, // optional default scope
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
+    // Webhook secret — shared between this server and the user's Apps Script.
+    // Auto-generated on first config load. Used to verify webhook hits.
+    webhookSecret: { type: String, trim: true, select: true },
     lastSyncAt: { type: Date },
     lastSyncStatus: { type: String, enum: ['ok', 'error', 'never'], default: 'never' },
     lastSyncMessage: { type: String, trim: true },

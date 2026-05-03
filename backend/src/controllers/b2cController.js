@@ -1444,8 +1444,17 @@ exports.getDayDetails = async (req, res) => {
 // GOOGLE SHEET SYNC
 // ────────────────────────────────────────────────────────────────────────────
 
+const crypto = require('crypto');
 const B2CGoogleSheetSync = require('../models/B2CGoogleSheetSync');
-const { syncOnce, extractSheetId } = require('../services/b2cGoogleSheetSyncService');
+const { syncOnce, extractSheetId, enqueueWebhookSync } = require('../services/b2cGoogleSheetSyncService');
+
+// Lazy-create the webhook secret on first config read so the user always has one.
+async function ensureWebhookSecret(config) {
+  if (config.webhookSecret && config.webhookSecret.length >= 24) return config;
+  config.webhookSecret = crypto.randomBytes(24).toString('hex');
+  await config.save();
+  return config;
+}
 
 exports.getSheetConfig = async (req, res) => {
   try {
@@ -1453,12 +1462,102 @@ exports.getSheetConfig = async (req, res) => {
       .populate('project', 'name code color')
       .populate('branch', 'name city');
     if (!config) {
-      // Create default empty config so the UI has something to bind against
       config = await B2CGoogleSheetSync.create({ singleton: 'config' });
     }
+    config = await ensureWebhookSecret(config);
     res.json({ config });
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to load sheet config' });
+  }
+};
+
+// Open webhook — no auth middleware. Verifies the shared secret in body OR header.
+// On match, enqueues a debounced sync. Returns immediately so Apps Script doesn't
+// block the user's edits.
+exports.googleSheetWebhook = async (req, res) => {
+  try {
+    const incoming = (req.body && req.body.secret)
+      || req.headers['x-sync-secret']
+      || req.query.secret;
+    if (!incoming) return res.status(400).json({ ok: false, message: 'Missing secret' });
+
+    const config = await B2CGoogleSheetSync.findOne({ singleton: 'config' });
+    if (!config || !config.webhookSecret) {
+      return res.status(404).json({ ok: false, message: 'No sync config' });
+    }
+    // Constant-time comparison to avoid timing attacks
+    const a = Buffer.from(String(incoming));
+    const b = Buffer.from(config.webhookSecret);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return res.status(403).json({ ok: false, message: 'Invalid secret' });
+    }
+    if (!config.sheetId) {
+      return res.status(400).json({ ok: false, message: 'No sheet configured' });
+    }
+
+    enqueueWebhookSync();
+    res.json({ ok: true, queued: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(500).json({ ok: false, message: error.message || 'Webhook failed' });
+  }
+};
+
+// Returns the Apps Script code the user pastes into their sheet's script editor.
+// We bake in their webhook URL + secret so it's a single copy-paste with no edits.
+exports.getSheetSetupScript = async (req, res) => {
+  try {
+    let config = await B2CGoogleSheetSync.findOne({ singleton: 'config' });
+    if (!config) config = await B2CGoogleSheetSync.create({ singleton: 'config' });
+    config = await ensureWebhookSecret(config);
+
+    // The webhook URL the script will hit. Compose from the request host so it
+    // works in dev and prod without env vars.
+    const proto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const webhookUrl = `${proto}://${host}/api/b2c/google-sheet/webhook`;
+
+    const script = `// ─────────────────────────────────────────────────────────────────────
+// B2C real-time sync trigger — paste this into:
+//   Extensions → Apps Script  (in your Google Sheet)
+//
+// Then in the Apps Script editor:
+//   1. Save (💾)
+//   2. Click "Triggers" (clock icon on the left sidebar)
+//   3. "Add Trigger"
+//   4. Choose function: notifyB2CWebhook
+//   5. Event source: From spreadsheet
+//   6. Event type: On edit
+//   7. Save → grant permissions when prompted
+// ─────────────────────────────────────────────────────────────────────
+
+const B2C_WEBHOOK_URL = ${JSON.stringify(webhookUrl)};
+const B2C_SECRET      = ${JSON.stringify(config.webhookSecret)};
+
+function notifyB2CWebhook(e) {
+  try {
+    UrlFetchApp.fetch(B2C_WEBHOOK_URL, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ secret: B2C_SECRET, source: 'apps-script' }),
+      muteHttpExceptions: true,
+    });
+  } catch (err) {
+    // Swallow — we don't want sheet edits to fail because of webhook errors
+    console.log('B2C webhook ping failed:', err);
+  }
+}
+
+// Optional: manual test
+function testB2CWebhook() {
+  notifyB2CWebhook();
+  Logger.log('Webhook ping sent — check the dashboard.');
+}
+`;
+
+    res.json({ script, webhookUrl, secret: config.webhookSecret });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to build setup script' });
   }
 };
 

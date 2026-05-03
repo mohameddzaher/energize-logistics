@@ -5,7 +5,7 @@ import { getB2CTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2, Cloud, Link2, Power } from 'lucide-react';
+import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2, Cloud, Link2, Power, Zap, Copy, Eye, EyeOff } from 'lucide-react';
 import { useSocket } from '@/hooks/useSocket';
 import { useAuth } from '@/context/AuthContext';
 import { parseRepsExcel, buildBulkPayload, buildDiagnosticReport, type ExcelParseResult } from '@/lib/b2cExcelParser';
@@ -63,6 +63,15 @@ export default function RepsPerformancePage() {
   const [sheetSyncing, setSheetSyncing] = useState(false);
   const [sheetError, setSheetError] = useState('');
 
+  // Real-time webhook setup
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupScript, setSetupScript] = useState('');
+  const [setupWebhookUrl, setSetupWebhookUrl] = useState('');
+  const [setupSecret, setSetupSecret] = useState('');
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
   const fetchAll = useCallback(async () => {
     try {
       const [projData, branchData, uploadsData, sheetData] = await Promise.all([
@@ -110,6 +119,32 @@ export default function RepsPerformancePage() {
       setSheetError(err.message || 'Failed to save sheet config');
     } finally {
       setSheetSavingConfig(false);
+    }
+  };
+
+  const handleOpenSetup = async () => {
+    setSetupOpen(true);
+    if (setupScript) return; // already fetched
+    setSetupLoading(true);
+    try {
+      const data = await api.get<{ script: string; webhookUrl: string; secret: string }>('/api/b2c/google-sheet/setup-script');
+      setSetupScript(data.script || '');
+      setSetupWebhookUrl(data.webhookUrl || '');
+      setSetupSecret(data.secret || '');
+    } catch (err: any) {
+      setSheetError(err.message || 'Failed to load setup script');
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback(label);
+      setTimeout(() => setCopyFeedback(null), 1500);
+    } catch {
+      // Clipboard API can fail in non-HTTPS dev. Silent fallback.
     }
   };
 
@@ -836,6 +871,11 @@ export default function RepsPerformancePage() {
               ? (lang === 'ar' ? 'إيقاف المزامنة التلقائية' : 'Disable Auto-Sync')
               : (lang === 'ar' ? 'تفعيل المزامنة التلقائية' : 'Enable Auto-Sync')}
           </button>
+          <button type="button" onClick={handleOpenSetup} disabled={!sheetConfig}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 disabled:opacity-50 text-purple-300 border border-purple-500/40 text-sm font-medium transition-colors">
+            <Zap className="w-4 h-4" />
+            {lang === 'ar' ? 'إعداد المزامنة الفورية' : 'Setup Instant Sync'}
+          </button>
           <button type="button" onClick={handleSheetSyncNow} disabled={sheetSyncing || !sheetUrlInput}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white text-sm font-medium transition-colors ml-auto">
             <RefreshCw className={`w-4 h-4 ${sheetSyncing ? 'animate-spin' : ''}`} />
@@ -868,6 +908,163 @@ export default function RepsPerformancePage() {
               <p className="text-gray-300 text-sm font-bold">{((sheetConfig.lastSyncStats.durationMs || 0) / 1000).toFixed(1)}s</p>
             </div>
           </div>
+        )}
+
+        {/* Real-time setup panel — collapsible. Holds the Apps Script the user pastes
+            into their sheet so every cell edit fires our webhook. */}
+        {setupOpen && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+            className="mt-4 bg-purple-500/5 border border-purple-500/30 rounded-xl p-4 space-y-4 overflow-hidden">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-purple-300 font-semibold flex items-center gap-2 text-sm">
+                <Zap className="w-4 h-4" />
+                {lang === 'ar' ? '⚡ مزامنة فورية (real-time)' : '⚡ Real-time Sync Setup'}
+              </h3>
+              <button type="button" onClick={() => setSetupOpen(false)}
+                className="p-1 text-gray-400 hover:text-white rounded" title="Close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {setupLoading ? (
+              <div className="flex items-center justify-center h-20">
+                <div className="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <>
+                <div className="bg-gray-900/70 rounded-lg p-3 space-y-2 text-sm">
+                  <p className="text-gray-300 font-medium">
+                    {lang === 'ar' ? '🎯 الفكرة:' : '🎯 How it works:'}
+                  </p>
+                  <p className="text-gray-400 text-xs leading-relaxed">
+                    {lang === 'ar'
+                      ? 'هتلصق سكربت قصير في الـ Google Sheet. السكربت ده هيعمل ping للسيرفر بتاعنا في كل مرة تعدّل أي خانة. السيرفر يسحب آخر نسخة من الشيت ويحدّث الـ dashboard خلال ثانية أو اتنين. مفيش polling — تعديلك في الشيت يتعكس فوراً.'
+                      : 'You paste a short script into your Google Sheet. The script pings our server on every cell edit. The server then pulls the latest sheet and updates the dashboard within 1-2 seconds. No polling — your edits reflect instantly.'}
+                  </p>
+                </div>
+
+                <ol className="space-y-3 text-sm">
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">1</span>
+                    <div className="flex-1">
+                      <p className="text-white font-medium">
+                        {lang === 'ar' ? 'افتح الـ Google Sheet → Extensions → Apps Script' : 'In your Google Sheet → Extensions → Apps Script'}
+                      </p>
+                      <p className="text-gray-500 text-xs">
+                        {lang === 'ar'
+                          ? 'هيفتحلك تبويب جديد فيه محرر اسكربت'
+                          : 'A new tab opens with the script editor'}
+                      </p>
+                    </div>
+                  </li>
+
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">2</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <p className="text-white font-medium">
+                          {lang === 'ar' ? 'امسح الكود الموجود والصق ده:' : 'Clear the editor and paste this:'}
+                        </p>
+                        <button type="button" onClick={() => copyToClipboard(setupScript, 'script')}
+                          className="flex items-center gap-1 px-2 py-1 rounded bg-purple-500/30 hover:bg-purple-500/40 text-purple-200 text-xs font-medium">
+                          <Copy className="w-3 h-3" />
+                          {copyFeedback === 'script' ? (lang === 'ar' ? '✓ اتنسخ' : '✓ Copied!') : (lang === 'ar' ? 'نسخ السكربت' : 'Copy Script')}
+                        </button>
+                      </div>
+                      <pre className="bg-gray-900 border border-gray-800 rounded-md p-3 text-[11px] text-gray-300 font-mono overflow-x-auto max-h-64">
+{setupScript}
+                      </pre>
+                    </div>
+                  </li>
+
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">3</span>
+                    <div className="flex-1">
+                      <p className="text-white font-medium">
+                        {lang === 'ar' ? 'احفظ (💾) → اضغط أيقونة الساعة "Triggers" على اليمين' : 'Save (💾) → Click the clock icon "Triggers" on the left'}
+                      </p>
+                    </div>
+                  </li>
+
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">4</span>
+                    <div className="flex-1">
+                      <p className="text-white font-medium">
+                        {lang === 'ar' ? '"+ Add Trigger" — اختار:' : '"+ Add Trigger" — choose:'}
+                      </p>
+                      <ul className="text-gray-400 text-xs mt-1 space-y-0.5 list-disc list-inside">
+                        <li>Function: <code className="bg-gray-900 px-1 rounded text-purple-300">notifyB2CWebhook</code></li>
+                        <li>Event source: <code className="bg-gray-900 px-1 rounded">From spreadsheet</code></li>
+                        <li>Event type: <code className="bg-gray-900 px-1 rounded">On edit</code></li>
+                      </ul>
+                    </div>
+                  </li>
+
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">5</span>
+                    <div className="flex-1">
+                      <p className="text-white font-medium">
+                        {lang === 'ar' ? 'احفظ — وامنح الصلاحيات لما يطلب' : 'Save — grant permissions when prompted'}
+                      </p>
+                      <p className="text-gray-500 text-xs">
+                        {lang === 'ar'
+                          ? 'Google ممكن يحذرك إن السكربت "غير مُعرَّف" — اختر "Advanced → Go to (your project)"'
+                          : 'Google may warn the script is "unverified" — click "Advanced → Go to (your project)"'}
+                      </p>
+                    </div>
+                  </li>
+                </ol>
+
+                {/* Reference info — webhook URL + secret */}
+                <details className="bg-gray-900/40 rounded-lg p-3 border border-gray-700">
+                  <summary className="text-gray-300 text-xs cursor-pointer font-medium">
+                    {lang === 'ar' ? '🔧 إعدادات متقدمة (Webhook URL + Secret)' : '🔧 Advanced (Webhook URL + Secret)'}
+                  </summary>
+                  <div className="mt-3 space-y-2">
+                    <div>
+                      <label className="block text-gray-500 text-[10px] uppercase mb-1">Webhook URL</label>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-[11px] text-gray-300 font-mono break-all">{setupWebhookUrl}</code>
+                        <button type="button" onClick={() => copyToClipboard(setupWebhookUrl, 'url')}
+                          className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300" title="Copy URL">
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {copyFeedback === 'url' && <p className="text-green-400 text-[10px] mt-0.5">✓ Copied</p>}
+                    </div>
+                    <div>
+                      <label className="block text-gray-500 text-[10px] uppercase mb-1">Secret token</label>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-[11px] text-gray-300 font-mono break-all">
+                          {showSecret ? setupSecret : '••••••••••••••••••••••••'}
+                        </code>
+                        <button type="button" onClick={() => setShowSecret(!showSecret)}
+                          className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300" title="Toggle visibility">
+                          {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                        <button type="button" onClick={() => copyToClipboard(setupSecret, 'secret')}
+                          className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300" title="Copy secret">
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {copyFeedback === 'secret' && <p className="text-green-400 text-[10px] mt-0.5">✓ Copied</p>}
+                      <p className="text-gray-500 text-[10px] mt-1">
+                        {lang === 'ar'
+                          ? 'يُستخدم للتحقق من إن الطلب فعلاً جاي من السكربت بتاعك. لا تشاركه.'
+                          : "Verifies that webhook hits actually come from your script. Don't share it."}
+                      </p>
+                    </div>
+                  </div>
+                </details>
+
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-xs text-blue-200">
+                  💡 {lang === 'ar'
+                    ? 'بعد إعداد الـ trigger، أي تعديل في الشيت هيتعكس في الـ dashboard خلال ثانية أو اتنين تلقائياً. تقدر كمان تسيب المزامنة الدورية شغالة كـ احتياطي.'
+                    : 'Once the trigger is set up, any edit in the sheet reflects in the dashboard within 1-2 seconds automatically. You can also keep the periodic sync on as a fallback.'}
+                </div>
+              </>
+            )}
+          </motion.div>
         )}
       </div>
 

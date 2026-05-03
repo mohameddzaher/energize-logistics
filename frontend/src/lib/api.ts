@@ -6,6 +6,7 @@ const API_URL = typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
 
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
+  timeoutMs?: number;
 }
 
 class ApiClient {
@@ -36,10 +37,10 @@ class ApiClient {
   }
 
   private async request<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
-    const { skipAuth, ...fetchOptions } = options;
+    const { skipAuth, timeoutMs, ...fetchOptions } = options;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs ?? 45000);
 
     const config: RequestInit = {
       ...fetchOptions,

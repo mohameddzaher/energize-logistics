@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema(
     lastName: { type: String, required: true, trim: true },
     role: {
       type: String,
-      enum: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client', 'workshop_manager', 'workshop_employee', 'purchasing'],
+      enum: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager'],
       required: true,
     },
     branch: {
@@ -33,6 +33,17 @@ const userSchema = new mongoose.Schema(
     linkedCustomer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',
+    },
+    // B2C-specific assignments
+    assignedProjects: [
+      { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' },
+    ],
+    assignedBranches: [
+      { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
+    ],
+    manager: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
     },
     isActive: { type: Boolean, default: true },
     isLocked: { type: Boolean, default: false },

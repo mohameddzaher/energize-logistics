@@ -18,7 +18,7 @@ interface UserRecord {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing';
+  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager';
   branch?: { _id: string; name: string };
   status?: 'active' | 'locked' | 'inactive';
   isLocked?: boolean;
@@ -26,12 +26,36 @@ interface UserRecord {
   lastLogin?: string;
   linkedCustomer?: { _id: string; companyName: string };
   assignedCustomers?: { _id: string; companyName: string }[];
+  assignedProjects?: { _id: string; name: string; code?: string }[];
+  assignedBranches?: { _id: string; name: string; code?: string; city?: string }[];
+  manager?: { _id: string; firstName: string; lastName: string; email: string; role: string };
   createdAt: string;
 }
 
 interface Customer {
   _id: string;
   companyName: string;
+}
+
+interface B2CProject {
+  _id: string;
+  name: string;
+  code?: string;
+}
+
+interface BranchOpt {
+  _id: string;
+  name: string;
+  code?: string;
+  city?: string;
+}
+
+interface ManagerOpt {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
 }
 
 const roleConfig: Record<string, { bg: string; text: string }> = {
@@ -42,6 +66,8 @@ const roleConfig: Record<string, { bg: string; text: string }> = {
   operations: { bg: 'bg-amber-500/20', text: 'text-amber-400' },
   moderator: { bg: 'bg-cyan-500/20', text: 'text-cyan-400' },
   client: { bg: 'bg-orange-500/20', text: 'text-orange-400' },
+  b2c_head: { bg: 'bg-pink-500/20', text: 'text-pink-400' },
+  b2c_project_manager: { bg: 'bg-rose-500/20', text: 'text-rose-400' },
 };
 
 const statusDot: Record<string, string> = {
@@ -69,7 +95,9 @@ export default function UsersPage() {
 
   // Create/Edit form
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
+  const [branches, setBranches] = useState<BranchOpt[]>([]);
+  const [b2cProjects, setB2cProjects] = useState<B2CProject[]>([]);
+  const [b2cHeads, setB2cHeads] = useState<ManagerOpt[]>([]);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -79,6 +107,9 @@ export default function UsersPage() {
     linkedCustomer: '',
     assignedCustomers: [] as string[],
     branch: '',
+    assignedProjects: [] as string[],
+    assignedBranches: [] as string[],
+    manager: '',
   });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
@@ -132,6 +163,24 @@ export default function UsersPage() {
     }
   };
 
+  const fetchB2CProjects = async () => {
+    try {
+      const data = await api.get<any>('/api/b2c/projects?active=true');
+      setB2cProjects(data.projects || []);
+    } catch {
+      setB2cProjects([]);
+    }
+  };
+
+  const fetchB2CHeads = async () => {
+    try {
+      const data = await api.get<any>('/api/users?role=b2c_head');
+      setB2cHeads(data.users || []);
+    } catch {
+      setB2cHeads([]);
+    }
+  };
+
   const getUserStatus = (u: UserRecord): string => {
     if (u.status) return u.status;
     if (u.isLocked) return 'locked';
@@ -141,10 +190,10 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '' });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], manager: '' });
     setFormError('');
     setShowFormPassword(false);
-    await Promise.all([fetchCustomers(), fetchBranches()]);
+    await Promise.all([fetchCustomers(), fetchBranches(), fetchB2CProjects(), fetchB2CHeads()]);
     setShowCreateModal(true);
   };
 
@@ -169,6 +218,13 @@ export default function UsersPage() {
       if (formData.branch) {
         payload.branch = formData.branch;
       }
+      if (formData.role === 'b2c_project_manager' || formData.role === 'b2c_head') {
+        payload.assignedProjects = formData.assignedProjects;
+        payload.assignedBranches = formData.assignedBranches;
+        if (formData.role === 'b2c_project_manager' && formData.manager) {
+          payload.manager = formData.manager;
+        }
+      }
       await api.post('/api/users', payload);
       setShowCreateModal(false);
       fetchUsers();
@@ -191,11 +247,14 @@ export default function UsersPage() {
       linkedCustomer: u.linkedCustomer?._id || '',
       assignedCustomers: u.assignedCustomers?.map((c: any) => typeof c === 'string' ? c : c._id) || [],
       branch: u.branch?._id || '',
+      assignedProjects: u.assignedProjects?.map((p: any) => typeof p === 'string' ? p : p._id) || [],
+      assignedBranches: u.assignedBranches?.map((b: any) => typeof b === 'string' ? b : b._id) || [],
+      manager: u.manager?._id || '',
     });
     setFormError('');
     setShowFormPassword(false);
     setActionMenuId(null);
-    await Promise.all([fetchCustomers(), fetchBranches()]);
+    await Promise.all([fetchCustomers(), fetchBranches(), fetchB2CProjects(), fetchB2CHeads()]);
     setShowEditModal(true);
   };
 
@@ -219,6 +278,15 @@ export default function UsersPage() {
         payload.assignedCustomers = formData.assignedCustomers;
       }
       payload.branch = formData.branch || null;
+      if (formData.role === 'b2c_project_manager' || formData.role === 'b2c_head') {
+        payload.assignedProjects = formData.assignedProjects;
+        payload.assignedBranches = formData.assignedBranches;
+        payload.manager = formData.role === 'b2c_project_manager' ? (formData.manager || null) : null;
+      } else {
+        payload.assignedProjects = [];
+        payload.assignedBranches = [];
+        payload.manager = null;
+      }
       await api.put(`/api/users/${selectedUser._id}`, payload);
       setShowEditModal(false);
       setSelectedUser(null);
@@ -298,6 +366,24 @@ export default function UsersPage() {
     }));
   };
 
+  const handleProjectToggle = (projectId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      assignedProjects: prev.assignedProjects.includes(projectId)
+        ? prev.assignedProjects.filter((id) => id !== projectId)
+        : [...prev.assignedProjects, projectId],
+    }));
+  };
+
+  const handleBranchAssignToggle = (branchId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      assignedBranches: prev.assignedBranches.includes(branchId)
+        ? prev.assignedBranches.filter((id) => id !== branchId)
+        : [...prev.assignedBranches, branchId],
+    }));
+  };
+
   const roleLabels: Record<string, string> = {
     super_admin: T.superAdmin, admin: T.admin, employee: T.employee,
     operations_manager: T.operationsManager, operations: T.operationsRole,
@@ -305,6 +391,8 @@ export default function UsersPage() {
     workshop_manager: lang === 'ar' ? 'مدير الورشة' : 'Workshop Manager',
     workshop_employee: lang === 'ar' ? 'موظف الورشة' : 'Workshop Employee',
     purchasing: lang === 'ar' ? 'المشتريات' : 'Purchasing',
+    b2c_head: lang === 'ar' ? 'مدير B2C' : 'B2C Head',
+    b2c_project_manager: lang === 'ar' ? 'مدير مشروع B2C' : 'B2C Project Manager',
   };
 
   const statusLabels: Record<string, string> = {
@@ -483,6 +571,79 @@ export default function UsersPage() {
             ))}
           </select>
         </div>
+      )}
+
+      {/* B2C-specific: assigned projects + assigned branches + manager */}
+      {(formData.role === 'b2c_head' || formData.role === 'b2c_project_manager') && (
+        <>
+          <div>
+            <label className="block text-gray-300 text-sm font-medium mb-1.5">
+              {lang === 'ar' ? 'المشاريع المعينة' : 'Assigned Projects'} ({formData.assignedProjects.length})
+              {formData.role === 'b2c_head' && (
+                <span className="text-gray-500 text-xs font-normal ml-2">
+                  {lang === 'ar' ? '(اختياري — له صلاحية كل المشاريع)' : '(optional — has access to all)'}
+                </span>
+              )}
+            </label>
+            <div className="max-h-40 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
+              {b2cProjects.length === 0 ? (
+                <p className="text-gray-500 text-xs p-2">{lang === 'ar' ? 'لا توجد مشاريع — أنشئ مشاريع B2C أولاً' : 'No projects yet — create B2C projects first'}</p>
+              ) : (
+                b2cProjects.map((p) => (
+                  <label key={p._id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.assignedProjects.includes(p._id)}
+                      onChange={() => handleProjectToggle(p._id)}
+                      className="rounded border-gray-600 bg-gray-800 text-[#f37121] focus:ring-[#f37121]/50"
+                    />
+                    <span className="text-gray-300 text-sm">{p.name}{p.code ? ` (${p.code})` : ''}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="block text-gray-300 text-sm font-medium mb-1.5">
+              {lang === 'ar' ? 'الفروع المعينة' : 'Assigned Branches'} ({formData.assignedBranches.length})
+            </label>
+            <div className="max-h-40 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
+              {branches.length === 0 ? (
+                <p className="text-gray-500 text-xs p-2">{lang === 'ar' ? 'لا توجد فروع' : 'No branches'}</p>
+              ) : (
+                branches.map((b) => (
+                  <label key={b._id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.assignedBranches.includes(b._id)}
+                      onChange={() => handleBranchAssignToggle(b._id)}
+                      className="rounded border-gray-600 bg-gray-800 text-[#f37121] focus:ring-[#f37121]/50"
+                    />
+                    <span className="text-gray-300 text-sm">{b.name}{b.city ? ` — ${b.city}` : ''}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+          {formData.role === 'b2c_project_manager' && (
+            <div>
+              <label className="block text-gray-300 text-sm font-medium mb-1.5">
+                {lang === 'ar' ? 'المدير المباشر (B2C Head)' : 'Direct Manager (B2C Head)'}
+              </label>
+              <select
+                aria-label="Manager"
+                value={formData.manager}
+                onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+              >
+                <option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>
+                {b2cHeads.map((h) => (
+                  <option key={h._id} value={h._id}>{h.firstName} {h.lastName} — {h.email}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </>
       )}
 
       {/* Employee-specific: assigned customers */}

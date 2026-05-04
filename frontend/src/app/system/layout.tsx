@@ -197,12 +197,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           onClick={() => toggleSection(section)}
-          className="w-full flex items-center justify-between gap-2 px-3 pt-4 pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-300 transition-colors"
+          className="w-full flex items-center justify-between gap-2 px-3 py-2.5 mt-2 rounded-lg text-xs font-bold text-white uppercase tracking-wide bg-gray-700/40 hover:bg-gray-700/70 transition-colors"
         >
           <span>{section}</span>
           {isExpanded
-            ? <ChevronDown className="w-3.5 h-3.5" />
-            : (isRTL ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />)}
+            ? <ChevronDown className="w-4 h-4 text-[#f37121]" />
+            : (isRTL ? <ChevronLeft className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />)}
         </button>
         <AnimatePresence initial={false}>
           {isExpanded && (

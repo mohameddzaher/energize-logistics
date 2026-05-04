@@ -236,17 +236,25 @@ const buildHeaderMap = (sheet: XLSX.WorkSheet, range: XLSX.Range, headerRow: num
   return { headers, dayCols };
 };
 
+// Pull the year out of the tab name itself ("February 2025" → 2025). Most
+// reliable source — sheet bodies contain Account IDs and other long digit
+// runs that can accidentally match a "20XX" substring.
+const extractYearFromSheetName = (sheetName: string): number | null => {
+  const m = String(sheetName == null ? '' : sheetName).match(/(?<!\d)(20\d{2})(?!\d)/);
+  return m ? parseInt(m[1], 10) : null;
+};
+
 const extractYearFromSheet = (sheet: XLSX.WorkSheet, fallback: number): number => {
   // Collect ALL years that appear in rows 1..8, then return the most-frequent one.
-  // Falls back to the latest year if no clear winner. Avoids a single stray "2025"
-  // beating the actual sheet year of 2026.
+  // Falls back to the latest year if no clear winner. Negative lookarounds keep
+  // us from matching "20XX" inside longer digit runs like 16-digit Account IDs.
   const counts = new Map<number, number>();
   for (let r = 1; r <= 8; r++) {
     for (let c = 1; c <= 60; c++) {
       const v = cellValue(sheet, r, c);
       if (v === undefined || v === null) continue;
       const s = String(v);
-      const matches = s.match(/(20\d{2})/g);
+      const matches = s.match(/(?<!\d)20\d{2}(?!\d)/g);
       if (matches) {
         for (const m of matches) {
           const y = parseInt(m, 10);
@@ -363,7 +371,9 @@ export function parseRepsExcel(arrayBuffer: ArrayBuffer): ExcelParseResult {
       continue;
     }
 
-    const year = extractYearFromSheet(sheet, fallbackYear);
+    // Prefer the year baked into the tab name ("February 2025"); fall back to
+    // scanning the sheet body only when the tab name doesn't carry a year.
+    const year = extractYearFromSheetName(sheetName) || extractYearFromSheet(sheet, fallbackYear);
     const targets = extractTargetsFromSheet(sheet);
     const monthLabel = `${monthMatch.name} ${year}`;
     if (!monthsDetected.includes(monthLabel)) monthsDetected.push(monthLabel);

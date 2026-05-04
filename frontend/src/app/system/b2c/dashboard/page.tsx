@@ -100,6 +100,9 @@ export default function B2CDashboard() {
   // Sticky list of all months that exist in the DB. Fetched ONCE on mount via the
   // lightweight /months endpoint; doesn't refetch on every filter change.
   const [allMonths, setAllMonths] = useState<Array<{ year: number; month: number }>>([]);
+  // Tracks whether the months endpoint has returned (success or empty) — used
+  // to gate the auto-pick effect so we don't initialize before the data lands.
+  const [monthsFetched, setMonthsFetched] = useState(false);
   const [monthPickerInitialized, setMonthPickerInitialized] = useState(false);
 
   // In-memory cache so flipping back to a month already viewed is instant.
@@ -182,7 +185,9 @@ export default function B2CDashboard() {
       if (branch) params.set('branch', branch);
       const data = await api.get<{ months: Array<{ year: number; month: number }> }>(`/api/b2c/months?${params.toString()}`);
       setAllMonths(data.months || []);
-    } catch {}
+    } catch {} finally {
+      setMonthsFetched(true);
+    }
   }, [project, branch]);
 
   const fetchEvaluations = useCallback(async () => {
@@ -207,19 +212,20 @@ export default function B2CDashboard() {
   useEffect(() => { if (activeTab === 'evaluation') fetchEvaluations(); }, [activeTab, fetchEvaluations]);
 
   // On first load only: auto-pick the latest month so the user lands in the current month.
-  // This synchronously sets year/month BEFORE the first fetchDashboard fires, avoiding
-  // the race condition. If no months exist yet (empty DB / new role), still flip the
-  // initialized flag so the first dashboard fetch can run and the page exits its
-  // loading state instead of hanging forever.
+  // Wait for the months fetch to actually return — if we initialized eagerly on the
+  // first render (before months arrive), the dashboard would default to "Overview"
+  // instead of the latest month. If months come back empty (new install / no data),
+  // we still flip the flag so the dashboard fetch can run and the page exits loading.
   useEffect(() => {
     if (monthPickerInitialized) return;
+    if (!monthsFetched) return;
     if (allMonths.length > 0 && !year && !month && !dateFrom && !dateTo) {
       const latest = allMonths[allMonths.length - 1];
       setYear(latest.year);
       setMonth(latest.month);
     }
     setMonthPickerInitialized(true);
-  }, [allMonths, monthPickerInitialized, year, month, dateFrom, dateTo]);
+  }, [allMonths, monthsFetched, monthPickerInitialized, year, month, dateFrom, dateTo]);
 
   // Live updates — clear caches so fresh data wins
   const invalidateAndRefetch = useCallback(() => {

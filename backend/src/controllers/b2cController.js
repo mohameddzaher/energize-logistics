@@ -393,38 +393,77 @@ exports.reconcileReps = async (req, res) => {
     const reps = await B2CRep.find({}).lean();
     const normalize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-    // Bucket by (englishName + arabicName)
-    const groups = new Map();
+    // Pre-fetch order counts per rep so we can pick the rep with the most
+    // data as canonical (preserves the bigger dataset on collisions).
+    const orderCounts = await B2CDailyOrder.aggregate([
+      { $group: { _id: '$rep', count: { $sum: 1 } } },
+    ]);
+    const ordersByRep = new Map(orderCounts.map((o) => [String(o._id), o.count]));
+
+    // Group reps by canonical name. We then expand groups: a rep with both
+    // names contributes to its canonical key AND to the english-only and
+    // arabic-only buckets so a legacy rep with only an English name can still
+    // pair with the full-name rep.
+    const canonicalGroups = new Map();
+    const enGroups = new Map();
+    const arGroups = new Map();
+    const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
     for (const r of reps) {
       const en = normalize(r.englishName);
       const ar = normalize(r.arabicName);
       if (!en && !ar) continue;
-      const k = `${en}|${ar}`;
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(r);
+      push(canonicalGroups, `${en}|${ar}`, r);
+      if (en) push(enGroups, en, r);
+      if (ar) push(arGroups, ar, r);
     }
 
     let mergedGroups = 0;
     let repsRemoved = 0;
     let ordersRepointed = 0;
+    const visited = new Set();
 
-    for (const [, list] of groups) {
+    // Build merge candidates: union of canonical group + reps that share just
+    // the English or just the Arabic name with someone in this group, when
+    // those reps lack the other name (legacy rows).
+    const buildGroup = (rep) => {
+      const en = normalize(rep.englishName);
+      const ar = normalize(rep.arabicName);
+      const seen = new Map();
+      const add = (r) => seen.set(String(r._id), r);
+      // Canonical
+      (canonicalGroups.get(`${en}|${ar}`) || []).forEach(add);
+      // Same English, missing Arabic
+      if (en) (enGroups.get(en) || []).forEach((r) => {
+        if (!normalize(r.arabicName)) add(r);
+      });
+      // Same Arabic, missing English
+      if (ar) (arGroups.get(ar) || []).forEach((r) => {
+        if (!normalize(r.englishName)) add(r);
+      });
+      return [...seen.values()];
+    };
+
+    for (const rep of reps) {
+      if (visited.has(String(rep._id))) continue;
+      const list = buildGroup(rep);
+      list.forEach((r) => visited.add(String(r._id)));
       if (list.length < 2) continue;
 
-      // Distinct (project, branch) pairs in this group, treating null/undefined as 'legacy'
-      const scopes = new Set(list.map((r) => `${String(r.project || 'null')}|${String(r.branch || 'null')}`));
-      const hasLegacy = list.some((r) => !r.project && !r.branch);
+      // Reps that belong to genuinely different (project, branch) pairs are
+      // different people — don't merge across them.
       const scopedReps = list.filter((r) => r.project && r.branch);
       const distinctScopedPairs = new Set(scopedReps.map((r) => `${String(r.project)}|${String(r.branch)}`));
-
-      // Skip groups where reps belong to genuinely different (project, branch)
-      // pairs — those are different people, not duplicates.
       if (distinctScopedPairs.size > 1) continue;
-      // If everyone's legacy and there's no scoped rep to anchor to, leave them.
       if (scopedReps.length === 0) continue;
 
-      // Canonical = the scoped rep (oldest if there are several scoped duplicates).
-      const sortedScoped = [...scopedReps].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      // Canonical = the rep with the most daily orders (preserves the most
+      // data); tiebreaker = oldest createdAt. Must be one of the scoped reps.
+      const sortedScoped = [...scopedReps].sort((a, b) => {
+        const ca = ordersByRep.get(String(a._id)) || 0;
+        const cb = ordersByRep.get(String(b._id)) || 0;
+        if (cb !== ca) return cb - ca;
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      });
       const canonical = sortedScoped[0];
       const dupIds = list.filter((r) => String(r._id) !== String(canonical._id)).map((r) => r._id);
       if (dupIds.length === 0) continue;

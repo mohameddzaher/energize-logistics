@@ -95,44 +95,68 @@ async function syncOnce({ configId, user, mode } = {}) {
     if (!canon.joiningDate && r.joiningDate) canon.joiningDate = r.joiningDate;
   }
 
-  // Match against existing reps. We pull every rep that shares the candidate
-  // names, then bucket by canonical (en|ar) and pick the right one per config:
-  //   1. Exact (project, branch) match — this is "our" rep.
-  //   2. Legacy rep with no project/branch yet — claim it and backfill scope.
-  //   3. Rep belongs to a different (project, branch) — leave it; we'll create
-  //      a fresh rep in our own scope.
-  // This avoids the duplication trap of strict scoped matching: legacy reps
-  // (created before scope was tracked) would otherwise get a brand-new _id
-  // every sync, leaving two parallel sets of daily-order docs.
-  const candidateNames = [...canonicalByName.values()].map((c) => c.englishName).filter(Boolean);
-  const allByName = candidateNames.length > 0
-    ? await B2CRep.find({ englishName: { $in: candidateNames } }).lean()
-    : [];
-  const candidatesByCanonical = new Map();
-  for (const r of allByName) {
+  // Match against existing reps. Load EVERY rep once and match in memory using
+  // the same normalized canonical key the parser uses. Pulling the full set
+  // avoids case/whitespace mismatches in MongoDB $in queries and lets us fall
+  // back to single-name matches for legacy data. B2C rep counts are small
+  // (hundreds, not millions) so this is cheap.
+  //
+  // Match priority per parsed rep:
+  //   1. Exact canonical key (en|ar normalized) within (project, branch) scope.
+  //   2. Same canonical key with no scope yet → claim it, backfill scope.
+  //   3. English-only or Arabic-only canonical match within scope → claim it.
+  //   4. Same single-name match with no scope → claim it, backfill.
+  //   5. None → create a fresh rep in this scope.
+  const allReps = await B2CRep.find({}).lean();
+  const sameId = (a, b) => a && b && String(a) === String(b);
+  const inScope = (r) => sameId(r.project, config.project) && sameId(r.branch, config.branch);
+  const noScope = (r) => !r.project && !r.branch;
+
+  // Build lookup tables keyed by normalized names
+  const byCanonical = new Map();   // "en|ar" → reps
+  const byEnOnly = new Map();      // "en" → reps where Arabic is empty
+  const byArOnly = new Map();      // "ar" → reps where English is missing
+  const byEnAny = new Map();       // "en" → all reps with that English (regardless of Arabic)
+  const byArAny = new Map();       // "ar" → all reps with that Arabic
+  const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+  for (const r of allReps) {
     const en = normalizeName(r.englishName);
     const ar = normalizeName(r.arabicName);
-    const k = `${en}|${ar}`;
-    if (!candidatesByCanonical.has(k)) candidatesByCanonical.set(k, []);
-    candidatesByCanonical.get(k).push(r);
+    if (en || ar) push(byCanonical, `${en}|${ar}`, r);
+    if (en) push(byEnAny, en, r);
+    if (ar) push(byArAny, ar, r);
+    if (en && !ar) push(byEnOnly, en, r);
+    if (ar && !en) push(byArOnly, ar, r);
   }
-  const sameId = (a, b) => a && b && String(a) === String(b);
-  const pickMatch = (canonName) => {
-    const list = candidatesByCanonical.get(canonName) || [];
-    if (list.length === 0) return null;
-    const exact = list.find((r) => sameId(r.project, config.project) && sameId(r.branch, config.branch));
-    if (exact) return exact;
-    const legacy = list.find((r) => !r.project && !r.branch);
-    if (legacy) return legacy;
-    return null; // rep exists for a different scope — don't reuse it
+
+  const pickFrom = (list) => {
+    if (!list || list.length === 0) return null;
+    return list.find(inScope) || list.find(noScope) || null;
+  };
+
+  const pickMatch = (canon) => {
+    const en = normalizeName(canon.englishName);
+    const ar = normalizeName(canon.arabicName);
+    // 1+2: exact canonical
+    let m = pickFrom(byCanonical.get(`${en}|${ar}`));
+    if (m) return m;
+    // 3+4: English-only fallback (parser has only EN, or DB has only EN)
+    if (en) {
+      m = pickFrom(byEnOnly.get(en)) || (!ar ? pickFrom(byEnAny.get(en)) : null);
+      if (m) return m;
+    }
+    // 3+4: Arabic-only fallback
+    if (ar) {
+      m = pickFrom(byArOnly.get(ar)) || (!en ? pickFrom(byArAny.get(ar)) : null);
+      if (m) return m;
+    }
+    return null;
   };
 
   const canonicalToDbId = new Map();
   const toCreate = [];
   for (const [canonicalKey, canon] of canonicalByName) {
-    const en = normalizeName(canon.englishName);
-    const ar = normalizeName(canon.arabicName);
-    const match = pickMatch(`${en}|${ar}`);
+    const match = pickMatch(canon);
     if (match) {
       canonicalToDbId.set(canonicalKey, String(match._id));
       const updates = {};

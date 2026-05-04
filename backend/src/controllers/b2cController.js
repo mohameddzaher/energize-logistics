@@ -400,10 +400,11 @@ exports.reconcileReps = async (req, res) => {
     ]);
     const ordersByRep = new Map(orderCounts.map((o) => [String(o._id), o.count]));
 
-    // Group reps by canonical name. We then expand groups: a rep with both
-    // names contributes to its canonical key AND to the english-only and
-    // arabic-only buckets so a legacy rep with only an English name can still
-    // pair with the full-name rep.
+    // Group reps by Account ID, canonical name, and single-name buckets so a
+    // rep with the legal Arabic name and another with a username (Account
+    // user from the new sheet) still merge if they share the same Account ID
+    // or English name.
+    const repIdGroups = new Map();
     const canonicalGroups = new Map();
     const enGroups = new Map();
     const arGroups = new Map();
@@ -411,7 +412,9 @@ exports.reconcileReps = async (req, res) => {
     for (const r of reps) {
       const en = normalize(r.englishName);
       const ar = normalize(r.arabicName);
-      if (!en && !ar) continue;
+      const id = String(r.repId == null ? '' : r.repId).trim();
+      if (id) push(repIdGroups, id, r);
+      if (!en && !ar && !id) continue;
       push(canonicalGroups, `${en}|${ar}`, r);
       if (en) push(enGroups, en, r);
       if (ar) push(arGroups, ar, r);
@@ -423,14 +426,17 @@ exports.reconcileReps = async (req, res) => {
     const visited = new Set();
 
     // Build merge candidates: union of canonical group + reps that share just
-    // the English or just the Arabic name with someone in this group, when
-    // those reps lack the other name (legacy rows).
+    // the English or just the Arabic name (for legacy rows where one side is
+    // missing) + reps that share the Account ID.
     const buildGroup = (rep) => {
       const en = normalize(rep.englishName);
       const ar = normalize(rep.arabicName);
+      const id = String(rep.repId == null ? '' : rep.repId).trim();
       const seen = new Map();
       const add = (r) => seen.set(String(r._id), r);
-      // Canonical
+      // Account ID — strongest signal, joins reps regardless of name drift
+      if (id) (repIdGroups.get(id) || []).forEach(add);
+      // Canonical en|ar
       (canonicalGroups.get(`${en}|${ar}`) || []).forEach(add);
       // Same English, missing Arabic
       if (en) (enGroups.get(en) || []).forEach((r) => {

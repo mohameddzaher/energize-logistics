@@ -109,24 +109,29 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     if (!canon.joiningDate && r.joiningDate) canon.joiningDate = r.joiningDate;
   }
 
-  // Match against existing reps. Load EVERY rep once and match in memory using
-  // the same normalized canonical key the parser uses. Pulling the full set
-  // avoids case/whitespace mismatches in MongoDB $in queries and lets us fall
-  // back to single-name matches for legacy data. B2C rep counts are small
-  // (hundreds, not millions) so this is cheap.
+  // Match against existing reps. Load EVERY rep once and match in memory.
+  // B2C rep counts are small (hundreds, not millions) so a full scan is cheap.
   //
   // Match priority per parsed rep:
-  //   1. Exact canonical key (en|ar normalized) within (project, branch) scope.
-  //   2. Same canonical key with no scope yet → claim it, backfill scope.
-  //   3. English-only or Arabic-only canonical match within scope → claim it.
-  //   4. Same single-name match with no scope → claim it, backfill.
+  //   1. Account ID (repId) — globally unique on the delivery platform, the
+  //      most reliable identity. Same ID = same person, regardless of name
+  //      changes between syncs.
+  //   2. Exact canonical (englishName + arabicName) match.
+  //   3. English-only fallback when one side has no Arabic (or the parser's
+  //      "Account user" is a username that differs from the legal Arabic name).
+  //   4. Arabic-only fallback for legacy reps without English.
   //   5. None → create a fresh rep in this scope.
+  //
+  // Within each priority, prefer reps already in (project, branch) scope, then
+  // legacy reps with no scope (claim them and backfill), then nothing.
   const allReps = await B2CRep.find({}).lean();
   const sameId = (a, b) => a && b && String(a) === String(b);
   const inScope = (r) => sameId(r.project, config.project) && sameId(r.branch, config.branch);
   const noScope = (r) => !r.project && !r.branch;
+  const normalizeRepId = (s) => String(s == null ? '' : s).trim();
 
-  // Build lookup tables keyed by normalized names
+  // Build lookup tables
+  const byRepId = new Map();       // "repId" → reps
   const byCanonical = new Map();   // "en|ar" → reps
   const byEnOnly = new Map();      // "en" → reps where Arabic is empty
   const byArOnly = new Map();      // "ar" → reps where English is missing
@@ -136,6 +141,8 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   for (const r of allReps) {
     const en = normalizeName(r.englishName);
     const ar = normalizeName(r.arabicName);
+    const id = normalizeRepId(r.repId);
+    if (id) push(byRepId, id, r);
     if (en || ar) push(byCanonical, `${en}|${ar}`, r);
     if (en) push(byEnAny, en, r);
     if (ar) push(byArAny, ar, r);
@@ -151,15 +158,24 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   const pickMatch = (canon) => {
     const en = normalizeName(canon.englishName);
     const ar = normalizeName(canon.arabicName);
-    // 1+2: exact canonical
-    let m = pickFrom(byCanonical.get(`${en}|${ar}`));
-    if (m) return m;
-    // 3+4: English-only fallback (parser has only EN, or DB has only EN)
-    if (en) {
-      m = pickFrom(byEnOnly.get(en)) || (!ar ? pickFrom(byEnAny.get(en)) : null);
+    const id = normalizeRepId(canon.repId);
+    // 1: Account ID — strongest signal, survives name/handle changes
+    if (id) {
+      const m = pickFrom(byRepId.get(id));
       if (m) return m;
     }
-    // 3+4: Arabic-only fallback
+    // 2: exact canonical
+    let m = pickFrom(byCanonical.get(`${en}|${ar}`));
+    if (m) return m;
+    // 3: English-only fallback. Now also accepts cases where both sides have
+    // an Arabic value but the values differ (the new Keeta sheet's "Account
+    // user" column is a username, not the legal Arabic name, so an existing
+    // rep's stored Arabic legal name won't match the parser's username).
+    if (en) {
+      m = pickFrom(byEnOnly.get(en)) || pickFrom(byEnAny.get(en));
+      if (m) return m;
+    }
+    // 4: Arabic-only fallback
     if (ar) {
       m = pickFrom(byArOnly.get(ar)) || (!en ? pickFrom(byArAny.get(ar)) : null);
       if (m) return m;

@@ -358,9 +358,11 @@ export default function B2CDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Month picker — primary time-period control. "Overview" = all months combined. */}
+      {/* Month picker — primary time-period control. "Overview" = all months
+          combined. dir=ltr keeps the timeline reading oldest → newest left to
+          right even when the rest of the UI is Arabic/RTL. */}
       {allMonths.length > 0 && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-3 flex items-center gap-2 overflow-x-auto">
+        <div dir="ltr" className="bg-gray-800 border border-gray-700 rounded-xl p-3 flex items-center gap-2 overflow-x-auto">
           <button type="button"
             onClick={() => { setYear(''); setMonth(''); setDateFrom(''); setDateTo(''); }}
             className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${

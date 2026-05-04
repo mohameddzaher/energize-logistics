@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const B2CGoogleSheetSync = require('../models/B2CGoogleSheetSync');
 const B2CRep = require('../models/B2CRep');
@@ -48,7 +49,7 @@ async function downloadSheet(sheetId) {
 }
 
 // Run one sync pass for a specific config.
-async function syncOnce({ configId, user, mode } = {}) {
+async function syncOnce({ configId, user, mode, force = false } = {}) {
   if (!configId) throw new Error('configId is required');
   const started = Date.now();
   const config = await B2CGoogleSheetSync.findById(configId);
@@ -57,6 +58,19 @@ async function syncOnce({ configId, user, mode } = {}) {
   const effectiveMode = mode || config.syncMode || 'overwrite';
 
   const buffer = await downloadSheet(config.sheetId);
+
+  // Skip the rest of the work if the sheet bytes haven't changed since the
+  // last successful sync. The cron fires every minute by default, so this
+  // saves a parse + (often a no-op) bulkWrite when nobody's editing.
+  // `force` flag lets the manual "Sync Now" button bypass the cache.
+  const sheetHash = crypto.createHash('sha1').update(buffer).digest('hex');
+  if (!force && config.lastSheetHash && config.lastSheetHash === sheetHash) {
+    await B2CGoogleSheetSync.updateOne(
+      { _id: config._id },
+      { $set: { lastSyncAt: new Date(), lastSyncStatus: 'ok', lastSyncMessage: 'No changes detected' } }
+    );
+    return { unchanged: true, durationMs: Date.now() - started };
+  }
 
   const parsed = parseRepsExcel(buffer);
   if (parsed.records.length === 0) {
@@ -284,7 +298,7 @@ async function syncOnce({ configId, user, mode } = {}) {
   };
   await B2CGoogleSheetSync.updateOne(
     { _id: config._id },
-    { $set: { lastSyncAt: new Date(), lastSyncStatus: 'ok', lastSyncMessage: '', lastSyncStats: stats } }
+    { $set: { lastSyncAt: new Date(), lastSyncStatus: 'ok', lastSyncMessage: '', lastSyncStats: stats, lastSheetHash: sheetHash } }
   );
 
   try { emitToAll('b2c:sheet:synced', { configId: String(config._id), stats }); } catch (_) {}

@@ -73,6 +73,18 @@ const asDayNumber = (v) => {
   return null;
 };
 
+// Header tokens we recognize. Includes both the legacy schema ("ID #", "ID NAME")
+// and the new Keeta dashboard schema ("Account ID", "Account user", "NAME").
+const HEADER_TOKENS = new Set([
+  // Legacy
+  'id #', 'name', 'id name', 'total orders', 'total working days',
+  'daily order rate', 'orders da performance %', 'short of target#',
+  'short of target %', 'joining date',
+  // New Keeta layout
+  'account id', 'account user',
+  'total order of month per rider', 'total orders of day',
+]);
+
 const findHeaderRow = (sheet, range) => {
   let bestRow = 10;
   let bestScore = -1;
@@ -83,12 +95,7 @@ const findHeaderRow = (sheet, range) => {
     for (let c = 1; c <= range.e.c + 1; c++) {
       const raw = cellValue(sheet, r, c);
       const v = normalize(raw);
-      if (v === 'id #' || v === 'name' || v === 'id name' || v === 'total orders'
-          || v === 'total working days' || v === 'daily order rate'
-          || v === 'orders da performance %' || v === 'short of target#'
-          || v === 'short of target %' || v === 'joining date') {
-        score += 3;
-      }
+      if (HEADER_TOKENS.has(v)) score += 3;
       if (asDayNumber(raw) !== null) dayCount += 1;
     }
     if (dayCount >= 20) score += dayCount;
@@ -197,11 +204,11 @@ function parseRepsExcel(buffer) {
       continue;
     }
 
-    const idCol = headers.get('id #');
-    const arNameCol = headers.get('id name');
+    const idCol = headers.get('id #') || headers.get('account id');
+    const arNameCol = headers.get('id name') || headers.get('account user');
     const enNameCol = headers.get('name');
     const joinCol = headers.get('joining date');
-    const totalCol = headers.get('total orders');
+    const totalCol = headers.get('total orders') || headers.get('total order of month per rider');
     const wdCol = headers.get('total working days');
 
     if (!enNameCol && !idCol && !arNameCol) {
@@ -220,6 +227,12 @@ function parseRepsExcel(buffer) {
       const idVal = idCol ? cellValue(sheet, r, idCol) : undefined;
       const enName = enNameCol ? cellValue(sheet, r, enNameCol) : undefined;
       const arName = arNameCol ? cellValue(sheet, r, arNameCol) : undefined;
+
+      // Hard stop on the totals row — the new Keeta layout marks the end of
+      // the agent list with column A = "Total orders of day" (or any cell on
+      // this row mentioning that phrase). Not a rep — bail out cleanly.
+      const aColRaw = cellValue(sheet, r, 1);
+      if (typeof aColRaw === 'string' && aColRaw.toLowerCase().includes('total orders of day')) break;
 
       if (isBlank(idVal) && isBlank(enName) && isBlank(arName)) {
         emptyStreak++;

@@ -178,10 +178,14 @@ const findHeaderRow = (sheet: XLSX.WorkSheet, range: XLSX.Range): number => {
     for (let c = 1; c <= range.e.c + 1; c++) {
       const raw = cellValue(sheet, r, c);
       const v = normalize(raw);
+      // Recognized header tokens — legacy ("ID #", "ID NAME", …) and new
+      // Keeta dashboard ("Account ID", "Account user", "NAME", …).
       if (v === 'id #' || v === 'name' || v === 'id name' || v === 'total orders'
           || v === 'total working days' || v === 'daily order rate'
           || v === 'orders da performance %' || v === 'short of target#'
-          || v === 'short of target %' || v === 'joining date') {
+          || v === 'short of target %' || v === 'joining date'
+          || v === 'account id' || v === 'account user'
+          || v === 'total order of month per rider' || v === 'total orders of day') {
         score += 3;
       }
       if (asDayNumber(raw) !== null) {
@@ -343,11 +347,11 @@ export function parseRepsExcel(arrayBuffer: ArrayBuffer): ExcelParseResult {
       continue;
     }
 
-    const idCol = headers.get('id #');
-    const arNameCol = headers.get('id name');
+    const idCol = headers.get('id #') || headers.get('account id');
+    const arNameCol = headers.get('id name') || headers.get('account user');
     const enNameCol = headers.get('name');
     const joinCol = headers.get('joining date');
-    const totalCol = headers.get('total orders');
+    const totalCol = headers.get('total orders') || headers.get('total order of month per rider');
     const wdCol = headers.get('total working days');
     const rateCol = headers.get('daily order rate');
     const perfCol = headers.get('orders da performance %');
@@ -391,6 +395,11 @@ export function parseRepsExcel(arrayBuffer: ArrayBuffer): ExcelParseResult {
       const idVal = idCol ? cellValue(sheet, r, idCol) : undefined;
       const enName = enNameCol ? cellValue(sheet, r, enNameCol) : undefined;
       const arName = arNameCol ? cellValue(sheet, r, arNameCol) : undefined;
+
+      // Hard stop on the totals row — the new Keeta layout marks the end of
+      // the agent list with column A = "Total orders of day". Not a rep — bail.
+      const aColRaw = cellValue(sheet, r, 1);
+      if (typeof aColRaw === 'string' && aColRaw.toLowerCase().includes('total orders of day')) break;
 
       // Row is empty only when ALL THREE identity cells are blank.
       // Accept rows with just the Arabic username (no English operator name yet).

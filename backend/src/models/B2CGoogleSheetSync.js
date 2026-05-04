@@ -11,7 +11,11 @@ const b2cGoogleSheetSyncSchema = new mongoose.Schema(
     sheetUrl: { type: String, trim: true },
     sheetId: { type: String, trim: true },
     enabled: { type: Boolean, default: false },
-    intervalMinutes: { type: Number, default: 15, min: 1, max: 1440 },
+    intervalMinutes: { type: Number, default: 1, min: 1, max: 1440 },
+    // SHA-1 of the last successfully-parsed sheet buffer. Used to skip syncs
+    // when nothing in the sheet actually changed (cron checks every minute,
+    // but full parse+upsert only runs when content moves).
+    lastSheetHash: { type: String, trim: true },
     // overwrite: every sheet edit reflects in dashboard. merge_new_only: only new days.
     syncMode: { type: String, enum: ['merge_new_only', 'overwrite'], default: 'overwrite' },
     // Webhook secret — unique per config so the webhook can identify which sheet pinged.

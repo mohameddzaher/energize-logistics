@@ -1783,6 +1783,8 @@ exports.syncSheetNow = async (req, res) => {
       configId: String(config._id),
       user: req.user,
       mode: req.body && req.body.mode,
+      // Manual button always re-parses, even if the sheet bytes are unchanged.
+      force: true,
     });
     res.json({ ok: true, stats });
   } catch (error) {

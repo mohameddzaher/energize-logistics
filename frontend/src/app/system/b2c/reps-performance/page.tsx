@@ -63,7 +63,7 @@ export default function RepsPerformancePage() {
   const [addForm, setAddForm] = useState<{
     project: string; branch: string; sheetUrl: string;
     intervalMinutes: number; syncMode: 'overwrite' | 'merge_new_only';
-  }>({ project: '', branch: '', sheetUrl: '', intervalMinutes: 15, syncMode: 'overwrite' });
+  }>({ project: '', branch: '', sheetUrl: '', intervalMinutes: 1, syncMode: 'overwrite' });
   const [addSaving, setAddSaving] = useState(false);
 
   // Edit-in-place state — only one row at a time
@@ -72,7 +72,7 @@ export default function RepsPerformancePage() {
     sheetUrl: string;
     intervalMinutes: number;
     syncMode: 'overwrite' | 'merge_new_only';
-  }>({ sheetUrl: '', intervalMinutes: 15, syncMode: 'overwrite' });
+  }>({ sheetUrl: '', intervalMinutes: 1, syncMode: 'overwrite' });
 
   // Per-row busy state — only one action at a time per config
   const [busyConfigId, setBusyConfigId] = useState<string | null>(null);
@@ -129,7 +129,7 @@ export default function RepsPerformancePage() {
         syncMode: addForm.syncMode,
       });
       setAddOpen(false);
-      setAddForm({ project: '', branch: '', sheetUrl: '', intervalMinutes: 15, syncMode: 'overwrite' });
+      setAddForm({ project: '', branch: '', sheetUrl: '', intervalMinutes: 1, syncMode: 'overwrite' });
       await refreshSheetConfigs();
     } catch (err: any) {
       setSheetError(err.message || 'Failed to add sheet config');
@@ -934,6 +934,7 @@ export default function RepsPerformancePage() {
                       onChange={(e) => setAddForm((f) => ({ ...f, intervalMinutes: Number(e.target.value) }))}
                       aria-label="Sync interval"
                       className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm">
+                      <option value={1}>{lang === 'ar' ? 'كل دقيقة' : 'Every minute'}</option>
                       <option value={5}>{lang === 'ar' ? 'كل 5 دقايق' : 'Every 5 min'}</option>
                       <option value={10}>{lang === 'ar' ? 'كل 10 دقايق' : 'Every 10 min'}</option>
                       <option value={15}>{lang === 'ar' ? 'كل 15 دقيقة' : 'Every 15 min'}</option>
@@ -1043,7 +1044,8 @@ export default function RepsPerformancePage() {
                         onChange={(e) => setEditForm((f) => ({ ...f, intervalMinutes: Number(e.target.value) }))}
                         aria-label="Sync interval"
                         className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm">
-                        <option value={5}>{lang === 'ar' ? 'كل 5 دقايق' : 'Every 5 min'}</option>
+                        <option value={1}>{lang === 'ar' ? 'كل دقيقة' : 'Every minute'}</option>
+                      <option value={5}>{lang === 'ar' ? 'كل 5 دقايق' : 'Every 5 min'}</option>
                         <option value={10}>{lang === 'ar' ? 'كل 10 دقايق' : 'Every 10 min'}</option>
                         <option value={15}>{lang === 'ar' ? 'كل 15 دقيقة' : 'Every 15 min'}</option>
                         <option value={30}>{lang === 'ar' ? 'كل 30 دقيقة' : 'Every 30 min'}</option>

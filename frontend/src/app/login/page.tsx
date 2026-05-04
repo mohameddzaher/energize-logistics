@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { motion } from 'framer-motion';
 import { LogIn, Eye, EyeOff, AlertCircle, Shield } from 'lucide-react';
 import Link from 'next/link';
+import { homeRouteForRole } from '@/lib/roleRoutes';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -19,14 +20,7 @@ function LoginForm() {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      const roleRoutes: Record<string, string> = {
-        client: '/system/portal',
-        workshop_manager: '/system/workshop/dashboard',
-        workshop_employee: '/system/workshop',
-        purchasing: '/system/workshop/purchases',
-      };
-      const defaultRoute = roleRoutes[user.role] || '/system/dashboard';
-      router.push(returnTo || defaultRoute);
+      router.push(returnTo || homeRouteForRole(user.role));
     }
   }, [isAuthenticated, user, router, returnTo]);
 
@@ -39,14 +33,7 @@ function LoginForm() {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const loggedInUser = await login(email, password);
-        const roleRoutes: Record<string, string> = {
-          client: '/system/portal',
-          workshop_manager: '/system/workshop/dashboard',
-          workshop_employee: '/system/workshop',
-          purchasing: '/system/workshop/purchases',
-        };
-        const defaultRoute = roleRoutes[loggedInUser.role] || '/system/dashboard';
-        router.push(returnTo || defaultRoute);
+        router.push(returnTo || homeRouteForRole(loggedInUser.role));
         return;
       } catch (err: any) {
         const isTimeout = err.message?.includes('timed out') || err.message?.includes('aborted');

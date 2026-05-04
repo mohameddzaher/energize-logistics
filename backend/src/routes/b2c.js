@@ -11,12 +11,10 @@ router.post('/google-sheet/webhook', b2cController.googleSheetWebhook);
 
 router.use(authenticate);
 
-// Roles allowed to read B2C data
+// Project managers currently have the same access as heads.
 const READ = ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'];
-// Roles allowed to write B2C data (per requirement: project managers see/do same as head for now)
 const WRITE = ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'];
-// Only super_admin / b2c_head can manage projects (configuration)
-const ADMIN_WRITE = ['super_admin', 'admin', 'b2c_head'];
+const ADMIN_WRITE = ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'];
 
 // Projects
 router.get('/projects', authorize(...READ), b2cController.getProjects);
@@ -46,12 +44,14 @@ router.get('/day-details', authorize(...READ), b2cController.getDayDetails);
 router.get('/uploads', authorize(...READ), b2cController.getUploadHistory);
 
 // Cleanup — destructive; only super_admin and b2c_head can wipe data
-router.post('/cleanup', authorize('super_admin', 'admin', 'b2c_head'), b2cController.cleanupB2CData);
+router.post('/cleanup', authorize(...ADMIN_WRITE), b2cController.cleanupB2CData);
 
-// Google Sheet sync configuration + manual trigger
-router.get('/google-sheet/config', authorize(...READ), b2cController.getSheetConfig);
-router.put('/google-sheet/config', authorize('super_admin', 'admin', 'b2c_head'), b2cController.updateSheetConfig);
-router.post('/google-sheet/sync-now', authorize('super_admin', 'admin', 'b2c_head'), b2cController.syncSheetNow);
-router.get('/google-sheet/setup-script', authorize('super_admin', 'admin', 'b2c_head'), b2cController.getSheetSetupScript);
+// Google Sheet sync — list, CRUD, per-config sync trigger and setup script.
+router.get('/google-sheet/configs', authorize(...READ), b2cController.getSheetConfigs);
+router.post('/google-sheet/configs', authorize(...ADMIN_WRITE), b2cController.createSheetConfig);
+router.put('/google-sheet/configs/:id', authorize(...ADMIN_WRITE), b2cController.updateSheetConfig);
+router.delete('/google-sheet/configs/:id', authorize(...ADMIN_WRITE), b2cController.deleteSheetConfig);
+router.post('/google-sheet/configs/:id/sync-now', authorize(...ADMIN_WRITE), b2cController.syncSheetNow);
+router.get('/google-sheet/configs/:id/setup-script', authorize(...ADMIN_WRITE), b2cController.getSheetSetupScript);
 
 module.exports = router;

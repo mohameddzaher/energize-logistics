@@ -5,7 +5,7 @@ import { getB2CTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2, Cloud, Link2, Power, Zap, Copy, Eye, EyeOff } from 'lucide-react';
+import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2, Cloud, Link2, Power, Zap, Copy, Eye, EyeOff, Plus, Edit3 } from 'lucide-react';
 import { useSocket } from '@/hooks/useSocket';
 import { useAuth } from '@/context/AuthContext';
 import { parseRepsExcel, buildBulkPayload, buildDiagnosticReport, type ExcelParseResult } from '@/lib/b2cExcelParser';
@@ -54,17 +54,32 @@ export default function RepsPerformancePage() {
   const [cleaningUp, setCleaningUp] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<any | null>(null);
 
-  // Google Sheet sync config
-  const [sheetConfig, setSheetConfig] = useState<any>(null);
-  const [sheetUrlInput, setSheetUrlInput] = useState('');
-  const [sheetIntervalInput, setSheetIntervalInput] = useState(15);
-  const [sheetSyncModeInput, setSheetSyncModeInput] = useState<'overwrite' | 'merge_new_only'>('overwrite');
-  const [sheetSavingConfig, setSheetSavingConfig] = useState(false);
-  const [sheetSyncing, setSheetSyncing] = useState(false);
+  // Google Sheet sync — list of configs (one per project+branch)
+  const [sheetConfigs, setSheetConfigs] = useState<any[]>([]);
   const [sheetError, setSheetError] = useState('');
 
-  // Real-time webhook setup
-  const [setupOpen, setSetupOpen] = useState(false);
+  // Add-new form
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState<{
+    project: string; branch: string; sheetUrl: string;
+    intervalMinutes: number; syncMode: 'overwrite' | 'merge_new_only';
+  }>({ project: '', branch: '', sheetUrl: '', intervalMinutes: 15, syncMode: 'overwrite' });
+  const [addSaving, setAddSaving] = useState(false);
+
+  // Edit-in-place state — only one row at a time
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{
+    sheetUrl: string;
+    intervalMinutes: number;
+    syncMode: 'overwrite' | 'merge_new_only';
+  }>({ sheetUrl: '', intervalMinutes: 15, syncMode: 'overwrite' });
+
+  // Per-row busy state — only one action at a time per config
+  const [busyConfigId, setBusyConfigId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<'syncing' | 'saving' | 'deleting' | null>(null);
+
+  // Real-time webhook setup — scoped to a specific config
+  const [setupOpenId, setSetupOpenId] = useState<string | null>(null);
   const [setupScript, setSetupScript] = useState('');
   const [setupWebhookUrl, setSetupWebhookUrl] = useState('');
   const [setupSecret, setSetupSecret] = useState('');
@@ -72,62 +87,132 @@ export default function RepsPerformancePage() {
   const [showSecret, setShowSecret] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
+  const refreshSheetConfigs = useCallback(async () => {
+    try {
+      const data = await api.get<any>('/api/b2c/google-sheet/configs');
+      setSheetConfigs(data.configs || []);
+    } catch {}
+  }, []);
+
   const fetchAll = useCallback(async () => {
     try {
       const [projData, branchData, uploadsData, sheetData] = await Promise.all([
         api.get<any>('/api/b2c/projects'),
         api.get<any>('/api/branches?active=true'),
         api.get<any>('/api/b2c/uploads'),
-        api.get<any>('/api/b2c/google-sheet/config').catch(() => ({ config: null })),
+        api.get<any>('/api/b2c/google-sheet/configs').catch(() => ({ configs: [] })),
       ]);
       setProjects(projData.projects || []);
       setBranches(branchData.branches || []);
       setUploads(uploadsData.uploads || []);
-      if (sheetData?.config) {
-        setSheetConfig(sheetData.config);
-        setSheetUrlInput(sheetData.config.sheetUrl || '');
-        setSheetIntervalInput(sheetData.config.intervalMinutes || 15);
-        setSheetSyncModeInput(sheetData.config.syncMode || 'overwrite');
-      }
+      setSheetConfigs(sheetData?.configs || []);
     } catch (err: any) {
       setError(err.message || 'Failed to load');
     }
   }, []);
 
-  // Refresh sheet status whenever the backend cron runs a sync
-  useSocket('b2c:sheet:synced', useCallback(() => {
-    api.get<any>('/api/b2c/google-sheet/config').then((d) => {
-      if (d?.config) setSheetConfig(d.config);
-    }).catch(() => {});
-  }, []));
+  // Refresh sheet status whenever any backend sync completes
+  useSocket('b2c:sheet:synced', refreshSheetConfigs);
 
-  const handleSaveSheetConfig = async (overrides: Partial<{ enabled: boolean }> = {}) => {
-    setSheetSavingConfig(true); setSheetError('');
+  const handleAddSheet = async () => {
+    if (!addForm.project || !addForm.branch) {
+      setSheetError(lang === 'ar' ? 'اختر المشروع والفرع' : 'Pick a project and a branch');
+      return;
+    }
+    setAddSaving(true); setSheetError('');
     try {
-      const payload: any = {
-        sheetUrl: sheetUrlInput,
-        intervalMinutes: sheetIntervalInput,
-        syncMode: sheetSyncModeInput,
-      };
-      if (overrides.enabled !== undefined) payload.enabled = overrides.enabled;
-      const data = await api.put<any>('/api/b2c/google-sheet/config', payload);
-      if (data?.config) {
-        setSheetConfig(data.config);
-        setSheetUrlInput(data.config.sheetUrl || '');
-      }
+      await api.post<any>('/api/b2c/google-sheet/configs', {
+        project: addForm.project,
+        branch: addForm.branch,
+        sheetUrl: addForm.sheetUrl || undefined,
+        intervalMinutes: addForm.intervalMinutes,
+        syncMode: addForm.syncMode,
+      });
+      setAddOpen(false);
+      setAddForm({ project: '', branch: '', sheetUrl: '', intervalMinutes: 15, syncMode: 'overwrite' });
+      await refreshSheetConfigs();
     } catch (err: any) {
-      setSheetError(err.message || 'Failed to save sheet config');
+      setSheetError(err.message || 'Failed to add sheet config');
     } finally {
-      setSheetSavingConfig(false);
+      setAddSaving(false);
     }
   };
 
-  const handleOpenSetup = async () => {
-    setSetupOpen(true);
-    if (setupScript) return; // already fetched
-    setSetupLoading(true);
+  const startEditingConfig = (config: any) => {
+    setEditingId(config._id);
+    setEditForm({
+      sheetUrl: config.sheetUrl || '',
+      intervalMinutes: config.intervalMinutes || 15,
+      syncMode: config.syncMode || 'overwrite',
+    });
+  };
+  const cancelEditing = () => { setEditingId(null); };
+
+  const handleSaveEdit = async (id: string) => {
+    setBusyConfigId(id); setBusyAction('saving'); setSheetError('');
     try {
-      const data = await api.get<{ script: string; webhookUrl: string; secret: string }>('/api/b2c/google-sheet/setup-script');
+      await api.put<any>(`/api/b2c/google-sheet/configs/${id}`, editForm);
+      setEditingId(null);
+      await refreshSheetConfigs();
+    } catch (err: any) {
+      setSheetError(err.message || 'Failed to save');
+    } finally {
+      setBusyConfigId(null); setBusyAction(null);
+    }
+  };
+
+  const handleToggleEnable = async (id: string, currentEnabled: boolean) => {
+    setBusyConfigId(id); setBusyAction('saving'); setSheetError('');
+    try {
+      await api.put<any>(`/api/b2c/google-sheet/configs/${id}`, { enabled: !currentEnabled });
+      await refreshSheetConfigs();
+    } catch (err: any) {
+      setSheetError(err.message || 'Failed to toggle');
+    } finally {
+      setBusyConfigId(null); setBusyAction(null);
+    }
+  };
+
+  const handleDeleteConfig = async (id: string) => {
+    if (!confirm(lang === 'ar' ? 'تأكيد حذف هذا الـ Sheet config؟' : 'Delete this sheet config?')) return;
+    setBusyConfigId(id); setBusyAction('deleting'); setSheetError('');
+    try {
+      await api.delete<any>(`/api/b2c/google-sheet/configs/${id}`);
+      if (editingId === id) setEditingId(null);
+      if (setupOpenId === id) setSetupOpenId(null);
+      await refreshSheetConfigs();
+    } catch (err: any) {
+      setSheetError(err.message || 'Failed to delete');
+    } finally {
+      setBusyConfigId(null); setBusyAction(null);
+    }
+  };
+
+  const handleSyncConfig = async (id: string) => {
+    setBusyConfigId(id); setBusyAction('syncing'); setSheetError('');
+    try {
+      await api.post<any>(`/api/b2c/google-sheet/configs/${id}/sync-now`, {}, { timeoutMs: 180000 });
+      await refreshSheetConfigs();
+      // Refresh upload history so the latest entry shows up immediately
+      const uploadsData = await api.get<any>('/api/b2c/uploads').catch(() => ({ uploads: [] }));
+      setUploads(uploadsData.uploads || []);
+    } catch (err: any) {
+      setSheetError(err.message || 'Sync failed');
+    } finally {
+      setBusyConfigId(null); setBusyAction(null);
+    }
+  };
+
+  const handleOpenSetup = async (id: string) => {
+    if (setupOpenId === id) {
+      setSetupOpenId(null);
+      return;
+    }
+    setSetupOpenId(id);
+    setSetupLoading(true);
+    setSetupScript(''); setSetupWebhookUrl(''); setSetupSecret('');
+    try {
+      const data = await api.get<{ script: string; webhookUrl: string; secret: string }>(`/api/b2c/google-sheet/configs/${id}/setup-script`);
       setSetupScript(data.script || '');
       setSetupWebhookUrl(data.webhookUrl || '');
       setSetupSecret(data.secret || '');
@@ -145,32 +230,6 @@ export default function RepsPerformancePage() {
       setTimeout(() => setCopyFeedback(null), 1500);
     } catch {
       // Clipboard API can fail in non-HTTPS dev. Silent fallback.
-    }
-  };
-
-  const handleSheetSyncNow = async () => {
-    setSheetSyncing(true); setSheetError('');
-    try {
-      // Save current settings first so URL/interval/syncMode changes take effect
-      if (
-        sheetUrlInput && (
-          !sheetConfig
-          || sheetConfig.sheetUrl !== sheetUrlInput
-          || sheetConfig.syncMode !== sheetSyncModeInput
-          || sheetConfig.intervalMinutes !== sheetIntervalInput
-        )
-      ) {
-        await handleSaveSheetConfig();
-      }
-      // Backend uses the configured syncMode (default 'overwrite' so edits flow through)
-      await api.post<any>('/api/b2c/google-sheet/sync-now', {}, { timeoutMs: 180000 });
-      const data = await api.get<any>('/api/b2c/google-sheet/config');
-      if (data?.config) setSheetConfig(data.config);
-      await fetchAll();
-    } catch (err: any) {
-      setSheetError(err.message || 'Sync failed');
-    } finally {
-      setSheetSyncing(false);
     }
   };
 
@@ -762,37 +821,25 @@ export default function RepsPerformancePage() {
         )}
       </div>
 
-      {/* Google Sheet sync — third option alongside file upload and manual entry */}
+      {/* Google Sheet sync — list of configs, one per project+branch */}
       <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <div>
             <h2 className="text-white font-semibold flex items-center gap-2">
               <Cloud className="w-5 h-5 text-blue-400" />
-              {lang === 'ar' ? '🔄 مزامنة من Google Sheet' : '🔄 Google Sheet Auto-Sync'}
+              {lang === 'ar' ? '🔄 مزامنة من Google Sheets' : '🔄 Google Sheets Auto-Sync'}
             </h2>
             <p className="text-gray-500 text-xs mt-1">
               {lang === 'ar'
-                ? 'الصق رابط Google Sheet (مفتوح للجميع بصلاحية القراءة) — السيستم بيسحبه ويحدث البيانات تلقائياً'
-                : 'Paste a Google Sheet share link (anyone-with-link can view) — system fetches and updates automatically'}
+                ? 'كل (مشروع + فرع) ليه شيت خاص بيه — اضف اللي تحتاجه'
+                : 'Each (project + branch) has its own sheet — add as many as you need'}
             </p>
           </div>
-          {sheetConfig && (
-            <div className="text-right">
-              <div className="flex items-center gap-2 justify-end">
-                <span className={`inline-block w-2 h-2 rounded-full ${sheetConfig.enabled ? 'bg-green-400' : 'bg-gray-500'}`} />
-                <span className={`text-xs font-medium ${sheetConfig.enabled ? 'text-green-400' : 'text-gray-400'}`}>
-                  {sheetConfig.enabled
-                    ? (lang === 'ar' ? 'مزامنة نشطة' : 'Auto-sync ON')
-                    : (lang === 'ar' ? 'مزامنة موقوفة' : 'Auto-sync OFF')}
-                </span>
-              </div>
-              {sheetConfig.lastSyncAt && (
-                <p className="text-gray-500 text-[10px] mt-0.5">
-                  {lang === 'ar' ? 'آخر مزامنة' : 'Last sync'}: {new Date(sheetConfig.lastSyncAt).toLocaleString()}
-                </p>
-              )}
-            </div>
-          )}
+          <button type="button" onClick={() => setAddOpen(!addOpen)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 text-sm font-medium transition-colors">
+            <Plus className="w-4 h-4" />
+            {lang === 'ar' ? 'إضافة شيت جديد' : 'Add new sheet'}
+          </button>
         </div>
 
         {sheetError && (
@@ -805,267 +852,378 @@ export default function RepsPerformancePage() {
           </div>
         )}
 
-        {sheetConfig?.lastSyncStatus === 'error' && sheetConfig.lastSyncMessage && (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-amber-300 text-xs mb-3">
-            ⚠️ {lang === 'ar' ? 'آخر محاولة مزامنة فشلت:' : 'Last sync attempt failed:'} {sheetConfig.lastSyncMessage}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-          <div className="md:col-span-3">
-            <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
-              <Link2 className="w-3.5 h-3.5 inline mr-1" />
-              {lang === 'ar' ? 'رابط Google Sheet' : 'Google Sheet URL'}
-            </label>
-            <input type="url" value={sheetUrlInput} onChange={(e) => setSheetUrlInput(e.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              aria-label="Google Sheet URL"
-              className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-mono" />
-          </div>
-          <div>
-            <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
-              {lang === 'ar' ? 'فترة المزامنة' : 'Sync interval'}
-            </label>
-            <select aria-label="Sync interval" value={sheetIntervalInput} onChange={(e) => setSheetIntervalInput(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50">
-              <option value={5}>{lang === 'ar' ? 'كل 5 دقايق' : 'Every 5 min'}</option>
-              <option value={10}>{lang === 'ar' ? 'كل 10 دقايق' : 'Every 10 min'}</option>
-              <option value={15}>{lang === 'ar' ? 'كل 15 دقيقة' : 'Every 15 min'}</option>
-              <option value={30}>{lang === 'ar' ? 'كل 30 دقيقة' : 'Every 30 min'}</option>
-              <option value={60}>{lang === 'ar' ? 'كل ساعة' : 'Every hour'}</option>
-              <option value={180}>{lang === 'ar' ? 'كل 3 ساعات' : 'Every 3 hours'}</option>
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
-              {lang === 'ar' ? 'تحديثات الشيت' : 'Sheet updates'}
-            </label>
-            <select aria-label="Sync mode" value={sheetSyncModeInput} onChange={(e) => setSheetSyncModeInput(e.target.value as any)}
-              className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50">
-              <option value="overwrite">
-                {lang === 'ar' ? '🔄 الشيت هو المصدر — أي تعديل يتعكس (موصى به)' : '🔄 Sheet is source of truth — overwrite (recommended)'}
-              </option>
-              <option value="merge_new_only">
-                {lang === 'ar' ? '➕ أيام جديدة فقط — لا يحدّث الموجود' : '➕ New days only — never overwrite existing'}
-              </option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <button type="button" onClick={() => handleSaveSheetConfig()} disabled={sheetSavingConfig || !sheetUrlInput}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white text-sm font-medium transition-colors">
-            {sheetSavingConfig && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-            {lang === 'ar' ? 'حفظ الإعدادات' : 'Save Config'}
-          </button>
-          <button type="button"
-            onClick={() => handleSaveSheetConfig({ enabled: !sheetConfig?.enabled })}
-            disabled={sheetSavingConfig || !sheetConfig?.sheetId}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              sheetConfig?.enabled
-                ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
-                : 'bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/40'
-            } disabled:opacity-50`}>
-            <Power className="w-4 h-4" />
-            {sheetConfig?.enabled
-              ? (lang === 'ar' ? 'إيقاف المزامنة التلقائية' : 'Disable Auto-Sync')
-              : (lang === 'ar' ? 'تفعيل المزامنة التلقائية' : 'Enable Auto-Sync')}
-          </button>
-          <button type="button" onClick={handleOpenSetup} disabled={!sheetConfig}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 disabled:opacity-50 text-purple-300 border border-purple-500/40 text-sm font-medium transition-colors">
-            <Zap className="w-4 h-4" />
-            {lang === 'ar' ? 'إعداد المزامنة الفورية' : 'Setup Instant Sync'}
-          </button>
-          <button type="button" onClick={handleSheetSyncNow} disabled={sheetSyncing || !sheetUrlInput}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white text-sm font-medium transition-colors ml-auto">
-            <RefreshCw className={`w-4 h-4 ${sheetSyncing ? 'animate-spin' : ''}`} />
-            {sheetSyncing
-              ? (lang === 'ar' ? 'جاري المزامنة...' : 'Syncing...')
-              : (lang === 'ar' ? 'مزامنة الآن' : 'Sync Now')}
-          </button>
-        </div>
-
-        {sheetConfig?.lastSyncStats && sheetConfig.lastSyncStatus === 'ok' && (
-          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2">
-            <div className="bg-gray-900 rounded-lg p-2 text-center">
-              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'الشهور' : 'Months'}</p>
-              <p className="text-white text-sm font-bold">{sheetConfig.lastSyncStats.monthsDetected?.length || 0}</p>
-            </div>
-            <div className="bg-gray-900 rounded-lg p-2 text-center">
-              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'صفوف' : 'Records'}</p>
-              <p className="text-white text-sm font-bold">{sheetConfig.lastSyncStats.recordsParsed || 0}</p>
-            </div>
-            <div className="bg-gray-900 rounded-lg p-2 text-center">
-              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'مضاف' : 'Inserted'}</p>
-              <p className="text-green-400 text-sm font-bold">{sheetConfig.lastSyncStats.daysInserted || 0}</p>
-            </div>
-            <div className="bg-gray-900 rounded-lg p-2 text-center">
-              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'محدث' : 'Updated'}</p>
-              <p className="text-blue-400 text-sm font-bold">{sheetConfig.lastSyncStats.daysUpdated || 0}</p>
-            </div>
-            <div className="bg-gray-900 rounded-lg p-2 text-center">
-              <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'وقت' : 'Duration'}</p>
-              <p className="text-gray-300 text-sm font-bold">{((sheetConfig.lastSyncStats.durationMs || 0) / 1000).toFixed(1)}s</p>
-            </div>
-          </div>
-        )}
-
-        {/* Real-time setup panel — collapsible. Holds the Apps Script the user pastes
-            into their sheet so every cell edit fires our webhook. */}
-        {setupOpen && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-            className="mt-4 bg-purple-500/5 border border-purple-500/30 rounded-xl p-4 space-y-4 overflow-hidden">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h3 className="text-purple-300 font-semibold flex items-center gap-2 text-sm">
-                <Zap className="w-4 h-4" />
-                {lang === 'ar' ? '⚡ مزامنة فورية (real-time)' : '⚡ Real-time Sync Setup'}
-              </h3>
-              <button type="button" onClick={() => setSetupOpen(false)}
-                className="p-1 text-gray-400 hover:text-white rounded" title="Close">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {setupLoading ? (
-              <div className="flex items-center justify-center h-20">
-                <div className="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : (
-              <>
-                <div className="bg-gray-900/70 rounded-lg p-3 space-y-2 text-sm">
-                  <p className="text-gray-300 font-medium">
-                    {lang === 'ar' ? '🎯 الفكرة:' : '🎯 How it works:'}
-                  </p>
-                  <p className="text-gray-400 text-xs leading-relaxed">
-                    {lang === 'ar'
-                      ? 'هتلصق سكربت قصير في الـ Google Sheet. السكربت ده هيعمل ping للسيرفر بتاعنا في كل مرة تعدّل أي خانة. السيرفر يسحب آخر نسخة من الشيت ويحدّث الـ dashboard خلال ثانية أو اتنين. مفيش polling — تعديلك في الشيت يتعكس فوراً.'
-                      : 'You paste a short script into your Google Sheet. The script pings our server on every cell edit. The server then pulls the latest sheet and updates the dashboard within 1-2 seconds. No polling — your edits reflect instantly.'}
-                  </p>
+        {/* Add-new form */}
+        <AnimatePresence>
+          {addOpen && (
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden mb-4">
+              <div className="bg-gray-900/60 border border-blue-500/30 rounded-xl p-4 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+                      {lang === 'ar' ? 'المشروع' : 'Project'}
+                    </label>
+                    <select value={addForm.project}
+                      onChange={(e) => setAddForm((f) => ({ ...f, project: e.target.value }))}
+                      aria-label="Project"
+                      className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm">
+                      <option value="">{lang === 'ar' ? '— اختر مشروع —' : '— Select project —'}</option>
+                      {projects.map((p: any) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+                      {lang === 'ar' ? 'الفرع' : 'Branch'}
+                    </label>
+                    <select value={addForm.branch}
+                      onChange={(e) => setAddForm((f) => ({ ...f, branch: e.target.value }))}
+                      aria-label="Branch"
+                      className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm">
+                      <option value="">{lang === 'ar' ? '— اختر فرع —' : '— Select branch —'}</option>
+                      {branches.map((b: any) => <option key={b._id} value={b._id}>{b.name}</option>)}
+                    </select>
+                  </div>
                 </div>
+                <div>
+                  <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+                    <Link2 className="w-3.5 h-3.5 inline mr-1" />
+                    {lang === 'ar' ? 'رابط Google Sheet (اختياري — تقدر تضيفه لاحقاً)' : 'Google Sheet URL (optional — can be added later)'}
+                  </label>
+                  <input type="url" value={addForm.sheetUrl}
+                    onChange={(e) => setAddForm((f) => ({ ...f, sheetUrl: e.target.value }))}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    aria-label="Google Sheet URL"
+                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm font-mono" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+                      {lang === 'ar' ? 'فترة المزامنة' : 'Sync interval'}
+                    </label>
+                    <select value={addForm.intervalMinutes}
+                      onChange={(e) => setAddForm((f) => ({ ...f, intervalMinutes: Number(e.target.value) }))}
+                      aria-label="Sync interval"
+                      className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm">
+                      <option value={5}>{lang === 'ar' ? 'كل 5 دقايق' : 'Every 5 min'}</option>
+                      <option value={10}>{lang === 'ar' ? 'كل 10 دقايق' : 'Every 10 min'}</option>
+                      <option value={15}>{lang === 'ar' ? 'كل 15 دقيقة' : 'Every 15 min'}</option>
+                      <option value={30}>{lang === 'ar' ? 'كل 30 دقيقة' : 'Every 30 min'}</option>
+                      <option value={60}>{lang === 'ar' ? 'كل ساعة' : 'Every hour'}</option>
+                      <option value={180}>{lang === 'ar' ? 'كل 3 ساعات' : 'Every 3 hours'}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+                      {lang === 'ar' ? 'تحديثات الشيت' : 'Sheet updates'}
+                    </label>
+                    <select value={addForm.syncMode}
+                      onChange={(e) => setAddForm((f) => ({ ...f, syncMode: e.target.value as any }))}
+                      aria-label="Sync mode"
+                      className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm">
+                      <option value="overwrite">{lang === 'ar' ? '🔄 الشيت هو المصدر (موصى به)' : '🔄 Sheet is source (recommended)'}</option>
+                      <option value="merge_new_only">{lang === 'ar' ? '➕ أيام جديدة فقط' : '➕ New days only'}</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 justify-end">
+                  <button type="button" onClick={() => setAddOpen(false)}
+                    className="px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm">
+                    {T.cancel}
+                  </button>
+                  <button type="button" onClick={handleAddSheet} disabled={addSaving || !addForm.project || !addForm.branch}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-sm font-medium">
+                    {addSaving && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                    <Plus className="w-4 h-4" />
+                    {lang === 'ar' ? 'إضافة' : 'Add'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-                <ol className="space-y-3 text-sm">
-                  <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">1</span>
-                    <div className="flex-1">
-                      <p className="text-white font-medium">
-                        {lang === 'ar' ? 'افتح الـ Google Sheet → Extensions → Apps Script' : 'In your Google Sheet → Extensions → Apps Script'}
-                      </p>
-                      <p className="text-gray-500 text-xs">
-                        {lang === 'ar'
-                          ? 'هيفتحلك تبويب جديد فيه محرر اسكربت'
-                          : 'A new tab opens with the script editor'}
-                      </p>
-                    </div>
-                  </li>
+        {/* Empty state */}
+        {sheetConfigs.length === 0 && !addOpen && (
+          <div className="text-center py-8 border border-dashed border-gray-700 rounded-lg">
+            <Cloud className="w-10 h-10 text-gray-600 mx-auto mb-2" />
+            <p className="text-gray-400 text-sm">
+              {lang === 'ar' ? 'لسه ما فيش شيتات متربوطة. اضغط "إضافة شيت جديد" للبدء.' : 'No sheets connected yet. Click "Add new sheet" to start.'}
+            </p>
+          </div>
+        )}
 
-                  <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">2</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <p className="text-white font-medium">
-                          {lang === 'ar' ? 'امسح الكود الموجود والصق ده:' : 'Clear the editor and paste this:'}
-                        </p>
-                        <button type="button" onClick={() => copyToClipboard(setupScript, 'script')}
-                          className="flex items-center gap-1 px-2 py-1 rounded bg-purple-500/30 hover:bg-purple-500/40 text-purple-200 text-xs font-medium">
-                          <Copy className="w-3 h-3" />
-                          {copyFeedback === 'script' ? (lang === 'ar' ? '✓ اتنسخ' : '✓ Copied!') : (lang === 'ar' ? 'نسخ السكربت' : 'Copy Script')}
-                        </button>
-                      </div>
-                      <pre className="bg-gray-900 border border-gray-800 rounded-md p-3 text-[11px] text-gray-300 font-mono overflow-x-auto max-h-64">
-{setupScript}
-                      </pre>
-                    </div>
-                  </li>
-
-                  <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">3</span>
-                    <div className="flex-1">
-                      <p className="text-white font-medium">
-                        {lang === 'ar' ? 'احفظ (💾) → اضغط أيقونة الساعة "Triggers" على اليمين' : 'Save (💾) → Click the clock icon "Triggers" on the left'}
-                      </p>
-                    </div>
-                  </li>
-
-                  <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">4</span>
-                    <div className="flex-1">
-                      <p className="text-white font-medium">
-                        {lang === 'ar' ? '"+ Add Trigger" — اختار:' : '"+ Add Trigger" — choose:'}
-                      </p>
-                      <ul className="text-gray-400 text-xs mt-1 space-y-0.5 list-disc list-inside">
-                        <li>Function: <code className="bg-gray-900 px-1 rounded text-purple-300">notifyB2CWebhook</code></li>
-                        <li>Event source: <code className="bg-gray-900 px-1 rounded">From spreadsheet</code></li>
-                        <li>Event type: <code className="bg-gray-900 px-1 rounded">On edit</code></li>
-                      </ul>
-                    </div>
-                  </li>
-
-                  <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/30 text-purple-300 flex items-center justify-center text-xs font-bold">5</span>
-                    <div className="flex-1">
-                      <p className="text-white font-medium">
-                        {lang === 'ar' ? 'احفظ — وامنح الصلاحيات لما يطلب' : 'Save — grant permissions when prompted'}
-                      </p>
-                      <p className="text-gray-500 text-xs">
-                        {lang === 'ar'
-                          ? 'Google ممكن يحذرك إن السكربت "غير مُعرَّف" — اختر "Advanced → Go to (your project)"'
-                          : 'Google may warn the script is "unverified" — click "Advanced → Go to (your project)"'}
-                      </p>
-                    </div>
-                  </li>
-                </ol>
-
-                {/* Reference info — webhook URL + secret */}
-                <details className="bg-gray-900/40 rounded-lg p-3 border border-gray-700">
-                  <summary className="text-gray-300 text-xs cursor-pointer font-medium">
-                    {lang === 'ar' ? '🔧 إعدادات متقدمة (Webhook URL + Secret)' : '🔧 Advanced (Webhook URL + Secret)'}
-                  </summary>
-                  <div className="mt-3 space-y-2">
-                    <div>
-                      <label className="block text-gray-500 text-[10px] uppercase mb-1">Webhook URL</label>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-[11px] text-gray-300 font-mono break-all">{setupWebhookUrl}</code>
-                        <button type="button" onClick={() => copyToClipboard(setupWebhookUrl, 'url')}
-                          className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300" title="Copy URL">
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      {copyFeedback === 'url' && <p className="text-green-400 text-[10px] mt-0.5">✓ Copied</p>}
-                    </div>
-                    <div>
-                      <label className="block text-gray-500 text-[10px] uppercase mb-1">Secret token</label>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-[11px] text-gray-300 font-mono break-all">
-                          {showSecret ? setupSecret : '••••••••••••••••••••••••'}
-                        </code>
-                        <button type="button" onClick={() => setShowSecret(!showSecret)}
-                          className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300" title="Toggle visibility">
-                          {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
-                        <button type="button" onClick={() => copyToClipboard(setupSecret, 'secret')}
-                          className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300" title="Copy secret">
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      {copyFeedback === 'secret' && <p className="text-green-400 text-[10px] mt-0.5">✓ Copied</p>}
-                      <p className="text-gray-500 text-[10px] mt-1">
-                        {lang === 'ar'
-                          ? 'يُستخدم للتحقق من إن الطلب فعلاً جاي من السكربت بتاعك. لا تشاركه.'
-                          : "Verifies that webhook hits actually come from your script. Don't share it."}
-                      </p>
+        {/* List of configs */}
+        <div className="space-y-3">
+          {sheetConfigs.map((cfg) => {
+            const isEditing = editingId === cfg._id;
+            const isSyncing = busyConfigId === cfg._id && busyAction === 'syncing';
+            const isSaving = busyConfigId === cfg._id && busyAction === 'saving';
+            const isDeleting = busyConfigId === cfg._id && busyAction === 'deleting';
+            const projectName = cfg.project?.name || (lang === 'ar' ? 'مشروع محذوف' : 'Deleted project');
+            const branchName = cfg.branch?.name || (lang === 'ar' ? 'فرع محذوف' : 'Deleted branch');
+            return (
+              <div key={cfg._id} className="bg-gray-900/60 border border-gray-700 rounded-xl p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <h3 className="text-white font-medium flex items-center gap-2 text-sm">
+                      <span className="text-[#f37121]">{projectName}</span>
+                      <span className="text-gray-500">·</span>
+                      <span className="text-gray-200">{branchName}</span>
+                    </h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`inline-block w-2 h-2 rounded-full ${cfg.enabled ? 'bg-green-400' : 'bg-gray-500'}`} />
+                      <span className={`text-[11px] font-medium ${cfg.enabled ? 'text-green-400' : 'text-gray-400'}`}>
+                        {cfg.enabled
+                          ? (lang === 'ar' ? 'مزامنة نشطة' : 'Auto-sync ON')
+                          : (lang === 'ar' ? 'مزامنة موقوفة' : 'Auto-sync OFF')}
+                      </span>
+                      {cfg.lastSyncAt && (
+                        <span className="text-gray-500 text-[10px]">
+                          · {lang === 'ar' ? 'آخر مزامنة' : 'Last sync'}: {new Date(cfg.lastSyncAt).toLocaleString()}
+                        </span>
+                      )}
                     </div>
                   </div>
-                </details>
-
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-xs text-blue-200">
-                  💡 {lang === 'ar'
-                    ? 'بعد إعداد الـ trigger، أي تعديل في الشيت هيتعكس في الـ dashboard خلال ثانية أو اتنين تلقائياً. تقدر كمان تسيب المزامنة الدورية شغالة كـ احتياطي.'
-                    : 'Once the trigger is set up, any edit in the sheet reflects in the dashboard within 1-2 seconds automatically. You can also keep the periodic sync on as a fallback.'}
                 </div>
-              </>
-            )}
-          </motion.div>
-        )}
+
+                {cfg.lastSyncStatus === 'error' && cfg.lastSyncMessage && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-amber-300 text-xs">
+                    ⚠️ {cfg.lastSyncMessage}
+                  </div>
+                )}
+
+                {isEditing ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="md:col-span-3">
+                      <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+                        <Link2 className="w-3.5 h-3.5 inline mr-1" />
+                        {lang === 'ar' ? 'رابط Google Sheet' : 'Google Sheet URL'}
+                      </label>
+                      <input type="url" value={editForm.sheetUrl}
+                        onChange={(e) => setEditForm((f) => ({ ...f, sheetUrl: e.target.value }))}
+                        placeholder="https://docs.google.com/spreadsheets/d/..."
+                        aria-label="Google Sheet URL"
+                        className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm font-mono" />
+                    </div>
+                    <div>
+                      <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+                        {lang === 'ar' ? 'فترة المزامنة' : 'Sync interval'}
+                      </label>
+                      <select value={editForm.intervalMinutes}
+                        onChange={(e) => setEditForm((f) => ({ ...f, intervalMinutes: Number(e.target.value) }))}
+                        aria-label="Sync interval"
+                        className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm">
+                        <option value={5}>{lang === 'ar' ? 'كل 5 دقايق' : 'Every 5 min'}</option>
+                        <option value={10}>{lang === 'ar' ? 'كل 10 دقايق' : 'Every 10 min'}</option>
+                        <option value={15}>{lang === 'ar' ? 'كل 15 دقيقة' : 'Every 15 min'}</option>
+                        <option value={30}>{lang === 'ar' ? 'كل 30 دقيقة' : 'Every 30 min'}</option>
+                        <option value={60}>{lang === 'ar' ? 'كل ساعة' : 'Every hour'}</option>
+                        <option value={180}>{lang === 'ar' ? 'كل 3 ساعات' : 'Every 3 hours'}</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">
+                        {lang === 'ar' ? 'تحديثات الشيت' : 'Sheet updates'}
+                      </label>
+                      <select value={editForm.syncMode}
+                        onChange={(e) => setEditForm((f) => ({ ...f, syncMode: e.target.value as any }))}
+                        aria-label="Sync mode"
+                        className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm">
+                        <option value="overwrite">{lang === 'ar' ? '🔄 الشيت هو المصدر (موصى به)' : '🔄 Sheet is source (recommended)'}</option>
+                        <option value="merge_new_only">{lang === 'ar' ? '➕ أيام جديدة فقط' : '➕ New days only'}</option>
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                    <div className="md:col-span-3">
+                      <span className="text-gray-500 uppercase mr-2">URL:</span>
+                      {cfg.sheetUrl
+                        ? <a href={cfg.sheetUrl} target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:underline font-mono break-all">{cfg.sheetUrl}</a>
+                        : <span className="text-gray-500 italic">{lang === 'ar' ? 'لم يُحدَّد بعد' : 'not set yet'}</span>}
+                    </div>
+                    <div><span className="text-gray-500 uppercase mr-2">{lang === 'ar' ? 'الفترة:' : 'Interval:'}</span><span className="text-gray-300">{cfg.intervalMinutes} min</span></div>
+                    <div className="md:col-span-2"><span className="text-gray-500 uppercase mr-2">{lang === 'ar' ? 'الوضع:' : 'Mode:'}</span><span className="text-gray-300">{cfg.syncMode === 'overwrite' ? (lang === 'ar' ? 'إعادة كتابة' : 'overwrite') : (lang === 'ar' ? 'أيام جديدة فقط' : 'new days only')}</span></div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isEditing ? (
+                    <>
+                      <button type="button" onClick={() => handleSaveEdit(cfg._id)} disabled={isSaving}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 disabled:opacity-50 text-green-300 border border-green-500/40 text-sm font-medium">
+                        {isSaving && <div className="w-3 h-3 border-2 border-green-300 border-t-transparent rounded-full animate-spin" />}
+                        <Check className="w-4 h-4" />
+                        {lang === 'ar' ? 'حفظ' : 'Save'}
+                      </button>
+                      <button type="button" onClick={cancelEditing} disabled={isSaving}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 text-sm">
+                        <X className="w-4 h-4" />
+                        {T.cancel}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => handleToggleEnable(cfg._id, cfg.enabled)}
+                        disabled={isSaving || !cfg.sheetId}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          cfg.enabled
+                            ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                            : 'bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/40'
+                        } disabled:opacity-50`}>
+                        <Power className="w-4 h-4" />
+                        {cfg.enabled
+                          ? (lang === 'ar' ? 'إيقاف' : 'Disable')
+                          : (lang === 'ar' ? 'تفعيل' : 'Enable')}
+                      </button>
+                      <button type="button" onClick={() => handleOpenSetup(cfg._id)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-sm font-medium">
+                        <Zap className="w-4 h-4" />
+                        {setupOpenId === cfg._id
+                          ? (lang === 'ar' ? 'إخفاء السكربت' : 'Hide setup')
+                          : (lang === 'ar' ? 'إعداد المزامنة الفورية' : 'Setup instant sync')}
+                      </button>
+                      <button type="button" onClick={() => startEditingConfig(cfg)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm font-medium">
+                        <Edit3 className="w-4 h-4" />
+                        {lang === 'ar' ? 'تعديل' : 'Edit'}
+                      </button>
+                      <button type="button" onClick={() => handleDeleteConfig(cfg._id)} disabled={isDeleting}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 disabled:opacity-50 text-red-300 border border-red-500/40 text-sm font-medium">
+                        {isDeleting && <div className="w-3 h-3 border-2 border-red-300 border-t-transparent rounded-full animate-spin" />}
+                        <Trash2 className="w-4 h-4" />
+                        {lang === 'ar' ? 'حذف' : 'Delete'}
+                      </button>
+                      <button type="button" onClick={() => handleSyncConfig(cfg._id)}
+                        disabled={isSyncing || !cfg.sheetId}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white text-sm font-medium ml-auto">
+                        <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                        {isSyncing
+                          ? (lang === 'ar' ? 'جاري المزامنة...' : 'Syncing...')
+                          : (lang === 'ar' ? 'مزامنة الآن' : 'Sync Now')}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {cfg.lastSyncStats && cfg.lastSyncStatus === 'ok' && (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                    <div className="bg-gray-900 rounded-lg p-2 text-center">
+                      <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'الشهور' : 'Months'}</p>
+                      <p className="text-white font-bold">{cfg.lastSyncStats.monthsDetected?.length || 0}</p>
+                    </div>
+                    <div className="bg-gray-900 rounded-lg p-2 text-center">
+                      <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'صفوف' : 'Records'}</p>
+                      <p className="text-white font-bold">{cfg.lastSyncStats.recordsParsed || 0}</p>
+                    </div>
+                    <div className="bg-gray-900 rounded-lg p-2 text-center">
+                      <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'مضاف' : 'Inserted'}</p>
+                      <p className="text-green-400 font-bold">{cfg.lastSyncStats.daysInserted || 0}</p>
+                    </div>
+                    <div className="bg-gray-900 rounded-lg p-2 text-center">
+                      <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'محدث' : 'Updated'}</p>
+                      <p className="text-blue-400 font-bold">{cfg.lastSyncStats.daysUpdated || 0}</p>
+                    </div>
+                    <div className="bg-gray-900 rounded-lg p-2 text-center">
+                      <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'وقت' : 'Duration'}</p>
+                      <p className="text-gray-300 font-bold">{((cfg.lastSyncStats.durationMs || 0) / 1000).toFixed(1)}s</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Setup script panel — only when this config's setup is open */}
+                <AnimatePresence>
+                  {setupOpenId === cfg._id && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                      className="bg-purple-500/5 border border-purple-500/30 rounded-xl p-4 space-y-4 overflow-hidden">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <h4 className="text-purple-300 font-semibold flex items-center gap-2 text-sm">
+                          <Zap className="w-4 h-4" />
+                          {lang === 'ar' ? '⚡ مزامنة فورية لـ ' : '⚡ Real-time setup — '}
+                          {projectName} · {branchName}
+                        </h4>
+                      </div>
+                      {setupLoading ? (
+                        <div className="flex items-center justify-center h-20">
+                          <div className="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="bg-gray-900/70 rounded-lg p-3 text-xs text-gray-400 leading-relaxed">
+                            {lang === 'ar'
+                              ? 'هتلصق السكربت ده في الـ Google Sheet (Extensions → Apps Script). كل تعديل في الشيت بيعمل ping للسيرفر، والسيرفر يحدّث الـ dashboard في ثانية أو اتنين. كل شيت ليه secret خاص بيه.'
+                              : 'Paste this script into your Google Sheet (Extensions → Apps Script). Every edit pings the server, which updates the dashboard within 1-2 seconds. Each sheet has its own secret.'}
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <p className="text-white text-sm font-medium">
+                                {lang === 'ar' ? 'السكربت:' : 'Script:'}
+                              </p>
+                              <button type="button" onClick={() => copyToClipboard(setupScript, 'script')}
+                                className="flex items-center gap-1 px-2 py-1 rounded bg-purple-500/30 hover:bg-purple-500/40 text-purple-200 text-xs font-medium">
+                                <Copy className="w-3 h-3" />
+                                {copyFeedback === 'script' ? (lang === 'ar' ? '✓ اتنسخ' : '✓ Copied!') : (lang === 'ar' ? 'نسخ السكربت' : 'Copy Script')}
+                              </button>
+                            </div>
+                            <pre className="bg-gray-900 border border-gray-800 rounded-md p-3 text-[11px] text-gray-300 font-mono overflow-x-auto max-h-64">
+{setupScript}
+                            </pre>
+                          </div>
+
+                          <ol className="space-y-2 text-xs text-gray-400 list-decimal list-inside">
+                            <li>{lang === 'ar' ? 'افتح Google Sheet → Extensions → Apps Script' : 'Open Google Sheet → Extensions → Apps Script'}</li>
+                            <li>{lang === 'ar' ? 'الصق السكربت — احفظ (💾)' : 'Paste script — save (💾)'}</li>
+                            <li>{lang === 'ar' ? 'Triggers (الساعة) → Add Trigger' : 'Triggers (clock icon) → Add Trigger'}</li>
+                            <li>Function: <code className="text-purple-300">notifyB2CWebhook</code> · Source: <code>From spreadsheet</code> · Type: <code>On edit</code></li>
+                            <li>{lang === 'ar' ? 'احفظ — وامنح الصلاحيات لما يطلب' : 'Save — grant permissions when prompted'}</li>
+                          </ol>
+
+                          <details className="bg-gray-900/40 rounded-lg p-3 border border-gray-700">
+                            <summary className="text-gray-300 text-xs cursor-pointer font-medium">
+                              {lang === 'ar' ? '🔧 إعدادات متقدمة (Webhook URL + Secret)' : '🔧 Advanced (Webhook URL + Secret)'}
+                            </summary>
+                            <div className="mt-3 space-y-2">
+                              <div>
+                                <label className="block text-gray-500 text-[10px] uppercase mb-1">Webhook URL</label>
+                                <div className="flex items-center gap-2">
+                                  <code className="flex-1 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-[11px] text-gray-300 font-mono break-all">{setupWebhookUrl}</code>
+                                  <button type="button" onClick={() => copyToClipboard(setupWebhookUrl, 'url')}
+                                    className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300" title="Copy URL">
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                {copyFeedback === 'url' && <p className="text-green-400 text-[10px] mt-0.5">✓ Copied</p>}
+                              </div>
+                              <div>
+                                <label className="block text-gray-500 text-[10px] uppercase mb-1">Secret</label>
+                                <div className="flex items-center gap-2">
+                                  <code className="flex-1 px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-[11px] text-gray-300 font-mono break-all">
+                                    {showSecret ? setupSecret : '••••••••••••••••••••••••'}
+                                  </code>
+                                  <button type="button" onClick={() => setShowSecret(!showSecret)}
+                                    className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300" title="Toggle visibility">
+                                    {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                  </button>
+                                  <button type="button" onClick={() => copyToClipboard(setupSecret, 'secret')}
+                                    className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300" title="Copy secret">
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                {copyFeedback === 'secret' && <p className="text-green-400 text-[10px] mt-0.5">✓ Copied</p>}
+                              </div>
+                            </div>
+                          </details>
+                        </>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Upload history */}

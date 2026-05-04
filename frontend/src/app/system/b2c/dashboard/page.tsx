@@ -197,22 +197,23 @@ export default function B2CDashboard() {
 
   useEffect(() => { fetchOptions(); }, [fetchOptions]);
   useEffect(() => { fetchMonths(); }, [fetchMonths]);
-  // Skip the first fetchDashboard call until allMonths loads — otherwise a brief
-  // Overview request fires before auto-pick sets the latest month, racing the
-  // proper month-filtered request and sometimes overwriting it.
+  // Skip the first fetchDashboard call until the month picker decides whether to
+  // auto-pick a month — otherwise a brief Overview request fires before auto-pick
+  // sets the latest month, racing the proper month-filtered request.
   useEffect(() => {
-    if (!monthPickerInitialized && allMonths.length === 0) return;
+    if (!monthPickerInitialized) return;
     fetchDashboard();
-  }, [fetchDashboard, monthPickerInitialized, allMonths.length]);
+  }, [fetchDashboard, monthPickerInitialized]);
   useEffect(() => { if (activeTab === 'evaluation') fetchEvaluations(); }, [activeTab, fetchEvaluations]);
 
   // On first load only: auto-pick the latest month so the user lands in the current month.
   // This synchronously sets year/month BEFORE the first fetchDashboard fires, avoiding
-  // the race condition.
+  // the race condition. If no months exist yet (empty DB / new role), still flip the
+  // initialized flag so the first dashboard fetch can run and the page exits its
+  // loading state instead of hanging forever.
   useEffect(() => {
     if (monthPickerInitialized) return;
-    if (allMonths.length === 0) return;
-    if (!year && !month && !dateFrom && !dateTo) {
+    if (allMonths.length > 0 && !year && !month && !dateFrom && !dateTo) {
       const latest = allMonths[allMonths.length - 1];
       setYear(latest.year);
       setMonth(latest.month);

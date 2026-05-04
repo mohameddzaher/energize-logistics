@@ -16,17 +16,14 @@ const pad2 = (n) => String(n).padStart(2, '0');
 const buildDateKey = (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`;
 
 const isB2CHead = (user) => user?.role === 'b2c_head' || user?.role === 'super_admin' || user?.role === 'admin';
+// Project managers currently have the same visibility/permissions as heads.
 const isB2CMember = (user) => isB2CHead(user) || user?.role === 'b2c_project_manager';
 
-// Build a scope filter so project managers only see their assigned projects/branches.
+// Build a scope filter. Project managers are treated as full-access for now —
+// the assignedProjects/assignedBranches plumbing is kept on the User model so we
+// can re-enable scoping later without another migration.
 const buildScope = async (user) => {
-  if (isB2CHead(user)) return { projectIds: null, branchIds: null }; // null = all
-  if (user?.role === 'b2c_project_manager') {
-    return {
-      projectIds: (user.assignedProjects || []).map((p) => p?._id || p),
-      branchIds: (user.assignedBranches || []).map((b) => b?._id || b),
-    };
-  }
+  if (isB2CMember(user)) return { projectIds: null, branchIds: null }; // null = all
   return { projectIds: [], branchIds: [] };
 };
 
@@ -1448,32 +1445,25 @@ const crypto = require('crypto');
 const B2CGoogleSheetSync = require('../models/B2CGoogleSheetSync');
 const { syncOnce, extractSheetId, enqueueWebhookSync } = require('../services/b2cGoogleSheetSyncService');
 
-// Lazy-create the webhook secret on first config read so the user always has one.
-async function ensureWebhookSecret(config) {
-  if (config.webhookSecret && config.webhookSecret.length >= 24) return config;
-  config.webhookSecret = crypto.randomBytes(24).toString('hex');
-  await config.save();
-  return config;
+function newWebhookSecret() {
+  return crypto.randomBytes(24).toString('hex');
 }
 
-exports.getSheetConfig = async (req, res) => {
+exports.getSheetConfigs = async (req, res) => {
   try {
-    let config = await B2CGoogleSheetSync.findOne({ singleton: 'config' })
+    const configs = await B2CGoogleSheetSync.find({})
       .populate('project', 'name code color')
-      .populate('branch', 'name city');
-    if (!config) {
-      config = await B2CGoogleSheetSync.create({ singleton: 'config' });
-    }
-    config = await ensureWebhookSecret(config);
-    res.json({ config });
+      .populate('branch', 'name city')
+      .sort({ 'project.name': 1, 'branch.name': 1, createdAt: 1 });
+    res.json({ configs });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to load sheet config' });
+    res.status(500).json({ message: error.message || 'Failed to load sheet configs' });
   }
 };
 
-// Open webhook — no auth middleware. Verifies the shared secret in body OR header.
-// On match, enqueues a debounced sync. Returns immediately so Apps Script doesn't
-// block the user's edits.
+// Open webhook — no auth middleware. Looks up the config by the shared secret.
+// Each (project, branch) sheet has its own secret, so the secret tells us which
+// sheet pinged.
 exports.googleSheetWebhook = async (req, res) => {
   try {
     const incoming = (req.body && req.body.secret)
@@ -1481,22 +1471,16 @@ exports.googleSheetWebhook = async (req, res) => {
       || req.query.secret;
     if (!incoming) return res.status(400).json({ ok: false, message: 'Missing secret' });
 
-    const config = await B2CGoogleSheetSync.findOne({ singleton: 'config' });
-    if (!config || !config.webhookSecret) {
-      return res.status(404).json({ ok: false, message: 'No sync config' });
-    }
-    // Constant-time comparison to avoid timing attacks
-    const a = Buffer.from(String(incoming));
-    const b = Buffer.from(config.webhookSecret);
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    const config = await B2CGoogleSheetSync.findOne({ webhookSecret: String(incoming) });
+    if (!config) {
       return res.status(403).json({ ok: false, message: 'Invalid secret' });
     }
     if (!config.sheetId) {
       return res.status(400).json({ ok: false, message: 'No sheet configured' });
     }
 
-    enqueueWebhookSync();
-    res.json({ ok: true, queued: true });
+    enqueueWebhookSync(String(config._id));
+    res.json({ ok: true, queued: true, configId: String(config._id) });
   } catch (error) {
     console.error('Webhook error:', error);
     res.status(500).json({ ok: false, message: error.message || 'Webhook failed' });
@@ -1504,22 +1488,28 @@ exports.googleSheetWebhook = async (req, res) => {
 };
 
 // Returns the Apps Script code the user pastes into their sheet's script editor.
-// We bake in their webhook URL + secret so it's a single copy-paste with no edits.
 exports.getSheetSetupScript = async (req, res) => {
   try {
-    let config = await B2CGoogleSheetSync.findOne({ singleton: 'config' });
-    if (!config) config = await B2CGoogleSheetSync.create({ singleton: 'config' });
-    config = await ensureWebhookSecret(config);
+    const config = await B2CGoogleSheetSync.findById(req.params.id)
+      .populate('project', 'name')
+      .populate('branch', 'name');
+    if (!config) return res.status(404).json({ message: 'Sheet config not found' });
 
-    // The webhook URL the script will hit. Compose from the request host so it
-    // works in dev and prod without env vars.
+    // Configs migrated from the old singleton flow may lack a secret. Backfill once.
+    if (!config.webhookSecret || config.webhookSecret.length < 24) {
+      config.webhookSecret = newWebhookSecret();
+      await config.save();
+    }
+
     const proto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const webhookUrl = `${proto}://${host}/api/b2c/google-sheet/webhook`;
 
+    const label = `${config.project?.name || 'Project'} — ${config.branch?.name || 'Branch'}`;
+
     const script = `// ─────────────────────────────────────────────────────────────────────
-// B2C real-time sync trigger — paste this into:
-//   Extensions → Apps Script  (in your Google Sheet)
+// B2C real-time sync trigger — ${label}
+// Paste into:  Extensions → Apps Script  (in your Google Sheet)
 //
 // Then in the Apps Script editor:
 //   1. Save (💾)
@@ -1561,15 +1551,60 @@ function testB2CWebhook() {
   }
 };
 
+exports.createSheetConfig = async (req, res) => {
+  try {
+    const { name, project, branch, sheetUrl, enabled, intervalMinutes, syncMode } = req.body;
+    if (!project) return res.status(400).json({ message: 'Project is required' });
+    if (!branch) return res.status(400).json({ message: 'Branch is required' });
+
+    const payload = {
+      name: name || undefined,
+      project,
+      branch,
+      enabled: enabled === undefined ? false : !!enabled,
+      intervalMinutes: intervalMinutes !== undefined
+        ? Math.max(1, Math.min(1440, Number(intervalMinutes)))
+        : 15,
+      syncMode: syncMode && ['merge_new_only', 'overwrite'].includes(syncMode) ? syncMode : 'overwrite',
+      webhookSecret: newWebhookSecret(),
+      updatedBy: req.user._id,
+    };
+    if (sheetUrl) {
+      payload.sheetUrl = sheetUrl;
+      const id = extractSheetId(sheetUrl);
+      if (!id) return res.status(400).json({ message: 'Could not extract a Google Sheet ID from this URL' });
+      payload.sheetId = id;
+    }
+
+    const config = await B2CGoogleSheetSync.create(payload);
+    const populated = await B2CGoogleSheetSync.findById(config._id)
+      .populate('project', 'name code color')
+      .populate('branch', 'name city');
+    res.status(201).json({ config: populated });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'A sheet config already exists for this project + branch combination' });
+    }
+    res.status(500).json({ message: error.message || 'Failed to create sheet config' });
+  }
+};
+
 exports.updateSheetConfig = async (req, res) => {
   try {
-    const { sheetUrl, enabled, intervalMinutes, syncMode, project, branch } = req.body;
+    const { name, sheetUrl, enabled, intervalMinutes, syncMode, project, branch } = req.body;
     const updates = { updatedBy: req.user._id };
+    if (name !== undefined) updates.name = name;
+    if (project !== undefined) updates.project = project;
+    if (branch !== undefined) updates.branch = branch;
     if (sheetUrl !== undefined) {
       updates.sheetUrl = sheetUrl;
-      const id = extractSheetId(sheetUrl);
-      if (!id && sheetUrl) return res.status(400).json({ message: 'Could not extract a Google Sheet ID from this URL' });
-      updates.sheetId = id;
+      if (sheetUrl) {
+        const id = extractSheetId(sheetUrl);
+        if (!id) return res.status(400).json({ message: 'Could not extract a Google Sheet ID from this URL' });
+        updates.sheetId = id;
+      } else {
+        updates.sheetId = null;
+      }
     }
     if (enabled !== undefined) updates.enabled = !!enabled;
     if (intervalMinutes !== undefined) updates.intervalMinutes = Math.max(1, Math.min(1440, Number(intervalMinutes)));
@@ -1579,35 +1614,51 @@ exports.updateSheetConfig = async (req, res) => {
       }
       updates.syncMode = syncMode;
     }
-    if (project !== undefined) updates.project = project || null;
-    if (branch !== undefined) updates.branch = branch || null;
 
-    const config = await B2CGoogleSheetSync.findOneAndUpdate(
-      { singleton: 'config' },
+    const config = await B2CGoogleSheetSync.findByIdAndUpdate(
+      req.params.id,
       { $set: updates },
-      { upsert: true, new: true }
-    );
+      { new: true, runValidators: true }
+    )
+      .populate('project', 'name code color')
+      .populate('branch', 'name city');
+    if (!config) return res.status(404).json({ message: 'Sheet config not found' });
     res.json({ config });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'A sheet config already exists for this project + branch combination' });
+    }
     res.status(500).json({ message: error.message || 'Failed to update sheet config' });
+  }
+};
+
+exports.deleteSheetConfig = async (req, res) => {
+  try {
+    const config = await B2CGoogleSheetSync.findByIdAndDelete(req.params.id);
+    if (!config) return res.status(404).json({ message: 'Sheet config not found' });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to delete sheet config' });
   }
 };
 
 exports.syncSheetNow = async (req, res) => {
   try {
-    const config = await B2CGoogleSheetSync.findOne({ singleton: 'config' });
-    if (!config || !config.sheetId) {
-      return res.status(400).json({ message: 'No Google Sheet configured. Set the URL first.' });
+    const config = await B2CGoogleSheetSync.findById(req.params.id);
+    if (!config) return res.status(404).json({ message: 'Sheet config not found' });
+    if (!config.sheetId) {
+      return res.status(400).json({ message: 'No Google Sheet URL set on this config.' });
     }
-    // Caller may override the configured mode (rare); otherwise the service
-    // resolves it from config.syncMode (default 'overwrite').
-    const stats = await syncOnce({ user: req.user, mode: req.body && req.body.mode });
+    const stats = await syncOnce({
+      configId: String(config._id),
+      user: req.user,
+      mode: req.body && req.body.mode,
+    });
     res.json({ ok: true, stats });
   } catch (error) {
-    // Persist the error so the dashboard can show what went wrong
     try {
       await B2CGoogleSheetSync.updateOne(
-        { singleton: 'config' },
+        { _id: req.params.id },
         { $set: { lastSyncAt: new Date(), lastSyncStatus: 'error', lastSyncMessage: error.message || 'Sync failed' } }
       );
     } catch (_) {}

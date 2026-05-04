@@ -11,7 +11,7 @@ const connectDB = require('./config/db');
 const { generalLimiter } = require('./middleware/rateLimiter');
 const { initializeSocket } = require('./websocket/socketManager');
 const { startWalletAutoCloseJob } = require('./jobs/walletAutoClose');
-const { startSyncScheduler: startB2CSheetSync } = require('./services/b2cGoogleSheetSyncService');
+const { startSyncScheduler: startB2CSheetSync, migrateLegacySingletonIndex: migrateB2CSheetIndex } = require('./services/b2cGoogleSheetSyncService');
 
 // Route imports
 const authRoutes = require('./routes/auth');
@@ -142,6 +142,9 @@ const autoSeedAdmin = async () => {
 
 connectDB().then(async () => {
   await autoSeedAdmin();
+  // Drop the legacy singleton_1 index on the B2C sheet sync collection so the new
+  // (project, branch) compound unique index can take over. No-op on fresh installs.
+  await migrateB2CSheetIndex();
 
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

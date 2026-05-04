@@ -1,22 +1,21 @@
 const mongoose = require('mongoose');
 
-// Singleton config: there's only one Google-Sheet-source per project at a time.
-// We use a single document with a known `_singleton: 'config'` key.
+// Each document is one Google-Sheet sync config, keyed by (project, branch).
+// Multiple sheets can be configured — e.g. Keita+Jeddah, Keita+Riyadh, Hangar+Jeddah —
+// each with its own URL, schedule, and webhook secret.
 const b2cGoogleSheetSyncSchema = new mongoose.Schema(
   {
-    singleton: { type: String, default: 'config', unique: true, index: true },
-    sheetUrl: { type: String, trim: true },        // raw URL the user pasted
-    sheetId: { type: String, trim: true },         // extracted Google Sheets ID
+    name: { type: String, trim: true },           // optional human label
+    project: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject', required: true },
+    branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', required: true },
+    sheetUrl: { type: String, trim: true },
+    sheetId: { type: String, trim: true },
     enabled: { type: Boolean, default: false },
     intervalMinutes: { type: Number, default: 15, min: 1, max: 1440 },
-    // Sync mode: overwrite reflects every edit in the sheet (default — the sheet is the
-    // source of truth). merge_new_only only adds days that don't already exist.
+    // overwrite: every sheet edit reflects in dashboard. merge_new_only: only new days.
     syncMode: { type: String, enum: ['merge_new_only', 'overwrite'], default: 'overwrite' },
-    project: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' }, // optional default scope
-    branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
-    // Webhook secret — shared between this server and the user's Apps Script.
-    // Auto-generated on first config load. Used to verify webhook hits.
-    webhookSecret: { type: String, trim: true, select: true },
+    // Webhook secret — unique per config so the webhook can identify which sheet pinged.
+    webhookSecret: { type: String, trim: true, select: true, index: true },
     lastSyncAt: { type: Date },
     lastSyncStatus: { type: String, enum: ['ok', 'error', 'never'], default: 'never' },
     lastSyncMessage: { type: String, trim: true },
@@ -33,5 +32,8 @@ const b2cGoogleSheetSyncSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// One config per (project, branch) pair.
+b2cGoogleSheetSyncSchema.index({ project: 1, branch: 1 }, { unique: true });
 
 module.exports = mongoose.model('B2CGoogleSheetSync', b2cGoogleSheetSyncSchema);

@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
 import { useAuth } from "@/context/AuthContext";
+import { homeRouteForRole } from "@/lib/roleRoutes";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -28,10 +29,9 @@ export default function Header() {
   const handlePortalClick = () => {
     setOpen(false);
     if (isAuthenticated) {
-      const route = user?.role === 'client' ? '/system/portal' : '/system/dashboard';
-      router.push(route);
+      router.push(homeRouteForRole(user?.role));
     } else {
-      router.push('/login?returnTo=/system/dashboard');
+      router.push('/login');
     }
   };
 
@@ -130,7 +130,7 @@ export default function Header() {
                 onClick={handlePortalClick}
                 className="ml-1 px-3 py-1.5 rounded-md bg-[#f37121] text-white text-xs font-bold hover:bg-[#e06010] transition-all duration-200"
               >
-                Staff Portal
+                ERP Portal
               </button>
             </nav>
           </div>
@@ -200,7 +200,7 @@ export default function Header() {
                 onClick={handlePortalClick}
                 className="block w-full py-2 px-3 rounded text-sm font-bold transition-all duration-200 border text-center bg-[#f37121] text-white border-[#f37121] hover:bg-[#e06010]"
               >
-                Staff Portal
+                ERP Portal
               </button>
 
               {/* Social Icons */}

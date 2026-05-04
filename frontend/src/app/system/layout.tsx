@@ -100,7 +100,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
     { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
     { href: '/system/b2c/reps', label: L.b2cReps, icon: <Award className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
-    { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head'], section: 'B2C' },
+    { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
     // Workshop
     { href: '/system/workshop', label: L.workshop, icon: <Wrench className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
     { href: '/system/workshop/purchases', label: L.workshopPurchases, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'], section: 'Workshop' },

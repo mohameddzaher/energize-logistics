@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const B2CGoogleSheetSync = require('../models/B2CGoogleSheetSync');
 const B2CRep = require('../models/B2CRep');
 const B2CDailyOrder = require('../models/B2CDailyOrder');
@@ -6,10 +7,6 @@ const { parseRepsExcel, buildResolverPayload, buildDailyEntries } = require('../
 const { emitToAll } = require('../websocket/socketManager');
 
 // Extract the Google Sheets ID from any of the URL formats Google produces.
-// Examples it handles:
-//   https://docs.google.com/spreadsheets/d/{ID}/edit
-//   https://docs.google.com/spreadsheets/d/{ID}/edit?usp=sharing
-//   https://drive.google.com/file/d/{ID}/view
 function extractSheetId(url) {
   if (!url || typeof url !== 'string') return null;
   const patterns = [
@@ -30,14 +27,11 @@ function buildExportUrl(sheetId) {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&nocache=${Date.now()}`;
 }
 
-// Download the sheet as XLSX. Requires the sheet to be set to "Anyone with the link
-// can view". Returns a Buffer ready to feed into parseRepsExcel.
 async function downloadSheet(sheetId) {
   const url = buildExportUrl(sheetId);
   const res = await fetch(url, {
     redirect: 'follow',
     headers: {
-      // Browsers/proxies sometimes serve a cached response for repeated requests.
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
     },
@@ -46,7 +40,6 @@ async function downloadSheet(sheetId) {
     throw new Error(`Google Sheets returned HTTP ${res.status}. Make sure the sheet is set to "Anyone with the link can view".`);
   }
   const ct = res.headers.get('content-type') || '';
-  // Google sometimes returns an HTML login page when the sheet isn't public — detect that
   if (ct.includes('text/html')) {
     throw new Error('Google returned an HTML page instead of the sheet. The sheet is probably private — open share settings and set to "Anyone with the link can view".');
   }
@@ -54,31 +47,25 @@ async function downloadSheet(sheetId) {
   return Buffer.from(arrayBuf);
 }
 
-// Run one sync pass: download → parse → resolve reps → bulk upsert daily orders.
-// Returns sync stats for storage in the config doc. Uses the syncMode from config
-// when not explicitly overridden — default is 'overwrite' so any sheet edit
-// reflects in the dashboard.
-async function syncOnce({ user, mode } = {}) {
+// Run one sync pass for a specific config.
+async function syncOnce({ configId, user, mode } = {}) {
+  if (!configId) throw new Error('configId is required');
   const started = Date.now();
-  const config = await B2CGoogleSheetSync.findOne({ singleton: 'config' });
-  if (!config) throw new Error('No Google Sheet sync config found');
+  const config = await B2CGoogleSheetSync.findById(configId);
+  if (!config) throw new Error('Sync config not found');
   if (!config.sheetId) throw new Error('Sheet ID not set on config');
-  // Mode resolution: explicit param > config.syncMode > 'overwrite'
   const effectiveMode = mode || config.syncMode || 'overwrite';
 
-  // Step 1: download
   const buffer = await downloadSheet(config.sheetId);
 
-  // Step 2: parse
   const parsed = parseRepsExcel(buffer);
   if (parsed.records.length === 0) {
     throw new Error('No records found in sheet (no monthly tabs detected, or all empty).');
   }
 
-  // Step 3: resolve reps (mirror bulkResolveReps logic — match by name)
   const { reps: incoming, buildKey } = buildResolverPayload(parsed.records);
 
-  // Dedup incoming by canonicalKey (multiple records for same person collapse)
+  // Dedup incoming by canonicalKey
   const normalizeName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const canonicalByName = new Map();
   for (const r of incoming) {
@@ -95,8 +82,8 @@ async function syncOnce({ user, mode } = {}) {
         arabicName: r.arabicName || null,
         repId: r.repId || null,
         joiningDate: r.joiningDate || null,
-        project: config.project || undefined,
-        branch: config.branch || undefined,
+        project: config.project,
+        branch: config.branch,
         monthlyTarget: r.monthlyTarget || 400,
         dailyTarget: r.dailyTarget || 15,
       };
@@ -108,10 +95,15 @@ async function syncOnce({ user, mode } = {}) {
     if (!canon.joiningDate && r.joiningDate) canon.joiningDate = r.joiningDate;
   }
 
-  // Step 4: match against existing reps by exact (en, ar)
+  // Match against existing reps WITHIN this config's project/branch scope so reps
+  // with the same name in different projects don't collide.
   const candidateNames = [...canonicalByName.values()].map((c) => c.englishName).filter(Boolean);
   const existingReps = candidateNames.length > 0
-    ? await B2CRep.find({ englishName: { $in: candidateNames } }).lean()
+    ? await B2CRep.find({
+        englishName: { $in: candidateNames },
+        project: config.project,
+        branch: config.branch,
+      }).lean()
     : [];
   const existingByNameAr = new Map();
   existingReps.forEach((r) => {
@@ -143,8 +135,8 @@ async function syncOnce({ user, mode } = {}) {
           arabicName: canon.arabicName || undefined,
           repId: canon.repId || undefined,
           joiningDate: canon.joiningDate || undefined,
-          project: canon.project || undefined,
-          branch: canon.branch || undefined,
+          project: canon.project,
+          branch: canon.branch,
           monthlyTarget: canon.monthlyTarget,
           dailyTarget: canon.dailyTarget,
           createdBy: user ? user._id : undefined,
@@ -162,7 +154,6 @@ async function syncOnce({ user, mode } = {}) {
         actuallyCreated++;
       });
     } catch (e) {
-      // Fallback to one-by-one
       for (const t of toCreate) {
         try {
           const c = await B2CRep.create(t.payload);
@@ -173,15 +164,11 @@ async function syncOnce({ user, mode } = {}) {
     }
   }
 
-  // Step 5: build daily entries using the resolved IDs
   const keyToDbId = new Map();
   for (const [canonicalKey, dbId] of canonicalToDbId) keyToDbId.set(canonicalKey, dbId);
   const entries = buildDailyEntries(parsed.records, keyToDbId, buildKey);
 
-  // Step 6: bulk-upsert daily orders
   let inserted = 0, updated = 0, skipped = 0;
-
-  // Find existing pairs
   const repIds = [...new Set(entries.map((e) => String(e.rep)))];
   const dateKeys = [...new Set(entries.map((e) => e.dateKey))];
   const existingDocs = repIds.length > 0
@@ -204,6 +191,8 @@ async function syncOnce({ user, mode } = {}) {
         update: {
           $set: {
             rep: e.rep,
+            project: config.project,
+            branch: config.branch,
             date: new Date(`${e.dateKey}T00:00:00.000Z`),
             dateKey: e.dateKey,
             year: e.year, month: e.month, day: e.day,
@@ -227,11 +216,10 @@ async function syncOnce({ user, mode } = {}) {
     try { await B2CDailyOrder.bulkWrite(chunk, { ordered: false }); } catch (_) { /* continue */ }
   }
 
-  // Persist upload-history doc
   await B2CExcelUpload.create({
     fileName: `Google Sheet (${config.sheetId.slice(0, 8)}…)`,
-    project: config.project || undefined,
-    branch: config.branch || undefined,
+    project: config.project,
+    branch: config.branch,
     monthsDetected: parsed.monthsDetected,
     repsDetected: canonicalByName.size,
     repsCreated: actuallyCreated,
@@ -243,7 +231,6 @@ async function syncOnce({ user, mode } = {}) {
     mode: effectiveMode,
   });
 
-  // Update sync config with stats
   const stats = {
     monthsDetected: parsed.monthsDetected,
     recordsParsed: parsed.records.length,
@@ -254,87 +241,107 @@ async function syncOnce({ user, mode } = {}) {
     durationMs: Date.now() - started,
   };
   await B2CGoogleSheetSync.updateOne(
-    { singleton: 'config' },
+    { _id: config._id },
     { $set: { lastSyncAt: new Date(), lastSyncStatus: 'ok', lastSyncMessage: '', lastSyncStats: stats } }
   );
 
-  try { emitToAll('b2c:sheet:synced', stats); } catch (_) {}
-  console.log(`[B2C google-sheet sync] OK in ${stats.durationMs}ms — inserted=${inserted} updated=${updated} skipped=${skipped} created_reps=${actuallyCreated}`);
+  try { emitToAll('b2c:sheet:synced', { configId: String(config._id), stats }); } catch (_) {}
+  console.log(`[B2C google-sheet sync ${config._id}] OK in ${stats.durationMs}ms — inserted=${inserted} updated=${updated} skipped=${skipped} created_reps=${actuallyCreated}`);
 
   return stats;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Real-time webhook sync (debounced)
+// Real-time webhook sync (debounced per config)
 // ────────────────────────────────────────────────────────────────────────────
-// Apps Script in the user's sheet pings our webhook on every edit. We debounce
-// for a couple of seconds so a flurry of edits triggers ONE sync, not many.
-let webhookDebounceTimer = null;
-let webhookSyncing = false;
-let webhookPendingAfterCurrent = false;
+// Apps Script in each user's sheet pings our webhook on every edit. We debounce
+// per-config so a flurry of edits in one sheet triggers ONE sync, while edits
+// in different sheets sync independently.
+const webhookState = new Map(); // configId → { timer, syncing, pendingAfterCurrent }
 
-function enqueueWebhookSync() {
-  // If a sync is already running, just remember to run another one when it's done
-  // (covers the case where edits arrive while we're mid-sync).
-  if (webhookSyncing) {
-    webhookPendingAfterCurrent = true;
+function enqueueWebhookSync(configId) {
+  const id = String(configId);
+  let state = webhookState.get(id);
+  if (!state) {
+    state = { timer: null, syncing: false, pendingAfterCurrent: false };
+    webhookState.set(id, state);
+  }
+  if (state.syncing) {
+    state.pendingAfterCurrent = true;
     return;
   }
-  if (webhookDebounceTimer) clearTimeout(webhookDebounceTimer);
-  webhookDebounceTimer = setTimeout(async () => {
-    webhookDebounceTimer = null;
-    webhookSyncing = true;
+  if (state.timer) clearTimeout(state.timer);
+  state.timer = setTimeout(async () => {
+    state.timer = null;
+    state.syncing = true;
     try {
-      await syncOnce();
+      await syncOnce({ configId: id });
     } catch (e) {
-      console.error('[B2C webhook sync] FAILED:', e.message);
+      console.error(`[B2C webhook sync ${id}] FAILED:`, e.message);
       try {
         await B2CGoogleSheetSync.updateOne(
-          { singleton: 'config' },
+          { _id: id },
           { $set: { lastSyncAt: new Date(), lastSyncStatus: 'error', lastSyncMessage: e.message } }
         );
       } catch (_) {}
     } finally {
-      webhookSyncing = false;
-      if (webhookPendingAfterCurrent) {
-        webhookPendingAfterCurrent = false;
-        enqueueWebhookSync();
+      state.syncing = false;
+      if (state.pendingAfterCurrent) {
+        state.pendingAfterCurrent = false;
+        enqueueWebhookSync(id);
       }
     }
-  }, 2000); // 2-second debounce window — short enough to feel instant
+  }, 2000);
 }
 
-// Cron-driven scheduler. Reads the singleton config and re-fires syncOnce when
-// (now - lastSyncAt) >= intervalMinutes. Cheap: runs every minute, only does work when due.
+// ────────────────────────────────────────────────────────────────────────────
+// Cron-driven scheduler
+// ────────────────────────────────────────────────────────────────────────────
 let cronTimer = null;
+
+// Older deploys had a singleton index `singleton_1` on the collection. Drop it on
+// startup so the new (project, branch) compound unique index can take over.
+async function migrateLegacySingletonIndex() {
+  try {
+    const indexes = await B2CGoogleSheetSync.collection.indexes();
+    const legacy = indexes.find((i) => i.name === 'singleton_1');
+    if (legacy) {
+      await B2CGoogleSheetSync.collection.dropIndex('singleton_1');
+      console.log('[B2C google-sheet sync] dropped legacy singleton_1 index');
+    }
+  } catch (e) {
+    // Index may not exist on fresh installs — that's fine.
+  }
+}
 
 function startSyncScheduler() {
   if (cronTimer) return;
   const tick = async () => {
     try {
-      const config = await B2CGoogleSheetSync.findOne({ singleton: 'config' });
-      if (!config || !config.enabled || !config.sheetId) return;
+      const configs = await B2CGoogleSheetSync.find({ enabled: true, sheetId: { $ne: null } });
       const now = Date.now();
-      const last = config.lastSyncAt ? config.lastSyncAt.getTime() : 0;
-      const due = (now - last) >= (config.intervalMinutes * 60 * 1000);
-      if (!due) return;
-      try {
-        await syncOnce(); // mode resolves from config (default: overwrite)
-      } catch (e) {
-        await B2CGoogleSheetSync.updateOne(
-          { singleton: 'config' },
-          { $set: { lastSyncAt: new Date(), lastSyncStatus: 'error', lastSyncMessage: e.message } }
-        );
-        console.error('[B2C google-sheet sync] FAILED:', e.message);
+      for (const config of configs) {
+        if (!config.sheetId) continue;
+        const last = config.lastSyncAt ? config.lastSyncAt.getTime() : 0;
+        const due = (now - last) >= (config.intervalMinutes * 60 * 1000);
+        if (!due) continue;
+        try {
+          await syncOnce({ configId: String(config._id) });
+        } catch (e) {
+          await B2CGoogleSheetSync.updateOne(
+            { _id: config._id },
+            { $set: { lastSyncAt: new Date(), lastSyncStatus: 'error', lastSyncMessage: e.message } }
+          );
+          console.error(`[B2C google-sheet sync ${config._id}] FAILED:`, e.message);
+        }
       }
     } catch (e) {
       console.error('[B2C google-sheet sync] scheduler error:', e.message);
     }
   };
-  cronTimer = setInterval(tick, 60 * 1000); // every minute
-  // Run once shortly after startup
+  cronTimer = setInterval(tick, 60 * 1000);
   setTimeout(tick, 10 * 1000);
   console.log('[B2C google-sheet sync] scheduler started');
 }
 
-module.exports = { syncOnce, startSyncScheduler, extractSheetId, enqueueWebhookSync };
+module.exports = { syncOnce, startSyncScheduler, extractSheetId, enqueueWebhookSync, migrateLegacySingletonIndex };

@@ -95,35 +95,53 @@ async function syncOnce({ configId, user, mode } = {}) {
     if (!canon.joiningDate && r.joiningDate) canon.joiningDate = r.joiningDate;
   }
 
-  // Match against existing reps WITHIN this config's project/branch scope so reps
-  // with the same name in different projects don't collide.
+  // Match against existing reps. We pull every rep that shares the candidate
+  // names, then bucket by canonical (en|ar) and pick the right one per config:
+  //   1. Exact (project, branch) match — this is "our" rep.
+  //   2. Legacy rep with no project/branch yet — claim it and backfill scope.
+  //   3. Rep belongs to a different (project, branch) — leave it; we'll create
+  //      a fresh rep in our own scope.
+  // This avoids the duplication trap of strict scoped matching: legacy reps
+  // (created before scope was tracked) would otherwise get a brand-new _id
+  // every sync, leaving two parallel sets of daily-order docs.
   const candidateNames = [...canonicalByName.values()].map((c) => c.englishName).filter(Boolean);
-  const existingReps = candidateNames.length > 0
-    ? await B2CRep.find({
-        englishName: { $in: candidateNames },
-        project: config.project,
-        branch: config.branch,
-      }).lean()
+  const allByName = candidateNames.length > 0
+    ? await B2CRep.find({ englishName: { $in: candidateNames } }).lean()
     : [];
-  const existingByNameAr = new Map();
-  existingReps.forEach((r) => {
+  const candidatesByCanonical = new Map();
+  for (const r of allByName) {
     const en = normalizeName(r.englishName);
     const ar = normalizeName(r.arabicName);
-    existingByNameAr.set(`${en}|${ar}`, r);
-  });
+    const k = `${en}|${ar}`;
+    if (!candidatesByCanonical.has(k)) candidatesByCanonical.set(k, []);
+    candidatesByCanonical.get(k).push(r);
+  }
+  const sameId = (a, b) => a && b && String(a) === String(b);
+  const pickMatch = (canonName) => {
+    const list = candidatesByCanonical.get(canonName) || [];
+    if (list.length === 0) return null;
+    const exact = list.find((r) => sameId(r.project, config.project) && sameId(r.branch, config.branch));
+    if (exact) return exact;
+    const legacy = list.find((r) => !r.project && !r.branch);
+    if (legacy) return legacy;
+    return null; // rep exists for a different scope — don't reuse it
+  };
 
   const canonicalToDbId = new Map();
   const toCreate = [];
   for (const [canonicalKey, canon] of canonicalByName) {
     const en = normalizeName(canon.englishName);
     const ar = normalizeName(canon.arabicName);
-    const match = existingByNameAr.get(`${en}|${ar}`);
+    const match = pickMatch(`${en}|${ar}`);
     if (match) {
       canonicalToDbId.set(canonicalKey, String(match._id));
       const updates = {};
       if (canon.repId && match.repId !== canon.repId) updates.repId = canon.repId;
       if (canon.englishName && match.englishName !== canon.englishName) updates.englishName = canon.englishName;
       if (canon.arabicName && match.arabicName !== canon.arabicName) updates.arabicName = canon.arabicName;
+      // Backfill scope on legacy reps so future syncs match exactly.
+      if (!match.project) updates.project = config.project;
+      if (!match.branch) updates.branch = config.branch;
       if (Object.keys(updates).length > 0) {
         await B2CRep.updateOne({ _id: match._id }, { $set: updates });
       }

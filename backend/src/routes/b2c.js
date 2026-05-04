@@ -26,6 +26,7 @@ router.delete('/projects/:id', authorize(...ADMIN_WRITE), b2cController.deletePr
 router.get('/reps', authorize(...READ), b2cController.getReps);
 router.post('/reps', authorize(...WRITE), b2cController.createRep);
 router.post('/reps/bulk-resolve', authorize(...WRITE), b2cController.bulkResolveReps);
+router.post('/reps/reconcile', authorize(...ADMIN_WRITE), b2cController.reconcileReps);
 router.put('/reps/:id', authorize(...WRITE), b2cController.updateRep);
 router.delete('/reps/:id', authorize(...WRITE), b2cController.deleteRep);
 

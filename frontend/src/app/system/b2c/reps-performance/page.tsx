@@ -332,6 +332,27 @@ export default function RepsPerformancePage() {
     }
   };
 
+  const [reconciling, setReconciling] = useState(false);
+  const handleReconcileReps = async () => {
+    if (!confirm(lang === 'ar'
+      ? 'هيدمج المناديب المكررين (نفس الاسم في نفس المشروع/الفرع) ويحوّل الأيام للمندوب الأصلي. تأكيد؟'
+      : 'This merges duplicate reps (same name in same project/branch) and moves their daily orders into the canonical rep. Continue?'
+    )) return;
+    setReconciling(true); setError('');
+    try {
+      const result = await api.post<{ ok: boolean; mergedGroups: number; repsRemoved: number; ordersRepointed: number }>('/api/b2c/reps/reconcile', {}, { timeoutMs: 60000 });
+      const msg = lang === 'ar'
+        ? `تم: ${result.mergedGroups} مجموعة متكررة · ${result.repsRemoved} مندوب اتشال · ${result.ordersRepointed} يوم اترحل`
+        : `Done: ${result.mergedGroups} groups merged · ${result.repsRemoved} reps removed · ${result.ordersRepointed} orders repointed`;
+      alert(msg);
+      await fetchAll();
+    } catch (err: any) {
+      setError(err.message || 'Failed to reconcile reps');
+    } finally {
+      setReconciling(false);
+    }
+  };
+
   // Match parsed records to existing reps; auto-create missing reps in batch.
   // Uses bulk-resolve + bulk-upsert endpoints. Handles thousands of rows in seconds.
   const handleConfirmUpload = async () => {
@@ -457,11 +478,20 @@ export default function RepsPerformancePage() {
           </p>
         </div>
         {canCleanup && (
-          <button type="button" onClick={() => { setCleanupScope('orders'); setShowCleanupModal(true); }}
-            className="flex items-center gap-2 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors">
-            <Trash2 className="w-4 h-4" />
-            {lang === 'ar' ? 'تنظيف بيانات B2C' : 'Clean B2C Data'}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button type="button" onClick={handleReconcileReps} disabled={reconciling}
+              className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 border border-amber-500/30 text-amber-300 rounded-lg text-sm font-medium transition-colors">
+              {reconciling
+                ? <div className="w-3.5 h-3.5 border-2 border-amber-300 border-t-transparent rounded-full animate-spin" />
+                : <RefreshCw className="w-4 h-4" />}
+              {lang === 'ar' ? 'دمج المناديب المكررة' : 'Merge duplicate reps'}
+            </button>
+            <button type="button" onClick={() => { setCleanupScope('orders'); setShowCleanupModal(true); }}
+              className="flex items-center gap-2 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors">
+              <Trash2 className="w-4 h-4" />
+              {lang === 'ar' ? 'تنظيف بيانات B2C' : 'Clean B2C Data'}
+            </button>
+          </div>
         )}
       </div>
 

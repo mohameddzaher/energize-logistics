@@ -384,6 +384,82 @@ exports.deleteRep = async (req, res) => {
   }
 };
 
+// Merges duplicate reps (same name within the same project/branch, or a
+// legacy null-scope rep that pairs with a properly-scoped rep). Daily orders
+// from duplicates are repointed to the canonical rep before the duplicate is
+// deleted. Safe to run multiple times.
+exports.reconcileReps = async (req, res) => {
+  try {
+    const reps = await B2CRep.find({}).lean();
+    const normalize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+    // Bucket by (englishName + arabicName)
+    const groups = new Map();
+    for (const r of reps) {
+      const en = normalize(r.englishName);
+      const ar = normalize(r.arabicName);
+      if (!en && !ar) continue;
+      const k = `${en}|${ar}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
+    }
+
+    let mergedGroups = 0;
+    let repsRemoved = 0;
+    let ordersRepointed = 0;
+
+    for (const [, list] of groups) {
+      if (list.length < 2) continue;
+
+      // Distinct (project, branch) pairs in this group, treating null/undefined as 'legacy'
+      const scopes = new Set(list.map((r) => `${String(r.project || 'null')}|${String(r.branch || 'null')}`));
+      const hasLegacy = list.some((r) => !r.project && !r.branch);
+      const scopedReps = list.filter((r) => r.project && r.branch);
+      const distinctScopedPairs = new Set(scopedReps.map((r) => `${String(r.project)}|${String(r.branch)}`));
+
+      // Skip groups where reps belong to genuinely different (project, branch)
+      // pairs — those are different people, not duplicates.
+      if (distinctScopedPairs.size > 1) continue;
+      // If everyone's legacy and there's no scoped rep to anchor to, leave them.
+      if (scopedReps.length === 0) continue;
+
+      // Canonical = the scoped rep (oldest if there are several scoped duplicates).
+      const sortedScoped = [...scopedReps].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      const canonical = sortedScoped[0];
+      const dupIds = list.filter((r) => String(r._id) !== String(canonical._id)).map((r) => r._id);
+      if (dupIds.length === 0) continue;
+
+      // Repoint daily orders. The (rep, dateKey) unique index means we may have
+      // two docs for the same logical day across duplicates — bulkWrite a per-doc
+      // update so MongoDB rejects collisions one-by-one and the canonical wins.
+      const dupOrders = await B2CDailyOrder.find({ rep: { $in: dupIds } }).lean();
+      for (const o of dupOrders) {
+        try {
+          await B2CDailyOrder.updateOne({ _id: o._id }, { $set: { rep: canonical._id } });
+          ordersRepointed++;
+        } catch (e) {
+          // Duplicate-key collision — canonical already has this date; drop the dup.
+          if (e && e.code === 11000) {
+            await B2CDailyOrder.deleteOne({ _id: o._id });
+          } else {
+            throw e;
+          }
+        }
+      }
+
+      await B2CRep.deleteMany({ _id: { $in: dupIds } });
+      repsRemoved += dupIds.length;
+      mergedGroups++;
+      void scopes; void hasLegacy;
+    }
+
+    res.json({ ok: true, mergedGroups, repsRemoved, ordersRepointed });
+  } catch (error) {
+    console.error('Reconcile reps error:', error);
+    res.status(500).json({ message: error.message || 'Failed to reconcile reps' });
+  }
+};
+
 // ────────────────────────────────────────────────────────────────────────────
 // DAILY ORDERS
 // ────────────────────────────────────────────────────────────────────────────

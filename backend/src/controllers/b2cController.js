@@ -429,22 +429,37 @@ exports.reconcileReps = async (req, res) => {
       const dupIds = list.filter((r) => String(r._id) !== String(canonical._id)).map((r) => r._id);
       if (dupIds.length === 0) continue;
 
-      // Repoint daily orders. The (rep, dateKey) unique index means we may have
-      // two docs for the same logical day across duplicates — bulkWrite a per-doc
-      // update so MongoDB rejects collisions one-by-one and the canonical wins.
-      const dupOrders = await B2CDailyOrder.find({ rep: { $in: dupIds } }).lean();
+      // Repoint daily orders without tripping the (rep, dateKey) unique index.
+      // Strategy: load the canonical rep's existing dateKeys + the dup reps'
+      // orders, partition into "safe to repoint" vs "already covered (delete)".
+      // Two bulk writes total per group instead of one round trip per order.
+      const canonicalDates = new Set(
+        (await B2CDailyOrder.find({ rep: canonical._id }).select('dateKey').lean())
+          .map((d) => d.dateKey)
+      );
+      const dupOrders = await B2CDailyOrder.find({ rep: { $in: dupIds } })
+        .select('_id dateKey updatedAt')
+        .sort({ updatedAt: -1 }) // prefer the freshest dup if multiple share a date
+        .lean();
+      const toRepoint = [];
+      const toDelete = [];
       for (const o of dupOrders) {
-        try {
-          await B2CDailyOrder.updateOne({ _id: o._id }, { $set: { rep: canonical._id } });
-          ordersRepointed++;
-        } catch (e) {
-          // Duplicate-key collision — canonical already has this date; drop the dup.
-          if (e && e.code === 11000) {
-            await B2CDailyOrder.deleteOne({ _id: o._id });
-          } else {
-            throw e;
-          }
+        if (canonicalDates.has(o.dateKey)) {
+          toDelete.push(o._id);
+        } else {
+          toRepoint.push(o._id);
+          canonicalDates.add(o.dateKey); // claim it so a second dup on the same date deletes
         }
+      }
+      if (toRepoint.length > 0) {
+        await B2CDailyOrder.updateMany(
+          { _id: { $in: toRepoint } },
+          { $set: { rep: canonical._id } }
+        );
+        ordersRepointed += toRepoint.length;
+      }
+      if (toDelete.length > 0) {
+        await B2CDailyOrder.deleteMany({ _id: { $in: toDelete } });
       }
 
       await B2CRep.deleteMany({ _id: { $in: dupIds } });

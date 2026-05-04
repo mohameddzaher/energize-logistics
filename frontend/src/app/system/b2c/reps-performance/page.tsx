@@ -340,7 +340,7 @@ export default function RepsPerformancePage() {
     )) return;
     setReconciling(true); setError('');
     try {
-      const result = await api.post<{ ok: boolean; mergedGroups: number; repsRemoved: number; ordersRepointed: number }>('/api/b2c/reps/reconcile', {}, { timeoutMs: 60000 });
+      const result = await api.post<{ ok: boolean; mergedGroups: number; repsRemoved: number; ordersRepointed: number }>('/api/b2c/reps/reconcile', {}, { timeoutMs: 300000 });
       const msg = lang === 'ar'
         ? `تم: ${result.mergedGroups} مجموعة متكررة · ${result.repsRemoved} مندوب اتشال · ${result.ordersRepointed} يوم اترحل`
         : `Done: ${result.mergedGroups} groups merged · ${result.repsRemoved} reps removed · ${result.ordersRepointed} orders repointed`;

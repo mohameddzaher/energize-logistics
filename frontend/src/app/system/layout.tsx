@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Users, FileText, CreditCard, Phone,
   AlertTriangle, UserCog, ClipboardList, BarChart3, Settings,
-  LogOut, Bell, Menu, X, ChevronDown, Shield, Bot,
+  LogOut, Bell, Menu, X, ChevronDown, ChevronRight, ChevronLeft, Shield, Bot,
   Briefcase, TrendingUp, ListTodo, Building2, Wallet,
   Store, Truck, Tags, Languages, Wrench, ShoppingCart, MessageSquare, Package,
   Target, Award, CalendarDays,
@@ -44,6 +44,17 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  // Sections collapsed by default — user clicks a section header to expand it.
+  // Persists across navigation because this layout stays mounted between pages.
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
+  const toggleSection = useCallback((section: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) next.delete(section); else next.add(section);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -175,6 +186,43 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     );
   };
 
+  // Renders a section header + its items as an accordion. Used by both the
+  // desktop sidebar (when expanded) and the mobile sheet. When the desktop
+  // sidebar is in icon-only mode there are no headers, so callers handle that
+  // case separately.
+  const renderSection = (section: string, items: NavItem[], onItemClick?: () => void) => {
+    const isExpanded = expandedSections.has(section);
+    return (
+      <div key={section}>
+        <button
+          type="button"
+          onClick={() => toggleSection(section)}
+          className="w-full flex items-center justify-between gap-2 px-3 pt-4 pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-300 transition-colors"
+        >
+          <span>{section}</span>
+          {isExpanded
+            ? <ChevronDown className="w-3.5 h-3.5" />
+            : (isRTL ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />)}
+        </button>
+        <AnimatePresence initial={false}>
+          {isExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="space-y-0.5 pb-1">
+                {items.map((item) => renderNavLink(item, onItemClick))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 flex" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Desktop Sidebar */}
@@ -194,17 +242,21 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* Nav Items */}
         <nav className="flex-1 overflow-y-auto py-2 px-2">
-          {Object.entries(groupedNav).map(([section, items]) => (
-            <div key={section}>
-              {sidebarOpen && (
-                <p className="px-3 pt-4 pb-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{section}</p>
-              )}
-              {!sidebarOpen && <div className="my-2 mx-2 border-t border-gray-700" />}
-              <div className="space-y-0.5">
-                {items.map((item) => renderNavLink(item))}
-              </div>
-            </div>
-          ))}
+          {Object.entries(groupedNav).map(([section, items]) => {
+            // Icon-only mode: no section headers, all items always visible
+            // (the accordion only makes sense when labels are showing).
+            if (!sidebarOpen) {
+              return (
+                <div key={section}>
+                  <div className="my-2 mx-2 border-t border-gray-700" />
+                  <div className="space-y-0.5">
+                    {items.map((item) => renderNavLink(item))}
+                  </div>
+                </div>
+              );
+            }
+            return renderSection(section, items);
+          })}
         </nav>
 
         {/* User Info + Logout */}
@@ -325,14 +377,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
               <nav className="flex-1 overflow-y-auto py-2 px-2">
-                {Object.entries(groupedNav).map(([section, items]) => (
-                  <div key={section}>
-                    <p className="px-3 pt-4 pb-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{section}</p>
-                    <div className="space-y-0.5">
-                      {items.map((item) => renderNavLink(item, () => setMobileMenuOpen(false)))}
-                    </div>
-                  </div>
-                ))}
+                {Object.entries(groupedNav).map(([section, items]) =>
+                  renderSection(section, items, () => setMobileMenuOpen(false))
+                )}
               </nav>
               <div className="border-t border-gray-700 p-4">
                 <p className="text-white text-sm">{user.firstName} {user.lastName}</p>

@@ -384,141 +384,16 @@ exports.deleteRep = async (req, res) => {
   }
 };
 
-// Merges duplicate reps (same name within the same project/branch, or a
-// legacy null-scope rep that pairs with a properly-scoped rep). Daily orders
-// from duplicates are repointed to the canonical rep before the duplicate is
-// deleted. Safe to run multiple times.
+// Manual rep dedup. Thin wrapper around the same reconcileAllReps used
+// auto-magically by every sync — keeps both code paths in lockstep.
 exports.reconcileReps = async (req, res) => {
   try {
-    const reps = await B2CRep.find({}).lean();
-    const normalize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
-
-    // Pre-fetch order counts per rep so we can pick the rep with the most
-    // data as canonical (preserves the bigger dataset on collisions).
-    const orderCounts = await B2CDailyOrder.aggregate([
-      { $group: { _id: '$rep', count: { $sum: 1 } } },
-    ]);
-    const ordersByRep = new Map(orderCounts.map((o) => [String(o._id), o.count]));
-
-    // Group reps by Account ID, canonical name, and single-name buckets so a
-    // rep with the legal Arabic name and another with a username (Account
-    // user from the new sheet) still merge if they share the same Account ID
-    // or English name.
-    const repIdGroups = new Map();
-    const canonicalGroups = new Map();
-    const enGroups = new Map();
-    const arGroups = new Map();
-    const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
-    for (const r of reps) {
-      const en = normalize(r.englishName);
-      const ar = normalize(r.arabicName);
-      const id = String(r.repId == null ? '' : r.repId).trim();
-      if (id) push(repIdGroups, id, r);
-      if (!en && !ar && !id) continue;
-      push(canonicalGroups, `${en}|${ar}`, r);
-      if (en) push(enGroups, en, r);
-      if (ar) push(arGroups, ar, r);
+    const { reconcileAllReps } = require('../services/b2cGoogleSheetSyncService');
+    const result = await reconcileAllReps();
+    if (result.mergedGroups > 0) {
+      try { emitToAll('b2c:cleanup', result); } catch (_) {}
     }
-
-    let mergedGroups = 0;
-    let repsRemoved = 0;
-    let ordersRepointed = 0;
-    const visited = new Set();
-
-    // Build merge candidates: union of canonical group + reps that share just
-    // the English or just the Arabic name (for legacy rows where one side is
-    // missing) + reps that share the Account ID.
-    const buildGroup = (rep) => {
-      const en = normalize(rep.englishName);
-      const ar = normalize(rep.arabicName);
-      const id = String(rep.repId == null ? '' : rep.repId).trim();
-      const seen = new Map();
-      const add = (r) => seen.set(String(r._id), r);
-      // Account ID — strongest signal, joins reps regardless of name drift
-      if (id) (repIdGroups.get(id) || []).forEach(add);
-      // Canonical en|ar
-      (canonicalGroups.get(`${en}|${ar}`) || []).forEach(add);
-      // Same English, missing Arabic
-      if (en) (enGroups.get(en) || []).forEach((r) => {
-        if (!normalize(r.arabicName)) add(r);
-      });
-      // Same Arabic, missing English
-      if (ar) (arGroups.get(ar) || []).forEach((r) => {
-        if (!normalize(r.englishName)) add(r);
-      });
-      return [...seen.values()];
-    };
-
-    for (const rep of reps) {
-      if (visited.has(String(rep._id))) continue;
-      const list = buildGroup(rep);
-      list.forEach((r) => visited.add(String(r._id)));
-      if (list.length < 2) continue;
-
-      // Reps that belong to genuinely different (project, branch) pairs are
-      // different people — don't merge across them.
-      const scopedReps = list.filter((r) => r.project && r.branch);
-      const distinctScopedPairs = new Set(scopedReps.map((r) => `${String(r.project)}|${String(r.branch)}`));
-      if (distinctScopedPairs.size > 1) continue;
-      if (scopedReps.length === 0) continue;
-
-      // Canonical = the rep with the most daily orders (preserves the most
-      // data); tiebreaker = oldest createdAt. Must be one of the scoped reps.
-      const sortedScoped = [...scopedReps].sort((a, b) => {
-        const ca = ordersByRep.get(String(a._id)) || 0;
-        const cb = ordersByRep.get(String(b._id)) || 0;
-        if (cb !== ca) return cb - ca;
-        return new Date(a.createdAt) - new Date(b.createdAt);
-      });
-      const canonical = sortedScoped[0];
-      const dupIds = list.filter((r) => String(r._id) !== String(canonical._id)).map((r) => r._id);
-      if (dupIds.length === 0) continue;
-
-      // Repoint daily orders without tripping the (rep, dateKey) unique index.
-      // Strategy: load the canonical rep's existing dateKeys + the dup reps'
-      // orders, partition into "safe to repoint" vs "already covered (delete)".
-      // Two bulk writes total per group instead of one round trip per order.
-      const canonicalDates = new Set(
-        (await B2CDailyOrder.find({ rep: canonical._id }).select('dateKey').lean())
-          .map((d) => d.dateKey)
-      );
-      const dupOrders = await B2CDailyOrder.find({ rep: { $in: dupIds } })
-        .select('_id dateKey updatedAt')
-        .sort({ updatedAt: -1 }) // prefer the freshest dup if multiple share a date
-        .lean();
-      const toRepoint = [];
-      const toDelete = [];
-      for (const o of dupOrders) {
-        if (canonicalDates.has(o.dateKey)) {
-          toDelete.push(o._id);
-        } else {
-          toRepoint.push(o._id);
-          canonicalDates.add(o.dateKey); // claim it so a second dup on the same date deletes
-        }
-      }
-      if (toRepoint.length > 0) {
-        await B2CDailyOrder.updateMany(
-          { _id: { $in: toRepoint } },
-          { $set: { rep: canonical._id } }
-        );
-        ordersRepointed += toRepoint.length;
-      }
-      if (toDelete.length > 0) {
-        await B2CDailyOrder.deleteMany({ _id: { $in: toDelete } });
-      }
-
-      await B2CRep.deleteMany({ _id: { $in: dupIds } });
-      repsRemoved += dupIds.length;
-      mergedGroups++;
-      void scopes; void hasLegacy;
-    }
-
-    // Tell open dashboards to drop their cache and refetch — totals shift
-    // when duplicate reps' orders collapse into a single canonical rep.
-    if (mergedGroups > 0) {
-      try { emitToAll('b2c:cleanup', { mergedGroups, repsRemoved, ordersRepointed }); } catch (_) {}
-    }
-    res.json({ ok: true, mergedGroups, repsRemoved, ordersRepointed });
+    res.json({ ok: true, ...result });
   } catch (error) {
     console.error('Reconcile reps error:', error);
     res.status(500).json({ message: error.message || 'Failed to reconcile reps' });

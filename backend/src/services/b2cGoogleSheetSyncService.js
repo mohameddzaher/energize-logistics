@@ -48,71 +48,130 @@ async function downloadSheet(sheetId) {
   return Buffer.from(arrayBuf);
 }
 
-// Merge duplicate reps that share the same Account ID. Cheap when no dupes
-// exist (one aggregate query and out). When dupes are found, picks the rep
-// with the most daily orders as canonical, repoints the others' daily orders,
-// and deletes the rest. Safe to call every sync.
-async function mergeDuplicatesByRepId(config) {
-  const dupes = await B2CRep.aggregate([
-    { $match: { repId: { $exists: true, $ne: null, $ne: '' } } },
-    { $group: { _id: { repId: '$repId', project: '$project', branch: '$branch' }, ids: { $push: '$_id' }, count: { $sum: 1 } } },
-    { $match: { count: { $gt: 1 } } },
-  ]);
-  if (dupes.length === 0) return { groupsMerged: 0, repsRemoved: 0, ordersRepointed: 0 };
+// Repoint a set of duplicate reps' daily orders into a canonical rep, then
+// delete the duplicates. Used by both the auto-merge below and the manual
+// /reconcile endpoint, so the dedup logic only lives in one place.
+async function mergeRepGroup(canonicalId, dupIds) {
+  if (!dupIds || dupIds.length === 0) return { ordersRepointed: 0, ordersDropped: 0 };
+  const canonicalDates = new Set(
+    (await B2CDailyOrder.find({ rep: canonicalId }).select('dateKey').lean())
+      .map((d) => d.dateKey)
+  );
+  const dupOrders = await B2CDailyOrder.find({ rep: { $in: dupIds } })
+    .select('_id dateKey updatedAt')
+    .sort({ updatedAt: -1 }) // prefer freshest dup if multiple share a day
+    .lean();
+  const toRepoint = [];
+  const toDelete = [];
+  for (const o of dupOrders) {
+    if (canonicalDates.has(o.dateKey)) {
+      toDelete.push(o._id);
+    } else {
+      toRepoint.push(o._id);
+      canonicalDates.add(o.dateKey);
+    }
+  }
+  if (toRepoint.length > 0) {
+    await B2CDailyOrder.updateMany({ _id: { $in: toRepoint } }, { $set: { rep: canonicalId } });
+  }
+  if (toDelete.length > 0) {
+    await B2CDailyOrder.deleteMany({ _id: { $in: toDelete } });
+  }
+  await B2CRep.deleteMany({ _id: { $in: dupIds } });
+  return { ordersRepointed: toRepoint.length, ordersDropped: toDelete.length };
+}
 
-  let groupsMerged = 0;
-  let repsRemoved = 0;
-  let ordersRepointed = 0;
+// Full duplicate-rep reconciliation. Groups by Account ID, by canonical
+// (englishName + arabicName), and by single-name buckets so the new sheet's
+// "Account user" handle doesn't strand reps that were imported from the old
+// sheet under their legal Arabic name. This is the SAME logic the manual
+// /reconcile endpoint uses — exposed here so syncOnce can run it before
+// matching, making sync itself self-healing.
+async function reconcileAllReps() {
+  const reps = await B2CRep.find({}).lean();
+  if (reps.length === 0) return { mergedGroups: 0, repsRemoved: 0, ordersRepointed: 0 };
 
-  // Pre-fetch order counts for all duplicate rep ids in one query.
-  const allDupRepIds = dupes.flatMap((d) => d.ids);
-  const orderCountAgg = await B2CDailyOrder.aggregate([
-    { $match: { rep: { $in: allDupRepIds } } },
+  const normalize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const orderCounts = await B2CDailyOrder.aggregate([
     { $group: { _id: '$rep', count: { $sum: 1 } } },
   ]);
-  const ordersByRep = new Map(orderCountAgg.map((o) => [String(o._id), o.count]));
+  const ordersByRep = new Map(orderCounts.map((o) => [String(o._id), o.count]));
 
-  for (const dup of dupes) {
-    const ids = dup.ids;
-    // Pick canonical = rep with most daily orders (tiebreaker: first id).
-    const sorted = [...ids].sort((a, b) => {
-      const ca = ordersByRep.get(String(a)) || 0;
-      const cb = ordersByRep.get(String(b)) || 0;
-      return cb - ca;
+  const repIdGroups = new Map();
+  const canonicalGroups = new Map();
+  const enGroups = new Map();
+  const arGroups = new Map();
+  const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+  for (const r of reps) {
+    const en = normalize(r.englishName);
+    const ar = normalize(r.arabicName);
+    const id = String(r.repId == null ? '' : r.repId).trim();
+    if (id) push(repIdGroups, id, r);
+    if (!en && !ar && !id) continue;
+    push(canonicalGroups, `${en}|${ar}`, r);
+    if (en) push(enGroups, en, r);
+    if (ar) push(arGroups, ar, r);
+  }
+
+  // Build the merge candidates for one rep: union of any other rep that
+  // shares its Account ID, its canonical en|ar key, OR its English name
+  // (with the partner's Arabic missing — covers the legacy "name-only"
+  // dups that were created before scope tracking was reliable). Mirror
+  // for Arabic.
+  const buildGroup = (rep) => {
+    const en = normalize(rep.englishName);
+    const ar = normalize(rep.arabicName);
+    const id = String(rep.repId == null ? '' : rep.repId).trim();
+    const seen = new Map();
+    const add = (r) => seen.set(String(r._id), r);
+    if (id) (repIdGroups.get(id) || []).forEach(add);
+    (canonicalGroups.get(`${en}|${ar}`) || []).forEach(add);
+    if (en) (enGroups.get(en) || []).forEach((r) => {
+      if (!normalize(r.arabicName)) add(r);
     });
-    const canonicalId = sorted[0];
-    const dupIds = sorted.slice(1);
+    if (ar) (arGroups.get(ar) || []).forEach((r) => {
+      if (!normalize(r.englishName)) add(r);
+    });
+    return [...seen.values()];
+  };
 
-    const canonicalDates = new Set(
-      (await B2CDailyOrder.find({ rep: canonicalId }).select('dateKey').lean())
-        .map((d) => d.dateKey)
-    );
-    const dupOrders = await B2CDailyOrder.find({ rep: { $in: dupIds } })
-      .select('_id dateKey updatedAt')
-      .sort({ updatedAt: -1 })
-      .lean();
-    const toRepoint = [];
-    const toDelete = [];
-    for (const o of dupOrders) {
-      if (canonicalDates.has(o.dateKey)) toDelete.push(o._id);
-      else { toRepoint.push(o._id); canonicalDates.add(o.dateKey); }
-    }
-    if (toRepoint.length > 0) {
-      await B2CDailyOrder.updateMany({ _id: { $in: toRepoint } }, { $set: { rep: canonicalId } });
-      ordersRepointed += toRepoint.length;
-    }
-    if (toDelete.length > 0) {
-      await B2CDailyOrder.deleteMany({ _id: { $in: toDelete } });
-    }
-    await B2CRep.deleteMany({ _id: { $in: dupIds } });
+  let mergedGroups = 0;
+  let repsRemoved = 0;
+  let ordersRepointed = 0;
+  const visited = new Set();
+
+  for (const rep of reps) {
+    if (visited.has(String(rep._id))) continue;
+    const list = buildGroup(rep);
+    list.forEach((r) => visited.add(String(r._id)));
+    if (list.length < 2) continue;
+
+    // Reps that belong to genuinely different (project, branch) pairs are
+    // different people — don't merge across them.
+    const scopedReps = list.filter((r) => r.project && r.branch);
+    const distinctScopedPairs = new Set(scopedReps.map((r) => `${String(r.project)}|${String(r.branch)}`));
+    if (distinctScopedPairs.size > 1) continue;
+    if (scopedReps.length === 0) continue;
+
+    // Canonical = the rep with the most daily orders (preserves the most
+    // data); tiebreaker = oldest createdAt. Must be one of the scoped reps.
+    const sortedScoped = [...scopedReps].sort((a, b) => {
+      const ca = ordersByRep.get(String(a._id)) || 0;
+      const cb = ordersByRep.get(String(b._id)) || 0;
+      if (cb !== ca) return cb - ca;
+      return new Date(a.createdAt) - new Date(b.createdAt);
+    });
+    const canonical = sortedScoped[0];
+    const dupIds = list.filter((r) => String(r._id) !== String(canonical._id)).map((r) => r._id);
+    if (dupIds.length === 0) continue;
+
+    const { ordersRepointed: rep1 } = await mergeRepGroup(canonical._id, dupIds);
+    ordersRepointed += rep1;
     repsRemoved += dupIds.length;
-    groupsMerged++;
+    mergedGroups++;
   }
 
-  if (groupsMerged > 0) {
-    console.log(`[B2C sync ${config._id}] auto-merged ${groupsMerged} duplicate group(s) — removed ${repsRemoved} rep(s), repointed ${ordersRepointed} order(s)`);
-  }
-  return { groupsMerged, repsRemoved, ordersRepointed };
+  return { mergedGroups, repsRemoved, ordersRepointed };
 }
 
 // Run one sync pass for a specific config.
@@ -176,13 +235,21 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     if (!canon.joiningDate && r.joiningDate) canon.joiningDate = r.joiningDate;
   }
 
-  // Auto-merge duplicate reps that share the same Account ID before matching.
-  // The new Keeta sheet column B ("Account user") is a username, not the legal
-  // Arabic name, so syncs run by older code created parallel reps for the same
-  // person. Cleaning these up at the top of every sync means daily-order
-  // upserts target a single canonical _id and the dashboard can never double-
-  // count, even if the user forgets to press the manual merge button.
-  await mergeDuplicatesByRepId(config);
+  // Self-healing: collapse any duplicate reps left over from prior syncs
+  // before we touch daily orders. Catches dupes via Account ID, canonical
+  // (en|ar), or single-name + scope so the legacy "English-only" twins
+  // created by older code merge into their fully-populated counterpart.
+  // Cheap when the rep set is clean — one find + one aggregate and out.
+  try {
+    const merged = await reconcileAllReps();
+    if (merged.mergedGroups > 0) {
+      console.log(`[B2C sync ${config._id}] auto-reconciled ${merged.mergedGroups} dup group(s) — removed ${merged.repsRemoved}, repointed ${merged.ordersRepointed}`);
+      try { emitToAll('b2c:cleanup', merged); } catch (_) {}
+    }
+  } catch (e) {
+    // Auto-reconcile failures shouldn't block a sync — log and proceed.
+    console.error(`[B2C sync ${config._id}] auto-reconcile failed:`, e.message);
+  }
 
   // Match against existing reps. Load EVERY rep once and match in memory.
   // B2C rep counts are small (hundreds, not millions) so a full scan is cheap.
@@ -491,4 +558,11 @@ function startSyncScheduler() {
   console.log('[B2C google-sheet sync] scheduler started');
 }
 
-module.exports = { syncOnce, startSyncScheduler, extractSheetId, enqueueWebhookSync, migrateLegacySingletonIndex };
+module.exports = {
+  syncOnce,
+  startSyncScheduler,
+  extractSheetId,
+  enqueueWebhookSync,
+  migrateLegacySingletonIndex,
+  reconcileAllReps,
+};

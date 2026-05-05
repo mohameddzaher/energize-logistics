@@ -262,10 +262,21 @@ function parseRepsExcel(buffer) {
       const repIdNumber = !isBlank(idVal) ? String(idVal).trim() : null;
       if (!repIdNumber && isBlank(enName) && isBlank(arName)) continue;
 
+      // The rep's name is just "the name" — language doesn't matter. Prefer
+      // column C (NAME); if empty, fall back to column B (Account user). The
+      // sheet's column B is sometimes the only place a rep's name shows up,
+      // so without this fallback those reps would all collapse to "Unknown".
+      const nameFromC = enName ? String(enName).trim() : '';
+      const nameFromB = arName ? String(arName).trim() : '';
+      const primaryName = nameFromC || nameFromB || null;
+      // arabicName field is now display-only — keep column B's value when it
+      // differs from the primary name; otherwise leave it null.
+      const secondaryName = nameFromB && nameFromB !== primaryName ? nameFromB : null;
+
       records.push({
         repIdNumber,
-        arabicName: arName ? String(arName).trim() : null,
-        englishName: enName ? String(enName).trim() : null,
+        arabicName: secondaryName,
+        englishName: primaryName,
         joiningDate: joinCol ? isoDate(cellValue(sheet, r, joinCol)) : null,
         monthName: monthMatch.name,
         monthIndex: monthMatch.index,

@@ -426,15 +426,19 @@ export function parseRepsExcel(arrayBuffer: ArrayBuffer): ExcelParseResult {
       }
 
       const repIdNumber = !isBlank(idVal) ? String(idVal).trim() : null;
-      // Need at least ONE identity field — accept account ID, English name, OR Arabic username
+      // Need at least ONE identity field — accept account ID, NAME, OR
+      // Account user (column B). When NAME (column C) is blank we treat
+      // column B as the rep's name; some agents only have a name in B.
       if (!repIdNumber && isBlank(enName) && isBlank(arName)) {
         warnings.push(`Sheet "${sheetName}" row ${r}: missing all identity columns`);
         continue;
       }
-      // Identity = the PERSON (englishName + arabicName). The same account ID can be used
-      // by different people on different shifts — those are NOT duplicates.
-      const enKey = String(enName || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const arKey = String(arName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const nameFromC = String(enName || '').trim();
+      const nameFromB = String(arName || '').trim();
+      const primaryName = nameFromC || nameFromB || '';
+      const secondaryName = nameFromB && nameFromB !== primaryName ? nameFromB : '';
+      const enKey = primaryName.toLowerCase().replace(/\s+/g, ' ');
+      const arKey = secondaryName.toLowerCase().replace(/\s+/g, ' ');
       const repKey = (enKey || arKey)
         ? `name:${enKey}|ar:${arKey}`
         : (repIdNumber ? `id:${repIdNumber}` : `row:${r}`);
@@ -462,8 +466,8 @@ export function parseRepsExcel(arrayBuffer: ArrayBuffer): ExcelParseResult {
       diagRows.push({
         excelRow: r,
         accountId: repIdNumber,
-        arabicName: arName ? String(arName).trim() : null,
-        englishName: enName ? String(enName).trim() : null,
+        arabicName: secondaryName || null,
+        englishName: primaryName || null,
         rowTotal: rowOrderTotal,
         daysOff: rowDaysOff,
         nullDays: rowNullDays,
@@ -476,8 +480,8 @@ export function parseRepsExcel(arrayBuffer: ArrayBuffer): ExcelParseResult {
           rows: [],
           totals: [],
           dailies: [],
-          en: enName ? String(enName).trim() : null,
-          ar: arName ? String(arName).trim() : null,
+          en: primaryName || null,
+          ar: secondaryName || null,
         });
       }
       const occ = repOccurrences.get(repKey)!;
@@ -487,8 +491,8 @@ export function parseRepsExcel(arrayBuffer: ArrayBuffer): ExcelParseResult {
 
       records.push({
         repIdNumber,
-        arabicName: arName ? String(arName).trim() : null,
-        englishName: enName ? String(enName).trim() : null,
+        arabicName: secondaryName || null,
+        englishName: primaryName || null,
         joiningDate: joinCol ? isoDate(cellValue(sheet, r, joinCol)) : null,
         monthName: monthMatch.name,
         monthIndex: monthMatch.index,

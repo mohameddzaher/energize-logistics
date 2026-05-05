@@ -81,12 +81,14 @@ async function mergeRepGroup(canonicalId, dupIds) {
   return { ordersRepointed: toRepoint.length, ordersDropped: toDelete.length };
 }
 
-// Full duplicate-rep reconciliation. Groups by Account ID, by canonical
-// (englishName + arabicName), and by single-name buckets so the new sheet's
-// "Account user" handle doesn't strand reps that were imported from the old
-// sheet under their legal Arabic name. This is the SAME logic the manual
-// /reconcile endpoint uses — exposed here so syncOnce can run it before
-// matching, making sync itself self-healing.
+// Full duplicate-rep reconciliation. Identity in the new Keeta sheet is
+// (Account ID, English NAME) — column B's "Account user" is a handle that
+// drifts and must NOT influence merging. So group only by:
+//   - Account ID (when present)
+//   - English NAME (within the same project/branch scope — different scopes
+//     are different people even if names happen to match).
+// Same logic the manual /reconcile endpoint uses, so syncOnce can call this
+// at the top of every sync to keep the rep set self-healing.
 async function reconcileAllReps() {
   const reps = await B2CRep.find({}).lean();
   if (reps.length === 0) return { mergedGroups: 0, repsRemoved: 0, ordersRepointed: 0 };
@@ -98,40 +100,41 @@ async function reconcileAllReps() {
   const ordersByRep = new Map(orderCounts.map((o) => [String(o._id), o.count]));
 
   const repIdGroups = new Map();
-  const canonicalGroups = new Map();
-  const enGroups = new Map();
-  const arGroups = new Map();
+  const enScopeGroups = new Map(); // "en|projectId|branchId" → reps
+  const enLegacyGroups = new Map(); // "en" → reps with no scope yet
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
   for (const r of reps) {
     const en = normalize(r.englishName);
-    const ar = normalize(r.arabicName);
     const id = String(r.repId == null ? '' : r.repId).trim();
     if (id) push(repIdGroups, id, r);
-    if (!en && !ar && !id) continue;
-    push(canonicalGroups, `${en}|${ar}`, r);
-    if (en) push(enGroups, en, r);
-    if (ar) push(arGroups, ar, r);
+    if (en) {
+      if (r.project && r.branch) {
+        push(enScopeGroups, `${en}|${String(r.project)}|${String(r.branch)}`, r);
+      } else {
+        push(enLegacyGroups, en, r);
+      }
+    }
   }
 
-  // Build the merge candidates for one rep: union of any other rep that
-  // shares its Account ID, its canonical en|ar key, OR its English name
-  // (with the partner's Arabic missing — covers the legacy "name-only"
-  // dups that were created before scope tracking was reliable). Mirror
-  // for Arabic.
+  // Build merge candidates: union of any rep sharing this rep's Account ID,
+  // any rep with the same English name in the same scope, plus any legacy
+  // (no-scope) rep with the same English name (to be claimed and merged
+  // into the scoped one).
   const buildGroup = (rep) => {
     const en = normalize(rep.englishName);
-    const ar = normalize(rep.arabicName);
     const id = String(rep.repId == null ? '' : rep.repId).trim();
     const seen = new Map();
     const add = (r) => seen.set(String(r._id), r);
     if (id) (repIdGroups.get(id) || []).forEach(add);
-    (canonicalGroups.get(`${en}|${ar}`) || []).forEach(add);
-    if (en) (enGroups.get(en) || []).forEach((r) => {
-      if (!normalize(r.arabicName)) add(r);
-    });
-    if (ar) (arGroups.get(ar) || []).forEach((r) => {
-      if (!normalize(r.englishName)) add(r);
-    });
+    if (en) {
+      if (rep.project && rep.branch) {
+        (enScopeGroups.get(`${en}|${String(rep.project)}|${String(rep.branch)}`) || []).forEach(add);
+      }
+      // Always also consider the legacy bucket — anyone who shares the
+      // English name but is missing scope is a candidate for merging into
+      // the scoped rep when we walk that scoped rep next.
+      (enLegacyGroups.get(en) || []).forEach(add);
+    }
     return [...seen.values()];
   };
 
@@ -254,42 +257,34 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   // Match against existing reps. Load EVERY rep once and match in memory.
   // B2C rep counts are small (hundreds, not millions) so a full scan is cheap.
   //
-  // Match priority per parsed rep:
-  //   1. Account ID (repId) — globally unique on the delivery platform, the
-  //      most reliable identity. Same ID = same person, regardless of name
-  //      changes between syncs.
-  //   2. Exact canonical (englishName + arabicName) match.
-  //   3. English-only fallback when one side has no Arabic (or the parser's
-  //      "Account user" is a username that differs from the legal Arabic name).
-  //   4. Arabic-only fallback for legacy reps without English.
-  //   5. None → create a fresh rep in this scope.
+  // Identity in the new Keeta sheet has just two stable fields:
+  //   - Account ID (column A)  → repId
+  //   - NAME (column C)        → englishName
+  // "Account user" (column B) is a free-form handle, often Arabic, often the
+  // delivery-platform username — NOT a legal Arabic name. We keep it on the
+  // rep doc for display continuity but DO NOT use it for matching, because
+  // its value drifts between syncs and that's what spawned the duplicates.
   //
-  // Within each priority, prefer reps already in (project, branch) scope, then
-  // legacy reps with no scope (claim them and backfill), then nothing.
+  // Match priority per parsed rep:
+  //   1. Account ID — globally unique on the platform.
+  //   2. English NAME within the same scope.
+  //   3. None → create a fresh rep.
+  // Within each priority, prefer reps already in (project, branch) scope,
+  // then legacy reps with no scope (claim them and backfill).
   const allReps = await B2CRep.find({}).lean();
   const sameId = (a, b) => a && b && String(a) === String(b);
   const inScope = (r) => sameId(r.project, config.project) && sameId(r.branch, config.branch);
   const noScope = (r) => !r.project && !r.branch;
   const normalizeRepId = (s) => String(s == null ? '' : s).trim();
 
-  // Build lookup tables
-  const byRepId = new Map();       // "repId" → reps
-  const byCanonical = new Map();   // "en|ar" → reps
-  const byEnOnly = new Map();      // "en" → reps where Arabic is empty
-  const byArOnly = new Map();      // "ar" → reps where English is missing
-  const byEnAny = new Map();       // "en" → all reps with that English (regardless of Arabic)
-  const byArAny = new Map();       // "ar" → all reps with that Arabic
+  const byRepId = new Map();
+  const byEnAny = new Map();
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
   for (const r of allReps) {
     const en = normalizeName(r.englishName);
-    const ar = normalizeName(r.arabicName);
     const id = normalizeRepId(r.repId);
     if (id) push(byRepId, id, r);
-    if (en || ar) push(byCanonical, `${en}|${ar}`, r);
     if (en) push(byEnAny, en, r);
-    if (ar) push(byArAny, ar, r);
-    if (en && !ar) push(byEnOnly, en, r);
-    if (ar && !en) push(byArOnly, ar, r);
   }
 
   const pickFrom = (list) => {
@@ -298,28 +293,14 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   };
 
   const pickMatch = (canon) => {
-    const en = normalizeName(canon.englishName);
-    const ar = normalizeName(canon.arabicName);
     const id = normalizeRepId(canon.repId);
-    // 1: Account ID — strongest signal, survives name/handle changes
     if (id) {
       const m = pickFrom(byRepId.get(id));
       if (m) return m;
     }
-    // 2: exact canonical
-    let m = pickFrom(byCanonical.get(`${en}|${ar}`));
-    if (m) return m;
-    // 3: English-only fallback. Now also accepts cases where both sides have
-    // an Arabic value but the values differ (the new Keeta sheet's "Account
-    // user" column is a username, not the legal Arabic name, so an existing
-    // rep's stored Arabic legal name won't match the parser's username).
+    const en = normalizeName(canon.englishName);
     if (en) {
-      m = pickFrom(byEnOnly.get(en)) || pickFrom(byEnAny.get(en));
-      if (m) return m;
-    }
-    // 4: Arabic-only fallback
-    if (ar) {
-      m = pickFrom(byArOnly.get(ar)) || (!en ? pickFrom(byArAny.get(ar)) : null);
+      const m = pickFrom(byEnAny.get(en));
       if (m) return m;
     }
     return null;

@@ -63,13 +63,10 @@ const asDayNumber = (v) => {
   if (typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 31 && Number.isInteger(v)) {
     return v;
   }
-  if (typeof v === 'string') {
-    const trimmed = v.trim();
-    if (/^\d{1,2}$/.test(trimmed)) {
-      const n = Number(trimmed);
-      if (n >= 1 && n <= 31) return n;
-    }
-  }
+  // Reuse the same lenient numeric coercion the data cells use, then check
+  // the result is a whole number in [1, 31].
+  const n = coerceNumeric(v);
+  if (n !== null && Number.isInteger(n) && n >= 1 && n <= 31) return n;
   return null;
 };
 
@@ -167,16 +164,34 @@ const extractTargetsFromSheet = (sheet) => {
   return { monthly: 400, daily: 15 };
 };
 
+// Lenient numeric parsing — Excel/Sheets cells can carry the value as a
+// string with Arabic-Indic digits (٠-٩), Persian digits (۰-۹), thousands
+// separators, decimal commas, or stray whitespace. Without this, any of
+// those legitimate cells gets dropped to null/0 and the rep's total comes
+// out short by exactly one (or more) order.
+const coerceNumeric = (v) => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  let s = String(v == null ? '' : v).trim();
+  if (s === '') return null;
+  // Arabic-Indic and Persian digit ranges
+  s = s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+  s = s.replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776));
+  // Thousands separators (regular comma + Arabic comma) and stray spaces
+  s = s.replace(/[,،\s]/g, '');
+  if (s === '') return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+};
+
 const safeNumber = (v) => {
   if (v === undefined || v === null || v === '') return 0;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
+  const n = coerceNumeric(v);
+  return n === null ? 0 : n;
 };
 
 const safeNullableNumber = (v) => {
   if (v === undefined || v === null || v === '') return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+  return coerceNumeric(v);
 };
 
 const isoDate = (v) => {

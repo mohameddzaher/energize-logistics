@@ -186,6 +186,20 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   if (!config.sheetId) throw new Error('Sheet ID not set on config');
   const effectiveMode = mode || config.syncMode || 'overwrite';
 
+  // Self-healing: collapse any duplicate reps left over from prior syncs
+  // BEFORE the hash gate. The cron tick runs every minute; if the sheet
+  // bytes haven't changed we'd otherwise short-circuit and the existing
+  // dupes would linger forever between sheet edits.
+  try {
+    const merged = await reconcileAllReps();
+    if (merged.mergedGroups > 0) {
+      console.log(`[B2C sync ${config._id}] auto-reconciled ${merged.mergedGroups} dup group(s) — removed ${merged.repsRemoved}, repointed ${merged.ordersRepointed}`);
+      try { emitToAll('b2c:cleanup', merged); } catch (_) {}
+    }
+  } catch (e) {
+    console.error(`[B2C sync ${config._id}] auto-reconcile failed:`, e.message);
+  }
+
   const buffer = await downloadSheet(config.sheetId);
 
   // Skip the rest of the work if the sheet bytes haven't changed since the
@@ -208,15 +222,18 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
 
   const { reps: incoming, buildKey } = buildResolverPayload(parsed.records);
 
-  // Dedup incoming by canonicalKey
+  // Within-batch dedup. Identity = Account ID OR englishName — matches the
+  // matching rules below. arabicName is intentionally NOT in the key, so a
+  // rep whose Account-user handle was edited in the sheet between sync runs
+  // doesn't spawn a parallel canon entry.
   const normalizeName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const canonicalByName = new Map();
   for (const r of incoming) {
     const en = normalizeName(r.englishName);
-    const ar = normalizeName(r.arabicName);
+    const id = String(r.repId == null ? '' : r.repId).trim();
     let canonicalKey;
-    if (en || ar) canonicalKey = `name:${en}|ar:${ar}`;
-    else if (r.repId) canonicalKey = `id:${r.repId}`;
+    if (id) canonicalKey = `id:${id}`;
+    else if (en) canonicalKey = `name:${en}`;
     else continue;
     let canon = canonicalByName.get(canonicalKey);
     if (!canon) {
@@ -236,22 +253,6 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     if (r.arabicName) canon.arabicName = r.arabicName;
     if (r.repId) canon.repId = r.repId;
     if (!canon.joiningDate && r.joiningDate) canon.joiningDate = r.joiningDate;
-  }
-
-  // Self-healing: collapse any duplicate reps left over from prior syncs
-  // before we touch daily orders. Catches dupes via Account ID, canonical
-  // (en|ar), or single-name + scope so the legacy "English-only" twins
-  // created by older code merge into their fully-populated counterpart.
-  // Cheap when the rep set is clean — one find + one aggregate and out.
-  try {
-    const merged = await reconcileAllReps();
-    if (merged.mergedGroups > 0) {
-      console.log(`[B2C sync ${config._id}] auto-reconciled ${merged.mergedGroups} dup group(s) — removed ${merged.repsRemoved}, repointed ${merged.ordersRepointed}`);
-      try { emitToAll('b2c:cleanup', merged); } catch (_) {}
-    }
-  } catch (e) {
-    // Auto-reconcile failures shouldn't block a sync — log and proceed.
-    console.error(`[B2C sync ${config._id}] auto-reconcile failed:`, e.message);
   }
 
   // Match against existing reps. Load EVERY rep once and match in memory.

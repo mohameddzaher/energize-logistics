@@ -384,6 +384,58 @@ exports.deleteRep = async (req, res) => {
   }
 };
 
+// Diagnostic endpoint: shows the current rep set, daily-order counts, and
+// any duplicate clusters that would be merged on the next sync. Useful when
+// the dashboard's totals look wrong and we need to see what's actually in
+// MongoDB without exporting the whole collection.
+exports.diagnoseReps = async (req, res) => {
+  try {
+    const reps = await B2CRep.find({})
+      .populate('project', 'name')
+      .populate('branch', 'name')
+      .lean();
+    const orderCountAgg = await B2CDailyOrder.aggregate([
+      { $group: { _id: '$rep', count: { $sum: 1 }, totalOrders: { $sum: '$orders' } } },
+    ]);
+    const ordersByRep = new Map(orderCountAgg.map((o) => [String(o._id), o]));
+    const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+    const summarised = reps.map((r) => ({
+      _id: String(r._id),
+      englishName: r.englishName || null,
+      arabicName: r.arabicName || null,
+      repId: r.repId || null,
+      project: r.project?.name || null,
+      branch: r.branch?.name || null,
+      orderDocs: ordersByRep.get(String(r._id))?.count || 0,
+      totalOrders: ordersByRep.get(String(r._id))?.totalOrders || 0,
+    }));
+
+    // Cluster reps that should be the same person.
+    const clusters = new Map();
+    for (const r of summarised) {
+      const id = (r.repId || '').trim();
+      const en = norm(r.englishName);
+      const scope = `${r.project || '?'}|${r.branch || '?'}`;
+      const key = id ? `id:${id}|${scope}` : (en ? `name:${en}|${scope}` : `_id:${r._id}`);
+      if (!clusters.has(key)) clusters.set(key, []);
+      clusters.get(key).push(r);
+    }
+    const dupClusters = [...clusters.entries()]
+      .filter(([, list]) => list.length > 1)
+      .map(([key, list]) => ({ key, members: list }));
+
+    res.json({
+      totalReps: reps.length,
+      duplicateClusters: dupClusters.length,
+      duplicates: dupClusters,
+      reps: summarised,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Diagnostics failed' });
+  }
+};
+
 // Manual rep dedup. Thin wrapper around the same reconcileAllReps used
 // auto-magically by every sync — keeps both code paths in lockstep.
 exports.reconcileReps = async (req, res) => {

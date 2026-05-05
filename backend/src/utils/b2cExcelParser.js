@@ -310,15 +310,17 @@ function parseRepsExcel(buffer) {
   return { records, monthsDetected, warnings, ignoredSheets };
 }
 
-// Group records into the resolver shape used by bulk-upsert. Identity = person name
-// (englishName + arabicName); same account ID can be operated by different people.
+// Group records into the resolver shape used by bulk-upsert. Identity is
+// Account ID first (stable, unique on the platform), name as fallback. The
+// "Account user" handle from column B is intentionally excluded — its value
+// drifts between sheet edits and including it caused phantom dups.
 function buildResolverPayload(records) {
   const norm = (s) => String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
   const buildKey = (rec) => {
+    if (rec.repIdNumber) return `id:${String(rec.repIdNumber).trim()}`;
     const en = norm(rec.englishName);
-    const ar = norm(rec.arabicName);
-    if (en || ar) return `name:${en}|ar:${ar}`;
-    return rec.repIdNumber ? `id:${rec.repIdNumber}` : '';
+    if (en) return `name:${en}`;
+    return '';
   };
 
   const reps = [];

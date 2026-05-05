@@ -513,6 +513,11 @@ exports.reconcileReps = async (req, res) => {
       void scopes; void hasLegacy;
     }
 
+    // Tell open dashboards to drop their cache and refetch — totals shift
+    // when duplicate reps' orders collapse into a single canonical rep.
+    if (mergedGroups > 0) {
+      try { emitToAll('b2c:cleanup', { mergedGroups, repsRemoved, ordersRepointed }); } catch (_) {}
+    }
     res.json({ ok: true, mergedGroups, repsRemoved, ordersRepointed });
   } catch (error) {
     console.error('Reconcile reps error:', error);

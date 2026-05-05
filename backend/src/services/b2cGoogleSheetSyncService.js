@@ -48,6 +48,73 @@ async function downloadSheet(sheetId) {
   return Buffer.from(arrayBuf);
 }
 
+// Merge duplicate reps that share the same Account ID. Cheap when no dupes
+// exist (one aggregate query and out). When dupes are found, picks the rep
+// with the most daily orders as canonical, repoints the others' daily orders,
+// and deletes the rest. Safe to call every sync.
+async function mergeDuplicatesByRepId(config) {
+  const dupes = await B2CRep.aggregate([
+    { $match: { repId: { $exists: true, $ne: null, $ne: '' } } },
+    { $group: { _id: { repId: '$repId', project: '$project', branch: '$branch' }, ids: { $push: '$_id' }, count: { $sum: 1 } } },
+    { $match: { count: { $gt: 1 } } },
+  ]);
+  if (dupes.length === 0) return { groupsMerged: 0, repsRemoved: 0, ordersRepointed: 0 };
+
+  let groupsMerged = 0;
+  let repsRemoved = 0;
+  let ordersRepointed = 0;
+
+  // Pre-fetch order counts for all duplicate rep ids in one query.
+  const allDupRepIds = dupes.flatMap((d) => d.ids);
+  const orderCountAgg = await B2CDailyOrder.aggregate([
+    { $match: { rep: { $in: allDupRepIds } } },
+    { $group: { _id: '$rep', count: { $sum: 1 } } },
+  ]);
+  const ordersByRep = new Map(orderCountAgg.map((o) => [String(o._id), o.count]));
+
+  for (const dup of dupes) {
+    const ids = dup.ids;
+    // Pick canonical = rep with most daily orders (tiebreaker: first id).
+    const sorted = [...ids].sort((a, b) => {
+      const ca = ordersByRep.get(String(a)) || 0;
+      const cb = ordersByRep.get(String(b)) || 0;
+      return cb - ca;
+    });
+    const canonicalId = sorted[0];
+    const dupIds = sorted.slice(1);
+
+    const canonicalDates = new Set(
+      (await B2CDailyOrder.find({ rep: canonicalId }).select('dateKey').lean())
+        .map((d) => d.dateKey)
+    );
+    const dupOrders = await B2CDailyOrder.find({ rep: { $in: dupIds } })
+      .select('_id dateKey updatedAt')
+      .sort({ updatedAt: -1 })
+      .lean();
+    const toRepoint = [];
+    const toDelete = [];
+    for (const o of dupOrders) {
+      if (canonicalDates.has(o.dateKey)) toDelete.push(o._id);
+      else { toRepoint.push(o._id); canonicalDates.add(o.dateKey); }
+    }
+    if (toRepoint.length > 0) {
+      await B2CDailyOrder.updateMany({ _id: { $in: toRepoint } }, { $set: { rep: canonicalId } });
+      ordersRepointed += toRepoint.length;
+    }
+    if (toDelete.length > 0) {
+      await B2CDailyOrder.deleteMany({ _id: { $in: toDelete } });
+    }
+    await B2CRep.deleteMany({ _id: { $in: dupIds } });
+    repsRemoved += dupIds.length;
+    groupsMerged++;
+  }
+
+  if (groupsMerged > 0) {
+    console.log(`[B2C sync ${config._id}] auto-merged ${groupsMerged} duplicate group(s) — removed ${repsRemoved} rep(s), repointed ${ordersRepointed} order(s)`);
+  }
+  return { groupsMerged, repsRemoved, ordersRepointed };
+}
+
 // Run one sync pass for a specific config.
 async function syncOnce({ configId, user, mode, force = false } = {}) {
   if (!configId) throw new Error('configId is required');
@@ -108,6 +175,14 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     if (r.repId) canon.repId = r.repId;
     if (!canon.joiningDate && r.joiningDate) canon.joiningDate = r.joiningDate;
   }
+
+  // Auto-merge duplicate reps that share the same Account ID before matching.
+  // The new Keeta sheet column B ("Account user") is a username, not the legal
+  // Arabic name, so syncs run by older code created parallel reps for the same
+  // person. Cleaning these up at the top of every sync means daily-order
+  // upserts target a single canonical _id and the dashboard can never double-
+  // count, even if the user forgets to press the manual merge button.
+  await mergeDuplicatesByRepId(config);
 
   // Match against existing reps. Load EVERY rep once and match in memory.
   // B2C rep counts are small (hundreds, not millions) so a full scan is cheap.

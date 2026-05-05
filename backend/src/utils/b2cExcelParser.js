@@ -311,15 +311,16 @@ function parseRepsExcel(buffer) {
 }
 
 // Group records into the resolver shape used by bulk-upsert. Identity is
-// Account ID first (stable, unique on the platform), name as fallback. The
-// "Account user" handle from column B is intentionally excluded — its value
-// drifts between sheet edits and including it caused phantom dups.
+// NAME first (the rep's actual person), Account ID only as a last-resort
+// fallback for nameless rows. The Keeta sheet shares Account IDs across
+// physical drivers, so keying by ID would collapse different people into
+// one rep.
 function buildResolverPayload(records) {
   const norm = (s) => String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
   const buildKey = (rec) => {
-    if (rec.repIdNumber) return `id:${String(rec.repIdNumber).trim()}`;
     const en = norm(rec.englishName);
     if (en) return `name:${en}`;
+    if (rec.repIdNumber) return `id:${String(rec.repIdNumber).trim()}`;
     return '';
   };
 

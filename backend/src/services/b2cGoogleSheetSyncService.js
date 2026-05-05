@@ -81,14 +81,10 @@ async function mergeRepGroup(canonicalId, dupIds) {
   return { ordersRepointed: toRepoint.length, ordersDropped: toDelete.length };
 }
 
-// Full duplicate-rep reconciliation. Identity in the new Keeta sheet is
-// (Account ID, English NAME) — column B's "Account user" is a handle that
-// drifts and must NOT influence merging. So group only by:
-//   - Account ID (when present)
-//   - English NAME (within the same project/branch scope — different scopes
-//     are different people even if names happen to match).
-// Same logic the manual /reconcile endpoint uses, so syncOnce can call this
-// at the top of every sync to keep the rep set self-healing.
+// Full duplicate-rep reconciliation. Identity = NAME within scope. Account
+// ID is intentionally NOT used for grouping: in the Keeta sheet a single
+// Account ID is shared across multiple physical drivers, so merging by ID
+// would collapse genuinely-different people into one.
 async function reconcileAllReps() {
   const reps = await B2CRep.find({}).lean();
   if (reps.length === 0) return { mergedGroups: 0, repsRemoved: 0, ordersRepointed: 0 };
@@ -99,42 +95,31 @@ async function reconcileAllReps() {
   ]);
   const ordersByRep = new Map(orderCounts.map((o) => [String(o._id), o.count]));
 
-  const repIdGroups = new Map();
-  const enScopeGroups = new Map(); // "en|projectId|branchId" → reps
-  const enLegacyGroups = new Map(); // "en" → reps with no scope yet
+  const enScopeGroups = new Map();   // "en|projectId|branchId" → reps
+  const enLegacyGroups = new Map();  // "en" → reps with no scope set
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
   for (const r of reps) {
     const en = normalize(r.englishName);
-    const id = String(r.repId == null ? '' : r.repId).trim();
-    if (id) push(repIdGroups, id, r);
-    if (en) {
-      if (r.project && r.branch) {
-        push(enScopeGroups, `${en}|${String(r.project)}|${String(r.branch)}`, r);
-      } else {
-        push(enLegacyGroups, en, r);
-      }
+    if (!en) continue;
+    if (r.project && r.branch) {
+      push(enScopeGroups, `${en}|${String(r.project)}|${String(r.branch)}`, r);
+    } else {
+      push(enLegacyGroups, en, r);
     }
   }
 
-  // Build merge candidates: union of any rep sharing this rep's Account ID,
-  // any rep with the same English name in the same scope, plus any legacy
-  // (no-scope) rep with the same English name (to be claimed and merged
-  // into the scoped one).
+  // Group candidates: any rep with the same name in the same scope + any
+  // legacy unscoped rep with the same name (to be merged into the scoped
+  // one when we walk the scoped rep).
   const buildGroup = (rep) => {
     const en = normalize(rep.englishName);
-    const id = String(rep.repId == null ? '' : rep.repId).trim();
+    if (!en) return [rep];
     const seen = new Map();
     const add = (r) => seen.set(String(r._id), r);
-    if (id) (repIdGroups.get(id) || []).forEach(add);
-    if (en) {
-      if (rep.project && rep.branch) {
-        (enScopeGroups.get(`${en}|${String(rep.project)}|${String(rep.branch)}`) || []).forEach(add);
-      }
-      // Always also consider the legacy bucket — anyone who shares the
-      // English name but is missing scope is a candidate for merging into
-      // the scoped rep when we walk that scoped rep next.
-      (enLegacyGroups.get(en) || []).forEach(add);
+    if (rep.project && rep.branch) {
+      (enScopeGroups.get(`${en}|${String(rep.project)}|${String(rep.branch)}`) || []).forEach(add);
     }
+    (enLegacyGroups.get(en) || []).forEach(add);
     return [...seen.values()];
   };
 
@@ -222,18 +207,20 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
 
   const { reps: incoming, buildKey } = buildResolverPayload(parsed.records);
 
-  // Within-batch dedup. Identity = Account ID OR englishName — matches the
-  // matching rules below. arabicName is intentionally NOT in the key, so a
-  // rep whose Account-user handle was edited in the sheet between sync runs
-  // doesn't spawn a parallel canon entry.
+  // Within-batch dedup. Identity = the rep's NAME, not Account ID. The Keeta
+  // sheet legitimately reuses one Account ID across multiple physical drivers
+  // (shared platform account, different shifts) — keying on Account ID would
+  // collapse them into one rep and lose orders. Two rows with the same name
+  // ARE the same person (duplicate entry in the source); two rows with the
+  // same ID but different names are NOT.
   const normalizeName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const canonicalByName = new Map();
   for (const r of incoming) {
     const en = normalizeName(r.englishName);
     const id = String(r.repId == null ? '' : r.repId).trim();
     let canonicalKey;
-    if (id) canonicalKey = `id:${id}`;
-    else if (en) canonicalKey = `name:${en}`;
+    if (en) canonicalKey = `name:${en}`;
+    else if (id) canonicalKey = `id:${id}`; // only when no name at all (rare)
     else continue;
     let canon = canonicalByName.get(canonicalKey);
     if (!canon) {
@@ -258,33 +245,22 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   // Match against existing reps. Load EVERY rep once and match in memory.
   // B2C rep counts are small (hundreds, not millions) so a full scan is cheap.
   //
-  // Identity in the new Keeta sheet has just two stable fields:
-  //   - Account ID (column A)  → repId
-  //   - NAME (column C)        → englishName
-  // "Account user" (column B) is a free-form handle, often Arabic, often the
-  // delivery-platform username — NOT a legal Arabic name. We keep it on the
-  // rep doc for display continuity but DO NOT use it for matching, because
-  // its value drifts between syncs and that's what spawned the duplicates.
+  // Identity = the rep's NAME within (project, branch) scope. The Keeta
+  // sheet reuses Account IDs across multiple physical drivers (shared
+  // platform account), so Account ID is reference-only — never an identity
+  // key. Matching by Account ID would collapse different people into one.
   //
-  // Match priority per parsed rep:
-  //   1. Account ID — globally unique on the platform.
-  //   2. English NAME within the same scope.
-  //   3. None → create a fresh rep.
-  // Within each priority, prefer reps already in (project, branch) scope,
-  // then legacy reps with no scope (claim them and backfill).
+  // Within scope, prefer the in-scope rep, then any legacy unscoped rep
+  // with the same name (claim it and backfill scope).
   const allReps = await B2CRep.find({}).lean();
   const sameId = (a, b) => a && b && String(a) === String(b);
   const inScope = (r) => sameId(r.project, config.project) && sameId(r.branch, config.branch);
   const noScope = (r) => !r.project && !r.branch;
-  const normalizeRepId = (s) => String(s == null ? '' : s).trim();
 
-  const byRepId = new Map();
   const byEnAny = new Map();
   const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
   for (const r of allReps) {
     const en = normalizeName(r.englishName);
-    const id = normalizeRepId(r.repId);
-    if (id) push(byRepId, id, r);
     if (en) push(byEnAny, en, r);
   }
 
@@ -294,17 +270,9 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   };
 
   const pickMatch = (canon) => {
-    const id = normalizeRepId(canon.repId);
-    if (id) {
-      const m = pickFrom(byRepId.get(id));
-      if (m) return m;
-    }
     const en = normalizeName(canon.englishName);
-    if (en) {
-      const m = pickFrom(byEnAny.get(en));
-      if (m) return m;
-    }
-    return null;
+    if (!en) return null;
+    return pickFrom(byEnAny.get(en));
   };
 
   const canonicalToDbId = new Map();

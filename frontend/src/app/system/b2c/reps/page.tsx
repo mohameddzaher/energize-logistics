@@ -255,7 +255,7 @@ export default function B2CRepsPage() {
                 </div>
                 <form onSubmit={handleSubmit} className="p-5 space-y-4">
                   {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">{error}</div>}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.englishName} *</label>
                       <input required type="text" value={form.englishName} onChange={(e) => setForm({ ...form, englishName: e.target.value })}
@@ -267,7 +267,7 @@ export default function B2CRepsPage() {
                         className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.repId}</label>
                       <input type="text" value={form.repId} onChange={(e) => setForm({ ...form, repId: e.target.value })}
@@ -279,7 +279,7 @@ export default function B2CRepsPage() {
                         className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.project}</label>
                       <select aria-label="Project" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })}
@@ -297,7 +297,7 @@ export default function B2CRepsPage() {
                       </select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.monthlyTarget}</label>
                       <input type="number" value={form.monthlyTarget} onChange={(e) => setForm({ ...form, monthlyTarget: Number(e.target.value) })}

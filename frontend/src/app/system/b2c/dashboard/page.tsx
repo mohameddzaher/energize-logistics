@@ -299,7 +299,7 @@ export default function B2CDashboard() {
         {showFilters && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden">
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
               <div>
                 <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">{lang === 'ar' ? 'السنة' : 'Year'}</label>
                 <input type="number" value={year} onChange={(e) => setYear(e.target.value === '' ? '' : Number(e.target.value))} aria-label="Year"
@@ -348,7 +348,7 @@ export default function B2CDashboard() {
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="Date to"
                   className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
               </div>
-              <div className="col-span-2 md:col-span-4 lg:col-span-7 flex justify-end">
+              <div className="col-span-1 sm:col-span-2 md:col-span-4 lg:col-span-7 flex justify-end">
                 <button type="button" onClick={clearFilters} className="px-3 py-1.5 text-gray-400 hover:text-white text-sm">
                   {T.clearFilters}
                 </button>

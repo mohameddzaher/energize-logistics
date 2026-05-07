@@ -1,8 +1,12 @@
-// In production: call backend directly (cross-origin with credentials)
-// In dev: empty string uses Next.js rewrites (same origin)
-const API_URL = typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
-  ? process.env.NEXT_PUBLIC_API_URL
-  : '';
+// Always go through the same origin in the browser. Next.js rewrites proxy
+// /api/* to the backend (see next.config.ts), which keeps the auth cookies
+// first-party. Cross-origin cookies are blocked by Safari/iOS ITP and many
+// mobile browsers — that breaks `me`, refresh, and every authed request,
+// which is why mobile users see empty B2C data and get bounced to login on
+// refresh. Server-side rendering still uses the absolute URL.
+const API_URL = typeof window !== 'undefined'
+  ? ''
+  : (process.env.NEXT_PUBLIC_API_URL || '');
 
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;

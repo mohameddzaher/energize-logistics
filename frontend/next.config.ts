@@ -17,10 +17,15 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   async rewrites() {
+    const backend = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/:path*`,
+        destination: `${backend}/api/:path*`,
+      },
+      {
+        source: '/socket.io/:path*',
+        destination: `${backend}/socket.io/:path*`,
       },
     ];
   },

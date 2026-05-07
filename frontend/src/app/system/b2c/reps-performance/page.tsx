@@ -1140,7 +1140,7 @@ export default function RepsPerformancePage() {
                 </div>
 
                 {cfg.lastSyncStats && cfg.lastSyncStatus === 'ok' && (
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-xs">
                     <div className="bg-gray-900 rounded-lg p-2 text-center">
                       <p className="text-gray-500 text-[10px]">{lang === 'ar' ? 'الشهور' : 'Months'}</p>
                       <p className="text-white font-bold">{cfg.lastSyncStats.monthsDetected?.length || 0}</p>

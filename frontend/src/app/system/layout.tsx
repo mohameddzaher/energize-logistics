@@ -99,6 +99,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/disputes', label: L.disputes, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager'], section: 'Customers & Finance' },
     // Operations
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
+    { href: '/system/operations/dispatch-sheets', label: L.dispatchSheets, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'moderator'], section: 'Operations' },
     { href: '/system/vehicle-analytics', label: lang === 'ar' ? 'تحليلات المركبات' : 'Vehicle Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },

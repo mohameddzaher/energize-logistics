@@ -46,6 +46,7 @@ const layout = {
     b2cReps: 'Sales Reps',
     b2cProjects: 'Projects',
     b2cDailyEntry: 'Daily Entry',
+    dispatchSheets: 'Dispatch Sheets',
   },
   ar: {
     dashboard: 'لوحة التحكم',
@@ -91,6 +92,7 @@ const layout = {
     b2cReps: 'مناديب المبيعات',
     b2cProjects: 'المشاريع',
     b2cDailyEntry: 'إدخال يومي',
+    dispatchSheets: 'كشوف التخريج',
   },
 };
 
@@ -1102,6 +1104,65 @@ const portalPage = {
   },
 };
 
+const dispatchSheetsPage = {
+  en: {
+    title: 'Dispatch Sheets Generator',
+    subtitle: 'Upload an Excel file and generate a PDF dispatch sheet for every row, then download them all as a single ZIP.',
+    dropHere: 'Drop your Excel file here',
+    orClick: 'or click to browse (.xlsx)',
+    selectedFile: 'Selected file',
+    remove: 'Remove',
+    parsing: 'Parsing file…',
+    rowsDetected: 'Rows detected',
+    rowsWithMissing: 'Rows with missing required fields',
+    missingColumnsTitle: 'Missing required columns',
+    rowMissingTitle: 'Some rows are missing required fields',
+    rowMissingHint: 'Required fields are: date, dispatch number, driver name, plate number. You can still proceed; missing values will appear as dotted lines on the sheet.',
+    showRows: 'Show rows',
+    hideRows: 'Hide rows',
+    rowNumber: 'Row',
+    missingFields: 'Missing fields',
+    generate: 'Generate PDFs',
+    generating: 'Generating',
+    generatingProgress: 'Generating {current} of {total}…',
+    cancel: 'Cancel',
+    downloadAll: 'Download All (ZIP)',
+    successMessage: '{count} PDF(s) ready. Click below to download the ZIP.',
+    reset: 'Start over',
+    errorTitle: 'Could not process file',
+    invalidFileType: 'Please upload a .xlsx file.',
+    unexpectedError: 'Unexpected error. Please try again.',
+  },
+  ar: {
+    title: 'مولّد كشوف التخريج',
+    subtitle: 'ارفع ملف إكسيل وولّد لكل صف كشف تخريج بصيغة PDF، ثم نزّل الكل في ملف ZIP واحد.',
+    dropHere: 'اسحب ملف الإكسيل هنا',
+    orClick: 'أو اضغط للاختيار من الجهاز (.xlsx)',
+    selectedFile: 'الملف المختار',
+    remove: 'إزالة',
+    parsing: 'جاري قراءة الملف…',
+    rowsDetected: 'عدد الصفوف',
+    rowsWithMissing: 'صفوف بها حقول أساسية ناقصة',
+    missingColumnsTitle: 'أعمدة أساسية غير موجودة في الملف',
+    rowMissingTitle: 'بعض الصفوف بها حقول أساسية ناقصة',
+    rowMissingHint: 'الحقول الأساسية هي: التاريخ، رقم كشف التخريج، اسم السائق، رقم السيارة. يمكنك الاستمرار وستظهر القيم الناقصة كخطوط منقّطة في الكشف.',
+    showRows: 'عرض الصفوف',
+    hideRows: 'إخفاء الصفوف',
+    rowNumber: 'الصف',
+    missingFields: 'الحقول الناقصة',
+    generate: 'توليد كشوف التخريج',
+    generating: 'جاري التوليد',
+    generatingProgress: 'جاري توليد {current} من {total}…',
+    cancel: 'إلغاء',
+    downloadAll: 'تحميل الكل (ZIP)',
+    successMessage: 'تم توليد {count} ملف PDF. اضغط بالأسفل لتحميل الـ ZIP.',
+    reset: 'البدء من جديد',
+    errorTitle: 'تعذّر معالجة الملف',
+    invalidFileType: 'يجب رفع ملف بصيغة .xlsx',
+    unexpectedError: 'حدث خطأ غير متوقّع. حاول مرة أخرى.',
+  },
+};
+
 // ─── EXPORTS ─────────────────────────────────────────────────
 export function getLayoutTranslations(lang: Lang) {
   return layout[lang];
@@ -1161,6 +1222,10 @@ export function getDisputesTranslations(lang: Lang) {
 
 export function getOperationsTranslations(lang: Lang) {
   return { ...common[lang], ...operationsPage[lang] };
+}
+
+export function getDispatchSheetsTranslations(lang: Lang) {
+  return { ...common[lang], ...dispatchSheetsPage[lang] };
 }
 
 export function getBranchesTranslations(lang: Lang) {
@@ -1350,6 +1415,7 @@ export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   '/system/tasks': 'tasks',
   '/system/disputes': 'disputes',
   '/system/operations': 'operations',
+  '/system/operations/dispatch-sheets': 'dispatchSheets',
   '/system/wallet': 'wallet',
   '/system/wallet-dashboard': 'walletDashboard',
   '/system/branches': 'branches',

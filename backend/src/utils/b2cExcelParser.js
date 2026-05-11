@@ -63,6 +63,14 @@ const asDayNumber = (v) => {
   if (typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 31 && Number.isInteger(v)) {
     return v;
   }
+  // Google Sheets auto-formats numbers like "10" inside a date-context column
+  // into Date objects on xlsx export (cellDates:true). Without this branch,
+  // a header cell that started life as "10" ends up as Date and the parser
+  // silently drops the whole column — that's the "day 10 not syncing" bug.
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    const d = v.getUTCDate();
+    if (d >= 1 && d <= 31) return d;
+  }
   // Reuse the same lenient numeric coercion the data cells use, then check
   // the result is a whole number in [1, 31].
   const n = coerceNumeric(v);
@@ -116,6 +124,91 @@ const buildHeaderMap = (sheet, range, headerRow) => {
     }
   }
   return { headers, dayCols };
+};
+
+// Sniff the first few data rows of a column and classify it. Used as a
+// positional fallback when a sheet has lost its header labels. Returns one
+// of: 'accountId' | 'arabicName' | 'englishName' | 'serial' | 'numeric' | 'empty' | 'mixed'.
+const classifyColumnByContent = (sheet, range, headerRow, col, sampleSize = 5) => {
+  const samples = [];
+  for (let r = headerRow + 1; r <= Math.min(headerRow + sampleSize, range.e.r + 1); r++) {
+    const v = cellValue(sheet, r, col);
+    if (v == null || v === '') continue;
+    samples.push(v);
+  }
+  if (samples.length === 0) return 'empty';
+
+  let longInt = 0, smallInt = 0, arabic = 0, english = 0, otherNumeric = 0;
+  for (const v of samples) {
+    const s = String(v).trim();
+    if (/^\d{12,}$/.test(s)) { longInt++; continue; }
+    if (/^\d{1,2}$/.test(s)) { smallInt++; continue; }
+    if (typeof v === 'number' || coerceNumeric(v) !== null) { otherNumeric++; continue; }
+    if (/^[؀-ۿ\s\-_.]+$/.test(s)) { arabic++; continue; }
+    if (/[A-Za-z]/.test(s)) { english++; continue; }
+  }
+  const total = samples.length;
+  if (longInt / total >= 0.6) return 'accountId';
+  if (arabic / total >= 0.6) return 'arabicName';
+  if (english / total >= 0.4) return 'englishName';
+  if (smallInt / total >= 0.6) return 'serial';
+  if ((smallInt + otherNumeric) / total >= 0.6) return 'numeric';
+  return 'mixed';
+};
+
+// When a sheet's header labels are missing (e.g. someone wiped them by
+// accident), fall back to inferring identity columns from the data itself.
+// Only fills slots that aren't already detected — never overrides real
+// headers. Returns { idCol, arNameCol, enNameCol } each either a 1-based
+// column index or null.
+const inferIdentityColumnsPositionally = (sheet, range, headerRow, dayCols, existing) => {
+  if (dayCols.size === 0) return existing;
+  const sortedDays = [...dayCols.keys()].sort((a, b) => a - b);
+  const firstDayCol = dayCols.get(sortedDays[0]);
+  const out = { ...existing };
+
+  for (let c = 1; c < firstDayCol; c++) {
+    if (out.idCol === c || out.arNameCol === c || out.enNameCol === c) continue;
+    const cls = classifyColumnByContent(sheet, range, headerRow, c);
+    if (cls === 'accountId' && !out.idCol) out.idCol = c;
+    else if (cls === 'arabicName' && !out.arNameCol) out.arNameCol = c;
+    else if (cls === 'englishName' && !out.enNameCol) out.enNameCol = c;
+    // 'serial', 'empty', 'numeric', 'mixed' are ignored — they aren't identity columns.
+  }
+  return out;
+};
+
+// Some sheets only label a contiguous tail of day columns (e.g. days 8..31)
+// because earlier days were filled in before the header row was completed.
+// If the labelled day range starts above 1 AND the columns immediately to
+// the left of the first labelled day contain numeric data, infer those as
+// the missing earlier days. Validates with the data itself so we don't
+// mis-classify an identity column as a day column.
+const inferMissingLowDays = (sheet, range, headerRow, dayCols) => {
+  if (dayCols.size === 0) return;
+  const sortedDays = [...dayCols.keys()].sort((a, b) => a - b);
+  const minDay = sortedDays[0];
+  if (minDay <= 1) return;
+  const minDayCol = dayCols.get(minDay);
+
+  for (let d = minDay - 1; d >= 1; d--) {
+    const col = minDayCol - (minDay - d);
+    if (col < 1) break;
+
+    // Verify the column looks like a day column — most cells should be
+    // null or numeric in the [0, 1000] range. Stop the moment we see
+    // non-numeric content (we've hit an identity column).
+    let numeric = 0, nonNumeric = 0;
+    for (let r = headerRow + 1; r <= Math.min(headerRow + 5, range.e.r + 1); r++) {
+      const v = cellValue(sheet, r, col);
+      if (v == null || v === '') continue;
+      if (typeof v === 'number') { numeric++; continue; }
+      const n = coerceNumeric(v);
+      if (n !== null && n >= 0 && n <= 1000) numeric++; else nonNumeric++;
+    }
+    if (nonNumeric > 0) break;
+    if (numeric > 0) dayCols.set(d, col);
+  }
 };
 
 // Pull the year out of the tab name itself ("February 2025" → 2025). The tab
@@ -191,6 +284,16 @@ const safeNumber = (v) => {
 
 const safeNullableNumber = (v) => {
   if (v === undefined || v === null || v === '') return null;
+  // Recover from xlsx's cellDates:true mode silently turning small integers
+  // (typed as plain numbers into a date-formatted column in Google Sheets)
+  // into Date objects. For day cells the user typed N — Sheets stored serial
+  // N — xlsx returned Date(1900-01-(N+offset)) whose getUTCDate() is N for
+  // N ≤ 31. The year<1910 sentinel distinguishes these synthetic Excel-epoch
+  // dates from a real date (which we'd want to ignore as a non-number).
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    if (v.getUTCFullYear() < 1910) return v.getUTCDate();
+    return null;
+  }
   return coerceNumeric(v);
 };
 
@@ -230,12 +333,27 @@ function parseRepsExcel(buffer) {
       continue;
     }
 
-    const idCol = headers.get('id #') || headers.get('account id');
-    const arNameCol = headers.get('id name') || headers.get('account user');
-    const enNameCol = headers.get('name');
+    // If the labelled day range starts above 1, fill in the missing low days
+    // by inspecting the columns immediately to the left of the first labelled day.
+    inferMissingLowDays(sheet, range, headerRow, dayCols);
+
+    let idCol = headers.get('id #') || headers.get('account id');
+    let arNameCol = headers.get('id name') || headers.get('account user');
+    let enNameCol = headers.get('name');
     const joinCol = headers.get('joining date');
     const totalCol = headers.get('total orders') || headers.get('total order of month per rider');
     const wdCol = headers.get('total working days');
+
+    // If headers are damaged/missing, sniff column types from the data itself.
+    // Only fills slots that aren't already detected via real headers.
+    if (!enNameCol || !idCol || !arNameCol) {
+      const inferred = inferIdentityColumnsPositionally(sheet, range, headerRow, dayCols, {
+        idCol: idCol || null, arNameCol: arNameCol || null, enNameCol: enNameCol || null,
+      });
+      idCol = idCol || inferred.idCol;
+      arNameCol = arNameCol || inferred.arNameCol;
+      enNameCol = enNameCol || inferred.enNameCol;
+    }
 
     if (!enNameCol && !idCol && !arNameCol) {
       warnings.push(`Sheet "${sheetName}" missing identity columns — skipped`);
@@ -256,11 +374,22 @@ function parseRepsExcel(buffer) {
       const enName = enNameCol ? cellValue(sheet, r, enNameCol) : undefined;
       const arName = arNameCol ? cellValue(sheet, r, arNameCol) : undefined;
 
-      // Hard stop on the totals row — the new Keeta layout marks the end of
-      // the agent list with column A = "Total orders of day" (or any cell on
-      // this row mentioning that phrase). Not a rep — bail out cleanly.
-      const aColRaw = cellValue(sheet, r, 1);
-      if (typeof aColRaw === 'string' && aColRaw.toLowerCase().includes('total orders of day')) break;
+      // Hard stop on the totals row — the Keeta layout marks the end of the
+      // agent list with a "Total orders of day" cell. Originally this lived
+      // in column A, but sheets that prepend a serial-number column shift it
+      // to col D (the NAME slot). Scan the first ~10 columns so we catch it
+      // regardless of layout — without this, the totals row is read as a fake
+      // rep and the dashboard double-counts every day.
+      let isTotalsRow = false;
+      const totalsScanCols = Math.min(10, range.e.c + 1);
+      for (let cc = 1; cc <= totalsScanCols; cc++) {
+        const v = cellValue(sheet, r, cc);
+        if (typeof v === 'string' && v.toLowerCase().includes('total orders of day')) {
+          isTotalsRow = true;
+          break;
+        }
+      }
+      if (isTotalsRow) break;
 
       if (isBlank(idVal) && isBlank(enName) && isBlank(arName)) {
         emptyStreak++;

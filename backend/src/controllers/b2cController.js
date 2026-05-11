@@ -384,6 +384,144 @@ exports.deleteRep = async (req, res) => {
   }
 };
 
+// Live-parses the configured Google Sheet RIGHT NOW and returns the full
+// per-tab parse diagnostic — used to figure out why a specific month tab
+// isn't showing up on the dashboard. Doesn't write anything to MongoDB.
+exports.diagnoseSheetParse = async (req, res) => {
+  try {
+    const B2CGoogleSheetSync = require('../models/B2CGoogleSheetSync');
+    const { downloadSheet } = require('../services/b2cGoogleSheetSyncService');
+    const { parseRepsExcel } = require('../utils/b2cExcelParser');
+    const XLSX = require('xlsx');
+
+    const config = req.params.id
+      ? await B2CGoogleSheetSync.findById(req.params.id).lean()
+      : await B2CGoogleSheetSync.findOne({}).lean();
+    if (!config) return res.status(404).json({ message: 'No sync config found' });
+    if (!config.sheetId) return res.status(400).json({ message: 'Config has no sheetId' });
+
+    const buffer = await downloadSheet(config.sheetId);
+    const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const sheetNames = wb.SheetNames;
+
+    const parsed = parseRepsExcel(buffer);
+
+    // For every sheet that matched a month tab, dump the first 15 rows × first
+    // 15 columns. That's enough to spot misnamed identity columns, shifted
+    // header rows, or merged cells. We do this raw (not via the parser) so we
+    // see exactly what xlsx sees.
+    const dumpFirstRows = (sheet) => {
+      if (!sheet || !sheet['!ref']) return null;
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+      const out = [];
+      const maxR = Math.min(15, range.e.r + 1);
+      const maxC = Math.min(15, range.e.c + 1);
+      for (let r = 0; r <= maxR; r++) {
+        const row = [];
+        for (let c = 0; c <= maxC; c++) {
+          const ref = XLSX.utils.encode_cell({ r, c });
+          const cell = sheet[ref];
+          row.push(cell == null ? null : (cell.v == null ? null : String(cell.v).slice(0, 40)));
+        }
+        out.push(row);
+      }
+      return out;
+    };
+
+    const tabs = sheetNames.map((name) => {
+      const isMonthTab = !parsed.ignoredSheets.includes(name);
+      return {
+        sheetName: name,
+        matchedAsMonth: isMonthTab,
+        firstRows: isMonthTab ? dumpFirstRows(wb.Sheets[name]) : null,
+      };
+    });
+
+    res.json({
+      sheetId: config.sheetId,
+      sheetNamesInWorkbook: sheetNames,
+      monthsDetected: parsed.monthsDetected,
+      ignoredSheets: parsed.ignoredSheets,
+      warnings: parsed.warnings,
+      tabs,
+    });
+  } catch (error) {
+    console.error('[B2C diagnose-sheet] error:', error);
+    res.status(500).json({ message: error.message || 'Sheet diagnostic failed' });
+  }
+};
+
+// Returns a one-shot snapshot of B2C state — sync configs, DB counts, latest
+// dateKeys, and a per-month breakdown. Use this when "no data is showing"
+// to figure out whether the bug is in ingestion, in storage, or in display.
+exports.getSystemDiagnostic = async (req, res) => {
+  try {
+    const B2CGoogleSheetSync = require('../models/B2CGoogleSheetSync');
+
+    const [configs, totalOrders, totalReps, totalProjects] = await Promise.all([
+      B2CGoogleSheetSync.find({})
+        .populate('project', 'name')
+        .populate('branch', 'name')
+        .lean(),
+      B2CDailyOrder.countDocuments({}),
+      B2CRep.countDocuments({}),
+      B2CProject.countDocuments({}),
+    ]);
+
+    let monthBreakdown = [];
+    let earliestDateKey = null;
+    let latestDateKey = null;
+    if (totalOrders > 0) {
+      const agg = await B2CDailyOrder.aggregate([
+        { $group: { _id: { year: '$year', month: '$month' }, count: { $sum: 1 }, totalOrders: { $sum: { $ifNull: ['$orders', 0] } }, days: { $addToSet: '$day' } } },
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]);
+      monthBreakdown = agg.map((m) => ({
+        year: m._id.year,
+        month: m._id.month,
+        rowCount: m.count,
+        totalOrders: m.totalOrders,
+        uniqueDays: m.days.length,
+        days: m.days.sort((a, b) => a - b),
+      }));
+      const oldestDoc = await B2CDailyOrder.findOne({}, { dateKey: 1 }).sort({ dateKey: 1 }).lean();
+      const newestDoc = await B2CDailyOrder.findOne({}, { dateKey: 1 }).sort({ dateKey: -1 }).lean();
+      earliestDateKey = oldestDoc?.dateKey || null;
+      latestDateKey = newestDoc?.dateKey || null;
+    }
+
+    res.json({
+      now: new Date().toISOString(),
+      counts: {
+        totalOrders,
+        totalReps,
+        totalProjects,
+        totalConfigs: configs.length,
+      },
+      configs: configs.map((c) => ({
+        _id: String(c._id),
+        sheetId: c.sheetId || null,
+        project: c.project?.name || null,
+        branch: c.branch?.name || null,
+        intervalMinutes: c.intervalMinutes,
+        syncMode: c.syncMode,
+        lastSyncAt: c.lastSyncAt,
+        lastSyncStatus: c.lastSyncStatus,
+        lastSyncMessage: c.lastSyncMessage,
+        lastSyncStats: c.lastSyncStats,
+        lastSheetHash: c.lastSheetHash ? `${c.lastSheetHash.slice(0, 8)}…` : null,
+      })),
+      data: {
+        earliestDateKey,
+        latestDateKey,
+        monthBreakdown,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Diagnostic failed' });
+  }
+};
+
 // Diagnostic endpoint: shows the current rep set, daily-order counts, and
 // any duplicate clusters that would be merged on the next sync. Useful when
 // the dashboard's totals look wrong and we need to see what's actually in
@@ -1339,6 +1477,47 @@ exports.getRepEvaluations = async (req, res) => {
   }
 };
 
+// Removes any rep whose name looks like a sheet footer label rather than a
+// person ("Total orders of day", "Average", etc.). Older parser runs wrote
+// these in when a sheet's totals row got mis-classified as a data row, and
+// they double-count every day on the dashboard. Safe to run repeatedly —
+// no-op when there are no fake reps.
+exports.cleanupFakeReps = async (req, res) => {
+  try {
+    const FAKE_NAME_PATTERNS = [
+      /total orders of day/i,
+      /total order of day/i,
+      /^total$/i,
+      /^totals?$/i,
+      /^average\b/i,
+      /^avg\b/i,
+      /^sum\b/i,
+      /^grand total/i,
+    ];
+    const matches = (s) => FAKE_NAME_PATTERNS.some((re) => re.test(String(s || '').trim()));
+
+    const allReps = await B2CRep.find({}, 'englishName arabicName').lean();
+    const fakeReps = allReps.filter((r) => matches(r.englishName) || matches(r.arabicName));
+    const fakeIds = fakeReps.map((r) => r._id);
+
+    let ordersDeleted = 0;
+    if (fakeIds.length > 0) {
+      const ord = await B2CDailyOrder.deleteMany({ rep: { $in: fakeIds } });
+      ordersDeleted = ord.deletedCount;
+      await B2CRep.deleteMany({ _id: { $in: fakeIds } });
+    }
+
+    res.json({
+      removedReps: fakeReps.map((r) => ({ _id: String(r._id), englishName: r.englishName, arabicName: r.arabicName })),
+      removedRepCount: fakeReps.length,
+      ordersDeleted,
+    });
+  } catch (error) {
+    console.error('[B2C cleanup-fake-reps] error:', error);
+    res.status(500).json({ message: error.message || 'Cleanup failed' });
+  }
+};
+
 // Wipe B2C data — used to reset before fresh re-upload.
 // Body: { scope: 'orders' | 'all' }
 //   - 'orders': delete all daily orders + upload history (keeps reps + projects)
@@ -1357,6 +1536,14 @@ exports.cleanupB2CData = async (req, res) => {
     if (scope === 'all') {
       repsDeleted = await B2CRep.deleteMany({});
     }
+
+    // Reset every Google Sheet sync config's hash cache. Without this the
+    // cron's hash gate sees the unchanged sheet bytes and short-circuits with
+    // "No changes detected" forever — leaving the DB empty until somebody
+    // manually clicks "Sync Now". After a cleanup we WANT the next sync to
+    // re-ingest from scratch.
+    const B2CGoogleSheetSync = require('../models/B2CGoogleSheetSync');
+    await B2CGoogleSheetSync.updateMany({}, { $unset: { lastSheetHash: 1 } });
 
     await logAudit({
       user: req.user._id,

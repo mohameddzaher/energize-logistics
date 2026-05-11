@@ -191,13 +191,25 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   // last successful sync. The cron fires every minute by default, so this
   // saves a parse + (often a no-op) bulkWrite when nobody's editing.
   // `force` flag lets the manual "Sync Now" button bypass the cache.
+  //
+  // Auto-heal: if no daily orders exist for this config's project+branch the
+  // DB is in a "needs re-ingest" state (e.g. right after a Cleanup). Bypass
+  // the hash gate so the cron picks the data back up without the user having
+  // to remember to click "Sync Now".
   const sheetHash = crypto.createHash('sha1').update(buffer).digest('hex');
   if (!force && config.lastSheetHash && config.lastSheetHash === sheetHash) {
-    await B2CGoogleSheetSync.updateOne(
-      { _id: config._id },
-      { $set: { lastSyncAt: new Date(), lastSyncStatus: 'ok', lastSyncMessage: 'No changes detected' } }
-    );
-    return { unchanged: true, durationMs: Date.now() - started };
+    const dbHasData = await B2CDailyOrder.exists({
+      project: config.project,
+      branch: config.branch,
+    });
+    if (dbHasData) {
+      await B2CGoogleSheetSync.updateOne(
+        { _id: config._id },
+        { $set: { lastSyncAt: new Date(), lastSyncStatus: 'ok', lastSyncMessage: 'No changes detected' } }
+      );
+      return { unchanged: true, durationMs: Date.now() - started };
+    }
+    console.log(`[B2C sync ${config._id}] hash unchanged but DB has no orders for this scope — re-ingesting`);
   }
 
   const parsed = parseRepsExcel(buffer);
@@ -397,6 +409,8 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
 
   const stats = {
     monthsDetected: parsed.monthsDetected,
+    ignoredSheets: parsed.ignoredSheets || [],
+    warnings: (parsed.warnings || []).slice(0, 20),
     recordsParsed: parsed.records.length,
     repsCreated: actuallyCreated,
     daysInserted: inserted,
@@ -515,4 +529,5 @@ module.exports = {
   enqueueWebhookSync,
   migrateLegacySingletonIndex,
   reconcileAllReps,
+  downloadSheet,
 };

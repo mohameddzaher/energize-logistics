@@ -28,6 +28,9 @@ router.post('/reps', authorize(...WRITE), b2cController.createRep);
 router.post('/reps/bulk-resolve', authorize(...WRITE), b2cController.bulkResolveReps);
 router.post('/reps/reconcile', authorize(...ADMIN_WRITE), b2cController.reconcileReps);
 router.get('/reps/diagnose', authorize(...READ), b2cController.diagnoseReps);
+router.get('/system-diagnostic', authorize(...READ), b2cController.getSystemDiagnostic);
+router.get('/diagnose-sheet', authorize(...READ), b2cController.diagnoseSheetParse);
+router.get('/diagnose-sheet/:id', authorize(...READ), b2cController.diagnoseSheetParse);
 router.put('/reps/:id', authorize(...WRITE), b2cController.updateRep);
 router.delete('/reps/:id', authorize(...WRITE), b2cController.deleteRep);
 
@@ -47,6 +50,7 @@ router.get('/uploads', authorize(...READ), b2cController.getUploadHistory);
 
 // Cleanup — destructive; only super_admin and b2c_head can wipe data
 router.post('/cleanup', authorize(...ADMIN_WRITE), b2cController.cleanupB2CData);
+router.post('/cleanup-fake-reps', authorize(...ADMIN_WRITE), b2cController.cleanupFakeReps);
 
 // Google Sheet sync — list, CRUD, per-config sync trigger and setup script.
 router.get('/google-sheet/configs', authorize(...READ), b2cController.getSheetConfigs);

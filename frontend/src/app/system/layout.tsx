@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { LanguageProvider, useLanguage } from '@/context/LanguageContext';
-import { getLayoutTranslations, NAV_LABEL_KEYS } from '@/lib/translations';
+import { getLayoutTranslations, NAV_LABEL_KEYS, getSectionLabel, getRoleLabel } from '@/lib/translations';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Users, FileText, CreditCard, Phone,
@@ -102,11 +102,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/operations/dispatch-sheets', label: L.dispatchSheets, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'moderator'], section: 'Operations' },
-    { href: '/system/vehicle-analytics', label: lang === 'ar' ? 'تحليلات المركبات' : 'Vehicle Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
-    { href: '/system/vehicle-analytics/fuel', label: lang === 'ar' ? 'تحليل الوقود' : 'Fuel Analysis', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
-    { href: '/system/vehicle-analytics/tracking', label: lang === 'ar' ? 'تتبع GPS' : 'GPS Tracking', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
-    { href: '/system/vehicle-analytics/trips', label: lang === 'ar' ? 'الرحلات' : 'Trips', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
-    { href: '/system/vehicle-analytics/upload', label: lang === 'ar' ? 'رفع البيانات' : 'Data Upload', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    { href: '/system/vehicle-analytics', label: L.vehicleAnalytics, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    { href: '/system/vehicle-analytics/fuel', label: L.fuelAnalysis, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    { href: '/system/vehicle-analytics/tracking', label: L.gpsTracking, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    { href: '/system/vehicle-analytics/trips', label: L.trips, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    { href: '/system/vehicle-analytics/upload', label: L.dataUpload, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
     // B2C
     { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
     { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
@@ -119,7 +119,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/workshop/dashboard', label: L.workshopDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'], section: 'Workshop' },
     { href: '/system/workshop/tasks', label: L.workshopTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
     { href: '/system/workshop/inventory', label: L.inventory, icon: <Package className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'], section: 'Workshop' },
-    { href: '/system/workshop/maintenance-types', label: lang === 'ar' ? 'أنواع الصيانة' : 'Maintenance Types', icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager'], section: 'Workshop' },
+    { href: '/system/workshop/maintenance-types', label: L.maintenanceTypes, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager'], section: 'Workshop' },
     // Admin
     { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'], section: 'Admin' },
@@ -200,7 +200,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
           onClick={() => toggleSection(section)}
           className="w-full flex items-center justify-between gap-2 px-3 py-2.5 mt-2 rounded-lg text-xs font-bold text-white uppercase tracking-wide bg-gray-700/40 hover:bg-gray-700/70 transition-colors"
         >
-          <span>{section}</span>
+          <span>{getSectionLabel(section, lang)}</span>
           {isExpanded
             ? <ChevronDown className="w-4 h-4 text-[#f37121]" />
             : (isRTL ? <ChevronLeft className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />)}
@@ -236,7 +236,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
               <span className="text-white font-bold text-sm">Energize CFS</span>
             </Link>
           )}
-          <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="text-gray-400 hover:text-white p-1" title="Toggle sidebar">
+          <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="text-gray-400 hover:text-white p-1" title={L.toggleSidebar}>
             <Menu className="w-5 h-5" />
           </button>
         </div>
@@ -265,7 +265,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
           {sidebarOpen && (
             <div className="mb-3">
               <p className="text-white text-sm font-medium">{user.firstName} {user.lastName}</p>
-              <p className="text-gray-400 text-xs capitalize">{user.role.replace('_', ' ')}</p>
+              <p className="text-gray-400 text-xs capitalize">{getRoleLabel(user.role, lang)}</p>
             </div>
           )}
           <button type="button" onClick={handleLogout} className="flex items-center gap-2 text-gray-400 hover:text-red-400 transition-colors text-sm w-full">
@@ -280,7 +280,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         {/* Top Bar */}
         <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-3">
-            <button type="button" onClick={() => setMobileMenuOpen(true)} className="lg:hidden text-gray-400 hover:text-white" title="Open menu">
+            <button type="button" onClick={() => setMobileMenuOpen(true)} className="lg:hidden text-gray-400 hover:text-white" title={L.openMenu}>
               <Menu className="w-6 h-6" />
             </button>
             <h2 className="text-white font-semibold text-lg hidden sm:block">
@@ -292,7 +292,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
             {/* Language Toggle */}
             <button type="button" onClick={toggleLang}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-600 hover:text-white transition-colors"
-              title={lang === 'en' ? 'التبديل للعربية' : 'Switch to English'}>
+              title={lang === 'en' ? L.switchToArabic : L.switchToEnglish}>
               <Languages className="w-4 h-4" />
               <span className="text-xs">{lang === 'en' ? 'عربي' : 'EN'}</span>
             </button>
@@ -373,7 +373,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
             >
               <div className="flex items-center justify-between px-4 py-4 border-b border-gray-700">
                 <span className="text-white font-bold">Energize CFS</span>
-                <button type="button" onClick={() => setMobileMenuOpen(false)} className="text-gray-400 hover:text-white" title="Close menu">
+                <button type="button" onClick={() => setMobileMenuOpen(false)} className="text-gray-400 hover:text-white" title={L.closeMenu}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -384,7 +384,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
               </nav>
               <div className="border-t border-gray-700 p-4">
                 <p className="text-white text-sm">{user.firstName} {user.lastName}</p>
-                <p className="text-gray-400 text-xs capitalize mb-3">{user.role.replace('_', ' ')}</p>
+                <p className="text-gray-400 text-xs capitalize mb-3">{getRoleLabel(user.role, lang)}</p>
                 <button type="button" onClick={handleLogout} className="flex items-center gap-2 text-gray-400 hover:text-red-400 text-sm">
                   <LogOut className="w-4 h-4" />
                   <span>{L.logout}</span>

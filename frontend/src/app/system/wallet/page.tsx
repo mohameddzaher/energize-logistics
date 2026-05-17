@@ -108,6 +108,15 @@ export default function WalletPage() {
   const [branchUsers, setBranchUsers] = useState<{ _id: string; firstName: string; lastName: string }[]>([]);
   const [selectedUser, setSelectedUser] = useState('');
 
+  // List of all branches for the Purchase modal's Branch dropdown
+  // (loaded for everyone, not just super admin, so operations can pick a real branch).
+  const [branchList, setBranchList] = useState<{ _id: string; name: string }[]>([]);
+  useEffect(() => {
+    api.get<any>('/api/branches').then((data) => {
+      setBranchList(data.branches || data || []);
+    }).catch(() => { /* dropdown can stay empty */ });
+  }, []);
+
   // Transaction modal
   const [showTxModal, setShowTxModal] = useState(false);
   const [txType, setTxType] = useState<'collection' | 'expense' | 'purchase'>('collection');
@@ -127,6 +136,14 @@ export default function WalletPage() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closeForm, setCloseForm] = useState({ actualCash: '', differenceReason: '', differenceNotes: '' });
   const [closing, setClosing] = useState(false);
+
+  // Export modal
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportMode, setExportMode] = useState<'single' | 'range'>('single');
+  const [exportFrom, setExportFrom] = useState(getTodayStr());
+  const [exportTo, setExportTo] = useState(getTodayStr());
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   // Confirm modal (replaces browser confirm())
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -167,6 +184,12 @@ export default function WalletPage() {
   // ─── LOAD USERS FOR BRANCH ─────────────────────────────────
   useEffect(() => {
     if (!canSelectBranch || !selectedBranch) return;
+    // Clear stale wallet/user immediately so we don't show one user's data
+    // under another branch's filter while the new user list loads.
+    setWallet(null);
+    setTransactions([]);
+    setBranchUsers([]);
+    setSelectedUser('');
     api.get<any>(`/api/users?branch=${selectedBranch}`).then((data) => {
       const users = (data.users || data || []).filter((u: any) => ['operations', 'operations_manager'].includes(u.role));
       setBranchUsers(users);
@@ -174,6 +197,13 @@ export default function WalletPage() {
       else setSelectedUser('');
     }).catch((err: any) => { setActionError(err?.message || 'Failed to load users'); });
   }, [canSelectBranch, selectedBranch]);
+
+  // Clear stale data the moment the user filter flips, before the fetch resolves
+  useEffect(() => {
+    if (!canSelectBranch) return;
+    setWallet(null);
+    setTransactions([]);
+  }, [selectedUser, canSelectBranch]);
 
   // ─── FETCH WALLET ──────────────────────────────────────────
   const fetchWallet = useCallback(async (showSpinner = true) => {
@@ -773,44 +803,94 @@ export default function WalletPage() {
     }
   };
 
-  const handleExportExcel = () => {
+  // Column definitions shared between single-day and range exports.
+  const walletSummaryColumns = [
+    { header: 'Branch', key: 'branch.name', width: 20 },
+    { header: 'User', key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
+    { header: 'Date', key: 'date', width: 12 },
+    { header: 'Opening Balance (SAR)', key: 'openingBalance', transform: fmt.money, width: 20 },
+    { header: 'Collections (SAR)', key: 'totalCollections', transform: fmt.money, width: 18 },
+    { header: 'Expenses (SAR)', key: 'totalExpenses', transform: fmt.money, width: 18 },
+    { header: 'Purchases (SAR)', key: 'totalPurchases', transform: fmt.money, width: 18 },
+    { header: 'Closing Balance (SAR)', key: 'closingBalance', transform: fmt.money, width: 20 },
+    { header: 'Status', key: 'isClosed', transform: (v: any) => v ? 'Closed' : 'Open', width: 10 },
+    { header: 'Actual Cash (SAR)', key: 'actualCash', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : 'Not Closed'), width: 18 },
+    { header: 'Cash Difference (SAR)', key: 'cashDifference', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : 'Not Closed'), width: 20 },
+  ];
+  const txColumns = [
+    { header: 'Date', key: 'date', width: 12 },
+    { header: 'Time', key: 'createdAt', transform: (v: any) => v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '', width: 8 },
+    { header: 'Type', key: 'type', transform: (v: any) => v ? v.charAt(0).toUpperCase() + v.slice(1) : '', width: 12 },
+    { header: 'Amount (SAR)', key: 'amount', transform: fmt.money, width: 15 },
+    { header: 'Customer', key: 'customer', transform: (v: any) => v ? `${v.companyName} (${v.customerNumber})` : '', width: 25 },
+    { header: 'Invoice #', key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
+    { header: 'Invoice Amount (SAR)', key: 'invoice', transform: (v: any) => v?.amount != null ? fmt.money(v.amount) : '', width: 18 },
+    { header: 'Invoice Balance (SAR)', key: 'invoice', transform: (v: any) => v?.balance != null ? fmt.money(v.balance) : '', width: 18 },
+    { header: 'Delivery Statement #', key: 'deliveryStatementNumber', transform: (v: any, row: any) => v || row?.purchaseDeliveryStatementNumber || '', width: 20 },
+    { header: 'Branch', key: 'purchaseBranch', transform: (v: any, row: any) => v || row?.operationDetails?.branch || '', width: 16 },
+    { header: 'Vendor', key: 'vendor', transform: (v: any, row: any) => v?.name || row?.vendorName || '', width: 18 },
+    { header: 'Driver', key: 'driver', transform: (v: any, row: any) => v?.name || row?.driverName || row?.purchaseDriverName || '', width: 18 },
+    { header: 'Category', key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
+    { header: 'Item / Description', key: 'itemName', transform: (v: any, row: any) => v || row?.description || '', width: 22 },
+    { header: 'Receipt #', key: 'purchaseReceiptNumber', width: 15 },
+    { header: 'Reference', key: 'reference', width: 15 },
+    { header: 'Notes', key: 'notes', width: 25 },
+    { header: 'Flagged', key: 'isFlagged', transform: fmt.yesNo, width: 8 },
+  ];
+
+  // Single-day export — uses already-loaded wallet + transactions.
+  const exportSingleDay = () => {
     if (!wallet) return;
-    const walletSummaryColumns = [
-      { header: 'Branch', key: 'branch.name', width: 20 },
-      { header: 'User', key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
-      { header: 'Date', key: 'date', width: 12 },
-      { header: 'Opening Balance (SAR)', key: 'openingBalance', transform: fmt.money, width: 20 },
-      { header: 'Collections (SAR)', key: 'totalCollections', transform: fmt.money, width: 18 },
-      { header: 'Expenses (SAR)', key: 'totalExpenses', transform: fmt.money, width: 18 },
-      { header: 'Purchases (SAR)', key: 'totalPurchases', transform: fmt.money, width: 18 },
-      { header: 'Closing Balance (SAR)', key: 'closingBalance', transform: fmt.money, width: 20 },
-      { header: 'Status', key: 'isClosed', transform: (v: any) => v ? 'Closed' : 'Open', width: 10 },
-      { header: 'Actual Cash (SAR)', key: 'actualCash', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : 'Not Closed'), width: 18 },
-      { header: 'Cash Difference (SAR)', key: 'cashDifference', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : 'Not Closed'), width: 20 },
-    ];
-    const txColumns = [
-      { header: 'Date', key: 'createdAt', transform: fmt.date, width: 12 },
-      { header: 'Time', key: 'createdAt', transform: (v: any) => v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '', width: 8 },
-      { header: 'Type', key: 'type', transform: (v: any) => v ? v.charAt(0).toUpperCase() + v.slice(1) : '', width: 12 },
-      { header: 'Amount (SAR)', key: 'amount', transform: fmt.money, width: 15 },
-      { header: 'Customer', key: 'customer', transform: (v: any) => v ? `${v.companyName} (${v.customerNumber})` : '', width: 25 },
-      { header: 'Invoice #', key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
-      { header: 'Invoice Amount (SAR)', key: 'invoice', transform: (v: any) => v?.amount != null ? fmt.money(v.amount) : '', width: 18 },
-      { header: 'Invoice Balance (SAR)', key: 'invoice', transform: (v: any) => v?.balance != null ? fmt.money(v.balance) : '', width: 18 },
-      { header: 'Delivery Statement #', key: 'deliveryStatementNumber', width: 20 },
-      { header: 'Vendor', key: 'vendor', transform: (v: any) => v?.name || '', width: 18 },
-      { header: 'Driver', key: 'driver', transform: (v: any) => v?.name || '', width: 18 },
-      { header: 'Category', key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
-      { header: 'Item / Description', key: 'itemName', width: 22 },
-      { header: 'Reference', key: 'reference', width: 15 },
-      { header: 'Notes', key: 'notes', width: 25 },
-      { header: 'Flagged', key: 'isFlagged', transform: fmt.yesNo, width: 8 },
-    ];
     const branchName = wallet?.branch?.name || 'wallet';
     exportMultiSheet([
       { name: 'Wallet Summary', data: [wallet], columns: walletSummaryColumns },
       { name: 'Transaction Log', data: transactions, columns: txColumns },
     ], `Wallet_${branchName}_${selectedDate}`);
+  };
+
+  // Range export — fetches every wallet + transaction in the range, then exports.
+  const exportRange = async () => {
+    setExporting(true);
+    setExportError('');
+    try {
+      const targetUserId = canSelectBranch && selectedUser ? selectedUser : (user?._id || '');
+      const params = new URLSearchParams({ dateFrom: exportFrom, dateTo: exportTo });
+      if (targetUserId) params.set('userId', targetUserId);
+      const data = await api.get<any>(`/api/wallet/range?${params.toString()}`);
+      const wallets = data.wallets || [];
+      const txns = data.transactions || [];
+      if (wallets.length === 0 && txns.length === 0) {
+        setExportError(L.noDataInRange);
+        setExporting(false);
+        return;
+      }
+      const branchName = wallets[0]?.branch?.name || wallet?.branch?.name || 'wallet';
+      exportMultiSheet([
+        { name: 'Wallet Summary', data: wallets, columns: walletSummaryColumns },
+        { name: 'Transaction Log', data: txns, columns: txColumns },
+      ], `Wallet_${branchName}_${exportFrom}_to_${exportTo}`);
+      setShowExportModal(false);
+    } catch (err: any) {
+      setExportError(err?.message || 'Failed to export');
+    }
+    setExporting(false);
+  };
+
+  const openExportModal = () => {
+    setExportMode('single');
+    setExportFrom(selectedDate);
+    setExportTo(selectedDate);
+    setExportError('');
+    setShowExportModal(true);
+  };
+
+  const handleExportClick = () => {
+    if (exportMode === 'single') {
+      exportSingleDay();
+      setShowExportModal(false);
+    } else {
+      exportRange();
+    }
   };
 
   const openTxModal = (type: 'collection' | 'expense' | 'purchase') => {
@@ -875,7 +955,7 @@ export default function WalletPage() {
             className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="Select date" />
           <button type="button" onClick={() => setSelectedDate(getTodayStr())}
             className="px-3 py-2 rounded-lg bg-gray-700 text-[#f37121] text-sm font-medium hover:bg-gray-600 transition-colors">{L.today}</button>
-          <button type="button" onClick={handleExportExcel} disabled={transactions.length === 0}
+          <button type="button" onClick={openExportModal} disabled={!wallet}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50" title={L.export}>
             <Download className="w-4 h-4" /> {L.export}
           </button>
@@ -989,6 +1069,7 @@ export default function WalletPage() {
                 <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.amount}</th>
                 <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.details}</th>
                 <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.deliveryStatementNumber}</th>
+                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.branch}</th>
                 <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.client}</th>
                 <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.from}</th>
                 <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.to}</th>
@@ -1003,7 +1084,7 @@ export default function WalletPage() {
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={14} className="text-center text-gray-400 py-12">{L.noTransactions}</td></tr>
+                <tr><td colSpan={15} className="text-center text-gray-400 py-12">{L.noTransactions}</td></tr>
               ) : transactions.map((tx) => {
                 const cfg = TYPE_CONFIG[tx.type];
                 const Icon = cfg.icon;
@@ -1032,10 +1113,11 @@ export default function WalletPage() {
                       {tx.itemName && <div>{tx.itemName}</div>}
                       {tx.purchaseDriverName && <div>{L.driver}: {tx.purchaseDriverName}</div>}
                       {tx.purchaseReceiptNumber && <div>{L.receipt}: {tx.purchaseReceiptNumber}</div>}
-                      {tx.purchaseBranch && <div>{L.branch}: {tx.purchaseBranch}</div>}
                     </td>
                     {/* Delivery Statement # — its own column */}
                     <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.deliveryStatementNumber || tx.purchaseDeliveryStatementNumber || '—'}</td>
+                    {/* Branch — show typed branch first, fall back to workflow branch */}
+                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.purchaseBranch || tx.operationDetails?.branch || '—'}</td>
                     {/* Operation Details — each in its own column */}
                     <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.operationDetails?.client || '—'}</td>
                     <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.operationDetails?.from || '—'}</td>
@@ -1170,6 +1252,8 @@ export default function WalletPage() {
                       <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatementNumber} *</label>
                       <div className="flex gap-2">
                         <input type="text" value={purchaseReportSearch}
+                          name="purchaseDeliveryStatementNumber"
+                          autoComplete="off"
                           onChange={(e) => { setPurchaseReportSearch(e.target.value); setTxForm((f) => ({ ...f, purchaseDeliveryStatementNumber: e.target.value })); }}
                           onKeyDown={(e) => e.key === 'Enter' && handlePurchaseReportSearch()}
                           className="flex-1 px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDeliveryStatement} />
@@ -1193,20 +1277,32 @@ export default function WalletPage() {
                     <div>
                       <label className="text-gray-400 text-xs mb-1 block">{L.driverName}</label>
                       <input type="text" value={txForm.purchaseDriverName}
+                        name="purchaseDriverName"
+                        autoComplete="off"
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseDriverName: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDriverName} />
                     </div>
                     <div>
                       <label className="text-gray-400 text-xs mb-1 block">{L.receiptNumber}</label>
                       <input type="text" value={txForm.purchaseReceiptNumber}
+                        name="purchaseReceiptNumber"
+                        autoComplete="off"
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseReceiptNumber: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterReceiptNumber} />
                     </div>
                     <div>
                       <label className="text-gray-400 text-xs mb-1 block">{L.branch}</label>
-                      <input type="text" value={txForm.purchaseBranch}
+                      <select
+                        value={txForm.purchaseBranch}
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseBranch: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterBranchName} />
+                        title={L.branch}
+                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      >
+                        <option value="">{L.enterBranchName}</option>
+                        {branchList.map((b) => (
+                          <option key={b._id} value={b.name}>{b.name}</option>
+                        ))}
+                      </select>
                     </div>
                   </>
                 )}
@@ -1266,8 +1362,12 @@ export default function WalletPage() {
                 {editingTx.type === 'collection' && (
                   <>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatement}</label>
+                      <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatementNumber}</label>
                       <input type="text" value={editForm.deliveryStatementNumber || ''}
+                        name="deliveryStatementNumber"
+                        autoComplete="off"
+                        title={L.deliveryStatementNumber}
+                        placeholder={L.deliveryStatementNumber}
                         onChange={(e) => setEditForm((f) => ({ ...f, deliveryStatementNumber: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
@@ -1275,6 +1375,10 @@ export default function WalletPage() {
                       <div>
                         <label className="text-gray-400 text-xs mb-1 block">{L.description}</label>
                         <input type="text" value={editForm.description || ''}
+                          name="collectionDescription"
+                          autoComplete="off"
+                          title={L.description}
+                          placeholder={L.description}
                           onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
                           className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                       </div>
@@ -1285,6 +1389,10 @@ export default function WalletPage() {
                   <div>
                     <label className="text-gray-400 text-xs mb-1 block">{L.itemDescription}</label>
                     <input type="text" value={editForm.itemName || ''}
+                      name="itemName"
+                      autoComplete="off"
+                      title={L.itemDescription}
+                      placeholder={L.itemDescription}
                       onChange={(e) => setEditForm((f) => ({ ...f, itemName: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                   </div>
@@ -1292,28 +1400,52 @@ export default function WalletPage() {
                 {editingTx.type === 'purchase' && (
                   <>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatement}</label>
+                      <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatementNumber}</label>
                       <input type="text" value={editForm.purchaseDeliveryStatementNumber || ''}
+                        name="purchaseDeliveryStatementNumber"
+                        autoComplete="off"
+                        title={L.deliveryStatementNumber}
+                        placeholder={L.deliveryStatementNumber}
                         onChange={(e) => setEditForm((f) => ({ ...f, purchaseDeliveryStatementNumber: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                     <div>
                       <label className="text-gray-400 text-xs mb-1 block">{L.driverName}</label>
                       <input type="text" value={editForm.purchaseDriverName || ''}
+                        name="purchaseDriverName"
+                        autoComplete="off"
+                        title={L.driverName}
+                        placeholder={L.driverName}
                         onChange={(e) => setEditForm((f) => ({ ...f, purchaseDriverName: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                     <div>
                       <label className="text-gray-400 text-xs mb-1 block">{L.receiptNumber}</label>
                       <input type="text" value={editForm.purchaseReceiptNumber || ''}
+                        name="purchaseReceiptNumber"
+                        autoComplete="off"
+                        title={L.receiptNumber}
+                        placeholder={L.receiptNumber}
                         onChange={(e) => setEditForm((f) => ({ ...f, purchaseReceiptNumber: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                     <div>
                       <label className="text-gray-400 text-xs mb-1 block">{L.branch}</label>
-                      <input type="text" value={editForm.purchaseBranch || ''}
+                      <select
+                        value={editForm.purchaseBranch || ''}
                         onChange={(e) => setEditForm((f) => ({ ...f, purchaseBranch: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                        title={L.branch}
+                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      >
+                        <option value="">{L.enterBranchName}</option>
+                        {/* Keep the historical free-text value visible even if it doesn't match any branch */}
+                        {editForm.purchaseBranch && !branchList.some((b) => b.name === editForm.purchaseBranch) && (
+                          <option value={editForm.purchaseBranch}>{editForm.purchaseBranch}</option>
+                        )}
+                        {branchList.map((b) => (
+                          <option key={b._id} value={b.name}>{b.name}</option>
+                        ))}
+                      </select>
                     </div>
                   </>
                 )}
@@ -1399,6 +1531,79 @@ export default function WalletPage() {
         )}
       </AnimatePresence>
       </>)}
+
+      {/* ─── EXPORT MODAL ────────────────────────────────────── */}
+      <AnimatePresence>
+        {showExportModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => !exporting && setShowExportModal(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+              <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+                <h2 className="text-white font-bold text-lg flex items-center gap-2">
+                  <Download className="w-5 h-5 text-[#f37121]" /> {L.exportToExcel}
+                </h2>
+                <button type="button" onClick={() => !exporting && setShowExportModal(false)} className="text-gray-400 hover:text-white" aria-label="Close" disabled={exporting}><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setExportMode('single')}
+                    className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${exportMode === 'single' ? 'bg-[#f37121]/20 text-[#f37121] border-[#f37121]/50' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                    {L.singleDay}
+                  </button>
+                  <button type="button" onClick={() => setExportMode('range')}
+                    className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${exportMode === 'range' ? 'bg-[#f37121]/20 text-[#f37121] border-[#f37121]/50' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                    {L.dateRange}
+                  </button>
+                </div>
+
+                {exportMode === 'single' ? (
+                  <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <p className="text-gray-400 text-xs mb-1">{L.fromDate}</p>
+                    <p className="text-white font-medium">{selectedDate}</p>
+                    <p className="text-gray-500 text-xs mt-2">
+                      {wallet?.branch?.name || ''} — {wallet?.user?.firstName || ''} {wallet?.user?.lastName || ''}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-gray-400 text-xs mb-1 block">{L.fromDate}</label>
+                      <input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)}
+                        aria-label={L.fromDate}
+                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                    </div>
+                    <div>
+                      <label className="text-gray-400 text-xs mb-1 block">{L.toDate}</label>
+                      <input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)}
+                        aria-label={L.toDate}
+                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                    </div>
+                  </div>
+                )}
+
+                {exportError && (
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                    {exportError}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowExportModal(false)} disabled={exporting}
+                  className="px-4 py-2 text-gray-400 hover:text-white text-sm disabled:opacity-50">{L.cancel}</button>
+                <button type="button" onClick={handleExportClick}
+                  disabled={exporting || (exportMode === 'range' && exportFrom > exportTo)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50">
+                  {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  {exporting ? L.exportLoading : L.download}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Confirm Modal (replaces browser confirm()) */}
       <AnimatePresence>

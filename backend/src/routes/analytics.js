@@ -285,6 +285,223 @@ router.get('/credit-alerts', authorize('super_admin', 'admin', 'operations_manag
 // Overdue Invoices
 router.get('/overdue', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'moderator'), getOverdueInvoices);
 
+// Super-admin "everything at a glance" overview. Returns aggregate counts +
+// quick stats from every major module in a single response so the dashboard
+// can render a clickable grid without N round-trips. Each query is wrapped
+// in Promise.allSettled so one slow/broken module doesn't stall the others.
+//
+// Cached in-process for 30s — the dashboard refetches on view focus, so this
+// just keeps page reloads cheap during quick navigation.
+const SUPER_OVERVIEW_TTL = 30 * 1000;
+let superOverviewCache = { at: 0, key: '', data: null };
+
+router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res) => {
+  try {
+    const now = Date.now();
+    const cacheKey = String(req.user._id);
+    if (superOverviewCache.data && superOverviewCache.key === cacheKey && now - superOverviewCache.at < SUPER_OVERVIEW_TTL) {
+      return res.json({ ...superOverviewCache.data, cached: true });
+    }
+
+    // Defensive model loading — if any one model file fails to load, we don't
+    // want to take down the entire overview. Missing models just zero out
+    // their metrics in the response. The console log makes the gap obvious
+    // during dev so the user can fix the underlying issue.
+    const safeRequire = (name) => {
+      try { return require(`../models/${name}`); }
+      catch (e) { console.error(`[super-overview] model load failed: ${name} — ${e.message}`); return null; }
+    };
+    const OperationsWorkflow = safeRequire('OperationsWorkflow');
+    const B2CRep = safeRequire('B2CRep');
+    const B2CDailyOrder = safeRequire('B2CDailyOrder');
+    const B2CProject = safeRequire('B2CProject');
+    const DailyWallet = safeRequire('DailyWallet');
+    const WalletTransaction = safeRequire('WalletTransaction');
+    const WorkshopTask = safeRequire('WorkshopTask');
+    const WorkshopPurchaseRequest = safeRequire('WorkshopPurchaseRequest');
+    const InventoryItem = safeRequire('InventoryItem');
+    const Driver = safeRequire('Driver');
+    const Vendor = safeRequire('Vendor');
+    const Branch = safeRequire('Branch');
+    const CollectionTask = safeRequire('CollectionTask');
+    const Complaint = safeRequire('Complaint');
+    const Dispute = safeRequire('Dispute');
+    const MaintenanceRequest = safeRequire('MaintenanceRequest');
+
+    // tryQuery turns each metric into a promise that never rejects — failed
+    // queries just resolve to the fallback. Without this wrapper a single
+    // model with a malformed schema or aggregation pipeline kills the whole
+    // overview and the user sees the empty-state error banner.
+    const tryQuery = async (fn, fallback) => {
+      try { return await fn(); }
+      catch (e) { console.error('[super-overview] query failed:', e.message); return fallback; }
+    };
+    const zero = () => 0;
+    const empty = () => [];
+
+    const startOfMonth = new Date(now);
+    startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0);
+    const startOfLastMonth = new Date(startOfMonth);
+    startOfLastMonth.setMonth(startOfLastMonth.getMonth() - 1);
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // WalletTransaction.date is stored as a YYYY-MM-DD STRING (not Date) — comparing
+    // a string to a Date object via $gte silently fails. Build string sentinels.
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const yyyymmdd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const startOfMonthStr = yyyymmdd(startOfMonth);
+    const startOfLastMonthStr = yyyymmdd(startOfLastMonth);
+    const endOfLastMonthStr = yyyymmdd(new Date(startOfMonth.getTime() - 1));
+
+    // Every metric is wrapped in tryQuery so one bad model or aggregation
+    // can't take down the whole overview. The result is a partial response
+    // (missing pieces zero out) rather than a 500.
+    const [
+      opsStagesRaw,
+      b2cReps, b2cProjects, b2cMonthRaw,
+      walletOpen, walletTxRaw,
+      workshopTasks, workshopPurchases, inventoryAggRaw,
+      driversActive, vendorsActive, branchesCount,
+      tasksOpen, tasksDueToday,
+      complaintsOpen, disputesOpen,
+      maintenanceOpen,
+      opsThisMonth, opsLastMonth,
+      b2cLastRaw, walletLastRaw,
+      todayCollections, topDriversRaw,
+    ] = await Promise.all([
+      tryQuery(() => OperationsWorkflow.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]), []),
+      tryQuery(() => B2CRep.countDocuments({}), 0),
+      tryQuery(() => B2CProject.countDocuments({}), 0),
+      tryQuery(() => B2CDailyOrder.aggregate([
+        { $match: { date: { $gte: startOfMonth } } },
+        { $group: { _id: null, total: { $sum: { $ifNull: ['$orders', 0] } }, working: { $sum: { $cond: ['$worked', 1, 0] } } } },
+      ]), []),
+      tryQuery(() => DailyWallet.countDocuments({ isClosed: false }), 0),
+      tryQuery(() => WalletTransaction.aggregate([
+        { $match: { date: { $gte: startOfMonthStr } } },
+        { $group: { _id: '$type', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]), []),
+      tryQuery(() => WorkshopTask.countDocuments({ status: { $in: ['pending', 'in_progress'] } }), 0),
+      tryQuery(() => WorkshopPurchaseRequest.countDocuments({ status: 'pending' }), 0),
+      tryQuery(() => InventoryItem.aggregate([
+        { $project: { quantity: 1, minQuantity: { $ifNull: ['$minQuantity', 0] } } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            low: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $gt: ['$minQuantity', 0] }, { $lte: ['$quantity', '$minQuantity'] }] }, 1, 0,
+                ],
+              },
+            },
+            outOfStock: { $sum: { $cond: [{ $lte: ['$quantity', 0] }, 1, 0] } },
+          },
+        },
+      ]), []),
+      tryQuery(() => Driver.countDocuments({}), 0),
+      tryQuery(() => Vendor.countDocuments({}), 0),
+      tryQuery(() => Branch.countDocuments({}), 0),
+      tryQuery(() => CollectionTask.countDocuments({ status: 'pending' }), 0),
+      tryQuery(() => CollectionTask.countDocuments({ status: 'pending', dueDate: { $gte: startOfDay, $lte: endOfDay } }), 0),
+      tryQuery(() => Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] } }), 0),
+      tryQuery(() => Dispute.countDocuments({ status: { $in: ['open', 'under_review'] } }), 0),
+      tryQuery(() => MaintenanceRequest.countDocuments({ status: { $in: ['open', 'in_progress'] } }), 0),
+      tryQuery(() => OperationsWorkflow.countDocuments({ reportDate: { $gte: startOfMonth } }), 0),
+      tryQuery(() => OperationsWorkflow.countDocuments({ reportDate: { $gte: startOfLastMonth, $lt: startOfMonth } }), 0),
+      tryQuery(() => B2CDailyOrder.aggregate([
+        { $match: { date: { $gte: startOfLastMonth, $lt: startOfMonth } } },
+        { $group: { _id: null, total: { $sum: { $ifNull: ['$orders', 0] } } } },
+      ]), []),
+      tryQuery(() => WalletTransaction.aggregate([
+        { $match: { date: { $gte: startOfLastMonthStr, $lte: endOfLastMonthStr } } },
+        { $group: { _id: '$type', total: { $sum: '$amount' } } },
+      ]), []),
+      tryQuery(() => WalletTransaction.countDocuments({ date: yyyymmdd(now), type: 'collection' }), 0),
+      tryQuery(() => OperationsWorkflow.aggregate([
+        { $match: { driverName: { $exists: true, $ne: '' }, reportDate: { $gte: startOfMonth } } },
+        { $group: { _id: '$driverName', trips: { $sum: 1 } } },
+        { $sort: { trips: -1 } },
+        { $limit: 5 },
+      ]), []),
+    ]);
+
+    // Reshape — every input is guaranteed to be the right shape (the fallback
+    // matches the success type) so no further null-guarding needed.
+    const opsByStage = Object.fromEntries((opsStagesRaw || []).map((s) => [s._id || 'unknown', s.count]));
+    const opsTotal = (opsStagesRaw || []).reduce((s, x) => s + (x.count || 0), 0);
+    const b2cMonth = (b2cMonthRaw || [])[0] || { total: 0, working: 0 };
+    const walletByType = (arr) => Object.fromEntries((arr || []).map((t) => [t._id, t]));
+    const txByType = walletByType(walletTxRaw);
+    const walletInflow = (txByType.collection || {}).total || 0;
+    const walletOutflow = ((txByType.expense || {}).total || 0) + ((txByType.purchase || {}).total || 0);
+    const walletTxCount = (walletTxRaw || []).reduce((s, t) => s + (t.count || 0), 0);
+    const walletNet = walletInflow - walletOutflow;
+    const inventoryAgg = (inventoryAggRaw || [])[0] || { total: 0, low: 0, outOfStock: 0 };
+    const opsTrendPct = opsLastMonth > 0 ? Math.round(((opsThisMonth - opsLastMonth) / opsLastMonth) * 100) : null;
+    const b2cLast = ((b2cLastRaw || [])[0] || {}).total || 0;
+    const b2cTrendPct = b2cLast > 0 ? Math.round(((b2cMonth.total - b2cLast) / b2cLast) * 100) : null;
+    const walletLastTx = walletByType(walletLastRaw);
+    const walletLastInflow = (walletLastTx.collection || {}).total || 0;
+    const walletTrendPct = walletLastInflow > 0 ? Math.round(((walletInflow - walletLastInflow) / walletLastInflow) * 100) : null;
+    const topDrivers = (topDriversRaw || []).map((d) => ({ name: d._id, trips: d.trips }));
+
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      operations: {
+        total: opsTotal,
+        byStage: opsByStage,
+        thisMonth: opsThisMonth,
+        lastMonth: opsLastMonth,
+        trendPct: opsTrendPct,
+      },
+      b2c: {
+        reps: b2cReps,
+        projects: b2cProjects,
+        monthOrders: b2cMonth.total,
+        lastMonthOrders: b2cLast,
+        monthWorkingDays: b2cMonth.working,
+        trendPct: b2cTrendPct,
+      },
+      wallet: {
+        openWallets: walletOpen,
+        monthInflow: walletInflow,
+        monthOutflow: walletOutflow,
+        monthNet: walletNet,
+        monthTransactions: walletTxCount,
+        todayCollections,
+        trendPct: walletTrendPct,
+      },
+      workshop: {
+        openTasks: workshopTasks,
+        pendingPurchases: workshopPurchases,
+        inventoryItems: inventoryAgg.total,
+        lowStockItems: inventoryAgg.low,
+        outOfStockItems: inventoryAgg.outOfStock,
+        openMaintenance: maintenanceOpen,
+      },
+      roster: { drivers: driversActive, vendors: vendorsActive, branches: branchesCount, topDrivers },
+      tasks: { open: tasksOpen, dueToday: tasksDueToday },
+      service: { complaintsOpen, disputesOpen },
+    };
+
+    superOverviewCache = { at: now, key: cacheKey, data: payload };
+    res.json({ ...payload, cached: false });
+  } catch (error) {
+    console.error('Super overview error:', error);
+    // Surface the actual error so we can diagnose. The frontend hides this
+    // banner outside of admin/super_admin, so it isn't leaking to end users.
+    res.status(500).json({
+      message: error.message || 'Failed to load super overview',
+      where: error.stack ? error.stack.split('\n')[1]?.trim() : undefined,
+    });
+  }
+});
+
 // Client Portal Dashboard
 router.get('/portal/dashboard', authorize('client'), async (req, res) => {
   try {

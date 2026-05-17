@@ -182,6 +182,8 @@ export default function AssistantPage() {
         />
         <button
           type="submit"
+          aria-label="Send"
+          title="Send"
           disabled={loading || !input.trim()}
           className="px-5 py-3 rounded-xl bg-[#f37121] hover:bg-[#e06010] text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >

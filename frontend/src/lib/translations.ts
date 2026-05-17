@@ -47,6 +47,42 @@ const layout = {
     b2cProjects: 'Projects',
     b2cDailyEntry: 'Daily Entry',
     dispatchSheets: 'Dispatch Sheets',
+    // Sidebar section headers
+    sectionMain: 'Main',
+    sectionCustomersFinance: 'Customers & Finance',
+    sectionOperations: 'Operations',
+    sectionB2C: 'B2C',
+    sectionWorkshop: 'Workshop',
+    sectionAdmin: 'Admin',
+    sectionTools: 'Tools',
+    sectionPortal: 'Portal',
+    sectionOther: 'Other',
+    // User-visible role names (used in sidebar footer / header badge)
+    roleSuperAdmin: 'Super Admin',
+    roleAdmin: 'Admin',
+    roleEmployee: 'Employee',
+    roleOperationsManager: 'Operations Manager',
+    roleOperations: 'Operations',
+    roleModerator: 'Moderator',
+    roleClient: 'Client',
+    roleWorkshopManager: 'Workshop Manager',
+    roleWorkshopEmployee: 'Workshop Employee',
+    rolePurchasing: 'Purchasing',
+    roleB2CHead: 'B2C Head',
+    roleB2CProjectManager: 'B2C Project Manager',
+    // Vehicle analytics & misc nav
+    vehicleAnalytics: 'Vehicle Analytics',
+    fuelAnalysis: 'Fuel Analysis',
+    gpsTracking: 'GPS Tracking',
+    trips: 'Trips',
+    dataUpload: 'Data Upload',
+    maintenanceTypes: 'Maintenance Types',
+    // Header helpers
+    switchToArabic: 'Switch to Arabic',
+    switchToEnglish: 'Switch to English',
+    toggleSidebar: 'Toggle sidebar',
+    openMenu: 'Open menu',
+    closeMenu: 'Close menu',
   },
   ar: {
     dashboard: 'لوحة التحكم',
@@ -93,6 +129,42 @@ const layout = {
     b2cProjects: 'المشاريع',
     b2cDailyEntry: 'إدخال يومي',
     dispatchSheets: 'كشوف التخريج',
+    // Sidebar section headers
+    sectionMain: 'الرئيسية',
+    sectionCustomersFinance: 'العملاء والمالية',
+    sectionOperations: 'العمليات',
+    sectionB2C: 'B2C',
+    sectionWorkshop: 'الورشة',
+    sectionAdmin: 'الإدارة',
+    sectionTools: 'الأدوات',
+    sectionPortal: 'البوابة',
+    sectionOther: 'أخرى',
+    // User-visible role names
+    roleSuperAdmin: 'مدير عام',
+    roleAdmin: 'مدير',
+    roleEmployee: 'موظف',
+    roleOperationsManager: 'مدير العمليات',
+    roleOperations: 'عمليات',
+    roleModerator: 'مراجع',
+    roleClient: 'عميل',
+    roleWorkshopManager: 'مدير الورشة',
+    roleWorkshopEmployee: 'موظف ورشة',
+    rolePurchasing: 'المشتريات',
+    roleB2CHead: 'رئيس B2C',
+    roleB2CProjectManager: 'مدير مشروع B2C',
+    // Vehicle analytics & misc nav
+    vehicleAnalytics: 'تحليلات المركبات',
+    fuelAnalysis: 'تحليل الوقود',
+    gpsTracking: 'تتبع GPS',
+    trips: 'الرحلات',
+    dataUpload: 'رفع البيانات',
+    maintenanceTypes: 'أنواع الصيانة',
+    // Header helpers
+    switchToArabic: 'التبديل للعربية',
+    switchToEnglish: 'التبديل للإنجليزية',
+    toggleSidebar: 'إخفاء/إظهار القائمة',
+    openMenu: 'فتح القائمة',
+    closeMenu: 'إغلاق القائمة',
   },
 };
 
@@ -178,6 +250,15 @@ const walletPage = {
     carNumber: 'Car Number',
     reportDate: 'Report Date',
     operationDetails: 'Operation Details',
+    // Export modal
+    exportToExcel: 'Export to Excel',
+    singleDay: 'Single Day',
+    dateRange: 'Date Range',
+    fromDate: 'From',
+    toDate: 'To',
+    download: 'Download',
+    noDataInRange: 'No data found in this date range',
+    exportLoading: 'Loading data...',
   },
   ar: {
     dailyWallet: 'المحفظة اليومية',
@@ -259,6 +340,15 @@ const walletPage = {
     carNumber: 'رقم السيارة',
     reportDate: 'تاريخ الكشف',
     operationDetails: 'تفاصيل العملية',
+    // Export modal
+    exportToExcel: 'تصدير إلى إكسل',
+    singleDay: 'يوم واحد',
+    dateRange: 'نطاق تاريخ',
+    fromDate: 'من',
+    toDate: 'إلى',
+    download: 'تحميل',
+    noDataInRange: 'لا توجد بيانات في هذا النطاق',
+    exportLoading: 'جاري تحميل البيانات...',
   },
 };
 
@@ -1442,3 +1532,46 @@ export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   '/system/b2c/projects': 'b2cProjects',
   '/system/b2c/daily-entry': 'b2cDailyEntry',
 };
+
+// Sidebar section key (English label used as grouping key in code) → layout translation key.
+// Anything not in this map falls back to its raw key wrapped in `sectionOther`.
+export const SECTION_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
+  'Main': 'sectionMain',
+  'Customers & Finance': 'sectionCustomersFinance',
+  'Operations': 'sectionOperations',
+  'B2C': 'sectionB2C',
+  'Workshop': 'sectionWorkshop',
+  'Admin': 'sectionAdmin',
+  'Tools': 'sectionTools',
+  'Portal': 'sectionPortal',
+};
+
+// User role → layout translation key. Use with getLayoutTranslations(lang)[key].
+export const ROLE_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
+  super_admin: 'roleSuperAdmin',
+  admin: 'roleAdmin',
+  employee: 'roleEmployee',
+  operations_manager: 'roleOperationsManager',
+  operations: 'roleOperations',
+  moderator: 'roleModerator',
+  client: 'roleClient',
+  workshop_manager: 'roleWorkshopManager',
+  workshop_employee: 'roleWorkshopEmployee',
+  purchasing: 'rolePurchasing',
+  b2c_head: 'roleB2CHead',
+  b2c_project_manager: 'roleB2CProjectManager',
+};
+
+export function getRoleLabel(role: string | undefined | null, lang: Lang): string {
+  if (!role) return '';
+  const key = ROLE_LABEL_KEYS[role];
+  if (key) return layout[lang][key];
+  // Fallback: humanize unknown roles (e.g. "new_role" → "New Role" / "new role")
+  return role.replace(/_/g, ' ');
+}
+
+export function getSectionLabel(section: string, lang: Lang): string {
+  const key = SECTION_LABEL_KEYS[section];
+  if (key) return layout[lang][key];
+  return section;
+}

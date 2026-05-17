@@ -4,11 +4,12 @@ const { emitToAll } = require('../websocket/socketManager');
 
 exports.getUsers = async (req, res) => {
   try {
-    const { role, isActive, search } = req.query;
+    const { role, isActive, search, branch } = req.query;
     const filter = {};
 
     if (role) filter.role = role;
     if (isActive !== undefined) filter.isActive = isActive === 'true';
+    if (branch) filter.branch = branch;
     if (search) {
       filter.$or = [
         { firstName: { $regex: search, $options: 'i' } },

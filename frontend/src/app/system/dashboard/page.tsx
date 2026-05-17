@@ -7,9 +7,10 @@ import StatCard from '@/components/system/StatCard';
 import { useSocket } from '@/hooks/useSocket';
 import Link from 'next/link';
 import {
-  DollarSign, TrendingUp, Clock, AlertTriangle, Users,
+  DollarSign, TrendingUp, TrendingDown, Clock, AlertTriangle, Users,
   BarChart3, Target, ArrowUpRight, Calendar, UserX, Download,
-  Wrench, ClipboardList, MessageSquare, ShoppingCart, CheckCircle, Loader2
+  Wrench, ClipboardList, MessageSquare, ShoppingCart, CheckCircle, Loader2,
+  Truck, Building2, PackageX
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
@@ -103,6 +104,8 @@ export default function DashboardPage() {
   const [workshopSummary, setWorkshopSummary] = useState<any>(null);
   const [workflowsTotal, setWorkflowsTotal] = useState<number>(0);
   const [complaintsData, setComplaintsData] = useState<any>(null);
+  const [superOverview, setSuperOverview] = useState<any>(null);
+  const [superOverviewError, setSuperOverviewError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -186,62 +189,71 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apis.aging, apis.dso, apis.performance]);
 
-  // Full fetch (initial load + WebSocket triggered refresh)
-  const fetchAll = useCallback(async () => {
+  // Auth-related transient errors that should be swallowed silently on first
+  // page load. These come up when the cookie isn't set yet, the refresh token
+  // is still in flight, or the user lost connection briefly.
+  const isTransientError = (msg?: string) => {
+    if (!msg) return false;
+    return /Authentication required|timed out|Network/i.test(msg);
+  };
+
+  // Full fetch (initial load + WebSocket triggered refresh). `userInitiated`
+  // controls whether failures show a visible banner — on the silent initial
+  // load we just retry once after a delay instead of yelling at the user.
+  const fetchAll = useCallback(async (userInitiated = false) => {
     try {
-      setError('');
+      if (userInitiated) setError('');
       const dateQuery = buildDateQuery();
 
       // Date-dependent data
       const fetches: Promise<any>[] = [fetchDateData(dateQuery)];
 
-      // Static/non-date APIs — only fetch what the role needs
-      if (apis.risk) {
-        fetches.push(
-          api.get('/api/analytics/risk').then(d => { setRisk(d); return null; }).catch(() => 'risk')
-        );
-      }
-      if (apis.forecast) {
-        fetches.push(
-          api.get('/api/analytics/forecast').then(d => { setForecast(d); return null; }).catch(() => 'forecast')
-        );
-      }
-      if (apis.creditAlerts) {
-        fetches.push(
-          api.get('/api/analytics/credit-alerts').then(d => { setCreditAlerts(d); return null; }).catch(() => 'credit-alerts')
-        );
-      }
-      if (apis.lowVisit) {
-        fetches.push(
-          api.get('/api/tasks/low-visit-customers').then(d => { setLowVisitCustomers(d); return null; }).catch(() => null)
-        );
-      }
+      // Static/non-date APIs — only fetch what the role needs. Each .catch
+      // swallows transient/auth errors silently (returns null) and only
+      // reports real failures by name.
+      const safe = (name: string, p: Promise<any>, setter: (d: any) => void) =>
+        p.then((d) => { setter(d); return null; })
+         .catch((e) => isTransientError(e?.message) ? null : name);
 
-      // Super admin summary sections
+      if (apis.risk) fetches.push(safe('risk', api.get('/api/analytics/risk'), setRisk));
+      if (apis.forecast) fetches.push(safe('forecast', api.get('/api/analytics/forecast'), setForecast));
+      if (apis.creditAlerts) fetches.push(safe('credit-alerts', api.get('/api/analytics/credit-alerts'), setCreditAlerts));
+      if (apis.lowVisit) fetches.push(safe('low-visit', api.get('/api/tasks/low-visit-customers'), setLowVisitCustomers));
+
+      if (user?.role === 'super_admin' || user?.role === 'admin') {
+        fetches.push(
+          api.get('/api/analytics/super-overview')
+            .then((d) => { setSuperOverview(d); setSuperOverviewError(''); return null; })
+            .catch((e) => {
+              if (isTransientError(e?.message)) return null;
+              setSuperOverviewError(e?.message || 'Failed to load system overview');
+              return null;
+            })
+        );
+      }
       if (user?.role === 'super_admin') {
-        fetches.push(
-          api.get('/api/workshop/dashboard').then(d => { setWorkshopSummary(d); return null; }).catch(() => null)
-        );
-        fetches.push(
-          api.get<any>('/api/workflows?limit=1').then(d => { setWorkflowsTotal(d.total || 0); return null; }).catch(() => null)
-        );
-        fetches.push(
-          api.get<any>('/api/complaints?limit=1').then(d => { setComplaintsData(d); return null; }).catch(() => null)
-        );
+        fetches.push(safe('workshop', api.get('/api/workshop/dashboard'), setWorkshopSummary));
+        fetches.push(safe('workflows', api.get<any>('/api/workflows?limit=1'), (d) => setWorkflowsTotal(d.total || 0)));
+        fetches.push(safe('complaints', api.get<any>('/api/complaints?limit=1'), setComplaintsData));
       }
 
       const [dateFailed, ...staticResults] = await Promise.all(fetches);
       const allFailed = [...dateFailed, ...staticResults.filter(Boolean) as string[]];
-      if (allFailed.length > 0) setError(`Failed to load: ${allFailed.join(', ')}`);
+
+      // Only show the failure banner on user-initiated refresh. On the silent
+      // initial load, transient/race-condition errors are common (cookie not
+      // yet set, refresh token in flight) and showing them confuses the user.
+      if (allFailed.length > 0 && userInitiated) {
+        setError(`Failed to load: ${allFailed.join(', ')}`);
+      }
     } catch (err: any) {
-      // Silently ignore auth-required errors (auth still settling on fresh login)
-      if (err?.message === 'Authentication required') {
+      if (isTransientError(err?.message)) {
         setLoading(false);
         setInitialLoaded(true);
         return;
       }
       console.error('Dashboard fetch error:', err);
-      setError(err.message || 'Failed to load dashboard');
+      if (userInitiated) setError(err.message || 'Failed to load dashboard');
     } finally {
       setLoading(false);
       setInitialLoaded(true);
@@ -260,20 +272,31 @@ export default function DashboardPage() {
     cacheRef.current = {};
   }, [loginKey]);
 
-  // Initial load - ONLY after user is authenticated (prevents 401 race condition on fresh login)
+  // Initial load - ONLY after user is authenticated (prevents 401 race
+  // condition on fresh login). If the silent first-pass leaves the main
+  // `dashboard` payload empty (transient auth race), retry once after a
+  // short delay before giving up.
   useEffect(() => {
     if (!user) return; // wait for auth
-    fetchAll().then(() => {
-      // Prefetch "Last Month" data in background so switching is instant
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const end = new Date(now.getFullYear(), now.getMonth(), 0);
-      const lastMonthQuery = `?dateFrom=${start.toISOString().split('T')[0]}&dateTo=${end.toISOString().split('T')[0]}`;
-      if (!cacheRef.current[lastMonthQuery]) {
-        // Silent prefetch — uses the same role-filtered logic
-        fetchDateData(lastMonthQuery).catch(() => {});
+    let retried = false;
+    const run = (initial: boolean) => fetchAll(false).then(() => {
+      // Auto-retry once if the main dashboard endpoint didn't load on the
+      // first silent pass — the cookie was likely still settling.
+      if (initial && !retried && !dashboard) {
+        retried = true;
+        setTimeout(() => fetchAll(false), 1500);
+      }
+      if (initial) {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const end = new Date(now.getFullYear(), now.getMonth(), 0);
+        const lastMonthQuery = `?dateFrom=${start.toISOString().split('T')[0]}&dateTo=${end.toISOString().split('T')[0]}`;
+        if (!cacheRef.current[lastMonthQuery]) {
+          fetchDateData(lastMonthQuery).catch(() => {});
+        }
       }
     });
+    run(true);
   }, [fetchAll, fetchDateData, loginKey, user]);
 
   // Date filter change — show cached data instantly, refresh in background
@@ -480,13 +503,314 @@ export default function DashboardPage() {
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-center justify-between">
           <span className="text-red-400 text-sm">{error}</span>
-          <button type="button" onClick={() => { setLoading(true); fetchAll(); }} className="text-red-400 hover:text-red-300 text-xs font-medium underline">{T.retry}</button>
+          <button type="button" onClick={() => { setLoading(true); fetchAll(true); }} className="text-red-400 hover:text-red-300 text-xs font-medium underline">{T.retry}</button>
         </div>
       )}
 
       {/* ════════════════════════════════════════════════════════
           ADMIN / SUPER_ADMIN  —  Full executive dashboard
          ════════════════════════════════════════════════════════ */}
+
+      {/* ── System-wide overview error banner — surfaces when backend
+          hasn't loaded the /super-overview endpoint yet (needs restart) ── */}
+      {flags.isAdmin && !superOverview && superOverviewError && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-amber-200 font-semibold text-sm">
+              {lang === 'ar' ? 'قسم "نظرة شاملة على النظام" غير محمّل' : 'System Overview section not loaded'}
+            </p>
+            <p className="text-amber-100/80 text-xs mt-1">
+              {lang === 'ar'
+                ? 'الـ endpoint الجديد بيحتاج backend restart. وقّف الـ backend (Ctrl+C) وشغّله تاني: cd backend && npm run dev'
+                : 'New endpoint needs a backend restart. Stop the backend (Ctrl+C) and run: cd backend && npm run dev'}
+            </p>
+            <p className="text-amber-100/60 text-xs mt-1 font-mono">{superOverviewError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── System-wide overview — every module at a glance ── */}
+      {flags.isAdmin && superOverview && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-white font-semibold text-lg">
+              {lang === 'ar' ? 'نظرة شاملة على النظام' : 'System Overview'}
+            </h2>
+            <span className="text-xs text-gray-500">
+              {lang === 'ar' ? 'كل الأقسام · اضغط للتفاصيل' : 'All modules · click any card'}
+            </span>
+          </div>
+          {(() => {
+            const Trend = ({ pct }: { pct: number | null | undefined }) => {
+              if (pct === null || pct === undefined) return null;
+              const positive = pct >= 0;
+              return (
+                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${positive ? 'text-emerald-400' : 'text-red-400'} ms-1.5`}>
+                  {positive ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                  {Math.abs(pct)}%
+                </span>
+              );
+            };
+            const fmt = (n: number) => (n || 0).toLocaleString();
+            const fmtCur = (n: number) => `${Math.round(n || 0).toLocaleString()}`;
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {/* Operations */}
+                <Link href="/system/operations" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <ClipboardList className="w-5 h-5 text-[#f37121]" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-[#f37121]" />
+                  </div>
+                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'العمليات' : 'Operations'}</p>
+                  <p className="text-white text-xl font-bold">{fmt(superOverview.operations?.total)}</p>
+                  <p className="text-gray-500 text-[10px] mt-1">
+                    {lang === 'ar' ? 'الشهر' : 'Month'}: {fmt(superOverview.operations?.thisMonth)}<Trend pct={superOverview.operations?.trendPct} />
+                  </p>
+                </Link>
+
+                {/* B2C */}
+                <Link href="/system/b2c/dashboard" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Target className="w-5 h-5 text-violet-400" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-violet-400" />
+                  </div>
+                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'B2C - طلبات الشهر' : 'B2C – Month Orders'}</p>
+                  <p className="text-white text-xl font-bold">{fmt(superOverview.b2c?.monthOrders)}<Trend pct={superOverview.b2c?.trendPct} /></p>
+                  <p className="text-gray-500 text-[10px] mt-1">
+                    {fmt(superOverview.b2c?.reps)} {lang === 'ar' ? 'مندوب' : 'reps'} · {fmt(superOverview.b2c?.projects)} {lang === 'ar' ? 'مشاريع' : 'projects'}
+                  </p>
+                </Link>
+
+                {/* Wallet */}
+                <Link href="/system/wallet-dashboard" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <DollarSign className="w-5 h-5 text-emerald-400" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-emerald-400" />
+                  </div>
+                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'المحفظة - عمليات الشهر' : 'Wallet – Month Tx'}</p>
+                  <p className="text-white text-xl font-bold">{fmt(superOverview.wallet?.monthTransactions)}</p>
+                  <p className="text-gray-500 text-[10px] mt-1">
+                    {fmt(superOverview.wallet?.openWallets)} {lang === 'ar' ? 'محفظة مفتوحة' : 'open wallets'}
+                  </p>
+                </Link>
+
+                {/* Workshop tasks */}
+                <Link href="/system/workshop/tasks" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Wrench className="w-5 h-5 text-blue-400" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-blue-400" />
+                  </div>
+                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'مهام الورشة' : 'Workshop Tasks'}</p>
+                  <p className="text-white text-xl font-bold">{fmt(superOverview.workshop?.openTasks)}</p>
+                  <p className="text-gray-500 text-[10px] mt-1">
+                    {fmt(superOverview.workshop?.pendingPurchases)} {lang === 'ar' ? 'مشتريات معلقة' : 'pending purchases'}
+                  </p>
+                </Link>
+
+                {/* Inventory */}
+                <Link href="/system/workshop/inventory" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <ShoppingCart className="w-5 h-5 text-amber-400" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-amber-400" />
+                  </div>
+                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'المخزون' : 'Inventory'}</p>
+                  <p className="text-white text-xl font-bold">{fmt(superOverview.workshop?.inventoryItems)}</p>
+                  <p className={`text-[10px] mt-1 ${(superOverview.workshop?.lowStockItems || 0) > 0 ? 'text-amber-400' : 'text-gray-500'}`}>
+                    {fmt(superOverview.workshop?.lowStockItems)} {lang === 'ar' ? 'مخزون منخفض' : 'low stock'}
+                    {(superOverview.workshop?.outOfStockItems || 0) > 0 && (
+                      <span className="text-red-400 ms-2">· {fmt(superOverview.workshop?.outOfStockItems)} {lang === 'ar' ? 'نفد' : 'out'}</span>
+                    )}
+                  </p>
+                </Link>
+
+                {/* Tasks */}
+                <Link href="/system/tasks" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <CheckCircle className="w-5 h-5 text-cyan-400" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-cyan-400" />
+                  </div>
+                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'المهام المفتوحة' : 'Open Tasks'}</p>
+                  <p className="text-white text-xl font-bold">{fmt(superOverview.tasks?.open)}</p>
+                  <p className={`text-[10px] mt-1 ${(superOverview.tasks?.dueToday || 0) > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                    {fmt(superOverview.tasks?.dueToday)} {lang === 'ar' ? 'تستحق اليوم' : 'due today'}
+                  </p>
+                </Link>
+
+                {/* Complaints */}
+                <Link href="/system/complaints" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <MessageSquare className="w-5 h-5 text-rose-400" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-rose-400" />
+                  </div>
+                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'الشكاوى المفتوحة' : 'Open Complaints'}</p>
+                  <p className="text-white text-xl font-bold">{fmt(superOverview.service?.complaintsOpen)}</p>
+                  <p className="text-gray-500 text-[10px] mt-1">
+                    {fmt(superOverview.service?.disputesOpen)} {lang === 'ar' ? 'نزاعات' : 'disputes'}
+                  </p>
+                </Link>
+
+                {/* Drivers */}
+                <Link href="/system/drivers" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Users className="w-5 h-5 text-pink-400" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-pink-400" />
+                  </div>
+                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'السائقين' : 'Drivers'}</p>
+                  <p className="text-white text-xl font-bold">{fmt(superOverview.roster?.drivers)}</p>
+                  <p className="text-gray-500 text-[10px] mt-1">
+                    {fmt(superOverview.roster?.vendors)} {lang === 'ar' ? 'موردين' : 'vendors'} · {fmt(superOverview.roster?.branches)} {lang === 'ar' ? 'فروع' : 'branches'}
+                  </p>
+                </Link>
+              </div>
+            );
+          })()}
+
+          {/* ── Today + this-month KPIs strip (extra row, new) ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+            <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 rounded-xl p-3.5">
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar className="w-4 h-4 text-emerald-400" />
+                <p className="text-emerald-300 text-[11px] font-semibold">{lang === 'ar' ? 'تحصيلات اليوم' : "Today's Collections"}</p>
+              </div>
+              <p className="text-white text-2xl font-bold">{(superOverview.wallet?.todayCollections || 0).toLocaleString()}</p>
+              <p className="text-emerald-200/60 text-[10px] mt-0.5">{lang === 'ar' ? 'عمليات مسجّلة اليوم' : 'transactions today'}</p>
+            </div>
+            <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 rounded-xl p-3.5">
+              <div className="flex items-center gap-2 mb-1">
+                <DollarSign className="w-4 h-4 text-emerald-400" />
+                <p className="text-emerald-300 text-[11px] font-semibold">{lang === 'ar' ? 'صافي المحفظة' : 'Wallet Net (Month)'}</p>
+              </div>
+              <p className={`text-2xl font-bold ${(superOverview.wallet?.monthNet || 0) >= 0 ? 'text-white' : 'text-red-400'}`}>
+                {Math.round(superOverview.wallet?.monthNet || 0).toLocaleString()}
+              </p>
+              <p className="text-emerald-200/60 text-[10px] mt-0.5">
+                {lang === 'ar' ? 'داخل' : 'In'} {Math.round(superOverview.wallet?.monthInflow || 0).toLocaleString()} · {lang === 'ar' ? 'خارج' : 'Out'} {Math.round(superOverview.wallet?.monthOutflow || 0).toLocaleString()}
+              </p>
+            </div>
+            <div className="bg-gradient-to-br from-violet-500/10 to-violet-500/5 border border-violet-500/30 rounded-xl p-3.5">
+              <div className="flex items-center gap-2 mb-1">
+                <Target className="w-4 h-4 text-violet-400" />
+                <p className="text-violet-300 text-[11px] font-semibold">{lang === 'ar' ? 'أيام عمل B2C الشهر' : 'B2C Working Days'}</p>
+              </div>
+              <p className="text-white text-2xl font-bold">{(superOverview.b2c?.monthWorkingDays || 0).toLocaleString()}</p>
+              <p className="text-violet-200/60 text-[10px] mt-0.5">{lang === 'ar' ? 'إجمالي مناديب × أيام شغل' : 'rep × working days'}</p>
+            </div>
+            <div className="bg-gradient-to-br from-[#f37121]/10 to-[#f37121]/5 border border-[#f37121]/30 rounded-xl p-3.5">
+              <div className="flex items-center gap-2 mb-1">
+                <ClipboardList className="w-4 h-4 text-[#f37121]" />
+                <p className="text-orange-300 text-[11px] font-semibold">{lang === 'ar' ? 'عمليات الشهر' : 'Month Operations'}</p>
+              </div>
+              <p className="text-white text-2xl font-bold">
+                {(superOverview.operations?.thisMonth || 0).toLocaleString()}
+              </p>
+              <p className="text-orange-200/60 text-[10px] mt-0.5">
+                {lang === 'ar' ? 'الشهر اللي فات' : 'Last month'}: {(superOverview.operations?.lastMonth || 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          {/* ── Operations stage breakdown + Top active drivers (new) ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+            {/* Operations by stage */}
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-[#f37121]" />
+                {lang === 'ar' ? 'حالة العمليات' : 'Operations by Stage'}
+              </h3>
+              <div className="space-y-2">
+                {[
+                  { key: 'draft', label: lang === 'ar' ? 'مسودة' : 'Draft', color: 'bg-gray-500' },
+                  { key: 'submitted_to_ops', label: lang === 'ar' ? 'في التشغيل' : 'In Ops', color: 'bg-blue-500' },
+                  { key: 'ops_completed', label: lang === 'ar' ? 'تشغيل مكتمل' : 'Ops Done', color: 'bg-violet-500' },
+                  { key: 'submitted_to_collections', label: lang === 'ar' ? 'تحصيلات' : 'Collections', color: 'bg-amber-500' },
+                  { key: 'completed', label: lang === 'ar' ? 'مكتمل' : 'Completed', color: 'bg-emerald-500' },
+                ].map((s) => {
+                  const count = superOverview.operations?.byStage?.[s.key] || 0;
+                  const total = superOverview.operations?.total || 1;
+                  const pct = Math.round((count / total) * 100);
+                  return (
+                    <div key={s.key}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-gray-300">{s.label}</span>
+                        <span className="text-white font-mono">{count.toLocaleString()} · {pct}%</span>
+                      </div>
+                      <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                        <div className={`h-full ${s.color} transition-all`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Top drivers this month */}
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+                <Truck className="w-4 h-4 text-pink-400" />
+                {lang === 'ar' ? 'الأكثر نشاطاً (الشهر)' : 'Most Active Drivers (Month)'}
+              </h3>
+              {superOverview.roster?.topDrivers?.length ? (
+                <div className="space-y-2">
+                  {superOverview.roster.topDrivers.map((d: any, i: number) => {
+                    const max = superOverview.roster.topDrivers[0].trips || 1;
+                    const pct = Math.round((d.trips / max) * 100);
+                    return (
+                      <div key={i}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-300 truncate flex items-center gap-1.5">
+                            <span className="text-gray-500 font-mono">#{i + 1}</span>
+                            {d.name}
+                          </span>
+                          <span className="text-white font-mono">{d.trips} {lang === 'ar' ? 'رحلة' : 'trips'}</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-pink-500 transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-xs">{lang === 'ar' ? 'لا توجد بيانات هذا الشهر' : 'No data this month'}</p>
+              )}
+            </div>
+          </div>
+
+          {/* ── Branches/Vendors + alerts strip (new) ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+            <Link href="/system/branches" className="group bg-gray-800 border border-gray-700 hover:border-indigo-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+              <div className="flex items-center gap-2 mb-1">
+                <Building2 className="w-4 h-4 text-indigo-400" />
+                <p className="text-gray-300 text-[11px] font-semibold">{lang === 'ar' ? 'الفروع' : 'Branches'}</p>
+              </div>
+              <p className="text-white text-xl font-bold">{(superOverview.roster?.branches || 0).toLocaleString()}</p>
+            </Link>
+            <Link href="/system/vendors" className="group bg-gray-800 border border-gray-700 hover:border-pink-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+              <div className="flex items-center gap-2 mb-1">
+                <ShoppingCart className="w-4 h-4 text-pink-400" />
+                <p className="text-gray-300 text-[11px] font-semibold">{lang === 'ar' ? 'الموردين' : 'Vendors'}</p>
+              </div>
+              <p className="text-white text-xl font-bold">{(superOverview.roster?.vendors || 0).toLocaleString()}</p>
+            </Link>
+            <Link href="/system/workshop" className="group bg-gray-800 border border-gray-700 hover:border-blue-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+              <div className="flex items-center gap-2 mb-1">
+                <Wrench className="w-4 h-4 text-blue-400" />
+                <p className="text-gray-300 text-[11px] font-semibold">{lang === 'ar' ? 'صيانة مفتوحة' : 'Open Maintenance'}</p>
+              </div>
+              <p className="text-white text-xl font-bold">{(superOverview.workshop?.openMaintenance || 0).toLocaleString()}</p>
+            </Link>
+            <Link href="/system/disputes" className="group bg-gray-800 border border-gray-700 hover:border-orange-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="w-4 h-4 text-orange-400" />
+                <p className="text-gray-300 text-[11px] font-semibold">{lang === 'ar' ? 'نزاعات مفتوحة' : 'Open Disputes'}</p>
+              </div>
+              <p className="text-white text-xl font-bold">{(superOverview.service?.disputesOpen || 0).toLocaleString()}</p>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {flags.showFullFinancials && (
         <>
           {/* Financial KPIs */}

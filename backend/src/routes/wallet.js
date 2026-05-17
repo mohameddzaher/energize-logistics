@@ -21,6 +21,9 @@ router.get('/lookup-report', authorize(...walletReadRoles), walletController.loo
 // Wallet history
 router.get('/history', authorize(...walletReadRoles), walletController.getWalletHistory);
 
+// Wallet range (one user across a date range — used by the Export modal)
+router.get('/range', authorize(...walletReadRoles), walletController.getUserWalletRange);
+
 // Add transaction
 router.post(
   '/transactions',
@@ -53,5 +56,8 @@ router.get('/dashboard', authorize(...managerRoles, 'moderator'), walletControll
 
 // Risk alerts
 router.get('/risk-alerts', authorize(...managerRoles, 'moderator'), walletController.getRiskAlerts);
+
+// Reset every wallet to zero (super admin only — destructive)
+router.post('/reset-all', authorize('super_admin'), walletController.resetAllWallets);
 
 module.exports = router;

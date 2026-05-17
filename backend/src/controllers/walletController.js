@@ -495,7 +495,12 @@ exports.updateTransaction = async (req, res) => {
       return res.status(400).json({ message: 'Day is closed' });
     }
 
-    const { amount, customer, invoice, deliveryStatementNumber, vendor, driver, expenseCategory, itemName, reference, notes } = req.body;
+    const {
+      amount, customer, invoice, deliveryStatementNumber, vendor, driver,
+      expenseCategory, itemName, reference, notes,
+      collectionSource, description,
+      purchaseDeliveryStatementNumber, purchaseDriverName, purchaseReceiptNumber, purchaseBranch,
+    } = req.body;
     const newAmount = amount != null ? Number(amount) : transaction.amount;
 
     // ─── REVERSE OLD FINANCIAL EFFECTS ────────────────────
@@ -542,6 +547,26 @@ exports.updateTransaction = async (req, res) => {
     if (itemName !== undefined) transaction.itemName = itemName || undefined;
     if (reference !== undefined) transaction.reference = reference || undefined;
     if (notes !== undefined) transaction.notes = notes || undefined;
+    // Collection source + company-collection description
+    if (collectionSource !== undefined && transaction.type === 'collection') {
+      transaction.collectionSource = collectionSource || 'client';
+    }
+    if (description !== undefined) transaction.description = description || undefined;
+    // Purchase-specific fields
+    if (purchaseDeliveryStatementNumber !== undefined) transaction.purchaseDeliveryStatementNumber = purchaseDeliveryStatementNumber || undefined;
+    if (purchaseDriverName !== undefined) transaction.purchaseDriverName = purchaseDriverName || undefined;
+    if (purchaseReceiptNumber !== undefined) transaction.purchaseReceiptNumber = purchaseReceiptNumber || undefined;
+    if (purchaseBranch !== undefined) transaction.purchaseBranch = purchaseBranch || undefined;
+
+    // If purchase delivery statement changed, refresh selling-value lookup
+    if (transaction.type === 'purchase' && purchaseDeliveryStatementNumber !== undefined && purchaseDeliveryStatementNumber) {
+      try {
+        const wf = await OperationsWorkflow.findOne({
+          reportNumber: { $regex: `^${purchaseDeliveryStatementNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        });
+        transaction.purchaseInvoiceAmount = wf && wf.sellingValue ? wf.sellingValue : undefined;
+      } catch (e) { console.error('walletController silent catch (update purchase wf lookup):', e.message); }
+    }
 
     // Re-check risk flags
     const riskFlags = checkRiskFlags({ amount: newAmount, type: transaction.type });
@@ -975,5 +1000,132 @@ exports.getWalletHistory = async (req, res) => {
   } catch (error) {
     console.error('getWalletHistory error:', error);
     res.status(500).json({ message: error.message || 'Failed to load wallet history' });
+  }
+};
+
+// ─── USER WALLET RANGE (for Excel export of date ranges) ─────
+// Returns every wallet AND every transaction belonging to one user across
+// a date range, enriched with operations workflow details. Mirrors the
+// access rules used by getDailyWallet.
+exports.getUserWalletRange = async (req, res) => {
+  try {
+    const { dateFrom, dateTo } = req.query;
+    const userId = req.query.userId || req.user._id;
+
+    if (!dateFrom || !dateTo) {
+      return res.status(400).json({ message: 'dateFrom and dateTo are required' });
+    }
+    if (req.user.role === 'operations' && userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Cannot view other wallets' });
+    }
+
+    const filter = { user: userId, date: { $gte: dateFrom, $lte: dateTo } };
+    const wallets = await DailyWallet.find(filter)
+      .populate('user', 'firstName lastName')
+      .populate('branch', 'name')
+      .populate('closedBy', 'firstName lastName')
+      .sort({ date: 1 });
+
+    const rawTransactions = await WalletTransaction.find(filter)
+      .populate('customer', 'companyName customerNumber')
+      .populate('invoice', 'invoiceNumber amount balance')
+      .populate('vendor', 'name')
+      .populate('driver', 'name')
+      .populate('expenseCategory', 'name')
+      .sort({ date: 1, createdAt: 1 });
+
+    const transactions = await enrichTransactionsWithOpsData(rawTransactions);
+
+    const summary = wallets.reduce((acc, w) => ({
+      totalCollections: acc.totalCollections + (w.totalCollections || 0),
+      totalExpenses: acc.totalExpenses + (w.totalExpenses || 0),
+      totalPurchases: acc.totalPurchases + (w.totalPurchases || 0),
+      closingBalance: acc.closingBalance + (w.closingBalance || 0),
+    }), { totalCollections: 0, totalExpenses: 0, totalPurchases: 0, closingBalance: 0 });
+
+    res.json({ wallets, transactions, summary, dateFrom, dateTo });
+  } catch (error) {
+    console.error('getUserWalletRange error:', error);
+    res.status(500).json({ message: error.message || 'Failed to load wallet range' });
+  }
+};
+
+// ─── RESET ALL WALLETS (SUPER ADMIN ONLY) ────────────────────
+// Zeroes out all transactions and balances across every wallet so users
+// can start fresh. Also reverses any customer/invoice/vendor/driver balances
+// that were previously sourced from wallet collections / payments.
+exports.resetAllWallets = async (req, res) => {
+  try {
+    const allTransactions = await WalletTransaction.find({}).lean();
+
+    // Reverse financial effects of every collection on customers + invoices
+    for (const t of allTransactions) {
+      if (t.type === 'collection') {
+        if (t.customer) {
+          const c = await Customer.findById(t.customer);
+          if (c) {
+            c.currentOutstanding += t.amount;
+            await c.save();
+          }
+        }
+        if (t.invoice) {
+          const inv = await Invoice.findById(t.invoice);
+          if (inv) {
+            inv.paidAmount = Math.max(0, inv.paidAmount - t.amount);
+            inv.balance = inv.amount - inv.paidAmount;
+            if (inv.balance >= inv.amount) inv.status = 'pending';
+            else if (inv.balance > 0) inv.status = 'partial';
+            else { inv.status = 'paid'; inv.balance = 0; }
+            await inv.save();
+          }
+        }
+      }
+      if (t.type === 'expense') {
+        if (t.vendor) {
+          const v = await Vendor.findById(t.vendor);
+          if (v) { v.totalPaid = Math.max(0, v.totalPaid - t.amount); await v.save(); }
+        }
+        if (t.driver) {
+          const d = await Driver.findById(t.driver);
+          if (d) { d.totalPaid = Math.max(0, d.totalPaid - t.amount); await d.save(); }
+        }
+      }
+    }
+
+    // Drop every wallet-derived Payment record
+    await Payment.deleteMany({ reference: /^WALLET-/ });
+
+    // Wipe transactions and wallets
+    const txResult = await WalletTransaction.deleteMany({});
+    const walletResult = await DailyWallet.deleteMany({});
+
+    await logAudit({
+      user: req.user._id,
+      action: 'reset_all_wallets',
+      entity: 'DailyWallet',
+      changes: {
+        before: {
+          transactionsDeleted: txResult.deletedCount,
+          walletsDeleted: walletResult.deletedCount,
+        },
+      },
+      ipAddress: req.ip,
+    });
+
+    try {
+      emitToAll('wallet:reset', {});
+      emitToAll('customer:updated', {});
+      emitToAll('invoice:updated', {});
+      emitToAll('payment:logged', {});
+    } catch (e) { console.error('walletController silent catch (reset emit):', e.message); }
+
+    res.json({
+      message: 'All wallets reset',
+      transactionsDeleted: txResult.deletedCount,
+      walletsDeleted: walletResult.deletedCount,
+    });
+  } catch (error) {
+    console.error('resetAllWallets error:', error);
+    res.status(500).json({ message: error.message || 'Failed to reset wallets' });
   }
 };

@@ -392,6 +392,41 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     try { await B2CDailyOrder.bulkWrite(chunk, { ordered: false }); } catch (_) { /* continue */ }
   }
 
+  // Prune stale orphans. The sync above is upsert-only, so any (rep, day) that
+  // was ingested by a PREVIOUS sync but is no longer backed by a current sheet
+  // row lingers forever. That happens when a sheet row is deleted, or when a
+  // rep's NAME changes (identity = name → a new rep is created and the old
+  // rep's days are orphaned). Both inflate the dashboard's day totals because
+  // those totals sum EVERY B2CDailyOrder for the branch+date, current or not.
+  //
+  // In overwrite mode the sheet is authoritative: within the months it covers,
+  // delete every excel-sourced (rep, dateKey) that isn't in this sync's entry
+  // set. We scope to source:'excel' so manual entries are never touched, and to
+  // only the months actually present in the sheet so we never wipe a month the
+  // sheet doesn't include.
+  let pruned = 0;
+  if (effectiveMode === 'overwrite' && entries.length > 0) {
+    const validPairs = new Set(entries.map((e) => `${e.rep}:${e.dateKey}`));
+    const monthPairs = [...new Set(entries.map((e) => `${e.year}:${e.month}`))]
+      .map((s) => { const [year, month] = s.split(':').map(Number); return { year, month }; });
+    const existing = await B2CDailyOrder.find({
+      project: config.project,
+      branch: config.branch,
+      source: 'excel',
+      $or: monthPairs,
+    }).select('_id rep dateKey').lean();
+    const orphanIds = existing
+      .filter((d) => !validPairs.has(`${d.rep}:${d.dateKey}`))
+      .map((d) => d._id);
+    if (orphanIds.length > 0) {
+      for (let i = 0; i < orphanIds.length; i += CHUNK) {
+        try { await B2CDailyOrder.deleteMany({ _id: { $in: orphanIds.slice(i, i + CHUNK) } }); } catch (_) { /* continue */ }
+      }
+      pruned = orphanIds.length;
+      console.log(`[B2C sync ${config._id}] pruned ${pruned} stale orphan order(s) no longer in the sheet`);
+    }
+  }
+
   await B2CExcelUpload.create({
     fileName: `Google Sheet (${config.sheetId.slice(0, 8)}…)`,
     project: config.project,
@@ -416,6 +451,7 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     daysInserted: inserted,
     daysUpdated: updated,
     daysSkipped: skipped,
+    daysPruned: pruned,
     durationMs: Date.now() - started,
   };
   await B2CGoogleSheetSync.updateOne(
@@ -424,7 +460,7 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
   );
 
   try { emitToAll('b2c:sheet:synced', { configId: String(config._id), stats }); } catch (_) {}
-  console.log(`[B2C google-sheet sync ${config._id}] OK in ${stats.durationMs}ms — inserted=${inserted} updated=${updated} skipped=${skipped} created_reps=${actuallyCreated}`);
+  console.log(`[B2C google-sheet sync ${config._id}] OK in ${stats.durationMs}ms — inserted=${inserted} updated=${updated} skipped=${skipped} pruned=${pruned} created_reps=${actuallyCreated}`);
 
   return stats;
 }

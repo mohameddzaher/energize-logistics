@@ -465,6 +465,17 @@ export function parseRepsExcel(arrayBuffer: ArrayBuffer): ExcelParseResult {
     let idCol = headers.get('id #') || headers.get('account id');
     let arNameCol = headers.get('id name') || headers.get('account user');
     let enNameCol = headers.get('name');
+    // Some sheets prefix the name header ("Raidar NAME", "Rider Name", "DA Name")
+    // instead of the bare "NAME". Match any header ending in "name" so those
+    // columns aren't missed — without this, a tab whose ONLY populated identity
+    // column is "Raidar NAME" parses to zero rows (Account ID / Account user are
+    // blank, so every row reads empty and the loop bails after 3 blanks).
+    if (!enNameCol) {
+      for (const [k, c] of headers) {
+        if (k === 'id name') continue; // reserved for arNameCol (Account user / ID Name)
+        if (/(?:^|\s)name$/.test(k)) { enNameCol = c; break; }
+      }
+    }
     const joinCol = headers.get('joining date');
     const totalCol = headers.get('total orders') || headers.get('total order of month per rider');
     const wdCol = headers.get('total working days');

@@ -119,7 +119,8 @@ exports.getCustomerPayments = async (req, res) => {
     const payments = await Payment.find({ customer: req.params.id })
       .populate('invoice', 'invoiceNumber amount balance status')
       .populate('receivedBy', 'firstName lastName')
-      .sort({ paymentDate: -1 });
+      .sort({ paymentDate: -1 })
+      .lean();
 
     res.json({ payments });
   } catch (error) {

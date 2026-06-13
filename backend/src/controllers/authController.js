@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const logAudit = require('../utils/auditLogger');
+const { invalidateUserCache } = require('../middleware/auth');
 const { COOKIE_OPTIONS } = require('../config/constants');
 
 const generateAccessToken = (userId, role) => {
@@ -43,6 +44,8 @@ exports.login = async (req, res) => {
     user.refreshToken = refreshToken;
     user.lastLogin = new Date();
     await user.save();
+    // A cached (pre-login) copy may be stale now that we've updated the user.
+    invalidateUserCache(user._id);
 
     res.cookie('accessToken', accessToken, {
       ...COOKIE_OPTIONS,
@@ -54,13 +57,15 @@ exports.login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    await logAudit({
+    // Audit is a side-effect — don't make the user wait a full DB round-trip
+    // for it before the login response returns.
+    logAudit({
       user: user._id,
       action: 'login',
       entity: 'User',
       entityId: user._id,
       ipAddress: req.ip,
-    });
+    }).catch((e) => console.error('Audit log (login) failed:', e.message));
 
     res.json({
       user: {
@@ -118,13 +123,14 @@ exports.logout = async (req, res) => {
   try {
     if (req.user) {
       await User.findByIdAndUpdate(req.user._id, { refreshToken: null });
-      await logAudit({
+      invalidateUserCache(req.user._id);
+      logAudit({
         user: req.user._id,
         action: 'logout',
         entity: 'User',
         entityId: req.user._id,
         ipAddress: req.ip,
-      });
+      }).catch((e) => console.error('Audit log (logout) failed:', e.message));
     }
 
     res.clearCookie('accessToken', COOKIE_OPTIONS);

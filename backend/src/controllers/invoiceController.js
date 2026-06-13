@@ -40,13 +40,13 @@ exports.getInvoices = async (req, res) => {
         .populate('createdBy', 'firstName lastName')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(Number(limit))
+        .lean(),
       Invoice.countDocuments(filter),
     ]);
 
-    // Add computed fields
-    const enriched = invoices.map((inv) => {
-      const doc = inv.toObject();
+    // Add computed fields. Docs are already plain objects (lean), so mutate directly.
+    const enriched = invoices.map((doc) => {
       const now = new Date();
       const dueDate = new Date(doc.dueDate);
       const diffMs = dueDate - now;

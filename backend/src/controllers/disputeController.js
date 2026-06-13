@@ -120,7 +120,8 @@ exports.getDisputes = async (req, res) => {
         .populate('assignedTo', 'firstName lastName')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(Number(limit))
+        .lean(),
       Dispute.countDocuments(filter),
     ]);
 

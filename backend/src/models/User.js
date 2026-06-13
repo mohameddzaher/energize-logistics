@@ -54,6 +54,12 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// email already has a unique index from `unique: true`. These back the
+// getUsers filters (role / isActive / branch) which otherwise full-scan.
+userSchema.index({ role: 1 });
+userSchema.index({ isActive: 1, role: 1 });
+userSchema.index({ branch: 1 });
+
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 12);

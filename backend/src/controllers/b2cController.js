@@ -619,7 +619,8 @@ exports.getDailyOrders = async (req, res) => {
       .populate('rep', 'englishName arabicName repId')
       .populate('project', 'name code color')
       .populate('branch', 'name code city')
-      .sort({ dateKey: -1 });
+      .sort({ dateKey: -1 })
+      .lean();
     res.json({ orders });
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to load daily orders' });

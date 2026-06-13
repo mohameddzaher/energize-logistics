@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
+const { invalidateUserCache } = require('../middleware/auth');
 
 exports.getUsers = async (req, res) => {
   try {
@@ -25,7 +26,8 @@ exports.getUsers = async (req, res) => {
       .populate('assignedProjects', 'name code')
       .populate('assignedBranches', 'name code city')
       .populate('manager', 'firstName lastName email role')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({ users });
   } catch (error) {
@@ -132,6 +134,8 @@ exports.updateUser = async (req, res) => {
     }
 
     await user.save();
+    // Role/active/lock changes must take effect now, not after the cache TTL.
+    invalidateUserCache(user._id);
 
     await logAudit({
       user: req.user._id,
@@ -174,6 +178,7 @@ exports.deleteUser = async (req, res) => {
     await Notification.deleteMany({ recipient: user._id });
 
     await User.findByIdAndDelete(user._id);
+    invalidateUserCache(user._id);
 
     await logAudit({
       user: req.user._id,
@@ -202,6 +207,7 @@ exports.lockUser = async (req, res) => {
 
     user.isLocked = !user.isLocked;
     await user.save();
+    invalidateUserCache(user._id);
 
     await logAudit({
       user: req.user._id,

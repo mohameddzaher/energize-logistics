@@ -950,6 +950,7 @@ exports.getDashboardSummary = async (req, res) => {
           englishName: o.rep?.englishName,
           arabicName: o.rep?.arabicName,
           monthlyTarget: o.rep?.monthlyTarget || 400,
+          dailyTarget: o.rep?.dailyTarget || 15,
           totalOrders: 0,
           workingDays: 0,
           project: o.project?.name,
@@ -962,7 +963,12 @@ exports.getDashboardSummary = async (req, res) => {
     const byRep = [...repMap.values()].map((r) => ({
       ...r,
       dailyRate: r.workingDays > 0 ? r.totalOrders / r.workingDays : 0,
-      performancePercent: r.monthlyTarget > 0 ? (r.totalOrders / r.monthlyTarget) * 100 : 0,
+      // Performance = the rep's actual daily rate vs their daily target,
+      // measured ONLY over days they actually worked. This is robust mid-month
+      // (a half-finished month no longer drags the % down) and fair to reps who
+      // joined partway through — they're judged on their own working days, not
+      // a full-month target they never had the calendar days to reach.
+      performancePercent: r.workingDays > 0 ? (r.totalOrders / (r.workingDays * r.dailyTarget)) * 100 : 0,
     })).sort((a, b) => b.totalOrders - a.totalOrders);
 
     // By month
@@ -973,7 +979,9 @@ exports.getDashboardSummary = async (req, res) => {
       const m = monthMap.get(key);
       if (o.orders !== null) m.totalOrders += (o.orders || 0);
       if (o.worked && o.orders !== null) m.workingDays += 1;
-      m.repsActive.add(String(o.rep?._id));
+      // "Active" = actually worked at least one day this month. Reps added to
+      // the sheet but not yet working (all days null/0) don't count.
+      if (o.worked && o.orders !== null) m.repsActive.add(String(o.rep?._id));
     });
     const byMonth = [...monthMap.values()].map((m) => ({
       key: m.key, year: m.year, month: m.month,
@@ -989,7 +997,7 @@ exports.getDashboardSummary = async (req, res) => {
       if (!projectMap.has(id)) projectMap.set(id, { projectId: o.project?._id, name: o.project?.name || '—', color: o.project?.color, totalOrders: 0, repsActive: new Set() });
       const p = projectMap.get(id);
       if (o.orders !== null) p.totalOrders += (o.orders || 0);
-      p.repsActive.add(String(o.rep?._id));
+      if (o.worked && o.orders !== null) p.repsActive.add(String(o.rep?._id));
     });
     const byProject = [...projectMap.values()].map((p) => ({ ...p, repsActive: p.repsActive.size })).sort((a, b) => b.totalOrders - a.totalOrders);
 
@@ -1000,7 +1008,7 @@ exports.getDashboardSummary = async (req, res) => {
       if (!branchMap.has(id)) branchMap.set(id, { branchId: o.branch?._id, name: o.branch?.name || '—', city: o.branch?.city, totalOrders: 0, repsActive: new Set() });
       const b = branchMap.get(id);
       if (o.orders !== null) b.totalOrders += (o.orders || 0);
-      b.repsActive.add(String(o.rep?._id));
+      if (o.worked && o.orders !== null) b.repsActive.add(String(o.rep?._id));
     });
     const byBranch = [...branchMap.values()].map((b) => ({ ...b, repsActive: b.repsActive.size })).sort((a, b) => b.totalOrders - a.totalOrders);
 
@@ -1048,13 +1056,17 @@ exports.getDashboardSummary = async (req, res) => {
     const totalDaysOff = orders.filter((o) => o.orders === 0).length;
     const totalNoDataDays = orders.filter((o) => o.orders === null || o.orders === undefined).length;
 
-    // KPIs
-    const repsActive = byRep.length;
-    const aboveTargetReps = byRep.filter((r) => r.performancePercent >= 100).length;
-    const onTrackReps = byRep.filter((r) => r.performancePercent >= 80 && r.performancePercent < 100).length;
-    const belowTargetReps = byRep.filter((r) => r.performancePercent < 80).length;
-    const atRiskReps = byRep.filter((r) => r.performancePercent < 60).length;
-    const avgPerformance = byRep.length > 0 ? byRep.reduce((s, r) => s + r.performancePercent, 0) / byRep.length : 0;
+    // KPIs. Only reps who actually worked at least one day have a measurable
+    // performance — reps added to the sheet but not yet working (all days
+    // null/0) would otherwise read as 0% and inflate the below/at-risk buckets
+    // and drag the average down.
+    const workedReps = byRep.filter((r) => r.workingDays > 0);
+    const repsActive = workedReps.length;
+    const aboveTargetReps = workedReps.filter((r) => r.performancePercent >= 100).length;
+    const onTrackReps = workedReps.filter((r) => r.performancePercent >= 80 && r.performancePercent < 100).length;
+    const belowTargetReps = workedReps.filter((r) => r.performancePercent < 80).length;
+    const atRiskReps = workedReps.filter((r) => r.performancePercent < 60).length;
+    const avgPerformance = workedReps.length > 0 ? workedReps.reduce((s, r) => s + r.performancePercent, 0) / workedReps.length : 0;
 
     // Day-of-week breakdown (0=Sun..6=Sat)
     const dowMap = new Map(); // 0..6 -> { totalOrders, count }
@@ -1136,10 +1148,12 @@ exports.getDashboardSummary = async (req, res) => {
     // Most-productive days for the team as a whole (already covered by byDay sorted)
     const topTeamDays = [...byDay].sort((a, b) => b.totalOrders - a.totalOrders).slice(0, 5);
 
-    // Capacity — accurate across the time window: for each month-with-data,
-    // count active reps × monthly target and sum.
-    const monthlyTargetSum = byMonth.reduce((s, m) => s + (m.repsActive * 400), 0);
-    const expectedTotal = monthlyTargetSum > 0 ? monthlyTargetSum : byRep.reduce((s, r) => s + r.monthlyTarget, 0);
+    // Capacity = expected orders for the days reps ACTUALLY worked
+    // (Σ workingDays × dailyTarget), not a full-month target × headcount. This
+    // keeps capacity-used meaningful mid-month (it's not diluted by days that
+    // haven't happened yet) and ignores reps who haven't started, so the % is a
+    // real "orders vs daily target on worked days" figure.
+    const expectedTotal = byRep.reduce((s, r) => s + r.workingDays * r.dailyTarget, 0);
 
     const kpis = {
       totalOrders,

@@ -36,6 +36,7 @@ const adminRoutes = require('./routes/admin');
 const workshopRoutes = require('./routes/workshop');
 const complaintRoutes = require('./routes/complaints');
 const b2cRoutes = require('./routes/b2c');
+const remoteRoutes = require('./routes/remote');
 
 const app = express();
 const server = http.createServer(app);
@@ -97,6 +98,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/workshop', workshopRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/b2c', b2cRoutes);
+app.use('/api/remote', remoteRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

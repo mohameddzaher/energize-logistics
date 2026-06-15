@@ -18,8 +18,9 @@ interface UserRecord {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager';
+  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager';
   branch?: { _id: string; name: string };
+  remoteAccess?: string[];
   status?: 'active' | 'locked' | 'inactive';
   isLocked?: boolean;
   isActive?: boolean;
@@ -68,7 +69,20 @@ const roleConfig: Record<string, { bg: string; text: string }> = {
   client: { bg: 'bg-orange-500/20', text: 'text-orange-400' },
   b2c_head: { bg: 'bg-pink-500/20', text: 'text-pink-400' },
   b2c_project_manager: { bg: 'bg-rose-500/20', text: 'text-rose-400' },
+  remote_employee: { bg: 'bg-indigo-500/20', text: 'text-indigo-400' },
+  remote_manager: { bg: 'bg-violet-500/20', text: 'text-violet-400' },
 };
+
+// Pages inside the Remote section a remote_employee can be granted access to.
+const REMOTE_PAGE_OPTIONS: { key: string; en: string; ar: string }[] = [
+  { key: 'attendance', en: 'Attendance', ar: 'الحضور والانصراف' },
+  { key: 'dashboard', en: 'My Dashboard', ar: 'لوحتي' },
+  { key: 'leave', en: 'Leave', ar: 'الإجازات' },
+  { key: 'chat', en: 'Messages', ar: 'الرسائل' },
+  { key: 'tasks', en: 'My Tasks', ar: 'مهامي' },
+  { key: 'report', en: 'Daily Report', ar: 'التقرير اليومي' },
+  { key: 'announcements', en: 'Announcements', ar: 'الإعلانات' },
+];
 
 const statusDot: Record<string, string> = {
   active: 'bg-green-400',
@@ -98,6 +112,7 @@ export default function UsersPage() {
   const [branches, setBranches] = useState<BranchOpt[]>([]);
   const [b2cProjects, setB2cProjects] = useState<B2CProject[]>([]);
   const [b2cHeads, setB2cHeads] = useState<ManagerOpt[]>([]);
+  const [remoteManagers, setRemoteManagers] = useState<ManagerOpt[]>([]);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -110,6 +125,7 @@ export default function UsersPage() {
     assignedProjects: [] as string[],
     assignedBranches: [] as string[],
     manager: '',
+    remoteAccess: [] as string[],
   });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
@@ -181,6 +197,15 @@ export default function UsersPage() {
     }
   };
 
+  const fetchRemoteManagers = async () => {
+    try {
+      const data = await api.get<any>('/api/users?role=remote_manager');
+      setRemoteManagers(data.users || []);
+    } catch {
+      setRemoteManagers([]);
+    }
+  };
+
   const getUserStatus = (u: UserRecord): string => {
     if (u.status) return u.status;
     if (u.isLocked) return 'locked';
@@ -190,10 +215,10 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], manager: '' });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key) });
     setFormError('');
     setShowFormPassword(false);
-    await Promise.all([fetchCustomers(), fetchBranches(), fetchB2CProjects(), fetchB2CHeads()]);
+    await Promise.all([fetchCustomers(), fetchBranches(), fetchB2CProjects(), fetchB2CHeads(), fetchRemoteManagers()]);
     setShowCreateModal(true);
   };
 
@@ -225,6 +250,10 @@ export default function UsersPage() {
           payload.manager = formData.manager;
         }
       }
+      if (formData.role === 'remote_employee') {
+        payload.remoteAccess = formData.remoteAccess;
+        if (formData.manager) payload.manager = formData.manager;
+      }
       await api.post('/api/users', payload);
       setShowCreateModal(false);
       fetchUsers();
@@ -250,11 +279,12 @@ export default function UsersPage() {
       assignedProjects: u.assignedProjects?.map((p: any) => typeof p === 'string' ? p : p._id) || [],
       assignedBranches: u.assignedBranches?.map((b: any) => typeof b === 'string' ? b : b._id) || [],
       manager: u.manager?._id || '',
+      remoteAccess: u.remoteAccess && u.remoteAccess.length ? u.remoteAccess : REMOTE_PAGE_OPTIONS.map((p) => p.key),
     });
     setFormError('');
     setShowFormPassword(false);
     setActionMenuId(null);
-    await Promise.all([fetchCustomers(), fetchBranches(), fetchB2CProjects(), fetchB2CHeads()]);
+    await Promise.all([fetchCustomers(), fetchBranches(), fetchB2CProjects(), fetchB2CHeads(), fetchRemoteManagers()]);
     setShowEditModal(true);
   };
 
@@ -282,10 +312,17 @@ export default function UsersPage() {
         payload.assignedProjects = formData.assignedProjects;
         payload.assignedBranches = formData.assignedBranches;
         payload.manager = formData.role === 'b2c_project_manager' ? (formData.manager || null) : null;
+        payload.remoteAccess = [];
+      } else if (formData.role === 'remote_employee') {
+        payload.assignedProjects = [];
+        payload.assignedBranches = [];
+        payload.manager = formData.manager || null;
+        payload.remoteAccess = formData.remoteAccess;
       } else {
         payload.assignedProjects = [];
         payload.assignedBranches = [];
         payload.manager = null;
+        payload.remoteAccess = [];
       }
       await api.put(`/api/users/${selectedUser._id}`, payload);
       setShowEditModal(false);
@@ -325,7 +362,7 @@ export default function UsersPage() {
     setResetLoading(true);
     setResetError('');
     try {
-      await api.post(`/api/users/${selectedUser._id}/reset-password`, { password: newPassword });
+      await api.post(`/api/users/${selectedUser._id}/reset-password`, { newPassword });
       setShowResetModal(false);
       setSelectedUser(null);
     } catch (err: any) {
@@ -384,6 +421,15 @@ export default function UsersPage() {
     }));
   };
 
+  const handleRemoteAccessToggle = (key: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      remoteAccess: prev.remoteAccess.includes(key)
+        ? prev.remoteAccess.filter((k) => k !== key)
+        : [...prev.remoteAccess, key],
+    }));
+  };
+
   const roleLabels: Record<string, string> = {
     super_admin: T.superAdmin, admin: T.admin, employee: T.employee,
     operations_manager: T.operationsManager, operations: T.operationsRole,
@@ -393,6 +439,8 @@ export default function UsersPage() {
     purchasing: lang === 'ar' ? 'المشتريات' : 'Purchasing',
     b2c_head: lang === 'ar' ? 'مدير B2C' : 'B2C Head',
     b2c_project_manager: lang === 'ar' ? 'مدير مشروع B2C' : 'B2C Project Manager',
+    remote_employee: lang === 'ar' ? 'موظف عن بُعد' : 'Remote Employee',
+    remote_manager: lang === 'ar' ? 'مدير العمل عن بُعد' : 'Remote Manager',
   };
 
   const statusLabels: Record<string, string> = {
@@ -672,6 +720,51 @@ export default function UsersPage() {
                   </label>
                 ))
               )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Remote-employee-specific: manager + which pages they can access */}
+      {formData.role === 'remote_employee' && (
+        <>
+          <div>
+            <label className="block text-gray-300 text-sm font-medium mb-1.5">
+              {lang === 'ar' ? 'المدير المباشر (مدير العمل عن بُعد)' : 'Direct Manager (Remote Manager)'}
+            </label>
+            <select
+              aria-label="Remote manager"
+              value={formData.manager}
+              onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
+              className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+            >
+              <option value="">{lang === 'ar' ? 'بدون (السوبر أدمن فقط)' : 'None (super admin only)'}</option>
+              {remoteManagers.map((m) => (
+                <option key={m._id} value={m._id}>{m.firstName} {m.lastName} — {m.email}</option>
+              ))}
+            </select>
+            {remoteManagers.length === 0 && (
+              <p className="text-gray-500 text-xs mt-1">
+                {lang === 'ar' ? 'لا يوجد مديرو عمل عن بُعد بعد — أنشئ مستخدمًا بدور "مدير العمل عن بُعد" أولاً.' : 'No remote managers yet — create a "Remote Manager" user first.'}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="block text-gray-300 text-sm font-medium mb-1.5">
+              {lang === 'ar' ? 'الصفحات المسموح بها' : 'Allowed Pages'} ({formData.remoteAccess.length})
+            </label>
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
+              {REMOTE_PAGE_OPTIONS.map((p) => (
+                <label key={p.key} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.remoteAccess.includes(p.key)}
+                    onChange={() => handleRemoteAccessToggle(p.key)}
+                    className="rounded border-gray-600 bg-gray-800 text-[#f37121] focus:ring-[#f37121]/50"
+                  />
+                  <span className="text-gray-300 text-sm">{lang === 'ar' ? p.ar : p.en}</span>
+                </label>
+              ))}
             </div>
           </div>
         </>

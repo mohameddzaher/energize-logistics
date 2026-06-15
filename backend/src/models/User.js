@@ -20,8 +20,14 @@ const userSchema = new mongoose.Schema(
     lastName: { type: String, required: true, trim: true },
     role: {
       type: String,
-      enum: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager'],
+      enum: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'remote_employee', 'remote_manager'],
       required: true,
+    },
+    // Remote (work-from-home) section: which pages a remote_employee can open.
+    // Subset of REMOTE_PAGES. Ignored for every other role (managers see all).
+    remoteAccess: {
+      type: [String],
+      default: [],
     },
     branch: {
       type: mongoose.Schema.Types.ObjectId,

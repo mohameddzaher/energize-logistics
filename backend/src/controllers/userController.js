@@ -37,7 +37,7 @@ exports.getUsers = async (req, res) => {
 
 exports.createUser = async (req, res) => {
   try {
-    const { email, password, firstName, lastName, role, linkedCustomer, assignedCustomers, collectionTarget, branch, assignedProjects, assignedBranches, manager } = req.body;
+    const { email, password, firstName, lastName, role, linkedCustomer, assignedCustomers, collectionTarget, branch, assignedProjects, assignedBranches, manager, remoteAccess } = req.body;
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -57,6 +57,7 @@ exports.createUser = async (req, res) => {
       assignedProjects: Array.isArray(assignedProjects) ? assignedProjects : [],
       assignedBranches: Array.isArray(assignedBranches) ? assignedBranches : [],
       manager: manager || undefined,
+      remoteAccess: role === 'remote_employee' && Array.isArray(remoteAccess) ? remoteAccess : [],
     });
 
     // Sync assignedCollector on Customer documents
@@ -86,7 +87,7 @@ exports.createUser = async (req, res) => {
 
 exports.updateUser = async (req, res) => {
   try {
-    const { firstName, lastName, role, assignedCustomers, linkedCustomer, collectionTarget, isActive, branch, assignedProjects, assignedBranches, manager } = req.body;
+    const { firstName, lastName, role, assignedCustomers, linkedCustomer, collectionTarget, isActive, branch, assignedProjects, assignedBranches, manager, remoteAccess } = req.body;
     const user = await User.findById(req.params.id);
 
     if (!user) {
@@ -105,6 +106,9 @@ exports.updateUser = async (req, res) => {
     if (assignedProjects !== undefined) user.assignedProjects = Array.isArray(assignedProjects) ? assignedProjects : [];
     if (assignedBranches !== undefined) user.assignedBranches = Array.isArray(assignedBranches) ? assignedBranches : [];
     if (manager !== undefined) user.manager = manager || null;
+    if (remoteAccess !== undefined) {
+      user.remoteAccess = (role === 'remote_employee' || user.role === 'remote_employee') && Array.isArray(remoteAccess) ? remoteAccess : [];
+    }
 
     // Sync assignedCollector on Customer documents when assignedCustomers changes
     if (assignedCustomers !== undefined) {

@@ -12,10 +12,11 @@ import {
   LogOut, Bell, Menu, X, ChevronDown, ChevronRight, ChevronLeft, Shield, Bot,
   Briefcase, TrendingUp, ListTodo, Building2, Wallet,
   Store, Truck, Tags, Languages, Wrench, ShoppingCart, MessageSquare, Package,
-  Target, Award, CalendarDays,
+  Target, Award, CalendarDays, Clock, Megaphone, CalendarCheck,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
+import { homeRouteForRole } from '@/lib/roleRoutes';
 
 interface NavItem {
   href: string;
@@ -23,6 +24,9 @@ interface NavItem {
   icon: React.ReactNode;
   roles: string[];
   section?: string;
+  // For Remote pages: a remote_employee only sees this if their remoteAccess
+  // includes this key. Managers/admins see every remote item regardless.
+  remoteKey?: string;
 }
 
 export default function SystemLayout({ children }: { children: React.ReactNode }) {
@@ -61,6 +65,18 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       router.push(`/login?returnTo=${pathname}`);
     }
   }, [loading, isAuthenticated, router, pathname]);
+
+  // Remote roles live entirely inside /system/remote/*. If they ever land on
+  // another section (stale redirect, manual URL, a bookmarked page) that page
+  // would fire role-gated API calls and surface "Insufficient permissions",
+  // so bounce them back to their home page instead.
+  useEffect(() => {
+    if (loading || !user) return;
+    const isRemoteRole = user.role === 'remote_employee' || user.role === 'remote_manager';
+    if (isRemoteRole && !pathname.startsWith('/system/remote')) {
+      router.replace(homeRouteForRole(user.role));
+    }
+  }, [loading, user, pathname, router]);
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -128,6 +144,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Admin' },
     { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'workshop_manager', 'operations_manager'], section: 'Admin' },
+    // Remote (work-from-home)
+    { href: '/system/remote/attendance', label: L.remoteAttendance, icon: <Clock className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'attendance' },
+    { href: '/system/remote/dashboard', label: L.remoteDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'dashboard' },
+    { href: '/system/remote/leave', label: L.remoteLeave, icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'leave' },
+    { href: '/system/remote/chat', label: L.remoteChat, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'chat' },
+    { href: '/system/remote/tasks', label: L.remoteTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'tasks' },
+    { href: '/system/remote/report', label: L.remoteReport, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'report' },
+    { href: '/system/remote/announcements', label: L.remoteAnnouncements, icon: <Megaphone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'announcements' },
     // Tools
     { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'], section: 'Tools' },
     { href: '/system/settings', label: L.settings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Tools' },
@@ -142,7 +166,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     fetchNotifications();
   }, []));
 
-  const filteredNav = navItems.filter((item) => user && item.roles.includes(user.role));
+  const filteredNav = navItems.filter((item) => {
+    if (!user || !item.roles.includes(user.role)) return false;
+    // Remote employees only see the remote pages they've been granted.
+    if (item.remoteKey && user.role === 'remote_employee') {
+      return Array.isArray(user.remoteAccess) && user.remoteAccess.includes(item.remoteKey);
+    }
+    return true;
+  });
 
   // Group filtered nav items by section, preserving order
   const groupedNav = filteredNav.reduce((acc, item) => {

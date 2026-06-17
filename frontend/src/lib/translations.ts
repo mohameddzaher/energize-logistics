@@ -47,6 +47,14 @@ const layout = {
     b2cProjects: 'Projects',
     b2cDailyEntry: 'Daily Entry',
     dispatchSheets: 'Dispatch Sheets',
+    // Remote (work-from-home) section
+    remoteAttendance: 'Attendance',
+    remoteDashboard: 'My Dashboard',
+    remoteLeave: 'Leave',
+    remoteChat: 'Messages',
+    remoteTasks: 'My Tasks',
+    remoteReport: 'Daily Report',
+    remoteAnnouncements: 'Announcements',
     // Sidebar section headers
     sectionMain: 'Main',
     sectionCustomersFinance: 'Customers & Finance',
@@ -56,6 +64,7 @@ const layout = {
     sectionAdmin: 'Admin',
     sectionTools: 'Tools',
     sectionPortal: 'Portal',
+    sectionRemote: 'Remote',
     sectionOther: 'Other',
     // User-visible role names (used in sidebar footer / header badge)
     roleSuperAdmin: 'Super Admin',
@@ -70,6 +79,8 @@ const layout = {
     rolePurchasing: 'Purchasing',
     roleB2CHead: 'B2C Head',
     roleB2CProjectManager: 'B2C Project Manager',
+    roleRemoteEmployee: 'Remote Employee',
+    roleRemoteManager: 'Remote Manager',
     // Vehicle analytics & misc nav
     vehicleAnalytics: 'Vehicle Analytics',
     fuelAnalysis: 'Fuel Analysis',
@@ -129,6 +140,14 @@ const layout = {
     b2cProjects: 'المشاريع',
     b2cDailyEntry: 'إدخال يومي',
     dispatchSheets: 'كشوف التخريج',
+    // Remote (work-from-home) section
+    remoteAttendance: 'الحضور والانصراف',
+    remoteDashboard: 'لوحتي',
+    remoteLeave: 'الإجازات',
+    remoteChat: 'الرسائل',
+    remoteTasks: 'مهامي',
+    remoteReport: 'التقرير اليومي',
+    remoteAnnouncements: 'الإعلانات',
     // Sidebar section headers
     sectionMain: 'الرئيسية',
     sectionCustomersFinance: 'العملاء والمالية',
@@ -138,6 +157,7 @@ const layout = {
     sectionAdmin: 'الإدارة',
     sectionTools: 'الأدوات',
     sectionPortal: 'البوابة',
+    sectionRemote: 'العمل عن بُعد',
     sectionOther: 'أخرى',
     // User-visible role names
     roleSuperAdmin: 'مدير عام',
@@ -152,6 +172,8 @@ const layout = {
     rolePurchasing: 'المشتريات',
     roleB2CHead: 'رئيس B2C',
     roleB2CProjectManager: 'مدير مشروع B2C',
+    roleRemoteEmployee: 'موظف عن بُعد',
+    roleRemoteManager: 'مدير العمل عن بُعد',
     // Vehicle analytics & misc nav
     vehicleAnalytics: 'تحليلات المركبات',
     fuelAnalysis: 'تحليل الوقود',
@@ -1531,6 +1553,13 @@ export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   '/system/b2c/reps': 'b2cReps',
   '/system/b2c/projects': 'b2cProjects',
   '/system/b2c/daily-entry': 'b2cDailyEntry',
+  '/system/remote/attendance': 'remoteAttendance',
+  '/system/remote/dashboard': 'remoteDashboard',
+  '/system/remote/leave': 'remoteLeave',
+  '/system/remote/chat': 'remoteChat',
+  '/system/remote/tasks': 'remoteTasks',
+  '/system/remote/report': 'remoteReport',
+  '/system/remote/announcements': 'remoteAnnouncements',
 };
 
 // Sidebar section key (English label used as grouping key in code) → layout translation key.
@@ -1544,6 +1573,7 @@ export const SECTION_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   'Admin': 'sectionAdmin',
   'Tools': 'sectionTools',
   'Portal': 'sectionPortal',
+  'Remote': 'sectionRemote',
 };
 
 // User role → layout translation key. Use with getLayoutTranslations(lang)[key].
@@ -1560,6 +1590,8 @@ export const ROLE_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   purchasing: 'rolePurchasing',
   b2c_head: 'roleB2CHead',
   b2c_project_manager: 'roleB2CProjectManager',
+  remote_employee: 'roleRemoteEmployee',
+  remote_manager: 'roleRemoteManager',
 };
 
 export function getRoleLabel(role: string | undefined | null, lang: Lang): string {

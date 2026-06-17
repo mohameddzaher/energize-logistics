@@ -69,7 +69,13 @@ class ApiClient {
       clearTimeout(timeoutId);
     }
 
-    if (res.status === 401 && !skipAuth) {
+    // Auth endpoints (login/refresh/logout) must NOT go through the refresh-retry
+    // path: a 401 there is the real answer (e.g. wrong password), and retrying a
+    // refresh that also fails would mask it behind a generic "Authentication
+    // required" message. Surface the actual error instead.
+    const isAuthEndpoint = endpoint.startsWith('/api/auth/');
+
+    if (res.status === 401 && !skipAuth && !isAuthEndpoint) {
       // If already refreshing, queue this request
       if (this.isRefreshing) {
         return new Promise<T>((resolve, reject) => {
@@ -138,6 +144,14 @@ class ApiClient {
     return this.request<T>(endpoint, {
       ...options,
       method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  patch<T>(endpoint: string, data?: unknown, options?: FetchOptions): Promise<T> {
+    return this.request<T>(endpoint, {
+      ...options,
+      method: 'PATCH',
       body: data ? JSON.stringify(data) : undefined,
     });
   }

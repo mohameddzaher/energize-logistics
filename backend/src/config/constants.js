@@ -8,7 +8,16 @@ module.exports = {
     WORKSHOP_MANAGER: 'workshop_manager',
     WORKSHOP_EMPLOYEE: 'workshop_employee',
     PURCHASING: 'purchasing',
+    REMOTE_EMPLOYEE: 'remote_employee',
+    REMOTE_MANAGER: 'remote_manager',
   },
+
+  // Pages inside the Remote (work-from-home) section. A remote_employee is
+  // granted a subset of these via User.remoteAccess; remote_manager and
+  // super_admin see all of them.
+  REMOTE_PAGES: ['attendance', 'dashboard', 'leave', 'chat', 'tasks', 'report', 'announcements'],
+
+  REMOTE_LEAVE_TYPES: ['annual', 'sick', 'personal', 'unpaid', 'other'],
 
   CREDIT_TERMS: [15, 30, 45, 60],
 

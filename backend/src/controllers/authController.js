@@ -177,7 +177,8 @@ exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
       .populate('linkedCustomer', 'companyName creditTerm')
-      .populate('assignedCustomers', 'companyName');
+      .populate('assignedCustomers', 'companyName')
+      .populate('manager', 'firstName lastName email role');
 
     res.json({ user });
   } catch (error) {

@@ -13,6 +13,7 @@ import {
   Briefcase, TrendingUp, ListTodo, Building2, Wallet,
   Store, Truck, Tags, Languages, Wrench, ShoppingCart, MessageSquare, Package,
   Target, Award, CalendarDays, Clock, Megaphone, CalendarCheck,
+  Calculator, Scale, BookOpen, Gauge, Ship, ScrollText,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -66,14 +67,15 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     }
   }, [loading, isAuthenticated, router, pathname]);
 
-  // Remote roles live entirely inside /system/remote/*. If they ever land on
-  // another section (stale redirect, manual URL, a bookmarked page) that page
-  // would fire role-gated API calls and surface "Insufficient permissions",
-  // so bounce them back to their home page instead.
+  // Remote roles live inside /system/remote/*, plus the shared HR self-service
+  // pages under /system/hr/* (their own profile/leaves/requests, and — when they
+  // manage others — approving their team's leave). Any OTHER section would fire
+  // role-gated API calls and surface "Insufficient permissions", so bounce them
+  // back to their home page instead.
   useEffect(() => {
     if (loading || !user) return;
     const isRemoteRole = user.role === 'remote_employee' || user.role === 'remote_manager';
-    if (isRemoteRole && !pathname.startsWith('/system/remote')) {
+    if (isRemoteRole && !pathname.startsWith('/system/remote') && !pathname.startsWith('/system/hr')) {
       router.replace(homeRouteForRole(user.role));
     }
   }, [loading, user, pathname, router]);
@@ -116,6 +118,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Operations
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/operations/dispatch-sheets', label: L.dispatchSheets, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
+    { href: '/system/drivers', label: L.drivers, icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'], section: 'Operations' },
+    { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations', 'procurement_manager', 'purchasing'], section: 'Operations' },
     { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'moderator'], section: 'Operations' },
     { href: '/system/vehicle-analytics', label: L.vehicleAnalytics, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
@@ -123,6 +127,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vehicle-analytics/tracking', label: L.gpsTracking, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
     { href: '/system/vehicle-analytics/trips', label: L.trips, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
     { href: '/system/vehicle-analytics/upload', label: L.dataUpload, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
+    // Customs Clearance
+    { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+    { href: '/system/customs/guide', label: L.customsGuide, icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     // B2C
     { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
     { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
@@ -136,14 +143,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/workshop/tasks', label: L.workshopTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
     { href: '/system/workshop/inventory', label: L.inventory, icon: <Package className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'], section: 'Workshop' },
     { href: '/system/workshop/maintenance-types', label: L.maintenanceTypes, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager'], section: 'Workshop' },
-    // Admin
-    { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
-    { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'], section: 'Admin' },
-    { href: '/system/drivers', label: L.drivers, icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'], section: 'Admin' },
-    { href: '/system/expense-categories', label: L.expenseCategories, icon: <Tags className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
-    { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
-    { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Admin' },
-    { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'workshop_manager', 'operations_manager'], section: 'Admin' },
     // Remote (work-from-home)
     { href: '/system/remote/attendance', label: L.remoteAttendance, icon: <Clock className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'attendance' },
     { href: '/system/remote/dashboard', label: L.remoteDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'dashboard' },
@@ -152,9 +151,55 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/remote/tasks', label: L.remoteTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'tasks' },
     { href: '/system/remote/report', label: L.remoteReport, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'report' },
     { href: '/system/remote/announcements', label: L.remoteAnnouncements, icon: <Megaphone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'remote_manager', 'remote_employee'], section: 'Remote', remoteKey: 'announcements' },
+    // HR (back-office — staff only)
+    { href: '/system/hr/dashboard', label: L.hrDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/employees', label: L.hrEmployees, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/contracts', label: L.hrContracts, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/leaves', label: L.hrLeaves, icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/requests', label: L.hrRequests, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/custody', label: L.hrCustody, icon: <Package className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/leave-types', label: L.hrLeaveTypes, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    // Self Service (HR pages every employee sees)
+    { href: '/system/hr/me', label: L.hrMyProfile, icon: <Briefcase className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager'], section: 'Self Service' },
+    { href: '/system/hr/my-leaves', label: L.hrMyLeaves, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager'], section: 'Self Service' },
+    { href: '/system/hr/my-requests', label: L.hrMyRequests, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager'], section: 'Self Service' },
+    // CRM
+    { href: '/system/crm/dashboard', label: L.crmDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
+    { href: '/system/crm/companies', label: L.crmCompanies, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
+    { href: '/system/crm/contacts', label: L.crmContacts, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
+    { href: '/system/crm/deals', label: L.crmDeals, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
+    { href: '/system/crm/tasks', label: L.crmTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
+    { href: '/system/crm/calendar', label: L.crmCalendar, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
+    { href: '/system/crm/activities', label: L.crmActivities, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
+    // Sales
+    { href: '/system/sales/dashboard', label: L.salesDashboard, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
+    { href: '/system/sales/pipeline', label: L.salesPipeline, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
+    { href: '/system/sales/targets', label: L.salesTargets, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
+    { href: '/system/sales/performance', label: L.salesPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
+    // Accounting
+    { href: '/system/accounting/dashboard', label: L.accountingDashboard, icon: <Calculator className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/accounting/accounts', label: L.chartOfAccounts, icon: <BookOpen className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/accounting/journal', label: L.journal, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/accounting/trial-balance', label: L.trialBalance, icon: <Scale className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/accounting/profit-loss', label: L.profitLoss, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/accounting/receivables', label: L.receivables, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/accounting/payables', label: L.payables, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    // Procurement
+    { href: '/system/procurement/dashboard', label: L.procurementDashboard, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing'], section: 'Procurement' },
+    { href: '/system/procurement/requests', label: L.purchaseRequests, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing'], section: 'Procurement' },
+    { href: '/system/procurement/orders', label: L.purchaseOrders, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing'], section: 'Procurement' },
+    { href: '/system/procurement/bills', label: L.vendorBills, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing'], section: 'Procurement' },
     // Tools
+    { href: '/system/kpis', label: L.kpis, icon: <Gauge className="w-5 h-5" />, roles: ['super_admin', 'admin', 'moderator'], section: 'Tools' },
     { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'], section: 'Tools' },
     { href: '/system/settings', label: L.settings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Tools' },
+    // Admin (configuration & oversight — kept near the bottom)
+    { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
+    { href: '/system/expense-categories', label: L.expenseCategories, icon: <Tags className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
+    { href: '/system/settings/reference-data', label: lang === 'ar' ? 'القوائم المرجعية' : 'Reference Data', icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing', 'crm_manager', 'crm_specialist', 'sales_manager'], section: 'Admin' },
+    { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
+    { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Admin' },
+    { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'workshop_manager', 'operations_manager'], section: 'Admin' },
     // Client portal
     { href: '/system/portal', label: L.overview, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
     { href: '/system/portal/invoices', label: L.myInvoices, icon: <FileText className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
@@ -190,7 +235,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -208,8 +253,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         onClick={onClick}
         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
           isActive
-            ? 'bg-[#f37121] text-white'
-            : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+            ? 'bg-[#f37121] text-white shadow-sm shadow-[#f37121]/30'
+            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
         }`}
       >
         {item.icon}
@@ -229,12 +274,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           onClick={() => toggleSection(section)}
-          className="w-full flex items-center justify-between gap-2 px-3 py-2.5 mt-2 rounded-lg text-xs font-bold text-white uppercase tracking-wide bg-gray-700/40 hover:bg-gray-700/70 transition-colors"
+          className="w-full flex items-center justify-between gap-2 px-3 py-2.5 mt-2 rounded-lg text-xs font-bold text-slate-400 uppercase tracking-wide bg-slate-800/40 hover:bg-slate-800 hover:text-slate-200 transition-colors"
         >
           <span>{getSectionLabel(section, lang)}</span>
           {isExpanded
             ? <ChevronDown className="w-4 h-4 text-[#f37121]" />
-            : (isRTL ? <ChevronLeft className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />)}
+            : (isRTL ? <ChevronLeft className="w-4 h-4 text-slate-500" /> : <ChevronRight className="w-4 h-4 text-slate-500" />)}
         </button>
         <AnimatePresence initial={false}>
           {isExpanded && (
@@ -256,18 +301,18 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen bg-slate-100 flex" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Desktop Sidebar */}
-      <aside className={`hidden lg:flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} bg-gray-800 ${isRTL ? 'border-l' : 'border-r'} border-gray-700 transition-all duration-300 fixed h-full z-40 ${isRTL ? 'right-0' : 'left-0'}`}>
+      <aside className={`hidden lg:flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} bg-slate-900 ${isRTL ? 'border-l' : 'border-r'} border-slate-800 transition-all duration-300 fixed h-full z-40 ${isRTL ? 'right-0' : 'left-0'}`}>
         {/* Logo */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-gray-700">
+        <div className="flex items-center justify-between px-4 py-4 border-b border-slate-800">
           {sidebarOpen && (
             <Link href="/" className="flex items-center gap-2">
               <Shield className="w-6 h-6 text-[#f37121]" />
               <span className="text-white font-bold text-sm">Energize CFS</span>
             </Link>
           )}
-          <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="text-gray-400 hover:text-white p-1" title={L.toggleSidebar}>
+          <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="text-slate-400 hover:text-white p-1" title={L.toggleSidebar}>
             <Menu className="w-5 h-5" />
           </button>
         </div>
@@ -280,7 +325,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
             if (!sidebarOpen) {
               return (
                 <div key={section}>
-                  <div className="my-2 mx-2 border-t border-gray-700" />
+                  <div className="my-2 mx-2 border-t border-slate-800" />
                   <div className="space-y-0.5">
                     {items.map((item) => renderNavLink(item))}
                   </div>
@@ -292,14 +337,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* User Info + Logout */}
-        <div className="border-t border-gray-700 p-4">
+        <div className="border-t border-slate-800 p-4">
           {sidebarOpen && (
             <div className="mb-3">
               <p className="text-white text-sm font-medium">{user.firstName} {user.lastName}</p>
-              <p className="text-gray-400 text-xs capitalize">{getRoleLabel(user.role, lang)}</p>
+              <p className="text-slate-400 text-xs capitalize">{getRoleLabel(user.role, lang)}</p>
             </div>
           )}
-          <button type="button" onClick={handleLogout} className="flex items-center gap-2 text-gray-400 hover:text-red-400 transition-colors text-sm w-full">
+          <button type="button" onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-red-600 transition-colors text-sm w-full">
             <LogOut className="w-5 h-5" />
             {sidebarOpen && <span>{L.logout}</span>}
           </button>
@@ -309,12 +354,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <div className={`flex-1 flex flex-col min-w-0 ${sidebarOpen ? (isRTL ? 'lg:mr-64' : 'lg:ml-64') : (isRTL ? 'lg:mr-20' : 'lg:ml-20')} transition-all duration-300`}>
         {/* Top Bar */}
-        <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between sticky top-0 z-30">
+        <header className="bg-white border-b border-slate-200 shadow-sm px-4 py-3 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-3">
-            <button type="button" onClick={() => setMobileMenuOpen(true)} className="lg:hidden text-gray-400 hover:text-white" title={L.openMenu}>
+            <button type="button" onClick={() => setMobileMenuOpen(true)} className="lg:hidden text-slate-500 hover:text-slate-900" title={L.openMenu}>
               <Menu className="w-6 h-6" />
             </button>
-            <h2 className="text-white font-semibold text-lg hidden sm:block">
+            <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg hidden sm:block mb-3">
               {[...filteredNav].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(n.href + '/'))?.label || L.system}
             </h2>
           </div>
@@ -322,7 +367,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-4">
             {/* Language Toggle */}
             <button type="button" onClick={toggleLang}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-600 hover:text-white transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 hover:text-slate-900 transition-colors"
               title={lang === 'en' ? L.switchToArabic : L.switchToEnglish}>
               <Languages className="w-4 h-4" />
               <span className="text-xs">{lang === 'en' ? 'عربي' : 'EN'}</span>
@@ -330,7 +375,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
             {/* Notifications */}
             <div className="relative">
-              <button type="button" onClick={() => setShowNotifications(!showNotifications)} className="text-gray-400 hover:text-white relative">
+              <button type="button" onClick={() => setShowNotifications(!showNotifications)} className="text-slate-500 hover:text-slate-900 relative">
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
@@ -345,10 +390,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="absolute right-0 mt-2 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto"
+                    className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto"
                   >
-                    <div className="p-3 border-b border-gray-700 flex items-center justify-between">
-                      <span className="text-white font-medium text-sm">{L.notifications}</span>
+                    <div className="p-3 border-b border-slate-200 flex items-center justify-between">
+                      <span className="text-slate-900 font-medium text-sm">{L.notifications}</span>
                       {unreadCount > 0 && (
                         <button type="button" onClick={markAllRead} className="text-[#f37121] text-xs hover:underline">
                           {L.markAllRead}
@@ -356,12 +401,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                       )}
                     </div>
                     {notifications.length === 0 ? (
-                      <p className="p-4 text-gray-400 text-sm text-center">{L.noNewNotifications}</p>
+                      <p className="p-4 text-slate-500 text-sm text-center">{L.noNewNotifications}</p>
                     ) : (
                       notifications.map((n: any) => (
-                        <div key={n._id} className="p-3 border-b border-gray-700/50 hover:bg-gray-700/50">
-                          <p className="text-white text-sm font-medium">{n.title}</p>
-                          <p className="text-gray-400 text-xs mt-1">{n.message}</p>
+                        <div key={n._id} className="p-3 border-b border-slate-200/70 hover:bg-slate-100">
+                          <p className="text-slate-900 text-sm font-medium">{n.title}</p>
+                          <p className="text-slate-500 text-xs mt-1">{n.message}</p>
                         </div>
                       ))
                     )}
@@ -400,11 +445,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
               initial={{ x: isRTL ? 280 : -280 }}
               animate={{ x: 0 }}
               exit={{ x: isRTL ? 280 : -280 }}
-              className={`fixed ${isRTL ? 'right-0' : 'left-0'} top-0 w-[280px] h-full bg-gray-800 ${isRTL ? 'border-l' : 'border-r'} border-gray-700 z-50 lg:hidden flex flex-col`}
+              className={`fixed ${isRTL ? 'right-0' : 'left-0'} top-0 w-[280px] h-full bg-slate-900 ${isRTL ? 'border-l' : 'border-r'} border-slate-800 z-50 lg:hidden flex flex-col`}
             >
-              <div className="flex items-center justify-between px-4 py-4 border-b border-gray-700">
+              <div className="flex items-center justify-between px-4 py-4 border-b border-slate-800">
                 <span className="text-white font-bold">Energize CFS</span>
-                <button type="button" onClick={() => setMobileMenuOpen(false)} className="text-gray-400 hover:text-white" title={L.closeMenu}>
+                <button type="button" onClick={() => setMobileMenuOpen(false)} className="text-slate-400 hover:text-white" title={L.closeMenu}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -413,10 +458,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                   renderSection(section, items, () => setMobileMenuOpen(false))
                 )}
               </nav>
-              <div className="border-t border-gray-700 p-4">
+              <div className="border-t border-slate-800 p-4">
                 <p className="text-white text-sm">{user.firstName} {user.lastName}</p>
-                <p className="text-gray-400 text-xs capitalize mb-3">{getRoleLabel(user.role, lang)}</p>
-                <button type="button" onClick={handleLogout} className="flex items-center gap-2 text-gray-400 hover:text-red-400 text-sm">
+                <p className="text-slate-400 text-xs capitalize mb-3">{getRoleLabel(user.role, lang)}</p>
+                <button type="button" onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-red-600 text-sm">
                   <LogOut className="w-4 h-4" />
                   <span>{L.logout}</span>
                 </button>

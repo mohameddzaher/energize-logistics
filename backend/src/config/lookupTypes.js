@@ -1,0 +1,117 @@
+// Registry of every editable reference list (lookup type) in the system.
+// Each entry declares: a stable `type` id, the module it belongs to, bilingual
+// labels, the roles allowed to manage it, and the default rows to seed once.
+//
+// To add a new editable dropdown anywhere in the app you only need to:
+//   1. add an entry here (with seed rows), and
+//   2. point a <ManagedSelect type="..."> at it on the frontend.
+// No new model / controller / route is required.
+const crmDefaults = require('./crmDefaults');
+const procurementDefaults = require('./procurementDefaults');
+
+// Roles that can manage every lookup regardless of module.
+const BASE_WRITE_ROLES = ['super_admin', 'admin'];
+
+const REGISTRY = [
+  {
+    type: 'procurement_category',
+    module: 'procurement',
+    nameEn: 'Procurement Categories',
+    nameAr: 'فئات المشتريات',
+    roles: ['procurement_manager', 'purchasing'],
+    seed: procurementDefaults.CATEGORIES,
+  },
+  {
+    type: 'vendor_category',
+    module: 'procurement',
+    nameEn: 'Vendor Categories',
+    nameAr: 'فئات الموردين',
+    roles: ['procurement_manager', 'purchasing', 'operations_manager', 'operations'],
+    seed: [
+      { key: 'spare_parts', nameEn: 'Spare Parts', nameAr: 'قطع غيار' },
+      { key: 'fuel', nameEn: 'Fuel', nameAr: 'وقود' },
+      { key: 'services', nameEn: 'Services', nameAr: 'خدمات' },
+      { key: 'logistics', nameEn: 'Logistics', nameAr: 'لوجستيات' },
+      { key: 'other', nameEn: 'Other', nameAr: 'أخرى' },
+    ],
+  },
+  {
+    type: 'crm_industry',
+    module: 'crm',
+    nameEn: 'CRM Industries',
+    nameAr: 'صناعات العملاء',
+    roles: ['crm_manager', 'crm_specialist', 'sales_manager'],
+    seed: crmDefaults.INDUSTRIES,
+  },
+  {
+    type: 'crm_source',
+    module: 'crm',
+    nameEn: 'Lead Sources',
+    nameAr: 'مصادر العملاء',
+    roles: ['crm_manager', 'crm_specialist', 'sales_manager'],
+    seed: crmDefaults.SOURCES,
+  },
+  {
+    type: 'crm_company_type',
+    module: 'crm',
+    nameEn: 'Company Types',
+    nameAr: 'أنواع الشركات',
+    roles: ['crm_manager', 'crm_specialist', 'sales_manager'],
+    seed: crmDefaults.COMPANY_TYPES,
+  },
+  {
+    type: 'crm_company_size',
+    module: 'crm',
+    nameEn: 'Company Sizes',
+    nameAr: 'أحجام الشركات',
+    roles: ['crm_manager', 'crm_specialist', 'sales_manager'],
+    seed: crmDefaults.COMPANY_SIZES,
+  },
+];
+
+const byType = (type) => REGISTRY.find((r) => r.type === type) || null;
+
+// Roles allowed to create/update/delete a given type.
+const writeRolesFor = (type) => {
+  const entry = byType(type);
+  return [...BASE_WRITE_ROLES, ...((entry && entry.roles) || [])];
+};
+
+const canManage = (type, role) => writeRolesFor(type).includes(role);
+
+// Public metadata (no seed payload) for the management UI, annotated with whether
+// the requesting role may manage each type.
+const typesForRole = (role) =>
+  REGISTRY.map((r) => ({
+    type: r.type,
+    module: r.module,
+    nameEn: r.nameEn,
+    nameAr: r.nameAr,
+    canManage: canManage(r.type, role),
+  }));
+
+// Idempotent seeding: insert any missing default rows. Existing rows (including
+// user edits) are never overwritten.
+const ensureDefaultLookups = async () => {
+  const Lookup = require('../models/Lookup');
+  for (const entry of REGISTRY) {
+    for (let i = 0; i < (entry.seed || []).length; i++) {
+      const row = entry.seed[i];
+      const exists = await Lookup.findOne({ type: entry.type, key: row.key }).select('_id').lean();
+      if (!exists) {
+        await Lookup.create({
+          type: entry.type,
+          key: row.key,
+          nameEn: row.nameEn,
+          nameAr: row.nameAr,
+          color: row.color,
+          order: i,
+          isActive: true,
+          isSystem: true,
+        });
+      }
+    }
+  }
+};
+
+module.exports = { REGISTRY, byType, writeRolesFor, canManage, typesForRole, ensureDefaultLookups };

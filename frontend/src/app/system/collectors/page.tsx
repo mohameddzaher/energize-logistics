@@ -64,7 +64,7 @@ export default function CollectorsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">{T.title}</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
         <button type="button" onClick={() => exportToExcel(ranking, [
           { header: 'Collector', key: 'collector.name', width: 22 },
           { header: 'Role', key: 'collector.role', width: 16 },
@@ -78,7 +78,7 @@ export default function CollectorsPage() {
           { header: 'Avg Delay (days)', key: 'avgDelay', width: 18 },
           { header: 'Activities', key: 'activityCount', width: 12 },
           { header: T.assignedCustomers, key: 'assignedCustomers', width: 18 },
-        ], `collector-performance-${new Date().toISOString().split('T')[0]}`, 'Performance')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors">
+        ], `collector-performance-${new Date().toISOString().split('T')[0]}`, 'Performance')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
           <Download className="w-4 h-4" /> {T.downloadExcel}
         </button>
       </div>
@@ -92,8 +92,8 @@ export default function CollectorsPage() {
 
       {/* Efficiency Chart */}
       {ranking.length > 0 && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-          <h3 className="text-white font-semibold mb-4">{T.efficiency}</h3>
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.efficiency}</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={ranking.map((r) => ({ name: r.collector?.name?.split(' ')[0] || '', efficiency: r.efficiency, collected: r.totalCollected }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -107,64 +107,64 @@ export default function CollectorsPage() {
       )}
 
       {/* Ranking Table */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-        <h3 className="text-white font-semibold mb-4">{T.title}</h3>
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.title}</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-700">
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">#</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.name}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.target}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.totalCollected}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.assignedCustomers}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">Extra</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.efficiency}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">Promises</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">Fulfilled</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">Avg Delay</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">Activities</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.customers}</th>
+              <tr className="bg-slate-900 border-b border-slate-200">
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">#</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.name}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.target}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.totalCollected}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.assignedCustomers}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Extra</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.efficiency}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Promises</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Fulfilled</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Avg Delay</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Activities</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.customers}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700/50">
+            <tbody className="divide-y divide-slate-200">
               {ranking.map((p, i) => (
                 <tr
                   key={p.collector?._id || i}
-                  className="hover:bg-gray-700/30 cursor-pointer transition-colors"
+                  className="hover:bg-slate-100 cursor-pointer transition-colors"
                   onClick={() => p.collector?._id && router.push(`/system/collectors/${p.collector._id}`)}
                 >
-                  <td className="px-4 py-3 text-sm text-gray-300 font-bold">#{i + 1}</td>
-                  <td className="px-4 py-3 text-sm text-white font-medium">
+                  <td className="px-4 py-3 text-sm text-slate-700 font-bold">#{i + 1}</td>
+                  <td className="px-4 py-3 text-sm text-slate-900 font-medium">
                     <div className="flex items-center gap-2">
                       <span>{p.collector?.name}</span>
                       {p.collector?.role === 'admin' && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-400">Dept Manager</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-600">Dept Manager</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{p.target?.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm text-green-400 font-medium">{p.totalCollected?.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm text-cyan-400">{p.assignedCollected?.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700">{p.target?.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm text-green-600 font-medium">{p.totalCollected?.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm text-cyan-700">{p.assignedCollected?.toLocaleString()}</td>
                   <td className="px-4 py-3 text-sm">
                     {(p.extraCollected || 0) > 0 ? (
                       <span className="text-[#f37121] font-medium">{p.extraCollected?.toLocaleString()}</span>
                     ) : (
-                      <span className="text-gray-500">0</span>
+                      <span className="text-slate-500">0</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                      p.efficiency >= 80 ? 'bg-green-500/20 text-green-400' :
-                      p.efficiency >= 50 ? 'bg-yellow-500/20 text-yellow-400' :
-                      'bg-red-500/20 text-red-400'
+                      p.efficiency >= 80 ? 'bg-green-500/20 text-green-600' :
+                      p.efficiency >= 50 ? 'bg-yellow-500/20 text-yellow-700' :
+                      'bg-red-500/20 text-red-600'
                     }`}>{p.efficiency}%</span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{p.totalPromises}</td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{p.promiseFulfillment}%</td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{p.avgDelay}</td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{p.activityCount}</td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{p.assignedCustomers}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700">{p.totalPromises}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700">{p.promiseFulfillment}%</td>
+                  <td className="px-4 py-3 text-sm text-slate-700">{p.avgDelay}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700">{p.activityCount}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700">{p.assignedCustomers}</td>
                 </tr>
               ))}
             </tbody>

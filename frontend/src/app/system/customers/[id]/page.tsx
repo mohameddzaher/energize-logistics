@@ -109,12 +109,12 @@ interface CustomerSummary {
 
 const riskBadge = (level: string, score?: number) => {
   const styles: Record<string, string> = {
-    low: 'bg-green-500/20 text-green-400 border-green-500/30',
-    medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-    high: 'bg-red-500/20 text-red-400 border-red-500/30',
+    low: 'bg-green-500/20 text-green-600 border-green-500/30',
+    medium: 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30',
+    high: 'bg-red-500/20 text-red-600 border-red-500/30',
   };
   return (
-    <span className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize border ${styles[level] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
+    <span className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize border ${styles[level] || 'bg-slate-500/20 text-slate-500 border-slate-500/30'}`}>
       {level}{score !== undefined ? ` (${score}%)` : ''}
     </span>
   );
@@ -122,13 +122,13 @@ const riskBadge = (level: string, score?: number) => {
 
 const gradeBadge = (grade: string) => {
   const styles: Record<string, string> = {
-    A: 'bg-green-500/20 text-green-400 border-green-500/30',
-    B: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    C: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-    D: 'bg-red-500/20 text-red-400 border-red-500/30',
+    A: 'bg-green-500/20 text-green-600 border-green-500/30',
+    B: 'bg-blue-500/20 text-blue-600 border-blue-500/30',
+    C: 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30',
+    D: 'bg-red-500/20 text-red-600 border-red-500/30',
   };
   return (
-    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold capitalize border ${styles[grade] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
+    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold capitalize border ${styles[grade] || 'bg-slate-500/20 text-slate-500 border-slate-500/30'}`}>
       Grade {grade}
     </span>
   );
@@ -148,21 +148,21 @@ const clientStatusLabels: Record<string, string> = {
 };
 
 const clientStatusStyles: Record<string, string> = {
-  good_client: 'bg-green-500/20 text-green-400 border-green-500/30',
-  late_payment: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  stopped_by_us: 'bg-red-500/20 text-red-400 border-red-500/30',
-  stopped_by_client: 'bg-red-500/20 text-red-400 border-red-500/30',
-  under_review: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  legal_action: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  write_off: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-  payment_plan: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  new_client: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
-  vip_client: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  good_client: 'bg-green-500/20 text-green-600 border-green-500/30',
+  late_payment: 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30',
+  stopped_by_us: 'bg-red-500/20 text-red-600 border-red-500/30',
+  stopped_by_client: 'bg-red-500/20 text-red-600 border-red-500/30',
+  under_review: 'bg-blue-500/20 text-blue-600 border-blue-500/30',
+  legal_action: 'bg-purple-500/20 text-purple-600 border-purple-500/30',
+  write_off: 'bg-slate-500/20 text-slate-500 border-slate-500/30',
+  payment_plan: 'bg-cyan-500/20 text-cyan-700 border-cyan-500/30',
+  new_client: 'bg-indigo-500/20 text-indigo-600 border-indigo-500/30',
+  vip_client: 'bg-amber-500/20 text-amber-700 border-amber-500/30',
 };
 
 const clientStatusBadge = (status: string) => {
   return (
-    <span className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${clientStatusStyles[status] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`}>
+    <span className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${clientStatusStyles[status] || 'bg-slate-500/20 text-slate-500 border-slate-500/30'}`}>
       {clientStatusLabels[status] || status?.replace(/_/g, ' ') || '-'}
     </span>
   );
@@ -170,14 +170,14 @@ const clientStatusBadge = (status: string) => {
 
 const statusBadge = (status: string) => {
   const styles: Record<string, string> = {
-    paid: 'bg-green-500/20 text-green-400',
-    partial: 'bg-yellow-500/20 text-yellow-400',
-    pending: 'bg-blue-500/20 text-blue-400',
-    overdue: 'bg-red-500/20 text-red-400',
-    cancelled: 'bg-gray-500/20 text-gray-400',
+    paid: 'bg-green-500/20 text-green-600',
+    partial: 'bg-yellow-500/20 text-yellow-700',
+    pending: 'bg-blue-500/20 text-blue-600',
+    overdue: 'bg-red-500/20 text-red-600',
+    cancelled: 'bg-slate-500/20 text-slate-500',
   };
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${styles[status] || 'bg-gray-500/20 text-gray-400'}`}>
+    <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${styles[status] || 'bg-slate-500/20 text-slate-500'}`}>
       {status}
     </span>
   );
@@ -406,20 +406,20 @@ export default function CustomerDetailPage() {
       key: 'amount',
       label: 'Amount',
       sortable: true,
-      render: (value: number) => <span className="text-white font-medium">{formatCurrency(value)}</span>,
+      render: (value: number) => <span className="text-slate-900 font-medium">{formatCurrency(value)}</span>,
     },
     {
       key: 'paidAmount',
       label: 'Paid',
       sortable: true,
-      render: (value: number) => <span className="text-green-400">{formatCurrency(value)}</span>,
+      render: (value: number) => <span className="text-green-600">{formatCurrency(value)}</span>,
     },
     {
       key: 'balance',
       label: 'Balance',
       sortable: true,
       render: (value: number) => (
-        <span className={value > 0 ? 'text-red-400 font-medium' : 'text-green-400'}>{formatCurrency(value)}</span>
+        <span className={value > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>{formatCurrency(value)}</span>
       ),
     },
     {
@@ -447,7 +447,7 @@ export default function CustomerDetailPage() {
       key: 'amount',
       label: 'Amount',
       sortable: true,
-      render: (value: number) => <span className="text-green-400 font-medium">{formatCurrency(value)}</span>,
+      render: (value: number) => <span className="text-green-600 font-medium">{formatCurrency(value)}</span>,
     },
     {
       key: 'paymentMethod',
@@ -535,14 +535,14 @@ export default function CustomerDetailPage() {
       key: 'sellingValue',
       label: T.sellingValue,
       sortable: true,
-      render: (value: number) => <span className="text-white font-medium">{formatCurrency(value)}</span>,
+      render: (value: number) => <span className="text-slate-900 font-medium">{formatCurrency(value)}</span>,
     },
     {
       key: 'stage',
       label: T.stage,
       sortable: true,
       render: (value: string) => (
-        <span className="px-2 py-0.5 rounded text-xs font-medium capitalize bg-purple-500/20 text-purple-400">
+        <span className="px-2 py-0.5 rounded text-xs font-medium capitalize bg-purple-500/20 text-purple-600">
           {stageLabels[value] || value?.replace(/_/g, ' ') || '-'}
         </span>
       ),
@@ -562,14 +562,14 @@ export default function CustomerDetailPage() {
       <div className="space-y-4">
         <button
           onClick={() => router.push('/system/customers')}
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+          className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           {T.back} {T.title}
         </button>
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 text-center">
-          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
-          <p className="text-red-400">{error}</p>
+          <AlertTriangle className="w-8 h-8 text-red-600 mx-auto mb-3" />
+          <p className="text-red-600">{error}</p>
         </div>
       </div>
     );
@@ -588,7 +588,7 @@ export default function CustomerDetailPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/system/customers')}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+            className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -598,33 +598,33 @@ export default function CustomerDetailPage() {
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-2xl font-bold text-white">{customer.companyName}</h1>
+                <h1 className="text-2xl font-bold text-slate-900">{customer.companyName}</h1>
                 {customer.customerNumber && (
-                  <span className="text-sm text-gray-400">({customer.customerNumber})</span>
+                  <span className="text-sm text-slate-500">({customer.customerNumber})</span>
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap mt-1">
-                <span className="text-gray-400 text-sm flex items-center gap-1">
+                <span className="text-slate-500 text-sm flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> {customer.office || 'No office'}
                 </span>
-                <span className="text-gray-600">|</span>
+                <span className="text-slate-600">|</span>
                 {riskBadge(customer.riskLevel, customer.riskScore)}
                 {customer.grade && (
                   <>
-                    <span className="text-gray-600">|</span>
+                    <span className="text-slate-600">|</span>
                     {gradeBadge(customer.grade)}
                   </>
                 )}
                 {customer.clientStatus && (
                   <>
-                    <span className="text-gray-600">|</span>
+                    <span className="text-slate-600">|</span>
                     {clientStatusBadge(customer.clientStatus)}
                   </>
                 )}
                 {customer.isStopped && (
                   <>
-                    <span className="text-gray-600">|</span>
-                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold border bg-red-500/20 text-red-400 border-red-500/30">
+                    <span className="text-slate-600">|</span>
+                    <span className="px-2.5 py-1 rounded-lg text-xs font-bold border bg-red-500/20 text-red-600 border-red-500/30">
                       STOPPED
                     </span>
                   </>
@@ -639,19 +639,19 @@ export default function CustomerDetailPage() {
             aria-label="Statement from date"
             value={statementFrom}
             onChange={(e) => setStatementFrom(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+            className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
           />
           <input
             type="date"
             aria-label="Statement to date"
             value={statementTo}
             onChange={(e) => setStatementTo(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+            className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
           />
           <button
             type="button"
             onClick={handleDownloadStatement}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-300 text-sm hover:bg-gray-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm hover:bg-slate-100 transition-colors"
           >
             <Download className="w-4 h-4" />
             {T.export}
@@ -659,7 +659,7 @@ export default function CustomerDetailPage() {
           <button
             type="button"
             onClick={handleExportCustomerDetails}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-300 text-sm hover:bg-gray-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm hover:bg-slate-100 transition-colors"
             title="Export to Excel"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -669,7 +669,7 @@ export default function CustomerDetailPage() {
             <button
               type="button"
               onClick={() => { setNewCreditTerm(customer.creditTerm); setCreditError(''); setShowCreditModal(true); }}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-300 text-sm hover:bg-gray-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm hover:bg-slate-100 transition-colors"
             >
               <Edit3 className="w-4 h-4" />
               {T.edit} {T.creditTerm}
@@ -683,101 +683,101 @@ export default function CustomerDetailPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="bg-gray-800 border border-gray-700 rounded-xl p-6"
+        className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm"
       >
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
           <User className="w-4 h-4 text-[#f37121]" />
           {T.title}
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="flex items-start gap-3">
-            <User className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <User className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs text-gray-500">{T.contactPerson}</p>
-              <p className="text-sm text-white">{customer.contactPerson}</p>
+              <p className="text-xs text-slate-500">{T.contactPerson}</p>
+              <p className="text-sm text-slate-900">{customer.contactPerson}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <Mail className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <Mail className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs text-gray-500">{T.email}</p>
-              <p className="text-sm text-white break-all">{customer.email}</p>
+              <p className="text-xs text-slate-500">{T.email}</p>
+              <p className="text-sm text-slate-900 break-all">{customer.email}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <Phone className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <Phone className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs text-gray-500">{T.phone}</p>
-              <p className="text-sm text-white">{customer.phone}</p>
+              <p className="text-xs text-slate-500">{T.phone}</p>
+              <p className="text-sm text-slate-900">{customer.phone}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <MapPin className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs text-gray-500">{T.office}</p>
-              <p className="text-sm text-white">{customer.office || '-'}</p>
+              <p className="text-xs text-slate-500">{T.office}</p>
+              <p className="text-sm text-slate-900">{customer.office || '-'}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <CreditCard className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <CreditCard className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs text-gray-500">{T.creditTerm}</p>
-              <p className="text-sm text-white">{customer.creditTerm} days</p>
+              <p className="text-xs text-slate-500">{T.creditTerm}</p>
+              <p className="text-sm text-slate-900">{customer.creditTerm} days</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <Shield className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <Shield className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs text-gray-500">{T.creditLimit}</p>
-              <p className="text-sm text-white">{formatCurrency(customer.creditLimit)}</p>
+              <p className="text-xs text-slate-500">{T.creditLimit}</p>
+              <p className="text-sm text-slate-900">{formatCurrency(customer.creditLimit)}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <Calendar className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <Calendar className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs text-gray-500">{T.createdAt}</p>
-              <p className="text-sm text-white">{formatDate(customer.createdAt)}</p>
+              <p className="text-xs text-slate-500">{T.createdAt}</p>
+              <p className="text-sm text-slate-900">{formatDate(customer.createdAt)}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs text-gray-500">{T.riskLevel}</p>
+              <p className="text-xs text-slate-500">{T.riskLevel}</p>
               <div className="mt-0.5">{riskBadge(customer.riskLevel, customer.riskScore)}</div>
             </div>
           </div>
           {customer.customerNumber && (
             <div className="flex items-start gap-3">
-              <FileText className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+              <FileText className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-xs text-gray-500">{T.customerNumber}</p>
-                <p className="text-sm text-white">{customer.customerNumber}</p>
+                <p className="text-xs text-slate-500">{T.customerNumber}</p>
+                <p className="text-sm text-slate-900">{customer.customerNumber}</p>
               </div>
             </div>
           )}
           {customer.salesManager && (
             <div className="flex items-start gap-3">
-              <User className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+              <User className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-xs text-gray-500">{T.salesManager}</p>
-                <p className="text-sm text-white">{customer.salesManager}</p>
+                <p className="text-xs text-slate-500">{T.salesManager}</p>
+                <p className="text-sm text-slate-900">{customer.salesManager}</p>
               </div>
             </div>
           )}
           {customer.grade && (
             <div className="flex items-start gap-3">
-              <TrendingUp className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+              <TrendingUp className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-xs text-gray-500">{T.grade}</p>
+                <p className="text-xs text-slate-500">{T.grade}</p>
                 <div className="mt-0.5">{gradeBadge(customer.grade)}</div>
               </div>
             </div>
           )}
           {customer.clientStatus && (
             <div className="flex items-start gap-3">
-              <Activity className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+              <Activity className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-xs text-gray-500">{T.clientStatus}</p>
+                <p className="text-xs text-slate-500">{T.clientStatus}</p>
                 <div className="mt-0.5">{clientStatusBadge(customer.clientStatus)}</div>
               </div>
             </div>
@@ -823,17 +823,17 @@ export default function CustomerDetailPage() {
               <Lightbulb className="w-4 h-4 text-[#f37121]" />
             </div>
             <div className="flex-1">
-              <h3 className="text-white font-semibold text-sm">{T.overview}</h3>
-              <p className="text-gray-300 text-sm mt-1">{followUp.recommendedAction}</p>
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm mb-3">{T.overview}</h3>
+              <p className="text-slate-700 text-sm mt-1">{followUp.recommendedAction}</p>
               <div className="flex flex-wrap gap-4 mt-3">
-                <span className="text-xs text-gray-400">
-                  Suggested Date: <span className="text-white">{formatDate(followUp.suggestedDate)}</span>
+                <span className="text-xs text-slate-500">
+                  Suggested Date: <span className="text-slate-900">{formatDate(followUp.suggestedDate)}</span>
                 </span>
-                <span className="text-xs text-gray-400">
-                  Priority: <span className={`font-medium capitalize ${followUp.priority === 'high' ? 'text-red-400' : followUp.priority === 'medium' ? 'text-yellow-400' : 'text-green-400'}`}>{followUp.priority}</span>
+                <span className="text-xs text-slate-500">
+                  Priority: <span className={`font-medium capitalize ${followUp.priority === 'high' ? 'text-red-600' : followUp.priority === 'medium' ? 'text-yellow-700' : 'text-green-600'}`}>{followUp.priority}</span>
                 </span>
-                <span className="text-xs text-gray-400">
-                  Reason: <span className="text-white">{followUp.reason}</span>
+                <span className="text-xs text-slate-500">
+                  Reason: <span className="text-slate-900">{followUp.reason}</span>
                 </span>
               </div>
             </div>
@@ -847,7 +847,7 @@ export default function CustomerDetailPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <div className="flex gap-1 bg-gray-800 border border-gray-700 rounded-xl p-1 w-fit">
+        <div className="flex gap-1 bg-white border border-slate-200 rounded-xl p-1 w-fit shadow-sm">
           {[
             { key: 'invoices' as const, label: T.invoices, icon: FileText, count: invoices.length },
             { key: 'payments' as const, label: T.payments, icon: DollarSign, count: payments.length },
@@ -861,15 +861,15 @@ export default function CustomerDetailPage() {
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'bg-[#f37121] text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               <tab.icon className="w-4 h-4" />
               {tab.label}
               <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                 activeTab === tab.key
-                  ? 'bg-white/20 text-white'
-                  : 'bg-gray-700 text-gray-400'
+                  ? 'bg-white/20 text-slate-900'
+                  : 'bg-slate-100 text-slate-500'
               }`}>
                 {tab.count}
               </span>
@@ -877,7 +877,7 @@ export default function CustomerDetailPage() {
           ))}
         </div>
 
-        <div className="mt-4 bg-gray-800/50 border border-gray-700 rounded-xl p-4">
+        <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
           <AnimatePresence mode="wait">
             {activeTab === 'invoices' && (
               <motion.div
@@ -954,46 +954,46 @@ export default function CustomerDetailPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="bg-gray-800 border border-gray-700 rounded-xl p-6"
+          className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm"
         >
-          <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-[#f37121]" />
             {T.riskLevel}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Overall Risk Score</p>
-              <p className="text-3xl font-bold text-white mt-1">{riskAnalysis.riskScore}%</p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <p className="text-xs text-slate-500 uppercase tracking-wide">Overall Risk Score</p>
+              <p className="text-3xl font-bold text-slate-900 mt-1">{riskAnalysis.riskScore}%</p>
               <div className="mt-1">{riskBadge(riskAnalysis.riskLevel)}</div>
             </div>
-            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Risk Factors</p>
-              <p className="text-3xl font-bold text-white mt-1">{riskAnalysis.factors.length}</p>
-              <p className="text-xs text-gray-400 mt-1">Contributing factors</p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <p className="text-xs text-slate-500 uppercase tracking-wide">Risk Factors</p>
+              <p className="text-3xl font-bold text-slate-900 mt-1">{riskAnalysis.factors.length}</p>
+              <p className="text-xs text-slate-500 mt-1">Contributing factors</p>
             </div>
           </div>
 
           <div className="space-y-3">
             {riskAnalysis.factors.map((factor, index) => (
-              <div key={index} className="bg-gray-900 border border-gray-700 rounded-lg p-4">
+              <div key={index} className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm text-white font-medium capitalize">
+                  <p className="text-sm text-slate-900 font-medium capitalize">
                     {factor.factor.replace(/_/g, ' ')}
                   </p>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-slate-500">
                       Weight: {(factor.weight * 100).toFixed(0)}%
                     </span>
                     <span className={`text-sm font-bold ${
-                      factor.score >= 70 ? 'text-red-400' :
-                      factor.score >= 40 ? 'text-yellow-400' :
-                      'text-green-400'
+                      factor.score >= 70 ? 'text-red-600' :
+                      factor.score >= 40 ? 'text-yellow-700' :
+                      'text-green-600'
                     }`}>
                       {factor.score}%
                     </span>
                   </div>
                 </div>
-                <div className="w-full bg-gray-700 rounded-full h-2">
+                <div className="w-full bg-slate-100 rounded-full h-2">
                   <div
                     className={`h-2 rounded-full transition-all ${
                       factor.score >= 70 ? 'bg-red-500' :
@@ -1004,7 +1004,7 @@ export default function CustomerDetailPage() {
                   />
                 </div>
                 {factor.description && (
-                  <p className="text-xs text-gray-400 mt-2">{factor.description}</p>
+                  <p className="text-xs text-slate-500 mt-2">{factor.description}</p>
                 )}
               </div>
             ))}
@@ -1027,20 +1027,20 @@ export default function CustomerDetailPage() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden"
+              className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden"
             >
               {/* Modal Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-700">
+              <div className="flex items-center justify-between p-6 border-b border-slate-200">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-[#f37121]/20 flex items-center justify-center">
                     <CreditCard className="w-4 h-4 text-[#f37121]" />
                   </div>
-                  <h2 className="text-lg font-semibold text-white">{T.edit} {T.creditTerm}</h2>
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-semibold text-white mb-3">{T.edit} {T.creditTerm}</h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowCreditModal(false)}
-                  className="text-gray-400 hover:text-white transition-colors"
+                  className="text-slate-500 hover:text-slate-900 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1050,22 +1050,22 @@ export default function CustomerDetailPage() {
               <form onSubmit={handleCreditTermUpdate} className="p-6 space-y-4">
                 {creditError && (
                   <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                    <p className="text-red-400 text-sm">{creditError}</p>
+                    <p className="text-red-600 text-sm">{creditError}</p>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
                     Current Credit Term: <span className="text-[#f37121] font-bold">{customer.creditTerm} days</span>
                   </label>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.creditTerm}</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.creditTerm}</label>
                   <select
                     value={newCreditTerm}
                     onChange={(e) => setNewCreditTerm(Number(e.target.value))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     <option value={15}>15 Days</option>
                     <option value={30}>30 Days</option>
@@ -1074,11 +1074,11 @@ export default function CustomerDetailPage() {
                   </select>
                 </div>
 
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                   <button
                     type="button"
                     onClick={() => setShowCreditModal(false)}
-                    className="px-4 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm hover:bg-gray-700 transition-colors"
+                    className="px-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm hover:bg-slate-100 transition-colors"
                   >
                     {T.cancel}
                   </button>

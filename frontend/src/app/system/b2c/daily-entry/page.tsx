@@ -142,57 +142,57 @@ export default function B2CDailyEntryPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <CalendarDays className="w-6 h-6 text-[#f37121]" />
             {T.dailyEntryTitle}
           </h1>
-          <p className="text-gray-400 text-sm mt-1">{T.dailyEntrySubtitle}</p>
+          <p className="text-slate-500 text-sm mt-1">{T.dailyEntrySubtitle}</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 shadow-sm">
         <div>
-          <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">{T.pickDate}</label>
+          <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.pickDate}</label>
           <input type="date" aria-label="Pick date" value={date} onChange={(e) => setDate(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+            className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
         </div>
         <div>
-          <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">{T.project}</label>
+          <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.project}</label>
           <select aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
+            className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
             <option value="">{T.allProjects}</option>
             {projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">{T.branch}</label>
+          <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.branch}</label>
           <select aria-label="Branch" value={branch} onChange={(e) => setBranch(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
+            className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
             <option value="">{T.allBranches}</option>
             {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-gray-400 text-xs uppercase font-medium mb-1.5">{lang === 'ar' ? 'بحث' : 'Search'}</label>
+          <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{lang === 'ar' ? 'بحث' : 'Search'}</label>
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder={lang === 'ar' ? 'ابحث عن مندوب...' : 'Search rep...'}
-              className="w-full pl-10 pr-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+              className="w-full pl-10 pr-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
           </div>
         </div>
       </div>
 
       {/* Date header card */}
       <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-r from-[#f37121]/10 via-gray-800 to-gray-800 border border-[#f37121]/30 rounded-xl p-4 flex items-center justify-between">
+        className="bg-gradient-to-r from-[#f37121]/10 via-white to-slate-100 border border-[#f37121]/30 rounded-xl p-4 flex items-center justify-between">
         <div>
-          <p className="text-gray-400 text-xs uppercase">{lang === 'ar' ? 'تسجيل اليوم' : 'Recording for'}</p>
-          <p className="text-white font-bold text-lg">{dayName} — {date}</p>
+          <p className="text-slate-500 text-xs uppercase">{lang === 'ar' ? 'تسجيل اليوم' : 'Recording for'}</p>
+          <p className="text-slate-900 font-bold text-lg">{dayName} — {date}</p>
         </div>
         <div className="text-right">
-          <p className="text-gray-400 text-xs uppercase">{lang === 'ar' ? 'مناديب اليوم' : 'Reps'}</p>
+          <p className="text-slate-500 text-xs uppercase">{lang === 'ar' ? 'مناديب اليوم' : 'Reps'}</p>
           <p className="text-[#f37121] font-bold text-2xl">{filteredReps.length}</p>
         </div>
       </motion.div>
@@ -203,8 +203,8 @@ export default function B2CDailyEntryPage() {
           <div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : filteredReps.length === 0 ? (
-        <div className="text-center py-16 bg-gray-800 rounded-xl border border-gray-700">
-          <p className="text-gray-400">{T.noRepsForProject}</p>
+        <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-slate-500">{T.noRepsForProject}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -222,20 +222,20 @@ export default function B2CDailyEntryPage() {
             const hasData = value !== '' && !Number.isNaN(numValue as number);
             const aboveTarget = hasData && (numValue as number) >= target;
             const belowTarget = hasData && (numValue as number) < target;
-            const stripeColor = !hasData ? 'bg-gray-700' : aboveTarget ? 'bg-green-500' : 'bg-red-500';
+            const stripeColor = !hasData ? 'bg-slate-100' : aboveTarget ? 'bg-green-500' : 'bg-red-500';
             const cardOpacity = hasData ? '' : 'opacity-60';
 
             return (
               <motion.div key={repIdStr}
                 initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
-                className={`bg-gray-800 border border-gray-700 rounded-xl overflow-hidden hover:border-gray-600 transition-all ${cardOpacity}`}
+                className={`bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-slate-300 transition-all ${cardOpacity} shadow-sm`}
               >
                 <div className={`h-1 ${stripeColor}`} />
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-white font-medium text-sm truncate">{rep.englishName}</p>
-                      {rep.arabicName && <p className="text-gray-500 text-xs truncate">{rep.arabicName}</p>}
+                      <p className="text-slate-900 font-medium text-sm truncate">{rep.englishName}</p>
+                      {rep.arabicName && <p className="text-slate-500 text-xs truncate">{rep.arabicName}</p>}
                       {rep.project && (
                         <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: `${rep.project.color || '#f37121'}20`, color: rep.project.color || '#f37121' }}>
                           {rep.project.name}
@@ -244,8 +244,8 @@ export default function B2CDailyEntryPage() {
                     </div>
                     <div className="ml-2 flex items-center justify-center w-6 h-6">
                       {state === 'saving' && <div className="w-3 h-3 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />}
-                      {state === 'saved' && <Check className="w-4 h-4 text-green-400" />}
-                      {state === 'error' && <AlertCircle className="w-4 h-4 text-red-400" />}
+                      {state === 'saved' && <Check className="w-4 h-4 text-green-600" />}
+                      {state === 'error' && <AlertCircle className="w-4 h-4 text-red-600" />}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -255,17 +255,17 @@ export default function B2CDailyEntryPage() {
                       onBlur={() => handleBlur(repIdStr)}
                       placeholder={lang === 'ar' ? 'الطلبات' : 'Orders'}
                       aria-label={`Orders for ${rep.englishName}`}
-                      className={`flex-1 px-3 py-2 rounded-lg bg-gray-900 border text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${
-                        belowTarget ? 'border-red-500/40' : aboveTarget ? 'border-green-500/40' : 'border-gray-700'
+                      className={`flex-1 px-3 py-2 rounded-lg bg-slate-50 border text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${
+                        belowTarget ? 'border-red-500/40' : aboveTarget ? 'border-green-500/40' : 'border-slate-200'
                       }`} />
-                    <span className="text-gray-500 text-xs">/ {target}</span>
+                    <span className="text-slate-500 text-xs">/ {target}</span>
                   </div>
                   {hasData && (
                     <div className="mt-2 text-[11px]">
                       {aboveTarget ? (
-                        <span className="text-green-400">+{(numValue as number) - target} {lang === 'ar' ? 'فوق الهدف' : 'above target'}</span>
+                        <span className="text-green-600">+{(numValue as number) - target} {lang === 'ar' ? 'فوق الهدف' : 'above target'}</span>
                       ) : (
-                        <span className="text-red-400">{(numValue as number) - target} {lang === 'ar' ? 'تحت الهدف' : 'below target'}</span>
+                        <span className="text-red-600">{(numValue as number) - target} {lang === 'ar' ? 'تحت الهدف' : 'below target'}</span>
                       )}
                     </div>
                   )}

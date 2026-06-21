@@ -67,11 +67,11 @@ interface Workflow {
 }
 
 const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  draft: { label: 'Draft', color: 'text-gray-400', bg: 'bg-gray-500/20' },
-  submitted_to_ops: { label: 'Submitted to Ops', color: 'text-blue-400', bg: 'bg-blue-500/20' },
-  ops_completed: { label: 'Ops Completed', color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
-  submitted_to_collections: { label: 'To Collections', color: 'text-purple-400', bg: 'bg-purple-500/20' },
-  completed: { label: 'Completed', color: 'text-green-400', bg: 'bg-green-500/20' },
+  draft: { label: 'Draft', color: 'text-slate-500', bg: 'bg-slate-500/20' },
+  submitted_to_ops: { label: 'Submitted to Ops', color: 'text-blue-600', bg: 'bg-blue-500/20' },
+  ops_completed: { label: 'Ops Completed', color: 'text-yellow-700', bg: 'bg-yellow-500/20' },
+  submitted_to_collections: { label: 'To Collections', color: 'text-purple-600', bg: 'bg-purple-500/20' },
+  completed: { label: 'Completed', color: 'text-green-600', bg: 'bg-green-500/20' },
 };
 
 export default function OperationsWorkflowPage() {
@@ -305,7 +305,7 @@ export default function OperationsWorkflowPage() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <ClipboardList className="w-6 h-6 text-[#f37121]" />
           {T.title}
         </h1>
@@ -321,21 +321,21 @@ export default function OperationsWorkflowPage() {
                 <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'مراجعة' : 'Review'} ({selectedIds.size})
               </button>
               {showBulkReview && (
-                <div className="absolute top-full mt-2 right-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 p-3 min-w-[220px]">
-                  <label className="block text-xs text-gray-400 mb-1">{lang === 'ar' ? 'نص المراجعة:' : 'Review text:'}</label>
+                <div className="absolute top-full mt-2 right-0 bg-slate-50 border border-slate-200 rounded-lg shadow-xl z-50 p-3 min-w-[220px]">
+                  <label className="block text-xs text-slate-500 mb-1">{lang === 'ar' ? 'نص المراجعة:' : 'Review text:'}</label>
                   <input
                     type="text"
                     value={bulkReviewText}
                     onChange={(e) => setBulkReviewText(e.target.value)}
                     placeholder={lang === 'ar' ? 'نص المراجعة' : 'Review text'}
                     title={lang === 'ar' ? 'نص المراجعة' : 'Review text'}
-                    className="w-full px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#f37121] mb-2"
+                    className="w-full px-2 py-1.5 rounded bg-white border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-1 focus:ring-[#f37121] mb-2"
                   />
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={handleBulkReview} className="flex-1 px-3 py-1.5 rounded bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-medium transition-colors">
                       {lang === 'ar' ? 'تأكيد' : 'Confirm'}
                     </button>
-                    <button type="button" onClick={() => setShowBulkReview(false)} className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs transition-colors">
+                    <button type="button" onClick={() => setShowBulkReview(false)} className="px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs transition-colors">
                       {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                     </button>
                   </div>
@@ -343,12 +343,12 @@ export default function OperationsWorkflowPage() {
               )}
             </div>
           )}
-          <button type="button" onClick={handleExportExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors">
+          <button type="button" onClick={handleExportExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
             <FileSpreadsheet className="w-4 h-4" /> {T.exportExcel}
           </button>
           {canCreate && (
             <>
-              <button type="button" onClick={() => router.push('/system/operations/new?mode=import')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors">
+              <button type="button" onClick={() => router.push('/system/operations/new?mode=import')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
                 <Upload className="w-4 h-4" /> {T.importExcel}
               </button>
               <button type="button" onClick={() => router.push('/system/operations/new')} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium transition-colors">
@@ -360,7 +360,7 @@ export default function OperationsWorkflowPage() {
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm flex items-center justify-between">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm flex items-center justify-between">
           <span>{error}</span>
           <button type="button" onClick={() => setError('')}><X className="w-4 h-4" /></button>
         </div>
@@ -373,7 +373,7 @@ export default function OperationsWorkflowPage() {
             {searching ? (
               <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#f37121] animate-spin" />
             ) : (
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             )}
             <input
               ref={searchInputRef}
@@ -386,43 +386,43 @@ export default function OperationsWorkflowPage() {
                 debounceRef.current = setTimeout(() => { setSearch(val); setPage(1); }, 300);
               }}
               placeholder={T.searchPlaceholder}
-              className="w-full pl-10 pr-8 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+              className="w-full pl-10 pr-8 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
             />
             {searchInput && (
-              <button type="button" title={T.clearSearch} onClick={() => { setSearchInput(''); setSearch(''); setPage(1); searchInputRef.current?.focus(); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
+              <button type="button" title={T.clearSearch} onClick={() => { setSearchInput(''); setSearch(''); setPage(1); searchInputRef.current?.focus(); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Calendar className="w-4 h-4 text-gray-500" />
+            <Calendar className="w-4 h-4 text-slate-500" />
             <input
               type="date"
               title={T.fromDate}
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-              className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [&::-webkit-calendar-picker-indicator]:invert"
+              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [&::-webkit-calendar-picker-indicator]:invert"
             />
-            <span className="text-gray-500 text-sm">{T.to}</span>
+            <span className="text-slate-500 text-sm">{T.to}</span>
             <input
               type="date"
               title={T.toDate}
               value={dateTo}
               onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-              className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [&::-webkit-calendar-picker-indicator]:invert"
+              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [&::-webkit-calendar-picker-indicator]:invert"
             />
             {(dateFrom || dateTo) && (
-              <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }} className="p-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-red-500/50 transition-colors" title={T.clearDates}>
+              <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }} className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-slate-900 hover:border-red-500/50 transition-colors" title={T.clearDates}>
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Filter className="w-4 h-4 text-gray-500" />
+          <Filter className="w-4 h-4 text-slate-500" />
           {[{ value: '', label: T.all }, ...Object.entries(STAGE_CONFIG).map(([k]) => ({ value: k, label: stageLabels[k] || k }))].map((opt) => (
             <button key={opt.value} type="button" onClick={() => { setStageFilter(opt.value); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${stageFilter === opt.value ? 'bg-[#f37121] text-white' : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'}`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${stageFilter === opt.value ? 'bg-[#f37121] text-white' : 'bg-white text-slate-500 hover:text-slate-900 border border-slate-200'}`}>
               {opt.label}
             </button>
           ))}
@@ -440,135 +440,135 @@ export default function OperationsWorkflowPage() {
         }`}
       >
         <div className={`p-2 rounded-lg ${showPendingOnly ? 'bg-amber-500/30' : 'bg-amber-500/20'}`}>
-          <AlertCircle className="w-5 h-5 text-amber-400" />
+          <AlertCircle className="w-5 h-5 text-amber-700" />
         </div>
         <div className="flex flex-col items-start">
-          <span className="text-2xl font-bold text-amber-400">{pendingCount}</span>
-          <span className="text-xs text-amber-400/80">{lang === 'ar' ? 'فواتير لم تصل' : 'Pending Invoices'}</span>
+          <span className="text-2xl font-bold text-amber-700">{pendingCount}</span>
+          <span className="text-xs text-amber-700/80">{lang === 'ar' ? 'فواتير لم تصل' : 'Pending Invoices'}</span>
         </div>
         {showPendingOnly && (
-          <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-300">
+          <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">
             {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
           </span>
         )}
       </button>
 
       {/* Table */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[3200px]">
             <thead>
-              <tr className="border-b border-gray-700">
-                <th className="px-3 py-3 sticky left-0 bg-gray-800 z-10 w-20">
+              <tr className="bg-slate-900 border-b border-slate-200">
+                <th className="px-3 py-3 sticky left-0 bg-slate-900 z-10 w-20">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       title={T.selectAll}
                       checked={workflows.length > 0 && selectedIds.size === workflows.length}
                       onChange={toggleSelectAll}
-                      className="w-4 h-4 appearance-none rounded border border-gray-600 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
+                      className="w-4 h-4 appearance-none rounded border border-slate-300 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
                     />
-                    <span className="text-xs text-gray-400 font-medium">{T.actions}</span>
+                    <span className="text-xs text-slate-300 font-semibold">{T.actions}</span>
                   </div>
                 </th>
                 {/* Application Details */}
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thReportNumber}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thReportDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thFrom}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thTo}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thBranch}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thCarOwner}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thCarNumber}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thOwnerType}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thExecution}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thApplication}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thPaymentMethod}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thUsername}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thUserPhone}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thTaxIndicator}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thPurchaseValue}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thSellingValue}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thLoadingTime}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thDriverName}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thDriverPhone}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thTruckType}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thTruckSize}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thLoadType}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thQuantity}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thReference}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thRepresentative}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thReportNumber}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thReportDate}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thFrom}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thTo}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thBranch}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thCarOwner}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thCarNumber}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thOwnerType}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thExecution}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thApplication}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thPaymentMethod}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thUsername}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thUserPhone}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thTaxIndicator}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thPurchaseValue}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thSellingValue}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thLoadingTime}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thDriverName}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thDriverPhone}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thTruckType}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thTruckSize}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thLoadType}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thQuantity}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thReference}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thRepresentative}</th>
                 {/* Operations Review */}
-                <th className="px-3 py-3 text-left text-xs text-yellow-400 font-medium whitespace-nowrap">{T.thOpsReview}</th>
+                <th className="px-3 py-3 text-left text-xs text-yellow-400 font-semibold whitespace-nowrap">{T.thOpsReview}</th>
                 {/* Manual Moderator */}
-                <th className="px-3 py-3 text-left text-xs text-purple-400 font-medium whitespace-nowrap">{T.thPaymentDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-400 font-medium whitespace-nowrap">{T.thPayingBranch}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-400 font-medium whitespace-nowrap">{T.thDocNumber}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-400 font-medium whitespace-nowrap">{T.thSendingDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-400 font-medium whitespace-nowrap">{T.thDeliveryDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-400 font-medium whitespace-nowrap">{T.thAccountingReview}</th>
+                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thPaymentDate}</th>
+                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thPayingBranch}</th>
+                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thDocNumber}</th>
+                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thSendingDate}</th>
+                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thDeliveryDate}</th>
+                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thAccountingReview}</th>
                 {/* Collections */}
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-medium whitespace-nowrap">{T.thInvoiceNumber}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-medium whitespace-nowrap">{T.thNetInvoice}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-medium whitespace-nowrap">{T.thTax}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-medium whitespace-nowrap">{T.thTotalInvoice}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-medium whitespace-nowrap">{T.thInvoiceDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-medium whitespace-nowrap">{T.thCollectionDate}</th>
+                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thInvoiceNumber}</th>
+                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thNetInvoice}</th>
+                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thTax}</th>
+                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thTotalInvoice}</th>
+                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thInvoiceDate}</th>
+                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thCollectionDate}</th>
                 {/* Meta */}
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap">{T.thStage}</th>
-                <th className="px-3 py-3 text-left text-xs text-gray-400 font-medium whitespace-nowrap w-10">{T.lock}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thStage}</th>
+                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap w-10">{T.lock}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700/50">
+            <tbody className="divide-y divide-slate-200">
               {workflows.length === 0 ? (
-                <tr><td colSpan={41} className="px-4 py-12 text-center text-gray-500 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : T.noWorkflows}</td></tr>
+                <tr><td colSpan={41} className="px-4 py-12 text-center text-slate-500 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : T.noWorkflows}</td></tr>
               ) : workflows.map((wf) => {
                 const locked = isLockedByOther(wf);
                 const transitions = getTransitions(wf);
                 const sc = STAGE_CONFIG[wf.stage] || STAGE_CONFIG.draft;
                 const isSelected = selectedIds.has(wf._id);
                 return (
-                  <tr key={wf._id} className={`hover:bg-gray-700/30 transition-colors ${editingId === wf._id ? '' : 'cursor-pointer'} ${locked ? 'opacity-60' : ''} ${isSelected ? 'bg-[#f37121]/5' : ''} ${editingId === wf._id ? 'ring-1 ring-[#f37121]/40' : ''}`}
+                  <tr key={wf._id} className={`hover:bg-slate-100 transition-colors ${editingId === wf._id ? '' : 'cursor-pointer'} ${locked ? 'opacity-60' : ''} ${isSelected ? 'bg-[#f37121]/5' : ''} ${editingId === wf._id ? 'ring-1 ring-[#f37121]/40' : ''}`}
                     onClick={() => { if (editingId !== wf._id) router.push(`/system/operations/${wf._id}`); }}>
                     {/* Checkbox + Actions */}
-                    <td className="px-3 py-2.5 sticky left-0 bg-gray-800 z-10" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-3 py-2.5 sticky left-0 bg-white z-10" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         <input
                           type="checkbox"
                           title={T.selectRow}
                           checked={isSelected}
                           onChange={() => toggleSelect(wf._id)}
-                          className="w-4 h-4 appearance-none rounded border border-gray-600 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
+                          className="w-4 h-4 appearance-none rounded border border-slate-300 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
                         />
                         {editingId === wf._id ? (
                           <>
-                            <button type="button" onClick={handleInlineSave} className="p-1 text-green-400 hover:text-green-300 rounded" title={lang === 'ar' ? 'حفظ' : 'Save'}>
+                            <button type="button" onClick={handleInlineSave} className="p-1 text-green-600 hover:text-green-700 rounded" title={lang === 'ar' ? 'حفظ' : 'Save'}>
                               <Check className="w-3.5 h-3.5" />
                             </button>
-                            <button type="button" onClick={handleInlineCancel} className="p-1 text-red-400 hover:text-red-300 rounded" title={lang === 'ar' ? 'إلغاء' : 'Cancel'}>
+                            <button type="button" onClick={handleInlineCancel} className="p-1 text-red-600 hover:text-red-700 rounded" title={lang === 'ar' ? 'إلغاء' : 'Cancel'}>
                               <X className="w-3.5 h-3.5" />
                             </button>
                           </>
                         ) : (
                           <>
                             {!locked && (
-                              <button type="button" onClick={() => { setEditingId(wf._id); setEditData({...wf}); }} className="p-1 text-gray-400 hover:text-[#f37121] rounded" title={T.edit}>
+                              <button type="button" onClick={() => { setEditingId(wf._id); setEditData({...wf}); }} className="p-1 text-slate-500 hover:text-[#f37121] rounded" title={T.edit}>
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
                             )}
                             {canDelete && (
-                              <button type="button" onClick={() => handleDelete(wf._id)} className="p-1 text-gray-400 hover:text-red-400 rounded" title={T.delete}>
+                              <button type="button" onClick={() => handleDelete(wf._id)} className="p-1 text-slate-500 hover:text-red-600 rounded" title={T.delete}>
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
                             {transitions.length > 0 && (
                               <div className="relative group">
-                                <button type="button" className="p-1 text-gray-400 hover:text-blue-400 rounded" title={T.stageTransition}>
+                                <button type="button" className="p-1 text-slate-500 hover:text-blue-600 rounded" title={T.stageTransition}>
                                   {transitioningId === wf._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
                                 </button>
-                                <div className="absolute left-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[160px]">
+                                <div className="absolute left-0 top-full mt-1 bg-slate-50 border border-slate-200 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[160px]">
                                   {transitions.map((t) => (
                                     <button key={t.stage} type="button" onClick={() => handleTransition(wf._id, t.stage)}
-                                      className="block w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                                      className="block w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors">
                                       {t.label}
                                     </button>
                                   ))}
@@ -581,18 +581,18 @@ export default function OperationsWorkflowPage() {
                     </td>
                     {(() => {
                       const isEditing = editingId === wf._id;
-                      const ic = "w-full px-1.5 py-1 rounded bg-gray-900 border border-gray-600 text-white text-xs focus:ring-1 focus:ring-[#f37121] focus:outline-none";
-                      const textCell = (field: keyof Workflow, color = 'text-gray-300') => (
+                      const ic = "w-full px-1.5 py-1 rounded bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:ring-1 focus:ring-[#f37121] focus:outline-none";
+                      const textCell = (field: keyof Workflow, color = 'text-slate-700') => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
                           {isEditing ? <input type="text" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={color}>{(wf as any)[field] || '-'}</span>}
                         </td>
                       );
-                      const numCell = (field: keyof Workflow, color = 'text-gray-300') => (
+                      const numCell = (field: keyof Workflow, color = 'text-slate-700') => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
                           {isEditing ? <input type="number" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={color}>{formatMoney((wf as any)[field])}</span>}
                         </td>
                       );
-                      const dateCell = (field: keyof Workflow, color = 'text-gray-300') => (
+                      const dateCell = (field: keyof Workflow, color = 'text-slate-700') => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
                           {isEditing ? <input type="date" title={field} className={`${ic} [&::-webkit-calendar-picker-indicator]:invert`} value={(editData as any)[field] ? (editData as any)[field].slice(0, 10) : ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={color}>{formatDate((wf as any)[field])}</span>}
                         </td>
@@ -604,7 +604,7 @@ export default function OperationsWorkflowPage() {
                         {textCell('fromLocation')}
                         {textCell('toLocation')}
                         {textCell('branch')}
-                        {textCell('carOwner', 'text-white')}
+                        {textCell('carOwner', 'text-slate-900')}
                         {textCell('carNumber')}
                         {textCell('ownerType')}
                         {textCell('executionStatus')}
@@ -625,21 +625,21 @@ export default function OperationsWorkflowPage() {
                         {textCell('reference')}
                         {textCell('representativeName')}
                         {/* Operations Review */}
-                        {textCell('operationsReview', 'text-yellow-300')}
+                        {textCell('operationsReview', 'text-yellow-700')}
                         {/* Manual Moderator */}
-                        {dateCell('paymentDate', 'text-purple-300')}
-                        {textCell('payingBranch', 'text-purple-300')}
-                        {textCell('documentNumber', 'text-purple-300')}
-                        {dateCell('sendingDate', 'text-purple-300')}
-                        {dateCell('deliveryDate', 'text-purple-300')}
-                        {textCell('accountingReview', 'text-purple-300')}
+                        {dateCell('paymentDate', 'text-purple-700')}
+                        {textCell('payingBranch', 'text-purple-700')}
+                        {textCell('documentNumber', 'text-purple-700')}
+                        {dateCell('sendingDate', 'text-purple-700')}
+                        {dateCell('deliveryDate', 'text-purple-700')}
+                        {textCell('accountingReview', 'text-purple-700')}
                         {/* Collections */}
-                        {textCell('invoiceNumber', 'text-green-300')}
-                        {numCell('netInvoice', 'text-green-300')}
-                        {numCell('tax', 'text-green-300')}
-                        {numCell('totalInvoice', 'text-green-300')}
-                        {dateCell('invoiceDate', 'text-green-300')}
-                        {dateCell('collectionDate', 'text-green-300')}
+                        {textCell('invoiceNumber', 'text-green-700')}
+                        {numCell('netInvoice', 'text-green-700')}
+                        {numCell('tax', 'text-green-700')}
+                        {numCell('totalInvoice', 'text-green-700')}
+                        {dateCell('invoiceDate', 'text-green-700')}
+                        {dateCell('collectionDate', 'text-green-700')}
                       </>);
                     })()}
                     {/* Meta */}
@@ -647,9 +647,9 @@ export default function OperationsWorkflowPage() {
                     <td className="px-3 py-2.5">
                       {wf.lockedBy ? (
                         <div className="flex items-center gap-1" title={T.lockedByTooltip.replace('{name}', wf.lockedByName)}>
-                          <Lock className="w-3.5 h-3.5 text-red-400" />
+                          <Lock className="w-3.5 h-3.5 text-red-600" />
                         </div>
-                      ) : <Unlock className="w-3.5 h-3.5 text-gray-600" />}
+                      ) : <Unlock className="w-3.5 h-3.5 text-slate-600" />}
                     </td>
                   </tr>
                 );
@@ -659,11 +659,11 @@ export default function OperationsWorkflowPage() {
         </div>
 
         {!showPendingOnly && total > 50 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-700">
-            <span className="text-gray-400 text-sm">{T.showing} {(page - 1) * 50 + 1}-{Math.min(page * 50, total)} {T.of} {total}</span>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+            <span className="text-slate-500 text-sm">{T.showing} {(page - 1) * 50 + 1}-{Math.min(page * 50, total)} {T.of} {total}</span>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded bg-gray-700 text-gray-300 text-sm disabled:opacity-50">{T.previous}</button>
-              <button type="button" onClick={() => setPage((p) => p + 1)} disabled={page * 50 >= total} className="px-3 py-1 rounded bg-gray-700 text-gray-300 text-sm disabled:opacity-50">{T.next}</button>
+              <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.previous}</button>
+              <button type="button" onClick={() => setPage((p) => p + 1)} disabled={page * 50 >= total} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.next}</button>
             </div>
           </div>
         )}
@@ -676,24 +676,24 @@ export default function OperationsWorkflowPage() {
             {stageLabels[key] || cfg.label}: {workflows.filter((w) => w.stage === key).length}
           </div>
         ))}
-        <div className="px-3 py-2 rounded-lg bg-gray-700 text-gray-300 text-xs font-medium">{T.total}: {total}</div>
+        <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">{T.total}: {total}</div>
       </div>
 
       {/* Confirm Modal */}
       {confirmModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm shadow-xl">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm shadow-xl">
             <div className="p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-[#f37121]/20 flex items-center justify-center">
                   <AlertCircle className="w-5 h-5 text-[#f37121]" />
                 </div>
-                <h3 className="text-white font-semibold">{lang === 'ar' ? 'تأكيد' : 'Confirm'}</h3>
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{lang === 'ar' ? 'تأكيد' : 'Confirm'}</h3>
               </div>
-              <p className="text-gray-300 text-sm">{confirmModal.message}</p>
+              <p className="text-slate-700 text-sm">{confirmModal.message}</p>
             </div>
-            <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
-              <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{T.cancel || 'Cancel'}</button>
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+              <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{T.cancel || 'Cancel'}</button>
               <button type="button" onClick={confirmModal.onConfirm} className="px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
                 {lang === 'ar' ? 'تأكيد' : 'Confirm'}
               </button>

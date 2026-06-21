@@ -86,7 +86,7 @@ export default function LowVisitCustomersPage() {
           <button
             type="button"
             onClick={() => router.push('/system/dashboard')}
-            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors"
             aria-label="Back to dashboard"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -95,8 +95,8 @@ export default function LowVisitCustomersPage() {
             <UserX className="w-5 h-5 text-[#f59e0b]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">{T.title}</h1>
-            <p className="text-gray-400 text-sm">{filtered.length} {T.subtitle}</p>
+            <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
+            <p className="text-slate-500 text-sm">{filtered.length} {T.subtitle}</p>
           </div>
         </div>
         <button type="button" onClick={() => exportToExcel(filtered, [
@@ -108,14 +108,14 @@ export default function LowVisitCustomersPage() {
           { header: 'Total Tasks', key: 'totalTasks', width: 12 },
           { header: 'Last Task Date', key: 'lastTaskDate', transform: fmt.date, width: 16 },
           { header: 'Days Since Last Task', key: 'daysSinceLastTask', transform: (v: number | null) => v !== null ? String(v) : 'Never', width: 22 },
-        ], `low-visit-customers-${new Date().toISOString().split('T')[0]}`, 'Low Visit Customers')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors">
+        ], `low-visit-customers-${new Date().toISOString().split('T')[0]}`, 'Low Visit Customers')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
           <Download className="w-4 h-4" /> {T.downloadExcel}
         </button>
       </div>
 
       {/* Search */}
       <div className="relative max-w-md">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
           <Search className="w-4 h-4" />
         </div>
         <input
@@ -124,13 +124,13 @@ export default function LowVisitCustomersPage() {
           placeholder="Search by customer, number, or collector..."
           value={searchInput}
           onChange={(e) => handleSearchChange(e.target.value)}
-          className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f59e0b]/50"
+          className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f59e0b]/50"
         />
         {searchInput && (
           <button
             type="button"
             onClick={() => { setSearchInput(''); setSearch(''); searchInputRef.current?.focus(); }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
             title="Clear search"
           >
             <X className="w-4 h-4" />
@@ -140,16 +140,16 @@ export default function LowVisitCustomersPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-          <p className="text-gray-400 text-xs mb-1">{T.customers}</p>
-          <p className="text-2xl font-bold text-white">{filtered.length}</p>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p className="text-slate-500 text-xs mb-1">{T.customers}</p>
+          <p className="text-2xl font-bold text-slate-900">{filtered.length}</p>
         </div>
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-          <p className="text-gray-400 text-xs mb-1">{T.neverVisited}</p>
-          <p className="text-2xl font-bold text-red-400">{filtered.filter((c) => c.totalTasks === 0).length}</p>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p className="text-slate-500 text-xs mb-1">{T.neverVisited}</p>
+          <p className="text-2xl font-bold text-red-600">{filtered.filter((c) => c.totalTasks === 0).length}</p>
         </div>
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-          <p className="text-gray-400 text-xs mb-1">{T.outstanding}</p>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p className="text-slate-500 text-xs mb-1">{T.outstanding}</p>
           <p className="text-2xl font-bold text-[#f59e0b]">
             {filtered.reduce((sum, c) => sum + (c.currentOutstanding || 0), 0).toLocaleString()} SAR
           </p>
@@ -157,57 +157,57 @@ export default function LowVisitCustomersPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-700">
-                <th className="px-4 py-3 text-left text-xs text-gray-400 font-medium uppercase">{T.customer}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 font-medium uppercase">{T.customer} #</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 font-medium uppercase">{T.outstanding}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 font-medium uppercase">{T.status}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 font-medium uppercase">{T.customer}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 font-medium uppercase">{T.actions}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 font-medium uppercase">{T.lastVisit}</th>
-                <th className="px-4 py-3 text-left text-xs text-gray-400 font-medium uppercase">{T.daysSinceLastVisit}</th>
+              <tr className="bg-slate-900 border-b border-slate-200">
+                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.customer}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.customer} #</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.outstanding}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.status}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.customer}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.actions}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.lastVisit}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.daysSinceLastVisit}</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="text-center py-16">
-                    <UserX className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                    <p className="text-gray-400">{T.noCustomers}</p>
+                    <UserX className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                    <p className="text-slate-500">{T.noCustomers}</p>
                   </td>
                 </tr>
               ) : (
                 filtered.map((c) => (
-                  <tr key={c._id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors">
-                    <td className="px-4 py-3 text-white font-medium">{c.companyName}</td>
-                    <td className="px-4 py-3 text-gray-300">{c.customerNumber || '—'}</td>
-                    <td className="px-4 py-3 text-red-400 font-medium">{c.currentOutstanding?.toLocaleString()} SAR</td>
+                  <tr key={c._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors">
+                    <td className="px-4 py-3 text-slate-900 font-medium">{c.companyName}</td>
+                    <td className="px-4 py-3 text-slate-700">{c.customerNumber || '—'}</td>
+                    <td className="px-4 py-3 text-red-600 font-medium">{c.currentOutstanding?.toLocaleString()} SAR</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        c.riskLevel === 'high' ? 'bg-red-500/20 text-red-400' :
-                        c.riskLevel === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-green-500/20 text-green-400'
+                        c.riskLevel === 'high' ? 'bg-red-500/20 text-red-600' :
+                        c.riskLevel === 'medium' ? 'bg-yellow-500/20 text-yellow-700' :
+                        'bg-green-500/20 text-green-600'
                       }`}>
                         {c.riskLevel || 'N/A'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-300">
+                    <td className="px-4 py-3 text-slate-700">
                       {c.assignedCollector ? `${c.assignedCollector.firstName} ${c.assignedCollector.lastName}` : '—'}
                     </td>
-                    <td className="px-4 py-3 text-gray-300 text-center">{c.totalTasks}</td>
-                    <td className="px-4 py-3 text-gray-300">
+                    <td className="px-4 py-3 text-slate-700 text-center">{c.totalTasks}</td>
+                    <td className="px-4 py-3 text-slate-700">
                       {c.lastTaskDate ? new Date(c.lastTaskDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : T.neverVisited}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        c.daysSinceLastTask === null ? 'bg-red-500/20 text-red-400' :
-                        c.daysSinceLastTask > 30 ? 'bg-red-500/20 text-red-400' :
-                        c.daysSinceLastTask > 14 ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-gray-700 text-gray-300'
+                        c.daysSinceLastTask === null ? 'bg-red-500/20 text-red-600' :
+                        c.daysSinceLastTask > 30 ? 'bg-red-500/20 text-red-600' :
+                        c.daysSinceLastTask > 14 ? 'bg-yellow-500/20 text-yellow-700' :
+                        'bg-slate-100 text-slate-700'
                       }`}>
                         {c.daysSinceLastTask !== null ? `${c.daysSinceLastTask}` : T.neverVisited}
                       </span>

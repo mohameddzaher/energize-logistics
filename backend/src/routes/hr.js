@@ -1,0 +1,64 @@
+const express = require('express');
+const router = express.Router();
+const hr = require('../controllers/hrController');
+const authenticate = require('../middleware/auth');
+const authorize = require('../middleware/rbac');
+
+const STAFF = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'];
+
+router.use(authenticate);
+
+// ── Self-service (any authenticated user) ────────────────────────────────────
+// Defined first so they aren't shadowed by the staff :id routes below.
+router.get('/me/profile', hr.getMyProfile);
+router.get('/me/team', hr.getMyTeam);
+router.get('/me/leaves', hr.listMyLeaves);
+router.post('/me/leaves', hr.createMyLeave);
+router.patch('/me/leaves/:id/cancel', hr.cancelMyLeave);
+router.get('/me/requests', hr.listMyRequests);
+router.post('/me/requests', hr.createMyRequest);
+router.get('/team/leaves', hr.listTeamLeaves);
+
+// Leave types: anyone can read the active list (for the request dropdown);
+// only staff can mutate.
+router.get('/leave-types', hr.listLeaveTypes);
+router.post('/leave-types', authorize(...STAFF), hr.createLeaveType);
+router.put('/leave-types/:id', authorize(...STAFF), hr.updateLeaveType);
+router.delete('/leave-types/:id', authorize(...STAFF), hr.deleteLeaveType);
+
+// Leave/request actions usable by managers (non-staff) too — the controller
+// enforces who may act.
+router.patch('/leaves/:id/decision', hr.decideLeave);
+router.post('/requests/:id/reply', hr.replyRequest);
+
+// Employee profile read is allowed for the owner; controller enforces it.
+router.get('/employees/:id', hr.getEmployee);
+
+// ── HR back-office (staff only) ──────────────────────────────────────────────
+router.get('/dashboard', authorize(...STAFF), hr.getDashboard);
+router.get('/options', authorize(...STAFF), hr.getOptions);
+
+router.get('/employees', authorize(...STAFF), hr.listEmployees);
+router.get('/employees-search', authorize(...STAFF), hr.searchEmployees);
+router.post('/employees', authorize(...STAFF), hr.createEmployee);
+router.put('/employees/:id', authorize(...STAFF), hr.updateEmployee);
+router.delete('/employees/:id', authorize(...STAFF), hr.deleteEmployee);
+
+router.get('/contracts', authorize(...STAFF), hr.listContracts);
+router.post('/contracts', authorize(...STAFF), hr.createContract);
+router.put('/contracts/:id', authorize(...STAFF), hr.updateContract);
+router.post('/contracts/:id/terminate', authorize(...STAFF), hr.terminateContract);
+router.delete('/contracts/:id', authorize(...STAFF), hr.deleteContract);
+
+router.get('/leaves', authorize(...STAFF), hr.listLeaves);
+
+router.get('/requests', authorize(...STAFF), hr.listRequests);
+router.patch('/requests/:id/status', authorize(...STAFF), hr.updateRequestStatus);
+
+router.get('/assets', authorize(...STAFF), hr.listAssets);
+router.post('/assets', authorize(...STAFF), hr.createAsset);
+router.put('/assets/:id', authorize(...STAFF), hr.updateAsset);
+router.post('/assets/:id/return', authorize(...STAFF), hr.returnAsset);
+router.delete('/assets/:id', authorize(...STAFF), hr.deleteAsset);
+
+module.exports = router;

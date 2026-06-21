@@ -85,7 +85,7 @@ export default function AssistantPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-140px)]">
-      <h1 className="text-2xl font-bold text-white mb-4">{T.title}</h1>
+      <h1 className="text-2xl font-bold text-slate-900 mb-4">{T.title}</h1>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
@@ -104,7 +104,7 @@ export default function AssistantPage() {
             <div className={`max-w-[80%] rounded-xl p-4 ${
               msg.role === 'user'
                 ? 'bg-[#f37121] text-white'
-                : 'bg-gray-800 border border-gray-700 text-gray-200'
+                : 'bg-white border border-slate-200 text-slate-800'
             }`}>
               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
 
@@ -113,11 +113,11 @@ export default function AssistantPage() {
                 <div className="mt-3 overflow-x-auto">
                   <div className="space-y-2">
                     {msg.data.slice(0, 10).map((item: any, j: number) => (
-                      <div key={j} className="bg-gray-700/50 rounded-lg p-2 text-xs">
+                      <div key={j} className="bg-slate-100 rounded-lg p-2 text-xs">
                         {Object.entries(item).filter(([k]) => !k.startsWith('_') && k !== '__v').slice(0, 5).map(([key, val]) => (
                           <div key={key} className="flex justify-between gap-2">
-                            <span className="text-gray-400 capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
-                            <span className="text-white font-medium truncate max-w-[200px]">
+                            <span className="text-slate-500 capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
+                            <span className="text-slate-900 font-medium truncate max-w-[200px]">
                               {typeof val === 'object' && val !== null
                                 ? (val as any).companyName || (val as any).name || JSON.stringify(val).slice(0, 30)
                                 : String(val)}
@@ -127,7 +127,7 @@ export default function AssistantPage() {
                       </div>
                     ))}
                     {msg.data.length > 10 && (
-                      <p className="text-xs text-gray-500">... and {msg.data.length - 10} more</p>
+                      <p className="text-xs text-slate-500">... and {msg.data.length - 10} more</p>
                     )}
                   </div>
                 </div>
@@ -141,7 +141,7 @@ export default function AssistantPage() {
                       key={j}
                       type="button"
                       onClick={() => sendQuery(s)}
-                      className="px-3 py-1 rounded-full bg-gray-700 hover:bg-[#f37121]/20 text-gray-300 hover:text-[#f37121] text-xs transition-all border border-gray-600 hover:border-[#f37121]/50"
+                      className="px-3 py-1 rounded-full bg-slate-100 hover:bg-[#f37121]/20 text-slate-700 hover:text-[#f37121] text-xs transition-all border border-slate-300 hover:border-[#f37121]/50"
                     >
                       {s}
                     </button>
@@ -150,8 +150,8 @@ export default function AssistantPage() {
               )}
             </div>
             {msg.role === 'user' && (
-              <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center shrink-0">
-                <User className="w-4 h-4 text-gray-300" />
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                <User className="w-4 h-4 text-slate-700" />
               </div>
             )}
           </motion.div>
@@ -162,7 +162,7 @@ export default function AssistantPage() {
             <div className="w-8 h-8 rounded-full bg-[#f37121]/20 flex items-center justify-center">
               <Bot className="w-4 h-4 text-[#f37121]" />
             </div>
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <Loader2 className="w-5 h-5 text-[#f37121] animate-spin" />
             </div>
           </div>
@@ -177,7 +177,7 @@ export default function AssistantPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={T.placeholder}
-          className="flex-1 px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 text-sm"
+          className="flex-1 px-4 py-3 rounded-xl bg-white border border-slate-200 text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 text-sm shadow-sm"
           disabled={loading}
         />
         <button

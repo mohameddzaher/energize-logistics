@@ -90,18 +90,18 @@ export default function RemoteChatPage() {
   if (staff && !activeEmployee) {
     return (
       <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2"><MessageSquare className="w-6 h-6 text-[#f37121]" />{ar ? 'الرسائل' : 'Messages'}</h1>
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><MessageSquare className="w-6 h-6 text-[#f37121]" />{ar ? 'الرسائل' : 'Messages'}</h1>
         {threads.length === 0 ? (
-          <p className="text-gray-400 text-center py-10">{ar ? 'لا توجد محادثات بعد' : 'No conversations yet'}</p>
+          <p className="text-slate-500 text-center py-10">{ar ? 'لا توجد محادثات بعد' : 'No conversations yet'}</p>
         ) : (
-          <div className="bg-gray-800 border border-gray-700 rounded-xl divide-y divide-gray-700/50">
+          <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-200 shadow-sm">
             {threads.map((t) => (
-              <button key={t.employee._id} type="button" onClick={() => setActiveEmployee(t.employee._id)} className="w-full flex items-center justify-between gap-3 p-4 hover:bg-gray-700/40 text-start transition-colors">
+              <button key={t.employee._id} type="button" onClick={() => setActiveEmployee(t.employee._id)} className="w-full flex items-center justify-between gap-3 p-4 hover:bg-slate-100 text-start transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-full bg-[#f37121]/20 text-[#f37121] flex items-center justify-center font-bold shrink-0">{t.employee.firstName[0]}{t.employee.lastName[0]}</div>
                   <div className="min-w-0">
-                    <p className="text-white font-medium truncate">{t.employee.firstName} {t.employee.lastName}</p>
-                    <p className="text-gray-400 text-sm truncate">{t.lastMessage?.body || (ar ? 'لا توجد رسائل' : 'No messages')}</p>
+                    <p className="text-slate-900 font-medium truncate">{t.employee.firstName} {t.employee.lastName}</p>
+                    <p className="text-slate-500 text-sm truncate">{t.lastMessage?.body || (ar ? 'لا توجد رسائل' : 'No messages')}</p>
                   </div>
                 </div>
                 {t.unread > 0 && <span className="bg-[#f37121] text-white text-xs rounded-full px-2 py-0.5 shrink-0">{t.unread}</span>}
@@ -117,12 +117,12 @@ export default function RemoteChatPage() {
   const activeName = staff ? threads.find((t) => t.employee._id === activeEmployee) : null;
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]" dir={isRTL ? 'rtl' : 'ltr'}>
-      <div className="flex items-center gap-3 pb-3 border-b border-gray-700">
+      <div className="flex items-center gap-3 pb-3 border-b border-slate-200">
         {staff && (
-          <button type="button" onClick={() => { setActiveEmployee(null); setMessages([]); loadThreads(); }} className="text-gray-400 hover:text-white p-1" title="Back"><ArrowLeft className={`w-5 h-5 ${isRTL ? 'rotate-180' : ''}`} /></button>
+          <button type="button" onClick={() => { setActiveEmployee(null); setMessages([]); loadThreads(); }} className="text-slate-500 hover:text-slate-900 p-1" title="Back"><ArrowLeft className={`w-5 h-5 ${isRTL ? 'rotate-180' : ''}`} /></button>
         )}
         <MessageSquare className="w-5 h-5 text-[#f37121]" />
-        <h1 className="text-lg font-bold text-white">
+        <h1 className="text-lg font-bold text-slate-900">
           {staff && activeName ? `${activeName.employee.firstName} ${activeName.employee.lastName}` : (ar ? 'محادثة مع مديرك' : 'Chat with your manager')}
         </h1>
       </div>
@@ -131,13 +131,13 @@ export default function RemoteChatPage() {
         {loading ? (
           <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>
         ) : messages.length === 0 ? (
-          <p className="text-gray-400 text-center py-10">{ar ? 'ابدأ المحادثة' : 'Start the conversation'}</p>
+          <p className="text-slate-500 text-center py-10">{ar ? 'ابدأ المحادثة' : 'Start the conversation'}</p>
         ) : (
           messages.map((m) => {
             const mine = m.sender._id === user?._id;
             return (
               <div key={m._id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${mine ? 'bg-[#f37121] text-white' : 'bg-gray-700 text-gray-100'}`}>
+                <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${mine ? 'bg-[#f37121] text-white' : 'bg-slate-100 text-slate-900'}`}>
                   {!mine && <p className="text-xs opacity-70 mb-0.5">{m.sender.firstName} {m.sender.lastName}</p>}
                   <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
                   <p className="text-[10px] opacity-60 mt-1 text-end">{fmtDateTime(m.createdAt)}</p>
@@ -149,12 +149,12 @@ export default function RemoteChatPage() {
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={send} className="flex items-center gap-2 pt-3 border-t border-gray-700">
+      <form onSubmit={send} className="flex items-center gap-2 pt-3 border-t border-slate-200">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={ar ? 'اكتب رسالتك...' : 'Type a message...'}
-          className="flex-1 px-4 py-3 rounded-full bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+          className="flex-1 px-4 py-3 rounded-full bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
         />
         <button type="submit" disabled={sending || !text.trim()} className="w-12 h-12 rounded-full bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white flex items-center justify-center shrink-0" title="Send">
           <Send className={`w-5 h-5 ${isRTL ? 'rotate-180' : ''}`} />

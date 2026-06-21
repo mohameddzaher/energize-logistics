@@ -40,9 +40,9 @@ interface UserOption {
 }
 
 const statusConfig: Record<string, { bg: string; text: string; labelKey: string }> = {
-  open: { bg: 'bg-red-500/20', text: 'text-red-400', labelKey: 'openDispute' },
-  under_review: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', labelKey: 'escalated' },
-  resolved: { bg: 'bg-green-500/20', text: 'text-green-400', labelKey: 'resolvedDispute' },
+  open: { bg: 'bg-red-500/20', text: 'text-red-600', labelKey: 'openDispute' },
+  under_review: { bg: 'bg-yellow-500/20', text: 'text-yellow-700', labelKey: 'escalated' },
+  resolved: { bg: 'bg-green-500/20', text: 'text-green-600', labelKey: 'resolvedDispute' },
 };
 
 export default function DisputesPage() {
@@ -274,8 +274,8 @@ export default function DisputesPage() {
             <AlertTriangle className="w-5 h-5 text-[#f37121]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">{T.title}</h1>
-            <p className="text-gray-400 text-sm">{T.disputeDetails}</p>
+            <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
+            <p className="text-slate-500 text-sm">{T.disputeDetails}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -292,14 +292,14 @@ export default function DisputesPage() {
               { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
               { header: T.date, key: 'updatedAt', transform: fmt.date, width: 14 },
             ], `disputes-${new Date().toISOString().split('T')[0]}`, 'Disputes')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
           >
             <Download className="w-4 h-4" /> {T.downloadExcel}
           </button>
           <button
             type="button"
             onClick={() => { fetchDisputes(); }}
-            className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
+            className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
             title="Refresh"
           >
             <RefreshCw className="w-4 h-4" />
@@ -317,7 +317,7 @@ export default function DisputesPage() {
 
       {/* Error */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-600 text-sm">
           {error}
         </div>
       )}
@@ -326,7 +326,7 @@ export default function DisputesPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         {/* Search */}
         <div className="relative flex-1">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
             {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
           </div>
           <input
@@ -335,13 +335,13 @@ export default function DisputesPage() {
             placeholder={T.searchDisputes}
             value={searchInput}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+            className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
           />
           {searchInput && (
             <button
               type="button"
               onClick={() => { setSearchInput(''); setSearch(''); searchInputRef.current?.focus(); }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
               title="Clear search"
             >
               <X className="w-4 h-4" />
@@ -354,7 +354,7 @@ export default function DisputesPage() {
           type="button"
           onClick={() => setShowDateFilter(!showDateFilter)}
           className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-colors ${
-            showDateFilter || dateFrom || dateTo ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+            showDateFilter || dateFrom || dateTo ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-900'
           }`}
         >
           <Calendar className="w-4 h-4" />
@@ -371,22 +371,22 @@ export default function DisputesPage() {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-wrap items-end gap-3">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-end gap-3 shadow-sm">
               <div>
-                <label className="text-gray-400 text-xs mb-1 block">{T.from}</label>
+                <label className="text-slate-500 text-xs mb-1 block">{T.from}</label>
                 <input type="date" aria-label="Date from" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                  className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
               </div>
               <div>
-                <label className="text-gray-400 text-xs mb-1 block">{T.to}</label>
+                <label className="text-slate-500 text-xs mb-1 block">{T.to}</label>
                 <input type="date" aria-label="Date to" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                  className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
               </div>
               {(dateFrom || dateTo) && (
                 <button
                   type="button"
                   onClick={() => { setDateFrom(''); setDateTo(''); }}
-                  className="px-3 py-2 text-gray-400 hover:text-white text-sm"
+                  className="px-3 py-2 text-slate-500 hover:text-slate-900 text-sm"
                 >
                   {T.clearFilters}
                 </button>
@@ -398,8 +398,8 @@ export default function DisputesPage() {
 
       {/* Status Filter */}
       <div className="flex items-center gap-2">
-        <Filter className="w-4 h-4 text-gray-400" />
-        <span className="text-gray-400 text-sm">{T.status}:</span>
+        <Filter className="w-4 h-4 text-slate-500" />
+        <span className="text-slate-500 text-sm">{T.status}:</span>
         {(['all', 'open', 'under_review', 'resolved'] as const).map((s) => {
           const statusLabels: Record<string, string> = {
             all: T.all,
@@ -415,7 +415,7 @@ export default function DisputesPage() {
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 statusFilter === s
                   ? 'bg-[#f37121] text-white'
-                  : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'
+                  : 'bg-white text-slate-500 hover:text-slate-900 border border-slate-200'
               }`}
             >
               {statusLabels[s]}
@@ -426,28 +426,28 @@ export default function DisputesPage() {
 
       {/* Table with expandable rows */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="overflow-x-auto rounded-lg border border-gray-700">
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-800 border-b border-gray-700">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-8" />
+              <tr className="bg-slate-900 border-b border-slate-200">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-8" />
                 {columns.map((col) => (
                   <th
                     key={col.key}
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider"
+                    className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider"
                   >
                     {col.label}
                   </th>
                 ))}
                 {isAdmin && (
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">{T.actions}</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase">{T.actions}</th>
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700/50">
+            <tbody className="divide-y divide-slate-200">
               {disputes.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length + 2} className="px-4 py-8 text-center text-gray-500 text-sm">
+                  <td colSpan={columns.length + 2} className="px-4 py-8 text-center text-slate-500 text-sm">
                     {T.noDisputes}
                   </td>
                 </tr>
@@ -456,9 +456,9 @@ export default function DisputesPage() {
                   <React.Fragment key={dispute._id}>
                     <tr
                       onClick={() => toggleRow(dispute._id)}
-                      className="bg-gray-800/50 hover:bg-gray-700/50 transition-colors cursor-pointer"
+                      className="bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
                     >
-                      <td className="px-4 py-3 text-sm text-gray-400">
+                      <td className="px-4 py-3 text-sm text-slate-500">
                         {expandedRow === dispute._id ? (
                           <ChevronUp className="w-4 h-4" />
                         ) : (
@@ -466,7 +466,7 @@ export default function DisputesPage() {
                         )}
                       </td>
                       {columns.map((col) => (
-                        <td key={col.key} className="px-4 py-3 text-sm text-gray-300">
+                        <td key={col.key} className="px-4 py-3 text-sm text-slate-700">
                           {col.render ? col.render(dispute[col.key as keyof Dispute], dispute) : (dispute[col.key as keyof Dispute] as any) ?? '-'}
                         </td>
                       ))}
@@ -496,26 +496,26 @@ export default function DisputesPage() {
                               transition={{ duration: 0.2 }}
                               className="overflow-hidden"
                             >
-                              <div className="px-6 py-4 bg-gray-900/50 border-t border-gray-700/50 space-y-3">
+                              <div className="px-6 py-4 bg-slate-100 border-t border-slate-200/70 space-y-3">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                   <div>
-                                    <p className="text-gray-400 text-xs uppercase font-medium mb-1">{T.reason}</p>
-                                    <p className="text-white text-sm">{dispute.reason}</p>
+                                    <p className="text-slate-500 text-xs uppercase font-medium mb-1">{T.reason}</p>
+                                    <p className="text-slate-900 text-sm">{dispute.reason}</p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-400 text-xs uppercase font-medium mb-1">{T.resolution}</p>
-                                    <p className="text-white text-sm">{dispute.resolution || '-'}</p>
+                                    <p className="text-slate-500 text-xs uppercase font-medium mb-1">{T.resolution}</p>
+                                    <p className="text-slate-900 text-sm">{dispute.resolution || '-'}</p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-400 text-xs uppercase font-medium mb-1">{T.name}</p>
-                                    <p className="text-white text-sm">
+                                    <p className="text-slate-500 text-xs uppercase font-medium mb-1">{T.name}</p>
+                                    <p className="text-slate-900 text-sm">
                                       {dispute.assignedTo
                                         ? `${dispute.assignedTo.firstName} ${dispute.assignedTo.lastName}`
                                         : '-'}
                                     </p>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-4 text-xs text-gray-500 pt-2 border-t border-gray-700/50">
+                                <div className="flex items-center gap-4 text-xs text-slate-500 pt-2 border-t border-slate-200/70">
                                   <span>{T.createdAt}: {formatDate(dispute.createdAt)}</span>
                                   <span>{T.date}: {formatDate(dispute.updatedAt)}</span>
                                 </div>
@@ -550,28 +550,28 @@ export default function DisputesPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-5 border-b border-gray-700">
-                  <h2 className="text-white font-semibold text-lg flex items-center gap-2">
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-slate-200">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg flex items-center gap-2 mb-3">
                     <AlertTriangle className="w-5 h-5 text-[#f37121]" />
                     {T.openDispute}
                   </h2>
-                  <button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-white">
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="text-slate-500 hover:text-slate-900">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
                 <form onSubmit={handleCreate} className="p-5 space-y-4">
                   {createError && (
-                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">
                       {createError}
                     </div>
                   )}
                   <div>
-                    <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.invoice}</label>
+                    <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.invoice}</label>
                     <select
                       value={createForm.invoiceId}
                       onChange={(e) => setCreateForm({ ...createForm, invoiceId: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                       required
                     >
                       <option value="">...</option>
@@ -583,12 +583,12 @@ export default function DisputesPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.reason}</label>
+                    <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.reason}</label>
                     <textarea
                       value={createForm.reason}
                       onChange={(e) => setCreateForm({ ...createForm, reason: e.target.value })}
                       rows={4}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
                       placeholder={T.reason}
                       required
                     />
@@ -597,7 +597,7 @@ export default function DisputesPage() {
                     <button
                       type="button"
                       onClick={() => setShowCreateModal(false)}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition-colors"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm transition-colors"
                     >
                       {T.cancel}
                     </button>
@@ -634,34 +634,34 @@ export default function DisputesPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-5 border-b border-gray-700">
-                  <h2 className="text-white font-semibold text-lg flex items-center gap-2">
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-slate-200">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg flex items-center gap-2 mb-3">
                     <MessageSquare className="w-5 h-5 text-[#f37121]" />
                     {T.title}
                   </h2>
-                  <button type="button" onClick={() => setShowUpdateModal(false)} className="text-gray-400 hover:text-white">
+                  <button type="button" onClick={() => setShowUpdateModal(false)} className="text-slate-500 hover:text-slate-900">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
                 <form onSubmit={handleUpdate} className="p-5 space-y-4">
                   {updateError && (
-                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">
                       {updateError}
                     </div>
                   )}
-                  <div className="bg-gray-900 rounded-lg p-3 border border-gray-700">
-                    <p className="text-gray-400 text-xs uppercase font-medium">{T.invoice}</p>
-                    <p className="text-white text-sm font-medium mt-0.5">
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                    <p className="text-slate-500 text-xs uppercase font-medium">{T.invoice}</p>
+                    <p className="text-slate-900 text-sm font-medium mt-0.5">
                       {selectedDispute.invoice?.invoiceNumber} - {selectedDispute.customer?.companyName}
                     </p>
                   </div>
                   <div>
-                    <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.status}</label>
+                    <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.status}</label>
                     <select
                       value={updateForm.status}
                       onChange={(e) => setUpdateForm({ ...updateForm, status: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     >
                       <option value="open">{T.openDispute}</option>
                       <option value="under_review">{T.escalated}</option>
@@ -669,11 +669,11 @@ export default function DisputesPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.name}</label>
+                    <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.name}</label>
                     <select
                       value={updateForm.assignedTo}
                       onChange={(e) => setUpdateForm({ ...updateForm, assignedTo: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     >
                       <option value="">-</option>
                       {users.map((u) => (
@@ -684,12 +684,12 @@ export default function DisputesPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.resolution}</label>
+                    <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.resolution}</label>
                     <textarea
                       value={updateForm.resolution}
                       onChange={(e) => setUpdateForm({ ...updateForm, resolution: e.target.value })}
                       rows={4}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
                       placeholder={T.resolution}
                     />
                   </div>
@@ -697,7 +697,7 @@ export default function DisputesPage() {
                     <button
                       type="button"
                       onClick={() => setShowUpdateModal(false)}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition-colors"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm transition-colors"
                     >
                       {T.cancel}
                     </button>

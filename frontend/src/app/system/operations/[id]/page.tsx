@@ -71,16 +71,16 @@ interface Workflow {
 }
 
 const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  draft: { label: 'Draft', color: 'text-gray-400', bg: 'bg-gray-500/20' },
-  submitted_to_ops: { label: 'Submitted to Ops', color: 'text-blue-400', bg: 'bg-blue-500/20' },
-  ops_completed: { label: 'Ops Completed', color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
-  submitted_to_collections: { label: 'To Collections', color: 'text-purple-400', bg: 'bg-purple-500/20' },
-  completed: { label: 'Completed', color: 'text-green-400', bg: 'bg-green-500/20' },
+  draft: { label: 'Draft', color: 'text-slate-500', bg: 'bg-slate-500/20' },
+  submitted_to_ops: { label: 'Submitted to Ops', color: 'text-blue-600', bg: 'bg-blue-500/20' },
+  ops_completed: { label: 'Ops Completed', color: 'text-yellow-700', bg: 'bg-yellow-500/20' },
+  submitted_to_collections: { label: 'To Collections', color: 'text-purple-600', bg: 'bg-purple-500/20' },
+  completed: { label: 'Completed', color: 'text-green-600', bg: 'bg-green-500/20' },
 };
 
 const SECTIONS = [
   {
-    title: 'Application Details', titleAr: 'بيانات الطلب', group: 'application', color: 'border-cyan-600', headerColor: 'text-cyan-400',
+    title: 'Application Details', titleAr: 'بيانات الطلب', group: 'application', color: 'border-cyan-600', headerColor: 'text-cyan-700',
     fields: [
       { key: 'reportNumber', label: 'رقم كشف التخريج', labelEn: 'Report Number' },
       { key: 'reportDate', label: 'تاريخ الكشف', labelEn: 'Report Date', type: 'date' },
@@ -114,13 +114,13 @@ const SECTIONS = [
     ],
   },
   {
-    title: 'Operations Review', titleAr: 'مراجعه التشغيل', group: 'operations', color: 'border-teal-600', headerColor: 'text-teal-400',
+    title: 'Operations Review', titleAr: 'مراجعه التشغيل', group: 'operations', color: 'border-teal-600', headerColor: 'text-teal-700',
     fields: [
       { key: 'operationsReview', label: 'مراجعه التشغيل', labelEn: 'Operations Review' },
     ],
   },
   {
-    title: 'Manual Moderator', titleAr: 'بيانات المودريتور', group: 'manual_moderator', color: 'border-orange-600', headerColor: 'text-orange-400',
+    title: 'Manual Moderator', titleAr: 'بيانات المودريتور', group: 'manual_moderator', color: 'border-orange-600', headerColor: 'text-orange-600',
     fields: [
       { key: 'paymentDate', label: 'تاريخ السداد', labelEn: 'Payment Date', type: 'date' },
       { key: 'payingBranch', label: 'الفرع المسدد', labelEn: 'Paying Branch' },
@@ -132,7 +132,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: 'Collections', titleAr: 'بيانات التحصيل', group: 'collections', color: 'border-blue-600', headerColor: 'text-blue-400',
+    title: 'Collections', titleAr: 'بيانات التحصيل', group: 'collections', color: 'border-blue-600', headerColor: 'text-blue-600',
     fields: [
       { key: 'invoiceNumber', label: 'رقم الفاتوره', labelEn: 'Invoice Number' },
       { key: 'netInvoice', label: 'صافي الفاتوره', labelEn: 'Net Invoice', type: 'number' },
@@ -330,7 +330,7 @@ export default function WorkflowDetailPage() {
   if (!workflow) {
     return (
       <div className="text-center py-20">
-        <p className="text-gray-400">{error || T.workflowNotFound}</p>
+        <p className="text-slate-500">{error || T.workflowNotFound}</p>
         <button type="button" onClick={() => router.push('/system/operations')} className="text-[#f37121] mt-2 text-sm hover:underline">{T.goBack}</button>
       </div>
     );
@@ -344,16 +344,16 @@ export default function WorkflowDetailPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <button type="button" onClick={() => router.push('/system/operations')} title={T.back} className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700 transition-colors">
+          <button type="button" onClick={() => router.push('/system/operations')} title={T.back} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-white">{workflow.reportNumber}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{workflow.reportNumber}</h1>
             <div className="flex items-center gap-2 mt-1">
               <span className={`px-2.5 py-0.5 rounded text-xs font-medium ${sc.bg} ${sc.color}`}>{stageLabels[workflow.stage] || sc.label}</span>
-              {workflow.carOwner && <span className="text-gray-400 text-sm">{workflow.carOwner}</span>}
+              {workflow.carOwner && <span className="text-slate-500 text-sm">{workflow.carOwner}</span>}
               {isLockedByOther && (
-                <span className="text-red-400 text-xs flex items-center gap-1">
+                <span className="text-red-600 text-xs flex items-center gap-1">
                   <Lock className="w-3 h-3" /> {T.editingBy.replace('{name}', workflow.lockedByName)}
                 </span>
               )}
@@ -374,13 +374,13 @@ export default function WorkflowDetailPage() {
                 width: 18,
               }));
               exportToExcel(exportData, columns, `operation-${workflow.reportNumber || workflow._id}`, 'Workflow Details');
-            }} className="px-3 py-2 rounded-lg bg-gray-700 text-gray-300 text-sm hover:bg-gray-600 transition-colors flex items-center gap-2">
+            }} className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors flex items-center gap-2">
               <Download className="w-4 h-4" /> {T.exportExcel}
             </button>
           )}
           {editing ? (
             <>
-              <button type="button" onClick={handleCancelEdit} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 text-sm hover:bg-gray-600 transition-colors">
+              <button type="button" onClick={handleCancelEdit} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors">
                 {T.cancel}
               </button>
               <button type="button" onClick={handleSave} disabled={saving}
@@ -391,7 +391,7 @@ export default function WorkflowDetailPage() {
             </>
           ) : (
             !isLockedByOther && (
-              <button type="button" onClick={handleStartEdit} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 text-sm hover:bg-gray-600 transition-colors flex items-center gap-2">
+              <button type="button" onClick={handleStartEdit} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors flex items-center gap-2">
                 <Edit className="w-4 h-4" /> {T.edit}
               </button>
             )
@@ -399,15 +399,15 @@ export default function WorkflowDetailPage() {
         </div>
       </div>
 
-      {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">{error}</div>}
-      {success && <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-400 text-sm flex items-center gap-2"><CheckCircle2 className="w-4 h-4" />{success}</div>}
+      {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">{error}</div>}
+      {success && <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-600 text-sm flex items-center gap-2"><CheckCircle2 className="w-4 h-4" />{success}</div>}
 
       {/* Stage transitions */}
       {transitions.length > 0 && !editing && (
         <div className="flex flex-wrap gap-2">
           {transitions.map((t) => (
             <button key={t.stage} type="button" onClick={() => handleTransition(t.stage)} disabled={transitioning}
-              className="px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm hover:border-[#f37121]/50 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50">
+              className="px-4 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm hover:border-[#f37121]/50 hover:text-slate-900 transition-colors flex items-center gap-2 disabled:opacity-50">
               {transitioning ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
               {t.label}
             </button>
@@ -419,13 +419,13 @@ export default function WorkflowDetailPage() {
       {SECTIONS.map((section) => {
         const editable = editing && canEditGroup(section.group);
         return (
-          <div key={section.group} className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-            <div className={`px-6 py-3 border-b border-gray-700 border-l-4 ${section.color} flex items-center justify-between`}>
+          <div key={section.group} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div className={`px-6 py-3 border-b border-slate-200 border-l-4 ${section.color} flex items-center justify-between`}>
               <h2 className={`font-semibold text-sm ${section.headerColor}`}>
-                {section.title} <span className="text-gray-500 text-xs font-normal">({section.titleAr})</span>
+                {section.title} <span className="text-slate-500 text-xs font-normal">({section.titleAr})</span>
               </h2>
               {editing && !canEditGroup(section.group) && (
-                <span className="text-gray-500 text-xs flex items-center gap-1"><Lock className="w-3 h-3" /> {T.readOnlyForRole}</span>
+                <span className="text-slate-500 text-xs flex items-center gap-1"><Lock className="w-3 h-3" /> {T.readOnlyForRole}</span>
               )}
             </div>
             <div className="p-6">
@@ -434,8 +434,8 @@ export default function WorkflowDetailPage() {
                   const val = formData[field.key];
                   return (
                     <div key={field.key}>
-                      <label className="block text-gray-400 text-xs mb-1.5">
-                        {field.label} <span className="text-gray-600">({field.labelEn})</span>
+                      <label className="block text-slate-500 text-xs mb-1.5">
+                        {field.label} <span className="text-slate-600">({field.labelEn})</span>
                       </label>
                       {editable ? (
                         <input
@@ -443,11 +443,11 @@ export default function WorkflowDetailPage() {
                           value={field.type === 'date' && val ? String(val).split('T')[0] : val || ''}
                           onChange={(e) => setFormData({ ...formData, [field.key]: field.type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value })}
                           title={field.label}
-                          className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
                         />
                       ) : (
-                        <p className="text-white text-sm py-2">
-                          {field.type === 'date' ? formatDate(val) : field.type === 'number' ? formatNumber(val) : val || <span className="text-gray-600">-</span>}
+                        <p className="text-slate-900 text-sm py-2">
+                          {field.type === 'date' ? formatDate(val) : field.type === 'number' ? formatNumber(val) : val || <span className="text-slate-600">-</span>}
                         </p>
                       )}
                     </div>
@@ -460,24 +460,24 @@ export default function WorkflowDetailPage() {
       })}
 
       {/* Meta info */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-        <h3 className="text-gray-400 text-xs uppercase font-medium mb-3">{T.recordInfo}</h3>
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="text-slate-500 text-xs uppercase font-medium mb-3">{T.recordInfo}</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
-            <p className="text-gray-500 text-xs">{T.createdBy}</p>
-            <p className="text-gray-300 mt-0.5">{workflow.createdBy ? `${workflow.createdBy.firstName} ${workflow.createdBy.lastName}` : '-'}</p>
+            <p className="text-slate-500 text-xs">{T.createdBy}</p>
+            <p className="text-slate-700 mt-0.5">{workflow.createdBy ? `${workflow.createdBy.firstName} ${workflow.createdBy.lastName}` : '-'}</p>
           </div>
           <div>
-            <p className="text-gray-500 text-xs">{T.createdAt}</p>
-            <p className="text-gray-300 mt-0.5">{formatDate(workflow.createdAt)}</p>
+            <p className="text-slate-500 text-xs">{T.createdAt}</p>
+            <p className="text-slate-700 mt-0.5">{formatDate(workflow.createdAt)}</p>
           </div>
           <div>
-            <p className="text-gray-500 text-xs">{T.lastModifiedBy}</p>
-            <p className="text-gray-300 mt-0.5">{workflow.lastModifiedBy ? `${workflow.lastModifiedBy.firstName} ${workflow.lastModifiedBy.lastName}` : '-'}</p>
+            <p className="text-slate-500 text-xs">{T.lastModifiedBy}</p>
+            <p className="text-slate-700 mt-0.5">{workflow.lastModifiedBy ? `${workflow.lastModifiedBy.firstName} ${workflow.lastModifiedBy.lastName}` : '-'}</p>
           </div>
           <div>
-            <p className="text-gray-500 text-xs">{T.updatedAt}</p>
-            <p className="text-gray-300 mt-0.5">{formatDate(workflow.updatedAt)}</p>
+            <p className="text-slate-500 text-xs">{T.updatedAt}</p>
+            <p className="text-slate-700 mt-0.5">{formatDate(workflow.updatedAt)}</p>
           </div>
         </div>
       </div>

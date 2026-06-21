@@ -83,9 +83,9 @@ export default function RemoteTasksPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2"><ListTodo className="w-6 h-6 text-[#f37121]" />{staff ? (ar ? 'مهام الفريق' : 'Team Tasks') : (ar ? 'مهامي' : 'My Tasks')}</h1>
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><ListTodo className="w-6 h-6 text-[#f37121]" />{staff ? (ar ? 'مهام الفريق' : 'Team Tasks') : (ar ? 'مهامي' : 'My Tasks')}</h1>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={load} className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
+          <button type="button" onClick={load} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
           {staff && (
             <button type="button" onClick={() => { setShowForm(true); setErr(''); }} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] text-white rounded-lg text-sm font-medium"><Plus className="w-4 h-4" />{ar ? 'إسناد مهمة' : 'Assign Task'}</button>
           )}
@@ -93,9 +93,9 @@ export default function RemoteTasksPage() {
       </div>
 
       {staff && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 max-w-xs">
-          <label className="block text-gray-400 text-xs mb-1">{ar ? 'الموظف' : 'Employee'}</label>
-          <select aria-label="Employee" value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 max-w-xs shadow-sm">
+          <label className="block text-slate-500 text-xs mb-1">{ar ? 'الموظف' : 'Employee'}</label>
+          <select aria-label="Employee" value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm">
             <option value="">{ar ? 'الكل' : 'All'}</option>
             {employees.map((e) => <option key={e._id} value={e._id}>{e.firstName} {e.lastName}</option>)}
           </select>
@@ -105,25 +105,25 @@ export default function RemoteTasksPage() {
       {loading ? (
         <div className="flex items-center justify-center h-40"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>
       ) : tasks.length === 0 ? (
-        <p className="text-gray-400 text-center py-10">{ar ? 'لا توجد مهام' : 'No tasks'}</p>
+        <p className="text-slate-500 text-center py-10">{ar ? 'لا توجد مهام' : 'No tasks'}</p>
       ) : (
         <div className="space-y-2">
           {tasks.map((t) => (
-            <div key={t._id} className={`bg-gray-800 border border-gray-700 rounded-xl p-4 flex items-start gap-3 ${t.done ? 'opacity-60' : ''}`}>
-              <button type="button" onClick={() => toggle(t)} className={`mt-0.5 w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${t.done ? 'bg-green-500 border-green-500' : 'border-gray-500 hover:border-[#f37121]'}`} title="Toggle">
-                {t.done && <span className="text-white text-sm">✓</span>}
+            <div key={t._id} className={`bg-white border border-slate-200 rounded-xl p-4 flex items-start gap-3 ${t.done ? 'opacity-60' : ''} shadow-sm`}>
+              <button type="button" onClick={() => toggle(t)} className={`mt-0.5 w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${t.done ? 'bg-green-500 border-green-500' : 'border-slate-300 hover:border-[#f37121]'}`} title="Toggle">
+                {t.done && <span className="text-slate-900 text-sm">✓</span>}
               </button>
               <div className="flex-1 min-w-0">
                 <p className={`text-white font-medium ${t.done ? 'line-through' : ''}`}>{t.title}</p>
-                {t.description && <p className="text-gray-400 text-sm mt-0.5">{t.description}</p>}
-                <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
+                {t.description && <p className="text-slate-500 text-sm mt-0.5">{t.description}</p>}
+                <div className="flex flex-wrap gap-3 mt-1 text-xs text-slate-500">
                   {staff && t.user && <span>{ar ? 'لـ' : 'For'}: {t.user.firstName} {t.user.lastName}</span>}
                   {t.dueDate && <span>{ar ? 'الموعد' : 'Due'}: {t.dueDate}</span>}
                   {t.assignedBy && <span>{ar ? 'من' : 'By'}: {t.assignedBy.firstName} {t.assignedBy.lastName}</span>}
                 </div>
               </div>
               {staff && (
-                <button type="button" onClick={() => remove(t._id)} className="text-gray-500 hover:text-red-400 p-1" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                <button type="button" onClick={() => remove(t._id)} className="text-slate-500 hover:text-red-600 p-1" title="Delete"><Trash2 className="w-4 h-4" /></button>
               )}
             </div>
           ))}
@@ -133,34 +133,34 @@ export default function RemoteTasksPage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowForm(false)} />
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl" dir={isRTL ? 'rtl' : 'ltr'}>
-            <div className="flex items-center justify-between p-5 border-b border-gray-700">
-              <h2 className="text-white font-semibold text-lg">{ar ? 'إسناد مهمة' : 'Assign Task'}</h2>
-              <button type="button" onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white" title="Close"><X className="w-5 h-5" /></button>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl" dir={isRTL ? 'rtl' : 'ltr'}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
+              <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">{ar ? 'إسناد مهمة' : 'Assign Task'}</h2>
+              <button type="button" onClick={() => setShowForm(false)} className="text-slate-500 hover:text-slate-900" title="Close"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={submit} className="p-5 space-y-4">
-              {err && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">{err}</div>}
+              {err && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">{err}</div>}
               <div>
-                <label className="block text-gray-300 text-sm mb-1.5">{ar ? 'الموظف' : 'Employee'}</label>
-                <select aria-label="Assignee" value={assignTo} onChange={(e) => setAssignTo(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm" required>
+                <label className="block text-slate-700 text-sm mb-1.5">{ar ? 'الموظف' : 'Employee'}</label>
+                <select aria-label="Assignee" value={assignTo} onChange={(e) => setAssignTo(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required>
                   <option value="">{ar ? 'اختر...' : 'Select...'}</option>
                   {employees.map((e) => <option key={e._id} value={e._id}>{e.firstName} {e.lastName}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-gray-300 text-sm mb-1.5">{ar ? 'عنوان المهمة' : 'Title'}</label>
-                <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm" required placeholder={ar ? 'ماذا يجب أن يفعل؟' : 'What to do?'} />
+                <label className="block text-slate-700 text-sm mb-1.5">{ar ? 'عنوان المهمة' : 'Title'}</label>
+                <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required placeholder={ar ? 'ماذا يجب أن يفعل؟' : 'What to do?'} />
               </div>
               <div>
-                <label className="block text-gray-300 text-sm mb-1.5">{ar ? 'تفاصيل (اختياري)' : 'Details (optional)'}</label>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm" />
+                <label className="block text-slate-700 text-sm mb-1.5">{ar ? 'تفاصيل (اختياري)' : 'Details (optional)'}</label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
               </div>
               <div>
-                <label className="block text-gray-300 text-sm mb-1.5">{ar ? 'الموعد النهائي (اختياري)' : 'Due date (optional)'}</label>
-                <input aria-label="Due date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm" />
+                <label className="block text-slate-700 text-sm mb-1.5">{ar ? 'الموعد النهائي (اختياري)' : 'Due date (optional)'}</label>
+                <input aria-label="Due date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
                 <button type="submit" disabled={submitting} className="px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-2">
                   {submitting && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                   {ar ? 'إسناد' : 'Assign'}

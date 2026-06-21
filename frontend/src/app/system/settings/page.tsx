@@ -73,47 +73,47 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+      <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
         <Settings className="w-6 h-6 text-[#f37121]" />
         {T.title}
       </h1>
 
       {/* ── Change Password (All users) ── */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-        <h3 className="text-white font-semibold mb-2 flex items-center gap-2">
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-2 flex items-center gap-2">
           <Lock className="w-5 h-5 text-[#f37121]" />
           {T.changePassword}
         </h3>
-        <p className="text-gray-400 text-sm mb-4">
+        <p className="text-slate-500 text-sm mb-4">
           {T.updatePasswordDesc}
         </p>
 
         {pwMessage && (
-          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-400 text-sm flex items-center gap-2 mb-4">
+          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-600 text-sm flex items-center gap-2 mb-4">
             <CheckCircle2 className="w-4 h-4" /> {pwMessage}
           </div>
         )}
         {pwError && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm mb-4">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm mb-4">
             {pwError}
           </div>
         )}
 
         <div className="space-y-4">
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.currentPassword}</label>
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.currentPassword}</label>
             <div className="relative">
               <input
                 type={showCurrent ? 'text' : 'password'}
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
+                className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
                 placeholder="Enter current password"
               />
               <button
                 type="button"
                 onClick={() => setShowCurrent(!showCurrent)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
               >
                 {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -121,19 +121,19 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.newPassword}</label>
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.newPassword}</label>
             <div className="relative">
               <input
                 type={showNew ? 'text' : 'password'}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
+                className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
                 placeholder="Enter new password (min 6 characters)"
               />
               <button
                 type="button"
                 onClick={() => setShowNew(!showNew)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
               >
                 {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -141,12 +141,12 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.confirmPassword}</label>
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.confirmPassword}</label>
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+              className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
               placeholder="Confirm new password"
             />
           </div>
@@ -164,23 +164,23 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Account Info (All users) ── */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
           <User className="w-5 h-5 text-[#f37121]" />
           Account Information
         </h3>
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between py-2 border-b border-gray-700/50">
-            <span className="text-gray-400">Name</span>
-            <span className="text-white">{user?.firstName} {user?.lastName}</span>
+          <div className="flex justify-between py-2 border-b border-slate-200/70">
+            <span className="text-slate-500">Name</span>
+            <span className="text-slate-900">{user?.firstName} {user?.lastName}</span>
           </div>
-          <div className="flex justify-between py-2 border-b border-gray-700/50">
-            <span className="text-gray-400">Email</span>
-            <span className="text-white">{user?.email}</span>
+          <div className="flex justify-between py-2 border-b border-slate-200/70">
+            <span className="text-slate-500">Email</span>
+            <span className="text-slate-900">{user?.email}</span>
           </div>
           <div className="flex justify-between py-2">
-            <span className="text-gray-400">Role</span>
-            <span className="text-white capitalize">{user?.role?.replace('_', ' ')}</span>
+            <span className="text-slate-500">Role</span>
+            <span className="text-slate-900 capitalize">{user?.role?.replace('_', ' ')}</span>
           </div>
         </div>
       </div>
@@ -189,16 +189,16 @@ export default function SettingsPage() {
       {isSuperAdmin && (
         <>
           {/* Risk Recalculation */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-            <h3 className="text-white font-semibold mb-2 flex items-center gap-2">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-2 flex items-center gap-2">
               <Shield className="w-5 h-5 text-[#f37121]" />
               {T.recalculateRisk}
             </h3>
-            <p className="text-gray-400 text-sm mb-4">
+            <p className="text-slate-500 text-sm mb-4">
               {T.recalculateRiskDesc}
             </p>
             {riskMessage && (
-              <div className={`p-3 rounded-lg border text-sm mb-4 ${riskMessage.startsWith('Error') ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-green-500/10 border-green-500/30 text-green-400'}`}>
+              <div className={`p-3 rounded-lg border text-sm mb-4 ${riskMessage.startsWith('Error') ? 'bg-red-500/10 border-red-500/30 text-red-600' : 'bg-green-500/10 border-green-500/30 text-green-600'}`}>
                 {riskMessage}
               </div>
             )}
@@ -214,27 +214,27 @@ export default function SettingsPage() {
           </div>
 
           {/* System Info */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-            <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-              <Settings className="w-5 h-5 text-gray-400" />
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
+              <Settings className="w-5 h-5 text-slate-500" />
               System Information
             </h3>
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between py-2 border-b border-gray-700/50">
-                <span className="text-gray-400">System</span>
-                <span className="text-white">Energize Collection & Financial Control System</span>
+              <div className="flex justify-between py-2 border-b border-slate-200/70">
+                <span className="text-slate-500">System</span>
+                <span className="text-slate-900">Energize Logistics — Enterprise Management System</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-gray-700/50">
-                <span className="text-gray-400">Version</span>
-                <span className="text-white">1.0.0</span>
+              <div className="flex justify-between py-2 border-b border-slate-200/70">
+                <span className="text-slate-500">Version</span>
+                <span className="text-slate-900">1.0.0</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-gray-700/50">
-                <span className="text-gray-400">Credit Terms Supported</span>
-                <span className="text-white">30, 45, 60 days</span>
+              <div className="flex justify-between py-2 border-b border-slate-200/70">
+                <span className="text-slate-500">Credit Terms Supported</span>
+                <span className="text-slate-900">30, 45, 60 days</span>
               </div>
               <div className="flex justify-between py-2">
-                <span className="text-gray-400">Risk Score Range</span>
-                <span className="text-white">0-100 (Low: 0-30, Medium: 31-60, High: 61-100)</span>
+                <span className="text-slate-500">Risk Score Range</span>
+                <span className="text-slate-900">0-100 (Low: 0-30, Medium: 31-60, High: 61-100)</span>
               </div>
             </div>
           </div>

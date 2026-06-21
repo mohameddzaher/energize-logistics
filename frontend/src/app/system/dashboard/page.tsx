@@ -433,26 +433,26 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">{T.executiveDashboard}</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{T.executiveDashboard}</h1>
         <div className="flex items-center gap-4">
           {hasExportableData && (
             <button
               type="button"
               onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm font-medium rounded-lg transition-colors"
             >
               <Download className="w-4 h-4" />
               {T.exportExcel}
             </button>
           )}
-          <span className="text-gray-400 text-sm">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+          <span className="text-slate-500 text-sm">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
         </div>
       </div>
 
       {/* Date Filter */}
       {flags.showDateFilter && (
-        <div className="flex flex-wrap items-center gap-3 bg-gray-800 border border-gray-700 rounded-xl p-3">
-          <span className="text-gray-400 text-sm font-medium">{T.period}:</span>
+        <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+          <span className="text-slate-500 text-sm font-medium">{T.period}:</span>
           {[
             { value: 'current', label: T.thisMonth },
             { value: 'lastMonth', label: T.lastMonth },
@@ -465,7 +465,7 @@ export default function DashboardPage() {
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 dateMode === opt.value
                   ? 'bg-[#f37121] text-white'
-                  : 'bg-gray-700 text-gray-400 hover:text-white'
+                  : 'bg-slate-100 text-slate-500 hover:text-slate-900'
               }`}
             >
               {opt.label}
@@ -478,15 +478,15 @@ export default function DashboardPage() {
                 aria-label="Date from"
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
-                className="px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-xs focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+                className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
               />
-              <span className="text-gray-500 text-xs">{T.to}</span>
+              <span className="text-slate-500 text-xs">{T.to}</span>
               <input
                 type="date"
                 aria-label="Date to"
                 value={customTo}
                 onChange={(e) => setCustomTo(e.target.value)}
-                className="px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-xs focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+                className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
               />
             </>
           )}
@@ -495,15 +495,15 @@ export default function DashboardPage() {
 
       {/* Refreshing indicator */}
       {refreshing && (
-        <div className="h-1 w-full bg-gray-700 rounded-full overflow-hidden">
+        <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
           <div className="h-full w-3/5 bg-[#f37121] rounded-full animate-[pulse_1s_ease-in-out_infinite]" />
         </div>
       )}
 
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-center justify-between">
-          <span className="text-red-400 text-sm">{error}</span>
-          <button type="button" onClick={() => { setLoading(true); fetchAll(true); }} className="text-red-400 hover:text-red-300 text-xs font-medium underline">{T.retry}</button>
+          <span className="text-red-600 text-sm">{error}</span>
+          <button type="button" onClick={() => { setLoading(true); fetchAll(true); }} className="text-red-600 hover:text-red-700 text-xs font-medium underline">{T.retry}</button>
         </div>
       )}
 
@@ -515,7 +515,7 @@ export default function DashboardPage() {
           hasn't loaded the /super-overview endpoint yet (needs restart) ── */}
       {flags.isAdmin && !superOverview && superOverviewError && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <AlertTriangle className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-amber-200 font-semibold text-sm">
               {lang === 'ar' ? 'قسم "نظرة شاملة على النظام" غير محمّل' : 'System Overview section not loaded'}
@@ -534,10 +534,10 @@ export default function DashboardPage() {
       {flags.isAdmin && superOverview && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-white font-semibold text-lg">
+            <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">
               {lang === 'ar' ? 'نظرة شاملة على النظام' : 'System Overview'}
             </h2>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-slate-500">
               {lang === 'ar' ? 'كل الأقسام · اضغط للتفاصيل' : 'All modules · click any card'}
             </span>
           </div>
@@ -546,7 +546,7 @@ export default function DashboardPage() {
               if (pct === null || pct === undefined) return null;
               const positive = pct >= 0;
               return (
-                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${positive ? 'text-emerald-400' : 'text-red-400'} ms-1.5`}>
+                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${positive ? 'text-emerald-600' : 'text-red-600'} ms-1.5`}>
                   {positive ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
                   {Math.abs(pct)}%
                 </span>
@@ -557,108 +557,108 @@ export default function DashboardPage() {
             return (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                 {/* Operations */}
-                <Link href="/system/operations" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                <Link href="/system/operations" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
                   <div className="flex items-center justify-between mb-1.5">
                     <ClipboardList className="w-5 h-5 text-[#f37121]" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-[#f37121]" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-[#f37121]" />
                   </div>
-                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'العمليات' : 'Operations'}</p>
-                  <p className="text-white text-xl font-bold">{fmt(superOverview.operations?.total)}</p>
-                  <p className="text-gray-500 text-[10px] mt-1">
+                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'العمليات' : 'Operations'}</p>
+                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.operations?.total)}</p>
+                  <p className="text-slate-500 text-[10px] mt-1">
                     {lang === 'ar' ? 'الشهر' : 'Month'}: {fmt(superOverview.operations?.thisMonth)}<Trend pct={superOverview.operations?.trendPct} />
                   </p>
                 </Link>
 
                 {/* B2C */}
-                <Link href="/system/b2c/dashboard" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                <Link href="/system/b2c/dashboard" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
                   <div className="flex items-center justify-between mb-1.5">
-                    <Target className="w-5 h-5 text-violet-400" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-violet-400" />
+                    <Target className="w-5 h-5 text-violet-600" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-violet-600" />
                   </div>
-                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'B2C - طلبات الشهر' : 'B2C – Month Orders'}</p>
-                  <p className="text-white text-xl font-bold">{fmt(superOverview.b2c?.monthOrders)}<Trend pct={superOverview.b2c?.trendPct} /></p>
-                  <p className="text-gray-500 text-[10px] mt-1">
+                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'B2C - طلبات الشهر' : 'B2C – Month Orders'}</p>
+                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.b2c?.monthOrders)}<Trend pct={superOverview.b2c?.trendPct} /></p>
+                  <p className="text-slate-500 text-[10px] mt-1">
                     {fmt(superOverview.b2c?.reps)} {lang === 'ar' ? 'مندوب' : 'reps'} · {fmt(superOverview.b2c?.projects)} {lang === 'ar' ? 'مشاريع' : 'projects'}
                   </p>
                 </Link>
 
                 {/* Wallet */}
-                <Link href="/system/wallet-dashboard" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                <Link href="/system/wallet-dashboard" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
                   <div className="flex items-center justify-between mb-1.5">
-                    <DollarSign className="w-5 h-5 text-emerald-400" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-emerald-400" />
+                    <DollarSign className="w-5 h-5 text-emerald-600" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-emerald-600" />
                   </div>
-                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'المحفظة - عمليات الشهر' : 'Wallet – Month Tx'}</p>
-                  <p className="text-white text-xl font-bold">{fmt(superOverview.wallet?.monthTransactions)}</p>
-                  <p className="text-gray-500 text-[10px] mt-1">
+                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'المحفظة - عمليات الشهر' : 'Wallet – Month Tx'}</p>
+                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.wallet?.monthTransactions)}</p>
+                  <p className="text-slate-500 text-[10px] mt-1">
                     {fmt(superOverview.wallet?.openWallets)} {lang === 'ar' ? 'محفظة مفتوحة' : 'open wallets'}
                   </p>
                 </Link>
 
                 {/* Workshop tasks */}
-                <Link href="/system/workshop/tasks" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                <Link href="/system/workshop/tasks" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
                   <div className="flex items-center justify-between mb-1.5">
-                    <Wrench className="w-5 h-5 text-blue-400" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-blue-400" />
+                    <Wrench className="w-5 h-5 text-blue-600" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-blue-600" />
                   </div>
-                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'مهام الورشة' : 'Workshop Tasks'}</p>
-                  <p className="text-white text-xl font-bold">{fmt(superOverview.workshop?.openTasks)}</p>
-                  <p className="text-gray-500 text-[10px] mt-1">
+                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'مهام الورشة' : 'Workshop Tasks'}</p>
+                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.workshop?.openTasks)}</p>
+                  <p className="text-slate-500 text-[10px] mt-1">
                     {fmt(superOverview.workshop?.pendingPurchases)} {lang === 'ar' ? 'مشتريات معلقة' : 'pending purchases'}
                   </p>
                 </Link>
 
                 {/* Inventory */}
-                <Link href="/system/workshop/inventory" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                <Link href="/system/workshop/inventory" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
                   <div className="flex items-center justify-between mb-1.5">
-                    <ShoppingCart className="w-5 h-5 text-amber-400" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-amber-400" />
+                    <ShoppingCart className="w-5 h-5 text-amber-700" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-amber-700" />
                   </div>
-                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'المخزون' : 'Inventory'}</p>
-                  <p className="text-white text-xl font-bold">{fmt(superOverview.workshop?.inventoryItems)}</p>
-                  <p className={`text-[10px] mt-1 ${(superOverview.workshop?.lowStockItems || 0) > 0 ? 'text-amber-400' : 'text-gray-500'}`}>
+                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'المخزون' : 'Inventory'}</p>
+                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.workshop?.inventoryItems)}</p>
+                  <p className={`text-[10px] mt-1 ${(superOverview.workshop?.lowStockItems || 0) > 0 ? 'text-amber-700' : 'text-slate-500'}`}>
                     {fmt(superOverview.workshop?.lowStockItems)} {lang === 'ar' ? 'مخزون منخفض' : 'low stock'}
                     {(superOverview.workshop?.outOfStockItems || 0) > 0 && (
-                      <span className="text-red-400 ms-2">· {fmt(superOverview.workshop?.outOfStockItems)} {lang === 'ar' ? 'نفد' : 'out'}</span>
+                      <span className="text-red-600 ms-2">· {fmt(superOverview.workshop?.outOfStockItems)} {lang === 'ar' ? 'نفد' : 'out'}</span>
                     )}
                   </p>
                 </Link>
 
                 {/* Tasks */}
-                <Link href="/system/tasks" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                <Link href="/system/tasks" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
                   <div className="flex items-center justify-between mb-1.5">
-                    <CheckCircle className="w-5 h-5 text-cyan-400" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-cyan-400" />
+                    <CheckCircle className="w-5 h-5 text-cyan-700" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-cyan-700" />
                   </div>
-                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'المهام المفتوحة' : 'Open Tasks'}</p>
-                  <p className="text-white text-xl font-bold">{fmt(superOverview.tasks?.open)}</p>
-                  <p className={`text-[10px] mt-1 ${(superOverview.tasks?.dueToday || 0) > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'المهام المفتوحة' : 'Open Tasks'}</p>
+                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.tasks?.open)}</p>
+                  <p className={`text-[10px] mt-1 ${(superOverview.tasks?.dueToday || 0) > 0 ? 'text-red-600' : 'text-slate-500'}`}>
                     {fmt(superOverview.tasks?.dueToday)} {lang === 'ar' ? 'تستحق اليوم' : 'due today'}
                   </p>
                 </Link>
 
                 {/* Complaints */}
-                <Link href="/system/complaints" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                <Link href="/system/complaints" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
                   <div className="flex items-center justify-between mb-1.5">
-                    <MessageSquare className="w-5 h-5 text-rose-400" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-rose-400" />
+                    <MessageSquare className="w-5 h-5 text-rose-600" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-rose-600" />
                   </div>
-                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'الشكاوى المفتوحة' : 'Open Complaints'}</p>
-                  <p className="text-white text-xl font-bold">{fmt(superOverview.service?.complaintsOpen)}</p>
-                  <p className="text-gray-500 text-[10px] mt-1">
+                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'الشكاوى المفتوحة' : 'Open Complaints'}</p>
+                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.service?.complaintsOpen)}</p>
+                  <p className="text-slate-500 text-[10px] mt-1">
                     {fmt(superOverview.service?.disputesOpen)} {lang === 'ar' ? 'نزاعات' : 'disputes'}
                   </p>
                 </Link>
 
                 {/* Drivers */}
-                <Link href="/system/drivers" className="group bg-gray-800 border border-gray-700 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+                <Link href="/system/drivers" className="group bg-white border border-slate-200 hover:border-[#f37121]/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
                   <div className="flex items-center justify-between mb-1.5">
-                    <Users className="w-5 h-5 text-pink-400" />
-                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-pink-400" />
+                    <Users className="w-5 h-5 text-pink-600" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-pink-600" />
                   </div>
-                  <p className="text-gray-400 text-[11px] font-medium">{lang === 'ar' ? 'السائقين' : 'Drivers'}</p>
-                  <p className="text-white text-xl font-bold">{fmt(superOverview.roster?.drivers)}</p>
-                  <p className="text-gray-500 text-[10px] mt-1">
+                  <p className="text-slate-500 text-[11px] font-medium">{lang === 'ar' ? 'السائقين' : 'Drivers'}</p>
+                  <p className="text-slate-900 text-xl font-bold">{fmt(superOverview.roster?.drivers)}</p>
+                  <p className="text-slate-500 text-[10px] mt-1">
                     {fmt(superOverview.roster?.vendors)} {lang === 'ar' ? 'موردين' : 'vendors'} · {fmt(superOverview.roster?.branches)} {lang === 'ar' ? 'فروع' : 'branches'}
                   </p>
                 </Link>
@@ -670,18 +670,18 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
             <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 rounded-xl p-3.5">
               <div className="flex items-center gap-2 mb-1">
-                <Calendar className="w-4 h-4 text-emerald-400" />
-                <p className="text-emerald-300 text-[11px] font-semibold">{lang === 'ar' ? 'تحصيلات اليوم' : "Today's Collections"}</p>
+                <Calendar className="w-4 h-4 text-emerald-600" />
+                <p className="text-emerald-700 text-[11px] font-semibold">{lang === 'ar' ? 'تحصيلات اليوم' : "Today's Collections"}</p>
               </div>
-              <p className="text-white text-2xl font-bold">{(superOverview.wallet?.todayCollections || 0).toLocaleString()}</p>
+              <p className="text-slate-900 text-2xl font-bold">{(superOverview.wallet?.todayCollections || 0).toLocaleString()}</p>
               <p className="text-emerald-200/60 text-[10px] mt-0.5">{lang === 'ar' ? 'عمليات مسجّلة اليوم' : 'transactions today'}</p>
             </div>
             <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 rounded-xl p-3.5">
               <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="w-4 h-4 text-emerald-400" />
-                <p className="text-emerald-300 text-[11px] font-semibold">{lang === 'ar' ? 'صافي المحفظة' : 'Wallet Net (Month)'}</p>
+                <DollarSign className="w-4 h-4 text-emerald-600" />
+                <p className="text-emerald-700 text-[11px] font-semibold">{lang === 'ar' ? 'صافي المحفظة' : 'Wallet Net (Month)'}</p>
               </div>
-              <p className={`text-2xl font-bold ${(superOverview.wallet?.monthNet || 0) >= 0 ? 'text-white' : 'text-red-400'}`}>
+              <p className={`text-2xl font-bold ${(superOverview.wallet?.monthNet || 0) >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
                 {Math.round(superOverview.wallet?.monthNet || 0).toLocaleString()}
               </p>
               <p className="text-emerald-200/60 text-[10px] mt-0.5">
@@ -690,18 +690,18 @@ export default function DashboardPage() {
             </div>
             <div className="bg-gradient-to-br from-violet-500/10 to-violet-500/5 border border-violet-500/30 rounded-xl p-3.5">
               <div className="flex items-center gap-2 mb-1">
-                <Target className="w-4 h-4 text-violet-400" />
-                <p className="text-violet-300 text-[11px] font-semibold">{lang === 'ar' ? 'أيام عمل B2C الشهر' : 'B2C Working Days'}</p>
+                <Target className="w-4 h-4 text-violet-600" />
+                <p className="text-violet-700 text-[11px] font-semibold">{lang === 'ar' ? 'أيام عمل B2C الشهر' : 'B2C Working Days'}</p>
               </div>
-              <p className="text-white text-2xl font-bold">{(superOverview.b2c?.monthWorkingDays || 0).toLocaleString()}</p>
+              <p className="text-slate-900 text-2xl font-bold">{(superOverview.b2c?.monthWorkingDays || 0).toLocaleString()}</p>
               <p className="text-violet-200/60 text-[10px] mt-0.5">{lang === 'ar' ? 'إجمالي مناديب × أيام شغل' : 'rep × working days'}</p>
             </div>
             <div className="bg-gradient-to-br from-[#f37121]/10 to-[#f37121]/5 border border-[#f37121]/30 rounded-xl p-3.5">
               <div className="flex items-center gap-2 mb-1">
                 <ClipboardList className="w-4 h-4 text-[#f37121]" />
-                <p className="text-orange-300 text-[11px] font-semibold">{lang === 'ar' ? 'عمليات الشهر' : 'Month Operations'}</p>
+                <p className="text-orange-700 text-[11px] font-semibold">{lang === 'ar' ? 'عمليات الشهر' : 'Month Operations'}</p>
               </div>
-              <p className="text-white text-2xl font-bold">
+              <p className="text-slate-900 text-2xl font-bold">
                 {(superOverview.operations?.thisMonth || 0).toLocaleString()}
               </p>
               <p className="text-orange-200/60 text-[10px] mt-0.5">
@@ -713,14 +713,14 @@ export default function DashboardPage() {
           {/* ── Operations stage breakdown + Top active drivers (new) ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
             {/* Operations by stage */}
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm mb-3 flex items-center gap-2">
                 <ClipboardList className="w-4 h-4 text-[#f37121]" />
                 {lang === 'ar' ? 'حالة العمليات' : 'Operations by Stage'}
               </h3>
               <div className="space-y-2">
                 {[
-                  { key: 'draft', label: lang === 'ar' ? 'مسودة' : 'Draft', color: 'bg-gray-500' },
+                  { key: 'draft', label: lang === 'ar' ? 'مسودة' : 'Draft', color: 'bg-slate-300' },
                   { key: 'submitted_to_ops', label: lang === 'ar' ? 'في التشغيل' : 'In Ops', color: 'bg-blue-500' },
                   { key: 'ops_completed', label: lang === 'ar' ? 'تشغيل مكتمل' : 'Ops Done', color: 'bg-violet-500' },
                   { key: 'submitted_to_collections', label: lang === 'ar' ? 'تحصيلات' : 'Collections', color: 'bg-amber-500' },
@@ -732,10 +732,10 @@ export default function DashboardPage() {
                   return (
                     <div key={s.key}>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-gray-300">{s.label}</span>
-                        <span className="text-white font-mono">{count.toLocaleString()} · {pct}%</span>
+                        <span className="text-slate-700">{s.label}</span>
+                        <span className="text-slate-900 font-mono">{count.toLocaleString()} · {pct}%</span>
                       </div>
-                      <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                         <div className={`h-full ${s.color} transition-all`} style={{ width: `${pct}%` }} />
                       </div>
                     </div>
@@ -745,9 +745,9 @@ export default function DashboardPage() {
             </div>
 
             {/* Top drivers this month */}
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
-                <Truck className="w-4 h-4 text-pink-400" />
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm mb-3 flex items-center gap-2">
+                <Truck className="w-4 h-4 text-pink-600" />
                 {lang === 'ar' ? 'الأكثر نشاطاً (الشهر)' : 'Most Active Drivers (Month)'}
               </h3>
               {superOverview.roster?.topDrivers?.length ? (
@@ -758,13 +758,13 @@ export default function DashboardPage() {
                     return (
                       <div key={i}>
                         <div className="flex justify-between text-xs mb-1">
-                          <span className="text-gray-300 truncate flex items-center gap-1.5">
-                            <span className="text-gray-500 font-mono">#{i + 1}</span>
+                          <span className="text-slate-700 truncate flex items-center gap-1.5">
+                            <span className="text-slate-500 font-mono">#{i + 1}</span>
                             {d.name}
                           </span>
-                          <span className="text-white font-mono">{d.trips} {lang === 'ar' ? 'رحلة' : 'trips'}</span>
+                          <span className="text-slate-900 font-mono">{d.trips} {lang === 'ar' ? 'رحلة' : 'trips'}</span>
                         </div>
-                        <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                           <div className="h-full bg-pink-500 transition-all" style={{ width: `${pct}%` }} />
                         </div>
                       </div>
@@ -772,40 +772,40 @@ export default function DashboardPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-gray-500 text-xs">{lang === 'ar' ? 'لا توجد بيانات هذا الشهر' : 'No data this month'}</p>
+                <p className="text-slate-500 text-xs">{lang === 'ar' ? 'لا توجد بيانات هذا الشهر' : 'No data this month'}</p>
               )}
             </div>
           </div>
 
           {/* ── Branches/Vendors + alerts strip (new) ── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
-            <Link href="/system/branches" className="group bg-gray-800 border border-gray-700 hover:border-indigo-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+            <Link href="/system/branches" className="group bg-white border border-slate-200 hover:border-indigo-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
               <div className="flex items-center gap-2 mb-1">
-                <Building2 className="w-4 h-4 text-indigo-400" />
-                <p className="text-gray-300 text-[11px] font-semibold">{lang === 'ar' ? 'الفروع' : 'Branches'}</p>
+                <Building2 className="w-4 h-4 text-indigo-600" />
+                <p className="text-slate-700 text-[11px] font-semibold">{lang === 'ar' ? 'الفروع' : 'Branches'}</p>
               </div>
-              <p className="text-white text-xl font-bold">{(superOverview.roster?.branches || 0).toLocaleString()}</p>
+              <p className="text-slate-900 text-xl font-bold">{(superOverview.roster?.branches || 0).toLocaleString()}</p>
             </Link>
-            <Link href="/system/vendors" className="group bg-gray-800 border border-gray-700 hover:border-pink-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+            <Link href="/system/vendors" className="group bg-white border border-slate-200 hover:border-pink-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
               <div className="flex items-center gap-2 mb-1">
-                <ShoppingCart className="w-4 h-4 text-pink-400" />
-                <p className="text-gray-300 text-[11px] font-semibold">{lang === 'ar' ? 'الموردين' : 'Vendors'}</p>
+                <ShoppingCart className="w-4 h-4 text-pink-600" />
+                <p className="text-slate-700 text-[11px] font-semibold">{lang === 'ar' ? 'الموردين' : 'Vendors'}</p>
               </div>
-              <p className="text-white text-xl font-bold">{(superOverview.roster?.vendors || 0).toLocaleString()}</p>
+              <p className="text-slate-900 text-xl font-bold">{(superOverview.roster?.vendors || 0).toLocaleString()}</p>
             </Link>
-            <Link href="/system/workshop" className="group bg-gray-800 border border-gray-700 hover:border-blue-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+            <Link href="/system/workshop" className="group bg-white border border-slate-200 hover:border-blue-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
               <div className="flex items-center gap-2 mb-1">
-                <Wrench className="w-4 h-4 text-blue-400" />
-                <p className="text-gray-300 text-[11px] font-semibold">{lang === 'ar' ? 'صيانة مفتوحة' : 'Open Maintenance'}</p>
+                <Wrench className="w-4 h-4 text-blue-600" />
+                <p className="text-slate-700 text-[11px] font-semibold">{lang === 'ar' ? 'صيانة مفتوحة' : 'Open Maintenance'}</p>
               </div>
-              <p className="text-white text-xl font-bold">{(superOverview.workshop?.openMaintenance || 0).toLocaleString()}</p>
+              <p className="text-slate-900 text-xl font-bold">{(superOverview.workshop?.openMaintenance || 0).toLocaleString()}</p>
             </Link>
-            <Link href="/system/disputes" className="group bg-gray-800 border border-gray-700 hover:border-orange-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02]">
+            <Link href="/system/disputes" className="group bg-white border border-slate-200 hover:border-orange-400/60 rounded-xl p-3.5 transition-all hover:scale-[1.02] shadow-sm">
               <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="w-4 h-4 text-orange-400" />
-                <p className="text-gray-300 text-[11px] font-semibold">{lang === 'ar' ? 'نزاعات مفتوحة' : 'Open Disputes'}</p>
+                <AlertTriangle className="w-4 h-4 text-orange-600" />
+                <p className="text-slate-700 text-[11px] font-semibold">{lang === 'ar' ? 'نزاعات مفتوحة' : 'Open Disputes'}</p>
               </div>
-              <p className="text-white text-xl font-bold">{(superOverview.service?.disputesOpen || 0).toLocaleString()}</p>
+              <p className="text-slate-900 text-xl font-bold">{(superOverview.service?.disputesOpen || 0).toLocaleString()}</p>
             </Link>
           </div>
         </div>
@@ -864,7 +864,7 @@ export default function DashboardPage() {
               {/* Workshop Summary */}
               {workshopSummary && (
                 <div>
-                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
                     <Wrench className="w-5 h-5 text-[#f37121]" />
                     Workshop Summary
                   </h3>
@@ -887,7 +887,7 @@ export default function DashboardPage() {
 
               {/* Operations Summary */}
               <div>
-                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
                   <ClipboardList className="w-5 h-5 text-[#f37121]" />
                   Operations Summary
                 </h3>
@@ -901,7 +901,7 @@ export default function DashboardPage() {
               {/* Complaints Summary */}
               {complaintsData && (
                 <div>
-                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
                     <MessageSquare className="w-5 h-5 text-[#f37121]" />
                     Complaints Summary
                   </h3>
@@ -948,8 +948,8 @@ export default function DashboardPage() {
 
           {/* Personal Performance Stats */}
           {myPerformance && (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-              <h3 className="text-white font-semibold mb-4">{T.collectorPerformance}</h3>
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.collectorPerformance}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard title={T.target} value={myPerformance.target?.toLocaleString() || 0} icon={Target} color="#6366f1" />
                 <StatCard title={T.collected} value={myPerformance.totalCollected?.toLocaleString() || 0} icon={TrendingUp} color="#10b981" />
@@ -1012,8 +1012,8 @@ export default function DashboardPage() {
 
 function AgingChart({ aging, T }: { aging: any; T: any }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-      <h3 className="text-white font-semibold mb-4">{T.agingBreakdown}</h3>
+    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.agingBreakdown}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={aging.buckets}>
           <XAxis dataKey="label" tick={{ fill: '#9ca3af', fontSize: 11 }} />
@@ -1029,8 +1029,8 @@ function AgingChart({ aging, T }: { aging: any; T: any }) {
 
 function DsoChart({ dso, T }: { dso: any; T: any }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-      <h3 className="text-white font-semibold mb-4">{T.dsoTrend}</h3>
+    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.dsoTrend}</h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={dso.trend}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -1046,8 +1046,8 @@ function DsoChart({ dso, T }: { dso: any; T: any }) {
 
 function RiskDistributionChart({ risk, T }: { risk: any; T: any }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-      <h3 className="text-white font-semibold mb-4">{T.riskDistribution}</h3>
+    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.riskDistribution}</h3>
       <ResponsiveContainer width="100%" height={250}>
         <PieChart>
           <Pie
@@ -1072,8 +1072,8 @@ function RiskDistributionChart({ risk, T }: { risk: any; T: any }) {
 
 function CreditTermChart({ data, T }: { data: any[]; T: any }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-      <h3 className="text-white font-semibold mb-4">{T.creditTerms}</h3>
+    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.creditTerms}</h3>
       <ResponsiveContainer width="100%" height={250}>
         <PieChart>
           <Pie
@@ -1098,23 +1098,23 @@ function CreditTermChart({ data, T }: { data: any[]; T: any }) {
 
 function ForecastPanel({ forecast, T }: { forecast: any; T: any }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-      <h3 className="text-white font-semibold mb-4">{T.cashflowForecast}</h3>
+    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.cashflowForecast}</h3>
       <div className="space-y-4">
         {forecast.forecast.map((f: any) => (
-          <div key={f.period} className="border border-gray-700 rounded-lg p-3">
-            <p className="text-white font-medium text-sm">{f.period}</p>
+          <div key={f.period} className="border border-slate-200 rounded-lg p-3">
+            <p className="text-slate-900 font-medium text-sm">{f.period}</p>
             <div className="flex justify-between mt-2 text-xs">
-              <span className="text-gray-400">{T.expected}</span>
-              <span className="text-green-400">{f.expectedCollection?.toLocaleString()}</span>
+              <span className="text-slate-500">{T.expected}</span>
+              <span className="text-green-600">{f.expectedCollection?.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-gray-400">{T.outstanding}</span>
-              <span className="text-white">{f.totalOutstanding?.toLocaleString()}</span>
+              <span className="text-slate-500">{T.outstanding}</span>
+              <span className="text-slate-900">{f.totalOutstanding?.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-gray-400">{T.gap}</span>
-              <span className="text-red-400">{f.gap?.toLocaleString()}</span>
+              <span className="text-slate-500">{T.gap}</span>
+              <span className="text-red-600">{f.gap?.toLocaleString()}</span>
             </div>
           </div>
         ))}
@@ -1125,39 +1125,39 @@ function ForecastPanel({ forecast, T }: { forecast: any; T: any }) {
 
 function CollectorRankingTable({ performance, T }: { performance: any; T: any }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-      <h3 className="text-white font-semibold mb-4">{T.collectorPerformance}</h3>
+    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{T.collectorPerformance}</h3>
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-700">
-              <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.rank}</th>
-              <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.collector}</th>
-              <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.target}</th>
-              <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.collected}</th>
-              <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.efficiency}</th>
-              <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.promisePercent}</th>
-              <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.avgDelay}</th>
+            <tr className="bg-slate-900 border-b border-slate-200">
+              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.rank}</th>
+              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.collector}</th>
+              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.target}</th>
+              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.collected}</th>
+              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.efficiency}</th>
+              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.promisePercent}</th>
+              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.avgDelay}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-700/50">
+          <tbody className="divide-y divide-slate-200">
             {performance.ranking.map((p: any, i: number) => (
-              <tr key={p.collector._id} className="hover:bg-gray-700/30">
-                <td className="px-4 py-3 text-sm text-gray-300">#{i + 1}</td>
-                <td className="px-4 py-3 text-sm text-white font-medium">{p.collector.name}</td>
-                <td className="px-4 py-3 text-sm text-gray-300">{p.target?.toLocaleString()}</td>
-                <td className="px-4 py-3 text-sm text-green-400">{p.totalCollected?.toLocaleString()}</td>
+              <tr key={p.collector._id} className="hover:bg-slate-100">
+                <td className="px-4 py-3 text-sm text-slate-700">#{i + 1}</td>
+                <td className="px-4 py-3 text-sm text-slate-900 font-medium">{p.collector.name}</td>
+                <td className="px-4 py-3 text-sm text-slate-700">{p.target?.toLocaleString()}</td>
+                <td className="px-4 py-3 text-sm text-green-600">{p.totalCollected?.toLocaleString()}</td>
                 <td className="px-4 py-3 text-sm">
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                    p.efficiency >= 80 ? 'bg-green-500/20 text-green-400' :
-                    p.efficiency >= 50 ? 'bg-yellow-500/20 text-yellow-400' :
-                    'bg-red-500/20 text-red-400'
+                    p.efficiency >= 80 ? 'bg-green-500/20 text-green-600' :
+                    p.efficiency >= 50 ? 'bg-yellow-500/20 text-yellow-700' :
+                    'bg-red-500/20 text-red-600'
                   }`}>
                     {p.efficiency}%
                   </span>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-300">{p.promiseFulfillment}%</td>
-                <td className="px-4 py-3 text-sm text-gray-300">{p.avgDelay} {T.days}</td>
+                <td className="px-4 py-3 text-sm text-slate-700">{p.promiseFulfillment}%</td>
+                <td className="px-4 py-3 text-sm text-slate-700">{p.avgDelay} {T.days}</td>
               </tr>
             ))}
           </tbody>
@@ -1169,26 +1169,26 @@ function CollectorRankingTable({ performance, T }: { performance: any; T: any })
 
 function HighRiskClientsPanel({ risk, T }: { risk: any; T: any }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-      <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-        <AlertTriangle className="w-5 h-5 text-red-400" />
+    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
+        <AlertTriangle className="w-5 h-5 text-red-600" />
         {T.highRiskClients}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {risk.highRiskClients.slice(0, 6).map((c: any) => (
           <div key={c._id} className="border border-red-500/30 bg-red-500/5 rounded-lg p-3">
-            <p className="text-white font-medium text-sm">{c.companyName}</p>
+            <p className="text-slate-900 font-medium text-sm">{c.companyName}</p>
             <div className="flex justify-between mt-2 text-xs">
-              <span className="text-gray-400">{T.riskScore}</span>
-              <span className="text-red-400 font-bold">{c.riskScore}%</span>
+              <span className="text-slate-500">{T.riskScore}</span>
+              <span className="text-red-600 font-bold">{c.riskScore}%</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-gray-400">{T.outstanding}</span>
-              <span className="text-white">{c.currentOutstanding?.toLocaleString()}</span>
+              <span className="text-slate-500">{T.outstanding}</span>
+              <span className="text-slate-900">{c.currentOutstanding?.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-gray-400">{T.creditTerm}</span>
-              <span className="text-white">{c.creditTerm} {T.days}</span>
+              <span className="text-slate-500">{T.creditTerm}</span>
+              <span className="text-slate-900">{c.creditTerm} {T.days}</span>
             </div>
           </div>
         ))}

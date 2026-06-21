@@ -1,0 +1,183 @@
+// Shared helpers, types and bilingual labels for the HR section pages.
+import { exportToExcel, fmt } from '@/utils/exportExcel';
+
+export { exportToExcel, fmt };
+
+export const HR_STAFF_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'];
+export const isHRStaff = (role?: string | null) => !!role && HR_STAFF_ROLES.includes(role);
+
+// Roles that get the HR self-service pages (their own profile/requests/leaves,
+// and approving their team's leave when they manage others). Everyone with a
+// login except external clients.
+export const HR_SELF_SERVICE_ROLES = [
+  'super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator',
+  'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager',
+  'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager',
+];
+
+export type Lang = 'en' | 'ar';
+const pick = (lang: Lang, en: string, ar: string) => (lang === 'ar' ? ar : en);
+
+// ── Types (mirror the backend models) ────────────────────────────────────────
+export interface Employee {
+  _id: string;
+  firstName: string; lastName: string; arabicName?: string;
+  employeeNumber?: string; gender?: string; dateOfBirth?: string; nationality?: string; photo?: string;
+  idType?: 'iqama' | 'national_id';
+  iqamaNumber?: string; iqamaExpiry?: string; nationalId?: string;
+  passportNumber?: string; passportExpiry?: string;
+  qiwaContractNumber?: string; gosiNumber?: string; absherStatus?: string; sponsorName?: string; workPermitExpiry?: string;
+  jobTitle?: string; department?: string; hireDate?: string; workLocation?: string;
+  branch?: { _id: string; name: string } | string;
+  employmentStatus?: 'active' | 'on_leave' | 'suspended' | 'terminated';
+  terminatedAt?: string; terminationReason?: string;
+  phone?: string; email?: string; address?: string; emergencyContactName?: string; emergencyContactPhone?: string;
+  basicSalary?: number; allowances?: number;
+  user?: { _id: string; firstName: string; lastName: string; email: string; role: string } | string;
+  directManager?: { _id: string; firstName: string; lastName: string; email?: string } | string;
+  notes?: string; createdAt?: string;
+}
+
+export interface Contract {
+  _id: string;
+  employee: any;
+  type?: 'fixed' | 'unlimited';
+  startDate: string; endDate?: string; durationMonths?: number;
+  annualLeaveDays: number;
+  jobTitle?: string; basicSalary?: number; allowances?: number; probationMonths?: number;
+  status: 'active' | 'expired' | 'terminated';
+  terminatedAt?: string; terminationReason?: string; custodyReturned?: boolean;
+  notes?: string; createdAt?: string;
+}
+
+export interface LeaveType {
+  _id: string; code: string; nameEn: string; nameAr: string;
+  paid: boolean; affectsBalance: boolean; color?: string; active: boolean;
+}
+
+export interface LeaveBalance { entitlement: number; daysElapsed: number; accrued: number; taken: number; available: number; }
+
+export interface LeaveRequest {
+  _id: string;
+  employee: any; requester: any; manager?: any;
+  leaveType: any; leaveTypeCode?: string;
+  startDate: string; endDate: string; days: number; reason?: string;
+  status: 'pending_manager' | 'pending_hr' | 'approved' | 'rejected' | 'cancelled';
+  currentStage: 'manager' | 'hr' | 'done';
+  managerDecision?: { by?: any; at?: string; decision?: string; note?: string };
+  hrDecision?: { by?: any; at?: string; decision?: string; note?: string };
+  balanceSnapshot?: { accrued?: number; requested?: number; remainingAfter?: number };
+  createdAt?: string;
+}
+
+export interface HRRequest {
+  _id: string;
+  requester: any; employee?: any; manager?: any;
+  category: string; subject: string;
+  thread: { _id?: string; sender: any; body?: string; link?: string; at?: string }[];
+  status: 'open' | 'in_progress' | 'received' | 'resolved' | 'closed';
+  assignedTo?: any; readByRequester?: boolean; readByHR?: boolean;
+  createdAt?: string; updatedAt?: string;
+}
+
+export interface Asset {
+  _id: string; employee: any; name: string; type: string;
+  serialNumber?: string; brand?: string; model?: string; condition?: string; value?: number; assignedDate?: string;
+  status: 'assigned' | 'returned'; returnedDate?: string; returnedCondition?: string;
+  notes?: string; createdAt?: string;
+}
+
+// ── Status styles & labels ───────────────────────────────────────────────────
+export const LEAVE_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
+  pending_manager: { bg: 'bg-amber-500/20', text: 'text-amber-400', en: 'With Manager', ar: 'عند المدير' },
+  pending_hr: { bg: 'bg-blue-500/20', text: 'text-blue-400', en: 'With HR', ar: 'عند الموارد البشرية' },
+  approved: { bg: 'bg-green-500/20', text: 'text-green-400', en: 'Approved', ar: 'مقبولة' },
+  rejected: { bg: 'bg-red-500/20', text: 'text-red-400', en: 'Rejected', ar: 'مرفوضة' },
+  cancelled: { bg: 'bg-gray-500/20', text: 'text-gray-400', en: 'Cancelled', ar: 'ملغاة' },
+};
+
+export const REQUEST_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
+  open: { bg: 'bg-amber-500/20', text: 'text-amber-400', en: 'Open', ar: 'مفتوح' },
+  in_progress: { bg: 'bg-blue-500/20', text: 'text-blue-400', en: 'In Progress', ar: 'قيد التنفيذ' },
+  received: { bg: 'bg-purple-500/20', text: 'text-purple-400', en: 'Received', ar: 'تم الاستلام' },
+  resolved: { bg: 'bg-green-500/20', text: 'text-green-400', en: 'Resolved', ar: 'تم التسليم' },
+  closed: { bg: 'bg-gray-500/20', text: 'text-gray-400', en: 'Closed', ar: 'مغلق' },
+};
+
+export const EMPLOYMENT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
+  active: { bg: 'bg-green-500/20', text: 'text-green-400', en: 'Active', ar: 'على رأس العمل' },
+  on_leave: { bg: 'bg-blue-500/20', text: 'text-blue-400', en: 'On Leave', ar: 'في إجازة' },
+  suspended: { bg: 'bg-amber-500/20', text: 'text-amber-400', en: 'Suspended', ar: 'موقوف' },
+  terminated: { bg: 'bg-red-500/20', text: 'text-red-400', en: 'Terminated', ar: 'منتهي' },
+};
+
+export const CONTRACT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
+  active: { bg: 'bg-green-500/20', text: 'text-green-400', en: 'Active', ar: 'ساري' },
+  expired: { bg: 'bg-gray-500/20', text: 'text-gray-400', en: 'Expired', ar: 'منتهي' },
+  terminated: { bg: 'bg-red-500/20', text: 'text-red-400', en: 'Terminated', ar: 'مفسوخ' },
+};
+
+export const REQUEST_CATEGORIES: { key: string; en: string; ar: string }[] = [
+  { key: 'salary_certificate', en: 'Salary Certificate', ar: 'تعريف بالراتب' },
+  { key: 'letter', en: 'Official Letter', ar: 'خطاب رسمي' },
+  { key: 'document', en: 'Document', ar: 'مستند' },
+  { key: 'data_update', en: 'Data Update', ar: 'تحديث بيانات' },
+  { key: 'complaint', en: 'Complaint', ar: 'شكوى' },
+  { key: 'other', en: 'Other', ar: 'أخرى' },
+];
+
+export const ASSET_TYPES: { key: string; en: string; ar: string }[] = [
+  { key: 'laptop', en: 'Laptop', ar: 'لابتوب' },
+  { key: 'phone', en: 'Phone', ar: 'هاتف' },
+  { key: 'sim', en: 'SIM Card', ar: 'شريحة' },
+  { key: 'vehicle', en: 'Vehicle', ar: 'مركبة' },
+  { key: 'tool', en: 'Tool', ar: 'أداة' },
+  { key: 'access_card', en: 'Access Card', ar: 'بطاقة دخول' },
+  { key: 'other', en: 'Other', ar: 'أخرى' },
+];
+
+export const ASSET_CONDITIONS: { key: string; en: string; ar: string }[] = [
+  { key: 'new', en: 'New', ar: 'جديد' },
+  { key: 'good', en: 'Good', ar: 'جيد' },
+  { key: 'fair', en: 'Fair', ar: 'مقبول' },
+  { key: 'damaged', en: 'Damaged', ar: 'تالف' },
+];
+
+const labelFrom = (list: { key: string; en: string; ar: string }[], key: string, lang: Lang) =>
+  (list.find((x) => x.key === key) || { en: key, ar: key })[lang === 'ar' ? 'ar' : 'en'];
+
+export const categoryLabel = (key: string, lang: Lang) => labelFrom(REQUEST_CATEGORIES, key, lang);
+export const assetTypeLabel = (key: string, lang: Lang) => labelFrom(ASSET_TYPES, key, lang);
+export const conditionLabel = (key: string, lang: Lang) => labelFrom(ASSET_CONDITIONS, key, lang);
+export const leaveTypeLabel = (lt: any, lang: Lang) => (!lt ? '—' : lang === 'ar' ? (lt.nameAr || lt.code) : (lt.nameEn || lt.code));
+
+export const empName = (e: any, lang: Lang = 'en') => {
+  if (!e) return '—';
+  if (typeof e === 'string') return e;
+  if (lang === 'ar' && e.arabicName) return e.arabicName;
+  return `${e.firstName || ''} ${e.lastName || ''}`.trim() || '—';
+};
+
+export const userName = (u: any) => (!u ? '—' : typeof u === 'string' ? u : `${u.firstName || ''} ${u.lastName || ''}`.trim() || '—');
+
+// ── Date helpers ─────────────────────────────────────────────────────────────
+export const today = () => new Date().toISOString().slice(0, 10);
+export const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
+export const fmtDateTime = (v?: string | null) =>
+  v ? new Date(v).toLocaleString('en-GB', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+// Days until a YYYY-MM-DD date (negative = past). Used for expiry badges.
+export const daysUntil = (v?: string | null): number | null => {
+  if (!v) return null;
+  const ms = new Date(v + 'T00:00:00').getTime() - new Date(today() + 'T00:00:00').getTime();
+  return Math.round(ms / 86400000);
+};
+
+export const expiryBadge = (v?: string | null, lang: Lang = 'en') => {
+  const d = daysUntil(v);
+  if (d === null) return null;
+  if (d < 0) return { bg: 'bg-red-500/20', text: 'text-red-400', label: pick(lang, 'Expired', 'منتهية') };
+  if (d <= 30) return { bg: 'bg-red-500/20', text: 'text-red-400', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
+  if (d <= 60) return { bg: 'bg-amber-500/20', text: 'text-amber-400', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
+  return { bg: 'bg-green-500/20', text: 'text-green-400', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
+};

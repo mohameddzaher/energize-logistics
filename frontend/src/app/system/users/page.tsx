@@ -18,7 +18,7 @@ interface UserRecord {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager';
+  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_specialist' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager' | 'customs_manager' | 'customs_officer';
   branch?: { _id: string; name: string };
   remoteAccess?: string[];
   status?: 'active' | 'locked' | 'inactive';
@@ -30,6 +30,7 @@ interface UserRecord {
   assignedProjects?: { _id: string; name: string; code?: string }[];
   assignedBranches?: { _id: string; name: string; code?: string; city?: string }[];
   manager?: { _id: string; firstName: string; lastName: string; email: string; role: string };
+  linkedEmployee?: { _id: string; firstName: string; lastName: string; employeeNumber?: string; iqamaNumber?: string; jobTitle?: string };
   createdAt: string;
 }
 
@@ -60,17 +61,17 @@ interface ManagerOpt {
 }
 
 const roleConfig: Record<string, { bg: string; text: string }> = {
-  super_admin: { bg: 'bg-purple-500/20', text: 'text-purple-400' },
-  admin: { bg: 'bg-blue-500/20', text: 'text-blue-400' },
-  employee: { bg: 'bg-green-500/20', text: 'text-green-400' },
-  operations_manager: { bg: 'bg-teal-500/20', text: 'text-teal-400' },
-  operations: { bg: 'bg-amber-500/20', text: 'text-amber-400' },
-  moderator: { bg: 'bg-cyan-500/20', text: 'text-cyan-400' },
-  client: { bg: 'bg-orange-500/20', text: 'text-orange-400' },
-  b2c_head: { bg: 'bg-pink-500/20', text: 'text-pink-400' },
-  b2c_project_manager: { bg: 'bg-rose-500/20', text: 'text-rose-400' },
-  remote_employee: { bg: 'bg-indigo-500/20', text: 'text-indigo-400' },
-  remote_manager: { bg: 'bg-violet-500/20', text: 'text-violet-400' },
+  super_admin: { bg: 'bg-purple-500/20', text: 'text-purple-600' },
+  admin: { bg: 'bg-blue-500/20', text: 'text-blue-600' },
+  employee: { bg: 'bg-green-500/20', text: 'text-green-600' },
+  operations_manager: { bg: 'bg-teal-500/20', text: 'text-teal-700' },
+  operations: { bg: 'bg-amber-500/20', text: 'text-amber-700' },
+  moderator: { bg: 'bg-cyan-500/20', text: 'text-cyan-700' },
+  client: { bg: 'bg-orange-500/20', text: 'text-orange-600' },
+  b2c_head: { bg: 'bg-pink-500/20', text: 'text-pink-600' },
+  b2c_project_manager: { bg: 'bg-rose-500/20', text: 'text-rose-600' },
+  remote_employee: { bg: 'bg-indigo-500/20', text: 'text-indigo-600' },
+  remote_manager: { bg: 'bg-violet-500/20', text: 'text-violet-600' },
 };
 
 // Pages inside the Remote section a remote_employee can be granted access to.
@@ -87,7 +88,7 @@ const REMOTE_PAGE_OPTIONS: { key: string; en: string; ar: string }[] = [
 const statusDot: Record<string, string> = {
   active: 'bg-green-400',
   locked: 'bg-red-400',
-  inactive: 'bg-gray-400',
+  inactive: 'bg-slate-300',
 };
 
 export default function UsersPage() {
@@ -126,9 +127,15 @@ export default function UsersPage() {
     assignedBranches: [] as string[],
     manager: '',
     remoteAccess: [] as string[],
+    linkedEmployee: '',
   });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
+
+  // HR: link this login to an employee profile (search by name / iqama / number)
+  const [empSearch, setEmpSearch] = useState('');
+  const [empResults, setEmpResults] = useState<{ _id: string; firstName: string; lastName: string; iqamaNumber?: string; employeeNumber?: string; jobTitle?: string }[]>([]);
+  const [linkedEmployeeLabel, setLinkedEmployeeLabel] = useState('');
 
   // Reset password
   const [newPassword, setNewPassword] = useState('');
@@ -215,7 +222,8 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key) });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '' });
+    setEmpSearch(''); setEmpResults([]); setLinkedEmployeeLabel('');
     setFormError('');
     setShowFormPassword(false);
     await Promise.all([fetchCustomers(), fetchBranches(), fetchB2CProjects(), fetchB2CHeads(), fetchRemoteManagers()]);
@@ -252,8 +260,12 @@ export default function UsersPage() {
       }
       if (formData.role === 'remote_employee') {
         payload.remoteAccess = formData.remoteAccess;
-        if (formData.manager) payload.manager = formData.manager;
       }
+      // Direct manager applies to every role (drives the HR leave-approval chain)
+      // unless already set above for the B2C/remote special cases.
+      if (formData.manager && payload.manager === undefined) payload.manager = formData.manager;
+      // HR: link this login to an employee profile.
+      if (formData.linkedEmployee) payload.linkedEmployee = formData.linkedEmployee;
       await api.post('/api/users', payload);
       setShowCreateModal(false);
       fetchUsers();
@@ -280,7 +292,10 @@ export default function UsersPage() {
       assignedBranches: u.assignedBranches?.map((b: any) => typeof b === 'string' ? b : b._id) || [],
       manager: u.manager?._id || '',
       remoteAccess: u.remoteAccess && u.remoteAccess.length ? u.remoteAccess : REMOTE_PAGE_OPTIONS.map((p) => p.key),
+      linkedEmployee: u.linkedEmployee?._id || '',
     });
+    setEmpSearch(''); setEmpResults([]);
+    setLinkedEmployeeLabel(u.linkedEmployee ? `${u.linkedEmployee.firstName} ${u.linkedEmployee.lastName}${u.linkedEmployee.iqamaNumber ? ` (${u.linkedEmployee.iqamaNumber})` : ''}` : '');
     setFormError('');
     setShowFormPassword(false);
     setActionMenuId(null);
@@ -321,9 +336,12 @@ export default function UsersPage() {
       } else {
         payload.assignedProjects = [];
         payload.assignedBranches = [];
-        payload.manager = null;
+        // Direct manager applies to every role (drives the HR leave-approval chain).
+        payload.manager = formData.manager || null;
         payload.remoteAccess = [];
       }
+      // HR: link/unlink this login to an employee profile.
+      payload.linkedEmployee = formData.linkedEmployee || null;
       await api.put(`/api/users/${selectedUser._id}`, payload);
       setShowEditModal(false);
       setSelectedUser(null);
@@ -441,6 +459,17 @@ export default function UsersPage() {
     b2c_project_manager: lang === 'ar' ? 'مدير مشروع B2C' : 'B2C Project Manager',
     remote_employee: lang === 'ar' ? 'موظف عن بُعد' : 'Remote Employee',
     remote_manager: lang === 'ar' ? 'مدير العمل عن بُعد' : 'Remote Manager',
+    hr_manager: lang === 'ar' ? 'مدير الموارد البشرية' : 'HR Manager',
+    hr_specialist: lang === 'ar' ? 'أخصائي موارد بشرية' : 'HR Specialist',
+    crm_manager: lang === 'ar' ? 'مدير علاقات العملاء' : 'CRM Manager',
+    crm_specialist: lang === 'ar' ? 'أخصائي علاقات العملاء' : 'CRM Specialist',
+    finance_manager: lang === 'ar' ? 'المدير المالي' : 'Finance Manager',
+    accountant: lang === 'ar' ? 'محاسب' : 'Accountant',
+    sales_manager: lang === 'ar' ? 'مدير المبيعات' : 'Sales Manager',
+    sales_rep: lang === 'ar' ? 'مندوب مبيعات' : 'Sales Rep',
+    procurement_manager: lang === 'ar' ? 'مدير المشتريات' : 'Procurement Manager',
+    customs_manager: lang === 'ar' ? 'مدير التخليص الجمركي' : 'Customs Manager',
+    customs_officer: lang === 'ar' ? 'مخلّص جمركي' : 'Customs Officer',
   };
 
   const statusLabels: Record<string, string> = {
@@ -464,17 +493,17 @@ export default function UsersPage() {
       label: T.name,
       render: (_: any, row: UserRecord) => (
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-white">
+          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-900">
             {row.firstName?.[0]}{row.lastName?.[0]}
           </div>
-          <span className="text-white font-medium">{row.firstName} {row.lastName}</span>
+          <span className="text-slate-900 font-medium">{row.firstName} {row.lastName}</span>
         </div>
       ),
     },
     {
       key: 'email',
       label: T.email,
-      render: (_: any, row: UserRecord) => <span className="text-gray-300">{row.email}</span>,
+      render: (_: any, row: UserRecord) => <span className="text-slate-700">{row.email}</span>,
     },
     {
       key: 'role',
@@ -496,7 +525,7 @@ export default function UsersPage() {
         return (
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${statusDot[status] || statusDot.active}`} />
-            <span className="text-gray-300 text-xs capitalize">{statusLabels[status] || status}</span>
+            <span className="text-slate-700 text-xs capitalize">{statusLabels[status] || status}</span>
           </div>
         );
       },
@@ -505,7 +534,7 @@ export default function UsersPage() {
       key: 'lastLogin',
       label: T.lastLogin,
       render: (_: any, row: UserRecord) => (
-        <span className="text-gray-400 text-xs">{formatDate(row.lastLogin)}</span>
+        <span className="text-slate-500 text-xs">{formatDate(row.lastLogin)}</span>
       ),
     },
   ];
@@ -514,44 +543,44 @@ export default function UsersPage() {
   const renderFormFields = (isEdit: boolean) => (
     <>
       {formError && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">
           {formError}
         </div>
       )}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.firstName}</label>
+          <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.firstName}</label>
           <input
             type="text"
             value={formData.firstName}
             onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
             required
           />
         </div>
         <div>
-          <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.lastName}</label>
+          <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.lastName}</label>
           <input
             type="text"
             value={formData.lastName}
             onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
             required
           />
         </div>
       </div>
       <div>
-        <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.email}</label>
+        <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.email}</label>
         <input
           type="email"
           value={formData.email}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-          className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
           required
         />
       </div>
       <div>
-        <label className="block text-gray-300 text-sm font-medium mb-1.5">
+        <label className="block text-slate-700 text-sm font-medium mb-1.5">
           {T.password}
         </label>
         <div className="relative">
@@ -559,7 +588,7 @@ export default function UsersPage() {
             type={showFormPassword ? 'text' : 'password'}
             value={formData.password}
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
+            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
             {...(!isEdit ? { required: true } : {})}
             minLength={6}
           />
@@ -567,18 +596,29 @@ export default function UsersPage() {
             type="button"
             aria-label={showFormPassword ? 'Hide password' : 'Show password'}
             onClick={() => setShowFormPassword(!showFormPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
           >
             {showFormPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         </div>
       </div>
       <div>
-        <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.role}</label>
+        <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.role}</label>
         <select
           value={formData.role}
-          onChange={(e) => setFormData({ ...formData, role: e.target.value, linkedCustomer: '', assignedCustomers: [] })}
-          className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+          onChange={(e) => {
+            const role = e.target.value;
+            setFormData({ ...formData, role, linkedCustomer: '', assignedCustomers: [] });
+            // Auto-suggest a manager by org chart when creating a new user.
+            if (!selectedUser && !['super_admin', 'admin', 'client'].includes(role)) {
+              api.get<{ manager: { _id: string } | null }>(`/api/users/suggest-manager?role=${role}`)
+                .then((d) => { if (d.manager) setFormData((prev) => ({ ...prev, manager: d.manager!._id })); })
+                .catch(() => {});
+            } else if (['super_admin', 'admin', 'client'].includes(role)) {
+              setFormData((prev) => ({ ...prev, manager: '' }));
+            }
+          }}
+          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
         >
           {Object.entries(roleLabels).map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
@@ -586,14 +626,85 @@ export default function UsersPage() {
         </select>
       </div>
 
+      {/* Direct manager — org chart. Hidden for top roles (super_admin/admin are
+          the CEO/COO — they have no manager) and roles with their own pickers
+          below. Optional everywhere; the system auto-suggests one by role. */}
+      {!['client', 'super_admin', 'admin', 'b2c_project_manager', 'b2c_head', 'remote_employee'].includes(formData.role) && (
+        <div>
+          <label className="block text-slate-700 text-sm font-medium mb-1.5">
+            {lang === 'ar' ? 'المدير المباشر' : 'Direct Manager'}
+            <span className="text-slate-500 text-xs font-normal ml-2">{lang === 'ar' ? '(اختياري — يُقترح تلقائيًا حسب القسم)' : '(optional — auto-suggested by role)'}</span>
+          </label>
+          <select
+            value={formData.manager}
+            onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
+            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+          >
+            <option value="">{lang === 'ar' ? 'بدون مدير (تروح للموارد البشرية مباشرة)' : 'No manager (goes straight to HR)'}</option>
+            {users.filter((u) => u._id !== selectedUser?._id && u.role !== 'client').map((u) => (
+              <option key={u._id} value={u._id}>{u.firstName} {u.lastName} — {roleLabels[u.role] || u.role}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* HR: link this login to an existing employee profile (search by name / iqama / number) */}
+      {formData.role !== 'client' && (
+        <div>
+          <label className="block text-slate-700 text-sm font-medium mb-1.5">
+            {lang === 'ar' ? 'ربط بملف موظف (الموارد البشرية)' : 'Link to Employee Profile (HR)'}
+          </label>
+          {formData.linkedEmployee ? (
+            <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg bg-slate-50 border border-[#f37121]/40">
+              <span className="text-slate-900 text-sm">{linkedEmployeeLabel || (lang === 'ar' ? 'موظف مرتبط' : 'Linked employee')}</span>
+              <button type="button" onClick={() => { setFormData({ ...formData, linkedEmployee: '' }); setLinkedEmployeeLabel(''); }} className="text-slate-500 hover:text-red-600 text-xs">{lang === 'ar' ? 'إلغاء الربط' : 'Unlink'}</button>
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={empSearch}
+                placeholder={lang === 'ar' ? 'ابحث بالاسم أو رقم الإقامة أو رقم الموظف...' : 'Search by name, iqama, or employee #...'}
+                onChange={async (e) => {
+                  const q = e.target.value;
+                  setEmpSearch(q);
+                  if (q.trim().length < 2) { setEmpResults([]); return; }
+                  try { const d = await api.get<{ employees: any[] }>(`/api/hr/employees-search?q=${encodeURIComponent(q.trim())}`); setEmpResults(d.employees || []); } catch { setEmpResults([]); }
+                }}
+                className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+              />
+              {empResults.length > 0 && (
+                <div className="mt-1 max-h-44 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg divide-y divide-slate-200">
+                  {empResults.map((emp) => (
+                    <button
+                      key={emp._id}
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, linkedEmployee: emp._id });
+                        setLinkedEmployeeLabel(`${emp.firstName} ${emp.lastName}${emp.iqamaNumber ? ` (${emp.iqamaNumber})` : emp.employeeNumber ? ` (#${emp.employeeNumber})` : ''}`);
+                        setEmpResults([]); setEmpSearch('');
+                      }}
+                      className="w-full text-start px-3 py-2 hover:bg-slate-50 text-sm"
+                    >
+                      <span className="text-slate-900">{emp.firstName} {emp.lastName}</span>
+                      <span className="text-slate-500 text-xs ml-2">{emp.iqamaNumber || emp.employeeNumber || ''} {emp.jobTitle ? `· ${emp.jobTitle}` : ''}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Branch assignment for operations and workshop roles */}
       {['operations', 'operations_manager', 'workshop_manager', 'workshop_employee', 'purchasing'].includes(formData.role) && (
         <div>
-          <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.branch} *</label>
+          <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.branch} *</label>
           <select
             value={formData.branch}
             onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
             aria-label="Branch"
           >
             <option value="">{T.selectBranch}...</option>
@@ -607,11 +718,11 @@ export default function UsersPage() {
       {/* Client-specific: linked customer */}
       {formData.role === 'client' && (
         <div>
-          <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.linkedCustomer}</label>
+          <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.linkedCustomer}</label>
           <select
             value={formData.linkedCustomer}
             onChange={(e) => setFormData({ ...formData, linkedCustomer: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
           >
             <option value="">{T.customer}...</option>
             {customers.map((c) => (
@@ -625,49 +736,49 @@ export default function UsersPage() {
       {(formData.role === 'b2c_head' || formData.role === 'b2c_project_manager') && (
         <>
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">
               {lang === 'ar' ? 'المشاريع المعينة' : 'Assigned Projects'} ({formData.assignedProjects.length})
               {formData.role === 'b2c_head' && (
-                <span className="text-gray-500 text-xs font-normal ml-2">
+                <span className="text-slate-500 text-xs font-normal ml-2">
                   {lang === 'ar' ? '(اختياري — له صلاحية كل المشاريع)' : '(optional — has access to all)'}
                 </span>
               )}
             </label>
-            <div className="max-h-40 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
+            <div className="max-h-40 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
               {b2cProjects.length === 0 ? (
-                <p className="text-gray-500 text-xs p-2">{lang === 'ar' ? 'لا توجد مشاريع — أنشئ مشاريع B2C أولاً' : 'No projects yet — create B2C projects first'}</p>
+                <p className="text-slate-500 text-xs p-2">{lang === 'ar' ? 'لا توجد مشاريع — أنشئ مشاريع B2C أولاً' : 'No projects yet — create B2C projects first'}</p>
               ) : (
                 b2cProjects.map((p) => (
-                  <label key={p._id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-800 cursor-pointer">
+                  <label key={p._id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={formData.assignedProjects.includes(p._id)}
                       onChange={() => handleProjectToggle(p._id)}
-                      className="rounded border-gray-600 bg-gray-800 text-[#f37121] focus:ring-[#f37121]/50"
+                      className="rounded border-slate-300 bg-white text-[#f37121] focus:ring-[#f37121]/50"
                     />
-                    <span className="text-gray-300 text-sm">{p.name}{p.code ? ` (${p.code})` : ''}</span>
+                    <span className="text-slate-700 text-sm">{p.name}{p.code ? ` (${p.code})` : ''}</span>
                   </label>
                 ))
               )}
             </div>
           </div>
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">
               {lang === 'ar' ? 'الفروع المعينة' : 'Assigned Branches'} ({formData.assignedBranches.length})
             </label>
-            <div className="max-h-40 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
+            <div className="max-h-40 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
               {branches.length === 0 ? (
-                <p className="text-gray-500 text-xs p-2">{lang === 'ar' ? 'لا توجد فروع' : 'No branches'}</p>
+                <p className="text-slate-500 text-xs p-2">{lang === 'ar' ? 'لا توجد فروع' : 'No branches'}</p>
               ) : (
                 branches.map((b) => (
-                  <label key={b._id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-800 cursor-pointer">
+                  <label key={b._id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={formData.assignedBranches.includes(b._id)}
                       onChange={() => handleBranchAssignToggle(b._id)}
-                      className="rounded border-gray-600 bg-gray-800 text-[#f37121] focus:ring-[#f37121]/50"
+                      className="rounded border-slate-300 bg-white text-[#f37121] focus:ring-[#f37121]/50"
                     />
-                    <span className="text-gray-300 text-sm">{b.name}{b.city ? ` — ${b.city}` : ''}</span>
+                    <span className="text-slate-700 text-sm">{b.name}{b.city ? ` — ${b.city}` : ''}</span>
                   </label>
                 ))
               )}
@@ -675,14 +786,14 @@ export default function UsersPage() {
           </div>
           {formData.role === 'b2c_project_manager' && (
             <div>
-              <label className="block text-gray-300 text-sm font-medium mb-1.5">
+              <label className="block text-slate-700 text-sm font-medium mb-1.5">
                 {lang === 'ar' ? 'المدير المباشر (B2C Head)' : 'Direct Manager (B2C Head)'}
               </label>
               <select
                 aria-label="Manager"
                 value={formData.manager}
                 onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
               >
                 <option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>
                 {b2cHeads.map((h) => (
@@ -698,25 +809,25 @@ export default function UsersPage() {
       {formData.role === 'employee' && (
         <>
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">
               {T.assignedCustomers} ({formData.assignedCustomers.length})
             </label>
-            <div className="max-h-40 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
+            <div className="max-h-40 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
               {customers.length === 0 ? (
-                <p className="text-gray-500 text-xs p-2">{T.noDataFound}</p>
+                <p className="text-slate-500 text-xs p-2">{T.noDataFound}</p>
               ) : (
                 customers.map((c) => (
                   <label
                     key={c._id}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-800 cursor-pointer"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer"
                   >
                     <input
                       type="checkbox"
                       checked={formData.assignedCustomers.includes(c._id)}
                       onChange={() => handleCustomerToggle(c._id)}
-                      className="rounded border-gray-600 bg-gray-800 text-[#f37121] focus:ring-[#f37121]/50"
+                      className="rounded border-slate-300 bg-white text-[#f37121] focus:ring-[#f37121]/50"
                     />
-                    <span className="text-gray-300 text-sm">{c.companyName}</span>
+                    <span className="text-slate-700 text-sm">{c.companyName}</span>
                   </label>
                 ))
               )}
@@ -729,14 +840,14 @@ export default function UsersPage() {
       {formData.role === 'remote_employee' && (
         <>
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">
               {lang === 'ar' ? 'المدير المباشر (مدير العمل عن بُعد)' : 'Direct Manager (Remote Manager)'}
             </label>
             <select
               aria-label="Remote manager"
               value={formData.manager}
               onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+              className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
             >
               <option value="">{lang === 'ar' ? 'بدون (السوبر أدمن فقط)' : 'None (super admin only)'}</option>
               {remoteManagers.map((m) => (
@@ -744,25 +855,25 @@ export default function UsersPage() {
               ))}
             </select>
             {remoteManagers.length === 0 && (
-              <p className="text-gray-500 text-xs mt-1">
+              <p className="text-slate-500 text-xs mt-1">
                 {lang === 'ar' ? 'لا يوجد مديرو عمل عن بُعد بعد — أنشئ مستخدمًا بدور "مدير العمل عن بُعد" أولاً.' : 'No remote managers yet — create a "Remote Manager" user first.'}
               </p>
             )}
           </div>
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">
               {lang === 'ar' ? 'الصفحات المسموح بها' : 'Allowed Pages'} ({formData.remoteAccess.length})
             </label>
-            <div className="bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
               {REMOTE_PAGE_OPTIONS.map((p) => (
-                <label key={p.key} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-800 cursor-pointer">
+                <label key={p.key} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.remoteAccess.includes(p.key)}
                     onChange={() => handleRemoteAccessToggle(p.key)}
-                    className="rounded border-gray-600 bg-gray-800 text-[#f37121] focus:ring-[#f37121]/50"
+                    className="rounded border-slate-300 bg-white text-[#f37121] focus:ring-[#f37121]/50"
                   />
-                  <span className="text-gray-300 text-sm">{lang === 'ar' ? p.ar : p.en}</span>
+                  <span className="text-slate-700 text-sm">{lang === 'ar' ? p.ar : p.en}</span>
                 </label>
               ))}
             </div>
@@ -785,7 +896,7 @@ export default function UsersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">{T.title}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -800,14 +911,14 @@ export default function UsersPage() {
               { header: T.lastLogin, key: 'lastLogin', transform: fmt.datetime, width: 22 },
               { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
             ], `users-${new Date().toISOString().split('T')[0]}`, T.title)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
           >
             <Download className="w-4 h-4" /> {T.downloadExcel}
           </button>
           <button
             type="button"
             onClick={() => { setLoading(true); fetchUsers(); }}
-            className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
+            className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
             title="Refresh"
           >
             <RefreshCw className="w-4 h-4" />
@@ -825,9 +936,9 @@ export default function UsersPage() {
 
       {/* Error */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm flex items-center justify-between">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-600 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <button type="button" onClick={() => setError('')} className="text-red-400 hover:text-red-300">
+          <button type="button" onClick={() => setError('')} className="text-red-600 hover:text-red-700">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -858,7 +969,7 @@ export default function UsersPage() {
                       setActionMenuId(row._id);
                     }
                   }}
-                  className="p-1 text-gray-400 hover:text-white rounded hover:bg-gray-700 transition-colors"
+                  className="p-1 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100 transition-colors"
                 >
                   <MoreVertical className="w-4 h-4" />
                 </button>
@@ -869,12 +980,12 @@ export default function UsersPage() {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95 }}
                       style={{ top: menuPos.top, left: menuPos.left }}
-                      className="fixed w-44 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-[100] py-1"
+                      className="fixed w-44 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] py-1"
                     >
                       <button
                         type="button"
                         onClick={() => openEditModal(row)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                       >
                         <Edit className="w-3.5 h-3.5" />
                         {T.edit}
@@ -883,7 +994,7 @@ export default function UsersPage() {
                         <button
                           type="button"
                           onClick={() => handleToggleLock(row)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                         >
                           {status === 'locked' ? (
                             <>
@@ -901,7 +1012,7 @@ export default function UsersPage() {
                       <button
                         type="button"
                         onClick={() => openResetModal(row)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                       >
                         <KeyRound className="w-3.5 h-3.5" />
                         {T.resetPassword}
@@ -910,7 +1021,7 @@ export default function UsersPage() {
                         <button
                           type="button"
                           onClick={() => openDeleteConfirm(row)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-500/10 transition-colors"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           {T.delete}
@@ -947,13 +1058,13 @@ export default function UsersPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-5 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
-                  <h2 className="text-white font-semibold text-lg flex items-center gap-2">
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-slate-200 sticky top-0 bg-white z-10">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg flex items-center gap-2 mb-3">
                     <UserCog className="w-5 h-5 text-[#f37121]" />
                     {T.addUser}
                   </h2>
-                  <button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-white">
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="text-slate-500 hover:text-slate-900">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -963,7 +1074,7 @@ export default function UsersPage() {
                     <button
                       type="button"
                       onClick={() => setShowCreateModal(false)}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition-colors"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm transition-colors"
                     >
                       {T.cancel}
                     </button>
@@ -1000,13 +1111,13 @@ export default function UsersPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-5 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
-                  <h2 className="text-white font-semibold text-lg flex items-center gap-2">
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-slate-200 sticky top-0 bg-white z-10">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg flex items-center gap-2 mb-3">
                     <Edit className="w-5 h-5 text-[#f37121]" />
                     {T.editUser}
                   </h2>
-                  <button type="button" onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-white">
+                  <button type="button" onClick={() => setShowEditModal(false)} className="text-slate-500 hover:text-slate-900">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -1016,7 +1127,7 @@ export default function UsersPage() {
                     <button
                       type="button"
                       onClick={() => setShowEditModal(false)}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition-colors"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm transition-colors"
                     >
                       {T.cancel}
                     </button>
@@ -1053,36 +1164,36 @@ export default function UsersPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-5 border-b border-gray-700">
-                  <h2 className="text-white font-semibold text-lg flex items-center gap-2">
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-slate-200">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg flex items-center gap-2 mb-3">
                     <KeyRound className="w-5 h-5 text-[#f37121]" />
                     {T.resetPassword}
                   </h2>
-                  <button type="button" onClick={() => setShowResetModal(false)} className="text-gray-400 hover:text-white">
+                  <button type="button" onClick={() => setShowResetModal(false)} className="text-slate-500 hover:text-slate-900">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
                 <form onSubmit={handleResetPassword} className="p-5 space-y-4">
                   {resetError && (
-                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">
                       {resetError}
                     </div>
                   )}
-                  <div className="bg-gray-900 rounded-lg p-3 border border-gray-700">
-                    <p className="text-gray-400 text-xs uppercase font-medium">{T.user}</p>
-                    <p className="text-white text-sm font-medium mt-0.5">
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                    <p className="text-slate-500 text-xs uppercase font-medium">{T.user}</p>
+                    <p className="text-slate-900 text-sm font-medium mt-0.5">
                       {selectedUser.firstName} {selectedUser.lastName} ({selectedUser.email})
                     </p>
                   </div>
                   <div>
-                    <label className="block text-gray-300 text-sm font-medium mb-1.5">{T.newPassword}</label>
+                    <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.newPassword}</label>
                     <div className="relative">
                       <input
                         type={showResetPassword ? 'text' : 'password'}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
                         required
                         minLength={6}
                         placeholder="Enter new password (min 6 chars)"
@@ -1091,7 +1202,7 @@ export default function UsersPage() {
                         type="button"
                         aria-label={showResetPassword ? 'Hide password' : 'Show password'}
                         onClick={() => setShowResetPassword(!showResetPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
                       >
                         {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -1101,7 +1212,7 @@ export default function UsersPage() {
                     <button
                       type="button"
                       onClick={() => setShowResetModal(false)}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition-colors"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm transition-colors"
                     >
                       {T.cancel}
                     </button>
@@ -1138,16 +1249,16 @@ export default function UsersPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="p-6 text-center space-y-4">
                   <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
-                    <AlertTriangle className="w-6 h-6 text-red-400" />
+                    <AlertTriangle className="w-6 h-6 text-red-600" />
                   </div>
                   <div>
-                    <h3 className="text-white font-semibold text-lg">{T.deleteUser}</h3>
-                    <p className="text-gray-400 text-sm mt-2">
+                    <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">{T.deleteUser}</h3>
+                    <p className="text-slate-500 text-sm mt-2">
                       {T.deleteConfirmGeneric}{' '}
-                      <span className="text-white font-medium">
+                      <span className="text-slate-900 font-medium">
                         {selectedUser.firstName} {selectedUser.lastName}
                       </span>
                     </p>
@@ -1156,7 +1267,7 @@ export default function UsersPage() {
                     <button
                       type="button"
                       onClick={() => setShowDeleteConfirm(false)}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition-colors"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm transition-colors"
                     >
                       {T.cancel}
                     </button>

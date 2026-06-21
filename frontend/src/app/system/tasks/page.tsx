@@ -72,16 +72,16 @@ const CONTACT_METHODS = [
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-500/20 text-yellow-400',
-  done: 'bg-green-500/20 text-green-400',
-  cancelled: 'bg-red-500/20 text-red-400',
-  postponed: 'bg-blue-500/20 text-blue-400',
+  pending: 'bg-yellow-500/20 text-yellow-700',
+  done: 'bg-green-500/20 text-green-600',
+  cancelled: 'bg-red-500/20 text-red-600',
+  postponed: 'bg-blue-500/20 text-blue-600',
 };
 
 const RISK_COLORS: Record<string, string> = {
-  low: 'bg-green-500/20 text-green-400',
-  medium: 'bg-yellow-500/20 text-yellow-400',
-  high: 'bg-red-500/20 text-red-400',
+  low: 'bg-green-500/20 text-green-600',
+  medium: 'bg-yellow-500/20 text-yellow-700',
+  high: 'bg-red-500/20 text-red-600',
 };
 
 const getTodayLocal = () => {
@@ -461,11 +461,11 @@ export default function TasksPage() {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const followStart = new Date(followDate.getFullYear(), followDate.getMonth(), followDate.getDate());
     const diff = Math.round((followStart.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
-    if (diff < 0) return { label: `Overdue ${Math.abs(diff)}d`, color: 'text-red-400 bg-red-500/20' };
+    if (diff < 0) return { label: `Overdue ${Math.abs(diff)}d`, color: 'text-red-600 bg-red-500/20' };
     if (diff === 0) return { label: 'Today', color: 'text-[#f37121] bg-[#f37121]/20' };
-    if (diff === 1) return { label: 'Tomorrow', color: 'text-yellow-400 bg-yellow-500/20' };
-    if (diff <= 3) return { label: `In ${diff} days`, color: 'text-yellow-400 bg-yellow-500/20' };
-    return { label: `In ${diff} days`, color: 'text-green-400 bg-green-500/20' };
+    if (diff === 1) return { label: 'Tomorrow', color: 'text-yellow-700 bg-yellow-500/20' };
+    if (diff <= 3) return { label: `In ${diff} days`, color: 'text-yellow-700 bg-yellow-500/20' };
+    return { label: `In ${diff} days`, color: 'text-green-600 bg-green-500/20' };
   };
 
   if (loading) {
@@ -485,10 +485,10 @@ export default function TasksPage() {
             <ListTodo className="w-5 h-5 text-[#f37121]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">
+            <h1 className="text-2xl font-bold text-slate-900">
               {T.title}
             </h1>
-            <p className="text-gray-400 text-sm">{total} {T.title}</p>
+            <p className="text-slate-500 text-sm">{total} {T.title}</p>
           </div>
         </div>
 
@@ -510,7 +510,7 @@ export default function TasksPage() {
               { header: 'Notes', key: 'actionNotes', width: 30 },
               { header: 'Created At', key: 'createdAt', transform: fmt.date, width: 14 },
             ], `tasks-${new Date().toISOString().split('T')[0]}`, 'Tasks')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
           >
             <Download className="w-4 h-4" /> {T.downloadExcel}
           </button>
@@ -529,7 +529,7 @@ export default function TasksPage() {
 
       {/* Tabs (Admin only) */}
       {isAdmin && (
-        <div className="flex gap-1 bg-gray-800 border border-gray-700 rounded-xl p-1">
+        <div className="flex gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
           {[
             { key: 'tasks' as TabType, label: T.title, icon: ListTodo },
             { key: 'monitoring' as TabType, label: T.monitoring, icon: BarChart3 },
@@ -542,7 +542,7 @@ export default function TasksPage() {
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 activeTab === tab.key
                   ? 'bg-[#f37121] text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               <tab.icon className="w-4 h-4" />
@@ -557,24 +557,24 @@ export default function TasksPage() {
         <>
           {/* ─── FOLLOW-UP SECTION ─────────────────────────────── */}
           {followUpTasks.length > 0 && (
-            <div className="bg-gray-800 border border-[#f37121]/30 rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-700 bg-[#f37121]/5 flex items-center gap-2">
+            <div className="bg-white border border-[#f37121]/30 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-200 bg-[#f37121]/5 flex items-center gap-2">
                 <CalendarClock className="w-4 h-4 text-[#f37121]" />
-                <h3 className="text-white font-semibold text-sm">{T.nextFollowUp}</h3>
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm mb-3">{T.nextFollowUp}</h3>
                 <span className="text-xs bg-[#f37121]/20 text-[#f37121] px-2 py-0.5 rounded-full font-medium">{followUpTasks.length}</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-700">
-                      <th className="text-left text-gray-400 font-medium px-4 py-2 text-xs">{T.customer}</th>
-                      {isAdmin && <th className="text-left text-gray-400 font-medium px-4 py-2 text-xs">{T.assignedTo}</th>}
-                      <th className="text-left text-gray-400 font-medium px-4 py-2 text-xs">{T.contactMethod}</th>
-                      <th className="text-left text-gray-400 font-medium px-4 py-2 text-xs">{T.amount}</th>
-                      <th className="text-left text-gray-400 font-medium px-4 py-2 text-xs">{T.nextFollowUp}</th>
-                      <th className="text-left text-gray-400 font-medium px-4 py-2 text-xs">{T.status}</th>
-                      <th className="text-left text-gray-400 font-medium px-4 py-2 text-xs">{T.date}</th>
-                      <th className="text-right text-gray-400 font-medium px-4 py-2 text-xs">{T.actions}</th>
+                    <tr className="bg-slate-900 border-b border-slate-200">
+                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.customer}</th>
+                      {isAdmin && <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.assignedTo}</th>}
+                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.contactMethod}</th>
+                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.amount}</th>
+                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.nextFollowUp}</th>
+                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.status}</th>
+                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.date}</th>
+                      <th className="text-right text-slate-300 font-semibold px-4 py-2 text-xs">{T.actions}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -583,23 +583,23 @@ export default function TasksPage() {
                       return (
                         <Fragment key={task._id}>
                           <tr
-                            className={`border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors cursor-pointer ${expandedFollowUpId === task._id ? 'bg-gray-700/20' : ''}`}
+                            className={`border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer ${expandedFollowUpId === task._id ? 'bg-slate-100' : ''}`}
                             onClick={() => setExpandedFollowUpId(expandedFollowUpId === task._id ? null : task._id)}
                           >
                             <td className="px-4 py-2">
-                              <div className="text-white font-medium text-xs">{task.customer?.companyName || '—'}</div>
-                              <div className="text-gray-500 text-xs">{task.customer?.customerNumber || ''}</div>
+                              <div className="text-slate-900 font-medium text-xs">{task.customer?.companyName || '—'}</div>
+                              <div className="text-slate-500 text-xs">{task.customer?.customerNumber || ''}</div>
                             </td>
                             {isAdmin && (
-                              <td className="px-4 py-2 text-gray-300 text-xs">
+                              <td className="px-4 py-2 text-slate-700 text-xs">
                                 {task.assignedTo?.firstName} {task.assignedTo?.lastName}
                               </td>
                             )}
-                            <td className="px-4 py-2 text-gray-300 text-xs">{contactMethodLabel(task.contactMethod)}</td>
-                            <td className="px-4 py-2 text-gray-300 text-xs">
+                            <td className="px-4 py-2 text-slate-700 text-xs">{contactMethodLabel(task.contactMethod)}</td>
+                            <td className="px-4 py-2 text-slate-700 text-xs">
                               {task.customer?.currentOutstanding?.toLocaleString() || 0} SAR
                             </td>
-                            <td className="px-4 py-2 text-white text-xs font-medium">{formatDateTime(task.nextFollowUpDate)}</td>
+                            <td className="px-4 py-2 text-slate-900 text-xs font-medium">{formatDateTime(task.nextFollowUpDate)}</td>
                             <td className="px-4 py-2">
                               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[task.status]}`}>
                                 {statusLabel(task.status)}
@@ -615,7 +615,7 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => openUpdateModal(task)}
-                                  className="p-1.5 rounded-lg text-gray-400 hover:text-green-400 hover:bg-gray-700 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-green-600 hover:bg-slate-100 transition-colors"
                                   title="Update / Complete"
                                 >
                                   <Check className="w-4 h-4" />
@@ -623,7 +623,7 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => openEditModal(task)}
-                                  className="p-1.5 rounded-lg text-gray-400 hover:text-[#f37121] hover:bg-gray-700 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors"
                                   title="Edit task"
                                 >
                                   <Edit className="w-4 h-4" />
@@ -631,15 +631,15 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleClearFollowUp(task._id)}
-                                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-gray-700 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors"
                                   title="Remove follow-up"
                                 >
                                   <X className="w-4 h-4" />
                                 </button>
                                 {expandedFollowUpId === task._id ? (
-                                  <ChevronUp className="w-4 h-4 text-gray-500" />
+                                  <ChevronUp className="w-4 h-4 text-slate-500" />
                                 ) : (
-                                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                                  <ChevronDown className="w-4 h-4 text-slate-500" />
                                 )}
                               </div>
                             </td>
@@ -647,52 +647,52 @@ export default function TasksPage() {
 
                           {/* Expanded Details Row */}
                           {expandedFollowUpId === task._id && (
-                            <tr key={`${task._id}-fu-details`} className="border-b border-gray-700/50 bg-gray-900/50">
+                            <tr key={`${task._id}-fu-details`} className="border-b border-slate-200/70 bg-slate-100">
                               <td colSpan={isAdmin ? 8 : 7} className="px-4 py-4">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                   <div>
-                                    <p className="text-gray-500 text-xs mb-1">{T.name}</p>
-                                    <p className="text-white text-sm">{task.createdBy?.firstName} {task.createdBy?.lastName}</p>
+                                    <p className="text-slate-500 text-xs mb-1">{T.name}</p>
+                                    <p className="text-slate-900 text-sm">{task.createdBy?.firstName} {task.createdBy?.lastName}</p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-500 text-xs mb-1">{T.createdAt}</p>
-                                    <p className="text-white text-sm">{formatDateTime(task.createdAt)}</p>
+                                    <p className="text-slate-500 text-xs mb-1">{T.createdAt}</p>
+                                    <p className="text-slate-900 text-sm">{formatDateTime(task.createdAt)}</p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-500 text-xs mb-1">{T.dueDate}</p>
-                                    <p className="text-white text-sm">{formatDateTime(task.dueDate)}</p>
+                                    <p className="text-slate-500 text-xs mb-1">{T.dueDate}</p>
+                                    <p className="text-slate-900 text-sm">{formatDateTime(task.dueDate)}</p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-500 text-xs mb-1">{T.done}</p>
-                                    <p className="text-white text-sm">{formatDateTime(task.completedAt)}</p>
+                                    <p className="text-slate-500 text-xs mb-1">{T.done}</p>
+                                    <p className="text-slate-900 text-sm">{formatDateTime(task.completedAt)}</p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-500 text-xs mb-1">{T.collectedAmount}</p>
-                                    <p className="text-white text-sm">
+                                    <p className="text-slate-500 text-xs mb-1">{T.collectedAmount}</p>
+                                    <p className="text-slate-900 text-sm">
                                       {task.collectedAmount > 0 ? `${task.collectedAmount.toLocaleString()} SAR` : '—'}
                                     </p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-500 text-xs mb-1">{T.nextFollowUp}</p>
-                                    <p className={`text-sm ${task.nextFollowUpDate ? 'text-[#f37121] font-medium' : 'text-white'}`}>
+                                    <p className="text-slate-500 text-xs mb-1">{T.nextFollowUp}</p>
+                                    <p className={`text-sm ${task.nextFollowUpDate ? 'text-[#f37121] font-medium' : 'text-slate-900'}`}>
                                       {formatDateTime(task.nextFollowUpDate)}
                                     </p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-500 text-xs mb-1">{T.contactMethod}</p>
-                                    <p className="text-white text-sm">{contactMethodLabel(task.contactMethod)}</p>
+                                    <p className="text-slate-500 text-xs mb-1">{T.contactMethod}</p>
+                                    <p className="text-slate-900 text-sm">{contactMethodLabel(task.contactMethod)}</p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-500 text-xs mb-1">{T.amount}</p>
-                                    <p className="text-red-400 text-sm font-medium">
+                                    <p className="text-slate-500 text-xs mb-1">{T.amount}</p>
+                                    <p className="text-red-600 text-sm font-medium">
                                       {task.customer?.currentOutstanding?.toLocaleString() || 0} SAR
                                     </p>
                                   </div>
                                 </div>
                                 {task.actionNotes && (
-                                  <div className="mt-4 p-3 bg-gray-800 border border-gray-700 rounded-lg">
-                                    <p className="text-gray-500 text-xs mb-1">{T.actionNotes}</p>
-                                    <p className="text-white text-sm whitespace-pre-wrap">{task.actionNotes}</p>
+                                  <div className="mt-4 p-3 bg-white border border-slate-200 rounded-lg">
+                                    <p className="text-slate-500 text-xs mb-1">{T.actionNotes}</p>
+                                    <p className="text-slate-900 text-sm whitespace-pre-wrap">{task.actionNotes}</p>
                                   </div>
                                 )}
                               </td>
@@ -710,7 +710,7 @@ export default function TasksPage() {
           {/* Search + Filters */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
                 {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               </div>
               <input
@@ -719,13 +719,13 @@ export default function TasksPage() {
                 placeholder={`${T.search}...`}
                 value={searchInput}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
               />
               {searchInput && (
                 <button
                   type="button"
                   onClick={() => { setSearchInput(''); setSearch(''); setPage(1); searchInputRef.current?.focus(); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
                   title="Clear search"
                 >
                   <X className="w-4 h-4" />
@@ -738,7 +738,7 @@ export default function TasksPage() {
                 value={statusFilter}
                 onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
                 aria-label="Filter by status"
-                className="px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                className="px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
               >
                 <option value="">{T.all} {T.status}</option>
                 <option value="pending">{T.pending}</option>
@@ -752,7 +752,7 @@ export default function TasksPage() {
                 onClick={() => setShowFilters(!showFilters)}
                 aria-label="Toggle filters"
                 className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-colors ${
-                  showFilters ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                  showFilters ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-900'
                 }`}
               >
                 <Filter className="w-4 h-4" />
@@ -769,15 +769,15 @@ export default function TasksPage() {
                 exit={{ opacity: 0, height: 0 }}
                 className="overflow-hidden"
               >
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shadow-sm">
                   {isAdmin && (
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{T.assignedTo}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{T.assignedTo}</label>
                       <select
                         value={collectorFilter}
                         onChange={(e) => { setCollectorFilter(e.target.value); setPage(1); }}
                         aria-label={T.assignedTo}
-                        className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                       >
                         <option value="">{T.all}</option>
                         {collectors.map((c) => (
@@ -787,12 +787,12 @@ export default function TasksPage() {
                     </div>
                   )}
                   <div>
-                    <label className="text-gray-400 text-xs mb-1 block">{T.contactMethod}</label>
+                    <label className="text-slate-500 text-xs mb-1 block">{T.contactMethod}</label>
                     <select
                       value={contactMethodFilter}
                       onChange={(e) => { setContactMethodFilter(e.target.value); setPage(1); }}
                       aria-label={T.contactMethod}
-                      className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     >
                       <option value="">{T.all}</option>
                       {CONTACT_METHODS.map((m) => (
@@ -801,22 +801,22 @@ export default function TasksPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-gray-400 text-xs mb-1 block">{T.from}</label>
+                    <label className="text-slate-500 text-xs mb-1 block">{T.from}</label>
                     <input
                       type="date"
                       value={dateFrom}
                       onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-                      className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
                       aria-label={T.from}
                     />
                   </div>
                   <div>
-                    <label className="text-gray-400 text-xs mb-1 block">{T.to}</label>
+                    <label className="text-slate-500 text-xs mb-1 block">{T.to}</label>
                     <input
                       type="date"
                       value={dateTo}
                       onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-                      className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
                       aria-label={T.to}
                     />
                   </div>
@@ -826,26 +826,26 @@ export default function TasksPage() {
           </AnimatePresence>
 
           {/* Tasks Table */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-700">
-                    <th className="text-left text-gray-400 font-medium px-4 py-3">{T.customer}</th>
-                    {isAdmin && <th className="text-left text-gray-400 font-medium px-4 py-3">{T.assignedTo}</th>}
-                    <th className="text-left text-gray-400 font-medium px-4 py-3">{T.contactMethod}</th>
-                    <th className="text-left text-gray-400 font-medium px-4 py-3">{T.amount}</th>
-                    <th className="text-left text-gray-400 font-medium px-4 py-3">{T.status}</th>
-                    <th className="text-left text-gray-400 font-medium px-4 py-3">{T.dueDate}</th>
-                    <th className="text-left text-gray-400 font-medium px-4 py-3">{T.createdAt}</th>
-                    <th className="text-left text-gray-400 font-medium px-4 py-3">{T.collectedAmount}</th>
-                    <th className="text-right text-gray-400 font-medium px-4 py-3">{T.actions}</th>
+                  <tr className="bg-slate-900 border-b border-slate-200">
+                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.customer}</th>
+                    {isAdmin && <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.assignedTo}</th>}
+                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.contactMethod}</th>
+                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.amount}</th>
+                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.status}</th>
+                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.dueDate}</th>
+                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.createdAt}</th>
+                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.collectedAmount}</th>
+                    <th className="text-right text-slate-300 font-semibold px-4 py-3">{T.actions}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tasks.length === 0 ? (
                     <tr>
-                      <td colSpan={isAdmin ? 9 : 8} className="text-center text-gray-400 py-12">
+                      <td colSpan={isAdmin ? 9 : 8} className="text-center text-slate-500 py-12">
                         {T.noTasks}
                       </td>
                     </tr>
@@ -853,22 +853,22 @@ export default function TasksPage() {
                     tasks.map((task) => (
                       <Fragment key={task._id}>
                         <tr
-                          className={`border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors cursor-pointer ${expandedTaskId === task._id ? 'bg-gray-700/20' : ''}`}
+                          className={`border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer ${expandedTaskId === task._id ? 'bg-slate-100' : ''}`}
                           onClick={() => setExpandedTaskId(expandedTaskId === task._id ? null : task._id)}
                         >
                           <td className="px-4 py-3">
-                            <div className="text-white font-medium">{task.customer?.companyName || '—'}</div>
-                            <div className="text-gray-500 text-xs">{task.customer?.customerNumber || ''}</div>
+                            <div className="text-slate-900 font-medium">{task.customer?.companyName || '—'}</div>
+                            <div className="text-slate-500 text-xs">{task.customer?.customerNumber || ''}</div>
                           </td>
                           {isAdmin && (
-                            <td className="px-4 py-3 text-gray-300">
+                            <td className="px-4 py-3 text-slate-700">
                               {task.assignedTo?.firstName} {task.assignedTo?.lastName}
                             </td>
                           )}
                           <td className="px-4 py-3">
-                            <span className="text-gray-300">{contactMethodLabel(task.contactMethod)}</span>
+                            <span className="text-slate-700">{contactMethodLabel(task.contactMethod)}</span>
                           </td>
-                          <td className="px-4 py-3 text-gray-300">
+                          <td className="px-4 py-3 text-slate-700">
                             {task.customer?.currentOutstanding?.toLocaleString() || 0} SAR
                           </td>
                           <td className="px-4 py-3">
@@ -876,9 +876,9 @@ export default function TasksPage() {
                               {statusLabel(task.status)}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-gray-300 text-xs">{formatDate(task.dueDate)}</td>
-                          <td className="px-4 py-3 text-gray-300 text-xs">{formatDate(task.createdAt)}</td>
-                          <td className="px-4 py-3 text-gray-300">
+                          <td className="px-4 py-3 text-slate-700 text-xs">{formatDate(task.dueDate)}</td>
+                          <td className="px-4 py-3 text-slate-700 text-xs">{formatDate(task.createdAt)}</td>
+                          <td className="px-4 py-3 text-slate-700">
                             {task.collectedAmount > 0 ? `${task.collectedAmount.toLocaleString()} SAR` : '—'}
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -887,7 +887,7 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => openUpdateModal(task)}
-                                  className="p-1.5 rounded-lg text-gray-400 hover:text-green-400 hover:bg-gray-700 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-green-600 hover:bg-slate-100 transition-colors"
                                   title="Complete task"
                                 >
                                   <Check className="w-4 h-4" />
@@ -896,7 +896,7 @@ export default function TasksPage() {
                               <button
                                 type="button"
                                 onClick={() => openEditModal(task)}
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-[#f37121] hover:bg-gray-700 transition-colors"
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors"
                                 title="Edit task"
                               >
                                 <Edit className="w-4 h-4" />
@@ -905,16 +905,16 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTask(task._id)}
-                                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-gray-700 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors"
                                   title="Delete task"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               )}
                               {expandedTaskId === task._id ? (
-                                <ChevronUp className="w-4 h-4 text-gray-500" />
+                                <ChevronUp className="w-4 h-4 text-slate-500" />
                               ) : (
-                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                                <ChevronDown className="w-4 h-4 text-slate-500" />
                               )}
                             </div>
                           </td>
@@ -922,52 +922,52 @@ export default function TasksPage() {
 
                         {/* Expanded Details Row */}
                         {expandedTaskId === task._id && (
-                          <tr key={`${task._id}-details`} className="border-b border-gray-700/50 bg-gray-900/50">
+                          <tr key={`${task._id}-details`} className="border-b border-slate-200/70 bg-slate-100">
                             <td colSpan={isAdmin ? 9 : 8} className="px-4 py-4">
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div>
-                                  <p className="text-gray-500 text-xs mb-1">{T.name}</p>
-                                  <p className="text-white text-sm">{task.createdBy?.firstName} {task.createdBy?.lastName}</p>
+                                  <p className="text-slate-500 text-xs mb-1">{T.name}</p>
+                                  <p className="text-slate-900 text-sm">{task.createdBy?.firstName} {task.createdBy?.lastName}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 text-xs mb-1">{T.createdAt}</p>
-                                  <p className="text-white text-sm">{formatDateTime(task.createdAt)}</p>
+                                  <p className="text-slate-500 text-xs mb-1">{T.createdAt}</p>
+                                  <p className="text-slate-900 text-sm">{formatDateTime(task.createdAt)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 text-xs mb-1">{T.dueDate}</p>
-                                  <p className="text-white text-sm">{formatDateTime(task.dueDate)}</p>
+                                  <p className="text-slate-500 text-xs mb-1">{T.dueDate}</p>
+                                  <p className="text-slate-900 text-sm">{formatDateTime(task.dueDate)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 text-xs mb-1">{T.done}</p>
-                                  <p className="text-white text-sm">{formatDateTime(task.completedAt)}</p>
+                                  <p className="text-slate-500 text-xs mb-1">{T.done}</p>
+                                  <p className="text-slate-900 text-sm">{formatDateTime(task.completedAt)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 text-xs mb-1">{T.collectedAmount}</p>
-                                  <p className="text-white text-sm">
+                                  <p className="text-slate-500 text-xs mb-1">{T.collectedAmount}</p>
+                                  <p className="text-slate-900 text-sm">
                                     {task.collectedAmount > 0 ? `${task.collectedAmount.toLocaleString()} SAR` : '—'}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 text-xs mb-1">{T.nextFollowUp}</p>
-                                  <p className={`text-sm ${task.nextFollowUpDate ? 'text-[#f37121] font-medium' : 'text-white'}`}>
+                                  <p className="text-slate-500 text-xs mb-1">{T.nextFollowUp}</p>
+                                  <p className={`text-sm ${task.nextFollowUpDate ? 'text-[#f37121] font-medium' : 'text-slate-900'}`}>
                                     {formatDateTime(task.nextFollowUpDate)}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 text-xs mb-1">{T.contactMethod}</p>
-                                  <p className="text-white text-sm">{contactMethodLabel(task.contactMethod)}</p>
+                                  <p className="text-slate-500 text-xs mb-1">{T.contactMethod}</p>
+                                  <p className="text-slate-900 text-sm">{contactMethodLabel(task.contactMethod)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 text-xs mb-1">{T.amount}</p>
-                                  <p className="text-red-400 text-sm font-medium">
+                                  <p className="text-slate-500 text-xs mb-1">{T.amount}</p>
+                                  <p className="text-red-600 text-sm font-medium">
                                     {task.customer?.currentOutstanding?.toLocaleString() || 0} SAR
                                   </p>
                                 </div>
                               </div>
                               {task.actionNotes && (
-                                <div className="mt-4 p-3 bg-gray-800 border border-gray-700 rounded-lg">
-                                  <p className="text-gray-500 text-xs mb-1">{T.actionNotes}</p>
-                                  <p className="text-white text-sm whitespace-pre-wrap">{task.actionNotes}</p>
+                                <div className="mt-4 p-3 bg-white border border-slate-200 rounded-lg">
+                                  <p className="text-slate-500 text-xs mb-1">{T.actionNotes}</p>
+                                  <p className="text-slate-900 text-sm whitespace-pre-wrap">{task.actionNotes}</p>
                                 </div>
                               )}
                             </td>
@@ -982,14 +982,14 @@ export default function TasksPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-700">
-                <p className="text-gray-400 text-sm">{T.page} {page} {T.of} {totalPages}</p>
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+                <p className="text-slate-500 text-sm">{T.page} {page} {T.of} {totalPages}</p>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="px-3 py-1.5 rounded-lg bg-gray-700 text-white text-sm disabled:opacity-50 hover:bg-gray-600 transition-colors"
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-900 text-sm disabled:opacity-50 hover:bg-slate-200 transition-colors"
                   >
                     {T.previous}
                   </button>
@@ -997,7 +997,7 @@ export default function TasksPage() {
                     type="button"
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
-                    className="px-3 py-1.5 rounded-lg bg-gray-700 text-white text-sm disabled:opacity-50 hover:bg-gray-600 transition-colors"
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-900 text-sm disabled:opacity-50 hover:bg-slate-200 transition-colors"
                   >
                     {T.next}
                   </button>
@@ -1020,15 +1020,15 @@ export default function TasksPage() {
               {/* Stat Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 {[
-                  { label: T.title, value: stats.total, color: 'text-white' },
-                  { label: T.done, value: stats.done, color: 'text-green-400' },
-                  { label: T.pending, value: stats.pending, color: 'text-yellow-400' },
-                  { label: T.postponed, value: stats.postponed, color: 'text-blue-400' },
-                  { label: T.cancelled, value: stats.cancelled, color: 'text-red-400' },
+                  { label: T.title, value: stats.total, color: 'text-slate-900' },
+                  { label: T.done, value: stats.done, color: 'text-green-600' },
+                  { label: T.pending, value: stats.pending, color: 'text-yellow-700' },
+                  { label: T.postponed, value: stats.postponed, color: 'text-blue-600' },
+                  { label: T.cancelled, value: stats.cancelled, color: 'text-red-600' },
                   { label: T.completionRate, value: `${stats.completionRate}%`, color: 'text-[#f37121]' },
                 ].map((stat, i) => (
-                  <div key={i} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-                    <p className="text-gray-400 text-xs mb-1">{stat.label}</p>
+                  <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                    <p className="text-slate-500 text-xs mb-1">{stat.label}</p>
                     <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
                   </div>
                 ))}
@@ -1036,32 +1036,32 @@ export default function TasksPage() {
 
               {/* Extra stats */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-                  <p className="text-gray-400 text-xs mb-1">{T.avgCompletionHours}</p>
-                  <p className="text-xl font-bold text-white">{stats.avgCompletionHours}h</p>
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                  <p className="text-slate-500 text-xs mb-1">{T.avgCompletionHours}</p>
+                  <p className="text-xl font-bold text-slate-900">{stats.avgCompletionHours}h</p>
                 </div>
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-                  <p className="text-gray-400 text-xs mb-1">{T.totalCollected}</p>
-                  <p className="text-xl font-bold text-green-400">{stats.totalCollected.toLocaleString()} SAR</p>
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                  <p className="text-slate-500 text-xs mb-1">{T.totalCollected}</p>
+                  <p className="text-xl font-bold text-green-600">{stats.totalCollected.toLocaleString()} SAR</p>
                 </div>
               </div>
 
               {/* Filters for monitoring */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shadow-sm">
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.from}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.from}</label>
                   <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label={T.from}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]" />
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]" />
                 </div>
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.to}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.to}</label>
                   <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label={T.to}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]" />
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]" />
                 </div>
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.assignedTo}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.assignedTo}</label>
                   <select value={collectorFilter} onChange={(e) => setCollectorFilter(e.target.value)} aria-label={T.assignedTo}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                     <option value="">{T.all}</option>
                     {collectors.map((c) => (
                       <option key={c._id} value={c._id}>{c.firstName} {c.lastName}</option>
@@ -1069,9 +1069,9 @@ export default function TasksPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.contactMethod}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.contactMethod}</label>
                   <select value={contactMethodFilter} onChange={(e) => setContactMethodFilter(e.target.value)} aria-label={T.contactMethod}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                     <option value="">{T.all}</option>
                     {CONTACT_METHODS.map((m) => (
                       <option key={m.value} value={m.value}>{(T as any)[m.labelKey]}</option>
@@ -1081,9 +1081,9 @@ export default function TasksPage() {
               </div>
 
               {/* By Collector Table */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-700">
-                  <h3 className="text-white font-semibold flex items-center gap-2">
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-slate-200">
+                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold flex items-center gap-2 mb-3">
                     <Users className="w-4 h-4 text-[#f37121]" />
                     {T.byCollector}
                   </h3>
@@ -1091,29 +1091,29 @@ export default function TasksPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-700">
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.name}</th>
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.title}</th>
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.done}</th>
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.pending}</th>
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.postponed}</th>
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.cancelled}</th>
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.collectedAmount}</th>
+                      <tr className="bg-slate-900 border-b border-slate-200">
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.name}</th>
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.title}</th>
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.done}</th>
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.pending}</th>
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.postponed}</th>
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.cancelled}</th>
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.collectedAmount}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {stats.byCollector.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center text-gray-400 py-8">{T.noDataFound}</td></tr>
+                        <tr><td colSpan={7} className="text-center text-slate-500 py-8">{T.noDataFound}</td></tr>
                       ) : (
                         stats.byCollector.map((c: any, i: number) => (
-                          <tr key={i} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                            <td className="px-4 py-3 text-white font-medium">{c.collectorName}</td>
-                            <td className="px-4 py-3 text-gray-300">{c.total}</td>
-                            <td className="px-4 py-3 text-green-400">{c.done}</td>
-                            <td className="px-4 py-3 text-yellow-400">{c.pending}</td>
-                            <td className="px-4 py-3 text-blue-400">{c.postponed}</td>
-                            <td className="px-4 py-3 text-red-400">{c.cancelled}</td>
-                            <td className="px-4 py-3 text-gray-300">{c.totalCollected?.toLocaleString() || 0} SAR</td>
+                          <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">
+                            <td className="px-4 py-3 text-slate-900 font-medium">{c.collectorName}</td>
+                            <td className="px-4 py-3 text-slate-700">{c.total}</td>
+                            <td className="px-4 py-3 text-green-600">{c.done}</td>
+                            <td className="px-4 py-3 text-yellow-700">{c.pending}</td>
+                            <td className="px-4 py-3 text-blue-600">{c.postponed}</td>
+                            <td className="px-4 py-3 text-red-600">{c.cancelled}</td>
+                            <td className="px-4 py-3 text-slate-700">{c.totalCollected?.toLocaleString() || 0} SAR</td>
                           </tr>
                         ))
                       )}
@@ -1123,9 +1123,9 @@ export default function TasksPage() {
               </div>
 
               {/* By Customer Table */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-700">
-                  <h3 className="text-white font-semibold flex items-center gap-2">
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="px-4 py-3 border-b border-slate-200">
+                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold flex items-center gap-2 mb-3">
                     <Users className="w-4 h-4 text-[#f37121]" />
                     {T.byCustomer}
                   </h3>
@@ -1133,21 +1133,21 @@ export default function TasksPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-700">
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.customer}</th>
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.title}</th>
-                        <th className="text-left text-gray-400 font-medium px-4 py-3">{T.done}</th>
+                      <tr className="bg-slate-900 border-b border-slate-200">
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.customer}</th>
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.title}</th>
+                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.done}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {stats.byCustomer.length === 0 ? (
-                        <tr><td colSpan={3} className="text-center text-gray-400 py-8">{T.noDataFound}</td></tr>
+                        <tr><td colSpan={3} className="text-center text-slate-500 py-8">{T.noDataFound}</td></tr>
                       ) : (
                         stats.byCustomer.map((c: any, i: number) => (
-                          <tr key={i} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                            <td className="px-4 py-3 text-white font-medium">{c.customerName}</td>
-                            <td className="px-4 py-3 text-gray-300">{c.total}</td>
-                            <td className="px-4 py-3 text-green-400">{c.done}</td>
+                          <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">
+                            <td className="px-4 py-3 text-slate-900 font-medium">{c.customerName}</td>
+                            <td className="px-4 py-3 text-slate-700">{c.total}</td>
+                            <td className="px-4 py-3 text-green-600">{c.done}</td>
                           </tr>
                         ))
                       )}
@@ -1164,7 +1164,7 @@ export default function TasksPage() {
       {activeTab === 'suggestions' && isAdmin && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-gray-400 text-sm">{suggestions.length} {T.suggestions}</p>
+            <p className="text-slate-500 text-sm">{suggestions.length} {T.suggestions}</p>
             <button
               type="button"
               onClick={handleGenerateSuggestions}
@@ -1181,23 +1181,23 @@ export default function TasksPage() {
               <div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />
             </div>
           ) : suggestions.length === 0 ? (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-              <Lightbulb className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-              <p className="text-gray-400">{T.noDataFound}</p>
+            <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
+              <Lightbulb className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-500">{T.noDataFound}</p>
             </div>
           ) : (
             <div className="grid gap-3">
               {suggestions.map((s) => (
-                <div key={s._id} className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                <div key={s._id} className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4 shadow-sm">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-white font-medium truncate">{s.customer?.companyName}</h4>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${RISK_COLORS[s.riskLevel] || 'bg-gray-700 text-gray-400'}`}>
+                      <h4 className="text-slate-900 font-medium truncate">{s.customer?.companyName}</h4>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${RISK_COLORS[s.riskLevel] || 'bg-slate-100 text-slate-500'}`}>
                         {s.riskLevel}
                       </span>
                     </div>
-                    <p className="text-gray-400 text-sm">{s.reason}</p>
-                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
+                    <p className="text-slate-500 text-sm">{s.reason}</p>
+                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
                       <span>{T.amount}: {s.outstanding?.toLocaleString()} SAR</span>
                       {s.overdueDays > 0 && <span>{T.overdueDays}: {s.overdueDays}</span>}
                       <span>{T.assignedTo}: {s.suggestedTo?.firstName} {s.suggestedTo?.lastName}</span>
@@ -1207,7 +1207,7 @@ export default function TasksPage() {
                     <button
                       type="button"
                       onClick={() => handleApproveSuggestion(s._id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-sm font-medium hover:bg-green-500/30 transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 text-green-600 rounded-lg text-sm font-medium hover:bg-green-500/30 transition-colors"
                     >
                       <ThumbsUp className="w-3.5 h-3.5" />
                       {T.acceptSuggestion}
@@ -1215,7 +1215,7 @@ export default function TasksPage() {
                     <button
                       type="button"
                       onClick={() => handleDismissSuggestion(s._id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 text-red-600 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-colors"
                     >
                       <ThumbsDown className="w-3.5 h-3.5" />
                       {T.rejectSuggestion}
@@ -1243,12 +1243,12 @@ export default function TasksPage() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col"
+              className="w-full max-w-2xl bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col"
             >
               {/* Header */}
-              <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between shrink-0">
-                <h2 className="text-white font-bold text-lg">{T.createTask}</h2>
-                <button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-white" aria-label="Close">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+                <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold text-lg mb-3">{T.createTask}</h2>
+                <button type="button" onClick={() => setShowCreateModal(false)} className="text-slate-500 hover:text-slate-900" aria-label="Close">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1257,12 +1257,12 @@ export default function TasksPage() {
               <div className="p-6 overflow-y-auto space-y-4">
                 {/* Collector selection */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.assignedTo} *</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.assignedTo} *</label>
                   <select
                     value={selectedCollector}
                     onChange={(e) => setSelectedCollector(e.target.value)}
                     aria-label="Select collector"
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     <option value="">...</option>
                     {collectors.map((c) => (
@@ -1272,7 +1272,7 @@ export default function TasksPage() {
                 </div>
 
                 {selectedCollector && collectorCustomers.length === 0 && (
-                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-400 text-sm">
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-700 text-sm">
                     {T.noDataFound}
                   </div>
                 )}
@@ -1281,7 +1281,7 @@ export default function TasksPage() {
                 {selectedCollector && collectorCustomers.length > 0 && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-white text-sm font-medium">{T.title} ({taskBatch.length})</h3>
+                      <h3 className="text-slate-900 text-sm font-medium">{T.title} ({taskBatch.length})</h3>
                       <button
                         type="button"
                         onClick={addTaskToBatch}
@@ -1293,11 +1293,11 @@ export default function TasksPage() {
                     </div>
 
                     {taskBatch.map((task, index) => (
-                      <div key={index} className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+                      <div key={index} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
                         <div className="flex items-center justify-between">
-                          <span className="text-gray-400 text-xs">{T.title} {index + 1}</span>
+                          <span className="text-slate-500 text-xs">{T.title} {index + 1}</span>
                           {taskBatch.length > 1 && (
-                            <button type="button" onClick={() => removeTaskFromBatch(index)} className="text-gray-500 hover:text-red-400" aria-label="Remove task">
+                            <button type="button" onClick={() => removeTaskFromBatch(index)} className="text-slate-500 hover:text-red-600" aria-label="Remove task">
                               <X className="w-4 h-4" />
                             </button>
                           )}
@@ -1305,12 +1305,12 @@ export default function TasksPage() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
-                            <label className="text-gray-400 text-xs mb-1 block">{T.customer} *</label>
+                            <label className="text-slate-500 text-xs mb-1 block">{T.customer} *</label>
                             <select
                               value={task.customer}
                               onChange={(e) => updateTaskBatch(index, 'customer', e.target.value)}
                               aria-label="Customer"
-                              className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                              className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                             >
                               <option value="">...</option>
                               {collectorCustomers.map((c) => (
@@ -1320,12 +1320,12 @@ export default function TasksPage() {
                           </div>
 
                           <div>
-                            <label className="text-gray-400 text-xs mb-1 block">{T.contactMethod} *</label>
+                            <label className="text-slate-500 text-xs mb-1 block">{T.contactMethod} *</label>
                             <select
                               value={task.contactMethod}
                               onChange={(e) => updateTaskBatch(index, 'contactMethod', e.target.value)}
                               aria-label={T.contactMethod}
-                              className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                              className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                             >
                               {CONTACT_METHODS.map((m) => (
                                 <option key={m.value} value={m.value}>{(T as any)[m.labelKey]}</option>
@@ -1334,19 +1334,19 @@ export default function TasksPage() {
                           </div>
 
                           <div>
-                            <label className="text-gray-400 text-xs mb-1 block">{T.dueDate}</label>
+                            <label className="text-slate-500 text-xs mb-1 block">{T.dueDate}</label>
                             <div className="flex gap-1">
                               <input
                                 type="datetime-local"
                                 value={task.dueDate}
                                 onChange={(e) => updateTaskBatch(index, 'dueDate', e.target.value)}
-                                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+                                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
                                 aria-label="Due date"
                               />
                               <button
                                 type="button"
                                 onClick={() => updateTaskBatch(index, 'dueDate', getTodayLocal())}
-                                className="px-2 py-2 rounded-lg bg-gray-700 text-[#f37121] text-xs font-medium hover:bg-gray-600 transition-colors whitespace-nowrap"
+                                className="px-2 py-2 rounded-lg bg-slate-100 text-[#f37121] text-xs font-medium hover:bg-slate-200 transition-colors whitespace-nowrap"
                                 title="Set to today"
                               >
                                 {T.today}
@@ -1361,11 +1361,11 @@ export default function TasksPage() {
               </div>
 
               {/* Footer */}
-              <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3 shrink-0">
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-gray-400 hover:text-white text-sm transition-colors"
+                  className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm transition-colors"
                 >
                   {T.cancel}
                 </button>
@@ -1399,14 +1399,14 @@ export default function TasksPage() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden"
+              className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden"
             >
-              <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+              <div className="px-6 py-4 bg-slate-900 flex items-center justify-between">
                 <div>
                   <h2 className="text-white font-bold text-lg">{T.editTask}</h2>
-                  <p className="text-gray-400 text-sm mt-1">{selectedTask.customer?.companyName}</p>
+                  <p className="text-slate-300 text-sm mt-1">{selectedTask.customer?.companyName}</p>
                 </div>
-                <button type="button" onClick={() => setShowUpdateModal(false)} className="text-gray-400 hover:text-white" aria-label="Close">
+                <button type="button" onClick={() => setShowUpdateModal(false)} className="text-slate-500 hover:text-slate-900" aria-label="Close">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1414,19 +1414,19 @@ export default function TasksPage() {
               <div className="p-6 space-y-4">
                 {/* Status */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-2 block">{T.status} *</label>
+                  <label className="text-slate-500 text-xs mb-2 block">{T.status} *</label>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { value: 'done', label: T.done, icon: Check, color: 'text-green-400 border-green-500/50 bg-green-500/10' },
-                      { value: 'postponed', label: T.postponed, icon: Pause, color: 'text-blue-400 border-blue-500/50 bg-blue-500/10' },
-                      { value: 'cancelled', label: T.cancelled, icon: XCircle, color: 'text-red-400 border-red-500/50 bg-red-500/10' },
+                      { value: 'done', label: T.done, icon: Check, color: 'text-green-600 border-green-500/50 bg-green-500/10' },
+                      { value: 'postponed', label: T.postponed, icon: Pause, color: 'text-blue-600 border-blue-500/50 bg-blue-500/10' },
+                      { value: 'cancelled', label: T.cancelled, icon: XCircle, color: 'text-red-600 border-red-500/50 bg-red-500/10' },
                     ].map((opt) => (
                       <button
                         key={opt.value}
                         type="button"
                         onClick={() => setUpdateForm((prev) => ({ ...prev, status: opt.value }))}
                         className={`flex flex-col items-center gap-1 p-3 rounded-xl border text-sm font-medium transition-all ${
-                          updateForm.status === opt.value ? opt.color : 'border-gray-700 text-gray-400 hover:border-gray-600'
+                          updateForm.status === opt.value ? opt.color : 'border-slate-200 text-slate-500 hover:border-slate-300'
                         }`}
                       >
                         <opt.icon className="w-5 h-5" />
@@ -1438,46 +1438,46 @@ export default function TasksPage() {
 
                 {/* Collected Amount */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.collectedAmount} (SAR)</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.collectedAmount} (SAR)</label>
                   <input
                     type="number"
                     min="0"
                     value={updateForm.collectedAmount}
                     onChange={(e) => setUpdateForm((prev) => ({ ...prev, collectedAmount: e.target.value }))}
                     placeholder="0"
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   />
                 </div>
 
                 {/* Action Notes */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">
-                    {T.actionNotes} {(updateForm.status === 'cancelled' || updateForm.status === 'postponed') && <span className="text-red-400">*</span>}
+                  <label className="text-slate-500 text-xs mb-1 block">
+                    {T.actionNotes} {(updateForm.status === 'cancelled' || updateForm.status === 'postponed') && <span className="text-red-600">*</span>}
                   </label>
                   <textarea
                     value={updateForm.actionNotes}
                     onChange={(e) => setUpdateForm((prev) => ({ ...prev, actionNotes: e.target.value }))}
                     rows={3}
                     placeholder={T.actionNotes}
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
                   />
                 </div>
 
                 {/* Next Follow-Up Date */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.nextFollowUp}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.nextFollowUp}</label>
                   <div className="flex gap-2">
                     <input
                       type="datetime-local"
                       value={updateForm.nextFollowUpDate}
                       onChange={(e) => setUpdateForm((prev) => ({ ...prev, nextFollowUpDate: e.target.value }))}
-                      className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+                      className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
                       aria-label="Follow-up date"
                     />
                     <button
                       type="button"
                       onClick={() => setUpdateForm((prev) => ({ ...prev, nextFollowUpDate: getTodayLocal() }))}
-                      className="px-3 py-2.5 rounded-lg bg-gray-700 text-[#f37121] text-xs font-medium hover:bg-gray-600 transition-colors whitespace-nowrap"
+                      className="px-3 py-2.5 rounded-lg bg-slate-100 text-[#f37121] text-xs font-medium hover:bg-slate-200 transition-colors whitespace-nowrap"
                       title="Set to today"
                     >
                       {T.today}
@@ -1486,11 +1486,11 @@ export default function TasksPage() {
                 </div>
               </div>
 
-              <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowUpdateModal(false)}
-                  className="px-4 py-2 text-gray-400 hover:text-white text-sm transition-colors"
+                  className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm transition-colors"
                 >
                   {T.cancel}
                 </button>
@@ -1524,19 +1524,19 @@ export default function TasksPage() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col"
+              className="w-full max-w-lg bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col"
             >
-              <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between shrink-0">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
                 <div>
-                  <h2 className="text-white font-bold text-lg flex items-center gap-2">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold text-lg flex items-center gap-2 mb-3">
                     <Edit className="w-5 h-5 text-[#f37121]" />
                     {T.editTask}
                   </h2>
-                  <p className="text-gray-400 text-sm mt-1">
+                  <p className="text-slate-500 text-sm mt-1">
                     {editTask.customer?.companyName} — {editTask.assignedTo?.firstName} {editTask.assignedTo?.lastName}
                   </p>
                 </div>
-                <button type="button" onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-white" aria-label="Close">
+                <button type="button" onClick={() => setShowEditModal(false)} className="text-slate-500 hover:text-slate-900" aria-label="Close">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1544,12 +1544,12 @@ export default function TasksPage() {
               <div className="p-6 overflow-y-auto space-y-4">
                 {/* Contact Method */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.contactMethod}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.contactMethod}</label>
                   <select
                     value={editForm.contactMethod}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, contactMethod: e.target.value }))}
                     aria-label={T.contactMethod}
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     {CONTACT_METHODS.map((m) => (
                       <option key={m.value} value={m.value}>{(T as any)[m.labelKey]}</option>
@@ -1559,19 +1559,19 @@ export default function TasksPage() {
 
                 {/* Due Date */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.dueDate}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.dueDate}</label>
                   <div className="flex gap-2">
                     <input
                       type="datetime-local"
                       value={editForm.dueDate}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, dueDate: e.target.value }))}
-                      className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+                      className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
                       aria-label="Due date"
                     />
                     <button
                       type="button"
                       onClick={() => setEditForm((prev) => ({ ...prev, dueDate: getTodayLocal() }))}
-                      className="px-3 py-2.5 rounded-lg bg-gray-700 text-[#f37121] text-xs font-medium hover:bg-gray-600 transition-colors whitespace-nowrap"
+                      className="px-3 py-2.5 rounded-lg bg-slate-100 text-[#f37121] text-xs font-medium hover:bg-slate-200 transition-colors whitespace-nowrap"
                     >
                       {T.today}
                     </button>
@@ -1580,44 +1580,44 @@ export default function TasksPage() {
 
                 {/* Collected Amount */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.collectedAmount} (SAR)</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.collectedAmount} (SAR)</label>
                   <input
                     type="number"
                     min="0"
                     value={editForm.collectedAmount}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, collectedAmount: e.target.value }))}
                     placeholder="0"
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   />
                 </div>
 
                 {/* Action Notes */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.actionNotes}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.actionNotes}</label>
                   <textarea
                     value={editForm.actionNotes}
                     onChange={(e) => setEditForm((prev) => ({ ...prev, actionNotes: e.target.value }))}
                     rows={3}
                     placeholder={T.actionNotes}
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
                   />
                 </div>
 
                 {/* Next Follow-Up Date */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{T.nextFollowUp}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{T.nextFollowUp}</label>
                   <div className="flex gap-2">
                     <input
                       type="datetime-local"
                       value={editForm.nextFollowUpDate}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, nextFollowUpDate: e.target.value }))}
-                      className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:dark]"
+                      className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
                       aria-label="Follow-up date"
                     />
                     <button
                       type="button"
                       onClick={() => setEditForm((prev) => ({ ...prev, nextFollowUpDate: getTodayLocal() }))}
-                      className="px-3 py-2.5 rounded-lg bg-gray-700 text-[#f37121] text-xs font-medium hover:bg-gray-600 transition-colors whitespace-nowrap"
+                      className="px-3 py-2.5 rounded-lg bg-slate-100 text-[#f37121] text-xs font-medium hover:bg-slate-200 transition-colors whitespace-nowrap"
                     >
                       {T.today}
                     </button>
@@ -1625,11 +1625,11 @@ export default function TasksPage() {
                 </div>
               </div>
 
-              <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3 shrink-0">
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 text-gray-400 hover:text-white text-sm transition-colors"
+                  className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm transition-colors"
                 >
                   {T.cancel}
                 </button>

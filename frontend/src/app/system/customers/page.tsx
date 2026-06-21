@@ -69,13 +69,13 @@ const emptyForm: CustomerForm = {
 
 const riskBadge = (level: string, T: Record<string, string>) => {
   const styles: Record<string, string> = {
-    low: 'bg-green-500/20 text-green-400',
-    medium: 'bg-yellow-500/20 text-yellow-400',
-    high: 'bg-red-500/20 text-red-400',
+    low: 'bg-green-500/20 text-green-600',
+    medium: 'bg-yellow-500/20 text-yellow-700',
+    high: 'bg-red-500/20 text-red-600',
   };
   const labels: Record<string, string> = { low: T.low, medium: T.medium, high: T.high };
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${styles[level] || 'bg-gray-500/20 text-gray-400'}`}>
+    <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${styles[level] || 'bg-slate-500/20 text-slate-500'}`}>
       {labels[level] || level}
     </span>
   );
@@ -83,13 +83,13 @@ const riskBadge = (level: string, T: Record<string, string>) => {
 
 const gradeBadge = (grade: string) => {
   const styles: Record<string, string> = {
-    A: 'bg-green-500/20 text-green-400',
-    B: 'bg-blue-500/20 text-blue-400',
-    C: 'bg-yellow-500/20 text-yellow-400',
-    D: 'bg-red-500/20 text-red-400',
+    A: 'bg-green-500/20 text-green-600',
+    B: 'bg-blue-500/20 text-blue-600',
+    C: 'bg-yellow-500/20 text-yellow-700',
+    D: 'bg-red-500/20 text-red-600',
   };
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-bold ${styles[grade] || 'bg-gray-500/20 text-gray-400'}`}>
+    <span className={`px-2 py-0.5 rounded text-xs font-bold ${styles[grade] || 'bg-slate-500/20 text-slate-500'}`}>
       {grade}
     </span>
   );
@@ -109,22 +109,22 @@ const getClientStatusLabels = (T: Record<string, string>): Record<string, string
 });
 
 const clientStatusStyles: Record<string, string> = {
-  good_client: 'bg-green-500/20 text-green-400',
-  late_payment: 'bg-yellow-500/20 text-yellow-400',
-  stopped_by_us: 'bg-red-500/20 text-red-400',
-  stopped_by_client: 'bg-red-500/20 text-red-400',
-  under_review: 'bg-blue-500/20 text-blue-400',
-  legal_action: 'bg-purple-500/20 text-purple-400',
-  write_off: 'bg-gray-500/20 text-gray-400',
-  payment_plan: 'bg-cyan-500/20 text-cyan-400',
-  new_client: 'bg-indigo-500/20 text-indigo-400',
-  vip_client: 'bg-amber-500/20 text-amber-400',
+  good_client: 'bg-green-500/20 text-green-600',
+  late_payment: 'bg-yellow-500/20 text-yellow-700',
+  stopped_by_us: 'bg-red-500/20 text-red-600',
+  stopped_by_client: 'bg-red-500/20 text-red-600',
+  under_review: 'bg-blue-500/20 text-blue-600',
+  legal_action: 'bg-purple-500/20 text-purple-600',
+  write_off: 'bg-slate-500/20 text-slate-500',
+  payment_plan: 'bg-cyan-500/20 text-cyan-700',
+  new_client: 'bg-indigo-500/20 text-indigo-600',
+  vip_client: 'bg-amber-500/20 text-amber-700',
 };
 
 const clientStatusBadge = (status: string, T: Record<string, string>) => {
   const labels = getClientStatusLabels(T);
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${clientStatusStyles[status] || 'bg-gray-500/20 text-gray-400'}`}>
+    <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${clientStatusStyles[status] || 'bg-slate-500/20 text-slate-500'}`}>
       {labels[status] || status?.replace(/_/g, ' ') || '-'}
     </span>
   );
@@ -376,7 +376,7 @@ export default function CustomersPage() {
       label: T.customerNumber,
       sortable: true,
       render: (value: string) => (
-        <span className="text-white font-medium">{value || '-'}</span>
+        <span className="text-slate-900 font-medium">{value || '-'}</span>
       ),
     },
     {
@@ -384,7 +384,7 @@ export default function CustomersPage() {
       label: T.companyName,
       sortable: true,
       render: (value: string) => (
-        <span className="text-white font-medium">{value}</span>
+        <span className="text-slate-900 font-medium">{value}</span>
       ),
     },
     {
@@ -422,7 +422,7 @@ export default function CustomersPage() {
       label: T.lastPaymentDate,
       sortable: true,
       render: (value: string) => (
-        <span className="text-white text-sm">{value ? formatDate(value) : '-'}</span>
+        <span className="text-slate-900 text-sm">{value ? formatDate(value) : '-'}</span>
       ),
     },
     {
@@ -430,7 +430,7 @@ export default function CustomersPage() {
       label: T.lastPaymentAmount,
       sortable: true,
       render: (value: number) => (
-        <span className="text-white text-sm">{value !== undefined && value !== null ? formatCurrency(value) : '-'}</span>
+        <span className="text-slate-900 text-sm">{value !== undefined && value !== null ? formatCurrency(value) : '-'}</span>
       ),
     },
     {
@@ -438,7 +438,7 @@ export default function CustomersPage() {
       label: T.currentOutstanding,
       sortable: true,
       render: (value: number) => (
-        <span className={value > 0 ? 'text-red-400 font-medium' : 'text-green-400'}>
+        <span className={value > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
           {formatCurrency(value)}
         </span>
       ),
@@ -472,15 +472,15 @@ export default function CustomersPage() {
             <Users className="w-5 h-5 text-[#f37121]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">{T.title}</h1>
-            <p className="text-gray-400 text-sm">{customers.length} {T.customers}</p>
+            <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
+            <p className="text-slate-500 text-sm">{customers.length} {T.customers}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={handleExportCustomers}
             disabled={customers.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-300 text-sm hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title={T.downloadExcel}
           >
             <Download className="w-4 h-4" />
@@ -488,7 +488,7 @@ export default function CustomersPage() {
           </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-300 text-sm hover:bg-gray-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm hover:bg-slate-100 transition-colors"
           >
             <Filter className="w-4 h-4" />
             {T.search}
@@ -515,14 +515,14 @@ export default function CustomersPage() {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1.5">{T.office}</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">{T.office}</label>
                   <select
                     value={officeFilter}
                     onChange={(e) => setOfficeFilter(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     <option value="">{T.office}</option>
                     {offices.map((o) => (
@@ -531,11 +531,11 @@ export default function CustomersPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1.5">{T.riskLevel}</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">{T.riskLevel}</label>
                   <select
                     value={riskFilter}
                     onChange={(e) => setRiskFilter(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     <option value="">{T.riskLevel}</option>
                     <option value="low">{T.low}</option>
@@ -544,11 +544,11 @@ export default function CustomersPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1.5">{T.creditTerm}</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">{T.creditTerm}</label>
                   <select
                     value={creditTermFilter}
                     onChange={(e) => setCreditTermFilter(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     <option value="">{T.creditTerm}</option>
                     <option value="15">15</option>
@@ -558,11 +558,11 @@ export default function CustomersPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1.5">{T.grade}</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">{T.grade}</label>
                   <select
                     value={gradeFilter}
                     onChange={(e) => setGradeFilter(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     <option value="">{T.grade}</option>
                     <option value="A">A</option>
@@ -572,11 +572,11 @@ export default function CustomersPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1.5">{T.clientStatus}</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">{T.clientStatus}</label>
                   <select
                     value={clientStatusFilter}
                     onChange={(e) => setClientStatusFilter(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     <option value="">{T.clientStatus}</option>
                     {Object.entries(clientStatusLabels).map(([value, label]) => (
@@ -601,8 +601,8 @@ export default function CustomersPage() {
       {/* Error State */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center gap-3">
-          <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
-          <p className="text-red-400 text-sm">{error}</p>
+          <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
+          <p className="text-red-600 text-sm">{error}</p>
         </div>
       )}
 
@@ -611,7 +611,7 @@ export default function CustomersPage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.1 }}
-        className="bg-gray-800/50 border border-gray-700 rounded-xl p-4"
+        className="bg-slate-50 border border-slate-200 rounded-xl p-4"
       >
         <DataTable
           columns={columns}
@@ -631,14 +631,14 @@ export default function CustomersPage() {
               {row.isStopped ? (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleUnstopCustomer(row._id); }}
-                  className="text-xs text-green-400 hover:text-green-300 font-medium transition-colors"
+                  className="text-xs text-green-600 hover:text-green-700 font-medium transition-colors"
                 >
                   {T.notStopped}
                 </button>
               ) : (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleStopCustomer(row._id); }}
-                  className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors"
+                  className="text-xs text-red-600 hover:text-red-700 font-medium transition-colors"
                 >
                   {T.stopped}
                 </button>
@@ -646,7 +646,7 @@ export default function CustomersPage() {
               {isSuperAdmin && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); setShowDeleteConfirm(true); }}
-                  className="text-xs text-red-500 hover:text-red-400 font-medium transition-colors flex items-center gap-1"
+                  className="text-xs text-red-500 hover:text-red-600 font-medium transition-colors flex items-center gap-1"
                 >
                   <Trash2 className="w-3 h-3" />
                   {T.delete}
@@ -672,24 +672,24 @@ export default function CustomersPage() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden"
+              className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden"
             >
               <div className="p-6 text-center space-y-4">
                 <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
-                  <Trash2 className="w-6 h-6 text-red-400" />
+                  <Trash2 className="w-6 h-6 text-red-600" />
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold text-lg">{T.deleteCustomer}</h3>
-                  <p className="text-gray-400 text-sm mt-2">
-                    {T.deleteConfirmGeneric} <span className="text-white font-medium">{deleteTarget.companyName}</span>
+                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">{T.deleteCustomer}</h3>
+                  <p className="text-slate-500 text-sm mt-2">
+                    {T.deleteConfirmGeneric} <span className="text-slate-900 font-medium">{deleteTarget.companyName}</span>
                   </p>
                 </div>
-                {error && <p className="text-red-400 text-sm">{error}</p>}
+                {error && <p className="text-red-600 text-sm">{error}</p>}
                 <div className="flex justify-center gap-3 pt-2">
                   <button
                     type="button"
                     onClick={() => { setShowDeleteConfirm(false); setDeleteTarget(null); }}
-                    className="px-4 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm hover:bg-gray-700 transition-colors"
+                    className="px-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm hover:bg-slate-100 transition-colors"
                   >
                     {T.cancel}
                   </button>
@@ -724,21 +724,21 @@ export default function CustomersPage() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-2xl bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden"
+              className="w-full max-w-2xl bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden"
             >
               {/* Modal Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-700">
+              <div className="flex items-center justify-between p-6 border-b border-slate-200">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-[#f37121]/20 flex items-center justify-center">
                     <Building2 className="w-4 h-4 text-[#f37121]" />
                   </div>
-                  <h2 className="text-lg font-semibold text-white">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-semibold text-white mb-3">
                     {editingCustomer ? T.editCustomer : T.addCustomer}
                   </h2>
                 </div>
                 <button
                   onClick={() => setShowModal(false)}
-                  className="text-gray-400 hover:text-white transition-colors"
+                  className="text-slate-500 hover:text-slate-900 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -748,31 +748,31 @@ export default function CustomersPage() {
               <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
                 {submitError && (
                   <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                    <p className="text-red-400 text-sm">{submitError}</p>
+                    <p className="text-red-600 text-sm">{submitError}</p>
                   </div>
                 )}
 
                 {/* Company Name & Customer Number */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.companyName}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.companyName}</label>
                     <input
                       type="text"
                       value={form.companyName}
                       onChange={(e) => updateField('companyName', e.target.value)}
-                      className={`w-full px-3 py-2.5 rounded-lg bg-gray-800 border text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.companyName ? 'border-red-500' : 'border-gray-700'}`}
+                      className={`w-full px-3 py-2.5 rounded-lg bg-white border text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.companyName ? 'border-red-500' : 'border-slate-200'}`}
                       placeholder={T.companyName}
                     />
-                    {formErrors.companyName && <p className="text-red-400 text-xs mt-1">{formErrors.companyName}</p>}
+                    {formErrors.companyName && <p className="text-red-600 text-xs mt-1">{formErrors.companyName}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.customerNumber}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.customerNumber}</label>
                     <input
                       type="text"
                       value={form.customerNumber}
                       onChange={(e) => updateField('customerNumber', e.target.value)}
                       disabled={editingCustomer !== null && user?.role !== 'super_admin'}
-                      className={`w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 disabled:opacity-50 disabled:cursor-not-allowed`}
+                      className={`w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 disabled:opacity-50 disabled:cursor-not-allowed`}
                       placeholder={T.customerNumber}
                     />
                   </div>
@@ -780,93 +780,93 @@ export default function CustomersPage() {
 
                 {/* Contact Person */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.contactPerson}</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.contactPerson}</label>
                   <input
                     type="text"
                     value={form.contactPerson}
                     onChange={(e) => updateField('contactPerson', e.target.value)}
-                    className={`w-full px-3 py-2.5 rounded-lg bg-gray-800 border text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.contactPerson ? 'border-red-500' : 'border-gray-700'}`}
+                    className={`w-full px-3 py-2.5 rounded-lg bg-white border text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.contactPerson ? 'border-red-500' : 'border-slate-200'}`}
                     placeholder={T.contactPerson}
                   />
-                  {formErrors.contactPerson && <p className="text-red-400 text-xs mt-1">{formErrors.contactPerson}</p>}
+                  {formErrors.contactPerson && <p className="text-red-600 text-xs mt-1">{formErrors.contactPerson}</p>}
                 </div>
 
                 {/* Email & Phone */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.email}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.email}</label>
                     <input
                       type="email"
                       value={form.email}
                       onChange={(e) => updateField('email', e.target.value)}
-                      className={`w-full px-3 py-2.5 rounded-lg bg-gray-800 border text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.email ? 'border-red-500' : 'border-gray-700'}`}
+                      className={`w-full px-3 py-2.5 rounded-lg bg-white border text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.email ? 'border-red-500' : 'border-slate-200'}`}
                       placeholder="email@example.com"
                     />
-                    {formErrors.email && <p className="text-red-400 text-xs mt-1">{formErrors.email}</p>}
+                    {formErrors.email && <p className="text-red-600 text-xs mt-1">{formErrors.email}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.phone}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.phone}</label>
                     <input
                       type="tel"
                       value={form.phone}
                       onChange={(e) => updateField('phone', e.target.value)}
-                      className={`w-full px-3 py-2.5 rounded-lg bg-gray-800 border text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.phone ? 'border-red-500' : 'border-gray-700'}`}
+                      className={`w-full px-3 py-2.5 rounded-lg bg-white border text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.phone ? 'border-red-500' : 'border-slate-200'}`}
                       placeholder="+1 234 567 890"
                     />
-                    {formErrors.phone && <p className="text-red-400 text-xs mt-1">{formErrors.phone}</p>}
+                    {formErrors.phone && <p className="text-red-600 text-xs mt-1">{formErrors.phone}</p>}
                   </div>
                 </div>
 
                 {/* Credit Term & Credit Limit */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.creditTerm}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.creditTerm}</label>
                     <select
                       value={form.creditTerm}
                       onChange={(e) => updateField('creditTerm', Number(e.target.value))}
-                      className={`w-full px-3 py-2.5 rounded-lg bg-gray-800 border text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.creditTerm ? 'border-red-500' : 'border-gray-700'}`}
+                      className={`w-full px-3 py-2.5 rounded-lg bg-white border text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.creditTerm ? 'border-red-500' : 'border-slate-200'}`}
                     >
                       <option value={15}>15</option>
                       <option value={30}>30</option>
                       <option value={45}>45</option>
                       <option value={60}>60</option>
                     </select>
-                    {formErrors.creditTerm && <p className="text-red-400 text-xs mt-1">{formErrors.creditTerm}</p>}
+                    {formErrors.creditTerm && <p className="text-red-600 text-xs mt-1">{formErrors.creditTerm}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.creditLimit}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.creditLimit}</label>
                     <input
                       type="number"
                       value={form.creditLimit || ''}
                       onChange={(e) => updateField('creditLimit', Number(e.target.value))}
-                      className={`w-full px-3 py-2.5 rounded-lg bg-gray-800 border text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.creditLimit ? 'border-red-500' : 'border-gray-700'}`}
+                      className={`w-full px-3 py-2.5 rounded-lg bg-white border text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${formErrors.creditLimit ? 'border-red-500' : 'border-slate-200'}`}
                       placeholder="0.00"
                       min="0"
                       step="0.01"
                     />
-                    {formErrors.creditLimit && <p className="text-red-400 text-xs mt-1">{formErrors.creditLimit}</p>}
+                    {formErrors.creditLimit && <p className="text-red-600 text-xs mt-1">{formErrors.creditLimit}</p>}
                   </div>
                 </div>
 
                 {/* Office & Sales Manager */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.office}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.office}</label>
                     <input
                       type="text"
                       value={form.office}
                       onChange={(e) => updateField('office', e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                       placeholder={T.office}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.salesManager}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.salesManager}</label>
                     <input
                       type="text"
                       value={form.salesManager}
                       onChange={(e) => updateField('salesManager', e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                       placeholder={T.salesManager}
                     />
                   </div>
@@ -875,11 +875,11 @@ export default function CustomersPage() {
                 {/* Grade & Client Status */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.grade}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.grade}</label>
                     <select
                       value={form.grade}
                       onChange={(e) => updateField('grade', e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     >
                       <option value="A">A</option>
                       <option value="B">B</option>
@@ -888,11 +888,11 @@ export default function CustomersPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.clientStatus}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.clientStatus}</label>
                     <select
                       value={form.clientStatus}
                       onChange={(e) => updateField('clientStatus', e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     >
                       {Object.entries(clientStatusLabels).map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
@@ -904,34 +904,34 @@ export default function CustomersPage() {
                 {/* Client Login Section */}
                 {!editingCustomer && (
                   <>
-                    <div className="border-t border-gray-700 pt-4 mt-4">
-                      <h3 className="text-sm font-medium text-gray-300 mb-3">{T.clientEmail}</h3>
+                    <div className="border-t border-slate-200 pt-4 mt-4">
+                      <h3 className="text-sm font-medium text-slate-700 mb-3">{T.clientEmail}</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.clientEmail}</label>
+                          <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.clientEmail}</label>
                           <input
                             type="email"
                             value={form.clientEmail}
                             onChange={(e) => updateField('clientEmail', e.target.value)}
-                            className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                             placeholder="client@example.com"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1.5">{T.password}</label>
+                          <label className="block text-sm font-medium text-slate-700 mb-1.5">{T.password}</label>
                           <div className="relative">
                             <input
                               type={showClientPassword ? 'text' : 'password'}
                               value={form.password}
                               onChange={(e) => updateField('password', e.target.value)}
-                              className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
+                              className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
                               placeholder={T.password}
                             />
                             <button
                               type="button"
                               aria-label={showClientPassword ? 'Hide password' : 'Show password'}
                               onClick={() => setShowClientPassword(!showClientPassword)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
                             >
                               {showClientPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
@@ -943,11 +943,11 @@ export default function CustomersPage() {
                 )}
 
                 {/* Submit */}
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="px-4 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm hover:bg-gray-700 transition-colors"
+                    className="px-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm hover:bg-slate-100 transition-colors"
                   >
                     {T.cancel}
                   </button>

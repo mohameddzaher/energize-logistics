@@ -93,9 +93,9 @@ const getPaymentMethods = (T: any): Record<string, string> => ({
 });
 
 const STATUS_STYLES: Record<string, string> = {
-  pending: 'bg-yellow-500/20 text-yellow-400',
-  partial: 'bg-blue-500/20 text-blue-400',
-  overdue: 'bg-red-500/20 text-red-400',
+  pending: 'bg-yellow-500/20 text-yellow-700',
+  partial: 'bg-blue-500/20 text-blue-600',
+  overdue: 'bg-red-500/20 text-red-600',
 };
 
 // --------------- Helpers ---------------
@@ -464,7 +464,7 @@ export default function PaymentsPage() {
     {
       key: 'paymentDate',
       label: T.date,
-      render: (val: string) => <span className="text-white">{formatDate(val)}</span>,
+      render: (val: string) => <span className="text-slate-900">{formatDate(val)}</span>,
     },
     {
       key: 'invoice',
@@ -486,14 +486,14 @@ export default function PaymentsPage() {
       key: 'amount',
       label: T.amount,
       render: (val: number) => (
-        <span className="text-green-400 font-medium">{formatCurrency(val)}</span>
+        <span className="text-green-600 font-medium">{formatCurrency(val)}</span>
       ),
     },
     {
       key: 'paymentMethod',
       label: T.paymentMethod,
       render: (val: string) => (
-        <span className="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-300">
+        <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">
           {PAYMENT_METHODS[val] || val}
         </span>
       ),
@@ -502,7 +502,7 @@ export default function PaymentsPage() {
       key: 'notes',
       label: T.notes,
       render: (val: string) => (
-        <span className="text-gray-400 truncate max-w-[200px] block">{val || '-'}</span>
+        <span className="text-slate-500 truncate max-w-[200px] block">{val || '-'}</span>
       ),
     },
     {
@@ -539,11 +539,11 @@ export default function PaymentsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <CreditCard className="w-6 h-6 text-[#f37121]" />
             {T.title}
           </h1>
-          <p className="text-gray-400 text-sm mt-1">{total} {T.title.toLowerCase()}</p>
+          <p className="text-slate-500 text-sm mt-1">{total} {T.title.toLowerCase()}</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -552,7 +552,7 @@ export default function PaymentsPage() {
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               hasActiveFilters
                 ? 'bg-[#f37121]/20 text-[#f37121] border border-[#f37121]/50'
-                : 'bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700'
+                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
             }`}
           >
             <Filter className="w-4 h-4" />
@@ -585,7 +585,7 @@ export default function PaymentsPage() {
               );
             }}
             disabled={payments.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" />
             {T.downloadExcel}
@@ -610,9 +610,9 @@ export default function PaymentsPage() {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-medium text-sm">{T.search} {T.title}</h3>
+                <h3 className="text-slate-900 font-medium text-sm">{T.search} {T.title}</h3>
                 {hasActiveFilters && (
                   <button
                     type="button"
@@ -625,7 +625,7 @@ export default function PaymentsPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <label htmlFor="filter-date-from" className="block text-gray-400 text-xs mb-1.5">
+                  <label htmlFor="filter-date-from" className="block text-slate-500 text-xs mb-1.5">
                     <Calendar className="w-3 h-3 inline mr-1" />
                     {T.from}
                   </label>
@@ -637,11 +637,11 @@ export default function PaymentsPage() {
                       setDateFrom(e.target.value);
                       setPage(1);
                     }}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   />
                 </div>
                 <div>
-                  <label htmlFor="filter-date-to" className="block text-gray-400 text-xs mb-1.5">
+                  <label htmlFor="filter-date-to" className="block text-slate-500 text-xs mb-1.5">
                     <Calendar className="w-3 h-3 inline mr-1" />
                     {T.to}
                   </label>
@@ -653,7 +653,7 @@ export default function PaymentsPage() {
                       setDateTo(e.target.value);
                       setPage(1);
                     }}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   />
                 </div>
               </div>
@@ -664,7 +664,7 @@ export default function PaymentsPage() {
 
       {/* Error */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-600 text-sm">
           {error}
         </div>
       )}
@@ -681,7 +681,7 @@ export default function PaymentsPage() {
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); setShowDeleteConfirm(true); }}
-              className="text-xs text-red-500 hover:text-red-400 font-medium transition-colors flex items-center gap-1"
+              className="text-xs text-red-500 hover:text-red-600 font-medium transition-colors flex items-center gap-1"
             >
               <Trash2 className="w-3 h-3" />
               {T.delete}
@@ -693,7 +693,7 @@ export default function PaymentsPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-gray-400 text-sm">
+          <p className="text-slate-500 text-sm">
             {lang === 'ar' ? `صفحة ${page} من ${totalPages} (${total})` : `Page ${page} of ${totalPages} (${total} payments)`}
           </p>
           <div className="flex items-center gap-2">
@@ -701,7 +701,7 @@ export default function PaymentsPage() {
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
             >
               {lang === 'ar' ? 'السابق' : 'Previous'}
             </button>
@@ -724,7 +724,7 @@ export default function PaymentsPage() {
                   className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
                     page === pageNum
                       ? 'bg-[#f37121] text-white'
-                      : 'bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700'
+                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   {pageNum}
@@ -735,7 +735,7 @@ export default function PaymentsPage() {
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
             >
               {lang === 'ar' ? 'التالي' : 'Next'}
             </button>
@@ -760,22 +760,22 @@ export default function PaymentsPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
                 <div className="text-center space-y-4">
                   <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
-                    <Trash2 className="w-6 h-6 text-red-400" />
+                    <Trash2 className="w-6 h-6 text-red-600" />
                   </div>
                   <div>
-                    <h3 className="text-white font-semibold text-lg">{T.deletePayment}</h3>
-                    <p className="text-gray-400 text-sm mt-2">
-                      {T.deletePayment}: <span className="text-white font-medium">{formatCurrency(deleteTarget.amount)}</span> - {T.invoice} <span className="text-[#f37121] font-medium">{deleteTarget.invoice?.invoiceNumber || '-'}</span>
+                    <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">{T.deletePayment}</h3>
+                    <p className="text-slate-500 text-sm mt-2">
+                      {T.deletePayment}: <span className="text-slate-900 font-medium">{formatCurrency(deleteTarget.amount)}</span> - {T.invoice} <span className="text-[#f37121] font-medium">{deleteTarget.invoice?.invoiceNumber || '-'}</span>
                     </p>
                   </div>
                   <div className="flex gap-3">
                     <button
                       type="button"
                       onClick={() => { setShowDeleteConfirm(false); setDeleteTarget(null); }}
-                      className="flex-1 px-4 py-2.5 rounded-lg bg-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-600 transition-colors"
+                      className="flex-1 px-4 py-2.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 transition-colors"
                     >
                       {T.cancel}
                     </button>
@@ -820,12 +820,12 @@ export default function PaymentsPage() {
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
               <div
-                className="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col"
+                className="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Modal Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 shrink-0">
-                  <h2 className="text-white font-semibold text-lg flex items-center gap-2">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg flex items-center gap-2 mb-3">
                     <CreditCard className="w-5 h-5 text-[#f37121]" />
                     {T.addPayment}
                   </h2>
@@ -833,7 +833,7 @@ export default function PaymentsPage() {
                     type="button"
                     onClick={() => setShowPaymentModal(false)}
                     aria-label="Close payment modal"
-                    className="text-gray-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-gray-700"
+                    className="text-slate-500 hover:text-slate-900 transition-colors p-1 rounded-lg hover:bg-slate-100"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -846,7 +846,7 @@ export default function PaymentsPage() {
                     <motion.div
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm"
+                      className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm"
                     >
                       {paymentError}
                     </motion.div>
@@ -854,22 +854,22 @@ export default function PaymentsPage() {
 
                   {/* Step 1: Customer Selection */}
                   <div>
-                    <label className="block text-gray-400 text-xs font-medium mb-1.5 uppercase tracking-wider">
+                    <label className="block text-slate-500 text-xs font-medium mb-1.5 uppercase tracking-wider">
                       {T.customer} *
                     </label>
                     <div className="relative" ref={customerDropdownRef}>
                       <button
                         type="button"
                         onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
-                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 transition-colors hover:border-gray-600"
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 transition-colors hover:border-slate-300"
                       >
-                        <span className={selectedCustomerObj ? 'text-white' : 'text-gray-500'}>
+                        <span className={selectedCustomerObj ? 'text-slate-900' : 'text-slate-500'}>
                           {selectedCustomerObj
                             ? selectedCustomerObj.companyName
                             : T.selectCustomer + '...'}
                         </span>
                         <ChevronDown
-                          className={`w-4 h-4 text-gray-400 transition-transform ${
+                          className={`w-4 h-4 text-slate-500 transition-transform ${
                             showCustomerDropdown ? 'rotate-180' : ''
                           }`}
                         />
@@ -882,26 +882,26 @@ export default function PaymentsPage() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -5 }}
                             transition={{ duration: 0.15 }}
-                            className="absolute z-10 left-0 right-0 mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden"
+                            className="absolute z-10 left-0 right-0 mt-1 bg-slate-50 border border-slate-200 rounded-lg shadow-xl overflow-hidden"
                           >
                             {/* Search input */}
-                            <div className="p-2 border-b border-gray-700">
+                            <div className="p-2 border-b border-slate-200">
                               <div className="relative">
-                                <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                                <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
                                 <input
                                   type="text"
                                   value={customerSearch}
                                   onChange={(e) => setCustomerSearch(e.target.value)}
                                   placeholder={`${T.search}...`}
                                   autoFocus
-                                  className="w-full pl-8 pr-3 py-2 rounded-md bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#f37121]/50"
+                                  className="w-full pl-8 pr-3 py-2 rounded-md bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[#f37121]/50"
                                 />
                               </div>
                             </div>
                             {/* Options list */}
                             <div className="max-h-64 overflow-y-auto">
                               {filteredCustomers.length === 0 ? (
-                                <div className="px-3 py-4 text-center text-gray-500 text-sm">
+                                <div className="px-3 py-4 text-center text-slate-500 text-sm">
                                   {T.noDataFound}
                                 </div>
                               ) : (
@@ -910,15 +910,15 @@ export default function PaymentsPage() {
                                     key={c._id}
                                     type="button"
                                     onClick={() => handleSelectCustomer(c._id)}
-                                    className={`w-full text-left px-3 py-2.5 text-sm hover:bg-gray-800 transition-colors flex items-center justify-between ${
+                                    className={`w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 transition-colors flex items-center justify-between ${
                                       selectedCustomer === c._id
                                         ? 'bg-[#f37121]/10 text-[#f37121]'
-                                        : 'text-gray-300'
+                                        : 'text-slate-700'
                                     }`}
                                   >
                                     <span>{c.companyName}</span>
                                     {c.customerNumber && (
-                                      <span className="text-gray-500 text-xs">
+                                      <span className="text-slate-500 text-xs">
                                         {c.customerNumber}
                                       </span>
                                     )}
@@ -941,26 +941,26 @@ export default function PaymentsPage() {
                     >
                       {/* Invoice section header */}
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <h3 className="text-white font-medium text-sm uppercase tracking-wider">
+                        <h3 className="text-slate-900 font-medium text-sm uppercase tracking-wider">
                           {T.invoice}
                         </h3>
                         <div className="flex items-center gap-2 flex-wrap">
                           {/* Search by invoice number */}
                           <div className="relative">
-                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
                             <input
                               type="text"
                               value={invoiceSearch}
                               onChange={(e) => setInvoiceSearch(e.target.value)}
                               placeholder={`${T.search}...`}
-                              className="pl-8 pr-3 py-1.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#f37121]/50 w-40"
+                              className="pl-8 pr-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[#f37121]/50 w-40"
                             />
                           </div>
                           {/* Select All / Deselect All */}
                           <button
                             type="button"
                             onClick={handleSelectAll}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-700 text-gray-300 text-xs hover:bg-gray-600 transition-colors"
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs hover:bg-slate-200 transition-colors"
                           >
                             <CheckSquare className="w-3.5 h-3.5" />
                             {lang === 'ar' ? 'تحديد الكل' : 'Select All'}
@@ -968,7 +968,7 @@ export default function PaymentsPage() {
                           <button
                             type="button"
                             onClick={handleDeselectAll}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-700 text-gray-300 text-xs hover:bg-gray-600 transition-colors"
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs hover:bg-slate-200 transition-colors"
                           >
                             <Square className="w-3.5 h-3.5" />
                             {lang === 'ar' ? 'إلغاء التحديد' : 'Deselect All'}
@@ -999,14 +999,14 @@ export default function PaymentsPage() {
                             className="overflow-hidden"
                           >
                             <div className="bg-[#f37121]/5 border border-[#f37121]/20 rounded-lg p-4">
-                              <p className="text-gray-300 text-xs mb-3">
+                              <p className="text-slate-700 text-xs mb-3">
                                 {lang === 'ar'
                                   ? 'أدخل المبلغ الإجمالي. سيتم توزيعه تلقائياً على أقدم الفواتير أولاً (FIFO) ومعالجة الدفع فوراً.'
                                   : 'Enter a total amount. The backend will automatically distribute it across the oldest invoices first (FIFO) and process the payment immediately.'}
                               </p>
                               <div className="flex items-end gap-3">
                                 <div className="flex-1">
-                                  <label className="block text-gray-400 text-xs mb-1">
+                                  <label className="block text-slate-500 text-xs mb-1">
                                     {T.amount}
                                   </label>
                                   <input
@@ -1016,7 +1016,7 @@ export default function PaymentsPage() {
                                     value={fifoAmount}
                                     onChange={(e) => setFifoAmount(e.target.value)}
                                     placeholder="0.00"
-                                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                                   />
                                 </div>
                                 <button
@@ -1041,43 +1041,43 @@ export default function PaymentsPage() {
                       {loadingInvoices ? (
                         <div className="flex items-center justify-center py-12">
                           <div className="w-6 h-6 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />
-                          <span className="ml-3 text-gray-400 text-sm">{lang === 'ar' ? 'جاري التحميل...' : 'Loading invoices...'}</span>
+                          <span className="ml-3 text-slate-500 text-sm">{lang === 'ar' ? 'جاري التحميل...' : 'Loading invoices...'}</span>
                         </div>
                       ) : customerInvoices.length === 0 ? (
                         <div className="text-center py-12">
-                          <p className="text-gray-500 text-sm">
+                          <p className="text-slate-500 text-sm">
                             {T.noPayments}
                           </p>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto rounded-lg border border-gray-700">
+                        <div className="overflow-x-auto rounded-lg border border-slate-200">
                           <table className="w-full">
                             <thead>
-                              <tr className="bg-gray-900 border-b border-gray-700">
-                                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-10">
+                              <tr className="bg-slate-900 border-b border-slate-200">
+                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-10">
                                   {/* Checkbox col */}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.invoice} #
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.amount}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.invoiceBalance}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.status}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.date}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.amount}
                                 </th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-700/50">
+                            <tbody className="divide-y divide-slate-200">
                               {filteredInvoices.map((inv) => {
                                 const isSelected = selectedInvoices[inv._id] !== undefined;
                                 const allocatedAmt = selectedInvoices[inv._id] ?? '';
@@ -1087,7 +1087,7 @@ export default function PaymentsPage() {
                                     className={`transition-colors ${
                                       isSelected
                                         ? 'bg-[#f37121]/5'
-                                        : 'bg-gray-800/50 hover:bg-gray-700/50'
+                                        : 'bg-slate-50 hover:bg-slate-100'
                                     }`}
                                   >
                                     {/* Checkbox */}
@@ -1097,7 +1097,7 @@ export default function PaymentsPage() {
                                         onClick={() =>
                                           handleToggleInvoice(inv._id, inv.balance)
                                         }
-                                        className="text-gray-400 hover:text-[#f37121] transition-colors"
+                                        className="text-slate-500 hover:text-[#f37121] transition-colors"
                                       >
                                         {isSelected ? (
                                           <CheckSquare className="w-4.5 h-4.5 text-[#f37121]" />
@@ -1113,12 +1113,12 @@ export default function PaymentsPage() {
                                       </span>
                                     </td>
                                     {/* Total Amount */}
-                                    <td className="px-3 py-2.5 text-sm text-gray-300">
+                                    <td className="px-3 py-2.5 text-sm text-slate-700">
                                       {formatCurrency(inv.amount)}
                                     </td>
                                     {/* Balance */}
                                     <td className="px-3 py-2.5 text-sm">
-                                      <span className="text-orange-400 font-medium">
+                                      <span className="text-orange-600 font-medium">
                                         {formatCurrency(inv.balance)}
                                       </span>
                                     </td>
@@ -1127,14 +1127,14 @@ export default function PaymentsPage() {
                                       <span
                                         className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                                           STATUS_STYLES[inv.status] ||
-                                          'bg-gray-700 text-gray-300'
+                                          'bg-slate-100 text-slate-700'
                                         }`}
                                       >
                                         {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                                       </span>
                                     </td>
                                     {/* Due Date */}
-                                    <td className="px-3 py-2.5 text-sm text-gray-300">
+                                    <td className="px-3 py-2.5 text-sm text-slate-700">
                                       {formatDate(inv.dueDate)}
                                     </td>
                                     {/* Pay Amount Input */}
@@ -1153,10 +1153,10 @@ export default function PaymentsPage() {
                                             )
                                           }
                                           aria-label={`Pay amount for ${inv.invoiceNumber}`}
-                                          className="w-28 px-2.5 py-1.5 rounded-md bg-gray-900 border border-[#f37121]/40 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                                          className="w-28 px-2.5 py-1.5 rounded-md bg-slate-50 border border-[#f37121]/40 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                                         />
                                       ) : (
-                                        <span className="text-gray-600 text-sm">--</span>
+                                        <span className="text-slate-600 text-sm">--</span>
                                       )}
                                     </td>
                                   </tr>
@@ -1166,7 +1166,7 @@ export default function PaymentsPage() {
                                 <tr>
                                   <td
                                     colSpan={7}
-                                    className="px-3 py-6 text-center text-gray-500 text-sm"
+                                    className="px-3 py-6 text-center text-slate-500 text-sm"
                                   >
                                     {T.noDataFound}
                                   </td>
@@ -1182,15 +1182,15 @@ export default function PaymentsPage() {
                         <motion.div
                           initial={{ opacity: 0, y: 5 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="bg-gray-900/70 border border-gray-700 rounded-lg p-4 flex items-center justify-between"
+                          className="bg-slate-100 border border-slate-200 rounded-lg p-4 flex items-center justify-between"
                         >
-                          <div className="text-sm text-gray-300">
-                            <span className="text-white font-medium">{selectedCount}</span>{' '}
+                          <div className="text-sm text-slate-700">
+                            <span className="text-slate-900 font-medium">{selectedCount}</span>{' '}
                             {T.invoice}{selectedCount !== 1 ? (lang === 'ar' ? '' : 's') : ''}
                           </div>
                           <div className="text-sm">
-                            <span className="text-gray-400 mr-2">{T.amount}:</span>
-                            <span className="text-green-400 font-bold text-base">
+                            <span className="text-slate-500 mr-2">{T.amount}:</span>
+                            <span className="text-green-600 font-bold text-base">
                               {formatCurrency(totalAmount)}
                             </span>
                           </div>
@@ -1209,7 +1209,7 @@ export default function PaymentsPage() {
                     >
                       {/* Payment Date */}
                       <div>
-                        <label htmlFor="modal-payment-date" className="block text-gray-400 text-xs font-medium mb-1.5 uppercase tracking-wider">
+                        <label htmlFor="modal-payment-date" className="block text-slate-500 text-xs font-medium mb-1.5 uppercase tracking-wider">
                           {T.paymentDate} *
                         </label>
                         <input
@@ -1217,20 +1217,20 @@ export default function PaymentsPage() {
                           type="date"
                           value={paymentDate}
                           onChange={(e) => setPaymentDate(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                         />
                       </div>
 
                       {/* Payment Method */}
                       <div>
-                        <label htmlFor="modal-payment-method" className="block text-gray-400 text-xs font-medium mb-1.5 uppercase tracking-wider">
+                        <label htmlFor="modal-payment-method" className="block text-slate-500 text-xs font-medium mb-1.5 uppercase tracking-wider">
                           {T.paymentMethod} *
                         </label>
                         <select
                           id="modal-payment-method"
                           value={paymentMethod}
                           onChange={(e) => setPaymentMethod(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                         >
                           {Object.entries(PAYMENT_METHODS).map(([value, label]) => (
                             <option key={value} value={value}>
@@ -1242,7 +1242,7 @@ export default function PaymentsPage() {
 
                       {/* Notes */}
                       <div className="sm:col-span-1">
-                        <label className="block text-gray-400 text-xs font-medium mb-1.5 uppercase tracking-wider">
+                        <label className="block text-slate-500 text-xs font-medium mb-1.5 uppercase tracking-wider">
                           {T.notes}
                         </label>
                         <textarea
@@ -1250,7 +1250,7 @@ export default function PaymentsPage() {
                           onChange={(e) => setNotes(e.target.value)}
                           rows={1}
                           placeholder={`${T.notes}...`}
-                          className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
+                          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
                         />
                       </div>
                     </motion.div>
@@ -1258,11 +1258,11 @@ export default function PaymentsPage() {
                 </div>
 
                 {/* Modal Footer */}
-                <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-700 shrink-0">
+                <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-200 shrink-0">
                   <button
                     type="button"
                     onClick={() => setShowPaymentModal(false)}
-                    className="px-5 py-2.5 rounded-lg bg-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-600 transition-colors"
+                    className="px-5 py-2.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 transition-colors"
                   >
                     {T.cancel}
                   </button>

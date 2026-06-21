@@ -102,22 +102,22 @@ export default function FuelAnalysisPage() {
     return { total, active, dieselCount, gasolineCount, overLimit, monthlyAccounts, openedAccounts };
   }, [filtered]);
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">{t.loading}</div>;
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{t.loading}</div>;
 
   const kpiCards = [
-    { label: t.totalVehicles, value: kpis.total, icon: Truck, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-    { label: t.active, value: kpis.active, icon: Activity, color: 'text-green-400', bg: 'bg-green-400/10' },
-    { label: t.diesel, value: kpis.dieselCount, icon: Fuel, color: 'text-amber-400', bg: 'bg-amber-400/10' },
-    { label: t.gasoline, value: kpis.gasolineCount, icon: Droplets, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
-    { label: t.overLimit, value: kpis.overLimit, icon: AlertTriangle, color: 'text-red-400', bg: 'bg-red-400/10' },
-    { label: t.monthlyAccounts, value: kpis.monthlyAccounts, icon: Gauge, color: 'text-purple-400', bg: 'bg-purple-400/10' },
-    { label: t.opened, value: kpis.openedAccounts, icon: Building2, color: 'text-indigo-400', bg: 'bg-indigo-400/10' },
+    { label: t.totalVehicles, value: kpis.total, icon: Truck, color: 'text-blue-600', bg: 'bg-blue-400/10' },
+    { label: t.active, value: kpis.active, icon: Activity, color: 'text-green-600', bg: 'bg-green-400/10' },
+    { label: t.diesel, value: kpis.dieselCount, icon: Fuel, color: 'text-amber-700', bg: 'bg-amber-400/10' },
+    { label: t.gasoline, value: kpis.gasolineCount, icon: Droplets, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
+    { label: t.overLimit, value: kpis.overLimit, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-400/10' },
+    { label: t.monthlyAccounts, value: kpis.monthlyAccounts, icon: Gauge, color: 'text-purple-600', bg: 'bg-purple-400/10' },
+    { label: t.opened, value: kpis.openedAccounts, icon: Building2, color: 'text-indigo-600', bg: 'bg-indigo-400/10' },
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{t.title}</h1>
         {filtered.length > 0 && (
           <button type="button" onClick={() => exportToExcel(filtered.map((r, i) => ({
             num: r.num || i + 1, branch: r.branch || '', vehicle: r.vehicle || r.vehicleId, model: r.model || '',
@@ -126,36 +126,36 @@ export default function FuelAnalysisPage() {
             { header: '#', key: 'num' }, { header: t.branch, key: 'branch' }, { header: t.vehicle, key: 'vehicle' },
             { header: t.model, key: 'model' }, { header: t.year, key: 'year' }, { header: t.fuelType, key: 'fuel' },
             { header: t.consumption, key: 'consumption' }, { header: t.status, key: 'status' }, { header: t.category, key: 'category' },
-          ], 'fuel-analysis', 'Fuel')} className="px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
+          ], 'fuel-analysis', 'Fuel')} className="px-3 py-2 bg-emerald-500/20 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
             <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
           </button>
         )}
       </div>
 
       {/* Filters */}
-      <div className="sticky top-0 z-20 bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-wrap gap-3 items-center">
+      <div className="sticky top-0 z-20 bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-sm">
         <div className="relative">
-          <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-gray-500 pointer-events-none" />
+          <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-slate-500 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.search}
-            className="bg-gray-700 text-gray-200 text-sm rounded-lg pl-8 pr-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none min-w-[200px]" />
+            className="bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none min-w-[200px]" />
         </div>
-        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allBranches}</option>
           {branches.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
-        <select value={fuelFilter} onChange={e => setFuelFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={fuelFilter} onChange={e => setFuelFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allFuel}</option>
           {fuelTypes.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allStatus}</option>
           {statuses.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allCategories}</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select value={alertFilter} onChange={e => setAlertFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={alertFilter} onChange={e => setAlertFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allAlerts}</option>
           <option value="critical">{t.critical}</option>
           <option value="warning">{t.warning}</option>
@@ -164,7 +164,7 @@ export default function FuelAnalysisPage() {
       </div>
 
       {data.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 text-gray-500 gap-3">
+        <div className="flex flex-col items-center justify-center h-64 text-slate-500 gap-3">
           <Filter className="w-12 h-12" />
           <p className="text-lg">{t.noData}</p>
         </div>
@@ -173,23 +173,23 @@ export default function FuelAnalysisPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
             {kpiCards.map(c => (
-              <div key={c.label} className={`${c.bg} border border-gray-700 rounded-xl p-4 flex flex-col items-center gap-1`}>
+              <div key={c.label} className={`${c.bg} border border-slate-200 rounded-xl p-4 flex flex-col items-center gap-1`}>
                 <c.icon className={`w-6 h-6 ${c.color}`} />
                 <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
-                <p className="text-gray-400 text-[10px] text-center">{c.label}</p>
+                <p className="text-slate-500 text-[10px] text-center">{c.label}</p>
               </div>
             ))}
           </div>
 
           {/* Consumption Alerts */}
           {alertRows.length > 0 && (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-400" /> {t.alerts} ({alertRows.length})
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-700" /> {t.alerts} ({alertRows.length})
               </h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-gray-400 border-b border-gray-700">
+                  <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
                     <th className="text-left py-2 px-2">{t.vehicle}</th>
                     <th className="text-left py-2 px-2">{t.branch}</th>
                     <th className="text-left py-2 px-2">{t.model}</th>
@@ -203,15 +203,15 @@ export default function FuelAnalysisPage() {
                       const pct = getConsumptionPct(r);
                       const level = getAlertLevel(r);
                       return (
-                        <tr key={i} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                          <td className="py-2 px-2 text-white font-medium">{r.vehicle || r.vehicleId}</td>
-                          <td className="py-2 px-2 text-gray-300">{r.branch || '-'}</td>
-                          <td className="py-2 px-2 text-gray-300">{r.model || '-'}</td>
-                          <td className="py-2 px-2 text-right text-gray-300">{Number(r.currentRate || 0).toFixed(1)}</td>
-                          <td className="py-2 px-2 text-right text-gray-300">{Number(r.maxConsump || 0).toFixed(1)}</td>
-                          <td className={`py-2 px-2 text-right font-bold ${level === 'critical' ? 'text-red-400' : 'text-amber-400'}`}>{pct.toFixed(0)}%</td>
+                        <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">
+                          <td className="py-2 px-2 text-slate-900 font-medium">{r.vehicle || r.vehicleId}</td>
+                          <td className="py-2 px-2 text-slate-700">{r.branch || '-'}</td>
+                          <td className="py-2 px-2 text-slate-700">{r.model || '-'}</td>
+                          <td className="py-2 px-2 text-right text-slate-700">{Number(r.currentRate || 0).toFixed(1)}</td>
+                          <td className="py-2 px-2 text-right text-slate-700">{Number(r.maxConsump || 0).toFixed(1)}</td>
+                          <td className={`py-2 px-2 text-right font-bold ${level === 'critical' ? 'text-red-600' : 'text-amber-700'}`}>{pct.toFixed(0)}%</td>
                           <td className="py-2 px-2 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-xs ${level === 'critical' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                            <span className={`px-2 py-0.5 rounded-full text-xs ${level === 'critical' ? 'bg-red-500/20 text-red-600' : 'bg-amber-500/20 text-amber-700'}`}>
                               {level === 'critical' ? t.critical : t.warning}
                             </span>
                           </td>
@@ -225,11 +225,11 @@ export default function FuelAnalysisPage() {
           )}
 
           {/* Vehicle Fuel Table */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <h3 className="text-white font-semibold mb-3">{t.vehicleFuelTable} ({filtered.length})</h3>
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.vehicleFuelTable} ({filtered.length})</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="text-gray-400 border-b border-gray-700">
+                <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
                   <th className="text-left py-2 px-2">{t.num}</th>
                   <th className="text-left py-2 px-2">{t.branch}</th>
                   <th className="text-left py-2 px-2">{t.vehicle}</th>
@@ -245,31 +245,31 @@ export default function FuelAnalysisPage() {
                     const pct = getConsumptionPct(r);
                     const level = getAlertLevel(r);
                     return (
-                      <tr key={i} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                        <td className="py-2 px-2 text-gray-500">{r.num || i + 1}</td>
-                        <td className="py-2 px-2 text-gray-300">{r.branch || '-'}</td>
-                        <td className="py-2 px-2 text-white font-medium">{r.vehicle || r.vehicleId}</td>
-                        <td className="py-2 px-2 text-gray-300">{r.model || '-'}</td>
-                        <td className="py-2 px-2 text-gray-300">{r.year || '-'}</td>
-                        <td className="py-2 px-2 text-gray-300">{r.fuel || '-'}</td>
+                      <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">
+                        <td className="py-2 px-2 text-slate-500">{r.num || i + 1}</td>
+                        <td className="py-2 px-2 text-slate-700">{r.branch || '-'}</td>
+                        <td className="py-2 px-2 text-slate-900 font-medium">{r.vehicle || r.vehicleId}</td>
+                        <td className="py-2 px-2 text-slate-700">{r.model || '-'}</td>
+                        <td className="py-2 px-2 text-slate-700">{r.year || '-'}</td>
+                        <td className="py-2 px-2 text-slate-700">{r.fuel || '-'}</td>
                         <td className="py-2 px-2 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <div className="w-16 bg-gray-700 rounded-full h-2 overflow-hidden">
+                            <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden">
                               <div className={`h-full rounded-full ${level === 'critical' ? 'bg-red-500' : level === 'warning' ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                             </div>
-                            <span className={`text-xs font-medium ${level === 'critical' ? 'text-red-400' : level === 'warning' ? 'text-amber-400' : 'text-green-400'}`}>{pct > 0 ? pct.toFixed(0) + '%' : '-'}</span>
+                            <span className={`text-xs font-medium ${level === 'critical' ? 'text-red-600' : level === 'warning' ? 'text-amber-700' : 'text-green-600'}`}>{pct > 0 ? pct.toFixed(0) + '%' : '-'}</span>
                           </div>
                         </td>
                         <td className="py-2 px-2 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${String(r.status || '').toLowerCase() === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-gray-600 text-gray-300'}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-xs ${String(r.status || '').toLowerCase() === 'active' ? 'bg-green-500/20 text-green-600' : 'bg-slate-200 text-slate-700'}`}>
                             {r.status || '-'}
                           </span>
                         </td>
-                        <td className="py-2 px-2 text-gray-300">{r.category || '-'}</td>
+                        <td className="py-2 px-2 text-slate-700">{r.category || '-'}</td>
                       </tr>
                     );
                   })}
-                  {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-gray-500 py-8">--</td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-8">--</td></tr>}
                 </tbody>
               </table>
             </div>

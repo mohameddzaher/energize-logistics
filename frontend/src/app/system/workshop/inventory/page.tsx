@@ -210,8 +210,8 @@ export default function InventoryPage() {
 
   const totalPages = Math.ceil(total / limit);
 
-  const inputClass = 'w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]';
-  const labelClass = 'text-gray-400 text-sm block mb-1';
+  const inputClass = 'w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]';
+  const labelClass = 'text-slate-500 text-sm block mb-1';
 
   return (
     <div className="space-y-6">
@@ -219,14 +219,14 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <Package className="w-7 h-7 text-[#f37121]" />
-          <h1 className="text-2xl font-bold text-white">{isAr ? 'المخزون' : 'Inventory'}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{isAr ? 'المخزون' : 'Inventory'}</h1>
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={handleExport}
             disabled={items.length === 0}
-            className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
             {isAr ? 'تصدير' : 'Export'}
@@ -247,28 +247,28 @@ export default function InventoryPage() {
       {/* Error */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-red-400" />
-          <span className="text-red-400 text-sm">{error}</span>
-          <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-4 h-4" /></button>
+          <AlertCircle className="w-4 h-4 text-red-600" />
+          <span className="text-red-600 text-sm">{error}</span>
+          <button onClick={() => setError('')} className="ml-auto text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
         </div>
       )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
             placeholder={isAr ? 'بحث بالاسم أو الكود...' : 'Search by name or code...'}
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg text-white text-sm pl-10 pr-3 py-2.5 focus:outline-none focus:border-[#f37121]"
+            className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 text-sm pl-10 pr-3 py-2.5 focus:outline-none focus:border-[#f37121]"
           />
         </div>
         <select
           value={categoryFilter}
           onChange={e => { setCategoryFilter(e.target.value); setPage(1); }}
-          className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
+          className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
         >
           <option value="">{isAr ? 'كل الفئات' : 'All Categories'}</option>
           {categories.map(c => (
@@ -280,7 +280,7 @@ export default function InventoryPage() {
             value={approvalFilter}
             onChange={e => { setApprovalFilter(e.target.value); setPage(1); }}
             aria-label={isAr ? 'تصفية حالة الموافقة' : 'Filter by approval status'}
-            className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
+            className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
           >
             <option value="">{isAr ? 'كل الحالات' : 'All Statuses'}</option>
             <option value="pending">{isAr ? 'قيد الانتظار' : 'Pending'}</option>
@@ -296,7 +296,7 @@ export default function InventoryPage() {
           <Loader2 className="w-8 h-8 text-[#f37121] animate-spin" />
         </div>
       ) : items.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
+        <div className="text-center py-20 text-slate-500">
           <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
           <p>{isAr ? 'لا توجد أصناف في المخزون' : 'No inventory items found'}</p>
         </div>
@@ -304,7 +304,7 @@ export default function InventoryPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-700">
+              <tr className="bg-slate-900 border-b border-slate-200">
                 {[
                   isAr ? 'الكود' : 'Code',
                   isAr ? 'الاسم' : 'Name',
@@ -318,7 +318,7 @@ export default function InventoryPage() {
                   isAr ? 'الموافقة' : 'Approval',
                   isAr ? 'إجراءات' : 'Actions',
                 ].map((h, i) => (
-                  <th key={i} className="text-left text-gray-400 font-medium py-3 px-3 whitespace-nowrap">{h}</th>
+                  <th key={i} className="text-left text-slate-300 font-semibold py-3 px-3 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -326,42 +326,42 @@ export default function InventoryPage() {
               {items.map(item => (
                 <tr
                   key={item._id}
-                  className={`border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${item.lowStock ? 'bg-red-500/5' : ''}`}
+                  className={`border-b border-slate-200 hover:bg-slate-50 transition-colors ${item.lowStock ? 'bg-red-500/5' : ''}`}
                 >
-                  <td className="py-3 px-3 text-gray-300 font-mono text-xs">{item.code}</td>
-                  <td className="py-3 px-3 text-white font-medium">
+                  <td className="py-3 px-3 text-slate-700 font-mono text-xs">{item.code}</td>
+                  <td className="py-3 px-3 text-slate-900 font-medium">
                     <div className="flex items-center gap-2">
                       {item.name}
                       {item.lowStock && (
-                        <span className="flex items-center gap-1 text-orange-400" title={isAr ? 'مخزون منخفض' : 'Low Stock'}>
+                        <span className="flex items-center gap-1 text-orange-600" title={isAr ? 'مخزون منخفض' : 'Low Stock'}>
                           <AlertTriangle className="w-3.5 h-3.5" />
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="py-3 px-3 text-gray-300">{item.category || '-'}</td>
-                  <td className={`py-3 px-3 font-medium ${item.lowStock ? 'text-orange-400' : 'text-gray-300'}`}>
+                  <td className="py-3 px-3 text-slate-700">{item.category || '-'}</td>
+                  <td className={`py-3 px-3 font-medium ${item.lowStock ? 'text-orange-600' : 'text-slate-700'}`}>
                     {item.quantity}
                   </td>
-                  <td className="py-3 px-3 text-gray-400">{item.minQuantity}</td>
-                  <td className="py-3 px-3 text-gray-300">{item.unit}</td>
-                  <td className="py-3 px-3 text-gray-300">{item.costPrice ? item.costPrice.toLocaleString() : '-'}</td>
-                  <td className="py-3 px-3 text-gray-300">{item.location || '-'}</td>
-                  <td className="py-3 px-3 text-gray-300">{item.supplier || '-'}</td>
+                  <td className="py-3 px-3 text-slate-500">{item.minQuantity}</td>
+                  <td className="py-3 px-3 text-slate-700">{item.unit}</td>
+                  <td className="py-3 px-3 text-slate-700">{item.costPrice ? item.costPrice.toLocaleString() : '-'}</td>
+                  <td className="py-3 px-3 text-slate-700">{item.location || '-'}</td>
+                  <td className="py-3 px-3 text-slate-700">{item.supplier || '-'}</td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2">
                       {item.approvalStatus === 'approved' && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-600">
                           {isAr ? 'موافق عليه' : 'Approved'}
                         </span>
                       )}
                       {item.approvalStatus === 'rejected' && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-600">
                           {isAr ? 'مرفوض' : 'Rejected'}
                         </span>
                       )}
                       {(!item.approvalStatus || item.approvalStatus === 'pending') && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-700">
                           {isAr ? 'قيد الانتظار' : 'Pending Approval'}
                         </span>
                       )}
@@ -371,7 +371,7 @@ export default function InventoryPage() {
                             type="button"
                             onClick={() => handleApproval(item._id, 'approved')}
                             disabled={approving === item._id}
-                            className="p-1 rounded-md bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors disabled:opacity-50"
+                            className="p-1 rounded-md bg-green-500/20 text-green-600 hover:bg-green-500/30 transition-colors disabled:opacity-50"
                             title={isAr ? 'موافقة' : 'Approve'}
                           >
                             {approving === item._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -380,7 +380,7 @@ export default function InventoryPage() {
                             type="button"
                             onClick={() => { setRejectModalId(item._id); setRejectNote(''); }}
                             disabled={approving === item._id}
-                            className="p-1 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                            className="p-1 rounded-md bg-red-500/20 text-red-600 hover:bg-red-500/30 transition-colors disabled:opacity-50"
                             title={isAr ? 'رفض' : 'Reject'}
                           >
                             <XCircle className="w-3.5 h-3.5" />
@@ -394,7 +394,7 @@ export default function InventoryPage() {
                       {canEdit && (
                         <button
                           onClick={() => openEditModal(item)}
-                          className="p-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                          className="p-1.5 rounded-lg bg-blue-500/20 text-blue-600 hover:bg-blue-500/30 transition-colors"
                           title={isAr ? 'تعديل' : 'Edit'}
                         >
                           <Pencil className="w-3.5 h-3.5" />
@@ -403,7 +403,7 @@ export default function InventoryPage() {
                       {canDelete && (
                         <button
                           onClick={() => setDeleteId(item._id)}
-                          className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                          className="p-1.5 rounded-lg bg-red-500/20 text-red-600 hover:bg-red-500/30 transition-colors"
                           title={isAr ? 'حذف' : 'Delete'}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -421,15 +421,15 @@ export default function InventoryPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-gray-400 text-sm">{isAr ? `${total} نتيجة` : `${total} results`}</p>
+          <p className="text-slate-500 text-sm">{isAr ? `${total} نتيجة` : `${total} results`}</p>
           <div className="flex items-center gap-2">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed">
+              className="p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-gray-400 text-sm">{page} / {totalPages}</span>
+            <span className="text-slate-500 text-sm">{page} / {totalPages}</span>
             <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed">
+              className="p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -448,15 +448,15 @@ export default function InventoryPage() {
               initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-white">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">
                     {editingId
                       ? (isAr ? 'تعديل صنف' : 'Edit Item')
                       : (isAr ? 'إضافة صنف جديد' : 'Add New Item')
                     }
                   </h2>
-                  <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+                  <button onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -503,7 +503,7 @@ export default function InventoryPage() {
                 </div>
 
                 <div className="flex justify-end gap-3 pt-2">
-                  <button onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm font-medium">
+                  <button onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
                     {isAr ? 'إلغاء' : 'Cancel'}
                   </button>
                   <button onClick={handleSave} disabled={saving}
@@ -533,18 +533,18 @@ export default function InventoryPage() {
               initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm p-6 space-y-4 shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-                    <Trash2 className="w-5 h-5 text-red-400" />
+                    <Trash2 className="w-5 h-5 text-red-600" />
                   </div>
                   <div>
-                    <h3 className="text-white font-bold">{isAr ? 'تأكيد الحذف' : 'Confirm Delete'}</h3>
-                    <p className="text-gray-400 text-sm">{isAr ? 'هل أنت متأكد من حذف هذا الصنف؟' : 'Are you sure you want to delete this item?'}</p>
+                    <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold mb-3">{isAr ? 'تأكيد الحذف' : 'Confirm Delete'}</h3>
+                    <p className="text-slate-500 text-sm">{isAr ? 'هل أنت متأكد من حذف هذا الصنف؟' : 'Are you sure you want to delete this item?'}</p>
                   </div>
                 </div>
                 <div className="flex justify-end gap-3">
-                  <button onClick={() => setDeleteId(null)} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm font-medium">
+                  <button onClick={() => setDeleteId(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
                     {isAr ? 'إلغاء' : 'Cancel'}
                   </button>
                   <button onClick={handleDelete} disabled={deleting}
@@ -570,14 +570,14 @@ export default function InventoryPage() {
               initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm p-6 space-y-4 shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-                    <XCircle className="w-5 h-5 text-red-400" />
+                    <XCircle className="w-5 h-5 text-red-600" />
                   </div>
                   <div>
-                    <h3 className="text-white font-bold">{isAr ? 'رفض الصنف' : 'Reject Item'}</h3>
-                    <p className="text-gray-400 text-sm">{isAr ? 'أضف ملاحظة (اختياري)' : 'Add a note (optional)'}</p>
+                    <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold mb-3">{isAr ? 'رفض الصنف' : 'Reject Item'}</h3>
+                    <p className="text-slate-500 text-sm">{isAr ? 'أضف ملاحظة (اختياري)' : 'Add a note (optional)'}</p>
                   </div>
                 </div>
                 <textarea
@@ -588,7 +588,7 @@ export default function InventoryPage() {
                   className={inputClass}
                 />
                 <div className="flex justify-end gap-3">
-                  <button type="button" onClick={() => setRejectModalId(null)} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm font-medium">
+                  <button type="button" onClick={() => setRejectModalId(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
                     {isAr ? 'إلغاء' : 'Cancel'}
                   </button>
                   <button

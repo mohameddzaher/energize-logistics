@@ -1,0 +1,150 @@
+'use client';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
+import { useSocket } from '@/hooks/useSocket';
+import api from '@/lib/api';
+import { BookOpen, Plus, Edit, Trash2, Eye } from 'lucide-react';
+import {
+  isFinanceStaff, isFinanceAdmin, ChartAccount, ACCOUNT_TYPE_STYLE, accountName, money, fmtDate,
+} from '@/lib/finance';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
+
+const TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
+const EMPTY = { code: '', nameEn: '', nameAr: '', type: 'asset', description: '' };
+
+export default function ChartOfAccountsPage() {
+  const { user } = useAuth();
+  const { lang, isRTL } = useLanguage();
+  const ar = lang === 'ar';
+  const [items, setItems] = useState<ChartAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [typeF, setTypeF] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<ChartAccount | null>(null);
+  const [form, setForm] = useState<any>(EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [ledger, setLedger] = useState<{ account: ChartAccount; rows: any[]; closingBalance: number } | null>(null);
+
+  const canDelete = isFinanceAdmin(user?.role);
+
+  const load = useCallback(async () => {
+    try {
+      const qs = new URLSearchParams();
+      if (search.trim()) qs.set('q', search.trim());
+      if (typeF) qs.set('type', typeF);
+      const d = await api.get<{ accounts: ChartAccount[] }>(`/api/accounting/accounts?${qs}`);
+      setItems(d.accounts || []);
+    } catch { /* */ }
+    setLoading(false);
+  }, [search, typeF]);
+  useEffect(() => { load(); }, [load]);
+  useSocket('accounting:account', useCallback(() => load(), [load]));
+
+  const openCreate = () => { setEditing(null); setForm(EMPTY); setShowModal(true); };
+  const openEdit = (a: ChartAccount) => { setEditing(a); setForm({ ...EMPTY, ...a }); setShowModal(true); };
+  const save = async () => {
+    if (!form.code.trim() || !form.nameEn.trim()) { alert(ar ? 'الكود والاسم مطلوبان' : 'Code and name required'); return; }
+    setSaving(true);
+    try {
+      if (editing) await api.put(`/api/accounting/accounts/${editing._id}`, form);
+      else await api.post('/api/accounting/accounts', form);
+      setShowModal(false); load();
+    } catch (e: any) { alert(e.message); } finally { setSaving(false); }
+  };
+  const remove = async (a: ChartAccount) => {
+    if (!confirm(ar ? `حذف ${a.nameEn}؟` : `Delete ${a.nameEn}?`)) return;
+    try { await api.delete(`/api/accounting/accounts/${a._id}`); load(); } catch (e: any) { alert(e.message); }
+  };
+  const openLedger = async (a: ChartAccount) => {
+    try { setLedger(await api.get(`/api/accounting/ledger/${a._id}`)); } catch (e: any) { alert(e.message); }
+  };
+
+  if (!isFinanceStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (loading) return <Spinner />;
+
+  return (
+    <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
+      <PageHeader icon={<BookOpen className="w-5 h-5" />} title={ar ? 'دليل الحسابات' : 'Chart of Accounts'} subtitle={`${items.length}`}>
+        <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'حساب جديد' : 'New Account'}</PrimaryButton>
+      </PageHeader>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث...' : 'Search...'} /></div>
+        <select value={typeF} onChange={(e) => setTypeF(e.target.value)} className="px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+          <option value="">{ar ? 'كل الأنواع' : 'All Types'}</option>
+          {TYPES.map((t) => <option key={t} value={t}>{ar ? ACCOUNT_TYPE_STYLE[t].ar : ACCOUNT_TYPE_STYLE[t].en}</option>)}
+        </select>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+        <table className="w-full text-sm">
+          <thead><tr className="bg-slate-900 border-b border-slate-200 text-left">
+            <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'الكود' : 'Code'}</th>
+            <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'الاسم' : 'Name'}</th>
+            <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'النوع' : 'Type'}</th>
+            <th className="px-4 py-3 text-slate-300 font-semibold text-right">{ar ? 'الإجراءات' : 'Actions'}</th>
+          </tr></thead>
+          <tbody className="divide-y divide-slate-200">
+            {items.length === 0 ? <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((a) => (
+              <tr key={a._id} className="hover:bg-slate-100">
+                <td className="px-4 py-3 text-slate-700 font-mono">{a.code}</td>
+                <td className="px-4 py-3 text-slate-900">{ar && a.nameAr ? a.nameAr : a.nameEn}{a.system && <span className="ml-2 text-[10px] text-slate-500">({ar ? 'نظام' : 'system'})</span>}</td>
+                <td className="px-4 py-3"><Badge style={ACCOUNT_TYPE_STYLE[a.type]} lang={lang} /></td>
+                <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
+                  <button type="button" title={ar ? 'دفتر الأستاذ' : 'Ledger'} onClick={() => openLedger(a)} className="text-slate-500 hover:text-slate-900"><Eye className="w-4 h-4" /></button>
+                  <button type="button" title={ar ? 'تعديل' : 'Edit'} onClick={() => openEdit(a)} className="text-blue-600 hover:text-blue-700"><Edit className="w-4 h-4" /></button>
+                  {canDelete && !a.system && <button type="button" title={ar ? 'حذف' : 'Delete'} onClick={() => remove(a)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}
+                </div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Create/Edit */}
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? (ar ? 'تعديل حساب' : 'Edit Account') : (ar ? 'حساب جديد' : 'New Account')}
+        footer={<><button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={save} disabled={saving}>{saving ? '...' : (ar ? 'حفظ' : 'Save')}</PrimaryButton></>}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label={ar ? 'الكود' : 'Code'}><TextInput value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} dir="ltr" disabled={!!editing?.system} /></Field>
+          <Field label={ar ? 'النوع' : 'Type'}><Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+            {TYPES.map((t) => <option key={t} value={t}>{ar ? ACCOUNT_TYPE_STYLE[t].ar : ACCOUNT_TYPE_STYLE[t].en}</option>)}
+          </Select></Field>
+          <Field label={ar ? 'الاسم (EN)' : 'Name (EN)'}><TextInput value={form.nameEn} onChange={(e) => setForm({ ...form, nameEn: e.target.value })} /></Field>
+          <Field label={ar ? 'الاسم (AR)' : 'Name (AR)'}><TextInput value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} dir="rtl" /></Field>
+          <Field label={ar ? 'وصف' : 'Description'} span2><TextArea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+        </div>
+      </Modal>
+
+      {/* Ledger */}
+      <Modal open={!!ledger} onClose={() => setLedger(null)} wide title={ledger ? `${ar ? 'دفتر الأستاذ' : 'Ledger'} — ${accountName(ledger.account, lang)}` : ''}
+        footer={<button type="button" onClick={() => setLedger(null)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{ar ? 'إغلاق' : 'Close'}</button>}>
+        {ledger && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-slate-900 border-b border-slate-200 text-left text-slate-300">
+                <th className="px-2 py-2">{ar ? 'التاريخ' : 'Date'}</th><th className="px-2 py-2">#</th><th className="px-2 py-2">{ar ? 'البيان' : 'Memo'}</th>
+                <th className="px-2 py-2 text-right">{ar ? 'مدين' : 'Debit'}</th><th className="px-2 py-2 text-right">{ar ? 'دائن' : 'Credit'}</th><th className="px-2 py-2 text-right">{ar ? 'الرصيد' : 'Balance'}</th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-200">
+                {ledger.rows.length === 0 ? <tr><td colSpan={6} className="px-2 py-6 text-center text-slate-500">—</td></tr> : ledger.rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="px-2 py-2 text-slate-700">{fmtDate(r.date)}</td>
+                    <td className="px-2 py-2 text-slate-500 font-mono text-xs">{r.entryNumber}</td>
+                    <td className="px-2 py-2 text-slate-700">{r.memo || '—'}</td>
+                    <td className="px-2 py-2 text-right text-green-600">{r.debit ? money(r.debit, '') : ''}</td>
+                    <td className="px-2 py-2 text-right text-red-600">{r.credit ? money(r.credit, '') : ''}</td>
+                    <td className="px-2 py-2 text-right text-slate-900">{money(r.balance, '')}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr className="border-t border-slate-200"><td colSpan={5} className="px-2 py-2 text-right text-slate-500">{ar ? 'الرصيد الختامي' : 'Closing balance'}</td><td className="px-2 py-2 text-right text-slate-900 font-bold">{money(ledger.closingBalance, '')}</td></tr></tfoot>
+            </table>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

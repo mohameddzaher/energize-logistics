@@ -80,13 +80,13 @@ export default function OverduePage() {
 
   const gradeBadge = (grade?: string) => {
     const colors: Record<string, string> = {
-      A: 'bg-green-500/20 text-green-400',
-      B: 'bg-blue-500/20 text-blue-400',
-      C: 'bg-yellow-500/20 text-yellow-400',
-      D: 'bg-red-500/20 text-red-400',
+      A: 'bg-green-500/20 text-green-600',
+      B: 'bg-blue-500/20 text-blue-600',
+      C: 'bg-yellow-500/20 text-yellow-700',
+      D: 'bg-red-500/20 text-red-600',
     };
     return grade ? (
-      <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[grade] || 'bg-gray-500/20 text-gray-400'}`}>
+      <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[grade] || 'bg-slate-500/20 text-slate-500'}`}>
         {grade}
       </span>
     ) : '-';
@@ -98,48 +98,48 @@ export default function OverduePage() {
       label: T.customer,
       render: (row: OverdueInvoice) => (
         <div>
-          <span className="text-white font-medium text-sm">{row.customer?.companyName || '-'}</span>
+          <span className="text-slate-900 font-medium text-sm">{row.customer?.companyName || '-'}</span>
           {row.customer?.customerNumber && (
-            <span className="text-gray-500 text-xs block">{row.customer.customerNumber}</span>
+            <span className="text-slate-500 text-xs block">{row.customer.customerNumber}</span>
           )}
         </div>
       ),
     },
     { key: 'invoiceNumber', label: T.invoiceNumber, render: (row: OverdueInvoice) => <span className="text-[#f37121] font-medium text-sm">{row.invoiceNumber}</span> },
-    { key: 'invoiceDate', label: T.invoiceDate, render: (row: OverdueInvoice) => <span className="text-gray-300 text-sm">{formatDate(row.invoiceDate)}</span> },
-    { key: 'dueDate', label: T.dueDate, render: (row: OverdueInvoice) => <span className="text-gray-300 text-sm">{formatDate(row.dueDate)}</span> },
+    { key: 'invoiceDate', label: T.invoiceDate, render: (row: OverdueInvoice) => <span className="text-slate-700 text-sm">{formatDate(row.invoiceDate)}</span> },
+    { key: 'dueDate', label: T.dueDate, render: (row: OverdueInvoice) => <span className="text-slate-700 text-sm">{formatDate(row.dueDate)}</span> },
     {
       key: 'overdueDays',
       label: T.overdueDays,
       render: (row: OverdueInvoice) => (
-        <span className={`text-sm font-bold ${row.overdueDays > 60 ? 'text-red-400' : row.overdueDays > 30 ? 'text-yellow-400' : 'text-orange-400'}`}>
+        <span className={`text-sm font-bold ${row.overdueDays > 60 ? 'text-red-600' : row.overdueDays > 30 ? 'text-yellow-700' : 'text-orange-600'}`}>
           {row.overdueDays}d
         </span>
       ),
     },
-    { key: 'balance', label: T.balance, render: (row: OverdueInvoice) => <span className="text-red-400 font-medium text-sm">{formatCurrency(row.balance)}</span> },
+    { key: 'balance', label: T.balance, render: (row: OverdueInvoice) => <span className="text-red-600 font-medium text-sm">{formatCurrency(row.balance)}</span> },
     {
       key: 'collector',
       label: T.assignedCollector,
       render: (row: OverdueInvoice) => {
         const c = row.customer?.assignedCollector;
-        return c ? <span className="text-gray-300 text-sm">{c.firstName} {c.lastName}</span> : <span className="text-gray-500 text-sm">-</span>;
+        return c ? <span className="text-slate-700 text-sm">{c.firstName} {c.lastName}</span> : <span className="text-slate-500 text-sm">-</span>;
       },
     },
-    { key: 'salesManager', label: T.salesManager, render: (row: OverdueInvoice) => <span className="text-gray-300 text-sm">{row.customer?.salesManager || '-'}</span> },
+    { key: 'salesManager', label: T.salesManager, render: (row: OverdueInvoice) => <span className="text-slate-700 text-sm">{row.customer?.salesManager || '-'}</span> },
     { key: 'grade', label: T.grade, render: (row: OverdueInvoice) => gradeBadge(row.customer?.grade) },
     {
       key: 'status',
       label: T.status,
       render: (row: OverdueInvoice) => {
         const colors: Record<string, string> = {
-          overdue: 'bg-red-500/20 text-red-400',
-          pending: 'bg-blue-500/20 text-blue-400',
-          partial: 'bg-yellow-500/20 text-yellow-400',
-          disputed: 'bg-orange-500/20 text-orange-400',
+          overdue: 'bg-red-500/20 text-red-600',
+          pending: 'bg-blue-500/20 text-blue-600',
+          partial: 'bg-yellow-500/20 text-yellow-700',
+          disputed: 'bg-orange-500/20 text-orange-600',
         };
         return (
-          <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[row.status] || 'bg-gray-500/20 text-gray-400'}`}>
+          <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[row.status] || 'bg-slate-500/20 text-slate-500'}`}>
             {row.status}
           </span>
         );
@@ -161,11 +161,11 @@ export default function OverduePage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5 text-red-400" />
+            <AlertTriangle className="w-5 h-5 text-red-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">{T.title}</h1>
-            <p className="text-gray-400 text-sm">{total} overdue invoices</p>
+            <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
+            <p className="text-slate-500 text-sm">{total} overdue invoices</p>
           </div>
         </div>
         <button
@@ -193,7 +193,7 @@ export default function OverduePage() {
             );
           }}
           disabled={invoices.length === 0}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Download className="w-4 h-4" />
           {T.export}
@@ -202,18 +202,18 @@ export default function OverduePage() {
 
       {/* Search */}
       <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
         <input
           type="text"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           placeholder={T.searchOverdue}
-          className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+          className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
         />
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">{error}</div>
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-600 text-sm">{error}</div>
       )}
 
       {/* Table */}
@@ -227,13 +227,13 @@ export default function OverduePage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-gray-400 text-sm">{T.page} {page} {T.of} {totalPages} ({total} {T.invoices})</p>
+          <p className="text-slate-500 text-sm">{T.page} {page} {T.of} {totalPages} ({total} {T.invoices})</p>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm disabled:opacity-40 hover:bg-gray-700 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm disabled:opacity-40 hover:bg-slate-100 transition-colors"
             >
               {T.previous}
             </button>
@@ -241,7 +241,7 @@ export default function OverduePage() {
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm disabled:opacity-40 hover:bg-gray-700 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm disabled:opacity-40 hover:bg-slate-100 transition-colors"
             >
               {T.next}
             </button>

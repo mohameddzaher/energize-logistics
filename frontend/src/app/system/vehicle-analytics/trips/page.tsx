@@ -121,24 +121,24 @@ export default function TripsPage() {
   const maxBranchRev = useMemo(() => Math.max(...revByBranch.map(d => d[1]), 1), [revByBranch]);
   const maxClientRev = useMemo(() => (revByClient.length > 0 ? revByClient[0][1] : 1), [revByClient]);
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">{t.loading}</div>;
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{t.loading}</div>;
 
   const hasData = data.length > 0;
   const kpiCards = [
-    { label: t.totalTrips, value: fmtNum(kpis.totalTrips), icon: Truck, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-    { label: t.totalRevenue, value: fmtNum(kpis.totalRevenue), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-    { label: t.totalExpenses, value: fmtNum(kpis.totalExpenses), icon: Receipt, color: 'text-red-400', bg: 'bg-red-400/10' },
-    { label: t.profit, value: fmtNum(kpis.profit), icon: TrendingUp, color: kpis.profit >= 0 ? 'text-green-400' : 'text-red-400', bg: kpis.profit >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
-    { label: t.avgRevenue, value: fmtNum(kpis.avgRevenue), icon: DollarSign, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
-    { label: t.avgDays, value: kpis.avgDays.toFixed(1), icon: Calendar, color: 'text-amber-400', bg: 'bg-amber-400/10' },
-    { label: t.activeVehicles, value: kpis.activeVehicles, icon: Truck, color: 'text-purple-400', bg: 'bg-purple-400/10' },
-    { label: t.topClient, value: kpis.topClient, icon: Users, color: 'text-indigo-400', bg: 'bg-indigo-400/10' },
+    { label: t.totalTrips, value: fmtNum(kpis.totalTrips), icon: Truck, color: 'text-blue-600', bg: 'bg-blue-400/10' },
+    { label: t.totalRevenue, value: fmtNum(kpis.totalRevenue), icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-400/10' },
+    { label: t.totalExpenses, value: fmtNum(kpis.totalExpenses), icon: Receipt, color: 'text-red-600', bg: 'bg-red-400/10' },
+    { label: t.profit, value: fmtNum(kpis.profit), icon: TrendingUp, color: kpis.profit >= 0 ? 'text-green-600' : 'text-red-600', bg: kpis.profit >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
+    { label: t.avgRevenue, value: fmtNum(kpis.avgRevenue), icon: DollarSign, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
+    { label: t.avgDays, value: kpis.avgDays.toFixed(1), icon: Calendar, color: 'text-amber-700', bg: 'bg-amber-400/10' },
+    { label: t.activeVehicles, value: kpis.activeVehicles, icon: Truck, color: 'text-purple-600', bg: 'bg-purple-400/10' },
+    { label: t.topClient, value: kpis.topClient, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-400/10' },
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{t.title}</h1>
         {filtered.length > 0 && (
           <button type="button" onClick={() => exportToExcel(filtered.map(r => ({
             month: r.month || '', vehicle: r.vehicleNumber || r.vehicleId, driver: r.driver1 || '',
@@ -150,39 +150,39 @@ export default function TripsPage() {
             { header: t.from, key: 'from' }, { header: t.to, key: 'to' }, { header: t.days, key: 'days' },
             { header: t.revenue, key: 'revenue' }, { header: t.expenses, key: 'expenses' },
             { header: t.client, key: 'client' }, { header: t.branch, key: 'branch' },
-          ], 'trips-data', 'Trips')} className="px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
+          ], 'trips-data', 'Trips')} className="px-3 py-2 bg-emerald-500/20 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
             <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
           </button>
         )}
       </div>
 
       {/* Filters */}
-      <div className="sticky top-0 z-20 bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-wrap gap-3 items-center">
+      <div className="sticky top-0 z-20 bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-sm">
         <div className="relative">
-          <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-gray-500 pointer-events-none" />
+          <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-slate-500 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.search}
-            className="bg-gray-700 text-gray-200 text-sm rounded-lg pl-8 pr-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none min-w-[200px]" />
+            className="bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none min-w-[200px]" />
         </div>
-        <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allMonths}</option>
           {months.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allBranches}</option>
           {branches.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allTypes}</option>
           {types.map(tp => <option key={tp} value={tp}>{tp}</option>)}
         </select>
-        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allClients}</option>
           {clients.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
 
       {!hasData ? (
-        <div className="flex flex-col items-center justify-center h-64 text-gray-500 gap-3">
+        <div className="flex flex-col items-center justify-center h-64 text-slate-500 gap-3">
           <Filter className="w-12 h-12" />
           <p className="text-lg">{t.noData}</p>
         </div>
@@ -191,10 +191,10 @@ export default function TripsPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {kpiCards.map(c => (
-              <div key={c.label} className={`${c.bg} border border-gray-700 rounded-xl p-4 flex items-center gap-3`}>
+              <div key={c.label} className={`${c.bg} border border-slate-200 rounded-xl p-4 flex items-center gap-3`}>
                 <c.icon className={`w-7 h-7 ${c.color} shrink-0`} />
                 <div className="min-w-0">
-                  <p className="text-gray-400 text-xs">{c.label}</p>
+                  <p className="text-slate-500 text-xs">{c.label}</p>
                   <p className={`text-lg font-bold ${c.color} truncate`}>{c.value}</p>
                 </div>
               </div>
@@ -204,49 +204,49 @@ export default function TripsPage() {
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Revenue by Branch - bar chart */}
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-emerald-400" /> {t.revenueByBranch}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-emerald-600" /> {t.revenueByBranch}
               </h3>
               <div className="flex items-end gap-2 h-[280px] px-2">
                 {revByBranch.map(([branch, val]) => (
                   <div key={branch} className="flex-1 flex flex-col items-center justify-end h-full gap-1">
-                    <span className="text-[10px] text-emerald-400">{fmtNum(val)}</span>
+                    <span className="text-[10px] text-emerald-600">{fmtNum(val)}</span>
                     <div className="w-full bg-emerald-500/80 rounded-t-md" style={{ height: `${(val / maxBranchRev) * 85}%` }} />
-                    <span className="text-[9px] text-gray-500 -rotate-45 origin-top-left whitespace-nowrap truncate max-w-[60px]">{branch}</span>
+                    <span className="text-[9px] text-slate-500 -rotate-45 origin-top-left whitespace-nowrap truncate max-w-[60px]">{branch}</span>
                   </div>
                 ))}
-                {revByBranch.length === 0 && <p className="text-gray-500 text-sm text-center w-full self-center">--</p>}
+                {revByBranch.length === 0 && <p className="text-slate-500 text-sm text-center w-full self-center">--</p>}
               </div>
             </div>
 
             {/* Revenue by Client - horizontal bars */}
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                <Users className="w-5 h-5 text-cyan-400" /> {t.revenueByClient}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
+                <Users className="w-5 h-5 text-cyan-700" /> {t.revenueByClient}
               </h3>
               <div className="space-y-2 max-h-[320px] overflow-y-auto">
                 {revByClient.map(([client, val], i) => (
                   <div key={client} className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-500 w-5 text-right shrink-0">{i + 1}</span>
-                    <span className="text-gray-300 w-28 shrink-0 truncate">{client}</span>
-                    <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
+                    <span className="text-slate-500 w-5 text-right shrink-0">{i + 1}</span>
+                    <span className="text-slate-700 w-28 shrink-0 truncate">{client}</span>
+                    <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                       <div className="bg-cyan-500 h-full rounded-full" style={{ width: `${(val / maxClientRev) * 100}%` }} />
                     </div>
-                    <span className="text-cyan-400 w-16 text-right">{fmtNum(val)}</span>
+                    <span className="text-cyan-700 w-16 text-right">{fmtNum(val)}</span>
                   </div>
                 ))}
-                {revByClient.length === 0 && <p className="text-gray-500 text-sm text-center py-4">--</p>}
+                {revByClient.length === 0 && <p className="text-slate-500 text-sm text-center py-4">--</p>}
               </div>
             </div>
           </div>
 
           {/* Trips Table */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <h3 className="text-white font-semibold mb-3">{t.tripsTable} ({filtered.length})</h3>
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.tripsTable} ({filtered.length})</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="text-gray-400 border-b border-gray-700">
+                <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
                   <th className="text-left py-2 px-2">{t.month}</th>
                   <th className="text-left py-2 px-2">{t.vehicle}</th>
                   <th className="text-left py-2 px-2">{t.driver}</th>
@@ -262,24 +262,24 @@ export default function TripsPage() {
                     const rev = parseNum(r.revenue);
                     const exp = parseNum(r.actualDriverExpense);
                     return (
-                      <tr key={i} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                        <td className="py-2 px-2 text-gray-300 text-xs">{r.month || '-'}</td>
-                        <td className="py-2 px-2 text-white font-medium">{r.vehicleNumber || r.vehicleId}</td>
-                        <td className="py-2 px-2 text-gray-300">{r.driver1 || '-'}</td>
-                        <td className="py-2 px-2 text-gray-400 text-xs">
+                      <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">
+                        <td className="py-2 px-2 text-slate-700 text-xs">{r.month || '-'}</td>
+                        <td className="py-2 px-2 text-slate-900 font-medium">{r.vehicleNumber || r.vehicleId}</td>
+                        <td className="py-2 px-2 text-slate-700">{r.driver1 || '-'}</td>
+                        <td className="py-2 px-2 text-slate-500 text-xs">
                           <span className="flex items-center gap-1">
-                            {r.loadingPlace || '?'} <ArrowRight className="w-3 h-3 text-gray-600 shrink-0" /> {r.unloadingPlace || '?'}
+                            {r.loadingPlace || '?'} <ArrowRight className="w-3 h-3 text-slate-600 shrink-0" /> {r.unloadingPlace || '?'}
                           </span>
                         </td>
-                        <td className="py-2 px-2 text-right text-gray-300">{parseNum(r.days) > 0 ? parseNum(r.days).toFixed(0) : '-'}</td>
-                        <td className="py-2 px-2 text-right text-emerald-400">{rev > 0 ? fmtCurrency(rev) : '-'}</td>
-                        <td className="py-2 px-2 text-right text-red-400">{exp > 0 ? fmtCurrency(exp) : '-'}</td>
-                        <td className="py-2 px-2 text-gray-300 text-xs max-w-[120px] truncate">{r.rentalPaymentType || '-'}</td>
-                        <td className="py-2 px-2 text-gray-300 text-xs">{r.branch || '-'}</td>
+                        <td className="py-2 px-2 text-right text-slate-700">{parseNum(r.days) > 0 ? parseNum(r.days).toFixed(0) : '-'}</td>
+                        <td className="py-2 px-2 text-right text-emerald-600">{rev > 0 ? fmtCurrency(rev) : '-'}</td>
+                        <td className="py-2 px-2 text-right text-red-600">{exp > 0 ? fmtCurrency(exp) : '-'}</td>
+                        <td className="py-2 px-2 text-slate-700 text-xs max-w-[120px] truncate">{r.rentalPaymentType || '-'}</td>
+                        <td className="py-2 px-2 text-slate-700 text-xs">{r.branch || '-'}</td>
                       </tr>
                     );
                   })}
-                  {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-gray-500 py-8">--</td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-8">--</td></tr>}
                 </tbody>
               </table>
             </div>

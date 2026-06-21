@@ -42,7 +42,7 @@ export default function ClientInvoiceDetailPage() {
     );
   }
 
-  if (!invoice) return <p className="text-gray-400">{T.noInvoices}</p>;
+  if (!invoice) return <p className="text-slate-500">{T.noInvoices}</p>;
 
   const statusColor = invoice.isOverdue ? 'red' : (invoice.remainingDays <= 5 && invoice.status !== 'paid') ? 'yellow' : 'green';
 
@@ -83,19 +83,19 @@ export default function ClientInvoiceDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link href="/system/portal/invoices" className="text-gray-400 hover:text-white text-sm flex items-center gap-1">
+      <Link href="/system/portal/invoices" className="text-slate-500 hover:text-slate-900 text-sm flex items-center gap-1">
         <ArrowLeft className="w-4 h-4" /> {T.back} {T.myInvoices}
       </Link>
 
       {/* Invoice Header */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
               <FileText className="w-6 h-6 text-[#f37121]" />
               {T.invoiceNumber} {invoice.invoiceNumber}
             </h1>
-            <p className="text-gray-400 text-sm mt-1">
+            <p className="text-slate-500 text-sm mt-1">
               Credit Term: <span className="text-[#f37121] font-bold">{invoice.creditTerm} Days</span>
             </p>
           </div>
@@ -103,15 +103,15 @@ export default function ClientInvoiceDetailPage() {
             <button
               type="button"
               onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm font-medium rounded-lg transition-colors"
             >
               <Download className="w-4 h-4" />
               {T.export}
             </button>
             <span className={`px-4 py-2 rounded-lg text-sm font-bold ${
-            statusColor === 'red' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-            statusColor === 'yellow' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-            'bg-green-500/20 text-green-400 border border-green-500/30'
+            statusColor === 'red' ? 'bg-red-500/20 text-red-600 border border-red-500/30' :
+            statusColor === 'yellow' ? 'bg-yellow-500/20 text-yellow-700 border border-yellow-500/30' :
+            'bg-green-500/20 text-green-600 border border-green-500/30'
           }`}>
             {invoice.status?.toUpperCase()}
             </span>
@@ -121,14 +121,14 @@ export default function ClientInvoiceDetailPage() {
         {/* Dynamic Message */}
         {invoice.isOverdue && (
           <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-            <p className="text-red-400 text-sm font-medium">
+            <p className="text-red-600 text-sm font-medium">
               This invoice is <strong>{invoice.overdueDays} days overdue</strong> according to your {invoice.creditTerm}-day credit agreement.
             </p>
           </div>
         )}
         {!invoice.isOverdue && invoice.remainingDays <= 5 && invoice.status !== 'paid' && (
           <div className="mt-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
-            <p className="text-yellow-400 text-sm font-medium">
+            <p className="text-yellow-700 text-sm font-medium">
               You must pay Invoice #{invoice.invoiceNumber} within <strong>{invoice.remainingDays} days</strong> according to your {invoice.creditTerm}-day credit agreement.
             </p>
           </div>
@@ -137,64 +137,64 @@ export default function ClientInvoiceDetailPage() {
         {/* Details Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
           <div>
-            <p className="text-gray-400 text-xs uppercase">{T.amount}</p>
-            <p className="text-white text-lg font-bold">{invoice.amount?.toLocaleString()}</p>
+            <p className="text-slate-500 text-xs uppercase">{T.amount}</p>
+            <p className="text-slate-900 text-lg font-bold">{invoice.amount?.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-gray-400 text-xs uppercase">{T.totalPaid}</p>
-            <p className="text-green-400 text-lg font-bold">{invoice.paidAmount?.toLocaleString()}</p>
+            <p className="text-slate-500 text-xs uppercase">{T.totalPaid}</p>
+            <p className="text-green-600 text-lg font-bold">{invoice.paidAmount?.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-gray-400 text-xs uppercase">{T.balance}</p>
-            <p className="text-red-400 text-lg font-bold">{invoice.balance?.toLocaleString()}</p>
+            <p className="text-slate-500 text-xs uppercase">{T.balance}</p>
+            <p className="text-red-600 text-lg font-bold">{invoice.balance?.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-gray-400 text-xs uppercase">{invoice.isOverdue ? 'Overdue Days' : 'Remaining Days'}</p>
-            <p className={`text-lg font-bold ${invoice.isOverdue ? 'text-red-400' : 'text-green-400'}`}>
+            <p className="text-slate-500 text-xs uppercase">{invoice.isOverdue ? 'Overdue Days' : 'Remaining Days'}</p>
+            <p className={`text-lg font-bold ${invoice.isOverdue ? 'text-red-600' : 'text-green-600'}`}>
               {invoice.isOverdue ? invoice.overdueDays : invoice.remainingDays} days
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-700">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-200">
           <div className="flex items-center gap-2 text-sm">
-            <Calendar className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-400">{T.invoiceDate}:</span>
-            <span className="text-white">{new Date(invoice.invoiceDate).toLocaleDateString()}</span>
+            <Calendar className="w-4 h-4 text-slate-500" />
+            <span className="text-slate-500">{T.invoiceDate}:</span>
+            <span className="text-slate-900">{new Date(invoice.invoiceDate).toLocaleDateString()}</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <Clock className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-400">{T.dueDate}:</span>
-            <span className="text-white">{new Date(invoice.dueDate).toLocaleDateString()}</span>
+            <Clock className="w-4 h-4 text-slate-500" />
+            <span className="text-slate-500">{T.dueDate}:</span>
+            <span className="text-slate-900">{new Date(invoice.dueDate).toLocaleDateString()}</span>
           </div>
         </div>
       </div>
 
       {/* Payment History */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-green-400" />
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
+          <DollarSign className="w-5 h-5 text-green-600" />
           {T.myPayments}
         </h3>
         {payments.length === 0 ? (
-          <p className="text-gray-500 text-sm">{T.noPayments}</p>
+          <p className="text-slate-500 text-sm">{T.noPayments}</p>
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-700">
-                <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.paymentDate}</th>
-                <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.amount}</th>
-                <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.paymentMethod}</th>
-                <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">{T.reference}</th>
+              <tr className="bg-slate-900 border-b border-slate-200">
+                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.paymentDate}</th>
+                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.amount}</th>
+                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.paymentMethod}</th>
+                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.reference}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700/50">
+            <tbody className="divide-y divide-slate-200">
               {payments.map((p: any) => (
-                <tr key={p._id} className="hover:bg-gray-700/30">
-                  <td className="px-4 py-3 text-sm text-gray-300">{new Date(p.paymentDate).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 text-sm text-green-400 font-medium">{p.amount?.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm text-gray-300 capitalize">{p.paymentMethod?.replace('_', ' ')}</td>
-                  <td className="px-4 py-3 text-sm text-gray-400">{p.reference || '-'}</td>
+                <tr key={p._id} className="hover:bg-slate-100">
+                  <td className="px-4 py-3 text-sm text-slate-700">{new Date(p.paymentDate).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-sm text-green-600 font-medium">{p.amount?.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700 capitalize">{p.paymentMethod?.replace('_', ' ')}</td>
+                  <td className="px-4 py-3 text-sm text-slate-500">{p.reference || '-'}</td>
                 </tr>
               ))}
             </tbody>

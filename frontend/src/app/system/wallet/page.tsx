@@ -75,9 +75,9 @@ interface Transaction {
 // Translations are now in @/lib/translations
 
 const TYPE_CONFIG = {
-  collection: { label: 'Collection', labelAr: 'تحصيل', icon: ArrowUpCircle, color: 'text-green-400', bg: 'bg-green-500/20' },
-  expense: { label: 'Expense', labelAr: 'مصروف', icon: ArrowDownCircle, color: 'text-red-400', bg: 'bg-red-500/20' },
-  purchase: { label: 'Purchase', labelAr: 'مشتريات', icon: ShoppingCart, color: 'text-blue-400', bg: 'bg-blue-500/20' },
+  collection: { label: 'Collection', labelAr: 'تحصيل', icon: ArrowUpCircle, color: 'text-green-600', bg: 'bg-green-500/20' },
+  expense: { label: 'Expense', labelAr: 'مصروف', icon: ArrowDownCircle, color: 'text-red-600', bg: 'bg-red-500/20' },
+  purchase: { label: 'Purchase', labelAr: 'مشتريات', icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-500/20' },
 };
 
 const getTodayStr = () => {
@@ -915,9 +915,9 @@ export default function WalletPage() {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
-          <Wallet className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400 text-lg">{L.noBranch}</p>
-          <p className="text-gray-500 text-sm mt-1">{L.contactAdmin}</p>
+          <Wallet className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-500 text-lg">{L.noBranch}</p>
+          <p className="text-slate-500 text-sm mt-1">{L.contactAdmin}</p>
         </div>
       </div>
     );
@@ -932,8 +932,8 @@ export default function WalletPage() {
             <Wallet className="w-5 h-5 text-[#f37121]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">{L.dailyWallet}</h1>
-            <p className="text-gray-400 text-sm">{wallet?.branch?.name || L.selectBranch} — {wallet?.user?.firstName || ''} {wallet?.user?.lastName || ''}</p>
+            <h1 className="text-2xl font-bold text-slate-900">{L.dailyWallet}</h1>
+            <p className="text-slate-500 text-sm">{wallet?.branch?.name || L.selectBranch} — {wallet?.user?.firstName || ''} {wallet?.user?.lastName || ''}</p>
           </div>
         </div>
 
@@ -941,20 +941,20 @@ export default function WalletPage() {
           {canSelectBranch && (
             <>
               <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} title="Select branch"
-                className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
+                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                 {allBranches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
               </select>
               <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} title="Select user"
-                className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
+                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                 {branchUsers.length === 0 && <option value="">{L.noUsers}</option>}
                 {branchUsers.map((u) => <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>)}
               </select>
             </>
           )}
           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="Select date" />
+            className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="Select date" />
           <button type="button" onClick={() => setSelectedDate(getTodayStr())}
-            className="px-3 py-2 rounded-lg bg-gray-700 text-[#f37121] text-sm font-medium hover:bg-gray-600 transition-colors">{L.today}</button>
+            className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{L.today}</button>
           <button type="button" onClick={openExportModal} disabled={!wallet}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50" title={L.export}>
             <Download className="w-4 h-4" /> {L.export}
@@ -966,17 +966,17 @@ export default function WalletPage() {
       {actionError && (
         <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
-            <p className="text-red-400 text-sm">{actionError}</p>
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+            <p className="text-red-600 text-sm">{actionError}</p>
           </div>
-          <button type="button" onClick={() => setActionError('')} className="text-red-400 hover:text-red-300 shrink-0"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={() => setActionError('')} className="text-red-600 hover:text-red-700 shrink-0"><X className="w-4 h-4" /></button>
         </div>
       )}
 
       {!wallet && canSelectBranch && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-          <Wallet className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400">{L.selectBranchUser}</p>
+        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
+          <Wallet className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-500">{L.selectBranchUser}</p>
         </div>
       )}
 
@@ -984,20 +984,20 @@ export default function WalletPage() {
       {/* Wallet Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
-          { label: L.opening, value: wallet.openingBalance.toLocaleString(), color: 'text-white', prefix: '' },
-          { label: L.collections, value: wallet.totalCollections.toLocaleString(), color: 'text-green-400', prefix: '+' },
-          { label: L.expenses, value: wallet.totalExpenses.toLocaleString(), color: 'text-red-400', prefix: '-' },
-          { label: L.purchases, value: wallet.totalPurchases.toLocaleString(), color: 'text-blue-400', prefix: '-' },
+          { label: L.opening, value: wallet.openingBalance.toLocaleString(), color: 'text-slate-900', prefix: '' },
+          { label: L.collections, value: wallet.totalCollections.toLocaleString(), color: 'text-green-600', prefix: '+' },
+          { label: L.expenses, value: wallet.totalExpenses.toLocaleString(), color: 'text-red-600', prefix: '-' },
+          { label: L.purchases, value: wallet.totalPurchases.toLocaleString(), color: 'text-blue-600', prefix: '-' },
           { label: L.closingBalance, value: wallet.closingBalance.toLocaleString(), color: 'text-[#f37121]', prefix: '', border: 'border-[#f37121]/30' },
         ].map((card) => (
-          <div key={card.label} className={`bg-gray-800 border ${card.border || 'border-gray-700'} rounded-xl p-4`}>
-            <p className="text-gray-400 text-xs mb-1">{card.label}</p>
+          <div key={card.label} className={`bg-white border ${card.border || 'border-slate-200'} rounded-xl p-4 shadow-sm`}>
+            <p className="text-slate-500 text-xs mb-1">{card.label}</p>
             <p className={`text-xl font-bold ${card.color}`}>{card.prefix}{card.value}</p>
           </div>
         ))}
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-          <p className="text-gray-400 text-xs mb-1">{L.status}</p>
-          <p className={`text-xl font-bold ${wallet.isClosed ? 'text-red-400' : 'text-green-400'}`}>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p className="text-slate-500 text-xs mb-1">{L.status}</p>
+          <p className={`text-xl font-bold ${wallet.isClosed ? 'text-red-600' : 'text-green-600'}`}>
             {wallet.isClosed ? L.closed : L.open}
           </p>
         </div>
@@ -1006,12 +1006,12 @@ export default function WalletPage() {
       {/* Cash Difference (if day is closed and has difference) — only visible to managers */}
       {isManager && wallet.isClosed && wallet.cashDifference != null && !isNaN(wallet.cashDifference) && wallet.cashDifference !== 0 && (
         <div className={`flex items-center gap-3 p-4 rounded-xl border ${wallet.cashDifference > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-green-500/10 border-green-500/30'}`}>
-          <AlertTriangle className={`w-5 h-5 ${wallet.cashDifference > 0 ? 'text-red-400' : 'text-green-400'}`} />
+          <AlertTriangle className={`w-5 h-5 ${wallet.cashDifference > 0 ? 'text-red-600' : 'text-green-600'}`} />
           <div>
-            <p className={`text-sm font-medium ${wallet.cashDifference > 0 ? 'text-red-400' : 'text-green-400'}`}>
+            <p className={`text-sm font-medium ${wallet.cashDifference > 0 ? 'text-red-600' : 'text-green-600'}`}>
               {wallet.cashDifference > 0 ? L.deficit : L.surplus}: {Math.abs(wallet.cashDifference).toLocaleString()} SAR
             </p>
-            <p className="text-gray-400 text-xs">
+            <p className="text-slate-500 text-xs">
               {L.expected}: {wallet.closingBalance.toLocaleString()} SAR | {L.actual}: {(wallet.actualCash ?? 0).toLocaleString()} SAR
               {wallet.differenceReason && ` | ${L.reason}: ${wallet.differenceReason}`}
             </p>
@@ -1025,15 +1025,15 @@ export default function WalletPage() {
           {(!wallet.isClosed || isManager) && (
             <>
               <button type="button" onClick={() => openTxModal('collection')}
-                className="flex items-center gap-2 px-4 py-2 bg-green-500/20 text-green-400 rounded-lg text-sm font-medium hover:bg-green-500/30 transition-colors border border-green-500/30">
+                className="flex items-center gap-2 px-4 py-2 bg-green-500/20 text-green-600 rounded-lg text-sm font-medium hover:bg-green-500/30 transition-colors border border-green-500/30">
                 <ArrowUpCircle className="w-4 h-4" /> {L.collection}
               </button>
               <button type="button" onClick={() => openTxModal('expense')}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-colors border border-red-500/30">
+                className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-600 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-colors border border-red-500/30">
                 <ArrowDownCircle className="w-4 h-4" /> {L.expense}
               </button>
               <button type="button" onClick={() => openTxModal('purchase')}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-500/30 transition-colors border border-blue-500/30">
+                className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-500/30 transition-colors border border-blue-500/30">
                 <ShoppingCart className="w-4 h-4" /> {L.purchase}
               </button>
             </>
@@ -1046,7 +1046,7 @@ export default function WalletPage() {
           )}
           {wallet.isClosed && isManager && (
             <button type="button" onClick={handleReopenDay}
-              className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 text-yellow-400 rounded-lg text-sm font-medium hover:bg-yellow-500/30 transition-colors border border-yellow-500/30 ml-auto">
+              className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 text-yellow-700 rounded-lg text-sm font-medium hover:bg-yellow-500/30 transition-colors border border-yellow-500/30 ml-auto">
               <Unlock className="w-4 h-4" /> {L.reopenDay}
             </button>
           )}
@@ -1054,9 +1054,9 @@ export default function WalletPage() {
       )}
 
       {/* Transactions Table */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-700">
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div className="px-4 py-3 border-b border-slate-200">
+          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm flex items-center gap-2 mb-3">
             <Receipt className="w-4 h-4 text-[#f37121]" />
             {L.transactions} ({transactions.length})
           </h3>
@@ -1064,49 +1064,49 @@ export default function WalletPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-700">
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.type}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.amount}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.details}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.deliveryStatementNumber}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.branch}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.client}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.from}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.to}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.carType}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.length}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.carNumber}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.reportDate}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.notes}</th>
-                <th className="text-left text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.time}</th>
-                <th className="text-right text-gray-400 font-medium px-4 py-3 whitespace-nowrap">{L.actions}</th>
+              <tr className="bg-slate-900 border-b border-slate-200">
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.type}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.amount}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.details}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.deliveryStatementNumber}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.branch}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.client}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.from}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.to}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.carType}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.length}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.carNumber}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.reportDate}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.notes}</th>
+                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.time}</th>
+                <th className="text-right text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.actions}</th>
               </tr>
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={15} className="text-center text-gray-400 py-12">{L.noTransactions}</td></tr>
+                <tr><td colSpan={15} className="text-center text-slate-500 py-12">{L.noTransactions}</td></tr>
               ) : transactions.map((tx) => {
                 const cfg = TYPE_CONFIG[tx.type];
                 const Icon = cfg.icon;
                 return (
-                  <tr key={tx._id} className={`border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors ${tx.isFlagged ? 'bg-red-500/5' : ''}`}>
+                  <tr key={tx._id} className={`border-b border-slate-200/70 hover:bg-slate-100 transition-colors ${tx.isFlagged ? 'bg-red-500/5' : ''}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className={`p-1 rounded ${cfg.bg}`}><Icon className={`w-3.5 h-3.5 ${cfg.color}`} /></div>
                         <span className={`text-xs font-medium capitalize ${cfg.color}`}>{typeLabel(tx.type)}</span>
-                        {tx.isFlagged && <span title={tx.flagReason}><AlertTriangle className="w-3.5 h-3.5 text-red-400" /></span>}
+                        {tx.isFlagged && <span title={tx.flagReason}><AlertTriangle className="w-3.5 h-3.5 text-red-600" /></span>}
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`font-bold ${tx.type === 'collection' ? 'text-green-400' : 'text-red-400'}`}>
+                      <span className={`font-bold ${tx.type === 'collection' ? 'text-green-600' : 'text-red-600'}`}>
                         {tx.type === 'collection' ? '+' : '-'}{tx.amount.toLocaleString()} SAR
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-300 text-xs">
-                      {tx.type === 'collection' && tx.collectionSource === 'company' && <div className="text-blue-400">{L.fromCompany}</div>}
+                    <td className="px-4 py-3 text-slate-700 text-xs">
+                      {tx.type === 'collection' && tx.collectionSource === 'company' && <div className="text-blue-600">{L.fromCompany}</div>}
                       {tx.description && <div>{tx.description}</div>}
                       {tx.customer && <div>{tx.customer.companyName} ({tx.customer.customerNumber})</div>}
-                      {tx.invoice && <div className="text-gray-500">Inv: {tx.invoice.invoiceNumber}</div>}
+                      {tx.invoice && <div className="text-slate-500">Inv: {tx.invoice.invoiceNumber}</div>}
                       {(tx.vendor || tx.vendorName) && <div>{L.vendor}: {tx.vendor?.name || tx.vendorName}</div>}
                       {(tx.driver || tx.driverName) && <div>{L.driver}: {tx.driver?.name || tx.driverName}</div>}
                       {tx.expenseCategory && <div>{L.category}: {tx.expenseCategory.name}</div>}
@@ -1115,30 +1115,30 @@ export default function WalletPage() {
                       {tx.purchaseReceiptNumber && <div>{L.receipt}: {tx.purchaseReceiptNumber}</div>}
                     </td>
                     {/* Delivery Statement # — its own column */}
-                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.deliveryStatementNumber || tx.purchaseDeliveryStatementNumber || '—'}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.deliveryStatementNumber || tx.purchaseDeliveryStatementNumber || '—'}</td>
                     {/* Branch — show typed branch first, fall back to workflow branch */}
-                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.purchaseBranch || tx.operationDetails?.branch || '—'}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.purchaseBranch || tx.operationDetails?.branch || '—'}</td>
                     {/* Operation Details — each in its own column */}
-                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.operationDetails?.client || '—'}</td>
-                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.operationDetails?.from || '—'}</td>
-                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.operationDetails?.to || '—'}</td>
-                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.operationDetails?.carType || '—'}</td>
-                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.operationDetails?.length || '—'}</td>
-                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.operationDetails?.carNumber || '—'}</td>
-                    <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{tx.operationDetails?.reportDate ? new Date(tx.operationDetails.reportDate).toLocaleDateString('en-GB') : '—'}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs max-w-[150px] truncate">{tx.notes || '—'}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.client || '—'}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.from || '—'}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.to || '—'}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.carType || '—'}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.length || '—'}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.carNumber || '—'}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.reportDate ? new Date(tx.operationDetails.reportDate).toLocaleDateString('en-GB') : '—'}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs max-w-[150px] truncate">{tx.notes || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
                       {new Date(tx.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {!isReadOnly && (!wallet.isClosed || isManager) && (
                         <div className="flex items-center justify-end gap-1">
                           <button type="button" onClick={() => openEditTx(tx)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-[#f37121] hover:bg-gray-700 transition-colors" title={L.edit}>
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={L.edit}>
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button type="button" onClick={() => handleDeleteTx(tx._id)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-gray-700 transition-colors" title={L.delete}>
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={L.delete}>
                             <X className="w-4 h-4" />
                           </button>
                         </div>
@@ -1158,13 +1158,13 @@ export default function WalletPage() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowTxModal(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              onClick={(e) => e.stopPropagation()} className="w-full max-w-lg bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
-              <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between shrink-0">
-                <h2 className="text-white font-bold text-lg flex items-center gap-2">
+              onClick={(e) => e.stopPropagation()} className="w-full max-w-lg bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+                <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold text-lg flex items-center gap-2 mb-3">
                   {(() => { const c = TYPE_CONFIG[txType]; const I = c.icon; return <I className={`w-5 h-5 ${c.color}`} />; })()}
                   {L.newTransaction} {typeLabel(txType)}
                 </h2>
-                <button type="button" onClick={() => setShowTxModal(false)} className="text-gray-400 hover:text-white" aria-label="Close"><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => setShowTxModal(false)} className="text-slate-500 hover:text-slate-900" aria-label="Close"><X className="w-5 h-5" /></button>
               </div>
 
               <div className="p-6 overflow-y-auto space-y-4">
@@ -1175,7 +1175,7 @@ export default function WalletPage() {
                     return (
                       <button key={t} type="button" onClick={() => setTxType(t)}
                         className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-sm font-medium transition-all ${
-                          txType === t ? `${c.bg} ${c.color} border-current` : 'border-gray-700 text-gray-400 hover:border-gray-600'
+                          txType === t ? `${c.bg} ${c.color} border-current` : 'border-slate-200 text-slate-500 hover:border-slate-300'
                         }`}>
                         <I className="w-4 h-4" /> {lang === 'ar' ? c.labelAr : c.label}
                       </button>
@@ -1185,10 +1185,10 @@ export default function WalletPage() {
 
                 {/* Amount */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{L.amountSar} *</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{L.amountSar} *</label>
                   <input type="number" min="0.01" step="0.01" value={txForm.amount}
                     onChange={(e) => setTxForm((f) => ({ ...f, amount: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="0.00" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="0.00" />
                 </div>
 
                 {/* Collection Fields */}
@@ -1197,30 +1197,30 @@ export default function WalletPage() {
                     {/* Collection Source Selector */}
                     <div className="grid grid-cols-2 gap-2">
                       <button type="button" onClick={() => setTxForm((f) => ({ ...f, collectionSource: 'client', description: '' }))}
-                        className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${txForm.collectionSource === 'client' ? 'bg-green-500/20 text-green-400 border-green-500/50' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                        className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${txForm.collectionSource === 'client' ? 'bg-green-500/20 text-green-600 border-green-500/50' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
                         {L.fromClient}
                       </button>
                       <button type="button" onClick={() => setTxForm((f) => ({ ...f, collectionSource: 'company', deliveryStatementNumber: '', description: '' }))}
-                        className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${txForm.collectionSource === 'company' ? 'bg-blue-500/20 text-blue-400 border-blue-500/50' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                        className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${txForm.collectionSource === 'company' ? 'bg-blue-500/20 text-blue-600 border-blue-500/50' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
                         {L.fromCompanyLabel}
                       </button>
                     </div>
 
                     {txForm.collectionSource === 'client' && (
                       <div>
-                        <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatementNumber} *</label>
+                        <label className="text-slate-500 text-xs mb-1 block">{L.deliveryStatementNumber} *</label>
                         <input type="text" value={txForm.deliveryStatementNumber}
                           onChange={(e) => setTxForm((f) => ({ ...f, deliveryStatementNumber: e.target.value }))}
-                          className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDeliveryStatement} />
+                          className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDeliveryStatement} />
                       </div>
                     )}
 
                     {txForm.collectionSource === 'company' && (
                       <div>
-                        <label className="text-gray-400 text-xs mb-1 block">{L.description} *</label>
+                        <label className="text-slate-500 text-xs mb-1 block">{L.description} *</label>
                         <input type="text" value={txForm.description}
                           onChange={(e) => setTxForm((f) => ({ ...f, description: e.target.value }))}
-                          className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.collectionPlaceholder} />
+                          className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.collectionPlaceholder} />
                       </div>
                     )}
                   </>
@@ -1229,10 +1229,10 @@ export default function WalletPage() {
                 {/* Expense Fields (general spending - fuel, supplies, etc.) */}
                 {txType === 'expense' && (
                   <div>
-                    <label className="text-gray-400 text-xs mb-1 block">{L.description} *</label>
+                    <label className="text-slate-500 text-xs mb-1 block">{L.description} *</label>
                     <input type="text" value={txForm.itemName}
                       onChange={(e) => setTxForm((f) => ({ ...f, itemName: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.expensePlaceholder} />
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.expensePlaceholder} />
                   </div>
                 )}
 
@@ -1242,61 +1242,61 @@ export default function WalletPage() {
                     <button
                       type="button"
                       onClick={() => { setShowTxModal(false); setShowBulkUpload(true); }}
-                      className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 text-sm font-medium hover:bg-blue-500/30"
+                      className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-blue-500/20 text-blue-600 border border-blue-500/30 text-sm font-medium hover:bg-blue-500/30"
                     >
                       <Upload className="w-4 h-4" />
                       {lang === 'ar' ? 'رفع ملف اكسل جماعي' : 'Bulk Upload Excel'}
                     </button>
                     {/* Search by Delivery Statement Number */}
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatementNumber} *</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.deliveryStatementNumber} *</label>
                       <div className="flex gap-2">
                         <input type="text" value={purchaseReportSearch}
                           name="purchaseDeliveryStatementNumber"
                           autoComplete="off"
                           onChange={(e) => { setPurchaseReportSearch(e.target.value); setTxForm((f) => ({ ...f, purchaseDeliveryStatementNumber: e.target.value })); }}
                           onKeyDown={(e) => e.key === 'Enter' && handlePurchaseReportSearch()}
-                          className="flex-1 px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDeliveryStatement} />
+                          className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDeliveryStatement} />
                         <button type="button" onClick={handlePurchaseReportSearch} aria-label="Search report"
                           className="px-3 py-2.5 rounded-lg bg-[#f37121] text-white text-sm hover:bg-[#e06010] transition-colors">
                           <Search className="w-4 h-4" />
                         </button>
                       </div>
                       {purchaseReportMsg && (
-                        <p className={`text-xs mt-1 ${purchaseReportMsg.startsWith('Found') ? 'text-green-400' : 'text-red-400'}`}>{purchaseReportMsg}</p>
+                        <p className={`text-xs mt-1 ${purchaseReportMsg.startsWith('Found') ? 'text-green-600' : 'text-red-600'}`}>{purchaseReportMsg}</p>
                       )}
                     </div>
 
                     {/* Show invoice selling price if found */}
                     {purchaseInvoiceAmount != null && (
-                      <div className="bg-gray-800/50 border border-blue-500/30 rounded-lg p-3">
-                        <p className="text-blue-400 text-sm font-medium">{L.sellingPrice}: {purchaseInvoiceAmount.toLocaleString()} SAR</p>
+                      <div className="bg-slate-50 border border-blue-500/30 rounded-lg p-3">
+                        <p className="text-blue-600 text-sm font-medium">{L.sellingPrice}: {purchaseInvoiceAmount.toLocaleString()} SAR</p>
                       </div>
                     )}
 
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.driverName}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.driverName}</label>
                       <input type="text" value={txForm.purchaseDriverName}
                         name="purchaseDriverName"
                         autoComplete="off"
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseDriverName: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDriverName} />
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDriverName} />
                     </div>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.receiptNumber}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.receiptNumber}</label>
                       <input type="text" value={txForm.purchaseReceiptNumber}
                         name="purchaseReceiptNumber"
                         autoComplete="off"
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseReceiptNumber: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterReceiptNumber} />
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterReceiptNumber} />
                     </div>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.branch}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.branch}</label>
                       <select
                         value={txForm.purchaseBranch}
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseBranch: e.target.value }))}
                         title={L.branch}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                       >
                         <option value="">{L.enterBranchName}</option>
                         {branchList.map((b) => (
@@ -1309,20 +1309,20 @@ export default function WalletPage() {
 
                 {/* Notes */}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{L.notes}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{L.notes}</label>
                   <textarea value={txForm.notes} onChange={(e) => setTxForm((f) => ({ ...f, notes: e.target.value }))}
-                    rows={2} className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none" placeholder={L.addNotes} />
+                    rows={2} className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none" placeholder={L.addNotes} />
                 </div>
               </div>
 
-              <div className="px-6 py-4 border-t border-gray-700 shrink-0">
+              <div className="px-6 py-4 border-t border-slate-200 shrink-0">
                 {txError && (
-                  <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                  <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 text-sm">
                     {txError}
                   </div>
                 )}
                 <div className="flex justify-end gap-3">
-                  <button type="button" onClick={() => setShowTxModal(false)} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{L.cancel}</button>
+                  <button type="button" onClick={() => setShowTxModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{L.cancel}</button>
                   <button type="button" onClick={handleAddTransaction} disabled={submitting || !txForm.amount}
                     className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50">
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
@@ -1341,101 +1341,101 @@ export default function WalletPage() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setEditingTx(null)}>
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-              className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+              className="bg-slate-50 border border-slate-200 rounded-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-bold text-lg">{L.editTransaction}</h3>
-                <button type="button" onClick={() => setEditingTx(null)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold text-lg mb-3">{L.editTransaction}</h3>
+                <button type="button" onClick={() => setEditingTx(null)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
               </div>
               <div className="space-y-3">
-                <div className="bg-gray-800 rounded-lg p-3 text-sm">
-                  <span className={`font-medium capitalize ${TYPE_CONFIG[editingTx.type]?.color || 'text-white'}`}>{typeLabel(editingTx.type)}</span>
-                  {editingTx.customer && <span className="text-gray-400 ml-2">— {editingTx.customer.companyName}</span>}
-                  {(editingTx.vendor || editingTx.vendorName) && <span className="text-gray-400 ml-2">— {editingTx.vendor?.name || editingTx.vendorName}</span>}
-                  {(editingTx.driver || editingTx.driverName) && <span className="text-gray-400 ml-2">— {editingTx.driver?.name || editingTx.driverName}</span>}
+                <div className="bg-white rounded-lg p-3 text-sm">
+                  <span className={`font-medium capitalize ${TYPE_CONFIG[editingTx.type]?.color || 'text-slate-900'}`}>{typeLabel(editingTx.type)}</span>
+                  {editingTx.customer && <span className="text-slate-500 ml-2">— {editingTx.customer.companyName}</span>}
+                  {(editingTx.vendor || editingTx.vendorName) && <span className="text-slate-500 ml-2">— {editingTx.vendor?.name || editingTx.vendorName}</span>}
+                  {(editingTx.driver || editingTx.driverName) && <span className="text-slate-500 ml-2">— {editingTx.driver?.name || editingTx.driverName}</span>}
                 </div>
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{L.amountSar} *</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{L.amountSar} *</label>
                   <input type="number" min="0.01" step="0.01" value={editForm.amount}
                     onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                 </div>
                 {editingTx.type === 'collection' && (
                   <>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatementNumber}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.deliveryStatementNumber}</label>
                       <input type="text" value={editForm.deliveryStatementNumber || ''}
                         name="deliveryStatementNumber"
                         autoComplete="off"
                         title={L.deliveryStatementNumber}
                         placeholder={L.deliveryStatementNumber}
                         onChange={(e) => setEditForm((f) => ({ ...f, deliveryStatementNumber: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                     {editingTx.collectionSource === 'company' && (
                       <div>
-                        <label className="text-gray-400 text-xs mb-1 block">{L.description}</label>
+                        <label className="text-slate-500 text-xs mb-1 block">{L.description}</label>
                         <input type="text" value={editForm.description || ''}
                           name="collectionDescription"
                           autoComplete="off"
                           title={L.description}
                           placeholder={L.description}
                           onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-                          className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                          className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                       </div>
                     )}
                   </>
                 )}
                 {editingTx.type === 'expense' && (
                   <div>
-                    <label className="text-gray-400 text-xs mb-1 block">{L.itemDescription}</label>
+                    <label className="text-slate-500 text-xs mb-1 block">{L.itemDescription}</label>
                     <input type="text" value={editForm.itemName || ''}
                       name="itemName"
                       autoComplete="off"
                       title={L.itemDescription}
                       placeholder={L.itemDescription}
                       onChange={(e) => setEditForm((f) => ({ ...f, itemName: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                      className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                   </div>
                 )}
                 {editingTx.type === 'purchase' && (
                   <>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.deliveryStatementNumber}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.deliveryStatementNumber}</label>
                       <input type="text" value={editForm.purchaseDeliveryStatementNumber || ''}
                         name="purchaseDeliveryStatementNumber"
                         autoComplete="off"
                         title={L.deliveryStatementNumber}
                         placeholder={L.deliveryStatementNumber}
                         onChange={(e) => setEditForm((f) => ({ ...f, purchaseDeliveryStatementNumber: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.driverName}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.driverName}</label>
                       <input type="text" value={editForm.purchaseDriverName || ''}
                         name="purchaseDriverName"
                         autoComplete="off"
                         title={L.driverName}
                         placeholder={L.driverName}
                         onChange={(e) => setEditForm((f) => ({ ...f, purchaseDriverName: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.receiptNumber}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.receiptNumber}</label>
                       <input type="text" value={editForm.purchaseReceiptNumber || ''}
                         name="purchaseReceiptNumber"
                         autoComplete="off"
                         title={L.receiptNumber}
                         placeholder={L.receiptNumber}
                         onChange={(e) => setEditForm((f) => ({ ...f, purchaseReceiptNumber: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.branch}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.branch}</label>
                       <select
                         value={editForm.purchaseBranch || ''}
                         onChange={(e) => setEditForm((f) => ({ ...f, purchaseBranch: e.target.value }))}
                         title={L.branch}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                       >
                         <option value="">{L.enterBranchName}</option>
                         {/* Keep the historical free-text value visible even if it doesn't match any branch */}
@@ -1450,14 +1450,14 @@ export default function WalletPage() {
                   </>
                 )}
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{L.notes}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{L.notes}</label>
                   <textarea value={editForm.notes || ''} rows={2}
                     onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-4">
-                <button type="button" onClick={() => setEditingTx(null)} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{L.cancel}</button>
+                <button type="button" onClick={() => setEditingTx(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{L.cancel}</button>
                 <button type="button" onClick={handleEditTx} disabled={submitting || !editForm.amount}
                   className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50">
                   {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
@@ -1475,27 +1475,27 @@ export default function WalletPage() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowCloseModal(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+              onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+              <div className="px-6 py-4 bg-slate-900 flex items-center justify-between">
                 <h2 className="text-white font-bold text-lg flex items-center gap-2">
                   <Lock className="w-5 h-5 text-[#f37121]" /> {L.closeDay}
                 </h2>
-                <button type="button" onClick={() => setShowCloseModal(false)} className="text-gray-400 hover:text-white" aria-label="Close"><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => setShowCloseModal(false)} className="text-slate-300 hover:text-white" aria-label="Close"><X className="w-5 h-5" /></button>
               </div>
 
               <div className="p-6 space-y-4">
                 {isManager && (
-                  <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                    <p className="text-gray-400 text-xs mb-1">{L.expectedCashBalance}</p>
+                  <div className="bg-white border border-slate-200 rounded-lg p-4">
+                    <p className="text-slate-500 text-xs mb-1">{L.expectedCashBalance}</p>
                     <p className="text-2xl font-bold text-[#f37121]">{wallet.closingBalance.toLocaleString()} SAR</p>
                   </div>
                 )}
 
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{L.cashInHand} *</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{L.cashInHand} *</label>
                   <input type="number" min="0" step="0.01" value={closeForm.actualCash}
                     onChange={(e) => setCloseForm((f) => ({ ...f, actualCash: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterAmountHave} />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterAmountHave} />
                 </div>
 
                 {closeForm.actualCash && Number(closeForm.actualCash) !== wallet.closingBalance && (() => {
@@ -1503,7 +1503,7 @@ export default function WalletPage() {
                   const isDeficit = diff > 0;
                   return (
                     <div className={`p-3 rounded-lg border ${isDeficit ? 'bg-red-500/10 border-red-500/30' : 'bg-green-500/10 border-green-500/30'}`}>
-                      <p className={`text-sm font-medium ${isDeficit ? 'text-red-400' : 'text-green-400'}`}>
+                      <p className={`text-sm font-medium ${isDeficit ? 'text-red-600' : 'text-green-600'}`}>
                         {isDeficit ? L.deficit : L.surplus}: {Math.abs(diff).toLocaleString()} SAR
                       </p>
                     </div>
@@ -1511,15 +1511,15 @@ export default function WalletPage() {
                 })()}
 
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">{L.notesOptional}</label>
+                  <label className="text-slate-500 text-xs mb-1 block">{L.notesOptional}</label>
                   <textarea value={closeForm.differenceNotes}
                     onChange={(e) => setCloseForm((f) => ({ ...f, differenceNotes: e.target.value }))}
-                    rows={2} className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none" placeholder={L.addAnyNotes} />
+                    rows={2} className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none" placeholder={L.addAnyNotes} />
                 </div>
               </div>
 
-              <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowCloseModal(false)} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{L.cancel}</button>
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowCloseModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{L.cancel}</button>
                 <button type="button" onClick={handleCloseDay} disabled={closing}
                   className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50">
                   {closing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
@@ -1538,61 +1538,61 @@ export default function WalletPage() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => !exporting && setShowExportModal(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-2xl shadow-xl overflow-hidden" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-              <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+              onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+              <div className="px-6 py-4 bg-slate-900 flex items-center justify-between">
                 <h2 className="text-white font-bold text-lg flex items-center gap-2">
                   <Download className="w-5 h-5 text-[#f37121]" /> {L.exportToExcel}
                 </h2>
-                <button type="button" onClick={() => !exporting && setShowExportModal(false)} className="text-gray-400 hover:text-white" aria-label="Close" disabled={exporting}><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => !exporting && setShowExportModal(false)} className="text-slate-300 hover:text-white" aria-label="Close" disabled={exporting}><X className="w-5 h-5" /></button>
               </div>
 
               <div className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setExportMode('single')}
-                    className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${exportMode === 'single' ? 'bg-[#f37121]/20 text-[#f37121] border-[#f37121]/50' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                    className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${exportMode === 'single' ? 'bg-[#f37121]/20 text-[#f37121] border-[#f37121]/50' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
                     {L.singleDay}
                   </button>
                   <button type="button" onClick={() => setExportMode('range')}
-                    className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${exportMode === 'range' ? 'bg-[#f37121]/20 text-[#f37121] border-[#f37121]/50' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                    className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${exportMode === 'range' ? 'bg-[#f37121]/20 text-[#f37121] border-[#f37121]/50' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
                     {L.dateRange}
                   </button>
                 </div>
 
                 {exportMode === 'single' ? (
-                  <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                    <p className="text-gray-400 text-xs mb-1">{L.fromDate}</p>
-                    <p className="text-white font-medium">{selectedDate}</p>
-                    <p className="text-gray-500 text-xs mt-2">
+                  <div className="bg-white border border-slate-200 rounded-lg p-4">
+                    <p className="text-slate-500 text-xs mb-1">{L.fromDate}</p>
+                    <p className="text-slate-900 font-medium">{selectedDate}</p>
+                    <p className="text-slate-500 text-xs mt-2">
                       {wallet?.branch?.name || ''} — {wallet?.user?.firstName || ''} {wallet?.user?.lastName || ''}
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.fromDate}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.fromDate}</label>
                       <input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)}
                         aria-label={L.fromDate}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                     <div>
-                      <label className="text-gray-400 text-xs mb-1 block">{L.toDate}</label>
+                      <label className="text-slate-500 text-xs mb-1 block">{L.toDate}</label>
                       <input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)}
                         aria-label={L.toDate}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                   </div>
                 )}
 
                 {exportError && (
-                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 text-sm">
                     {exportError}
                   </div>
                 )}
               </div>
 
-              <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
                 <button type="button" onClick={() => setShowExportModal(false)} disabled={exporting}
-                  className="px-4 py-2 text-gray-400 hover:text-white text-sm disabled:opacity-50">{L.cancel}</button>
+                  className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm disabled:opacity-50">{L.cancel}</button>
                 <button type="button" onClick={handleExportClick}
                   disabled={exporting || (exportMode === 'range' && exportFrom > exportTo)}
                   className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50">
@@ -1609,18 +1609,18 @@ export default function WalletPage() {
       <AnimatePresence>
         {confirmModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm shadow-xl">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white border border-slate-200 rounded-xl w-full max-w-sm shadow-xl">
               <div className="p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-full bg-[#f37121]/20 flex items-center justify-center">
                     <AlertTriangle className="w-5 h-5 text-[#f37121]" />
                   </div>
-                  <h3 className="text-white font-semibold">{lang === 'ar' ? 'تأكيد' : 'Confirm'}</h3>
+                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{lang === 'ar' ? 'تأكيد' : 'Confirm'}</h3>
                 </div>
-                <p className="text-gray-300 text-sm">{confirmModal.message}</p>
+                <p className="text-slate-700 text-sm">{confirmModal.message}</p>
               </div>
-              <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
-                <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{L.cancel}</button>
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+                <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{L.cancel}</button>
                 <button type="button" onClick={confirmModal.onConfirm} className="px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
                   {lang === 'ar' ? 'تأكيد' : 'Confirm'}
                 </button>
@@ -1632,27 +1632,27 @@ export default function WalletPage() {
 
       {showBulkUpload && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => !bulkUploading && setShowBulkUpload(false)}>
-          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-semibold text-lg">
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">
                   {lang === 'ar' ? 'رفع مشتريات جماعية من اكسل' : 'Bulk Upload Purchases'}
                 </h3>
                 {!bulkUploading && (
-                  <button type="button" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'} title={lang === 'ar' ? 'إغلاق' : 'Close'} onClick={() => setShowBulkUpload(false)} className="text-gray-400 hover:text-white">
+                  <button type="button" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'} title={lang === 'ar' ? 'إغلاق' : 'Close'} onClick={() => setShowBulkUpload(false)} className="text-slate-500 hover:text-slate-900">
                     <X className="w-5 h-5" />
                   </button>
                 )}
               </div>
 
-              <div className="text-gray-400 text-sm mb-3 space-y-1">
+              <div className="text-slate-500 text-sm mb-3 space-y-1">
                 <p>{lang === 'ar'
                   ? '✓ شكل 1: ملف فيه شيت واحد ب 3 أعمدة (رقم كشف التخريج - القيمة - الفرع)'
                   : '✓ Format 1: Single sheet with 3 columns (Delivery # / Value / Branch)'}</p>
                 <p>{lang === 'ar'
                   ? '✓ شكل 2: ملف شهري فيه 31 شيت (1 إلى 31 = أيام الشهر) + شيت DATA'
                   : '✓ Format 2: Monthly file with 31 sheets (1-31 = days) + DATA sheet'}</p>
-                <p className="text-gray-500 text-xs">
+                <p className="text-slate-500 text-xs">
                   {lang === 'ar'
                     ? 'للشكل الشهري: الشهر هيتحدد من اسم الملف (مثلاً "ابريل"), والتاريخ لكل معاملة هيكون من رقم الشيت'
                     : 'Monthly: month detected from filename (e.g. "ابريل"=April), each transaction dated by its sheet number'}
@@ -1661,55 +1661,55 @@ export default function WalletPage() {
 
               {bulkRawPreview ? (
                 <div className="space-y-3">
-                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-400 text-sm">
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-700 text-sm">
                     {lang === 'ar'
                       ? '⚠️ مش قادر أكتشف الأعمدة تلقائياً. اختار الأعمدة يدوياً من الجدول تحت:'
                       : '⚠️ Auto-detection failed. Pick columns manually from the preview below:'}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-gray-400 text-xs block mb-1">{lang === 'ar' ? 'عمود رقم التخريج' : 'Delivery Column'}</label>
+                      <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'عمود رقم التخريج' : 'Delivery Column'}</label>
                       <select aria-label="delivery column" value={manualDeliveryCol} onChange={(e) => setManualDeliveryCol(Number(e.target.value))}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-2 py-2 text-sm">
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-2 py-2 text-sm">
                         {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>Col {i}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="text-gray-400 text-xs block mb-1">{lang === 'ar' ? 'عمود القيمة' : 'Value Column'}</label>
+                      <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'عمود القيمة' : 'Value Column'}</label>
                       <select aria-label="value column" value={manualValueCol} onChange={(e) => setManualValueCol(Number(e.target.value))}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-2 py-2 text-sm">
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-2 py-2 text-sm">
                         {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>Col {i}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="text-gray-400 text-xs block mb-1">{lang === 'ar' ? 'عمود الفرع (اختياري)' : 'Branch Column (optional)'}</label>
+                      <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'عمود الفرع (اختياري)' : 'Branch Column (optional)'}</label>
                       <select aria-label="branch column" value={manualBranchCol} onChange={(e) => setManualBranchCol(Number(e.target.value))}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-2 py-2 text-sm">
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-2 py-2 text-sm">
                         <option value={-1}>{lang === 'ar' ? '— بدون —' : '— None —'}</option>
                         {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>Col {i}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="text-gray-400 text-xs block mb-1">{lang === 'ar' ? 'البيانات تبدأ من صف' : 'Data starts at row'}</label>
+                      <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'البيانات تبدأ من صف' : 'Data starts at row'}</label>
                       <input type="number" min="0" aria-label="data start row" title="Data starts at row" placeholder="0"
                         value={manualDataStart} onChange={(e) => setManualDataStart(Number(e.target.value) || 0)}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm" />
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2 text-sm" />
                     </div>
                   </div>
-                  <div className="text-xs text-gray-400">
+                  <div className="text-xs text-slate-500">
                     {lang === 'ar' ? 'شوف البيانات تحت واعرف كل عمود رقمه كام:' : 'Look at the preview to identify column indices:'}
                   </div>
-                  <div className="max-h-72 overflow-auto bg-gray-900 rounded-lg border border-gray-700">
+                  <div className="max-h-72 overflow-auto bg-slate-50 rounded-lg border border-slate-200">
                     <table className="text-xs">
-                      <thead className="bg-gray-800 sticky top-0">
+                      <thead className="bg-slate-900 sticky top-0">
                         <tr>
-                          <th className="px-2 py-1 text-gray-500">Row</th>
+                          <th className="px-2 py-1 text-slate-300">Row</th>
                           {bulkRawPreview.rows[0]?.map((_: any, i: number) => (
                             <th key={i} className={`px-2 py-1 whitespace-nowrap ${
-                              i === manualDeliveryCol ? 'bg-orange-500/30 text-orange-300' :
-                              i === manualValueCol ? 'bg-green-500/30 text-green-300' :
-                              i === manualBranchCol ? 'bg-blue-500/30 text-blue-300' :
-                              'text-gray-400'
+                              i === manualDeliveryCol ? 'bg-orange-500/30 text-orange-700' :
+                              i === manualValueCol ? 'bg-green-500/30 text-green-700' :
+                              i === manualBranchCol ? 'bg-blue-500/30 text-blue-700' :
+                              'text-slate-300'
                             }`}>
                               Col {i}
                             </th>
@@ -1718,14 +1718,14 @@ export default function WalletPage() {
                       </thead>
                       <tbody>
                         {bulkRawPreview.rows.slice(0, 25).map((row: any[], ri: number) => (
-                          <tr key={ri} className={`border-t border-gray-800 ${ri === manualDataStart ? 'bg-gray-800/50' : ''}`}>
-                            <td className="px-2 py-1 text-gray-500">{ri}</td>
+                          <tr key={ri} className={`border-t border-slate-200 ${ri === manualDataStart ? 'bg-slate-50' : ''}`}>
+                            <td className="px-2 py-1 text-slate-500">{ri}</td>
                             {row.map((cell: any, ci: number) => (
                               <td key={ci} className={`px-2 py-1 whitespace-nowrap max-w-[150px] truncate ${
-                                ci === manualDeliveryCol ? 'bg-orange-500/10 text-orange-300' :
-                                ci === manualValueCol ? 'bg-green-500/10 text-green-300' :
-                                ci === manualBranchCol ? 'bg-blue-500/10 text-blue-300' :
-                                'text-gray-300'
+                                ci === manualDeliveryCol ? 'bg-orange-500/10 text-orange-700' :
+                                ci === manualValueCol ? 'bg-green-500/10 text-green-700' :
+                                ci === manualBranchCol ? 'bg-blue-500/10 text-blue-700' :
+                                'text-slate-700'
                               }`}>
                                 {cell === '' || cell === null ? '' : String(cell)}
                               </td>
@@ -1737,7 +1737,7 @@ export default function WalletPage() {
                   </div>
                   <div className="flex justify-end gap-2">
                     <button type="button" onClick={() => { setBulkRawPreview(null); setBulkWorkbook(null); setBulkFileName(''); }}
-                      className="px-4 py-2 text-gray-400 hover:text-white text-sm">
+                      className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">
                       {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                     </button>
                     <button type="button" onClick={handleManualExtract}
@@ -1747,48 +1747,48 @@ export default function WalletPage() {
                   </div>
                 </div>
               ) : bulkRows.length === 0 ? (
-                <label className="block border-2 border-dashed border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-[#f37121]/50 transition-colors">
+                <label className="block border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-[#f37121]/50 transition-colors">
                   <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
                     onChange={(e) => e.target.files?.[0] && handleBulkFile(e.target.files[0])} />
-                  <Upload className="w-10 h-10 text-gray-500 mx-auto mb-2" />
-                  <p className="text-gray-300 text-sm">{lang === 'ar' ? 'اضغط لاختيار ملف اكسل' : 'Click to select Excel file'}</p>
-                  <p className="text-gray-500 text-xs mt-1">.xlsx .xls .csv</p>
+                  <Upload className="w-10 h-10 text-slate-500 mx-auto mb-2" />
+                  <p className="text-slate-700 text-sm">{lang === 'ar' ? 'اضغط لاختيار ملف اكسل' : 'Click to select Excel file'}</p>
+                  <p className="text-slate-500 text-xs mt-1">.xlsx .xls .csv</p>
                 </label>
               ) : (
                 <div>
-                  <div className="bg-gray-900 rounded-lg p-3 mb-3 flex items-center justify-between">
-                    <span className="text-white text-sm">{bulkFileName}</span>
+                  <div className="bg-slate-50 rounded-lg p-3 mb-3 flex items-center justify-between">
+                    <span className="text-slate-900 text-sm">{bulkFileName}</span>
                     <span className="text-[#f37121] text-sm font-medium">{bulkRows.length} {lang === 'ar' ? 'سطر' : 'rows'}</span>
                   </div>
 
                   {bulkUploading && (
                     <div className="mb-3">
-                      <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                         <div className="h-full bg-[#f37121] transition-all" style={{ width: `${bulkProgress}%` }} />
                       </div>
-                      <p className="text-center text-gray-400 text-sm mt-2">{bulkProgress}%</p>
+                      <p className="text-center text-slate-500 text-sm mt-2">{bulkProgress}%</p>
                     </div>
                   )}
 
-                  <div className="max-h-60 overflow-y-auto bg-gray-900 rounded-lg">
+                  <div className="max-h-60 overflow-y-auto bg-slate-50 rounded-lg">
                     <table className="w-full text-xs">
-                      <thead className="bg-gray-800 sticky top-0">
+                      <thead className="bg-slate-900 sticky top-0">
                         <tr>
-                          <th className="px-3 py-2 text-left text-gray-400">#</th>
-                          <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
-                          <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'رقم كشف التخريج' : 'Delivery Statement'}</th>
-                          <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'القيمة' : 'Value'}</th>
-                          <th className="px-3 py-2 text-left text-gray-400">{lang === 'ar' ? 'الفرع' : 'Branch'}</th>
+                          <th className="px-3 py-2 text-left text-slate-300">#</th>
+                          <th className="px-3 py-2 text-left text-slate-300">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+                          <th className="px-3 py-2 text-left text-slate-300">{lang === 'ar' ? 'رقم كشف التخريج' : 'Delivery Statement'}</th>
+                          <th className="px-3 py-2 text-left text-slate-300">{lang === 'ar' ? 'القيمة' : 'Value'}</th>
+                          <th className="px-3 py-2 text-left text-slate-300">{lang === 'ar' ? 'الفرع' : 'Branch'}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {bulkRows.map((r: any, i: number) => (
-                          <tr key={i} className="border-t border-gray-800">
-                            <td className="px-3 py-2 text-gray-500">{i + 1}</td>
-                            <td className="px-3 py-2 text-gray-400">{r.date}</td>
-                            <td className="px-3 py-2 text-white">{r.deliveryStatement}</td>
-                            <td className="px-3 py-2 text-green-400">{r.value.toLocaleString()}</td>
-                            <td className="px-3 py-2 text-gray-300">{r.branch}</td>
+                          <tr key={i} className="border-t border-slate-200">
+                            <td className="px-3 py-2 text-slate-500">{i + 1}</td>
+                            <td className="px-3 py-2 text-slate-500">{r.date}</td>
+                            <td className="px-3 py-2 text-slate-900">{r.deliveryStatement}</td>
+                            <td className="px-3 py-2 text-green-600">{r.value.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-slate-700">{r.branch}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1798,22 +1798,22 @@ export default function WalletPage() {
               )}
 
               {bulkError && (
-                <div className="mt-3 bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-red-400 text-sm">
+                <div className="mt-3 bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-red-600 text-sm">
                   {bulkError}
                 </div>
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
               {bulkRows.length > 0 && !bulkUploading && (
                 <button type="button" onClick={() => { setBulkRows([]); setBulkFileName(''); }}
-                  className="px-4 py-2 text-gray-400 hover:text-white text-sm">
+                  className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">
                   {lang === 'ar' ? 'إعادة التحديد' : 'Reset'}
                 </button>
               )}
               {!bulkUploading && (
                 <button type="button" onClick={() => setShowBulkUpload(false)}
-                  className="px-4 py-2 text-gray-400 hover:text-white text-sm">
+                  className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">
                   {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                 </button>
               )}

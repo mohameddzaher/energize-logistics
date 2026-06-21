@@ -46,13 +46,13 @@ interface CustomersResponse {
 }
 
 const STATUS_BADGES: Record<string, { bg: string; text: string }> = {
-  paid: { bg: 'bg-green-500/20', text: 'text-green-400' },
-  partial: { bg: 'bg-yellow-500/20', text: 'text-yellow-400' },
-  overdue: { bg: 'bg-red-500/20', text: 'text-red-400' },
-  pending: { bg: 'bg-blue-500/20', text: 'text-blue-400' },
-  frozen: { bg: 'bg-gray-500/20', text: 'text-gray-400' },
-  disputed: { bg: 'bg-orange-500/20', text: 'text-orange-400' },
-  refunded: { bg: 'bg-gray-500/20', text: 'text-gray-400' },
+  paid: { bg: 'bg-green-500/20', text: 'text-green-600' },
+  partial: { bg: 'bg-yellow-500/20', text: 'text-yellow-700' },
+  overdue: { bg: 'bg-red-500/20', text: 'text-red-600' },
+  pending: { bg: 'bg-blue-500/20', text: 'text-blue-600' },
+  frozen: { bg: 'bg-slate-500/20', text: 'text-slate-500' },
+  disputed: { bg: 'bg-orange-500/20', text: 'text-orange-600' },
+  refunded: { bg: 'bg-slate-500/20', text: 'text-slate-500' },
 };
 
 const STATUS_LABEL_KEYS: Record<string, string> = {
@@ -265,10 +265,10 @@ export default function InvoicesPage() {
   };
 
   const getRemainingDaysColor = (days: number) => {
-    if (days < 0) return 'text-red-400';
-    if (days <= 5) return 'text-red-400';
-    if (days <= 15) return 'text-yellow-400';
-    return 'text-green-400';
+    if (days < 0) return 'text-red-600';
+    if (days <= 5) return 'text-red-600';
+    if (days <= 15) return 'text-yellow-700';
+    return 'text-green-600';
   };
 
   const columns = [
@@ -276,7 +276,7 @@ export default function InvoicesPage() {
       key: 'invoiceNumber',
       label: T.invoiceNumber,
       render: (val: string) => (
-        <span className="text-white font-medium">{val}</span>
+        <span className="text-slate-900 font-medium">{val}</span>
       ),
     },
     {
@@ -290,21 +290,21 @@ export default function InvoicesPage() {
       key: 'amount',
       label: T.amount,
       render: (val: number) => (
-        <span className="text-white font-medium">{formatCurrency(val)}</span>
+        <span className="text-slate-900 font-medium">{formatCurrency(val)}</span>
       ),
     },
     {
       key: 'paidAmount',
       label: T.paidAmount,
       render: (val: number) => (
-        <span className="text-green-400">{formatCurrency(val)}</span>
+        <span className="text-green-600">{formatCurrency(val)}</span>
       ),
     },
     {
       key: 'balance',
       label: T.balance,
       render: (val: number) => (
-        <span className={val > 0 ? 'text-orange-400 font-medium' : 'text-gray-400'}>
+        <span className={val > 0 ? 'text-orange-600 font-medium' : 'text-slate-500'}>
           {formatCurrency(val)}
         </span>
       ),
@@ -319,7 +319,7 @@ export default function InvoicesPage() {
       label: T.remainingDays,
       render: (val: number, row: Invoice) => {
         if (row.status === 'paid') {
-          return <span className="text-gray-500">-</span>;
+          return <span className="text-slate-500">-</span>;
         }
         const label = val < 0 ? `${Math.abs(val)}d ${T.overdue}` : `${val}d`;
         return (
@@ -361,11 +361,11 @@ export default function InvoicesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <FileText className="w-6 h-6 text-[#f37121]" />
             {T.title}
           </h1>
-          <p className="text-gray-400 text-sm mt-1">{total} {T.invoices}</p>
+          <p className="text-slate-500 text-sm mt-1">{total} {T.invoices}</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -397,7 +397,7 @@ export default function InvoicesPage() {
               );
             }}
             disabled={invoices.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" />
             {T.export}
@@ -408,7 +408,7 @@ export default function InvoicesPage() {
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               hasActiveFilters
                 ? 'bg-[#f37121]/20 text-[#f37121] border border-[#f37121]/50'
-                : 'bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700'
+                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
             }`}
           >
             <Filter className="w-4 h-4" />
@@ -439,9 +439,9 @@ export default function InvoicesPage() {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-medium text-sm">{T.searchInvoices}</h3>
+                <h3 className="text-slate-900 font-medium text-sm">{T.searchInvoices}</h3>
                 {hasActiveFilters && (
                   <button
                     type="button"
@@ -455,11 +455,11 @@ export default function InvoicesPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Status */}
                 <div>
-                  <label className="block text-gray-400 text-xs mb-1.5">{T.status}</label>
+                  <label className="block text-slate-500 text-xs mb-1.5">{T.status}</label>
                   <select
                     value={statusFilter}
                     onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     <option value="">{T.selectStatus}</option>
                     <option value="pending">{T.pendingStatus}</option>
@@ -474,23 +474,23 @@ export default function InvoicesPage() {
 
                 {/* Date From */}
                 <div>
-                  <label className="block text-gray-400 text-xs mb-1.5">{T.from}</label>
+                  <label className="block text-slate-500 text-xs mb-1.5">{T.from}</label>
                   <input
                     type="date"
                     value={dateFrom}
                     onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   />
                 </div>
 
                 {/* Date To */}
                 <div>
-                  <label className="block text-gray-400 text-xs mb-1.5">{T.to}</label>
+                  <label className="block text-slate-500 text-xs mb-1.5">{T.to}</label>
                   <input
                     type="date"
                     value={dateTo}
                     onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   />
                 </div>
 
@@ -501,10 +501,10 @@ export default function InvoicesPage() {
                       type="checkbox"
                       checked={overdueOnly}
                       onChange={(e) => { setOverdueOnly(e.target.checked); setPage(1); }}
-                      className="w-4 h-4 rounded border-gray-700 bg-gray-900 text-[#f37121] focus:ring-[#f37121]/50"
+                      className="w-4 h-4 rounded border-slate-200 bg-slate-50 text-[#f37121] focus:ring-[#f37121]/50"
                     />
-                    <span className="text-sm text-gray-300 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                    <span className="text-sm text-slate-700 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
                       {T.showOverdueOnly}
                     </span>
                   </label>
@@ -517,7 +517,7 @@ export default function InvoicesPage() {
 
       {/* Error */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-600 text-sm">
           {error}
         </div>
       )}
@@ -536,7 +536,7 @@ export default function InvoicesPage() {
               <button
                 type="button"
                 onClick={() => setConfirmAction({ type: 'mark-paid', invoice: row })}
-                className="text-xs text-green-400 hover:text-green-300 font-medium"
+                className="text-xs text-green-600 hover:text-green-700 font-medium"
               >
                 {T.markAsPaid}
               </button>
@@ -545,7 +545,7 @@ export default function InvoicesPage() {
               <button
                 type="button"
                 onClick={() => setConfirmAction({ type: 'refund', invoice: row })}
-                className="text-xs text-red-400 hover:text-red-300 font-medium"
+                className="text-xs text-red-600 hover:text-red-700 font-medium"
               >
                 {T.refunded}
               </button>
@@ -554,7 +554,7 @@ export default function InvoicesPage() {
               <button
                 type="button"
                 onClick={() => setConfirmAction({ type: 'delete', invoice: row })}
-                className="text-xs text-red-500 hover:text-red-400 font-medium flex items-center gap-1"
+                className="text-xs text-red-500 hover:text-red-600 font-medium flex items-center gap-1"
               >
                 <Trash2 className="w-3 h-3" />
                 {T.delete}
@@ -567,7 +567,7 @@ export default function InvoicesPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-gray-400 text-sm">
+          <p className="text-slate-500 text-sm">
             {T.page} {page} {T.of} {totalPages} ({total} {T.invoices})
           </p>
           <div className="flex items-center gap-2">
@@ -575,7 +575,7 @@ export default function InvoicesPage() {
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
             >
               {T.previous}
             </button>
@@ -598,7 +598,7 @@ export default function InvoicesPage() {
                   className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
                     page === pageNum
                       ? 'bg-[#f37121] text-white'
-                      : 'bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700'
+                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   {pageNum}
@@ -609,7 +609,7 @@ export default function InvoicesPage() {
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
             >
               {T.next}
             </button>
@@ -623,16 +623,16 @@ export default function InvoicesPage() {
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setConfirmAction(null)} className="fixed inset-0 bg-black/60 z-50" />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
                 <div className="text-center space-y-4">
                   <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center ${confirmAction.type === 'delete' || confirmAction.type === 'refund' ? 'bg-red-500/20' : 'bg-green-500/20'}`}>
-                    {confirmAction.type === 'delete' ? <Trash2 className="w-6 h-6 text-red-400" /> : confirmAction.type === 'refund' ? <AlertTriangle className="w-6 h-6 text-red-400" /> : <CheckCircle className="w-6 h-6 text-green-400" />}
+                    {confirmAction.type === 'delete' ? <Trash2 className="w-6 h-6 text-red-600" /> : confirmAction.type === 'refund' ? <AlertTriangle className="w-6 h-6 text-red-600" /> : <CheckCircle className="w-6 h-6 text-green-600" />}
                   </div>
                   <div>
-                    <h3 className="text-white font-semibold text-lg">
+                    <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">
                       {confirmAction.type === 'mark-paid' ? T.markAsPaid : confirmAction.type === 'delete' ? T.deleteInvoice : T.refunded}
                     </h3>
-                    <p className="text-gray-400 text-sm mt-2">
+                    <p className="text-slate-500 text-sm mt-2">
                       {confirmAction.type === 'mark-paid'
                         ? `${T.markAsPaid} ${confirmAction.invoice.invoiceNumber}?`
                         : confirmAction.type === 'delete'
@@ -640,9 +640,9 @@ export default function InvoicesPage() {
                         : `${T.refunded} ${confirmAction.invoice.invoiceNumber}?`}
                     </p>
                   </div>
-                  {actionError && <p className="text-red-400 text-sm">{actionError}</p>}
+                  {actionError && <p className="text-red-600 text-sm">{actionError}</p>}
                   <div className="flex gap-3">
-                    <button type="button" onClick={() => { setConfirmAction(null); setActionError(''); }} className="flex-1 px-4 py-2.5 rounded-lg bg-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-600">{T.cancel}</button>
+                    <button type="button" onClick={() => { setConfirmAction(null); setActionError(''); }} className="flex-1 px-4 py-2.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">{T.cancel}</button>
                     <button type="button" disabled={actionLoading} onClick={() => confirmAction.type === 'mark-paid' ? handleMarkPaid(confirmAction.invoice._id) : confirmAction.type === 'delete' ? handleDeleteInvoice(confirmAction.invoice._id) : handleRefund(confirmAction.invoice._id)} className={`flex-1 px-4 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2 ${confirmAction.type === 'delete' || confirmAction.type === 'refund' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
                       {actionLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                       {confirmAction.type === 'mark-paid' ? T.confirm : confirmAction.type === 'delete' ? T.delete : T.refunded}
@@ -672,13 +672,13 @@ export default function InvoicesPage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-5 border-b border-gray-700">
-                  <h2 className="text-white font-semibold text-lg">{T.addInvoice}</h2>
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-slate-200">
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">{T.addInvoice}</h2>
                   <button
                     type="button"
                     onClick={() => setShowCreateModal(false)}
-                    className="text-gray-400 hover:text-white"
+                    className="text-slate-500 hover:text-slate-900"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -686,33 +686,33 @@ export default function InvoicesPage() {
 
                 <form onSubmit={handleCreate} className="p-5 space-y-4">
                   {createError && (
-                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">
                       {createError}
                     </div>
                   )}
 
                   <div>
-                    <label className="block text-gray-400 text-xs mb-1.5">{T.invoiceNumber} *</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{T.invoiceNumber} *</label>
                     <input
                       type="text"
                       value={formData.invoiceNumber}
                       onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
                       placeholder="e.g. INV-2026-001"
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-gray-400 text-xs mb-1.5">{T.customer} *</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{T.customer} *</label>
                     {loadingCustomers ? (
-                      <div className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-gray-500 text-sm">
+                      <div className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 text-sm">
                         {T.loading}
                       </div>
                     ) : (
                       <select
                         value={formData.customer}
                         onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
-                        className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                       >
                         <option value="">{T.selectCustomer}...</option>
                         {customers.map((c) => (
@@ -725,7 +725,7 @@ export default function InvoicesPage() {
                   </div>
 
                   <div>
-                    <label className="block text-gray-400 text-xs mb-1.5">{T.amount} *</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{T.amount} *</label>
                     <input
                       type="number"
                       step="0.01"
@@ -733,17 +733,17 @@ export default function InvoicesPage() {
                       value={formData.amount}
                       onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                       placeholder="0.00"
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-gray-400 text-xs mb-1.5">{T.invoiceDate} *</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{T.invoiceDate} *</label>
                     <input
                       type="date"
                       value={formData.invoiceDate}
                       onChange={(e) => setFormData({ ...formData, invoiceDate: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-lg bg-gray-900 border border-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     />
                   </div>
 
@@ -751,7 +751,7 @@ export default function InvoicesPage() {
                     <button
                       type="button"
                       onClick={() => setShowCreateModal(false)}
-                      className="flex-1 px-4 py-2.5 rounded-lg bg-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-600 transition-colors"
+                      className="flex-1 px-4 py-2.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 transition-colors"
                     >
                       {T.cancel}
                     </button>

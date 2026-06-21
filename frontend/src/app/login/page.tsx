@@ -48,21 +48,21 @@ function LoginForm() {
   };
 
   return (
-    <section className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 px-4">
+    <section className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-orange-50/50 px-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-8 shadow-2xl">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-xl">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#f37121]/10 border border-[#f37121]/30 mb-4">
               <Shield className="w-8 h-8 text-[#f37121]" />
             </div>
-            <h1 className="text-2xl font-bold text-white">Collections Portal</h1>
-            <p className="text-gray-400 text-sm mt-2">
-              Energize Logistics Financial Control System
+            <h1 className="text-2xl font-bold text-gray-900">Energize ERP Portal</h1>
+            <p className="text-gray-500 text-sm mt-2">
+              Energize Logistics — Enterprise Management System
             </p>
           </div>
 
@@ -71,7 +71,7 @@ function LoginForm() {
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
+                className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm"
               >
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {error}
@@ -79,32 +79,32 @@ function LoginForm() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 focus:border-[#f37121]/50 transition-all"
+                className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 focus:border-[#f37121]/50 transition-all"
                 placeholder="your@email.com"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Password</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 focus:border-[#f37121]/50 transition-all pr-12"
+                  className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 focus:border-[#f37121]/50 transition-all pr-12"
                   placeholder="Enter your password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -127,10 +127,10 @@ function LoginForm() {
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-white/10 text-center">
+          <div className="mt-6 pt-6 border-t border-gray-200 text-center">
             <Link
               href="/"
-              className="text-sm text-gray-400 hover:text-[#f37121] transition-colors"
+              className="text-sm text-gray-500 hover:text-[#f37121] transition-colors"
             >
               Back to Website
             </Link>
@@ -148,7 +148,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-orange-50/50">
         <div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />
       </div>
     }>

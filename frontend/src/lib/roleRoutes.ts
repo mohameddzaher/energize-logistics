@@ -28,6 +28,17 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   b2c_project_manager: '/system/b2c/dashboard',
   remote_employee: '/system/remote/attendance',
   remote_manager: '/system/remote/dashboard',
+  hr_manager: '/system/hr/dashboard',
+  hr_specialist: '/system/hr/dashboard',
+  crm_manager: '/system/crm/dashboard',
+  crm_specialist: '/system/crm/dashboard',
+  finance_manager: '/system/accounting/dashboard',
+  accountant: '/system/accounting/dashboard',
+  sales_manager: '/system/sales/dashboard',
+  sales_rep: '/system/sales/dashboard',
+  procurement_manager: '/system/procurement/dashboard',
+  customs_manager: '/system/customs',
+  customs_officer: '/system/customs',
 };
 
 export const homeRouteForRole = (role?: string | null) =>

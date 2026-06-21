@@ -3,6 +3,25 @@ const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const { invalidateUserCache } = require('../middleware/auth');
 
+// Keep the Employee↔User link consistent and exclusive: point the chosen
+// employee at this user, and detach the employee from any other user that was
+// previously linked to it. Passing employeeId=null just detaches this user.
+const syncEmployeeLink = async (employeeId, userId) => {
+  try {
+    const Employee = require('../models/Employee');
+    // Detach any employee currently pointing at this user.
+    await Employee.updateMany({ user: userId }, { $unset: { user: 1 } });
+    // Detach any user currently linked to the target employee, then attach.
+    if (employeeId) {
+      await User.updateMany({ linkedEmployee: employeeId, _id: { $ne: userId } }, { $unset: { linkedEmployee: 1 } });
+      await Employee.findByIdAndUpdate(employeeId, { user: userId });
+      try { emitToAll('hr:employee', { id: String(employeeId) }); } catch (e) {}
+    }
+  } catch (e) {
+    console.error('syncEmployeeLink error:', e.message);
+  }
+};
+
 exports.getUsers = async (req, res) => {
   try {
     const { role, isActive, search, branch } = req.query;
@@ -26,6 +45,7 @@ exports.getUsers = async (req, res) => {
       .populate('assignedProjects', 'name code')
       .populate('assignedBranches', 'name code city')
       .populate('manager', 'firstName lastName email role')
+      .populate('linkedEmployee', 'firstName lastName employeeNumber iqamaNumber jobTitle')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -35,13 +55,40 @@ exports.getUsers = async (req, res) => {
   }
 };
 
+// Suggest the default direct-manager user for a role (org chart). Used by the
+// Add-User form to pre-fill the manager picker without forcing it.
+exports.suggestManager = async (req, res) => {
+  try {
+    const { role } = req.query;
+    if (!role) return res.json({ manager: null });
+    const { resolveDefaultManager } = require('../utils/orgChart');
+    const id = await resolveDefaultManager(role);
+    if (!id) return res.json({ manager: null });
+    const manager = await User.findById(id).select('firstName lastName role email').lean();
+    res.json({ manager });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to suggest manager' });
+  }
+};
+
 exports.createUser = async (req, res) => {
   try {
-    const { email, password, firstName, lastName, role, linkedCustomer, assignedCustomers, collectionTarget, branch, assignedProjects, assignedBranches, manager, remoteAccess } = req.body;
+    const { email, password, firstName, lastName, role, linkedCustomer, assignedCustomers, collectionTarget, branch, assignedProjects, assignedBranches, manager, remoteAccess, linkedEmployee } = req.body;
 
     const existing = await User.findOne({ email });
     if (existing) {
       return res.status(400).json({ message: 'Email already registered' });
+    }
+
+    // Org chart: if no manager was chosen, auto-suggest one by walking up the
+    // role hierarchy. Top roles (super_admin / client) resolve to none. Never
+    // forced — the creator can pass manager:'' to explicitly leave it empty by
+    // sending a falsy non-undefined value is not possible here, so empty string
+    // is treated as "let the system decide". Pass a real id to override.
+    let resolvedManager = manager || undefined;
+    if (!resolvedManager) {
+      const { resolveDefaultManager } = require('../utils/orgChart');
+      resolvedManager = (await resolveDefaultManager(role)) || undefined;
     }
 
     const user = await User.create({
@@ -56,9 +103,15 @@ exports.createUser = async (req, res) => {
       branch: branch || undefined,
       assignedProjects: Array.isArray(assignedProjects) ? assignedProjects : [],
       assignedBranches: Array.isArray(assignedBranches) ? assignedBranches : [],
-      manager: manager || undefined,
+      manager: resolvedManager,
       remoteAccess: role === 'remote_employee' && Array.isArray(remoteAccess) ? remoteAccess : [],
+      linkedEmployee: linkedEmployee || undefined,
     });
+
+    // Keep the Employee↔User link two-way (one employee = one login account).
+    if (linkedEmployee) {
+      await syncEmployeeLink(linkedEmployee, user._id);
+    }
 
     // Sync assignedCollector on Customer documents
     if (assignedCustomers && assignedCustomers.length > 0) {
@@ -87,7 +140,7 @@ exports.createUser = async (req, res) => {
 
 exports.updateUser = async (req, res) => {
   try {
-    const { firstName, lastName, role, assignedCustomers, linkedCustomer, collectionTarget, isActive, branch, assignedProjects, assignedBranches, manager, remoteAccess } = req.body;
+    const { firstName, lastName, role, assignedCustomers, linkedCustomer, collectionTarget, isActive, branch, assignedProjects, assignedBranches, manager, remoteAccess, linkedEmployee } = req.body;
     const user = await User.findById(req.params.id);
 
     if (!user) {
@@ -99,6 +152,10 @@ exports.updateUser = async (req, res) => {
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
     if (role) user.role = role;
+    if (linkedEmployee !== undefined) {
+      user.linkedEmployee = linkedEmployee || null;
+      await syncEmployeeLink(linkedEmployee || null, user._id);
+    }
     if (linkedCustomer !== undefined) user.linkedCustomer = linkedCustomer;
     if (collectionTarget !== undefined) user.collectionTarget = collectionTarget;
     if (isActive !== undefined) user.isActive = isActive;

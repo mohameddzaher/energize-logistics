@@ -114,14 +114,14 @@ export default function B2CRepProfileModal({ repId, onClose, lang }: Props) {
         onClick={onClose} className="fixed inset-0 bg-black/60 z-50" />
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
         className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-4xl shadow-2xl max-h-[92vh] overflow-y-auto"
+        <div className="bg-white border border-slate-200 rounded-xl w-full max-w-4xl shadow-2xl max-h-[92vh] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-between p-5 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
-            <h2 className="text-white font-semibold text-lg flex items-center gap-2">
+          <div className="flex items-center justify-between p-5 border-b border-slate-200 sticky top-0 bg-white z-10">
+            <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg flex items-center gap-2 mb-3">
               <Award className="w-5 h-5 text-[#f37121]" />
               {T.repProfile}
             </h2>
-            <button type="button" onClick={onClose} className="text-gray-400 hover:text-white" title="Close">
+            <button type="button" onClick={onClose} className="text-slate-500 hover:text-slate-900" title="Close">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -131,7 +131,7 @@ export default function B2CRepProfileModal({ repId, onClose, lang }: Props) {
                 <div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />
               </div>
             ) : !data ? (
-              <p className="text-gray-500 text-sm text-center py-8">{T.noData}</p>
+              <p className="text-slate-500 text-sm text-center py-8">{T.noData}</p>
             ) : (
               <ProfileBody data={data} lang={lang} T={T} monthNames={monthNames} />
             )}
@@ -152,19 +152,19 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h3 className="text-white text-xl font-bold">{data.rep.englishName}</h3>
-        <p className="text-gray-500 text-[11px] uppercase tracking-wide">
+        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white text-xl font-bold mb-3">{data.rep.englishName}</h3>
+        <p className="text-slate-500 text-[11px] uppercase tracking-wide">
           {lang === 'ar' ? 'اسم المندوب الحالي على الحساب' : 'Current rep on this account'}
         </p>
         {data.rep.arabicName && (
-          <p className="text-gray-400 text-sm mt-1">
-            <span className="text-gray-500 text-xs">{lang === 'ar' ? 'اسم اليوزر: ' : 'Username: '}</span>
+          <p className="text-slate-500 text-sm mt-1">
+            <span className="text-slate-500 text-xs">{lang === 'ar' ? 'اسم اليوزر: ' : 'Username: '}</span>
             {data.rep.arabicName}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
           {data.rep.repId && (
-            <span className="text-gray-500 font-mono" title={lang === 'ar' ? 'رقم الحساب' : 'Account ID'}>
+            <span className="text-slate-500 font-mono" title={lang === 'ar' ? 'رقم الحساب' : 'Account ID'}>
               #{data.rep.repId}
             </span>
           )}
@@ -175,12 +175,12 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
             </span>
           )}
           {data.rep.branch && (
-            <span className="text-gray-400 inline-flex items-center gap-1">
+            <span className="text-slate-500 inline-flex items-center gap-1">
               <MapPin className="w-3 h-3" /> {data.rep.branch.name}
             </span>
           )}
           {data.rep.joiningDate && (
-            <span className="text-gray-500">
+            <span className="text-slate-500">
               {lang === 'ar' ? 'انضم في' : 'Joined'} {new Date(data.rep.joiningDate).toLocaleDateString()}
             </span>
           )}
@@ -197,9 +197,9 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
         <ProfileKpi label={T.trend}
           value={
             <span className="inline-flex items-center justify-center gap-1">
-              {lifetime.trend === 'rising' && <TrendingUp className="w-4 h-4 text-green-400" />}
-              {lifetime.trend === 'falling' && <TrendingDown className="w-4 h-4 text-red-400" />}
-              {lifetime.trend === 'stable' && <Minus className="w-4 h-4 text-gray-400" />}
+              {lifetime.trend === 'rising' && <TrendingUp className="w-4 h-4 text-green-600" />}
+              {lifetime.trend === 'falling' && <TrendingDown className="w-4 h-4 text-red-600" />}
+              {lifetime.trend === 'stable' && <Minus className="w-4 h-4 text-slate-500" />}
               <span className="capitalize text-sm">{T[lifetime.trend] || lifetime.trend}</span>
             </span>
           } />
@@ -222,14 +222,14 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
       {lifetime.bestMonth && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
-            <p className="text-green-400 text-xs uppercase font-medium mb-1">⭐ {T.bestMonth}</p>
-            <p className="text-white font-bold">{monthNames[lifetime.bestMonth.month - 1]} {lifetime.bestMonth.year}</p>
-            <p className="text-gray-300 text-sm mt-0.5">{lifetime.bestMonth.totalOrders.toLocaleString()} {T.totalOrders.toLowerCase()}</p>
+            <p className="text-green-600 text-xs uppercase font-medium mb-1">⭐ {T.bestMonth}</p>
+            <p className="text-slate-900 font-bold">{monthNames[lifetime.bestMonth.month - 1]} {lifetime.bestMonth.year}</p>
+            <p className="text-slate-700 text-sm mt-0.5">{lifetime.bestMonth.totalOrders.toLocaleString()} {T.totalOrders.toLowerCase()}</p>
           </div>
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-            <p className="text-red-400 text-xs uppercase font-medium mb-1">⚠️ {T.worstMonth}</p>
-            <p className="text-white font-bold">{monthNames[lifetime.worstMonth.month - 1]} {lifetime.worstMonth.year}</p>
-            <p className="text-gray-300 text-sm mt-0.5">{lifetime.worstMonth.totalOrders.toLocaleString()} {T.totalOrders.toLowerCase()}</p>
+            <p className="text-red-600 text-xs uppercase font-medium mb-1">⚠️ {T.worstMonth}</p>
+            <p className="text-slate-900 font-bold">{monthNames[lifetime.worstMonth.month - 1]} {lifetime.worstMonth.year}</p>
+            <p className="text-slate-700 text-sm mt-0.5">{lifetime.worstMonth.totalOrders.toLocaleString()} {T.totalOrders.toLowerCase()}</p>
           </div>
         </div>
       )}
@@ -237,36 +237,36 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
       {/* Strengths + Weaknesses */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-4">
-          <h4 className="text-green-400 font-semibold text-sm flex items-center gap-2 mb-3">
+          <h4 className="text-green-600 font-semibold text-sm flex items-center gap-2 mb-3">
             <CheckCircle2 className="w-4 h-4" />
             {lang === 'ar' ? '✅ نقاط القوة' : '✅ Strengths'}
           </h4>
           <ul className="space-y-2">
             {strengths.length === 0 ? (
-              <li className="text-gray-500 text-xs">
+              <li className="text-slate-500 text-xs">
                 {lang === 'ar' ? 'لا يوجد نقاط قوة بارزة بعد — يحتاج بيانات أكثر' : 'No standout strengths yet — needs more data'}
               </li>
             ) : strengths.map((s, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-gray-200">
-                <span className="text-green-400 mt-0.5">✓</span>
+              <li key={i} className="flex items-start gap-2 text-sm text-slate-800">
+                <span className="text-green-600 mt-0.5">✓</span>
                 <span>{formatNote(s, lang)}</span>
               </li>
             ))}
           </ul>
         </div>
         <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4">
-          <h4 className="text-red-400 font-semibold text-sm flex items-center gap-2 mb-3">
+          <h4 className="text-red-600 font-semibold text-sm flex items-center gap-2 mb-3">
             <AlertTriangle className="w-4 h-4" />
             {lang === 'ar' ? '⚠️ نقاط للتحسين' : '⚠️ Areas to Improve'}
           </h4>
           <ul className="space-y-2">
             {weaknesses.length === 0 ? (
-              <li className="text-green-400 text-xs">
+              <li className="text-green-600 text-xs">
                 {lang === 'ar' ? '🎉 لا توجد ملاحظات سلبية' : '🎉 No concerns flagged'}
               </li>
             ) : weaknesses.map((w, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-gray-200">
-                <span className="text-red-400 mt-0.5">!</span>
+              <li key={i} className="flex items-start gap-2 text-sm text-slate-800">
+                <span className="text-red-600 mt-0.5">!</span>
                 <span>{formatNote(w, lang)}</span>
               </li>
             ))}
@@ -276,8 +276,8 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
 
       {/* Monthly trend chart */}
       {months.length > 0 && (
-        <div className="bg-gray-900/50 rounded-lg p-3">
-          <h4 className="text-white text-sm font-semibold mb-2">{T.monthHistory}</h4>
+        <div className="bg-slate-100 rounded-lg p-3">
+          <h4 className="text-slate-900 text-sm font-semibold mb-2">{T.monthHistory}</h4>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={months.map((m: any) => ({ ...m, label: `${monthNames[m.month - 1].slice(0, 3)} ${m.year}` }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -291,10 +291,10 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
       )}
 
       {/* Months table */}
-      <div className="bg-gray-900/50 rounded-lg overflow-x-auto">
+      <div className="bg-slate-100 rounded-lg overflow-x-auto">
         <table className="w-full min-w-[700px]">
           <thead>
-            <tr className="bg-gray-900 text-gray-400 text-xs uppercase">
+            <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
               <th className="text-left py-2 px-3">{lang === 'ar' ? 'الشهر' : 'Month'}</th>
               <th className="text-center py-2 px-3">{T.totalOrders}</th>
               <th className="text-center py-2 px-3" title={lang === 'ar' ? 'أيام اشتغل فيها' : 'Days worked'}>
@@ -308,25 +308,25 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
               <th className="text-center py-2 px-3">{T.shortOfTarget}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-700/50">
+          <tbody className="divide-y divide-slate-200">
             {months.map((m: any) => (
               <tr key={m.key}>
-                <td className="py-2 px-3 text-white text-sm font-medium">{monthNames[m.month - 1]} {m.year}</td>
-                <td className="py-2 px-3 text-center text-white">{m.totalOrders}</td>
-                <td className="py-2 px-3 text-center text-green-300">{m.workingDays}</td>
+                <td className="py-2 px-3 text-slate-900 text-sm font-medium">{monthNames[m.month - 1]} {m.year}</td>
+                <td className="py-2 px-3 text-center text-slate-900">{m.totalOrders}</td>
+                <td className="py-2 px-3 text-center text-green-700">{m.workingDays}</td>
                 <td className="py-2 px-3 text-center">
-                  <span className={(m.daysOff ?? 0) > 0 ? 'text-amber-400' : 'text-gray-500'}>
+                  <span className={(m.daysOff ?? 0) > 0 ? 'text-amber-700' : 'text-slate-500'}>
                     {m.daysOff ?? 0}
                   </span>
                 </td>
-                <td className="py-2 px-3 text-center text-gray-300">{m.dailyRate.toFixed(1)}</td>
+                <td className="py-2 px-3 text-center text-slate-700">{m.dailyRate.toFixed(1)}</td>
                 <td className="py-2 px-3 text-center">
                   <span className="font-bold" style={{ color: performanceColor(m.performancePercent) }}>
                     {m.performancePercent.toFixed(1)}%
                   </span>
                 </td>
                 <td className="py-2 px-3 text-center">
-                  <span className={m.shortOfTarget >= 0 ? 'text-green-400' : 'text-red-400'}>
+                  <span className={m.shortOfTarget >= 0 ? 'text-green-600' : 'text-red-600'}>
                     {m.shortOfTarget >= 0 ? '+' : ''}{m.shortOfTarget}
                   </span>
                 </td>
@@ -341,9 +341,9 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
 
 function ProfileKpi({ label, value, color }: { label: string; value: any; color?: string }) {
   return (
-    <div className="bg-gray-900/50 rounded-lg p-3 text-center">
-      <p className="text-gray-400 text-xs uppercase">{label}</p>
-      <p className="text-white font-bold text-xl mt-1" style={color ? { color } : undefined}>{value}</p>
+    <div className="bg-slate-100 rounded-lg p-3 text-center">
+      <p className="text-slate-500 text-xs uppercase">{label}</p>
+      <p className="text-slate-900 font-bold text-xl mt-1" style={color ? { color } : undefined}>{value}</p>
     </div>
   );
 }

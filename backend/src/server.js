@@ -37,6 +37,14 @@ const workshopRoutes = require('./routes/workshop');
 const complaintRoutes = require('./routes/complaints');
 const b2cRoutes = require('./routes/b2c');
 const remoteRoutes = require('./routes/remote');
+const hrRoutes = require('./routes/hr');
+const crmRoutes = require('./routes/crm');
+const accountingRoutes = require('./routes/accounting');
+const salesRoutes = require('./routes/sales');
+const kpiRoutes = require('./routes/kpi');
+const procurementRoutes = require('./routes/procurement');
+const lookupRoutes = require('./routes/lookups');
+const customsClearanceRoutes = require('./routes/customsClearance');
 
 const app = express();
 const server = http.createServer(app);
@@ -99,6 +107,14 @@ app.use('/api/workshop', workshopRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/b2c', b2cRoutes);
 app.use('/api/remote', remoteRoutes);
+app.use('/api/hr', hrRoutes);
+app.use('/api/crm', crmRoutes);
+app.use('/api/accounting', accountingRoutes);
+app.use('/api/sales', salesRoutes);
+app.use('/api/kpi', kpiRoutes);
+app.use('/api/procurement', procurementRoutes);
+app.use('/api/lookups', lookupRoutes);
+app.use('/api/customs-clearance', customsClearanceRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -144,6 +160,15 @@ const autoSeedAdmin = async () => {
 
 connectDB().then(async () => {
   await autoSeedAdmin();
+  // Seed the default HR leave types once (no-op once they exist).
+  const { ensureDefaultLeaveTypes } = require('./config/hrDefaults');
+  await ensureDefaultLeaveTypes();
+  // Seed the default chart of accounts once (no-op once they exist).
+  const { ensureDefaultAccounts } = require('./config/accountingDefaults');
+  await ensureDefaultAccounts();
+  // Seed the default editable reference lists (lookups) once (no-op once they exist).
+  const { ensureDefaultLookups } = require('./config/lookupTypes');
+  await ensureDefaultLookups();
   // Drop the legacy singleton_1 index on the B2C sheet sync collection so the new
   // (project, branch) compound unique index can take over. No-op on fresh installs.
   await migrateB2CSheetIndex();

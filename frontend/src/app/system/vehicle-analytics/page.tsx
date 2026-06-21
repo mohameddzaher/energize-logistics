@@ -345,17 +345,17 @@ export default function VehicleAnalyticsPage() {
   const fmtNum = (n: number) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : n.toFixed(0);
   const maxBar = (data: [string, number][]) => Math.max(...data.map(d => d[1]), 1);
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">{t.loading}</div>;
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{t.loading}</div>;
 
   const kpiCards = [
-    { label: t.totalFleet, value: kpis.totalFleet, icon: Truck, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-    { label: t.activeVehicles, value: kpis.activeVehicles, icon: Activity, color: 'text-green-400', bg: 'bg-green-400/10' },
-    { label: t.totalRevenue, value: fmtNum(kpis.totalRevenue), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-    { label: t.totalGpsKm, value: fmtNum(kpis.totalGpsKm), icon: MapPin, color: 'text-purple-400', bg: 'bg-purple-400/10' },
-    { label: t.totalTrips, value: fmtNum(kpis.totalTrips), icon: Navigation, color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
-    { label: t.fleetKms, value: fmtNum(kpis.fleetKms), icon: Route, color: 'text-indigo-400', bg: 'bg-indigo-400/10' },
-    { label: t.profitMargin, value: kpis.profitMargin.toFixed(1) + '%', icon: TrendingUp, color: kpis.profitMargin >= 0 ? 'text-green-400' : 'text-red-400', bg: kpis.profitMargin >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
-    { label: t.alerts, value: kpis.alerts, icon: AlertTriangle, color: kpis.alerts > 0 ? 'text-amber-400' : 'text-gray-400', bg: kpis.alerts > 0 ? 'bg-amber-400/10' : 'bg-gray-700/50' },
+    { label: t.totalFleet, value: kpis.totalFleet, icon: Truck, color: 'text-blue-600', bg: 'bg-blue-400/10' },
+    { label: t.activeVehicles, value: kpis.activeVehicles, icon: Activity, color: 'text-green-600', bg: 'bg-green-400/10' },
+    { label: t.totalRevenue, value: fmtNum(kpis.totalRevenue), icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-400/10' },
+    { label: t.totalGpsKm, value: fmtNum(kpis.totalGpsKm), icon: MapPin, color: 'text-purple-600', bg: 'bg-purple-400/10' },
+    { label: t.totalTrips, value: fmtNum(kpis.totalTrips), icon: Navigation, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
+    { label: t.fleetKms, value: fmtNum(kpis.fleetKms), icon: Route, color: 'text-indigo-600', bg: 'bg-indigo-400/10' },
+    { label: t.profitMargin, value: kpis.profitMargin.toFixed(1) + '%', icon: TrendingUp, color: kpis.profitMargin >= 0 ? 'text-green-600' : 'text-red-600', bg: kpis.profitMargin >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
+    { label: t.alerts, value: kpis.alerts, icon: AlertTriangle, color: kpis.alerts > 0 ? 'text-amber-700' : 'text-slate-500', bg: kpis.alerts > 0 ? 'bg-amber-400/10' : 'bg-slate-100' },
   ];
 
   const hasData = petro.length > 0 || gpsOdo.length > 0 || gpsMov.length > 0 || htTrips.length > 0;
@@ -364,13 +364,13 @@ export default function VehicleAnalyticsPage() {
     <div className="space-y-6">
       {/* Header + Actions */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{t.title}</h1>
         <div className="flex items-center gap-2">
-          {hasData && <button onClick={handleExport} className="px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1"><Download className="w-4 h-4" /> {t.exportExcel}</button>}
-          <button onClick={() => router.push('/system/vehicle-analytics/upload')} className="px-3 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm hover:bg-gray-600">
+          {hasData && <button onClick={handleExport} className="px-3 py-2 bg-emerald-500/20 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1"><Download className="w-4 h-4" /> {t.exportExcel}</button>}
+          <button onClick={() => router.push('/system/vehicle-analytics/upload')} className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200">
             {lang === 'ar' ? 'إدارة البيانات' : 'Manage Data'}
           </button>
-          <button onClick={() => setShowClearConfirm(true)} className="px-3 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30">
+          <button onClick={() => setShowClearConfirm(true)} className="px-3 py-2 bg-red-500/20 text-red-600 rounded-lg text-sm hover:bg-red-500/30">
             {t.clearAll}
           </button>
         </div>
@@ -379,10 +379,10 @@ export default function VehicleAnalyticsPage() {
       {/* Clear Confirmation Modal */}
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setShowClearConfirm(false)}>
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md mx-4" onClick={e => e.stopPropagation()}>
-            <p className="text-white mb-4">{t.clearConfirm}</p>
+          <div className="bg-white border border-slate-200 rounded-xl p-6 max-w-md mx-4 shadow-sm" onClick={e => e.stopPropagation()}>
+            <p className="text-slate-900 mb-4">{t.clearConfirm}</p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setShowClearConfirm(false)} className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm hover:bg-gray-600">{t.cancel}</button>
+              <button onClick={() => setShowClearConfirm(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200">{t.cancel}</button>
               <button onClick={handleClearAll} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">{t.confirm}</button>
             </div>
           </div>
@@ -390,32 +390,32 @@ export default function VehicleAnalyticsPage() {
       )}
 
       {/* Filter Bar */}
-      <div className="sticky top-0 z-20 bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-wrap gap-3 items-center">
+      <div className="sticky top-0 z-20 bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-sm">
         <div className="relative">
-          <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-gray-500 pointer-events-none" />
-          <select value={vehicleFilter} onChange={e => setVehicleFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg pl-8 pr-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none min-w-[160px]">
+          <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-slate-500 pointer-events-none" />
+          <select value={vehicleFilter} onChange={e => setVehicleFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none min-w-[160px]">
             <option value="">{t.allVehicles}</option>
             {allVehicleIds.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allBranches}</option>
           {allBranches.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-[#f37121] focus:outline-none">
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{t.allTypes}</option>
           {allTypes.map(tp => <option key={tp} value={tp}>{tp}</option>)}
         </select>
-        <div className="flex items-center gap-2 text-sm text-gray-400">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
           <span>{t.from}</span>
-          <input type="month" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-2 py-1.5 border border-gray-600 focus:border-[#f37121] focus:outline-none" />
+          <input type="month" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-2 py-1.5 border border-slate-300 focus:border-[#f37121] focus:outline-none" />
           <span>{t.to}</span>
-          <input type="month" value={dateTo} onChange={e => setDateTo(e.target.value)} className="bg-gray-700 text-gray-200 text-sm rounded-lg px-2 py-1.5 border border-gray-600 focus:border-[#f37121] focus:outline-none" />
+          <input type="month" value={dateTo} onChange={e => setDateTo(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-2 py-1.5 border border-slate-300 focus:border-[#f37121] focus:outline-none" />
         </div>
       </div>
 
       {!hasData ? (
-        <div className="flex flex-col items-center justify-center h-64 text-gray-500 gap-3">
+        <div className="flex flex-col items-center justify-center h-64 text-slate-500 gap-3">
           <Filter className="w-12 h-12" />
           <p className="text-lg">{t.noData}</p>
         </div>
@@ -424,10 +424,10 @@ export default function VehicleAnalyticsPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {kpiCards.map(c => (
-              <div key={c.label} className={`${c.bg} border border-gray-700 rounded-xl p-4 flex items-center gap-3`}>
+              <div key={c.label} className={`${c.bg} border border-slate-200 rounded-xl p-4 flex items-center gap-3`}>
                 <c.icon className={`w-8 h-8 ${c.color} shrink-0`} />
                 <div>
-                  <p className="text-gray-400 text-xs">{c.label}</p>
+                  <p className="text-slate-500 text-xs">{c.label}</p>
                   <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
                 </div>
               </div>
@@ -437,76 +437,76 @@ export default function VehicleAnalyticsPage() {
           {/* Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Horizontal bar chart helper */}
-            {[{ title: `${t.revenueByVehicle} (${t.top15})`, data: revenueByVehicle, color: 'bg-emerald-500', textColor: 'text-emerald-400' },
-              { title: `${t.distanceRanking} (${t.top15})`, data: distanceRanking, color: 'bg-purple-500', textColor: 'text-purple-400' }].map(chart => (
-              <div key={chart.title} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-                <h3 className="text-white font-semibold mb-3">{chart.title}</h3>
+            {[{ title: `${t.revenueByVehicle} (${t.top15})`, data: revenueByVehicle, color: 'bg-emerald-500', textColor: 'text-emerald-600' },
+              { title: `${t.distanceRanking} (${t.top15})`, data: distanceRanking, color: 'bg-purple-500', textColor: 'text-purple-600' }].map(chart => (
+              <div key={chart.title} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{chart.title}</h3>
                 <div className="space-y-2 max-h-[320px] overflow-y-auto">
                   {chart.data.map(([vid, val]) => (
                     <div key={vid} className="flex items-center gap-2 text-sm">
-                      <span className="text-gray-400 w-20 shrink-0 truncate">{vid}</span>
-                      <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
+                      <span className="text-slate-500 w-20 shrink-0 truncate">{vid}</span>
+                      <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                         <div className={`${chart.color} h-full rounded-full`} style={{ width: `${(val / maxBar(chart.data)) * 100}%` }} />
                       </div>
                       <span className={`${chart.textColor} w-16 text-right`}>{fmtNum(val)}</span>
                     </div>
                   ))}
-                  {chart.data.length === 0 && <p className="text-gray-500 text-sm text-center py-4">--</p>}
+                  {chart.data.length === 0 && <p className="text-slate-500 text-sm text-center py-4">--</p>}
                 </div>
               </div>
             ))}
             {/* Monthly Revenue */}
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3">{t.monthlyRevenue}</h3>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.monthlyRevenue}</h3>
               <div className="flex items-end gap-1 h-[280px] px-2">
                 {monthlyRevenue.map(([month, val]) => (
                   <div key={month} className="flex-1 flex flex-col items-center justify-end h-full gap-1">
-                    <span className="text-[10px] text-emerald-400">{fmtNum(val)}</span>
+                    <span className="text-[10px] text-emerald-600">{fmtNum(val)}</span>
                     <div className="w-full bg-emerald-500/80 rounded-t-md" style={{ height: `${(val / maxBar(monthlyRevenue)) * 85}%` }} />
-                    <span className="text-[9px] text-gray-500 -rotate-45 origin-top-left whitespace-nowrap">{month}</span>
+                    <span className="text-[9px] text-slate-500 -rotate-45 origin-top-left whitespace-nowrap">{month}</span>
                   </div>
                 ))}
-                {monthlyRevenue.length === 0 && <p className="text-gray-500 text-sm text-center w-full self-center">--</p>}
+                {monthlyRevenue.length === 0 && <p className="text-slate-500 text-sm text-center w-full self-center">--</p>}
               </div>
             </div>
             {/* Fleet by Category */}
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3">{t.fleetByCategory}</h3>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.fleetByCategory}</h3>
               <div className="space-y-3">
                 {(() => { const total = fleetByCategory.reduce((s, c) => s + c[1], 0); const colors = ['bg-blue-500','bg-purple-500','bg-cyan-500','bg-amber-500','bg-rose-500','bg-emerald-500']; return fleetByCategory.map(([cat, count], i) => { const pct = total > 0 ? (count / total) * 100 : 0; return (
                   <div key={cat}>
-                    <div className="flex justify-between text-sm mb-1"><span className="text-gray-300">{cat}</span><span className="text-gray-400">{count} ({pct.toFixed(0)}%)</span></div>
-                    <div className="bg-gray-700 rounded-full h-3 overflow-hidden"><div className={`${colors[i % colors.length]} h-full rounded-full`} style={{ width: `${pct}%` }} /></div>
+                    <div className="flex justify-between text-sm mb-1"><span className="text-slate-700">{cat}</span><span className="text-slate-500">{count} ({pct.toFixed(0)}%)</span></div>
+                    <div className="bg-slate-100 rounded-full h-3 overflow-hidden"><div className={`${colors[i % colors.length]} h-full rounded-full`} style={{ width: `${pct}%` }} /></div>
                   </div>); }); })()}
-                {fleetByCategory.length === 0 && <p className="text-gray-500 text-sm text-center py-4">--</p>}
+                {fleetByCategory.length === 0 && <p className="text-slate-500 text-sm text-center py-4">--</p>}
               </div>
             </div>
           </div>
 
           {/* Driver Performance Table */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <h3 className="text-white font-semibold mb-3">{t.driverPerformance}</h3>
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.driverPerformance}</h3>
             <div className="overflow-x-auto"><table className="w-full text-sm">
-              <thead><tr className="text-gray-400 border-b border-gray-700">
+              <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
                 <th className="text-left py-2 px-3">{t.driver}</th><th className="text-right py-2 px-3">{t.revenue}</th>
                 <th className="text-right py-2 px-3">{t.trips}</th><th className="text-right py-2 px-3">{t.gpsKm}</th>
               </tr></thead>
               <tbody>{driverPerf.map(([driver, data]) => (
-                <tr key={driver} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                  <td className="py-2 px-3 text-white">{driver}</td><td className="py-2 px-3 text-right text-emerald-400">{fmtNum(data.revenue)}</td>
-                  <td className="py-2 px-3 text-right text-gray-300">{data.trips}</td><td className="py-2 px-3 text-right text-purple-400">{fmtNum(data.km)}</td>
+                <tr key={driver} className="border-b border-slate-200/70 hover:bg-slate-100">
+                  <td className="py-2 px-3 text-slate-900">{driver}</td><td className="py-2 px-3 text-right text-emerald-600">{fmtNum(data.revenue)}</td>
+                  <td className="py-2 px-3 text-right text-slate-700">{data.trips}</td><td className="py-2 px-3 text-right text-purple-600">{fmtNum(data.km)}</td>
                 </tr>))}
-                {driverPerf.length === 0 && <tr><td colSpan={4} className="text-center text-gray-500 py-4">--</td></tr>}
+                {driverPerf.length === 0 && <tr><td colSpan={4} className="text-center text-slate-500 py-4">--</td></tr>}
               </tbody>
             </table></div>
           </div>
 
           {/* Vehicle Table */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <h3 className="text-white font-semibold mb-3">{t.title}</h3>
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.title}</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="text-gray-400 border-b border-gray-700">
+                <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
                   <th className="text-left py-2 px-2 cursor-pointer" onClick={() => toggleSort('vehicleId')}>{t.vehicle} <SortIcon k="vehicleId" /></th>
                   <th className="text-left py-2 px-2">{t.model}</th>
                   <th className="text-left py-2 px-2">{t.branch}</th>
@@ -521,22 +521,22 @@ export default function VehicleAnalyticsPage() {
                 </tr></thead>
                 <tbody>
                   {vehicleTable.map(row => (
-                    <tr key={row.vehicleId} onClick={() => router.push(`/system/vehicle-analytics/vehicle/${row.vehicleId}`)} className="border-b border-gray-700/50 hover:bg-gray-800 cursor-pointer">
-                      <td className="py-2 px-2 text-white font-medium">{row.vehicleId}</td>
-                      <td className="py-2 px-2 text-gray-300">{row.model || '-'}</td>
-                      <td className="py-2 px-2 text-gray-300">{row.branch || '-'}</td>
-                      <td className="py-2 px-2 text-gray-300">{row.driver || '-'}</td>
+                    <tr key={row.vehicleId} onClick={() => router.push(`/system/vehicle-analytics/vehicle/${row.vehicleId}`)} className="border-b border-slate-200/70 hover:bg-slate-50 cursor-pointer">
+                      <td className="py-2 px-2 text-slate-900 font-medium">{row.vehicleId}</td>
+                      <td className="py-2 px-2 text-slate-700">{row.model || '-'}</td>
+                      <td className="py-2 px-2 text-slate-700">{row.branch || '-'}</td>
+                      <td className="py-2 px-2 text-slate-700">{row.driver || '-'}</td>
                       <td className="py-2 px-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${String(row.status || '').toLowerCase() === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-gray-600 text-gray-300'}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${String(row.status || '').toLowerCase() === 'active' ? 'bg-green-500/20 text-green-600' : 'bg-slate-200 text-slate-700'}`}>
                           {row.status || '-'}
                         </span>
                       </td>
-                      <td className={`py-2 px-2 text-right ${row.fuelPct > 90 ? 'text-red-400 font-bold' : 'text-gray-300'}`}>{row.fuelPct > 0 ? row.fuelPct.toFixed(0) + '%' : '-'}</td>
-                      <td className="py-2 px-2 text-right text-purple-400">{row.gpsKm > 0 ? fmtNum(row.gpsKm) : '-'}</td>
-                      <td className="py-2 px-2 text-right text-gray-300">{row.avgSpeed > 0 ? row.avgSpeed.toFixed(0) : '-'}</td>
-                      <td className="py-2 px-2 text-right text-gray-300">{row.trips > 0 ? row.trips : '-'}</td>
-                      <td className="py-2 px-2 text-right text-emerald-400">{row.revenue > 0 ? fmtNum(row.revenue) : '-'}</td>
-                      <td className="py-2 px-2 text-right text-red-400">{row.expenses > 0 ? fmtNum(row.expenses) : '-'}</td>
+                      <td className={`py-2 px-2 text-right ${row.fuelPct > 90 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{row.fuelPct > 0 ? row.fuelPct.toFixed(0) + '%' : '-'}</td>
+                      <td className="py-2 px-2 text-right text-purple-600">{row.gpsKm > 0 ? fmtNum(row.gpsKm) : '-'}</td>
+                      <td className="py-2 px-2 text-right text-slate-700">{row.avgSpeed > 0 ? row.avgSpeed.toFixed(0) : '-'}</td>
+                      <td className="py-2 px-2 text-right text-slate-700">{row.trips > 0 ? row.trips : '-'}</td>
+                      <td className="py-2 px-2 text-right text-emerald-600">{row.revenue > 0 ? fmtNum(row.revenue) : '-'}</td>
+                      <td className="py-2 px-2 text-right text-red-600">{row.expenses > 0 ? fmtNum(row.expenses) : '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -546,17 +546,17 @@ export default function VehicleAnalyticsPage() {
 
           {/* Revenue per KM */}
           {revenuePerKm.length > 0 && (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3">{t.revenuePerKm}</h3>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.revenuePerKm}</h3>
               <div className="space-y-2 max-h-[360px] overflow-y-auto">
                 {revenuePerKm.map((item, i) => (
                   <div key={item.vehicleId} className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-500 w-6 text-right shrink-0">{i + 1}</span>
-                    <span className="text-gray-300 w-24 shrink-0 truncate">{item.vehicleId}</span>
-                    <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
+                    <span className="text-slate-500 w-6 text-right shrink-0">{i + 1}</span>
+                    <span className="text-slate-700 w-24 shrink-0 truncate">{item.vehicleId}</span>
+                    <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                       <div className="bg-amber-500 h-full rounded-full" style={{ width: `${(item.ratio / (revenuePerKm[0]?.ratio || 1)) * 100}%` }} />
                     </div>
-                    <span className="text-amber-400 w-20 text-right">{item.ratio.toFixed(1)}</span>
+                    <span className="text-amber-700 w-20 text-right">{item.ratio.toFixed(1)}</span>
                   </div>
                 ))}
               </div>
@@ -565,21 +565,21 @@ export default function VehicleAnalyticsPage() {
 
           {/* Driver Leaderboard */}
           {driverPerf.length > 0 && (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3">{t.driverLeaderboard}</h3>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.driverLeaderboard}</h3>
               <div className="overflow-x-auto"><table className="w-full text-sm">
-                <thead><tr className="text-gray-400 border-b border-gray-700">
+                <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
                   <th className="text-left py-2 px-3">#</th><th className="text-left py-2 px-3">{t.driver}</th>
                   <th className="text-right py-2 px-3">{t.totalRev}</th><th className="text-right py-2 px-3">{t.trips}</th>
                   <th className="text-right py-2 px-3">{t.revenuePerTrip}</th><th className="text-right py-2 px-3">{t.totalKms}</th>
                 </tr></thead>
                 <tbody>{driverPerf.map(([driver, data], i) => (
-                  <tr key={driver} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                    <td className="py-2 px-3 text-gray-500">{i + 1}</td><td className="py-2 px-3 text-white">{driver}</td>
-                    <td className="py-2 px-3 text-right text-emerald-400">{fmtNum(data.revenue)}</td>
-                    <td className="py-2 px-3 text-right text-gray-300">{data.trips}</td>
-                    <td className="py-2 px-3 text-right text-cyan-400">{data.trips > 0 ? fmtNum(data.revenue / data.trips) : '-'}</td>
-                    <td className="py-2 px-3 text-right text-purple-400">{fmtNum(data.km)}</td>
+                  <tr key={driver} className="border-b border-slate-200/70 hover:bg-slate-100">
+                    <td className="py-2 px-3 text-slate-500">{i + 1}</td><td className="py-2 px-3 text-slate-900">{driver}</td>
+                    <td className="py-2 px-3 text-right text-emerald-600">{fmtNum(data.revenue)}</td>
+                    <td className="py-2 px-3 text-right text-slate-700">{data.trips}</td>
+                    <td className="py-2 px-3 text-right text-cyan-700">{data.trips > 0 ? fmtNum(data.revenue / data.trips) : '-'}</td>
+                    <td className="py-2 px-3 text-right text-purple-600">{fmtNum(data.km)}</td>
                   </tr>))}
                 </tbody>
               </table></div>
@@ -588,21 +588,21 @@ export default function VehicleAnalyticsPage() {
 
           {/* Route Analysis */}
           {routeAnalysis.length > 0 && (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3">{t.routeAnalysis}</h3>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.routeAnalysis}</h3>
               <div className="overflow-x-auto"><table className="w-full text-sm">
-                <thead><tr className="text-gray-400 border-b border-gray-700">
+                <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
                   <th className="text-left py-2 px-3">{t.route}</th><th className="text-right py-2 px-3">{t.tripCount}</th>
                   <th className="text-right py-2 px-3">{t.avgRevenue}</th><th className="text-right py-2 px-3">{t.avgDays}</th>
                   <th className="text-right py-2 px-3">{t.totalRev}</th>
                 </tr></thead>
                 <tbody>{routeAnalysis.map(([route, data]) => (
-                  <tr key={route} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                    <td className="py-2 px-3 text-white text-xs">{route}</td>
-                    <td className="py-2 px-3 text-right text-gray-300">{data.count}</td>
-                    <td className="py-2 px-3 text-right text-cyan-400">{fmtNum(data.totalRev / data.count)}</td>
-                    <td className="py-2 px-3 text-right text-gray-300">{data.count > 0 ? (data.totalDays / data.count).toFixed(1) : '-'}</td>
-                    <td className="py-2 px-3 text-right text-emerald-400">{fmtNum(data.totalRev)}</td>
+                  <tr key={route} className="border-b border-slate-200/70 hover:bg-slate-100">
+                    <td className="py-2 px-3 text-slate-900 text-xs">{route}</td>
+                    <td className="py-2 px-3 text-right text-slate-700">{data.count}</td>
+                    <td className="py-2 px-3 text-right text-cyan-700">{fmtNum(data.totalRev / data.count)}</td>
+                    <td className="py-2 px-3 text-right text-slate-700">{data.count > 0 ? (data.totalDays / data.count).toFixed(1) : '-'}</td>
+                    <td className="py-2 px-3 text-right text-emerald-600">{fmtNum(data.totalRev)}</td>
                   </tr>))}
                 </tbody>
               </table></div>
@@ -611,17 +611,17 @@ export default function VehicleAnalyticsPage() {
 
           {/* Branch Comparison */}
           {branchComparison.length > 0 && (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3">{t.branchComparison}</h3>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.branchComparison}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {branchComparison.map(b => (
-                  <div key={b.branch} className="bg-gray-700/40 rounded-lg p-3 border border-gray-600/50">
-                    <p className="text-white font-medium mb-2 truncate">{b.branch}</p>
+                  <div key={b.branch} className="bg-slate-100 rounded-lg p-3 border border-slate-300/60">
+                    <p className="text-slate-900 font-medium mb-2 truncate">{b.branch}</p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div><span className="text-gray-400">{t.vehicles}:</span> <span className="text-blue-400 font-bold">{b.vehicles}</span></div>
-                      <div><span className="text-gray-400">{t.trips}:</span> <span className="text-cyan-400 font-bold">{b.trips}</span></div>
-                      <div><span className="text-gray-400">{t.totalRev}:</span> <span className="text-emerald-400 font-bold">{fmtNum(b.revenue)}</span></div>
-                      <div><span className="text-gray-400">{t.avgRevenue}:</span> <span className="text-amber-400 font-bold">{fmtNum(b.avgRev)}</span></div>
+                      <div><span className="text-slate-500">{t.vehicles}:</span> <span className="text-blue-600 font-bold">{b.vehicles}</span></div>
+                      <div><span className="text-slate-500">{t.trips}:</span> <span className="text-cyan-700 font-bold">{b.trips}</span></div>
+                      <div><span className="text-slate-500">{t.totalRev}:</span> <span className="text-emerald-600 font-bold">{fmtNum(b.revenue)}</span></div>
+                      <div><span className="text-slate-500">{t.avgRevenue}:</span> <span className="text-amber-700 font-bold">{fmtNum(b.avgRev)}</span></div>
                     </div>
                   </div>
                 ))}
@@ -631,16 +631,16 @@ export default function VehicleAnalyticsPage() {
 
           {/* Vehicle Utilization */}
           {vehicleUtilization.length > 0 && (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3">{t.vehicleUtilization}</h3>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.vehicleUtilization}</h3>
               <div className="space-y-2 max-h-[400px] overflow-y-auto">
                 {vehicleUtilization.map(v => (
                   <div key={v.vehicleId} className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-300 w-24 shrink-0 truncate">{v.vehicleId}</span>
-                    <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
+                    <span className="text-slate-700 w-24 shrink-0 truncate">{v.vehicleId}</span>
+                    <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                       <div className={`h-full rounded-full ${v.pct >= 75 ? 'bg-green-500' : v.pct >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${v.pct}%` }} />
                     </div>
-                    <span className={`w-14 text-right text-xs font-medium ${v.pct >= 75 ? 'text-green-400' : v.pct >= 40 ? 'text-amber-400' : 'text-red-400'}`}>{v.pct.toFixed(0)}%</span>
+                    <span className={`w-14 text-right text-xs font-medium ${v.pct >= 75 ? 'text-green-600' : v.pct >= 40 ? 'text-amber-700' : 'text-red-600'}`}>{v.pct.toFixed(0)}%</span>
                   </div>
                 ))}
               </div>
@@ -649,12 +649,12 @@ export default function VehicleAnalyticsPage() {
 
           {/* Top Detected Routes */}
           {topDetectedRoutes.length > 0 && (
-            <div className="bg-gray-800 border border-indigo-500/40 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                <Route className="w-5 h-5 text-indigo-400" /> {t.topRoutes}
+            <div className="bg-white border border-indigo-500/40 rounded-xl p-4">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
+                <Route className="w-5 h-5 text-indigo-600" /> {t.topRoutes}
               </h3>
               <div className="overflow-x-auto"><table className="w-full text-sm">
-                <thead><tr className="text-gray-400 border-b border-gray-700">
+                <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
                   <th className="text-left py-2 px-3">#</th>
                   <th className="text-left py-2 px-3">{t.route}</th>
                   <th className="text-right py-2 px-3">{t.tripCount}</th>
@@ -663,12 +663,12 @@ export default function VehicleAnalyticsPage() {
                 </tr></thead>
                 <tbody>
                   {topDetectedRoutes.map(([route, d], i) => (
-                    <tr key={route} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                      <td className="py-2 px-3 text-gray-500">{i + 1}</td>
-                      <td className="py-2 px-3 text-indigo-300">{route}</td>
-                      <td className="py-2 px-3 text-right text-cyan-400">{d.count}</td>
-                      <td className="py-2 px-3 text-right text-purple-400">{fmtNum(d.totalDist)} km</td>
-                      <td className="py-2 px-3 text-right text-gray-300">{fmtDur(d.totalDur / d.count)}</td>
+                    <tr key={route} className="border-b border-slate-200/70 hover:bg-slate-100">
+                      <td className="py-2 px-3 text-slate-500">{i + 1}</td>
+                      <td className="py-2 px-3 text-indigo-700">{route}</td>
+                      <td className="py-2 px-3 text-right text-cyan-700">{d.count}</td>
+                      <td className="py-2 px-3 text-right text-purple-600">{fmtNum(d.totalDist)} km</td>
+                      <td className="py-2 px-3 text-right text-slate-700">{fmtDur(d.totalDur / d.count)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -678,16 +678,16 @@ export default function VehicleAnalyticsPage() {
 
           {/* Compliance Overview */}
           {filtered.htTrips.length > 0 && (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3">{t.complianceOverview}</h3>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.complianceOverview}</h3>
               <div className="space-y-3">
                 {[{ label: t.loaded, value: compliance.loaded }, { label: t.unloaded, value: compliance.unloaded },
                   { label: t.photoSent, value: compliance.photoSent }, { label: t.receiptDelivered, value: compliance.receiptDelivered }].map(item => {
                   const pct = (item.value / compliance.total) * 100;
                   return (
                     <div key={item.label}>
-                      <div className="flex justify-between text-sm mb-1"><span className="text-gray-300">{item.label}</span><span className="text-gray-400">{item.value}/{compliance.total} ({pct.toFixed(0)}%)</span></div>
-                      <div className="bg-gray-700 rounded-full h-3 overflow-hidden"><div className={`h-full rounded-full ${pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${pct}%` }} /></div>
+                      <div className="flex justify-between text-sm mb-1"><span className="text-slate-700">{item.label}</span><span className="text-slate-500">{item.value}/{compliance.total} ({pct.toFixed(0)}%)</span></div>
+                      <div className="bg-slate-100 rounded-full h-3 overflow-hidden"><div className={`h-full rounded-full ${pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${pct}%` }} /></div>
                     </div>
                   );
                 })}

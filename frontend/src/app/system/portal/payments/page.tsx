@@ -61,7 +61,7 @@ export default function ClientPaymentsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <CreditCard className="w-6 h-6 text-[#f37121]" />
           {T.myPayments}
         </h1>
@@ -69,7 +69,7 @@ export default function ClientPaymentsPage() {
           <button
             type="button"
             onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm font-medium rounded-lg transition-colors"
           >
             <Download className="w-4 h-4" />
             {T.export}
@@ -77,34 +77,34 @@ export default function ClientPaymentsPage() {
         )}
       </div>
 
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-        <p className="text-gray-400 text-sm">{T.totalPaid}: <span className="text-green-400 font-bold text-lg">{totalPaid.toLocaleString()}</span></p>
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <p className="text-slate-500 text-sm">{T.totalPaid}: <span className="text-green-600 font-bold text-lg">{totalPaid.toLocaleString()}</span></p>
       </div>
 
-      <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-800 border-b border-gray-700">
-              <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.paymentDate}</th>
-              <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.invoiceNumber}</th>
-              <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.amount}</th>
-              <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.paymentMethod}</th>
-              <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase">{T.reference}</th>
+            <tr className="bg-slate-900 border-b border-slate-200">
+              <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.paymentDate}</th>
+              <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.invoiceNumber}</th>
+              <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.amount}</th>
+              <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.paymentMethod}</th>
+              <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.reference}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-700/50">
+          <tbody className="divide-y divide-slate-200">
             {payments.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500 text-sm">{T.noPayments}</td>
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-500 text-sm">{T.noPayments}</td>
               </tr>
             ) : (
               payments.map((p) => (
-                <tr key={p._id} className="hover:bg-gray-700/30">
-                  <td className="px-4 py-3 text-sm text-gray-300">{new Date(p.paymentDate).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 text-sm text-white font-medium">#{p.invoice?.invoiceNumber || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-green-400 font-bold">{p.amount?.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm text-gray-300 capitalize">{p.paymentMethod?.replace('_', ' ')}</td>
-                  <td className="px-4 py-3 text-sm text-gray-400">{p.reference || '-'}</td>
+                <tr key={p._id} className="hover:bg-slate-100">
+                  <td className="px-4 py-3 text-sm text-slate-700">{new Date(p.paymentDate).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-sm text-slate-900 font-medium">#{p.invoice?.invoiceNumber || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-green-600 font-bold">{p.amount?.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700 capitalize">{p.paymentMethod?.replace('_', ' ')}</td>
+                  <td className="px-4 py-3 text-sm text-slate-500">{p.reference || '-'}</td>
                 </tr>
               ))
             )}

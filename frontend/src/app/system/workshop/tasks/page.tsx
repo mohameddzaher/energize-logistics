@@ -28,17 +28,17 @@ interface WorkshopTask {
 }
 
 const PRIORITY_CONFIG: Record<string, { label: string; labelAr: string; color: string; bg: string }> = {
-  low: { label: 'Low', labelAr: 'منخفض', color: 'text-gray-400', bg: 'bg-gray-500/20' },
-  medium: { label: 'Medium', labelAr: 'متوسط', color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
-  high: { label: 'High', labelAr: 'عالي', color: 'text-orange-400', bg: 'bg-orange-500/20' },
-  urgent: { label: 'Urgent', labelAr: 'عاجل', color: 'text-red-400', bg: 'bg-red-500/20' },
+  low: { label: 'Low', labelAr: 'منخفض', color: 'text-slate-500', bg: 'bg-slate-500/20' },
+  medium: { label: 'Medium', labelAr: 'متوسط', color: 'text-yellow-700', bg: 'bg-yellow-500/20' },
+  high: { label: 'High', labelAr: 'عالي', color: 'text-orange-600', bg: 'bg-orange-500/20' },
+  urgent: { label: 'Urgent', labelAr: 'عاجل', color: 'text-red-600', bg: 'bg-red-500/20' },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; labelAr: string; color: string; bg: string }> = {
-  pending: { label: 'Pending', labelAr: 'معلق', color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
-  in_progress: { label: 'In Progress', labelAr: 'قيد التنفيذ', color: 'text-blue-400', bg: 'bg-blue-500/20' },
-  completed: { label: 'Completed', labelAr: 'مكتمل', color: 'text-green-400', bg: 'bg-green-500/20' },
-  cancelled: { label: 'Cancelled', labelAr: 'ملغي', color: 'text-red-400', bg: 'bg-red-500/20' },
+  pending: { label: 'Pending', labelAr: 'معلق', color: 'text-yellow-700', bg: 'bg-yellow-500/20' },
+  in_progress: { label: 'In Progress', labelAr: 'قيد التنفيذ', color: 'text-blue-600', bg: 'bg-blue-500/20' },
+  completed: { label: 'Completed', labelAr: 'مكتمل', color: 'text-green-600', bg: 'bg-green-500/20' },
+  cancelled: { label: 'Cancelled', labelAr: 'ملغي', color: 'text-red-600', bg: 'bg-red-500/20' },
 };
 
 export default function WorkshopTasksPage() {
@@ -196,7 +196,7 @@ export default function WorkshopTasksPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <ListTodo className="w-7 h-7 text-[#f37121]" />
-          <h1 className="text-2xl font-bold text-white">{isAr ? 'مهام الورشة' : 'Workshop Tasks'}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{isAr ? 'مهام الورشة' : 'Workshop Tasks'}</h1>
         </div>
         <button onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e0611a] text-white px-4 py-2.5 rounded-lg font-medium transition-colors">
@@ -208,22 +208,22 @@ export default function WorkshopTasksPage() {
       {/* Error */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-red-400" />
-          <span className="text-red-400 text-sm">{error}</span>
-          <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-4 h-4" /></button>
+          <AlertCircle className="w-4 h-4 text-red-600" />
+          <span className="text-red-600 text-sm">{error}</span>
+          <button onClick={() => setError('')} className="ml-auto text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
         </div>
       )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)}
             placeholder={isAr ? 'بحث...' : 'Search tasks...'}
-            className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-[#f37121]" />
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:border-[#f37121]" />
         </div>
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-          className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]">
+          className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]">
           <option value="">{isAr ? 'كل الحالات' : 'All Status'}</option>
           <option value="pending">{isAr ? 'معلق' : 'Pending'}</option>
           <option value="in_progress">{isAr ? 'قيد التنفيذ' : 'In Progress'}</option>
@@ -231,7 +231,7 @@ export default function WorkshopTasksPage() {
           <option value="cancelled">{isAr ? 'ملغي' : 'Cancelled'}</option>
         </select>
         <select value={priorityFilter} onChange={e => { setPriorityFilter(e.target.value); setPage(1); }}
-          className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]">
+          className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]">
           <option value="">{isAr ? 'كل الأولويات' : 'All Priorities'}</option>
           <option value="low">{isAr ? 'منخفض' : 'Low'}</option>
           <option value="medium">{isAr ? 'متوسط' : 'Medium'}</option>
@@ -246,7 +246,7 @@ export default function WorkshopTasksPage() {
           <Loader2 className="w-8 h-8 text-[#f37121] animate-spin" />
         </div>
       ) : tasks.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
+        <div className="text-center py-20 text-slate-500">
           <ListTodo className="w-12 h-12 mx-auto mb-3 opacity-50" />
           <p>{isAr ? 'لا توجد مهام' : 'No tasks found'}</p>
         </div>
@@ -256,11 +256,11 @@ export default function WorkshopTasksPage() {
             const pc = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
             const sc = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending;
             return (
-              <div key={task._id} className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors">
+              <div key={task._id} className="bg-white border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition-colors">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-white font-medium truncate">{task.title}</h3>
+                      <h3 className="text-slate-900 font-medium truncate">{task.title}</h3>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${pc.bg} ${pc.color}`}>
                         {isAr ? pc.labelAr : pc.label}
                       </span>
@@ -269,30 +269,30 @@ export default function WorkshopTasksPage() {
                       </span>
                     </div>
                     {task.description && (
-                      <p className="text-gray-400 text-sm mt-1 line-clamp-2">{task.description}</p>
+                      <p className="text-slate-500 text-sm mt-1 line-clamp-2">{task.description}</p>
                     )}
-                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 flex-wrap">
+                    <div className="flex items-center gap-3 mt-2 text-xs text-slate-500 flex-wrap">
                       {(() => {
                         const at = typeof task.assignedTo === 'object' ? task.assignedTo : null;
                         const name = at ? `${at.firstName || ''} ${at.lastName || ''}`.trim() : task.assignedToName;
                         return name && (
-                          <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 text-blue-600">
                             <User className="w-3 h-3" /> {isAr ? 'موظف:' : 'Employee:'} {name}
                           </span>
                         );
                       })()}
                       {task.technicianName && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 text-purple-400">
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 text-purple-600">
                           <User className="w-3 h-3" /> {isAr ? 'فني:' : 'Tech:'} {task.technicianName}
                         </span>
                       )}
                       {task.maintenanceType && typeof task.maintenanceType === 'object' && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-orange-500/10 text-orange-400">
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-orange-500/10 text-orange-600">
                           <Flag className="w-3 h-3" /> {task.maintenanceType.name}
                         </span>
                       )}
                       {task.vehicleNumber && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-gray-700 text-gray-300">
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                           🚗 {task.vehicleNumber}
                         </span>
                       )}
@@ -306,7 +306,7 @@ export default function WorkshopTasksPage() {
                     <select
                       value={task.status}
                       onChange={e => updateStatus(task._id, e.target.value)}
-                      className="bg-gray-900 border border-gray-700 rounded-lg text-white text-xs px-2 py-1.5 focus:outline-none focus:border-[#f37121]"
+                      className="bg-slate-50 border border-slate-200 rounded-lg text-slate-900 text-xs px-2 py-1.5 focus:outline-none focus:border-[#f37121]"
                     >
                       <option value="pending">{isAr ? 'معلق' : 'Pending'}</option>
                       <option value="in_progress">{isAr ? 'قيد التنفيذ' : 'In Progress'}</option>
@@ -314,7 +314,7 @@ export default function WorkshopTasksPage() {
                       <option value="cancelled">{isAr ? 'ملغي' : 'Cancelled'}</option>
                     </select>
                     <button onClick={() => deleteTask(task._id)}
-                      className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors">
+                      className="p-1.5 rounded-lg bg-red-500/20 text-red-600 hover:bg-red-500/30 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -328,15 +328,15 @@ export default function WorkshopTasksPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-gray-400 text-sm">{isAr ? `${total} نتيجة` : `${total} results`}</p>
+          <p className="text-slate-500 text-sm">{isAr ? `${total} نتيجة` : `${total} results`}</p>
           <div className="flex items-center gap-2">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed">
+              className="p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-gray-400 text-sm">{page} / {totalPages}</span>
+            <span className="text-slate-500 text-sm">{page} / {totalPages}</span>
             <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed">
+              className="p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -355,26 +355,26 @@ export default function WorkshopTasksPage() {
               initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
-              <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-lg p-6 space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg p-6 space-y-4 shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-white">{isAr ? 'مهمة جديدة' : 'New Task'}</h2>
-                  <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{isAr ? 'مهمة جديدة' : 'New Task'}</h2>
+                  <button onClick={() => setShowCreateModal(false)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-gray-400 text-sm block mb-1">{isAr ? 'العنوان' : 'Title'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'العنوان' : 'Title'}</label>
                     <input type="text" value={createForm.title} onChange={e => setCreateForm(p => ({ ...p, title: e.target.value }))}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                   </div>
                   <div>
-                    <label className="text-gray-400 text-sm block mb-1">{isAr ? 'الوصف' : 'Description'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'الوصف' : 'Description'}</label>
                     <textarea value={createForm.description} onChange={e => setCreateForm(p => ({ ...p, description: e.target.value }))}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121] resize-none" rows={3} />
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121] resize-none" rows={3} />
                   </div>
                   <div>
-                    <label className="text-gray-400 text-sm block mb-1">{isAr ? 'تعيين إلى موظف الورشة' : 'Assign to Workshop Employee'} *</label>
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'تعيين إلى موظف الورشة' : 'Assign to Workshop Employee'} *</label>
                     <select title="Assign to Workshop Employee" value={createForm.assignedTo} onChange={e => setCreateForm(p => ({ ...p, assignedTo: e.target.value }))}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
                       <option value="">{isAr ? '— اختر موظف ورشة —' : '— Select Workshop Employee —'}</option>
                       {workshopUsers.map(u => (
                         <option key={u._id} value={u._id}>{u.firstName} {u.lastName} ({u.role.replace('_', ' ')})</option>
@@ -382,9 +382,9 @@ export default function WorkshopTasksPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-gray-400 text-sm block mb-1">{isAr ? 'تنفيذ بواسطة الفني' : 'To be done by Technician'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'تنفيذ بواسطة الفني' : 'To be done by Technician'}</label>
                     <select title="Technician" value={createForm.technicianName} onChange={e => setCreateForm(p => ({ ...p, technicianName: e.target.value }))}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
                       <option value="">{isAr ? '— اختياري —' : '— Optional —'}</option>
                       {technicians.map(t => (
                         <option key={t._id} value={t.name}>{t.name}</option>
@@ -393,9 +393,9 @@ export default function WorkshopTasksPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-gray-400 text-sm block mb-1">{isAr ? 'نوع الصيانة' : 'Maintenance Type'}</label>
+                      <label className="text-slate-500 text-sm block mb-1">{isAr ? 'نوع الصيانة' : 'Maintenance Type'}</label>
                       <select title="Maintenance Type" value={createForm.maintenanceType} onChange={e => setCreateForm(p => ({ ...p, maintenanceType: e.target.value }))}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
                         <option value="">{isAr ? '— اختياري —' : '— Optional —'}</option>
                         {maintenanceTypes.map(t => (
                           <option key={t._id} value={t._id}>{t.name}</option>
@@ -403,16 +403,16 @@ export default function WorkshopTasksPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-gray-400 text-sm block mb-1">{isAr ? 'رقم المركبة' : 'Vehicle #'}</label>
+                      <label className="text-slate-500 text-sm block mb-1">{isAr ? 'رقم المركبة' : 'Vehicle #'}</label>
                       <input type="text" value={createForm.vehicleNumber} onChange={e => setCreateForm(p => ({ ...p, vehicleNumber: e.target.value }))}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-gray-400 text-sm block mb-1">{isAr ? 'الأولوية' : 'Priority'}</label>
+                      <label className="text-slate-500 text-sm block mb-1">{isAr ? 'الأولوية' : 'Priority'}</label>
                       <select value={createForm.priority} onChange={e => setCreateForm(p => ({ ...p, priority: e.target.value }))}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
                         <option value="low">{isAr ? 'منخفض' : 'Low'}</option>
                         <option value="medium">{isAr ? 'متوسط' : 'Medium'}</option>
                         <option value="high">{isAr ? 'عالي' : 'High'}</option>
@@ -420,14 +420,14 @@ export default function WorkshopTasksPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-gray-400 text-sm block mb-1">{isAr ? 'تاريخ الاستحقاق' : 'Due Date'}</label>
+                      <label className="text-slate-500 text-sm block mb-1">{isAr ? 'تاريخ الاستحقاق' : 'Due Date'}</label>
                       <input type="date" value={createForm.dueDate} onChange={e => setCreateForm(p => ({ ...p, dueDate: e.target.value }))}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                     </div>
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
-                  <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-sm font-medium">
+                  <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
                     {isAr ? 'إلغاء' : 'Cancel'}
                   </button>
                   <button onClick={handleCreate} disabled={creating || !createForm.title}
@@ -444,18 +444,18 @@ export default function WorkshopTasksPage() {
 
       {confirmModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-sm shadow-xl">
+          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm shadow-xl">
             <div className="p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
                 </div>
-                <h3 className="text-white font-semibold">{isAr ? 'تأكيد' : 'Confirm'}</h3>
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{isAr ? 'تأكيد' : 'Confirm'}</h3>
               </div>
-              <p className="text-gray-300 text-sm">{confirmModal.message}</p>
+              <p className="text-slate-700 text-sm">{confirmModal.message}</p>
             </div>
-            <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-3">
-              <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-gray-400 hover:text-white text-sm">{isAr ? 'إلغاء' : 'Cancel'}</button>
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+              <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{isAr ? 'إلغاء' : 'Cancel'}</button>
               <button type="button" onClick={confirmModal.onConfirm} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
                 {isAr ? 'حذف' : 'Delete'}
               </button>

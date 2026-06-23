@@ -150,12 +150,12 @@ export default function CrmCompaniesPage() {
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder={T.search} /></div>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+        <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={T.search} /></div>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
           <option value="">{T.allStatuses}</option>
           {(opts?.COMPANY_STATUSES || []).map((s) => <option key={s.key} value={s.key}>{ar ? s.nameAr : s.nameEn}</option>)}
         </select>
-        <select value={owner} onChange={(e) => setOwner(e.target.value)} className="px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+        <select value={owner} onChange={(e) => setOwner(e.target.value)} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
           <option value="">{T.allOwners}</option>
           {(opts?.owners || []).map((o) => <option key={o._id} value={o._id}>{o.firstName} {o.lastName}</option>)}
         </select>

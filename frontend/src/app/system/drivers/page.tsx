@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Truck, Plus, Search, X, Check, Edit, Trash2, Loader2, Download } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getDriversTranslations } from '@/lib/translations';
+import { getDriversTranslations, getDriversExtraTranslations } from '@/lib/translations';
 
 interface Branch {
   _id: string;
@@ -33,6 +33,7 @@ export default function DriversPage() {
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(user?.role || '');
   const { lang } = useLanguage();
   const T = getDriversTranslations(lang);
+  const txx = getDriversExtraTranslations(lang);
 
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -173,7 +174,7 @@ export default function DriversPage() {
                 <td className="px-4 py-3 text-slate-700">{d.phone || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{d.idNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{d.branch?.name || '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{(d.totalPaid || 0).toLocaleString()} SAR</td>
+                <td className="px-4 py-3 text-slate-700">{(d.totalPaid || 0).toLocaleString()} {txx.sar}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${d.isActive ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'}`}>
                     {d.isActive ? T.active : T.inactive}
@@ -183,12 +184,12 @@ export default function DriversPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {canEdit && (
-                        <button type="button" onClick={() => openEdit(d)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title="Edit">
+                        <button type="button" onClick={() => openEdit(d)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={txx.edit}>
                           <Edit className="w-4 h-4" />
                         </button>
                       )}
                       {isSuperAdmin && (
-                        <button type="button" onClick={() => handleDelete(d._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title="Delete">
+                        <button type="button" onClick={() => handleDelete(d._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={txx.delete}>
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
@@ -210,23 +211,23 @@ export default function DriversPage() {
               onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
               <div className="px-6 py-4 bg-slate-900 flex items-center justify-between">
                 <h2 className="text-white font-bold text-lg">{editDriver ? T.editDriver : T.addDriver}</h2>
-                <button type="button" onClick={() => setShowModal(false)} className="text-slate-300 hover:text-white" aria-label="Close"><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => setShowModal(false)} className="text-slate-300 hover:text-white" aria-label={txx.close}><X className="w-5 h-5" /></button>
               </div>
               <div className="p-6 space-y-4">
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.driverName + ' *'}</label>
                   <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. Ahmed Ali" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.namePlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.phone}</label>
                   <input type="text" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. 0501234567" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.phonePlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.idNumber}</label>
                   <input type="text" value={form.idNumber} onChange={(e) => setForm((f) => ({ ...f, idNumber: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. 1234567890" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.idPlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.branch}</label>

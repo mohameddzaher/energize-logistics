@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { getOverdueTranslations } from '@/lib/translations';
+import { getOverdueTranslations, getOverdueExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import DataTable from '@/components/system/DataTable';
@@ -38,6 +38,7 @@ export default function OverduePage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getOverdueTranslations(lang);
+  const txx = getOverdueExtraTranslations(lang);
   const router = useRouter();
   const [invoices, setInvoices] = useState<OverdueInvoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,9 +139,15 @@ export default function OverduePage() {
           partial: 'bg-yellow-500/20 text-yellow-700',
           disputed: 'bg-orange-500/20 text-orange-600',
         };
+        const labels: Record<string, string> = {
+          overdue: txx.statusOverdue,
+          pending: txx.statusPending,
+          partial: txx.statusPartial,
+          disputed: txx.statusDisputed,
+        };
         return (
           <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[row.status] || 'bg-slate-500/20 text-slate-500'}`}>
-            {row.status}
+            {labels[row.status] || row.status}
           </span>
         );
       },
@@ -165,7 +172,7 @@ export default function OverduePage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
-            <p className="text-slate-500 text-sm">{total} overdue invoices</p>
+            <p className="text-slate-500 text-sm">{total} {txx.overdueInvoicesCount}</p>
           </div>
         </div>
         <button

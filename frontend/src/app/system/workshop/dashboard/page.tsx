@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
+import { getWorkshopDashboardTranslations } from '@/lib/translations';
 import {
   BarChart3, Wrench, CheckCircle2, ShoppingCart, Loader2,
   AlertCircle, X, TrendingUp, Activity, Users, Clock, AlertTriangle,
@@ -42,6 +43,7 @@ export default function WorkshopDashboardPage() {
   const { lang } = useLanguage();
   const router = useRouter();
   const isAr = lang === 'ar';
+  const tx = getWorkshopDashboardTranslations(lang);
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,18 +114,18 @@ export default function WorkshopDashboardPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <BarChart3 className="w-7 h-7 text-[#f37121]" />
-        <h1 className="text-2xl font-bold text-slate-900">{isAr ? 'لوحة تحكم الورشة' : 'Workshop Dashboard'}</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{tx.pageTitle}</h1>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
-          { label: isAr ? 'إجمالي الطلبات' : 'Total Requests', value: kpis.totalRequests, icon: <Wrench className="w-5 h-5" />, color: 'text-[#f37121]', bg: 'bg-[#f37121]/10', href: '/system/workshop' },
-          { label: isAr ? 'مفتوح' : 'Open', value: kpis.open, icon: <AlertCircle className="w-5 h-5" />, color: 'text-yellow-700', bg: 'bg-yellow-500/10', href: '/system/workshop?status=open' },
-          { label: isAr ? 'قيد التنفيذ' : 'In Progress', value: kpis.inProgress, icon: <Clock className="w-5 h-5" />, color: 'text-blue-600', bg: 'bg-blue-500/10', href: '/system/workshop?status=in_progress' },
-          { label: isAr ? 'مكتمل' : 'Completed', value: kpis.completed, icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-green-600', bg: 'bg-green-500/10', href: '/system/workshop?status=completed' },
-          { label: isAr ? 'متوسط المدة' : 'Avg Duration', value: formatDuration(kpis.avgDuration), icon: <TrendingUp className="w-5 h-5" />, color: 'text-purple-600', bg: 'bg-purple-500/10', href: '/system/workshop' },
-          { label: isAr ? 'مشتريات معلقة' : 'Pending Purchases', value: kpis.pendingPurchases, icon: <ShoppingCart className="w-5 h-5" />, color: 'text-orange-600', bg: 'bg-orange-500/10', href: '/system/workshop/purchases?status=pending' },
+          { label: tx.kpiTotalRequests, value: kpis.totalRequests, icon: <Wrench className="w-5 h-5" />, color: 'text-[#f37121]', bg: 'bg-[#f37121]/10', href: '/system/workshop' },
+          { label: tx.kpiOpen, value: kpis.open, icon: <AlertCircle className="w-5 h-5" />, color: 'text-yellow-700', bg: 'bg-yellow-500/10', href: '/system/workshop?status=open' },
+          { label: tx.kpiInProgress, value: kpis.inProgress, icon: <Clock className="w-5 h-5" />, color: 'text-blue-600', bg: 'bg-blue-500/10', href: '/system/workshop?status=in_progress' },
+          { label: tx.kpiCompleted, value: kpis.completed, icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-green-600', bg: 'bg-green-500/10', href: '/system/workshop?status=completed' },
+          { label: tx.kpiAvgDuration, value: formatDuration(kpis.avgDuration), icon: <TrendingUp className="w-5 h-5" />, color: 'text-purple-600', bg: 'bg-purple-500/10', href: '/system/workshop' },
+          { label: tx.kpiPendingPurchases, value: kpis.pendingPurchases, icon: <ShoppingCart className="w-5 h-5" />, color: 'text-orange-600', bg: 'bg-orange-500/10', href: '/system/workshop/purchases?status=pending' },
         ].map((kpi, i) => (
           <div key={i} onClick={() => router.push(kpi.href)} className={`${kpi.bg} border border-slate-200 rounded-lg p-4 cursor-pointer hover:scale-[1.02] transition-transform`}>
             <div className="flex items-center justify-between mb-2">
@@ -139,7 +141,7 @@ export default function WorkshopDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Requests Per Day - Bar Chart */}
         <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <h3 className="text-slate-900 font-medium mb-4">{isAr ? 'الطلبات يوميا' : 'Requests Per Day'}</h3>
+          <h3 className="text-slate-900 font-medium mb-4">{tx.requestsPerDay}</h3>
           {requestsPerDay && requestsPerDay.length > 0 ? (
             <div className="flex items-end gap-1 h-40">
               {requestsPerDay.slice(-14).map((d, i) => (
@@ -156,13 +158,13 @@ export default function WorkshopDashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-slate-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data'}</p>
+            <p className="text-slate-500 text-sm text-center py-8">{tx.noData}</p>
           )}
         </div>
 
         {/* Duration Trend - Line Chart (simplified bar) */}
         <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <h3 className="text-slate-900 font-medium mb-4">{isAr ? 'متوسط المدة' : 'Duration Trend'}</h3>
+          <h3 className="text-slate-900 font-medium mb-4">{tx.durationTrend}</h3>
           {durationTrend && durationTrend.length > 0 ? (
             <div className="flex items-end gap-1 h-40">
               {durationTrend.slice(-14).map((d, i) => (
@@ -179,22 +181,20 @@ export default function WorkshopDashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-slate-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data'}</p>
+            <p className="text-slate-500 text-sm text-center py-8">{tx.noData}</p>
           )}
         </div>
 
         {/* Status Distribution - Pie-like */}
         <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <h3 className="text-slate-900 font-medium mb-4">{isAr ? 'توزيع الحالات' : 'Status Distribution'}</h3>
+          <h3 className="text-slate-900 font-medium mb-4">{tx.statusDistribution}</h3>
           {statusDistribution && statusDistribution.length > 0 ? (
             <div className="space-y-3">
               {statusDistribution.map((s, i) => {
                 const totalDist = statusDistribution.reduce((a, b) => a + b.count, 0) || 1;
                 const pct = Math.round((s.count / totalDist) * 100);
                 const color = STATUS_COLORS[s.status] || '#9ca3af';
-                const statusLabel = isAr
-                  ? (s.status === 'open' ? 'مفتوح' : s.status === 'in_progress' ? 'قيد التنفيذ' : 'مكتمل')
-                  : (s.status === 'open' ? 'Open' : s.status === 'in_progress' ? 'In Progress' : 'Completed');
+                const statusLabel = s.status === 'open' ? tx.statusOpen : s.status === 'in_progress' ? tx.statusInProgress : tx.statusCompleted;
                 return (
                   <div key={i}>
                     <div className="flex items-center justify-between mb-1">
@@ -209,7 +209,7 @@ export default function WorkshopDashboardPage() {
               })}
             </div>
           ) : (
-            <p className="text-slate-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data'}</p>
+            <p className="text-slate-500 text-sm text-center py-8">{tx.noData}</p>
           )}
         </div>
       </div>
@@ -220,7 +220,7 @@ export default function WorkshopDashboardPage() {
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h3 className="text-slate-900 font-medium mb-4 flex items-center gap-2">
             <Activity className="w-4 h-4 text-[#f37121]" />
-            {isAr ? 'النشاط الأخير' : 'Recent Activity'}
+            {tx.recentActivity}
           </h3>
           {recentActivity && recentActivity.length > 0 ? (
             <div className="space-y-3 max-h-80 overflow-y-auto">
@@ -240,7 +240,7 @@ export default function WorkshopDashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-slate-500 text-sm text-center py-8">{isAr ? 'لا يوجد نشاط' : 'No recent activity'}</p>
+            <p className="text-slate-500 text-sm text-center py-8">{tx.noRecentActivity}</p>
           )}
         </div>
 
@@ -248,7 +248,7 @@ export default function WorkshopDashboardPage() {
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h3 className="text-slate-900 font-medium mb-4 flex items-center gap-2">
             <ShoppingCart className="w-4 h-4 text-orange-600" />
-            {isAr ? 'مشتريات معلقة' : 'Pending Purchases'}
+            {tx.pendingPurchases}
           </h3>
           {pendingPurchasesList && pendingPurchasesList.length > 0 ? (
             <div className="space-y-2 max-h-80 overflow-y-auto">
@@ -257,7 +257,7 @@ export default function WorkshopDashboardPage() {
                   <div className="min-w-0">
                     <p className="text-slate-900 text-sm font-medium">{p.itemName}</p>
                     <p className="text-slate-500 text-xs">
-                      {isAr ? 'مركبة' : 'Vehicle'}: {p.vehicleNumber || '-'} | {isAr ? 'كمية' : 'Qty'}: {p.quantity}
+                      {tx.vehicle}: {p.vehicleNumber || '-'} | {tx.qty}: {p.quantity}
                     </p>
                   </div>
                   <span className="text-slate-500 text-xs whitespace-nowrap">
@@ -267,7 +267,7 @@ export default function WorkshopDashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-slate-500 text-sm text-center py-8">{isAr ? 'لا توجد مشتريات معلقة' : 'No pending purchases'}</p>
+            <p className="text-slate-500 text-sm text-center py-8">{tx.noPendingPurchases}</p>
           )}
         </div>
       </div>
@@ -276,16 +276,16 @@ export default function WorkshopDashboardPage() {
       <div className="bg-white border border-slate-200 rounded-lg p-4">
         <h3 className="text-slate-900 font-medium mb-4 flex items-center gap-2">
           <Users className="w-4 h-4 text-[#f37121]" />
-          {isAr ? 'أداء الموظفين' : 'Employee Performance'}
+          {tx.employeePerformance}
         </h3>
         {employeeStats && employeeStats.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-200">
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'الموظف' : 'Employee'}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'الطلبات المنجزة' : 'Completed'}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'متوسط المدة' : 'Avg Duration'}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colEmployee}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colCompleted}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colAvgDuration}</th>
                 </tr>
               </thead>
               <tbody>
@@ -300,7 +300,7 @@ export default function WorkshopDashboardPage() {
             </table>
           </div>
         ) : (
-          <p className="text-slate-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data yet'}</p>
+          <p className="text-slate-500 text-sm text-center py-8">{tx.noDataYet}</p>
         )}
       </div>
 
@@ -308,18 +308,18 @@ export default function WorkshopDashboardPage() {
       <div className="bg-white border border-slate-200 rounded-lg p-4">
         <h3 className="text-slate-900 font-medium mb-4 flex items-center gap-2">
           <Wrench className="w-4 h-4 text-[#f37121]" />
-          {isAr ? 'أداء فريق الفنيين' : 'Technician Team Performance'}
+          {tx.technicianTeamPerformance}
         </h3>
         {technicianStats && technicianStats.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-200">
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'الفني' : 'Technician'}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'إجمالي الطلبات' : 'Total Jobs'}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'متوسط المدة' : 'Avg Duration'}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'أسرع' : 'Fastest'}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'أبطأ' : 'Slowest'}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colTechnician}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colTotalJobs}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colAvgDuration}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colFastest}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colSlowest}</th>
                 </tr>
               </thead>
               <tbody>
@@ -336,7 +336,7 @@ export default function WorkshopDashboardPage() {
             </table>
           </div>
         ) : (
-          <p className="text-slate-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data yet'}</p>
+          <p className="text-slate-500 text-sm text-center py-8">{tx.noDataYet}</p>
         )}
       </div>
 
@@ -344,17 +344,17 @@ export default function WorkshopDashboardPage() {
       <div className="bg-white border border-slate-200 rounded-lg p-4">
         <h3 className="text-slate-900 font-medium mb-4 flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-[#f37121]" />
-          {isAr ? 'أكثر المركبات صيانة' : 'Top Vehicles by Visits'}
+          {tx.topVehicles}
         </h3>
         {topVehicles && topVehicles.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-200">
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'رقم المركبة' : 'Vehicle #'}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'عدد الزيارات' : 'Visits'}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'إجمالي وقت الصيانة' : 'Total Time'}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{isAr ? 'آخر زيارة' : 'Last Visit'}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colVehicleNumber}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colVisits}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colTotalTime}</th>
+                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colLastVisit}</th>
                 </tr>
               </thead>
               <tbody>
@@ -370,7 +370,7 @@ export default function WorkshopDashboardPage() {
             </table>
           </div>
         ) : (
-          <p className="text-slate-500 text-sm text-center py-8">{isAr ? 'لا توجد بيانات' : 'No data yet'}</p>
+          <p className="text-slate-500 text-sm text-center py-8">{tx.noDataYet}</p>
         )}
       </div>
 
@@ -379,19 +379,19 @@ export default function WorkshopDashboardPage() {
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h3 className="text-slate-900 font-medium mb-3 flex items-center gap-2">
             <Activity className="w-4 h-4 text-[#f37121]" />
-            {isAr ? 'مقارنة الأسبوع' : 'Weekly Comparison'}
+            {tx.weeklyComparison}
           </h3>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-slate-500 text-xs">{isAr ? 'هذا الأسبوع' : 'This Week'}</p>
+              <p className="text-slate-500 text-xs">{tx.thisWeek}</p>
               <p className="text-2xl font-bold text-slate-900">{weekComparison.thisWeek}</p>
             </div>
             <div>
-              <p className="text-slate-500 text-xs">{isAr ? 'الأسبوع السابق' : 'Last Week'}</p>
+              <p className="text-slate-500 text-xs">{tx.lastWeek}</p>
               <p className="text-2xl font-bold text-slate-500">{weekComparison.lastWeek}</p>
             </div>
             <div>
-              <p className="text-slate-500 text-xs">{isAr ? 'التغيير' : 'Change'}</p>
+              <p className="text-slate-500 text-xs">{tx.change}</p>
               <p className={`text-2xl font-bold ${weekComparison.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {weekComparison.change >= 0 ? '+' : ''}{weekComparison.change}%
               </p>
@@ -402,17 +402,17 @@ export default function WorkshopDashboardPage() {
         <div className={`border rounded-lg p-4 ${lowStockCount > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-white border-slate-200'}`}>
           <h3 className="text-slate-900 font-medium mb-3 flex items-center gap-2">
             <AlertCircle className={`w-4 h-4 ${lowStockCount > 0 ? 'text-red-600' : 'text-[#f37121]'}`} />
-            {isAr ? 'تنبيه المخزون' : 'Inventory Alert'}
+            {tx.inventoryAlert}
           </h3>
           <div className="flex items-center gap-3">
             <p className={`text-3xl font-bold ${lowStockCount > 0 ? 'text-red-600' : 'text-slate-500'}`}>{lowStockCount}</p>
             <p className="text-slate-500 text-sm">
-              {isAr ? 'منتج بمخزون منخفض' : 'items low on stock'}
+              {tx.itemsLowOnStock}
             </p>
           </div>
           {lowStockCount > 0 && (
             <button type="button" onClick={() => router.push('/system/workshop/inventory')} className="mt-3 text-xs text-red-600 hover:text-red-700 underline">
-              {isAr ? 'عرض المخزون →' : 'View Inventory →'}
+              {tx.viewInventory} →
             </button>
           )}
         </div>

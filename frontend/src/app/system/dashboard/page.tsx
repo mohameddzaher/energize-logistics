@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getDashboardTranslations } from '@/lib/translations';
+import { getDashboardTranslations, getDashboardExtraTranslations } from '@/lib/translations';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend,
@@ -93,6 +93,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { lang } = useLanguage();
   const T = getDashboardTranslations(lang);
+  const txx = getDashboardExtraTranslations(lang);
   const [dashboard, setDashboard] = useState<any>(null);
   const [aging, setAging] = useState<any>(null);
   const [dso, setDso] = useState<any>(null);
@@ -226,7 +227,7 @@ export default function DashboardPage() {
             .then((d) => { setSuperOverview(d); setSuperOverviewError(''); return null; })
             .catch((e) => {
               if (isTransientError(e?.message)) return null;
-              setSuperOverviewError(e?.message || 'Failed to load system overview');
+              setSuperOverviewError(e?.message || txx.failedLoadOverview);
               return null;
             })
         );
@@ -244,7 +245,7 @@ export default function DashboardPage() {
       // initial load, transient/race-condition errors are common (cookie not
       // yet set, refresh token in flight) and showing them confuses the user.
       if (allFailed.length > 0 && userInitiated) {
-        setError(`Failed to load: ${allFailed.join(', ')}`);
+        setError(`${txx.failedToLoad}: ${allFailed.join(', ')}`);
       }
     } catch (err: any) {
       if (isTransientError(err?.message)) {
@@ -253,7 +254,7 @@ export default function DashboardPage() {
         return;
       }
       console.error('Dashboard fetch error:', err);
-      if (userInitiated) setError(err.message || 'Failed to load dashboard');
+      if (userInitiated) setError(err.message || txx.failedLoadDashboard);
     } finally {
       setLoading(false);
       setInitialLoaded(true);
@@ -310,7 +311,7 @@ export default function DashboardPage() {
       applyCached(cached);
       fetchDateData(dateQuery).then((failed) => {
         if (cancelled) return;
-        if (failed.length > 0) setError(`Failed to load: ${failed.join(', ')}`);
+        if (failed.length > 0) setError(`${txx.failedToLoad}: ${failed.join(', ')}`);
       });
     } else {
       setRefreshing(true);
@@ -318,7 +319,7 @@ export default function DashboardPage() {
       fetchDateData(dateQuery).then((failed) => {
         if (cancelled) return;
         setRefreshing(false);
-        if (failed.length > 0) setError(`Failed to load: ${failed.join(', ')}`);
+        if (failed.length > 0) setError(`${txx.failedToLoad}: ${failed.join(', ')}`);
       });
     }
 
@@ -475,7 +476,7 @@ export default function DashboardPage() {
             <>
               <input
                 type="date"
-                aria-label="Date from"
+                aria-label={txx.dateFromLabel}
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
                 className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
@@ -483,7 +484,7 @@ export default function DashboardPage() {
               <span className="text-slate-500 text-xs">{T.to}</span>
               <input
                 type="date"
-                aria-label="Date to"
+                aria-label={txx.dateToLabel}
                 value={customTo}
                 onChange={(e) => setCustomTo(e.target.value)}
                 className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
@@ -866,20 +867,20 @@ export default function DashboardPage() {
                 <div>
                   <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
                     <Wrench className="w-5 h-5 text-[#f37121]" />
-                    Workshop Summary
+                    {txx.workshopSummary}
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <Link href="/system/workshop" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title="Open Maintenance" value={workshopSummary.openMaintenance ?? workshopSummary.statusBreakdown?.open ?? 0} icon={Wrench} color="#f59e0b" />
+                      <StatCard title={txx.openMaintenance} value={workshopSummary.openMaintenance ?? workshopSummary.statusBreakdown?.open ?? 0} icon={Wrench} color="#f59e0b" />
                     </Link>
                     <Link href="/system/workshop" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title="In Progress" value={workshopSummary.inProgress ?? workshopSummary.statusBreakdown?.in_progress ?? 0} icon={Loader2} color="#6366f1" />
+                      <StatCard title={txx.inProgress} value={workshopSummary.inProgress ?? workshopSummary.statusBreakdown?.in_progress ?? 0} icon={Loader2} color="#6366f1" />
                     </Link>
                     <Link href="/system/workshop" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title="Completed" value={workshopSummary.completed ?? workshopSummary.statusBreakdown?.completed ?? 0} icon={CheckCircle} color="#10b981" />
+                      <StatCard title={txx.completed} value={workshopSummary.completed ?? workshopSummary.statusBreakdown?.completed ?? 0} icon={CheckCircle} color="#10b981" />
                     </Link>
                     <Link href="/system/workshop/purchases" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title="Pending Purchases" value={workshopSummary.pendingPurchases ?? 0} icon={ShoppingCart} color="#ef4444" />
+                      <StatCard title={txx.pendingPurchases} value={workshopSummary.pendingPurchases ?? 0} icon={ShoppingCart} color="#ef4444" />
                     </Link>
                   </div>
                 </div>
@@ -889,11 +890,11 @@ export default function DashboardPage() {
               <div>
                 <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
                   <ClipboardList className="w-5 h-5 text-[#f37121]" />
-                  Operations Summary
+                  {txx.operationsSummary}
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <Link href="/system/operations" className="hover:scale-[1.02] transition-transform">
-                    <StatCard title="Total Workflows" value={workflowsTotal} icon={ClipboardList} color="#6366f1" />
+                    <StatCard title={txx.totalWorkflows} value={workflowsTotal} icon={ClipboardList} color="#6366f1" />
                   </Link>
                 </div>
               </div>
@@ -903,14 +904,14 @@ export default function DashboardPage() {
                 <div>
                   <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
                     <MessageSquare className="w-5 h-5 text-[#f37121]" />
-                    Complaints Summary
+                    {txx.complaintsSummary}
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <Link href="/system/complaints" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title="Total Complaints" value={complaintsData.total || complaintsData.complaints?.length || 0} icon={MessageSquare} color="#f59e0b" />
+                      <StatCard title={txx.totalComplaints} value={complaintsData.total || complaintsData.complaints?.length || 0} icon={MessageSquare} color="#f59e0b" />
                     </Link>
                     <Link href="/system/complaints" className="hover:scale-[1.02] transition-transform">
-                      <StatCard title="Open Complaints" value={complaintsData.openCount ?? complaintsData.complaints?.filter((c: any) => c.status === 'open' || c.status === 'in_progress').length ?? 0} icon={AlertTriangle} color="#ef4444" />
+                      <StatCard title={txx.openComplaints} value={complaintsData.openCount ?? complaintsData.complaints?.filter((c: any) => c.status === 'open' || c.status === 'in_progress').length ?? 0} icon={AlertTriangle} color="#ef4444" />
                     </Link>
                   </div>
                 </div>
@@ -1019,8 +1020,8 @@ function AgingChart({ aging, T }: { aging: any; T: any }) {
           <XAxis dataKey="label" tick={{ fill: '#9ca3af', fontSize: 11 }} />
           <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} />
           <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }} labelStyle={{ color: '#fff' }} />
-          <Bar dataKey="totalAmount" fill="#f37121" radius={[4, 4, 0, 0]} name="Amount" />
-          <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} name="Count" />
+          <Bar dataKey="totalAmount" fill="#f37121" radius={[4, 4, 0, 0]} name={T.amount} />
+          <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} name={T.count} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -1037,7 +1038,7 @@ function DsoChart({ dso, T }: { dso: any; T: any }) {
           <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
           <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} />
           <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }} labelStyle={{ color: '#fff' }} />
-          <Line type="monotone" dataKey="dso" stroke="#f37121" strokeWidth={2} dot={{ r: 3 }} name="DSO (days)" />
+          <Line type="monotone" dataKey="dso" stroke="#f37121" strokeWidth={2} dot={{ r: 3 }} name={T.dsoDays} />
         </LineChart>
       </ResponsiveContainer>
     </div>

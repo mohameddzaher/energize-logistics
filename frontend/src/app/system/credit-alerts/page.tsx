@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { getCreditAlertsTranslations } from '@/lib/translations';
+import { getCreditAlertsTranslations, getCreditAlertsExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import DataTable from '@/components/system/DataTable';
 import { useSocket } from '@/hooks/useSocket';
@@ -14,6 +14,7 @@ export default function CreditAlertsPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getCreditAlertsTranslations(lang);
+  const txx = getCreditAlertsExtraTranslations(lang);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -61,7 +62,7 @@ export default function CreditAlertsPage() {
     },
     {
       key: 'remaining',
-      label: 'Remaining',
+      label: txx.remaining,
       render: (val: number, row: any) => (
         <span className={`text-sm font-medium ${val < 0 ? 'text-red-600' : val < row.creditLimit * 0.2 ? 'text-yellow-700' : 'text-green-600'}`}>
           {'SAR ' + Math.round(val || 0).toLocaleString('en-US')}
@@ -87,7 +88,7 @@ export default function CreditAlertsPage() {
     },
     {
       key: 'grade',
-      label: 'Grade',
+      label: txx.grade,
       render: (val: string) => {
         const colors: Record<string, string> = { A: 'text-green-600 bg-green-500/20', B: 'text-blue-600 bg-blue-500/20', C: 'text-yellow-700 bg-yellow-500/20', D: 'text-red-600 bg-red-500/20' };
         return <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[val] || 'text-slate-500 bg-slate-500/20'}`}>{val || '-'}</span>;
@@ -95,12 +96,12 @@ export default function CreditAlertsPage() {
     },
     {
       key: 'creditTerm',
-      label: 'Credit Term',
-      render: (val: number) => <span className="text-slate-700 text-sm">{val} days</span>,
+      label: txx.creditTerm,
+      render: (val: number) => <span className="text-slate-700 text-sm">{val} {txx.days}</span>,
     },
     {
       key: 'assignedCollector',
-      label: 'Collector',
+      label: txx.collector,
       render: (_: any, row: any) => (
         <span className="text-slate-700 text-sm">
           {row.assignedCollector ? `${row.assignedCollector.firstName} ${row.assignedCollector.lastName}` : '-'}
@@ -109,13 +110,13 @@ export default function CreditAlertsPage() {
     },
     {
       key: 'lastPaymentDate',
-      label: 'Last Payment',
+      label: txx.lastPayment,
       render: (val: string, row: any) => val ? (
         <div>
           <span className="text-slate-700 text-xs">{new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
           {row.lastPaymentAmount && <span className="text-green-600 text-xs block">{'SAR ' + Math.round(row.lastPaymentAmount).toLocaleString('en-US')}</span>}
         </div>
-      ) : <span className="text-slate-500 text-xs">No payments</span>,
+      ) : <span className="text-slate-500 text-xs">{txx.noPayments}</span>,
     },
   ];
 
@@ -144,17 +145,17 @@ export default function CreditAlertsPage() {
               exportToExcel(
                 data?.alerts || [],
                 [
-                  { header: 'Customer', key: 'companyName', width: 25 },
-                  { header: 'Customer #', key: 'customerNumber', width: 14 },
-                  { header: 'Credit Limit', key: 'creditLimit', transform: fmt.money, width: 15 },
-                  { header: 'Outstanding', key: 'currentOutstanding', transform: fmt.money, width: 15 },
-                  { header: 'Remaining', key: 'remaining', transform: fmt.money, width: 15 },
-                  { header: 'Usage %', key: 'usagePercent', width: 10 },
-                  { header: 'Grade', key: 'grade', width: 8 },
-                  { header: 'Credit Term', key: 'creditTerm', width: 12 },
-                  { header: 'Collector', key: 'assignedCollector', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
-                  { header: 'Last Payment Date', key: 'lastPaymentDate', transform: fmt.date, width: 18 },
-                  { header: 'Last Payment Amount', key: 'lastPaymentAmount', transform: fmt.money, width: 20 },
+                  { header: T.customer, key: 'companyName', width: 25 },
+                  { header: txx.customerNumber, key: 'customerNumber', width: 14 },
+                  { header: T.creditLimit, key: 'creditLimit', transform: fmt.money, width: 15 },
+                  { header: T.currentOutstanding, key: 'currentOutstanding', transform: fmt.money, width: 15 },
+                  { header: txx.remaining, key: 'remaining', transform: fmt.money, width: 15 },
+                  { header: txx.usagePercent, key: 'usagePercent', width: 10 },
+                  { header: txx.grade, key: 'grade', width: 8 },
+                  { header: txx.creditTerm, key: 'creditTerm', width: 12 },
+                  { header: txx.collector, key: 'assignedCollector', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
+                  { header: txx.lastPaymentDate, key: 'lastPaymentDate', transform: fmt.date, width: 18 },
+                  { header: txx.lastPaymentAmount, key: 'lastPaymentAmount', transform: fmt.money, width: 20 },
                 ],
                 `Credit_Alerts_${new Date().toISOString().split('T')[0]}`,
                 'Credit Alerts'
@@ -170,7 +171,7 @@ export default function CreditAlertsPage() {
             type="button"
             onClick={() => { setLoading(true); fetchData(); }}
             className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
-            title="Refresh"
+            title={txx.refresh}
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -186,17 +187,17 @@ export default function CreditAlertsPage() {
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
           <p className="text-red-600 text-xs uppercase font-medium">{T.overLimit}</p>
           <p className="text-2xl font-bold text-red-600 mt-1">{data?.exceeded || 0}</p>
-          <p className="text-red-600/60 text-xs mt-1">Over 100% usage</p>
+          <p className="text-red-600/60 text-xs mt-1">{txx.over100Usage}</p>
         </div>
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
-          <p className="text-yellow-700 text-xs uppercase font-medium">Near Limit</p>
+          <p className="text-yellow-700 text-xs uppercase font-medium">{txx.nearLimit}</p>
           <p className="text-2xl font-bold text-yellow-700 mt-1">{data?.nearLimit || 0}</p>
-          <p className="text-yellow-700/60 text-xs mt-1">80-100% usage</p>
+          <p className="text-yellow-700/60 text-xs mt-1">{txx.usage80to100}</p>
         </div>
         <div className="bg-[#f37121]/10 border border-[#f37121]/30 rounded-xl p-4">
-          <p className="text-[#f37121] text-xs uppercase font-medium">Total Alerts</p>
+          <p className="text-[#f37121] text-xs uppercase font-medium">{txx.totalAlerts}</p>
           <p className="text-2xl font-bold text-[#f37121] mt-1">{data?.total || 0}</p>
-          <p className="text-[#f37121]/60 text-xs mt-1">70%+ credit usage</p>
+          <p className="text-[#f37121]/60 text-xs mt-1">{txx.usage70plus}</p>
         </div>
       </div>
 

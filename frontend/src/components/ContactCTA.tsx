@@ -21,7 +21,7 @@ const ContactCTA: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         whileInView={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7 }}
+        transition={{ duration: 0.7 }} 
         viewport={{ once: true }}
         className="relative z-10 max-w-3xl mx-auto"
       >

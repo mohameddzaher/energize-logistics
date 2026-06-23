@@ -1,14 +1,15 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
-import { getB2CTranslations } from '@/lib/translations';
+import { getB2CTranslations, getB2cRepsPerformanceTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2, Cloud, Link2, Power, Zap, Copy, Eye, EyeOff, Plus, Edit3 } from 'lucide-react';
+import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2, Cloud, Link2, Power, Zap, Copy, Eye, EyeOff, Plus, Edit3, Download } from 'lucide-react';
 import { useSocket } from '@/hooks/useSocket';
 import { useAuth } from '@/context/AuthContext';
 import { parseRepsExcel, buildBulkPayload, buildDiagnosticReport, type ExcelParseResult } from '@/lib/b2cExcelParser';
+import { exportToExcel } from '@/utils/exportExcel';
 
 interface Project { _id: string; name: string; code?: string; color?: string }
 interface Branch { _id: string; name: string; city?: string }
@@ -30,6 +31,7 @@ export default function RepsPerformancePage() {
   const { lang } = useLanguage();
   const { user } = useAuth();
   const T = getB2CTranslations(lang);
+  const tx = getB2cRepsPerformanceTranslations(lang);
   const canCleanup = user && ['super_admin', 'admin', 'b2c_head'].includes(user.role);
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -107,7 +109,7 @@ export default function RepsPerformancePage() {
       setUploads(uploadsData.uploads || []);
       setSheetConfigs(sheetData?.configs || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to load');
+      setError(err.message || tx.failedToLoad);
     }
   }, []);
 
@@ -132,7 +134,7 @@ export default function RepsPerformancePage() {
       setAddForm({ project: '', branch: '', sheetUrl: '', intervalMinutes: 1, syncMode: 'overwrite' });
       await refreshSheetConfigs();
     } catch (err: any) {
-      setSheetError(err.message || 'Failed to add sheet config');
+      setSheetError(err.message || tx.failedToAddSheet);
     } finally {
       setAddSaving(false);
     }
@@ -155,7 +157,7 @@ export default function RepsPerformancePage() {
       setEditingId(null);
       await refreshSheetConfigs();
     } catch (err: any) {
-      setSheetError(err.message || 'Failed to save');
+      setSheetError(err.message || tx.failedToSave);
     } finally {
       setBusyConfigId(null); setBusyAction(null);
     }
@@ -167,7 +169,7 @@ export default function RepsPerformancePage() {
       await api.put<any>(`/api/b2c/google-sheet/configs/${id}`, { enabled: !currentEnabled });
       await refreshSheetConfigs();
     } catch (err: any) {
-      setSheetError(err.message || 'Failed to toggle');
+      setSheetError(err.message || tx.failedToToggle);
     } finally {
       setBusyConfigId(null); setBusyAction(null);
     }
@@ -182,7 +184,7 @@ export default function RepsPerformancePage() {
       if (setupOpenId === id) setSetupOpenId(null);
       await refreshSheetConfigs();
     } catch (err: any) {
-      setSheetError(err.message || 'Failed to delete');
+      setSheetError(err.message || tx.failedToDelete);
     } finally {
       setBusyConfigId(null); setBusyAction(null);
     }
@@ -197,7 +199,7 @@ export default function RepsPerformancePage() {
       const uploadsData = await api.get<any>('/api/b2c/uploads').catch(() => ({ uploads: [] }));
       setUploads(uploadsData.uploads || []);
     } catch (err: any) {
-      setSheetError(err.message || 'Sync failed');
+      setSheetError(err.message || tx.syncFailed);
     } finally {
       setBusyConfigId(null); setBusyAction(null);
     }
@@ -217,7 +219,7 @@ export default function RepsPerformancePage() {
       setSetupWebhookUrl(data.webhookUrl || '');
       setSetupSecret(data.secret || '');
     } catch (err: any) {
-      setSheetError(err.message || 'Failed to load setup script');
+      setSheetError(err.message || tx.failedToLoadSetupScript);
     } finally {
       setSetupLoading(false);
     }
@@ -292,6 +294,18 @@ export default function RepsPerformancePage() {
     }
   };
 
+  const handleExportUploads = () => {
+    exportToExcel(uploads, [
+      { header: lang === 'ar' ? 'التاريخ' : 'Date', key: 'createdAt', width: 20, transform: (v) => v ? new Date(v).toLocaleString() : '' },
+      { header: lang === 'ar' ? 'الملف' : 'File', key: 'fileName', width: 28, transform: (v) => v || '—' },
+      { header: lang === 'ar' ? 'بواسطة' : 'By', key: 'uploadedBy', width: 22, transform: (v) => v ? `${v.firstName} ${v.lastName}` : '—' },
+      { header: T.monthsDetected, key: 'monthsDetected', width: 24, transform: (v) => (v || []).join(', ') },
+      { header: T.daysInserted, key: 'daysInserted', width: 12 },
+      { header: T.daysUpdated, key: 'daysUpdated', width: 12 },
+      { header: T.daysSkipped, key: 'daysSkipped', width: 12 },
+    ], 'b2c-upload-history', lang === 'ar' ? 'سجل الرفع' : 'Upload History');
+  };
+
   const handleDownloadDiagnostic = () => {
     if (!parseResult) return;
     const text = buildDiagnosticReport(parseResult);
@@ -325,7 +339,7 @@ export default function RepsPerformancePage() {
       if (fileInputRef.current) fileInputRef.current.value = '';
       await fetchAll();
     } catch (err: any) {
-      setError(err.message || 'Cleanup failed');
+      setError(err.message || tx.cleanupFailed);
       setShowCleanupModal(false);
     } finally {
       setCleaningUp(false);
@@ -347,7 +361,7 @@ export default function RepsPerformancePage() {
       alert(msg);
       await fetchAll();
     } catch (err: any) {
-      setError(err.message || 'Failed to reconcile reps');
+      setError(err.message || tx.failedToReconcile);
     } finally {
       setReconciling(false);
     }
@@ -509,14 +523,14 @@ export default function RepsPerformancePage() {
                 : `Deleted ${cleanupResult.ordersDeleted} days, ${cleanupResult.uploadsDeleted} uploads${cleanupResult.repsDeleted > 0 ? `, ${cleanupResult.repsDeleted} reps` : ''}`}
             </p>
           </div>
-          <button type="button" onClick={() => setCleanupResult(null)} className="text-blue-600 hover:text-blue-700" title="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={() => setCleanupResult(null)} className="text-blue-600 hover:text-blue-700" title={tx.close}><X className="w-4 h-4" /></button>
         </motion.div>
       )}
 
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-600 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <button type="button" onClick={() => setError('')} className="text-red-600 hover:text-red-700" title="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={() => setError('')} className="text-red-600 hover:text-red-700" title={tx.close}><X className="w-4 h-4" /></button>
         </div>
       )}
 
@@ -653,7 +667,7 @@ export default function RepsPerformancePage() {
                   📥 {lang === 'ar' ? 'حمّل تقرير التشخيص' : 'Download Diagnostic'}
                 </button>
                 <button type="button" onClick={() => { setParseResult(null); setFileName(''); }}
-                  className="p-1.5 text-slate-500 hover:text-red-600 rounded hover:bg-slate-100" title="Clear">
+                  className="p-1.5 text-slate-500 hover:text-red-600 rounded hover:bg-slate-100" title={tx.clear}>
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -697,7 +711,7 @@ export default function RepsPerformancePage() {
                         <th className="text-center py-2 px-3">{lang === 'ar' ? 'مناديب' : 'Reps'}</th>
                         <th className="text-center py-2 px-3">{lang === 'ar' ? 'أيام' : 'Days'}</th>
                         <th className="text-center py-2 px-3">{lang === 'ar' ? 'إجمالي طلبات' : 'Total Orders'}</th>
-                        <th className="text-center py-2 px-3 text-slate-300" title="Excel header row index">
+                        <th className="text-center py-2 px-3 text-slate-300" title={tx.excelHeaderRowIndex}>
                           {lang === 'ar' ? 'صف الترويسة' : 'Header Row'}
                         </th>
                       </tr>
@@ -876,7 +890,7 @@ export default function RepsPerformancePage() {
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm mb-3 flex items-start gap-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{sheetError}</span>
-            <button type="button" onClick={() => setSheetError('')} className="ml-auto text-red-600 hover:text-red-700" title="Close">
+            <button type="button" onClick={() => setSheetError('')} className="ml-auto text-red-600 hover:text-red-700" title={tx.close}>
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -1069,12 +1083,12 @@ export default function RepsPerformancePage() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
                     <div className="md:col-span-3">
-                      <span className="text-slate-500 uppercase mr-2">URL:</span>
+                      <span className="text-slate-500 uppercase mr-2">{tx.urlLabel}</span>
                       {cfg.sheetUrl
                         ? <a href={cfg.sheetUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline font-mono break-all">{cfg.sheetUrl}</a>
                         : <span className="text-slate-500 italic">{lang === 'ar' ? 'لم يُحدَّد بعد' : 'not set yet'}</span>}
                     </div>
-                    <div><span className="text-slate-500 uppercase mr-2">{lang === 'ar' ? 'الفترة:' : 'Interval:'}</span><span className="text-slate-700">{cfg.intervalMinutes} min</span></div>
+                    <div><span className="text-slate-500 uppercase mr-2">{lang === 'ar' ? 'الفترة:' : 'Interval:'}</span><span className="text-slate-700">{cfg.intervalMinutes} {tx.minutesUnit}</span></div>
                     <div className="md:col-span-2"><span className="text-slate-500 uppercase mr-2">{lang === 'ar' ? 'الوضع:' : 'Mode:'}</span><span className="text-slate-700">{cfg.syncMode === 'overwrite' ? (lang === 'ar' ? 'إعادة كتابة' : 'overwrite') : (lang === 'ar' ? 'أيام جديدة فقط' : 'new days only')}</span></div>
                   </div>
                 )}
@@ -1159,7 +1173,7 @@ export default function RepsPerformancePage() {
                     </div>
                     <div className="bg-slate-50 rounded-lg p-2 text-center">
                       <p className="text-slate-500 text-[10px]">{lang === 'ar' ? 'وقت' : 'Duration'}</p>
-                      <p className="text-slate-700 font-bold">{((cfg.lastSyncStats.durationMs || 0) / 1000).toFixed(1)}s</p>
+                      <p className="text-slate-700 font-bold">{((cfg.lastSyncStats.durationMs || 0) / 1000).toFixed(1)}{tx.secondsUnit}</p>
                     </div>
                   </div>
                 )}
@@ -1208,7 +1222,7 @@ export default function RepsPerformancePage() {
                             <li>{lang === 'ar' ? 'افتح Google Sheet → Extensions → Apps Script' : 'Open Google Sheet → Extensions → Apps Script'}</li>
                             <li>{lang === 'ar' ? 'الصق السكربت — احفظ (💾)' : 'Paste script — save (💾)'}</li>
                             <li>{lang === 'ar' ? 'Triggers (الساعة) → Add Trigger' : 'Triggers (clock icon) → Add Trigger'}</li>
-                            <li>Function: <code className="text-purple-700">notifyB2CWebhook</code> · Source: <code>From spreadsheet</code> · Type: <code>On edit</code></li>
+                            <li>{tx.functionLabel} <code className="text-purple-700">notifyB2CWebhook</code> · {tx.sourceLabel} <code>From spreadsheet</code> · {tx.typeLabel} <code>On edit</code></li>
                             <li>{lang === 'ar' ? 'احفظ — وامنح الصلاحيات لما يطلب' : 'Save — grant permissions when prompted'}</li>
                           </ol>
 
@@ -1218,32 +1232,32 @@ export default function RepsPerformancePage() {
                             </summary>
                             <div className="mt-3 space-y-2">
                               <div>
-                                <label className="block text-slate-500 text-[10px] uppercase mb-1">Webhook URL</label>
+                                <label className="block text-slate-500 text-[10px] uppercase mb-1">{tx.webhookUrlLabel}</label>
                                 <div className="flex items-center gap-2">
                                   <code className="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-700 font-mono break-all">{setupWebhookUrl}</code>
                                   <button type="button" onClick={() => copyToClipboard(setupWebhookUrl, 'url')}
-                                    className="p-1.5 rounded bg-white hover:bg-slate-100 text-slate-700" title="Copy URL">
+                                    className="p-1.5 rounded bg-white hover:bg-slate-100 text-slate-700" title={tx.copyUrl}>
                                     <Copy className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
-                                {copyFeedback === 'url' && <p className="text-green-600 text-[10px] mt-0.5">✓ Copied</p>}
+                                {copyFeedback === 'url' && <p className="text-green-600 text-[10px] mt-0.5">{tx.copiedShort}</p>}
                               </div>
                               <div>
-                                <label className="block text-slate-500 text-[10px] uppercase mb-1">Secret</label>
+                                <label className="block text-slate-500 text-[10px] uppercase mb-1">{tx.secretLabel}</label>
                                 <div className="flex items-center gap-2">
                                   <code className="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-700 font-mono break-all">
                                     {showSecret ? setupSecret : '••••••••••••••••••••••••'}
                                   </code>
                                   <button type="button" onClick={() => setShowSecret(!showSecret)}
-                                    className="p-1.5 rounded bg-white hover:bg-slate-100 text-slate-700" title="Toggle visibility">
+                                    className="p-1.5 rounded bg-white hover:bg-slate-100 text-slate-700" title={tx.toggleVisibility}>
                                     {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                                   </button>
                                   <button type="button" onClick={() => copyToClipboard(setupSecret, 'secret')}
-                                    className="p-1.5 rounded bg-white hover:bg-slate-100 text-slate-700" title="Copy secret">
+                                    className="p-1.5 rounded bg-white hover:bg-slate-100 text-slate-700" title={tx.copySecret}>
                                     <Copy className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
-                                {copyFeedback === 'secret' && <p className="text-green-600 text-[10px] mt-0.5">✓ Copied</p>}
+                                {copyFeedback === 'secret' && <p className="text-green-600 text-[10px] mt-0.5">{tx.copiedShort}</p>}
                               </div>
                             </div>
                           </details>
@@ -1265,9 +1279,18 @@ export default function RepsPerformancePage() {
             <FileSpreadsheet className="w-5 h-5 text-[#f37121]" />
             {T.uploadHistory}
           </h2>
-          <button type="button" onClick={fetchAll} className="p-1.5 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100" title="Refresh">
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {uploads.length > 0 && (
+              <button type="button" onClick={handleExportUploads}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-700 border border-green-500/30 text-sm font-medium transition-colors">
+                <Download className="w-4 h-4" />
+                {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+              </button>
+            )}
+            <button type="button" onClick={fetchAll} className="p-1.5 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100" title={tx.refresh}>
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
         {uploads.length === 0 ? (
           <p className="text-slate-500 text-sm text-center py-6">{T.noUploadsYet}</p>

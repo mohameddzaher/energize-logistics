@@ -4,8 +4,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { motion } from 'framer-motion';
-import { Clock, LogIn, LogOut, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Clock, LogIn, LogOut, CheckCircle2, RefreshCw, Download } from 'lucide-react';
 import { isRemoteStaff, fmtDuration, fmtTime } from '@/lib/remote';
+import { getRemoteAttendanceTranslations } from '@/lib/translations';
+import { exportToExcel } from '@/utils/exportExcel';
 
 interface AttRecord {
   _id: string;
@@ -33,6 +35,7 @@ function EmployeeAttendance({ ar }: { ar: boolean }) {
   const [record, setRecord] = useState<AttRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const tx = getRemoteAttendanceTranslations(ar ? 'ar' : 'en');
 
   const load = useCallback(async () => {
     try {
@@ -62,31 +65,31 @@ function EmployeeAttendance({ ar }: { ar: boolean }) {
   return (
     <div className="max-w-xl mx-auto space-y-8 py-6">
       <div className="text-center">
-        <h1 className="text-3xl font-bold text-slate-900">{ar ? 'الحضور والانصراف' : 'Attendance'}</h1>
+        <h1 className="text-3xl font-bold text-slate-900">{tx.attendanceTitle}</h1>
         <p className="text-slate-500 mt-1 text-lg">{new Date().toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
       </div>
 
       {/* The big button */}
       {notStarted && (
-        <BigButton color="green" onClick={toggle} busy={busy} icon={<LogIn className="w-14 h-14" />} label={ar ? 'تسجيل الحضور' : 'Check In'} />
+        <BigButton color="green" onClick={toggle} busy={busy} icon={<LogIn className="w-14 h-14" />} label={tx.checkIn} />
       )}
       {checkedIn && (
         <div className="space-y-5">
           <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-5 text-center">
-            <p className="text-green-600 text-lg font-medium">{ar ? 'أنت حاضر الآن' : 'You are checked in'}</p>
+            <p className="text-green-600 text-lg font-medium">{tx.youAreCheckedIn}</p>
             <p className="text-slate-900 text-4xl font-bold mt-1">{fmtTime(record!.checkIn)}</p>
           </div>
-          <BigButton color="red" onClick={toggle} busy={busy} icon={<LogOut className="w-14 h-14" />} label={ar ? 'تسجيل الانصراف' : 'Check Out'} />
+          <BigButton color="red" onClick={toggle} busy={busy} icon={<LogOut className="w-14 h-14" />} label={tx.checkOut} />
         </div>
       )}
       {done && (
         <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-4 shadow-sm">
           <CheckCircle2 className="w-16 h-16 text-green-600 mx-auto" />
-          <p className="text-slate-900 text-2xl font-bold">{ar ? 'تم تسجيل يومك بالكامل' : 'Your day is recorded'}</p>
+          <p className="text-slate-900 text-2xl font-bold">{tx.dayRecorded}</p>
           <div className="grid grid-cols-3 gap-3 pt-2">
-            <Stat label={ar ? 'الحضور' : 'In'} value={fmtTime(record!.checkIn)} />
-            <Stat label={ar ? 'الانصراف' : 'Out'} value={fmtTime(record!.checkOut)} />
-            <Stat label={ar ? 'المدة' : 'Hours'} value={fmtDuration(record!.durationMinutes, ar ? 'ar' : 'en')} />
+            <Stat label={tx.in} value={fmtTime(record!.checkIn)} />
+            <Stat label={tx.out} value={fmtTime(record!.checkOut)} />
+            <Stat label={tx.hours} value={fmtDuration(record!.durationMinutes, ar ? 'ar' : 'en')} />
           </div>
         </div>
       )}
@@ -129,6 +132,7 @@ function StaffAttendance({ ar, isRTL }: { ar: boolean; isRTL: boolean }) {
   const [userId, setUserId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const tx = getRemoteAttendanceTranslations(ar ? 'ar' : 'en');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -147,47 +151,68 @@ function StaffAttendance({ ar, isRTL }: { ar: boolean; isRTL: boolean }) {
     api.get<{ employees: EmployeeOpt[] }>('/api/remote/employees').then((d) => setEmployees(d.employees || [])).catch(() => {});
   }, []);
 
+  const handleExport = () => {
+    exportToExcel(
+      records,
+      [
+        { header: tx.employee, key: 'user', width: 26, transform: (u: AttRecord['user']) => (u ? `${u.firstName} ${u.lastName}` : '—') },
+        { header: tx.date, key: 'date', width: 14 },
+        { header: tx.in, key: 'checkIn', width: 12, transform: (v: string) => fmtTime(v) },
+        { header: tx.out, key: 'checkOut', width: 12, transform: (v: string) => (v ? fmtTime(v) : '—') },
+        { header: tx.hours, key: 'durationMinutes', width: 12, transform: (v: number) => fmtDuration(v, ar ? 'ar' : 'en') },
+        { header: tx.status, key: 'status', width: 14, transform: (v: AttRecord['status']) => (v === 'present' ? tx.statusComplete : tx.statusOpen) },
+      ],
+      'remote-attendance',
+      tx.teamAttendance
+    );
+  };
+
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Clock className="w-6 h-6 text-[#f37121]" />{ar ? 'سجل حضور الفريق' : 'Team Attendance'}</h1>
-        <button type="button" onClick={load} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Clock className="w-6 h-6 text-[#f37121]" />{tx.teamAttendance}</h1>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={handleExport} disabled={records.length === 0} className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-50">
+            <Download className="w-4 h-4" />{ar ? 'تصدير Excel' : 'Export Excel'}
+          </button>
+          <button type="button" onClick={load} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}><RefreshCw className="w-4 h-4" /></button>
+        </div>
       </div>
 
       {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 shadow-sm">
         <div>
-          <label className="block text-slate-500 text-xs mb-1">{ar ? 'الموظف' : 'Employee'}</label>
-          <select aria-label="Employee" value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm">
-            <option value="">{ar ? 'الكل' : 'All'}</option>
+          <label className="block text-slate-500 text-xs mb-1">{tx.employee}</label>
+          <select aria-label={tx.employee} value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm">
+            <option value="">{tx.all}</option>
             {employees.map((e) => <option key={e._id} value={e._id}>{e.firstName} {e.lastName}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-slate-500 text-xs mb-1">{ar ? 'من' : 'From'}</label>
-          <input aria-label="From date" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
+          <label className="block text-slate-500 text-xs mb-1">{tx.from}</label>
+          <input aria-label={tx.fromDate} type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
         </div>
         <div>
-          <label className="block text-slate-500 text-xs mb-1">{ar ? 'إلى' : 'To'}</label>
-          <input aria-label="To date" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
+          <label className="block text-slate-500 text-xs mb-1">{tx.to}</label>
+          <input aria-label={tx.toDate} type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center h-40"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>
       ) : records.length === 0 ? (
-        <p className="text-slate-500 text-center py-10">{ar ? 'لا توجد سجلات' : 'No records found'}</p>
+        <p className="text-slate-500 text-center py-10">{tx.noRecords}</p>
       ) : (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden overflow-x-auto shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs uppercase">
               <tr>
-                <th className="text-start px-4 py-3">{ar ? 'الموظف' : 'Employee'}</th>
-                <th className="text-start px-4 py-3">{ar ? 'اليوم' : 'Date'}</th>
-                <th className="text-start px-4 py-3">{ar ? 'الحضور' : 'In'}</th>
-                <th className="text-start px-4 py-3">{ar ? 'الانصراف' : 'Out'}</th>
-                <th className="text-start px-4 py-3">{ar ? 'المدة' : 'Hours'}</th>
-                <th className="text-start px-4 py-3">{ar ? 'الحالة' : 'Status'}</th>
+                <th className="text-start px-4 py-3">{tx.employee}</th>
+                <th className="text-start px-4 py-3">{tx.date}</th>
+                <th className="text-start px-4 py-3">{tx.in}</th>
+                <th className="text-start px-4 py-3">{tx.out}</th>
+                <th className="text-start px-4 py-3">{tx.hours}</th>
+                <th className="text-start px-4 py-3">{tx.status}</th>
               </tr>
             </thead>
             <tbody>
@@ -200,7 +225,7 @@ function StaffAttendance({ ar, isRTL }: { ar: boolean; isRTL: boolean }) {
                   <td className="px-4 py-3 text-slate-700">{fmtDuration(r.durationMinutes, ar ? 'ar' : 'en')}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded text-xs ${r.status === 'present' ? 'bg-green-500/20 text-green-600' : 'bg-amber-500/20 text-amber-700'}`}>
-                      {r.status === 'present' ? (ar ? 'مكتمل' : 'Complete') : (ar ? 'لم ينصرف' : 'Open')}
+                      {r.status === 'present' ? tx.statusComplete : tx.statusOpen}
                     </span>
                   </td>
                 </tr>

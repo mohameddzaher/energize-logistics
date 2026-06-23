@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getPaymentsTranslations } from '@/lib/translations';
+import { getPaymentsTranslations, getPaymentsExtraTranslations } from '@/lib/translations';
 
 // --------------- Interfaces ---------------
 
@@ -84,11 +84,11 @@ interface InvoicesResponse {
 
 // --------------- Constants ---------------
 
-const getPaymentMethods = (T: any): Record<string, string> => ({
+const getPaymentMethods = (T: any, onlineLabel: string): Record<string, string> => ({
   bank_transfer: T.bankTransfer,
   check: T.cheque,
   cash: T.cash,
-  online: 'Online',
+  online: onlineLabel,
   other: T.other,
 });
 
@@ -116,7 +116,13 @@ export default function PaymentsPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getPaymentsTranslations(lang);
-  const PAYMENT_METHODS = getPaymentMethods(T);
+  const txx = getPaymentsExtraTranslations(lang);
+  const PAYMENT_METHODS = getPaymentMethods(T, txx.online);
+  const STATUS_LABELS: Record<string, string> = {
+    pending: txx.statusPending,
+    partial: txx.statusPartial,
+    overdue: txx.statusOverdue,
+  };
 
   // Payment listing state
   const [payments, setPayments] = useState<PaymentItem[]>([]);
@@ -178,7 +184,7 @@ export default function PaymentsPage() {
       setTotalPages(data.pages);
       setTotal(data.total);
     } catch (err: any) {
-      setError(err.message || 'Failed to load payments');
+      setError(err.message || txx.failedToLoad);
     } finally {
       setLoading(false);
     }
@@ -337,21 +343,21 @@ export default function PaymentsPage() {
       if (amount <= 0) {
         const inv = customerInvoices.find((i) => i._id === invoiceId);
         setPaymentError(
-          `Amount for ${inv?.invoiceNumber || 'an invoice'} must be greater than 0`
+          `${txx.amountForPrefix}${inv?.invoiceNumber || txx.anInvoice}${txx.mustBeGreaterThanZero}`
         );
         return;
       }
       const inv = customerInvoices.find((i) => i._id === invoiceId);
       if (inv && amount > inv.balance) {
         setPaymentError(
-          `Amount for ${inv.invoiceNumber} cannot exceed its balance of ${formatCurrency(inv.balance)}`
+          `${txx.amountForPrefix}${inv.invoiceNumber}${txx.cannotExceedBalance}${formatCurrency(inv.balance)}`
         );
         return;
       }
     }
 
     if (!paymentDate) {
-      setPaymentError(T.paymentDate + ' is required');
+      setPaymentError(T.paymentDate + txx.isRequired);
       return;
     }
 
@@ -373,7 +379,7 @@ export default function PaymentsPage() {
       setShowPaymentModal(false);
       fetchPayments();
     } catch (err: any) {
-      setPaymentError(err.message || 'Failed to log payment');
+      setPaymentError(err.message || txx.failedToLog);
     } finally {
       setLoggingPayment(false);
     }
@@ -390,11 +396,11 @@ export default function PaymentsPage() {
     }
     const amount = Number(fifoAmount);
     if (!amount || amount <= 0) {
-      setPaymentError(T.quickPay + ' - invalid amount');
+      setPaymentError(T.quickPay + txx.invalidAmount);
       return;
     }
     if (!paymentDate) {
-      setPaymentError(T.paymentDate + ' is required');
+      setPaymentError(T.paymentDate + txx.isRequired);
       return;
     }
 
@@ -411,7 +417,7 @@ export default function PaymentsPage() {
       setShowPaymentModal(false);
       fetchPayments();
     } catch (err: any) {
-      setPaymentError(err.message || 'FIFO auto-allocate failed');
+      setPaymentError(err.message || txx.fifoFailed);
     } finally {
       setLoggingPayment(false);
     }
@@ -436,7 +442,7 @@ export default function PaymentsPage() {
       setDeleteTarget(null);
       fetchPayments();
     } catch (err: any) {
-      setError(err.message || 'Failed to delete payment');
+      setError(err.message || txx.failedToDelete);
       setShowDeleteConfirm(false);
       setDeleteTarget(null);
     } finally {
@@ -832,7 +838,7 @@ export default function PaymentsPage() {
                   <button
                     type="button"
                     onClick={() => setShowPaymentModal(false)}
-                    aria-label="Close payment modal"
+                    aria-label={txx.closePaymentModal}
                     className="text-slate-500 hover:text-slate-900 transition-colors p-1 rounded-lg hover:bg-slate-100"
                   >
                     <X className="w-5 h-5" />
@@ -1130,7 +1136,7 @@ export default function PaymentsPage() {
                                           'bg-slate-100 text-slate-700'
                                         }`}
                                       >
-                                        {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                                        {STATUS_LABELS[inv.status] || inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                                       </span>
                                     </td>
                                     {/* Due Date */}
@@ -1152,7 +1158,7 @@ export default function PaymentsPage() {
                                               Number(e.target.value)
                                             )
                                           }
-                                          aria-label={`Pay amount for ${inv.invoiceNumber}`}
+                                          aria-label={`${txx.payAmountFor}${inv.invoiceNumber}`}
                                           className="w-28 px-2.5 py-1.5 rounded-md bg-slate-50 border border-[#f37121]/40 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                                         />
                                       ) : (

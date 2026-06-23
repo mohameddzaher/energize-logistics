@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
-import { getB2CTranslations } from '@/lib/translations';
+import { getB2CTranslations, getB2cDailyEntryTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { motion } from 'framer-motion';
 import { CalendarDays, Save, Check, AlertCircle, Search } from 'lucide-react';
@@ -33,6 +33,7 @@ const todayKey = () => {
 export default function B2CDailyEntryPage() {
   const { lang } = useLanguage();
   const T = getB2CTranslations(lang);
+  const tx = getB2cDailyEntryTranslations(lang);
 
   const [date, setDate] = useState<string>(todayKey());
   const [project, setProject] = useState<string>('');
@@ -154,12 +155,12 @@ export default function B2CDailyEntryPage() {
       <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 shadow-sm">
         <div>
           <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.pickDate}</label>
-          <input type="date" aria-label="Pick date" value={date} onChange={(e) => setDate(e.target.value)}
+          <input type="date" aria-label={tx.pickDate} value={date} onChange={(e) => setDate(e.target.value)}
             className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
         </div>
         <div>
           <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.project}</label>
-          <select aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)}
+          <select aria-label={tx.project} value={project} onChange={(e) => setProject(e.target.value)}
             className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
             <option value="">{T.allProjects}</option>
             {projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
@@ -167,18 +168,18 @@ export default function B2CDailyEntryPage() {
         </div>
         <div>
           <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.branch}</label>
-          <select aria-label="Branch" value={branch} onChange={(e) => setBranch(e.target.value)}
+          <select aria-label={tx.branch} value={branch} onChange={(e) => setBranch(e.target.value)}
             className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
             <option value="">{T.allBranches}</option>
             {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{lang === 'ar' ? 'بحث' : 'Search'}</label>
+          <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{tx.search}</label>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder={lang === 'ar' ? 'ابحث عن مندوب...' : 'Search rep...'}
+              placeholder={tx.searchRepPlaceholder}
               className="w-full pl-10 pr-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
           </div>
         </div>
@@ -188,11 +189,11 @@ export default function B2CDailyEntryPage() {
       <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
         className="bg-gradient-to-r from-[#f37121]/10 via-white to-slate-100 border border-[#f37121]/30 rounded-xl p-4 flex items-center justify-between">
         <div>
-          <p className="text-slate-500 text-xs uppercase">{lang === 'ar' ? 'تسجيل اليوم' : 'Recording for'}</p>
+          <p className="text-slate-500 text-xs uppercase">{tx.recordingFor}</p>
           <p className="text-slate-900 font-bold text-lg">{dayName} — {date}</p>
         </div>
         <div className="text-right">
-          <p className="text-slate-500 text-xs uppercase">{lang === 'ar' ? 'مناديب اليوم' : 'Reps'}</p>
+          <p className="text-slate-500 text-xs uppercase">{tx.reps}</p>
           <p className="text-[#f37121] font-bold text-2xl">{filteredReps.length}</p>
         </div>
       </motion.div>
@@ -253,8 +254,8 @@ export default function B2CDailyEntryPage() {
                       value={value}
                       onChange={(e) => handleChange(repIdStr, e.target.value)}
                       onBlur={() => handleBlur(repIdStr)}
-                      placeholder={lang === 'ar' ? 'الطلبات' : 'Orders'}
-                      aria-label={`Orders for ${rep.englishName}`}
+                      placeholder={tx.ordersPlaceholder}
+                      aria-label={`${tx.ordersForLabel} ${rep.englishName}`}
                       className={`flex-1 px-3 py-2 rounded-lg bg-slate-50 border text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${
                         belowTarget ? 'border-red-500/40' : aboveTarget ? 'border-green-500/40' : 'border-slate-200'
                       }`} />
@@ -263,9 +264,9 @@ export default function B2CDailyEntryPage() {
                   {hasData && (
                     <div className="mt-2 text-[11px]">
                       {aboveTarget ? (
-                        <span className="text-green-600">+{(numValue as number) - target} {lang === 'ar' ? 'فوق الهدف' : 'above target'}</span>
+                        <span className="text-green-600">+{(numValue as number) - target} {tx.aboveTarget}</span>
                       ) : (
-                        <span className="text-red-600">{(numValue as number) - target} {lang === 'ar' ? 'تحت الهدف' : 'below target'}</span>
+                        <span className="text-red-600">{(numValue as number) - target} {tx.belowTarget}</span>
                       )}
                     </div>
                   )}

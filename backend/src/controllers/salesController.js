@@ -36,40 +36,97 @@ exports.getOptions = async (req, res) => {
 };
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
+// Previous YYYY-MM relative to a given period.
+const prevPeriod = (period) => {
+  const [y, m] = (period || thisPeriod()).split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
 exports.getDashboard = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     const period = req.query.period || thisPeriod();
     const { start, end } = periodRange(period);
+    const prev = prevPeriod(period);
+    const { start: pStart, end: pEnd } = periodRange(prev);
 
-    const [wonAgg, openAgg, lostAgg, targets, byRep] = await Promise.all([
+    const [
+      wonAgg, openAgg, lostAgg, targets, byRep,
+      prevWonAgg, prevLostAgg, stageAgg, perRepWon, perRepOpen,
+    ] = await Promise.all([
       CrmDeal.aggregate([{ $match: { status: 'won', wonAt: { $gte: start, $lte: end } } }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: '$value' } } }]),
       CrmDeal.aggregate([{ $match: { status: 'open' } }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: '$value' } } }]),
       CrmDeal.aggregate([{ $match: { status: 'lost', lostAt: { $gte: start, $lte: end } } }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: '$value' } } }]),
       SalesTarget.find({ period }).lean(),
       CrmDeal.aggregate([{ $match: { status: 'won', wonAt: { $gte: start, $lte: end } } }, { $group: { _id: '$owner', count: { $sum: 1 }, value: { $sum: '$value' } } }, { $sort: { value: -1 } }, { $limit: 10 }]),
+      CrmDeal.aggregate([{ $match: { status: 'won', wonAt: { $gte: pStart, $lte: pEnd } } }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: '$value' } } }]),
+      CrmDeal.aggregate([{ $match: { status: 'lost', lostAt: { $gte: pStart, $lte: pEnd } } }, { $group: { _id: null, count: { $sum: 1 } } }]),
+      // Open pipeline grouped by stage (count + value).
+      CrmDeal.aggregate([{ $match: { status: 'open' } }, { $group: { _id: '$stage', count: { $sum: 1 }, value: { $sum: '$value' } } }]),
+      // Per-rep won (this period) and open pipeline — for performance rows.
+      CrmDeal.aggregate([{ $match: { status: 'won', wonAt: { $gte: start, $lte: end } } }, { $group: { _id: '$owner', count: { $sum: 1 }, value: { $sum: '$value' } } }]),
+      CrmDeal.aggregate([{ $match: { status: 'open' } }, { $group: { _id: '$owner', count: { $sum: 1 }, value: { $sum: '$value' } } }]),
     ]);
 
     const won = wonAgg[0] || { count: 0, value: 0 };
     const lost = lostAgg[0] || { count: 0, value: 0 };
     const open = openAgg[0] || { count: 0, value: 0 };
+    const prevWon = prevWonAgg[0] || { count: 0, value: 0 };
+    const prevLost = prevLostAgg[0] || { count: 0 };
     const teamTarget = targets.reduce((s, t) => s + (t.amountTarget || 0), 0);
     const closed = won.count + lost.count;
+    const prevClosed = prevWon.count + prevLost.count;
 
-    // Resolve top-rep names.
-    const repIds = byRep.map((r) => r._id).filter(Boolean);
-    const reps = await User.find({ _id: { $in: repIds } }).select('firstName lastName').lean();
+    // Pipeline by stage (only the active/open stages).
+    const STAGE_ORDER = ['new', 'contacted', 'qualified', 'proposal', 'negotiation'];
+    const stageMap = {}; stageAgg.forEach((s) => { stageMap[String(s._id)] = s; });
+    const byStage = STAGE_ORDER.map((key) => {
+      const s = stageMap[key] || { count: 0, value: 0 };
+      return { stage: key, count: s.count, value: round2(s.value) };
+    });
+
+    // Per-rep performance rows (won vs target). Build over reps with any activity or a target.
+    const tgtMap = {}; targets.forEach((t) => { if (t.rep) tgtMap[String(t.rep)] = t; });
+    const perWonMap = {}; perRepWon.forEach((w) => { perWonMap[String(w._id)] = w; });
+    const perOpenMap = {}; perRepOpen.forEach((o) => { perOpenMap[String(o._id)] = o; });
+    const allRepIds = new Set([
+      ...byRep.map((r) => r._id).filter(Boolean).map(String),
+      ...perRepWon.map((r) => r._id).filter(Boolean).map(String),
+      ...perRepOpen.map((r) => r._id).filter(Boolean).map(String),
+      ...Object.keys(tgtMap),
+    ]);
+    const reps = await User.find({ _id: { $in: [...allRepIds] } }).select('firstName lastName').lean();
     const repMap = {}; reps.forEach((r) => { repMap[String(r._id)] = `${r.firstName} ${r.lastName}`; });
 
+    const repRows = [...allRepIds].map((id) => {
+      const w = perWonMap[id] || { count: 0, value: 0 };
+      const o = perOpenMap[id] || { count: 0, value: 0 };
+      const t = tgtMap[id] || { amountTarget: 0 };
+      return {
+        repId: id,
+        rep: repMap[id] || '—',
+        wonValue: round2(w.value), wonCount: w.count,
+        openValue: round2(o.value), openCount: o.count,
+        target: round2(t.amountTarget),
+        attainment: t.amountTarget ? round2((w.value / t.amountTarget) * 100) : 0,
+      };
+    }).sort((a, b) => b.wonValue - a.wonValue);
+
     res.json({
-      period,
+      period, prevPeriod: prev,
       wonValue: round2(won.value), wonCount: won.count,
       lostValue: round2(lost.value), lostCount: lost.count,
       openValue: round2(open.value), openCount: open.count,
       teamTarget: round2(teamTarget),
       attainment: teamTarget ? round2((won.value / teamTarget) * 100) : 0,
       winRate: closed ? round2((won.count / closed) * 100) : 0,
-      topReps: byRep.map((r) => ({ rep: repMap[String(r._id)] || '—', count: r.count, value: round2(r.value) })),
+      avgDealSize: won.count ? round2(won.value / won.count) : 0,
+      prevWonValue: round2(prevWon.value), prevWonCount: prevWon.count,
+      prevWinRate: prevClosed ? round2((prevWon.count / prevClosed) * 100) : 0,
+      byStage,
+      repRows,
+      topReps: byRep.map((r) => ({ repId: String(r._id), rep: repMap[String(r._id)] || '—', count: r.count, value: round2(r.value) })),
     });
   } catch (error) {
     console.error('getDashboard error:', error);

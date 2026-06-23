@@ -10,6 +10,7 @@ import {
   ChevronLeft, ChevronRight, Phone, User, Flag, Eye, Download,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { getComplaintsTranslations } from '@/lib/translations';
 
 interface Complaint {
   _id: string;
@@ -55,6 +56,7 @@ export default function ComplaintsPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const isAr = lang === 'ar';
+  const tx = getComplaintsTranslations(lang);
 
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,7 +166,7 @@ export default function ComplaintsPage() {
 
   const handleDelete = (id: string) => {
     setConfirmModal({
-      message: isAr ? 'هل أنت متأكد من الحذف؟' : 'Are you sure you want to delete this complaint?',
+      message: tx.deleteConfirm,
       onConfirm: async () => {
         setConfirmModal(null);
         try { await api.delete(`/api/complaints/${id}`); } catch (err: any) { setError(err.message); }
@@ -174,16 +176,16 @@ export default function ComplaintsPage() {
 
   const handleExport = () => {
     exportToExcel(complaints, [
-      { header: 'Subject', key: 'subject', width: 25 },
-      { header: 'Category', key: 'category', transform: fmt.status, width: 15 },
-      { header: 'Priority', key: 'priority', transform: fmt.status, width: 12 },
-      { header: 'Status', key: 'status', transform: fmt.status, width: 15 },
-      { header: 'Customer', key: 'customerName', width: 20 },
-      { header: 'Phone', key: 'customerPhone', width: 15 },
-      { header: 'Description', key: 'description', width: 35 },
-      { header: 'Resolution', key: 'resolution', width: 30 },
-      { header: 'Created', key: 'createdAt', transform: fmt.date, width: 15 },
-      { header: 'Resolved', key: 'resolvedAt', transform: fmt.date, width: 15 },
+      { header: tx.colSubject, key: 'subject', width: 25 },
+      { header: tx.colCategory, key: 'category', transform: fmt.status, width: 15 },
+      { header: tx.colPriority, key: 'priority', transform: fmt.status, width: 12 },
+      { header: tx.colStatus, key: 'status', transform: fmt.status, width: 15 },
+      { header: tx.colCustomer, key: 'customerName', width: 20 },
+      { header: tx.colPhone, key: 'customerPhone', width: 15 },
+      { header: tx.colDescription, key: 'description', width: 35 },
+      { header: tx.colResolution, key: 'resolution', width: 30 },
+      { header: tx.colCreated, key: 'createdAt', transform: fmt.date, width: 15 },
+      { header: tx.colResolved, key: 'resolvedAt', transform: fmt.date, width: 15 },
     ], 'complaints', 'Complaints');
   };
 
@@ -200,7 +202,7 @@ export default function ComplaintsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <MessageSquare className="w-7 h-7 text-[#f37121]" />
-          <h1 className="text-2xl font-bold text-slate-900">{isAr ? 'الشكاوى' : 'Complaints'}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{tx.pageTitle}</h1>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -210,12 +212,12 @@ export default function ComplaintsPage() {
             className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            {isAr ? 'تصدير' : 'Export'}
+            {tx.export}
           </button>
           <button onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e0611a] text-white px-4 py-2.5 rounded-lg font-medium transition-colors">
             <Plus className="w-4 h-4" />
-            {isAr ? 'شكوى جديدة' : 'New Complaint'}
+            {tx.newComplaint}
           </button>
         </div>
       </div>
@@ -234,31 +236,31 @@ export default function ComplaintsPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)}
-            placeholder={isAr ? 'بحث...' : 'Search complaints...'}
+            placeholder={tx.searchPlaceholder}
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:border-[#f37121]" />
         </div>
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]">
-          <option value="">{isAr ? 'كل الحالات' : 'All Status'}</option>
-          <option value="open">{isAr ? 'مفتوح' : 'Open'}</option>
-          <option value="in_progress">{isAr ? 'قيد المعالجة' : 'In Progress'}</option>
-          <option value="resolved">{isAr ? 'تم الحل' : 'Resolved'}</option>
-          <option value="closed">{isAr ? 'مغلق' : 'Closed'}</option>
+          <option value="">{tx.allStatus}</option>
+          <option value="open">{tx.statusOpen}</option>
+          <option value="in_progress">{tx.statusInProgress}</option>
+          <option value="resolved">{tx.statusResolved}</option>
+          <option value="closed">{tx.statusClosed}</option>
         </select>
         <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setPage(1); }}
           className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]">
-          <option value="">{isAr ? 'كل الفئات' : 'All Categories'}</option>
+          <option value="">{tx.allCategories}</option>
           {CATEGORIES.map(c => (
             <option key={c.value} value={c.value}>{isAr ? c.labelAr : c.label}</option>
           ))}
         </select>
         <select value={priorityFilter} onChange={e => { setPriorityFilter(e.target.value); setPage(1); }}
           className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]">
-          <option value="">{isAr ? 'كل الأولويات' : 'All Priorities'}</option>
-          <option value="low">{isAr ? 'منخفض' : 'Low'}</option>
-          <option value="medium">{isAr ? 'متوسط' : 'Medium'}</option>
-          <option value="high">{isAr ? 'عالي' : 'High'}</option>
-          <option value="urgent">{isAr ? 'عاجل' : 'Urgent'}</option>
+          <option value="">{tx.allPriorities}</option>
+          <option value="low">{tx.priorityLow}</option>
+          <option value="medium">{tx.priorityMedium}</option>
+          <option value="high">{tx.priorityHigh}</option>
+          <option value="urgent">{tx.priorityUrgent}</option>
         </select>
       </div>
 
@@ -270,7 +272,7 @@ export default function ComplaintsPage() {
       ) : complaints.length === 0 ? (
         <div className="text-center py-20 text-slate-500">
           <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p>{isAr ? 'لا توجد شكاوى' : 'No complaints found'}</p>
+          <p>{tx.noComplaints}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -305,7 +307,7 @@ export default function ComplaintsPage() {
                     </div>
                     {c.resolution && (
                       <div className="mt-2 bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2">
-                        <p className="text-green-600 text-xs font-medium mb-1">{isAr ? 'الحل' : 'Resolution'}</p>
+                        <p className="text-green-600 text-xs font-medium mb-1">{tx.resolution}</p>
                         <p className="text-green-700 text-sm">{c.resolution}</p>
                       </div>
                     )}
@@ -320,7 +322,7 @@ export default function ComplaintsPage() {
                         onClick={() => { setShowResolveModal(c._id); setResolution(''); }}
                         className="px-3 py-1.5 rounded-lg bg-green-500/20 text-green-600 hover:bg-green-500/30 text-xs font-medium transition-colors flex items-center gap-1">
                         <Check className="w-3 h-3" />
-                        {isAr ? 'حل' : 'Resolve'}
+                        {tx.resolve}
                       </button>
                     )}
                     <button onClick={() => handleDelete(c._id)}
@@ -338,7 +340,7 @@ export default function ComplaintsPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-slate-500 text-sm">{isAr ? `${total} نتيجة` : `${total} results`}</p>
+          <p className="text-slate-500 text-sm">{`${total} ${tx.results}`}</p>
           <div className="flex items-center gap-2">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
               className="p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed">
@@ -367,23 +369,23 @@ export default function ComplaintsPage() {
             >
               <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
-                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{isAr ? 'شكوى جديدة' : 'New Complaint'}</h2>
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{tx.newComplaint}</h2>
                   <button onClick={() => setShowCreateModal(false)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'الموضوع' : 'Subject'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{tx.fieldSubject}</label>
                     <input type="text" value={createForm.subject} onChange={e => setCreateForm(p => ({ ...p, subject: e.target.value }))}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                   </div>
                   <div>
-                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'الوصف' : 'Description'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{tx.fieldDescription}</label>
                     <textarea value={createForm.description} onChange={e => setCreateForm(p => ({ ...p, description: e.target.value }))}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121] resize-none" rows={3} />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-slate-500 text-sm block mb-1">{isAr ? 'الفئة' : 'Category'}</label>
+                      <label className="text-slate-500 text-sm block mb-1">{tx.fieldCategory}</label>
                       <select value={createForm.category} onChange={e => setCreateForm(p => ({ ...p, category: e.target.value }))}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
                         {CATEGORIES.map(c => (
@@ -392,35 +394,35 @@ export default function ComplaintsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-slate-500 text-sm block mb-1">{isAr ? 'الأولوية' : 'Priority'}</label>
+                      <label className="text-slate-500 text-sm block mb-1">{tx.fieldPriority}</label>
                       <select value={createForm.priority} onChange={e => setCreateForm(p => ({ ...p, priority: e.target.value }))}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
-                        <option value="low">{isAr ? 'منخفض' : 'Low'}</option>
-                        <option value="medium">{isAr ? 'متوسط' : 'Medium'}</option>
-                        <option value="high">{isAr ? 'عالي' : 'High'}</option>
-                        <option value="urgent">{isAr ? 'عاجل' : 'Urgent'}</option>
+                        <option value="low">{tx.priorityLow}</option>
+                        <option value="medium">{tx.priorityMedium}</option>
+                        <option value="high">{tx.priorityHigh}</option>
+                        <option value="urgent">{tx.priorityUrgent}</option>
                       </select>
                     </div>
                   </div>
                   <div>
-                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'اسم العميل' : 'Customer Name'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{tx.fieldCustomerName}</label>
                     <input type="text" value={createForm.customerName} onChange={e => setCreateForm(p => ({ ...p, customerName: e.target.value }))}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                   </div>
                   <div>
-                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'رقم الهاتف' : 'Phone Number'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{tx.fieldPhoneNumber}</label>
                     <input type="tel" value={createForm.customerPhone} onChange={e => setCreateForm(p => ({ ...p, customerPhone: e.target.value }))}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {isAr ? 'إلغاء' : 'Cancel'}
+                    {tx.cancel}
                   </button>
                   <button onClick={handleCreate} disabled={creating || !createForm.subject || !createForm.customerName}
                     className="px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e0611a] text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2">
                     {creating && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {isAr ? 'إنشاء' : 'Create'}
+                    {tx.create}
                   </button>
                 </div>
               </div>
@@ -443,24 +445,24 @@ export default function ComplaintsPage() {
             >
               <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 space-y-4 shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
-                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{isAr ? 'حل الشكوى' : 'Resolve Complaint'}</h2>
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{tx.resolveComplaint}</h2>
                   <button onClick={() => setShowResolveModal(null)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
                 </div>
                 <div>
-                  <label className="text-slate-500 text-sm block mb-1">{isAr ? 'نص الحل' : 'Resolution'}</label>
+                  <label className="text-slate-500 text-sm block mb-1">{tx.fieldResolution}</label>
                   <textarea value={resolution} onChange={e => setResolution(e.target.value)}
-                    placeholder={isAr ? 'اكتب تفاصيل الحل...' : 'Describe the resolution...'}
+                    placeholder={tx.resolutionPlaceholder}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121] resize-none" rows={4} />
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <button onClick={() => setShowResolveModal(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {isAr ? 'إلغاء' : 'Cancel'}
+                    {tx.cancel}
                   </button>
                   <button onClick={handleResolve} disabled={resolving || !resolution.trim()}
                     className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2">
                     {resolving && <Loader2 className="w-4 h-4 animate-spin" />}
                     <Check className="w-4 h-4" />
-                    {isAr ? 'حل' : 'Resolve'}
+                    {tx.resolve}
                   </button>
                 </div>
               </div>
@@ -483,58 +485,58 @@ export default function ComplaintsPage() {
             >
               <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
-                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{isAr ? 'تفاصيل الشكوى' : 'Complaint Details'}</h2>
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{tx.complaintDetails}</h2>
                   <button onClick={() => setShowViewModal(null)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <p className="text-slate-500 text-xs">{isAr ? 'الموضوع' : 'Subject'}</p>
+                    <p className="text-slate-500 text-xs">{tx.fieldSubject}</p>
                     <p className="text-slate-900 text-sm mt-0.5 font-medium">{showViewModal.subject}</p>
                   </div>
                   <div>
-                    <p className="text-slate-500 text-xs">{isAr ? 'الوصف' : 'Description'}</p>
+                    <p className="text-slate-500 text-xs">{tx.fieldDescription}</p>
                     <p className="text-slate-900 text-sm mt-0.5">{showViewModal.description || '-'}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <p className="text-slate-500 text-xs">{isAr ? 'الفئة' : 'Category'}</p>
+                      <p className="text-slate-500 text-xs">{tx.fieldCategory}</p>
                       <p className="text-slate-900 text-sm mt-0.5">{getCategoryLabel(showViewModal.category)}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500 text-xs">{isAr ? 'الأولوية' : 'Priority'}</p>
+                      <p className="text-slate-500 text-xs">{tx.fieldPriority}</p>
                       <p className="text-slate-900 text-sm mt-0.5">{isAr ? PRIORITY_CONFIG[showViewModal.priority]?.labelAr : PRIORITY_CONFIG[showViewModal.priority]?.label}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500 text-xs">{isAr ? 'الحالة' : 'Status'}</p>
+                      <p className="text-slate-500 text-xs">{tx.fieldStatus}</p>
                       <p className="text-slate-900 text-sm mt-0.5">{isAr ? STATUS_CONFIG[showViewModal.status]?.labelAr : STATUS_CONFIG[showViewModal.status]?.label}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500 text-xs">{isAr ? 'التاريخ' : 'Date'}</p>
+                      <p className="text-slate-500 text-xs">{tx.fieldDate}</p>
                       <p className="text-slate-900 text-sm mt-0.5">{new Date(showViewModal.createdAt).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <p className="text-slate-500 text-xs">{isAr ? 'اسم العميل' : 'Customer'}</p>
+                      <p className="text-slate-500 text-xs">{tx.fieldCustomer}</p>
                       <p className="text-slate-900 text-sm mt-0.5">{showViewModal.customerName}</p>
                     </div>
                     {showViewModal.customerPhone && (
                       <div>
-                        <p className="text-slate-500 text-xs">{isAr ? 'الهاتف' : 'Phone'}</p>
+                        <p className="text-slate-500 text-xs">{tx.fieldPhone}</p>
                         <p className="text-slate-900 text-sm mt-0.5">{showViewModal.customerPhone}</p>
                       </div>
                     )}
                   </div>
                   {showViewModal.resolution && (
                     <div className="bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2">
-                      <p className="text-green-600 text-xs font-medium mb-1">{isAr ? 'الحل' : 'Resolution'}</p>
+                      <p className="text-green-600 text-xs font-medium mb-1">{tx.resolution}</p>
                       <p className="text-green-700 text-sm">{showViewModal.resolution}</p>
                     </div>
                   )}
                 </div>
                 <div className="flex justify-end pt-2">
                   <button onClick={() => setShowViewModal(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {isAr ? 'إغلاق' : 'Close'}
+                    {tx.close}
                   </button>
                 </div>
               </div>
@@ -551,14 +553,14 @@ export default function ComplaintsPage() {
                 <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                   <AlertTriangle className="w-5 h-5 text-red-600" />
                 </div>
-                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{isAr ? 'تأكيد' : 'Confirm'}</h3>
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.confirm}</h3>
               </div>
               <p className="text-slate-700 text-sm">{confirmModal.message}</p>
             </div>
             <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
-              <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{isAr ? 'إلغاء' : 'Cancel'}</button>
+              <button type="button" onClick={() => setConfirmModal(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
               <button type="button" onClick={confirmModal.onConfirm} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
-                {isAr ? 'حذف' : 'Delete'}
+                {tx.delete}
               </button>
             </div>
           </div>

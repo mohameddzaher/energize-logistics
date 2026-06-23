@@ -3,37 +3,14 @@ import { useState, useEffect, useMemo } from 'react';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
 import { exportToExcel } from '@/utils/exportExcel';
+import { getVehicleAnalyticsTripsTranslations } from '@/lib/translations';
 import { Truck, DollarSign, TrendingUp, Calendar, Users, Building2, Search, Filter, ArrowRight, Receipt, Download } from 'lucide-react';
-
-const T = (lang: string) => lang === 'ar' ? {
-  title: 'الرحلات', totalTrips: 'إجمالي الرحلات', totalRevenue: 'إجمالي الإيرادات',
-  totalExpenses: 'إجمالي المصروفات', profit: 'الربح', avgRevenue: 'متوسط الإيراد/رحلة',
-  avgDays: 'متوسط الأيام/رحلة', activeVehicles: 'المركبات النشطة', topClient: 'أعلى عميل',
-  revenueByBranch: 'الإيرادات حسب الفرع', revenueByClient: 'الإيرادات حسب العميل (أعلى 10)',
-  tripsTable: 'جدول الرحلات', month: 'الشهر', vehicle: 'المركبة', driver: 'السائق',
-  from: 'من', to: 'إلى', days: 'الأيام', revenue: 'الإيرادات', expenses: 'المصروفات',
-  client: 'العميل', status: 'الحالة', branch: 'الفرع', vehicleType: 'نوع المركبة',
-  allMonths: 'كل الأشهر', allBranches: 'كل الفروع', allTypes: 'كل الأنواع', allClients: 'كل العملاء',
-  search: 'بحث...', noData: 'لا توجد بيانات رحلات', loading: 'جاري التحميل...',
-  route: 'المسار', serial: 'مسلسل', rental: 'الإيجار', selling: 'البيع',
-} : {
-  title: 'Trips', totalTrips: 'Total Trips', totalRevenue: 'Total Revenue',
-  totalExpenses: 'Total Expenses', profit: 'Profit', avgRevenue: 'Avg Revenue/Trip',
-  avgDays: 'Avg Days/Trip', activeVehicles: 'Active Vehicles', topClient: 'Top Client Revenue',
-  revenueByBranch: 'Revenue by Branch', revenueByClient: 'Revenue by Client (Top 10)',
-  tripsTable: 'Trips Table', month: 'Month', vehicle: 'Vehicle', driver: 'Driver',
-  from: 'From', to: 'To', days: 'Days', revenue: 'Revenue', expenses: 'Expenses',
-  client: 'Client', status: 'Status', branch: 'Branch', vehicleType: 'Vehicle Type',
-  allMonths: 'All Months', allBranches: 'All Branches', allTypes: 'All Types', allClients: 'All Clients',
-  search: 'Search...', noData: 'No trip data uploaded yet', loading: 'Loading...',
-  route: 'Route', serial: 'Serial', rental: 'Rental', selling: 'Selling',
-};
 
 interface HtTrip { vehicleId: string; month?: string; serial?: string; vehicleType?: string; vehicleNumber?: string; driver1?: string; tripStart?: string; tripEnd?: string; days?: number | string; branch?: string; loadingPlace?: string; unloadingPlace?: string; rentalPaymentType?: string; fullRental?: number | string; revenue?: number | string; selling?: number | string; actualDriverExpense?: number | string; [k: string]: any }
 
 export default function TripsPage() {
   const { lang } = useLanguage();
-  const t = T(lang);
+  const tx = getVehicleAnalyticsTripsTranslations(lang);
   const [data, setData] = useState<HtTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -121,24 +98,24 @@ export default function TripsPage() {
   const maxBranchRev = useMemo(() => Math.max(...revByBranch.map(d => d[1]), 1), [revByBranch]);
   const maxClientRev = useMemo(() => (revByClient.length > 0 ? revByClient[0][1] : 1), [revByClient]);
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{t.loading}</div>;
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{tx.loading}</div>;
 
   const hasData = data.length > 0;
   const kpiCards = [
-    { label: t.totalTrips, value: fmtNum(kpis.totalTrips), icon: Truck, color: 'text-blue-600', bg: 'bg-blue-400/10' },
-    { label: t.totalRevenue, value: fmtNum(kpis.totalRevenue), icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-400/10' },
-    { label: t.totalExpenses, value: fmtNum(kpis.totalExpenses), icon: Receipt, color: 'text-red-600', bg: 'bg-red-400/10' },
-    { label: t.profit, value: fmtNum(kpis.profit), icon: TrendingUp, color: kpis.profit >= 0 ? 'text-green-600' : 'text-red-600', bg: kpis.profit >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
-    { label: t.avgRevenue, value: fmtNum(kpis.avgRevenue), icon: DollarSign, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
-    { label: t.avgDays, value: kpis.avgDays.toFixed(1), icon: Calendar, color: 'text-amber-700', bg: 'bg-amber-400/10' },
-    { label: t.activeVehicles, value: kpis.activeVehicles, icon: Truck, color: 'text-purple-600', bg: 'bg-purple-400/10' },
-    { label: t.topClient, value: kpis.topClient, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-400/10' },
+    { label: tx.totalTrips, value: fmtNum(kpis.totalTrips), icon: Truck, color: 'text-blue-600', bg: 'bg-blue-400/10' },
+    { label: tx.totalRevenue, value: fmtNum(kpis.totalRevenue), icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-400/10' },
+    { label: tx.totalExpenses, value: fmtNum(kpis.totalExpenses), icon: Receipt, color: 'text-red-600', bg: 'bg-red-400/10' },
+    { label: tx.profit, value: fmtNum(kpis.profit), icon: TrendingUp, color: kpis.profit >= 0 ? 'text-green-600' : 'text-red-600', bg: kpis.profit >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
+    { label: tx.avgRevenue, value: fmtNum(kpis.avgRevenue), icon: DollarSign, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
+    { label: tx.avgDays, value: kpis.avgDays.toFixed(1), icon: Calendar, color: 'text-amber-700', bg: 'bg-amber-400/10' },
+    { label: tx.activeVehicles, value: kpis.activeVehicles, icon: Truck, color: 'text-purple-600', bg: 'bg-purple-400/10' },
+    { label: tx.topClient, value: kpis.topClient, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-400/10' },
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">{t.title}</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{tx.title}</h1>
         {filtered.length > 0 && (
           <button type="button" onClick={() => exportToExcel(filtered.map(r => ({
             month: r.month || '', vehicle: r.vehicleNumber || r.vehicleId, driver: r.driver1 || '',
@@ -146,37 +123,37 @@ export default function TripsPage() {
             revenue: parseNum(r.revenue), expenses: parseNum(r.actualDriverExpense),
             client: r.rentalPaymentType || '', branch: r.branch || '',
           })), [
-            { header: t.month, key: 'month' }, { header: t.vehicle, key: 'vehicle' }, { header: t.driver, key: 'driver' },
-            { header: t.from, key: 'from' }, { header: t.to, key: 'to' }, { header: t.days, key: 'days' },
-            { header: t.revenue, key: 'revenue' }, { header: t.expenses, key: 'expenses' },
-            { header: t.client, key: 'client' }, { header: t.branch, key: 'branch' },
+            { header: tx.month, key: 'month' }, { header: tx.vehicle, key: 'vehicle' }, { header: tx.driver, key: 'driver' },
+            { header: tx.from, key: 'from' }, { header: tx.to, key: 'to' }, { header: tx.days, key: 'days' },
+            { header: tx.revenue, key: 'revenue' }, { header: tx.expenses, key: 'expenses' },
+            { header: tx.client, key: 'client' }, { header: tx.branch, key: 'branch' },
           ], 'trips-data', 'Trips')} className="px-3 py-2 bg-emerald-500/20 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
-            <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+            <Download className="w-4 h-4" /> {tx.exportExcel}
           </button>
         )}
       </div>
 
       {/* Filters */}
       <div className="sticky top-0 z-20 bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-sm">
-        <div className="relative">
+        <div className="relative flex-1 min-w-[240px]">
           <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-slate-500 pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.search}
-            className="bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none min-w-[200px]" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tx.search}
+            className="w-full bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none" />
         </div>
-        <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
-          <option value="">{t.allMonths}</option>
+        <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
+          <option value="">{tx.allMonths}</option>
           {months.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
-          <option value="">{t.allBranches}</option>
+        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
+          <option value="">{tx.allBranches}</option>
           {branches.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
-          <option value="">{t.allTypes}</option>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
+          <option value="">{tx.allTypes}</option>
           {types.map(tp => <option key={tp} value={tp}>{tp}</option>)}
         </select>
-        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
-          <option value="">{t.allClients}</option>
+        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
+          <option value="">{tx.allClients}</option>
           {clients.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
@@ -184,7 +161,7 @@ export default function TripsPage() {
       {!hasData ? (
         <div className="flex flex-col items-center justify-center h-64 text-slate-500 gap-3">
           <Filter className="w-12 h-12" />
-          <p className="text-lg">{t.noData}</p>
+          <p className="text-lg">{tx.noData}</p>
         </div>
       ) : (
         <>
@@ -206,7 +183,7 @@ export default function TripsPage() {
             {/* Revenue by Branch - bar chart */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-emerald-600" /> {t.revenueByBranch}
+                <Building2 className="w-5 h-5 text-emerald-600" /> {tx.revenueByBranch}
               </h3>
               <div className="flex items-end gap-2 h-[280px] px-2">
                 {revByBranch.map(([branch, val]) => (
@@ -223,7 +200,7 @@ export default function TripsPage() {
             {/* Revenue by Client - horizontal bars */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
-                <Users className="w-5 h-5 text-cyan-700" /> {t.revenueByClient}
+                <Users className="w-5 h-5 text-cyan-700" /> {tx.revenueByClient}
               </h3>
               <div className="space-y-2 max-h-[320px] overflow-y-auto">
                 {revByClient.map(([client, val], i) => (
@@ -243,19 +220,19 @@ export default function TripsPage() {
 
           {/* Trips Table */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.tripsTable} ({filtered.length})</h3>
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.tripsTable} ({filtered.length})</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                  <th className="text-left py-2 px-2">{t.month}</th>
-                  <th className="text-left py-2 px-2">{t.vehicle}</th>
-                  <th className="text-left py-2 px-2">{t.driver}</th>
-                  <th className="text-left py-2 px-2">{t.route}</th>
-                  <th className="text-right py-2 px-2">{t.days}</th>
-                  <th className="text-right py-2 px-2">{t.revenue}</th>
-                  <th className="text-right py-2 px-2">{t.expenses}</th>
-                  <th className="text-left py-2 px-2">{t.client}</th>
-                  <th className="text-left py-2 px-2">{t.branch}</th>
+                  <th className="text-left py-2 px-2">{tx.month}</th>
+                  <th className="text-left py-2 px-2">{tx.vehicle}</th>
+                  <th className="text-left py-2 px-2">{tx.driver}</th>
+                  <th className="text-left py-2 px-2">{tx.route}</th>
+                  <th className="text-right py-2 px-2">{tx.days}</th>
+                  <th className="text-right py-2 px-2">{tx.revenue}</th>
+                  <th className="text-right py-2 px-2">{tx.expenses}</th>
+                  <th className="text-left py-2 px-2">{tx.client}</th>
+                  <th className="text-left py-2 px-2">{tx.branch}</th>
                 </tr></thead>
                 <tbody>
                   {filtered.map((r, i) => {

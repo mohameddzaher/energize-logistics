@@ -8,7 +8,7 @@ import { UserX, Search, ArrowLeft, Loader2, X, Download } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
-import { getLowVisitTranslations } from '@/lib/translations';
+import { getLowVisitTranslations, getLowVisitCustomersExtraTranslations } from '@/lib/translations';
 
 interface LowVisitCustomer {
   _id: string;
@@ -27,6 +27,7 @@ export default function LowVisitCustomersPage() {
   const router = useRouter();
   const { lang } = useLanguage();
   const T = getLowVisitTranslations(lang);
+  const txx = getLowVisitCustomersExtraTranslations(lang);
   const [customers, setCustomers] = useState<LowVisitCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -87,7 +88,7 @@ export default function LowVisitCustomersPage() {
             type="button"
             onClick={() => router.push('/system/dashboard')}
             className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-            aria-label="Back to dashboard"
+            aria-label={txx.backToDashboard}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -100,15 +101,15 @@ export default function LowVisitCustomersPage() {
           </div>
         </div>
         <button type="button" onClick={() => exportToExcel(filtered, [
-          { header: 'Company Name', key: 'companyName', width: 26 },
-          { header: 'Customer #', key: 'customerNumber', width: 16 },
-          { header: 'Outstanding (SAR)', key: 'currentOutstanding', transform: fmt.money, width: 20 },
-          { header: 'Risk Level', key: 'riskLevel', width: 12 },
-          { header: 'Assigned Collector', key: 'assignedCollector', transform: (_: any, row: any) => row.assignedCollector ? `${row.assignedCollector.firstName} ${row.assignedCollector.lastName}` : '', width: 22 },
-          { header: 'Total Tasks', key: 'totalTasks', width: 12 },
-          { header: 'Last Task Date', key: 'lastTaskDate', transform: fmt.date, width: 16 },
-          { header: 'Days Since Last Task', key: 'daysSinceLastTask', transform: (v: number | null) => v !== null ? String(v) : 'Never', width: 22 },
-        ], `low-visit-customers-${new Date().toISOString().split('T')[0]}`, 'Low Visit Customers')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
+          { header: txx.colCompanyName, key: 'companyName', width: 26 },
+          { header: txx.colCustomerNumber, key: 'customerNumber', width: 16 },
+          { header: txx.colOutstandingSar, key: 'currentOutstanding', transform: fmt.money, width: 20 },
+          { header: txx.colRiskLevel, key: 'riskLevel', width: 12 },
+          { header: txx.colAssignedCollector, key: 'assignedCollector', transform: (_: any, row: any) => row.assignedCollector ? `${row.assignedCollector.firstName} ${row.assignedCollector.lastName}` : '', width: 22 },
+          { header: txx.colTotalTasks, key: 'totalTasks', width: 12 },
+          { header: txx.colLastTaskDate, key: 'lastTaskDate', transform: fmt.date, width: 16 },
+          { header: txx.colDaysSinceLastTask, key: 'daysSinceLastTask', transform: (v: number | null) => v !== null ? String(v) : txx.never, width: 22 },
+        ], `low-visit-customers-${new Date().toISOString().split('T')[0]}`, T.title)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
           <Download className="w-4 h-4" /> {T.downloadExcel}
         </button>
       </div>
@@ -121,7 +122,7 @@ export default function LowVisitCustomersPage() {
         <input
           ref={searchInputRef}
           type="text"
-          placeholder="Search by customer, number, or collector..."
+          placeholder={txx.searchPlaceholder}
           value={searchInput}
           onChange={(e) => handleSearchChange(e.target.value)}
           className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f59e0b]/50"
@@ -131,7 +132,7 @@ export default function LowVisitCustomersPage() {
             type="button"
             onClick={() => { setSearchInput(''); setSearch(''); searchInputRef.current?.focus(); }}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
-            title="Clear search"
+            title={txx.clearSearch}
           >
             <X className="w-4 h-4" />
           </button>
@@ -192,7 +193,7 @@ export default function LowVisitCustomersPage() {
                         c.riskLevel === 'medium' ? 'bg-yellow-500/20 text-yellow-700' :
                         'bg-green-500/20 text-green-600'
                       }`}>
-                        {c.riskLevel || 'N/A'}
+                        {c.riskLevel || txx.notAvailable}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-700">

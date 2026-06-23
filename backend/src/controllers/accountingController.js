@@ -64,25 +64,67 @@ exports.getDashboard = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const day = 24 * 60 * 60 * 1000;
+    const d30 = new Date(now - 30 * day);
+    const d60 = new Date(now - 60 * day);
+    const d90 = new Date(now - 90 * day);
 
-    const [accounts, balances, monthBalances, arAgg, journalCount] = await Promise.all([
+    const [accounts, balances, monthBalances, arAgg, agingAgg, journalCount, recentEntries, openInvoiceCount] = await Promise.all([
       ChartAccount.find({}).lean(),
       balancesByAccount(),
       balancesByAccount({ date: { $gte: startOfMonth } }),
       Invoice.aggregate([{ $match: { status: { $in: ['pending', 'partial', 'overdue'] } } }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
+      // AR aging by days-since-due on open invoices.
+      Invoice.aggregate([
+        { $match: { status: { $in: ['pending', 'partial', 'overdue'] }, balance: { $gt: 0 } } },
+        {
+          $group: {
+            _id: null,
+            current: { $sum: { $cond: [{ $gte: ['$dueDate', now] }, '$balance', 0] } },
+            d30: { $sum: { $cond: [{ $and: [{ $lt: ['$dueDate', now] }, { $gte: ['$dueDate', d30] }] }, '$balance', 0] } },
+            d60: { $sum: { $cond: [{ $and: [{ $lt: ['$dueDate', d30] }, { $gte: ['$dueDate', d60] }] }, '$balance', 0] } },
+            d90: { $sum: { $cond: [{ $and: [{ $lt: ['$dueDate', d60] }, { $gte: ['$dueDate', d90] }] }, '$balance', 0] } },
+            d90plus: { $sum: { $cond: [{ $lt: ['$dueDate', d90] }, '$balance', 0] } },
+          },
+        },
+      ]),
       JournalEntry.estimatedDocumentCount(),
+      JournalEntry.find({}).sort({ date: -1, createdAt: -1 }).limit(8).populate('lines.account', 'code nameEn nameAr type').lean(),
+      Invoice.countDocuments({ status: { $in: ['pending', 'partial', 'overdue'] }, balance: { $gt: 0 } }),
     ]);
 
     const byType = { asset: 0, liability: 0, equity: 0, revenue: 0, expense: 0 };
     const monthByType = { revenue: 0, expense: 0 };
+    const expenseAccts = [];
+    let cashBank = 0;
+    let apFromGL = 0;
     accounts.forEach((a) => {
       const b = balances[String(a._id)] || { debit: 0, credit: 0 };
       const net = NORMAL_BALANCE[a.type] === 'debit' ? b.debit - b.credit : b.credit - b.debit;
       byType[a.type] += net;
+      if (a.code === CODES.CASH || a.code === CODES.BANK) cashBank += net;
+      if (a.code === CODES.AP) apFromGL += net;
       const mb = monthBalances[String(a._id)] || { debit: 0, credit: 0 };
       if (a.type === 'revenue') monthByType.revenue += mb.credit - mb.debit;
-      if (a.type === 'expense') monthByType.expense += mb.debit - mb.credit;
+      if (a.type === 'expense') {
+        monthByType.expense += mb.debit - mb.credit;
+        const exp = mb.debit - mb.credit;
+        if (exp > 0) expenseAccts.push({ id: String(a._id), code: a.code, nameEn: a.nameEn, nameAr: a.nameAr || a.nameEn, amount: round2(exp) });
+      }
     });
+    expenseAccts.sort((x, y) => y.amount - x.amount);
+
+    const ag = agingAgg[0] || {};
+    const recent = recentEntries.map((e) => ({
+      _id: String(e._id),
+      entryNumber: e.entryNumber || '',
+      date: e.date,
+      memo: e.memo || '',
+      status: e.status,
+      totalDebit: round2(e.totalDebit),
+      source: e.source ? { type: e.source.type, auto: e.source.auto } : { type: 'manual' },
+      lineCount: (e.lines || []).length,
+    }));
 
     res.json({
       totals: {
@@ -95,6 +137,18 @@ exports.getDashboard = async (req, res) => {
       },
       thisMonth: { revenue: round2(monthByType.revenue), expenses: round2(monthByType.expense), netIncome: round2(monthByType.revenue - monthByType.expense) },
       accountsReceivable: round2(arAgg[0]?.total || 0),
+      accountsPayable: round2(apFromGL),
+      cashBank: round2(cashBank),
+      arAging: {
+        current: round2(ag.current || 0),
+        d30: round2(ag.d30 || 0),
+        d60: round2(ag.d60 || 0),
+        d90: round2(ag.d90 || 0),
+        d90plus: round2(ag.d90plus || 0),
+      },
+      topExpenses: expenseAccts.slice(0, 6),
+      recentEntries: recent,
+      openInvoiceCount,
       journalEntries: journalCount,
       accountsCount: accounts.length,
     });

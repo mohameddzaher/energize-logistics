@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { getCustomersTranslations } from '@/lib/translations';
+import { getCustomersTranslations, getCustomersExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import DataTable from '@/components/system/DataTable';
@@ -141,6 +141,7 @@ export default function CustomersPage() {
   const router = useRouter();
   const { lang } = useLanguage();
   const T = getCustomersTranslations(lang);
+  const txx = getCustomersExtraTranslations(lang);
   const clientStatusLabels = getClientStatusLabels(T);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -185,7 +186,7 @@ export default function CustomersPage() {
       const data = await api.get<{ customers: Customer[] }>(`/api/customers${query}`);
       setCustomers(data.customers || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to load customers');
+      setError(err.message || txx.failedToLoad);
     } finally {
       setLoading(false);
     }
@@ -207,20 +208,20 @@ export default function CustomersPage() {
   const validateForm = (): boolean => {
     const errors: Partial<Record<keyof CustomerForm, string>> = {};
 
-    if (!form.companyName.trim()) errors.companyName = 'Company name is required';
-    if (!form.contactPerson.trim()) errors.contactPerson = 'Contact person is required';
+    if (!form.companyName.trim()) errors.companyName = txx.companyNameRequired;
+    if (!form.contactPerson.trim()) errors.contactPerson = txx.contactPersonRequired;
     if (!form.email.trim()) {
-      errors.email = 'Email is required';
+      errors.email = txx.emailRequired;
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      errors.email = 'Invalid email format';
+      errors.email = txx.invalidEmail;
     }
     if (!form.phone.trim()) {
-      errors.phone = 'Phone is required';
+      errors.phone = txx.phoneRequired;
     } else if (!/^[\d\s+\-()]{7,20}$/.test(form.phone)) {
-      errors.phone = 'Invalid phone format';
+      errors.phone = txx.invalidPhone;
     }
-    if (![15, 30, 45, 60].includes(form.creditTerm)) errors.creditTerm = 'Select a valid credit term';
-    if (!form.creditLimit || form.creditLimit <= 0) errors.creditLimit = 'Credit limit must be greater than 0';
+    if (![15, 30, 45, 60].includes(form.creditTerm)) errors.creditTerm = txx.invalidCreditTerm;
+    if (!form.creditLimit || form.creditLimit <= 0) errors.creditLimit = txx.creditLimitPositive;
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -292,7 +293,7 @@ export default function CustomersPage() {
       setShowModal(false);
       fetchCustomers();
     } catch (err: any) {
-      setSubmitError(err.message || 'Failed to save customer');
+      setSubmitError(err.message || txx.failedToSave);
     } finally {
       setSubmitting(false);
     }
@@ -325,7 +326,7 @@ export default function CustomersPage() {
       setDeleteTarget(null);
       fetchCustomers();
     } catch (err: any) {
-      setError(err.message || 'Failed to delete customer');
+      setError(err.message || txx.failedToDelete);
       setShowDeleteConfirm(false);
       setDeleteTarget(null);
     } finally {
@@ -929,7 +930,7 @@ export default function CustomersPage() {
                             />
                             <button
                               type="button"
-                              aria-label={showClientPassword ? 'Hide password' : 'Show password'}
+                              aria-label={showClientPassword ? txx.hidePassword : txx.showPassword}
                               onClick={() => setShowClientPassword(!showClientPassword)}
                               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
                             >

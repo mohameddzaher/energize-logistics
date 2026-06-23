@@ -33,6 +33,18 @@ export interface Employee {
   terminatedAt?: string; terminationReason?: string;
   phone?: string; email?: string; address?: string; emergencyContactName?: string; emergencyContactPhone?: string;
   basicSalary?: number; allowances?: number;
+  // Banking
+  iban?: string; bank?: string;
+  // Extra HR-sheet fields
+  fileStatus?: string; absherNumber?: string; companyNumber?: string; originCountryNumber?: string;
+  project?: string; registerNumber?: string; systemStatus?: string; workStatusText?: string;
+  penaltyClause?: number; iqamaProfession?: string; classification?: string;
+  insuranceCompany?: string; insuranceExpiry?: string; socialInsuranceStatus?: string;
+  visaExpiry?: string; lastTravelDate?: string; lastReturnDate?: string;
+  // Driving / vehicle eligibility
+  vehiclePlate?: string; licenseNumber?: string; licenseType?: string; licenseExpiry?: string;
+  driverCardNumber?: string; driverCardType?: string; driverCardStatus?: string; driverCardExpiry?: string;
+  workCard?: string; ajeerStatus?: string; ajeerExpiry?: string;
   user?: { _id: string; firstName: string; lastName: string; email: string; role: string } | string;
   directManager?: { _id: string; firstName: string; lastName: string; email?: string } | string;
   notes?: string; createdAt?: string;
@@ -86,6 +98,68 @@ export interface Asset {
   status: 'assigned' | 'returned'; returnedDate?: string; returnedCondition?: string;
   notes?: string; createdAt?: string;
 }
+
+export interface EmployeeDocument {
+  _id: string; employee: string; title: string; category?: string;
+  fileUrl: string; fileName?: string; mimeType?: string; size?: number;
+  expiryDate?: string; notes?: string; uploadedBy?: any; createdAt?: string;
+}
+
+export interface EmployeeRenewal {
+  _id: string; employee: string; docType: string;
+  previousExpiry?: string; newExpiry?: string; documentNumber?: string; notes?: string;
+  renewedBy?: any; renewedAt?: string; createdAt?: string;
+}
+
+export interface AuditEntry {
+  _id: string; user?: any; action: string; entity: string; entityId?: string;
+  changes?: { before?: any; after?: any }; createdAt?: string;
+}
+
+// Renewable document types shown in the "Renew" action. `field`/`numberField`
+// are informational; the backend owns the mapping.
+export const RENEWAL_TYPES: { key: string; en: string; ar: string }[] = [
+  { key: 'iqama', en: 'Iqama', ar: 'الإقامة' },
+  { key: 'passport', en: 'Passport', ar: 'الجواز' },
+  { key: 'workPermit', en: 'Work Permit', ar: 'رخصة العمل' },
+  { key: 'insurance', en: 'Insurance', ar: 'التأمين' },
+  { key: 'visa', en: 'Visa', ar: 'التأشيرة' },
+  { key: 'license', en: 'Driving License', ar: 'رخصة القيادة' },
+  { key: 'driverCard', en: 'Driver Card', ar: 'كارت السائق' },
+  { key: 'ajeer', en: 'Ajeer', ar: 'أجير' },
+  { key: 'other', en: 'Other', ar: 'أخرى' },
+];
+
+// Categories for an uploaded file. The user can still type a free-text title.
+export const DOCUMENT_CATEGORIES: { key: string; en: string; ar: string }[] = [
+  { key: 'iqama', en: 'Iqama', ar: 'صورة الإقامة' },
+  { key: 'passport', en: 'Passport', ar: 'صورة الجواز' },
+  { key: 'license', en: 'Driving License', ar: 'رخصة القيادة' },
+  { key: 'driverCard', en: 'Driver Card', ar: 'كارت السائق' },
+  { key: 'contract', en: 'Contract', ar: 'العقد' },
+  { key: 'insurance', en: 'Insurance', ar: 'التأمين' },
+  { key: 'national_id', en: 'National ID', ar: 'الهوية الوطنية' },
+  { key: 'photo', en: 'Photo', ar: 'صورة شخصية' },
+  { key: 'other', en: 'Other', ar: 'أخرى' },
+];
+
+export const renewalTypeLabel = (key: string, lang: Lang) => labelFrom(RENEWAL_TYPES, key, lang);
+export const docCategoryLabel = (key: string, lang: Lang) => labelFrom(DOCUMENT_CATEGORIES, key, lang);
+
+// Human label for an audit action code.
+export const AUDIT_ACTIONS: Record<string, { en: string; ar: string }> = {
+  create_employee: { en: 'Created profile', ar: 'إنشاء الملف' },
+  update_employee: { en: 'Edited profile', ar: 'تعديل البيانات' },
+  delete_employee: { en: 'Deleted profile', ar: 'حذف الملف' },
+  renew_document: { en: 'Renewed document', ar: 'تجديد مستند' },
+  terminate_employee: { en: 'Ended service', ar: 'إنهاء الخدمة' },
+  reactivate_employee: { en: 'Reactivated', ar: 'إعادة تفعيل' },
+  add_employee_document: { en: 'Added file', ar: 'إضافة ملف' },
+  update_employee_document: { en: 'Edited file', ar: 'تعديل ملف' },
+  delete_employee_document: { en: 'Removed file', ar: 'حذف ملف' },
+};
+export const auditActionLabel = (key: string, lang: Lang) =>
+  (AUDIT_ACTIONS[key] ? AUDIT_ACTIONS[key][lang === 'ar' ? 'ar' : 'en'] : key);
 
 // ── Status styles & labels ───────────────────────────────────────────────────
 export const LEAVE_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {

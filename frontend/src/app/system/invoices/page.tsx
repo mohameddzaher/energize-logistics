@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
-import { getInvoicesTranslations } from '@/lib/translations';
+import { getInvoicesTranslations, getInvoicesExtraTranslations } from '@/lib/translations';
 import DataTable from '@/components/system/DataTable';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -70,6 +70,7 @@ export default function InvoicesPage() {
   const router = useRouter();
   const { lang } = useLanguage();
   const T = getInvoicesTranslations(lang);
+  const txx = getInvoicesExtraTranslations(lang);
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -321,7 +322,7 @@ export default function InvoicesPage() {
         if (row.status === 'paid') {
           return <span className="text-slate-500">-</span>;
         }
-        const label = val < 0 ? `${Math.abs(val)}d ${T.overdue}` : `${val}d`;
+        const label = val < 0 ? `${Math.abs(val)}${txx.daysUnit} ${T.overdue}` : `${val}${txx.daysUnit}`;
         return (
           <span className={`font-medium ${getRemainingDaysColor(val)}`}>
             {label}
@@ -697,7 +698,7 @@ export default function InvoicesPage() {
                       type="text"
                       value={formData.invoiceNumber}
                       onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
-                      placeholder="e.g. INV-2026-001"
+                      placeholder={txx.invoiceNumberPlaceholder}
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     />
                   </div>
@@ -717,7 +718,7 @@ export default function InvoicesPage() {
                         <option value="">{T.selectCustomer}...</option>
                         {customers.map((c) => (
                           <option key={c._id} value={c._id}>
-                            {c.companyName} ({c.creditTerm}d {T.creditTerm})
+                            {c.companyName} ({c.creditTerm}{txx.daysUnit} {T.creditTerm})
                           </option>
                         ))}
                       </select>

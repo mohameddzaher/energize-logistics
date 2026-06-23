@@ -8,7 +8,7 @@ import api from '@/lib/api';
 import { ArrowLeft, ArrowRight, Check, Loader2, Ship, Copy, Mail, Ban, RotateCcw, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
-import { getCustomsTranslations } from '@/lib/translations';
+import { getCustomsTranslations, getCustomsIdExtraTranslations } from '@/lib/translations';
 
 const STAGE_ORDER = [
   'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
@@ -23,6 +23,7 @@ export default function CustomsDetailPage() {
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '');
   const { lang, isRTL } = useLanguage();
   const T = getCustomsTranslations(lang);
+  const txx = getCustomsIdExtraTranslations(lang);
 
   const [c, setC] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -190,7 +191,7 @@ export default function CustomsDetailPage() {
             <div className="space-y-3">
               {([['doInvoiceRequest', T.doInvoiceRequest], ['linkDoRequest', T.linkDoRequest], ['etaEnquiry', T.etaEnquiry]] as const).map(([key, label]) => {
                 const e = emails[key];
-                const full = `Subject: ${e.subject}\n\n${e.body}`;
+                const full = `${txx.subjectLabel} ${e.subject}\n\n${e.body}`;
                 return (
                   <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <p className="text-slate-900 text-sm font-medium mb-1">{label}</p>

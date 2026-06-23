@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
-import { getB2CTranslations } from '@/lib/translations';
+import { getB2CTranslations, getB2cRepsTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,6 +37,7 @@ const DEFAULT_FORM = {
 export default function B2CRepsPage() {
   const { lang } = useLanguage();
   const T = getB2CTranslations(lang);
+  const tx = getB2cRepsTranslations(lang);
   const [reps, setReps] = useState<Rep[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -112,7 +113,7 @@ export default function B2CRepsPage() {
       setShowModal(false);
       fetchReps();
     } catch (err: any) {
-      setError(err.message || 'Failed');
+      setError(err.message || tx.failed);
     } finally {
       setSaving(false);
     }
@@ -124,7 +125,7 @@ export default function B2CRepsPage() {
       await api.delete(`/api/b2c/reps/${r._id}`);
       fetchReps();
     } catch (err: any) {
-      alert(err.message || 'Failed');
+      alert(err.message || tx.failed);
     }
   };
 
@@ -161,11 +162,11 @@ export default function B2CRepsPage() {
     },
     { key: 'monthlyTarget', label: T.monthlyTarget, render: (v: number) => <span className="text-slate-900">{v}</span> },
     {
-      key: 'isActive', label: T.repId === 'الحالة' ? 'الحالة' : 'Status',
+      key: 'isActive', label: tx.status,
       render: (_: any, row: Rep) => (
         <span className={`inline-flex items-center gap-1.5 text-xs ${row.isActive ? 'text-green-600' : 'text-slate-500'}`}>
           <span className={`w-2 h-2 rounded-full ${row.isActive ? 'bg-green-400' : 'bg-slate-300'}`} />
-          {row.isActive ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'متوقف' : 'Inactive')}
+          {row.isActive ? tx.active : tx.inactive}
         </span>
       ),
     },
@@ -180,11 +181,11 @@ export default function B2CRepsPage() {
             {T.reps}
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            {lang === 'ar' ? 'إدارة مناديب المبيعات' : 'Manage sales representatives'}
+            {tx.subtitle}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={fetchReps} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title="Refresh">
+          <button type="button" onClick={fetchReps} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}>
             <RefreshCw className="w-4 h-4" />
           </button>
           <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] text-white rounded-lg text-sm font-medium">
@@ -198,7 +199,7 @@ export default function B2CRepsPage() {
         <div className="flex-1 relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder={lang === 'ar' ? 'بحث بالاسم أو رقم الحساب...' : 'Search by name or account ID...'}
+            placeholder={tx.searchPlaceholder}
             className="w-full pl-10 pr-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
         </div>
         <select aria-label="Project" value={filterProject} onChange={(e) => setFilterProject(e.target.value)}
@@ -223,7 +224,7 @@ export default function B2CRepsPage() {
           columns={columns}
           data={reps}
           searchable={false}
-          emptyMessage={lang === 'ar' ? 'لا يوجد مناديب' : 'No reps found'}
+          emptyMessage={tx.noReps}
           actions={(row: Rep) => (
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => openEdit(row)} className="p-1.5 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100" title={T.edit}>
@@ -251,7 +252,7 @@ export default function B2CRepsPage() {
                     <UsersIcon className="w-5 h-5 text-[#f37121]" />
                     {editing ? T.editRep : T.addRep}
                   </h2>
-                  <button type="button" onClick={() => setShowModal(false)} className="text-slate-500 hover:text-slate-900" title="Close"><X className="w-5 h-5" /></button>
+                  <button type="button" onClick={() => setShowModal(false)} className="text-slate-500 hover:text-slate-900" title={tx.close}><X className="w-5 h-5" /></button>
                 </div>
                 <form onSubmit={handleSubmit} className="p-5 space-y-4">
                   {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">{error}</div>}
@@ -322,7 +323,7 @@ export default function B2CRepsPage() {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
                       className="rounded border-slate-300 bg-white text-[#f37121] focus:ring-[#f37121]/50" />
-                    <span className="text-slate-700 text-sm">{lang === 'ar' ? 'نشط' : 'Active'}</span>
+                    <span className="text-slate-700 text-sm">{tx.active}</span>
                   </label>
                   <div className="flex justify-end gap-3 pt-2">
                     <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm">{T.cancel}</button>

@@ -10,13 +10,15 @@ import {
   empName, userName, fmtDate, leaveTypeLabel, expiryBadge,
   EMPLOYMENT_STATUS, LEAVE_STATUS, assetTypeLabel,
 } from '@/lib/hr';
-import { Spinner, PageHeader, Badge, SmallBadge, Tabs, StatCard } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, Badge, SmallBadge, Tabs, StatCard, ExportButton } from '@/components/hr/HRKit';
+import { getHrMeTranslations } from '@/lib/translations';
+import { exportToExcel } from '@/utils/exportExcel';
 
 interface Me { employee: Employee | null; contracts: Contract[]; activeContract: Contract | null; balance: LeaveBalance | null; leaves: LeaveRequest[]; assets: Asset[]; }
 
 export default function MyProfilePage() {
   const { lang, isRTL } = useLanguage();
-  const ar = lang === 'ar';
+  const tx = getHrMeTranslations(lang);
   const [data, setData] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
@@ -35,9 +37,9 @@ export default function MyProfilePage() {
   if (!data?.employee) {
     return (
       <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-        <PageHeader icon={<Briefcase className="w-5 h-5" />} title={ar ? 'ملفي' : 'My Profile'} />
+        <PageHeader icon={<Briefcase className="w-5 h-5" />} title={tx.myProfile} />
         <div className="bg-amber-500/10 border border-amber-500/30 text-amber-700 rounded-xl p-6 text-sm">
-          {ar ? 'حسابك غير مرتبط بملف موظف بعد. تواصل مع الموارد البشرية.' : 'Your account is not linked to an employee profile yet. Contact HR.'}
+          {tx.notLinked}
         </div>
       </div>
     );
@@ -47,28 +49,43 @@ export default function MyProfilePage() {
   const b = data.balance;
   const assigned = data.assets.filter((a) => a.status === 'assigned');
   const tabs = [
-    { key: 'overview', label: ar ? 'بياناتي' : 'Overview' },
-    { key: 'leaves', label: ar ? 'إجازاتي' : 'Leaves', badge: data.leaves.length || undefined },
-    { key: 'custody', label: ar ? 'عهدي' : 'Custody', badge: assigned.length || undefined },
+    { key: 'overview', label: tx.tabOverview },
+    { key: 'leaves', label: tx.tabLeaves, badge: data.leaves.length || undefined },
+    { key: 'custody', label: tx.tabCustody, badge: assigned.length || undefined },
   ];
 
   const rows: [string, any][] = [
-    [ar ? 'المسمى الوظيفي' : 'Job Title', e.jobTitle],
-    [ar ? 'القسم' : 'Department', e.department],
-    [ar ? 'رقم الموظف' : 'Employee #', e.employeeNumber],
-    [ar ? 'الجنسية' : 'Nationality', e.nationality],
-    [ar ? 'رقم الإقامة' : 'Iqama', e.iqamaNumber],
-    [ar ? 'رقم الهوية' : 'National ID', e.nationalId],
-    [ar ? 'تاريخ التعيين' : 'Hire Date', fmtDate(e.hireDate)],
-    [ar ? 'المدير المباشر' : 'Manager', userName(e.directManager)],
-    [ar ? 'الجوال' : 'Phone', e.phone],
-    [ar ? 'البريد' : 'Email', e.email],
+    [tx.jobTitle, e.jobTitle],
+    [tx.department, e.department],
+    [tx.employeeNumber, e.employeeNumber],
+    [tx.nationality, e.nationality],
+    [tx.iqama, e.iqamaNumber],
+    [tx.nationalId, e.nationalId],
+    [tx.hireDate, fmtDate(e.hireDate)],
+    [tx.manager, userName(e.directManager)],
+    [tx.phone, e.phone],
+    [tx.email, e.email],
   ];
   const iqamaB = expiryBadge(e.iqamaExpiry, lang);
 
+  const exportLeaves = () => exportToExcel(data.leaves, [
+    { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 18 },
+    { header: tx.colFrom, key: 'startDate', transform: (v) => fmtDate(v), width: 14 },
+    { header: tx.colTo, key: 'endDate', transform: (v) => fmtDate(v), width: 14 },
+    { header: tx.colDays, key: 'days', width: 10 },
+    { header: tx.colStatus, key: 'status', transform: (v) => (lang === 'ar' ? LEAVE_STATUS[v]?.ar : LEAVE_STATUS[v]?.en) || v, width: 14 },
+  ], 'my-leaves', tx.tabLeaves);
+
+  const exportCustody = () => exportToExcel(data.assets, [
+    { header: tx.colItem, key: 'name', width: 22 },
+    { header: tx.colType, key: 'type', transform: (v) => assetTypeLabel(v, lang), width: 16 },
+    { header: tx.colSerial, key: 'serialNumber', transform: (v) => v || '—', width: 18 },
+    { header: tx.colStatus, key: 'status', transform: (v) => v === 'assigned' ? tx.badgeAssigned : tx.badgeReturned, width: 14 },
+  ], 'my-custody', tx.tabCustody);
+
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<Briefcase className="w-5 h-5" />} title={ar ? 'ملفي' : 'My Profile'} />
+      <PageHeader icon={<Briefcase className="w-5 h-5" />} title={tx.myProfile} />
 
       <div className="bg-white border border-slate-200 rounded-xl p-6 flex items-center gap-4 shadow-sm">
         <div className="w-16 h-16 rounded-full bg-[#f37121]/20 flex items-center justify-center text-[#f37121] text-2xl font-bold">{empName(e).charAt(0)}</div>
@@ -80,10 +97,10 @@ export default function MyProfilePage() {
 
       {b && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label={ar ? 'الاستحقاق السنوي' : 'Annual'} value={`${b.entitlement} ${ar ? 'يوم' : 'd'}`} />
-          <StatCard label={ar ? 'المتراكم' : 'Accrued'} value={`${b.accrued} ${ar ? 'يوم' : 'd'}`} accent="text-blue-600" />
-          <StatCard label={ar ? 'المستخدم' : 'Taken'} value={`${b.taken} ${ar ? 'يوم' : 'd'}`} accent="text-amber-700" />
-          <StatCard label={ar ? 'المتاح' : 'Available'} value={`${b.available} ${ar ? 'يوم' : 'd'}`} accent={b.available < 0 ? 'text-red-600' : 'text-green-600'} />
+          <StatCard label={tx.annual} value={`${b.entitlement} ${tx.dayUnit}`} />
+          <StatCard label={tx.accrued} value={`${b.accrued} ${tx.dayUnit}`} accent="text-blue-600" />
+          <StatCard label={tx.taken} value={`${b.taken} ${tx.dayUnit}`} accent="text-amber-700" />
+          <StatCard label={tx.available} value={`${b.available} ${tx.dayUnit}`} accent={b.available < 0 ? 'text-red-600' : 'text-green-600'} />
         </div>
       )}
 
@@ -94,34 +111,48 @@ export default function MyProfilePage() {
           {rows.filter(([, v]) => v && v !== '—').map(([k, v]) => (
             <div key={k} className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{k}</span><span className="text-slate-900 text-sm text-end">{v}</span></div>
           ))}
-          {e.iqamaExpiry && <div className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{ar ? 'انتهاء الإقامة' : 'Iqama Expiry'}</span><span className="text-slate-900 text-sm flex items-center gap-2">{fmtDate(e.iqamaExpiry)} {iqamaB && <SmallBadge bg={iqamaB.bg} text={iqamaB.text} label={iqamaB.label} />}</span></div>}
-          {data.activeContract && <div className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{ar ? 'العقد الحالي' : 'Current Contract'}</span><span className="text-slate-900 text-sm text-end">{fmtDate(data.activeContract.startDate)} → {data.activeContract.endDate ? fmtDate(data.activeContract.endDate) : (ar ? 'غير محدد' : 'Unlimited')}</span></div>}
+          {e.iqamaExpiry && <div className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{tx.iqamaExpiry}</span><span className="text-slate-900 text-sm flex items-center gap-2">{fmtDate(e.iqamaExpiry)} {iqamaB && <SmallBadge bg={iqamaB.bg} text={iqamaB.text} label={iqamaB.label} />}</span></div>}
+          {data.activeContract && <div className="flex justify-between gap-4 border-b border-slate-200/70 pb-2"><span className="text-slate-500 text-sm">{tx.currentContract}</span><span className="text-slate-900 text-sm text-end">{fmtDate(data.activeContract.startDate)} → {data.activeContract.endDate ? fmtDate(data.activeContract.endDate) : tx.unlimited}</span></div>}
         </div>
       )}
 
       {tab === 'leaves' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
-          {data.leaves.length === 0 ? <p className="text-center text-slate-500 py-10">{ar ? 'لا توجد إجازات' : 'No leaves'}</p> : (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          {data.leaves.length > 0 && (
+            <div className="flex justify-end p-3 border-b border-slate-200">
+              <ExportButton onClick={exportLeaves} label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} />
+            </div>
+          )}
+          <div className="overflow-x-auto">
+          {data.leaves.length === 0 ? <p className="text-center text-slate-500 py-10">{tx.noLeaves}</p> : (
             <table className="w-full text-sm">
-              <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{ar ? 'النوع' : 'Type'}</th><th className="text-start px-4 py-3 font-semibold">{ar ? 'من' : 'From'}</th><th className="text-start px-4 py-3 font-semibold">{ar ? 'إلى' : 'To'}</th><th className="text-start px-4 py-3 font-semibold">{ar ? 'الأيام' : 'Days'}</th><th className="text-start px-4 py-3 font-semibold">{ar ? 'الحالة' : 'Status'}</th></tr></thead>
+              <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{tx.colType}</th><th className="text-start px-4 py-3 font-semibold">{tx.colFrom}</th><th className="text-start px-4 py-3 font-semibold">{tx.colTo}</th><th className="text-start px-4 py-3 font-semibold">{tx.colDays}</th><th className="text-start px-4 py-3 font-semibold">{tx.colStatus}</th></tr></thead>
               <tbody>{data.leaves.map((l) => (
                 <tr key={l._id} className="border-b border-slate-200/70"><td className="px-4 py-3 text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</td><td className="px-4 py-3 text-slate-700">{fmtDate(l.startDate)}</td><td className="px-4 py-3 text-slate-700">{fmtDate(l.endDate)}</td><td className="px-4 py-3 text-slate-700">{l.days}</td><td className="px-4 py-3"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></td></tr>
               ))}</tbody>
             </table>
           )}
+          </div>
         </div>
       )}
 
       {tab === 'custody' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
-          {data.assets.length === 0 ? <p className="text-center text-slate-500 py-10">{ar ? 'لا توجد عهد' : 'No custody items'}</p> : (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          {data.assets.length > 0 && (
+            <div className="flex justify-end p-3 border-b border-slate-200">
+              <ExportButton onClick={exportCustody} label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} />
+            </div>
+          )}
+          <div className="overflow-x-auto">
+          {data.assets.length === 0 ? <p className="text-center text-slate-500 py-10">{tx.noCustody}</p> : (
             <table className="w-full text-sm">
-              <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{ar ? 'العهدة' : 'Item'}</th><th className="text-start px-4 py-3 font-semibold">{ar ? 'النوع' : 'Type'}</th><th className="text-start px-4 py-3 font-semibold">{ar ? 'الرقم التسلسلي' : 'Serial'}</th><th className="text-start px-4 py-3 font-semibold">{ar ? 'الحالة' : 'Status'}</th></tr></thead>
+              <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300"><th className="text-start px-4 py-3 font-semibold">{tx.colItem}</th><th className="text-start px-4 py-3 font-semibold">{tx.colType}</th><th className="text-start px-4 py-3 font-semibold">{tx.colSerial}</th><th className="text-start px-4 py-3 font-semibold">{tx.colStatus}</th></tr></thead>
               <tbody>{data.assets.map((a) => (
-                <tr key={a._id} className="border-b border-slate-200/70"><td className="px-4 py-3 text-slate-900">{a.name}</td><td className="px-4 py-3 text-slate-700">{assetTypeLabel(a.type, lang)}</td><td className="px-4 py-3 text-slate-700">{a.serialNumber || '—'}</td><td className="px-4 py-3">{a.status === 'assigned' ? <SmallBadge bg="bg-amber-500/20" text="text-amber-700" label={ar ? 'بعهدتي' : 'Assigned'} /> : <SmallBadge bg="bg-green-500/20" text="text-green-600" label={ar ? 'سُلّمت' : 'Returned'} />}</td></tr>
+                <tr key={a._id} className="border-b border-slate-200/70"><td className="px-4 py-3 text-slate-900">{a.name}</td><td className="px-4 py-3 text-slate-700">{assetTypeLabel(a.type, lang)}</td><td className="px-4 py-3 text-slate-700">{a.serialNumber || '—'}</td><td className="px-4 py-3">{a.status === 'assigned' ? <SmallBadge bg="bg-amber-500/20" text="text-amber-700" label={tx.badgeAssigned} /> : <SmallBadge bg="bg-green-500/20" text="text-green-600" label={tx.badgeReturned} />}</td></tr>
               ))}</tbody>
             </table>
           )}
+          </div>
         </div>
       )}
     </div>

@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { getUsersTranslations } from '@/lib/translations';
+import { getUsersTranslations, getUsersExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import DataTable from '@/components/system/DataTable';
 import { useSocket } from '@/hooks/useSocket';
@@ -18,7 +18,7 @@ interface UserRecord {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_specialist' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager' | 'customs_manager' | 'customs_officer';
+  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_team_lead' | 'crm_specialist' | 'crm_agent' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager' | 'customs_manager' | 'customs_officer';
   branch?: { _id: string; name: string };
   remoteAccess?: string[];
   status?: 'active' | 'locked' | 'inactive';
@@ -95,6 +95,7 @@ export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const { lang } = useLanguage();
   const T = getUsersTranslations(lang);
+  const txx = getUsersExtraTranslations(lang);
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -155,7 +156,7 @@ export default function UsersPage() {
       const data = await api.get<any>('/api/users');
       setUsers(data.users || data || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to load users');
+      setError(err.message || txx.failedLoadUsers);
     } finally {
       setLoading(false);
     }
@@ -270,7 +271,7 @@ export default function UsersPage() {
       setShowCreateModal(false);
       fetchUsers();
     } catch (err: any) {
-      setFormError(err.message || 'Failed to create user');
+      setFormError(err.message || txx.failedCreateUser);
     } finally {
       setFormLoading(false);
     }
@@ -347,7 +348,7 @@ export default function UsersPage() {
       setSelectedUser(null);
       fetchUsers();
     } catch (err: any) {
-      setFormError(err.message || 'Failed to update user');
+      setFormError(err.message || txx.failedUpdateUser);
     } finally {
       setFormLoading(false);
     }
@@ -360,7 +361,7 @@ export default function UsersPage() {
       await api.post(`/api/users/${u._id}/lock`);
       fetchUsers();
     } catch (err: any) {
-      setError(err.message || 'Failed to toggle lock');
+      setError(err.message || txx.failedToggleLock);
     }
   };
 
@@ -384,7 +385,7 @@ export default function UsersPage() {
       setShowResetModal(false);
       setSelectedUser(null);
     } catch (err: any) {
-      setResetError(err.message || 'Failed to reset password');
+      setResetError(err.message || txx.failedResetPassword);
     } finally {
       setResetLoading(false);
     }
@@ -406,7 +407,7 @@ export default function UsersPage() {
       setSelectedUser(null);
       fetchUsers();
     } catch (err: any) {
-      setError(err.message || 'Failed to delete user');
+      setError(err.message || txx.failedDeleteUser);
     } finally {
       setDeleteLoading(false);
     }
@@ -462,7 +463,9 @@ export default function UsersPage() {
     hr_manager: lang === 'ar' ? 'مدير الموارد البشرية' : 'HR Manager',
     hr_specialist: lang === 'ar' ? 'أخصائي موارد بشرية' : 'HR Specialist',
     crm_manager: lang === 'ar' ? 'مدير علاقات العملاء' : 'CRM Manager',
+    crm_team_lead: lang === 'ar' ? 'مشرف فريق علاقات العملاء' : 'CRM Team Lead',
     crm_specialist: lang === 'ar' ? 'أخصائي علاقات العملاء' : 'CRM Specialist',
+    crm_agent: lang === 'ar' ? 'مندوب علاقات العملاء' : 'CRM Agent',
     finance_manager: lang === 'ar' ? 'المدير المالي' : 'Finance Manager',
     accountant: lang === 'ar' ? 'محاسب' : 'Accountant',
     sales_manager: lang === 'ar' ? 'مدير المبيعات' : 'Sales Manager',
@@ -477,7 +480,7 @@ export default function UsersPage() {
   };
 
   const formatDate = (date?: string) => {
-    if (!date) return 'Never';
+    if (!date) return txx.never;
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -594,7 +597,7 @@ export default function UsersPage() {
           />
           <button
             type="button"
-            aria-label={showFormPassword ? 'Hide password' : 'Show password'}
+            aria-label={showFormPassword ? txx.hidePassword : txx.showPassword}
             onClick={() => setShowFormPassword(!showFormPassword)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
           >
@@ -705,7 +708,7 @@ export default function UsersPage() {
             value={formData.branch}
             onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
             className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-            aria-label="Branch"
+            aria-label={T.branch}
           >
             <option value="">{T.selectBranch}...</option>
             {branches.map((b) => (
@@ -790,7 +793,7 @@ export default function UsersPage() {
                 {lang === 'ar' ? 'المدير المباشر (B2C Head)' : 'Direct Manager (B2C Head)'}
               </label>
               <select
-                aria-label="Manager"
+                aria-label={txx.manager}
                 value={formData.manager}
                 onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
@@ -844,7 +847,7 @@ export default function UsersPage() {
               {lang === 'ar' ? 'المدير المباشر (مدير العمل عن بُعد)' : 'Direct Manager (Remote Manager)'}
             </label>
             <select
-              aria-label="Remote manager"
+              aria-label={txx.remoteManager}
               value={formData.manager}
               onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
               className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
@@ -919,7 +922,7 @@ export default function UsersPage() {
             type="button"
             onClick={() => { setLoading(true); fetchUsers(); }}
             className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
-            title="Refresh"
+            title={txx.refresh}
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -1196,11 +1199,11 @@ export default function UsersPage() {
                         className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
                         required
                         minLength={6}
-                        placeholder="Enter new password (min 6 chars)"
+                        placeholder={txx.newPasswordPlaceholder}
                       />
                       <button
                         type="button"
-                        aria-label={showResetPassword ? 'Hide password' : 'Show password'}
+                        aria-label={showResetPassword ? txx.hidePassword : txx.showPassword}
                         onClick={() => setShowResetPassword(!showResetPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
                       >

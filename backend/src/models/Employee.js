@@ -57,6 +57,48 @@ const employeeSchema = new mongoose.Schema(
     basicSalary: { type: Number, default: 0 },
     allowances: { type: Number, default: 0 },
 
+    // ── Banking ──────────────────────────────────────────────────────────────
+    iban: { type: String, trim: true },  // الايبان
+    bank: { type: String, trim: true },  // البنك (RJHI / INMA / SNB ...)
+
+    // ── Extra HR-sheet fields (Saudi payroll/compliance bookkeeping) ─────────
+    fileStatus: { type: String, trim: true },        // حاله الملف (كامل ...)
+    absherNumber: { type: String, trim: true },      // رقم ابشر (the number, distinct from absherStatus)
+    companyNumber: { type: String, trim: true },     // رقم الشركه
+    originCountryNumber: { type: String, trim: true }, // رقم دوله الأصل
+    project: { type: String, trim: true },           // المشروع (امازون / هنقرستيشن / النقل الثقيل ...)
+    registerNumber: { type: String, trim: true },    // رقم السجل التجاري (CR)
+    systemStatus: { type: String, trim: true },      // حاله النظام (داخل النظام ...)
+    workStatusText: { type: String, trim: true },    // حاله العمل كنص (يعمل / اجازة) — employmentStatus stays the enum
+    penaltyClause: { type: Number, default: 0 },     // الشرط الجزائي
+    iqamaProfession: { type: String, trim: true },   // المهنه في الاقامه
+    classification: { type: String, trim: true },    // التصنيف
+
+    // Insurance
+    insuranceCompany: { type: String, trim: true },  // شركه التامين
+    insuranceExpiry: { type: String },               // تاريخ انتهاء التامين — YYYY-MM-DD
+    socialInsuranceStatus: { type: String, trim: true }, // حاله التامينات الاجتماعيه (نشط ...)
+
+    // Visa
+    visaExpiry: { type: String },                    // انتهاء التأشيرة — YYYY-MM-DD
+
+    // Travel (latest known trip)
+    lastTravelDate: { type: String },                // تاريخ السفر — YYYY-MM-DD
+    lastReturnDate: { type: String },                // تاريخ الرجوع — YYYY-MM-DD
+
+    // ── Driving / vehicle eligibility ────────────────────────────────────────
+    vehiclePlate: { type: String, trim: true },      // المركبه — current plate (denormalized; authoritative link is VehicleAuthorization)
+    licenseNumber: { type: String, trim: true },     // رقم رخصة القيادة
+    licenseType: { type: String, trim: true },       // نوع الرخصه (نقل ثقيل / دراجة الية ...)
+    licenseExpiry: { type: String },                 // انتهاء الرخصه — YYYY-MM-DD
+    driverCardNumber: { type: String, trim: true },  // رقم كارت السائق
+    driverCardType: { type: String, trim: true },    // نوع كارت السائق (سنوية ...)
+    driverCardStatus: { type: String, trim: true },  // حاله كارت السائق
+    driverCardExpiry: { type: String },              // انتهاء كارت السائق — YYYY-MM-DD
+    workCard: { type: String, trim: true },          // كارت العمل
+    ajeerStatus: { type: String, trim: true },       // حاله اجير
+    ajeerExpiry: { type: String },                   // انتهاء اجير — YYYY-MM-DD
+
     // Links
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // login account, optional
     directManager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -75,5 +117,6 @@ employeeSchema.index({ employeeNumber: 1 });
 employeeSchema.index({ employmentStatus: 1 });
 employeeSchema.index({ user: 1 });
 employeeSchema.index({ directManager: 1 });
+employeeSchema.index({ vehiclePlate: 1 });
 
 module.exports = mongoose.model('Employee', employeeSchema);

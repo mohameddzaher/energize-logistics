@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Store, Plus, Search, X, Check, Edit, Trash2, Loader2, Download } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getVendorsTranslations } from '@/lib/translations';
+import { getVendorsTranslations, getVendorsExtraTranslations } from '@/lib/translations';
 
 interface Vendor {
   _id: string;
@@ -31,6 +31,7 @@ export default function VendorsPage() {
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(user?.role || '');
   const { lang } = useLanguage();
   const T = getVendorsTranslations(lang);
+  const txx = getVendorsExtraTranslations(lang);
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,7 +166,7 @@ export default function VendorsPage() {
                 <td className="px-4 py-3 text-slate-900 font-medium">{v.name}</td>
                 <td className="px-4 py-3 text-slate-700">{v.contactPerson || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{v.phone || '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{(v.totalPaid || 0).toLocaleString()} SAR</td>
+                <td className="px-4 py-3 text-slate-700">{(v.totalPaid || 0).toLocaleString()} {txx.sarUnit}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${v.isActive ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'}`}>
                     {v.isActive ? T.active : T.inactive}
@@ -174,11 +175,11 @@ export default function VendorsPage() {
                 {canEdit && (
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title="Edit">
+                      <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={T.edit}>
                         <Edit className="w-4 h-4" />
                       </button>
                       {isSuperAdmin && (
-                        <button type="button" onClick={() => handleDelete(v._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title="Delete">
+                        <button type="button" onClick={() => handleDelete(v._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={T.delete}>
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
@@ -200,38 +201,38 @@ export default function VendorsPage() {
               onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
               <div className="px-6 py-4 bg-slate-900 flex items-center justify-between">
                 <h2 className="text-white font-bold text-lg">{editVendor ? T.editVendor : T.addVendor}</h2>
-                <button type="button" onClick={() => setShowModal(false)} className="text-slate-300 hover:text-white" aria-label="Close"><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => setShowModal(false)} className="text-slate-300 hover:text-white" aria-label={T.close}><X className="w-5 h-5" /></button>
               </div>
               <div className="p-6 space-y-4">
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.vendorName + ' *'}</label>
                   <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. ABC Supplies" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.namePlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.contactPerson}</label>
                   <input type="text" value={form.contactPerson} onChange={(e) => setForm((f) => ({ ...f, contactPerson: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. John Doe" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.contactPersonPlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.phone}</label>
                   <input type="text" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. +966 50 000 0000" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.phonePlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.email}</label>
                   <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. vendor@example.com" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.emailPlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.address}</label>
                   <input type="text" value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. Riyadh, Saudi Arabia" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.addressPlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.category}</label>
                   <input type="text" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. Fuel, Maintenance" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.categoryPlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.notes}</label>

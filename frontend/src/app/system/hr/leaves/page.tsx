@@ -7,11 +7,13 @@ import api from '@/lib/api';
 import { CalendarCheck, Check, X } from 'lucide-react';
 import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, exportToExcel, today } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, ExportButton, Badge, Modal, TextArea, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
+import { getHrLeavesTranslations } from '@/lib/translations';
 
 export default function HRLeavesPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  const tx = getHrLeavesTranslations(lang);
   const staff = isHRStaff(user?.role);
 
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
@@ -50,13 +52,13 @@ export default function HRLeavesPage() {
   });
   const pendingCount = leaves.filter((l) => l.status === 'pending_manager' || l.status === 'pending_hr').length;
 
-  if (!staff) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
+  if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<CalendarCheck className="w-5 h-5" />} title={ar ? 'طلبات الإجازات' : 'Leave Requests'} subtitle={`${pendingCount} ${ar ? 'بانتظار المراجعة' : 'pending'}`}>
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(filtered, [
+      <PageHeader icon={<CalendarCheck className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${pendingCount} ${tx.pending}`}>
+        <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(filtered, [
           { header: 'Employee', key: 'employee', transform: (v: any) => empName(v), width: 22 },
           { header: 'Type', key: 'leaveType', transform: (v: any) => leaveTypeLabel(v, 'en'), width: 16 },
           { header: 'From', key: 'startDate', width: 14 },
@@ -68,9 +70,9 @@ export default function HRLeavesPage() {
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث باسم الموظف...' : 'Search by employee name...'} /></div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
-          <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
+        <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+          <option value="">{tx.allStatuses}</option>
           {Object.entries(LEAVE_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
         </select>
       </div>
@@ -78,17 +80,17 @@ export default function HRLeavesPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الموظف' : 'Employee'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'النوع' : 'Type'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'المدة' : 'Period'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الأيام' : 'Days'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الرصيد المتاح' : 'Balance'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الحالة' : 'Status'}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colEmployee}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colPeriod}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colDays}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colBalance}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
             <th className="text-end font-semibold px-4 py-3"></th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-slate-500 py-12">{ar ? 'لا توجد طلبات' : 'No requests'}</td></tr>
+              <tr><td colSpan={7} className="text-center text-slate-500 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((l) => {
               const over = l.balanceSnapshot && typeof l.balanceSnapshot.remainingAfter === 'number' && l.balanceSnapshot.remainingAfter < 0;
               return (
@@ -97,9 +99,9 @@ export default function HRLeavesPage() {
                   <td className="px-4 py-3 text-slate-700">{leaveTypeLabel(l.leaveType, lang)}</td>
                   <td className="px-4 py-3 text-slate-700">{fmtDate(l.startDate)} → {fmtDate(l.endDate)}</td>
                   <td className="px-4 py-3 text-slate-700">{l.days}</td>
-                  <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.accrued ?? '—'}{over ? (ar ? ' (تجاوز)' : ' (over)') : ''}</span></td>
+                  <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.accrued ?? '—'}{over ? ` ${tx.over}` : ''}</span></td>
                   <td className="px-4 py-3"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></td>
-                  <td className="px-4 py-3 text-end text-slate-500 text-xs">{ar ? 'عرض' : 'View'}</td>
+                  <td className="px-4 py-3 text-end text-slate-500 text-xs">{tx.view}</td>
                 </tr>
               );
             })}
@@ -107,25 +109,25 @@ export default function HRLeavesPage() {
         </table>
       </div>
 
-      <Modal open={!!review} onClose={() => setReview(null)} title={ar ? 'مراجعة طلب الإجازة' : 'Review Leave Request'}
+      <Modal open={!!review} onClose={() => setReview(null)} title={tx.reviewTitle}
         footer={review && (review.status === 'pending_manager' || review.status === 'pending_hr') ? <>
-          <button type="button" onClick={() => decide('rejected')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-600 rounded-lg text-sm font-medium hover:bg-red-500/30 disabled:opacity-50"><X className="w-4 h-4" /> {ar ? 'رفض' : 'Reject'}</button>
-          <PrimaryButton onClick={() => decide('approved')} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {ar ? 'قبول' : 'Approve'}</PrimaryButton>
+          <button type="button" onClick={() => decide('rejected')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-600 rounded-lg text-sm font-medium hover:bg-red-500/30 disabled:opacity-50"><X className="w-4 h-4" /> {tx.reject}</button>
+          <PrimaryButton onClick={() => decide('approved')} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {tx.approve}</PrimaryButton>
         </> : undefined}>
         {review && (
           <div className="space-y-3 text-sm">
-            <Row k={ar ? 'الموظف' : 'Employee'} v={empName(review.employee, lang)} />
-            <Row k={ar ? 'مقدّم الطلب' : 'Requester'} v={userName(review.requester)} />
-            <Row k={ar ? 'النوع' : 'Type'} v={leaveTypeLabel(review.leaveType, lang)} />
-            <Row k={ar ? 'المدة' : 'Period'} v={`${fmtDate(review.startDate)} → ${fmtDate(review.endDate)} (${review.days} ${ar ? 'يوم' : 'd'})`} />
-            <Row k={ar ? 'الرصيد المتراكم وقت الطلب' : 'Accrued at request'} v={`${review.balanceSnapshot?.accrued ?? '—'} ${ar ? 'يوم' : 'd'}`} />
-            <Row k={ar ? 'الرصيد بعد الموافقة' : 'Remaining after'} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${ar ? 'يوم' : 'd'}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />
-            <Row k={ar ? 'الحالة' : 'Status'} v={<Badge style={LEAVE_STATUS[review.status]} lang={lang} />} />
-            {review.reason && <div className="border-t border-slate-200 pt-3"><span className="text-slate-500">{ar ? 'السبب' : 'Reason'}: </span><span className="text-slate-900">{review.reason}</span></div>}
-            {review.managerDecision?.decision && <p className="text-xs text-slate-500">{ar ? 'قرار المدير' : 'Manager'}: {review.managerDecision.decision} {review.managerDecision.note ? `— ${review.managerDecision.note}` : ''}</p>}
+            <Row k={tx.fieldEmployee} v={empName(review.employee, lang)} />
+            <Row k={tx.fieldRequester} v={userName(review.requester)} />
+            <Row k={tx.fieldType} v={leaveTypeLabel(review.leaveType, lang)} />
+            <Row k={tx.fieldPeriod} v={`${fmtDate(review.startDate)} → ${fmtDate(review.endDate)} (${review.days} ${tx.dayUnit})`} />
+            <Row k={tx.fieldAccrued} v={`${review.balanceSnapshot?.accrued ?? '—'} ${tx.dayUnit}`} />
+            <Row k={tx.fieldRemainingAfter} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${tx.dayUnit}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />
+            <Row k={tx.fieldStatus} v={<Badge style={LEAVE_STATUS[review.status]} lang={lang} />} />
+            {review.reason && <div className="border-t border-slate-200 pt-3"><span className="text-slate-500">{tx.fieldReason}: </span><span className="text-slate-900">{review.reason}</span></div>}
+            {review.managerDecision?.decision && <p className="text-xs text-slate-500">{tx.managerDecision}: {review.managerDecision.decision} {review.managerDecision.note ? `— ${review.managerDecision.note}` : ''}</p>}
             {(review.status === 'pending_manager' || review.status === 'pending_hr') && (
               <div className="border-t border-slate-200 pt-3">
-                <label className="text-slate-500 text-xs mb-1 block">{ar ? 'ملاحظة (اختياري)' : 'Note (optional)'}</label>
+                <label className="text-slate-500 text-xs mb-1 block">{tx.noteOptional}</label>
                 <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
             )}

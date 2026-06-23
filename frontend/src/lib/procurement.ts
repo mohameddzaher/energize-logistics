@@ -26,6 +26,24 @@ export interface VendorBill {
   subtotal: number; vatAmount: number; total: number; paidAmount: number; balance: number;
   billDate?: string; dueDate?: string; category?: string; status: string; notes?: string; createdAt?: string;
 }
+export interface StatusBreakdown { status: string; count: number; value: number; }
+export interface TopVendor { _id: string; name: string; total: number; count: number; }
+export interface ProcDashRow {
+  _id: string; status: string;
+  requestNumber?: string; title?: string; priority?: string; totalEstimate?: number; requester?: any; // PR
+  poNumber?: string; vendor?: any; total?: number; expectedDate?: string; // PO
+  billNumber?: string; vendorInvoiceNumber?: string; balance?: number; dueDate?: string; // Bill
+  createdAt?: string;
+}
+export interface ProcDashboard {
+  prPending: number; openPOs: number; openPOValue: number;
+  unpaidBills: number; unpaidBillsCount: number;
+  overdueBills: number; overdueBillsCount: number;
+  spendThisMonth: number; spendThisMonthCount: number;
+  prByStatus: StatusBreakdown[]; poByStatus: StatusBreakdown[]; billByStatus: StatusBreakdown[];
+  topVendors: TopVendor[];
+  recentPRs: ProcDashRow[]; recentPOs: ProcDashRow[]; unpaidBillsList: ProcDashRow[];
+}
 export interface OptionItem { key: string; nameEn: string; nameAr: string; }
 export interface ProcOptions {
   KSA_VAT_RATE: number;

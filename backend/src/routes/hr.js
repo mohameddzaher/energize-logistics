@@ -44,6 +44,18 @@ router.post('/employees', authorize(...STAFF), hr.createEmployee);
 router.put('/employees/:id', authorize(...STAFF), hr.updateEmployee);
 router.delete('/employees/:id', authorize(...STAFF), hr.deleteEmployee);
 
+// Profile actions (staff): renew a document, end of service, reactivate, history.
+router.post('/employees/:id/renew', authorize(...STAFF), hr.renewDocument);
+router.post('/employees/:id/terminate', authorize(...STAFF), hr.terminateEmployee);
+router.post('/employees/:id/reactivate', authorize(...STAFF), hr.reactivateEmployee);
+router.get('/employees/:id/audit', authorize(...STAFF), hr.getEmployeeAudit);
+
+// Employee documents (file uploads — base64 data URL in JSON).
+router.get('/employees/:id/documents', authorize(...STAFF), hr.listDocuments);
+router.post('/employees/:id/documents', authorize(...STAFF), hr.uploadDocument);
+router.put('/documents/:docId', authorize(...STAFF), hr.updateDocument);
+router.delete('/documents/:docId', authorize(...STAFF), hr.deleteDocument);
+
 router.get('/contracts', authorize(...STAFF), hr.listContracts);
 router.post('/contracts', authorize(...STAFF), hr.createContract);
 router.put('/contracts/:id', authorize(...STAFF), hr.updateContract);

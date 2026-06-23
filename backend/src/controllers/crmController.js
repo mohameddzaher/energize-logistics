@@ -11,8 +11,10 @@ const { emitToUser } = require('../websocket/socketManager');
 const crmDefaults = require('../config/crmDefaults');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
-const CRM_STAFF_ROLES = ['super_admin', 'admin', 'crm_manager', 'crm_specialist'];
-const CRM_ADMIN_ROLES = ['super_admin', 'admin', 'crm_manager'];
+// Tiered CRM roles: crm_manager (full) > crm_team_lead (delete/reassign) >
+// crm_specialist (write, no delete) > crm_agent (entry level). Admin tier
+// (manager + team lead) can delete and perform privileged ops.
+const { CRM_STAFF_ROLES, CRM_ADMIN_ROLES } = require('../config/constants');
 const isCrmStaff = (user) => CRM_STAFF_ROLES.includes(user.role);
 const isCrmAdmin = (user) => CRM_ADMIN_ROLES.includes(user.role);
 
@@ -123,12 +125,17 @@ exports.getDashboard = async (req, res) => {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(startOfDay.getTime() + 86400000);
+    // Start of the current week (Saturday → Friday, matching local business week).
+    const startOfWeek = new Date(startOfDay);
+    startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 1) % 7));
 
     const [
       companiesTotal, companiesByStatus, contactsTotal,
-      openDeals, dealsByStage, wonThisMonth,
+      openDeals, dealsByStage, wonThisMonth, lostThisMonth,
       openTasks, overdueTasks, tasksDueToday,
+      activitiesThisWeek, activitiesByType,
       recentActivities, topCompanies,
+      topDeals, upcomingTasks, recentDeals,
     ] = await Promise.all([
       CrmCompany.countDocuments({}),
       CrmCompany.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
@@ -142,14 +149,35 @@ exports.getDashboard = async (req, res) => {
         { $match: { status: 'won', wonAt: { $gte: startOfMonth } } },
         { $group: { _id: null, count: { $sum: 1 }, value: { $sum: '$value' } } },
       ]),
+      CrmDeal.aggregate([
+        { $match: { status: 'lost', lostAt: { $gte: startOfMonth } } },
+        { $group: { _id: null, count: { $sum: 1 }, value: { $sum: '$value' } } },
+      ]),
       CrmTask.countDocuments({ status: { $in: ['todo', 'in_progress'] } }),
       CrmTask.countDocuments({ status: { $in: ['todo', 'in_progress'] }, dueDate: { $lt: startOfDay } }),
       CrmTask.countDocuments({ status: { $in: ['todo', 'in_progress'] }, dueDate: { $gte: startOfDay, $lt: endOfDay } }),
+      CrmActivity.countDocuments({ date: { $gte: startOfWeek } }),
+      CrmActivity.aggregate([
+        { $match: { date: { $gte: startOfWeek } } },
+        { $group: { _id: '$type', count: { $sum: 1 } } },
+      ]),
       popActivity(CrmActivity.find({}).sort({ date: -1 }).limit(10)).lean(),
       popCompany(CrmCompany.find({}).sort({ rating: -1, score: -1 }).limit(5)).lean(),
+      // Largest open opportunities (clickable to the deals page).
+      popDeal(CrmDeal.find({ status: 'open' }).sort({ value: -1 }).limit(5)).lean(),
+      // Next tasks due (open, soonest due date first).
+      popTask(CrmTask.find({ status: { $in: ['todo', 'in_progress'] }, dueDate: { $gte: startOfDay } })
+        .sort({ dueDate: 1 }).limit(6)).lean(),
+      // Latest deals created/updated.
+      popDeal(CrmDeal.find({}).sort({ updatedAt: -1 }).limit(5)).lean(),
     ]);
 
     const pipelineValue = openDeals.reduce((s, d) => s + (d.value || 0), 0);
+    const won = wonThisMonth[0] || { count: 0, value: 0 };
+    const lost = lostThisMonth[0] || { count: 0, value: 0 };
+    const closedThisMonth = won.count + lost.count;
+    // Win rate = won / (won + lost) closed this month, as a 0–100 percentage.
+    const winRate = closedThisMonth ? Math.round((won.count / closedThisMonth) * 100) : 0;
 
     res.json({
       companiesTotal,
@@ -158,12 +186,19 @@ exports.getDashboard = async (req, res) => {
       openDealsCount: openDeals.length,
       pipelineValue,
       dealsByStage: dealsByStage.reduce((a, x) => ({ ...a, [x._id || 'new']: { count: x.count, value: x.value } }), {}),
-      wonThisMonth: wonThisMonth[0] || { count: 0, value: 0 },
+      wonThisMonth: won,
+      lostThisMonth: lost,
+      winRate,
+      activitiesThisWeek,
+      activitiesByType: activitiesByType.reduce((a, x) => ({ ...a, [x._id || 'note']: x.count }), {}),
       openTasks,
       overdueTasks,
       tasksDueToday,
       recentActivities,
       topCompanies,
+      topDeals,
+      upcomingTasks,
+      recentDeals,
     });
   } catch (error) {
     console.error('getDashboard error:', error);

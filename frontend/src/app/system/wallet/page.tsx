@@ -13,7 +13,7 @@ import {
 import * as XLSX from 'xlsx';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getWalletTranslations } from '@/lib/translations';
+import { getWalletTranslations, getWalletExtraTranslations } from '@/lib/translations';
 
 interface DailyWallet {
   _id: string;
@@ -95,6 +95,7 @@ export default function WalletPage() {
 
   const { lang } = useLanguage();
   const L = getWalletTranslations(lang);
+  const txx = getWalletExtraTranslations(lang);
   const typeLabel = (type: 'collection' | 'expense' | 'purchase') => lang === 'ar' ? TYPE_CONFIG[type].labelAr : TYPE_CONFIG[type].label;
 
   const [wallet, setWallet] = useState<DailyWallet | null>(null);
@@ -169,6 +170,7 @@ export default function WalletPage() {
   // Purchase report lookup
   const [purchaseReportSearch, setPurchaseReportSearch] = useState('');
   const [purchaseReportMsg, setPurchaseReportMsg] = useState('');
+  const [purchaseReportFound, setPurchaseReportFound] = useState(false);
   const [purchaseInvoiceAmount, setPurchaseInvoiceAmount] = useState<number | null>(null);
 
   // ─── LOAD BRANCHES (super_admin & operations_manager) ───────
@@ -789,6 +791,7 @@ export default function WalletPage() {
   const handlePurchaseReportSearch = async () => {
     if (!purchaseReportSearch.trim()) return;
     setPurchaseReportMsg('');
+    setPurchaseReportFound(false);
     setPurchaseInvoiceAmount(null);
     try {
       const data = await api.get<any>(`/api/wallet/lookup-report?reportNumber=${encodeURIComponent(purchaseReportSearch.trim())}`);
@@ -797,9 +800,11 @@ export default function WalletPage() {
         purchaseDeliveryStatementNumber: data.reportNumber,
       }));
       setPurchaseInvoiceAmount(data.sellingValue || null);
-      setPurchaseReportMsg(`Found — Selling Price: ${(data.sellingValue || 0).toLocaleString()} SAR`);
+      setPurchaseReportFound(true);
+      setPurchaseReportMsg(`${txx.foundSellingPrice}: ${(data.sellingValue || 0).toLocaleString()} SAR`);
     } catch (err: any) {
-      setPurchaseReportMsg(err.message || 'Report not found');
+      setPurchaseReportFound(false);
+      setPurchaseReportMsg(err.message || txx.reportNotFound);
     }
   };
 
@@ -899,6 +904,7 @@ export default function WalletPage() {
     setTxError('');
     setPurchaseReportSearch('');
     setPurchaseReportMsg('');
+    setPurchaseReportFound(false);
     setPurchaseInvoiceAmount(null);
     setShowTxModal(true);
   };
@@ -940,11 +946,11 @@ export default function WalletPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {canSelectBranch && (
             <>
-              <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} title="Select branch"
+              <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} title={L.selectBranch}
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                 {allBranches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
               </select>
-              <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} title="Select user"
+              <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} title={txx.selectUser}
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                 {branchUsers.length === 0 && <option value="">{L.noUsers}</option>}
                 {branchUsers.map((u) => <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>)}
@@ -952,7 +958,7 @@ export default function WalletPage() {
             </>
           )}
           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="Select date" />
+            className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.selectDate} />
           <button type="button" onClick={() => setSelectedDate(getTodayStr())}
             className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{L.today}</button>
           <button type="button" onClick={openExportModal} disabled={!wallet}
@@ -1106,7 +1112,7 @@ export default function WalletPage() {
                       {tx.type === 'collection' && tx.collectionSource === 'company' && <div className="text-blue-600">{L.fromCompany}</div>}
                       {tx.description && <div>{tx.description}</div>}
                       {tx.customer && <div>{tx.customer.companyName} ({tx.customer.customerNumber})</div>}
-                      {tx.invoice && <div className="text-slate-500">Inv: {tx.invoice.invoiceNumber}</div>}
+                      {tx.invoice && <div className="text-slate-500">{txx.invoiceShort}: {tx.invoice.invoiceNumber}</div>}
                       {(tx.vendor || tx.vendorName) && <div>{L.vendor}: {tx.vendor?.name || tx.vendorName}</div>}
                       {(tx.driver || tx.driverName) && <div>{L.driver}: {tx.driver?.name || tx.driverName}</div>}
                       {tx.expenseCategory && <div>{L.category}: {tx.expenseCategory.name}</div>}
@@ -1164,7 +1170,7 @@ export default function WalletPage() {
                   {(() => { const c = TYPE_CONFIG[txType]; const I = c.icon; return <I className={`w-5 h-5 ${c.color}`} />; })()}
                   {L.newTransaction} {typeLabel(txType)}
                 </h2>
-                <button type="button" onClick={() => setShowTxModal(false)} className="text-slate-500 hover:text-slate-900" aria-label="Close"><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => setShowTxModal(false)} className="text-slate-500 hover:text-slate-900" aria-label={txx.close}><X className="w-5 h-5" /></button>
               </div>
 
               <div className="p-6 overflow-y-auto space-y-4">
@@ -1257,13 +1263,13 @@ export default function WalletPage() {
                           onChange={(e) => { setPurchaseReportSearch(e.target.value); setTxForm((f) => ({ ...f, purchaseDeliveryStatementNumber: e.target.value })); }}
                           onKeyDown={(e) => e.key === 'Enter' && handlePurchaseReportSearch()}
                           className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDeliveryStatement} />
-                        <button type="button" onClick={handlePurchaseReportSearch} aria-label="Search report"
+                        <button type="button" onClick={handlePurchaseReportSearch} aria-label={txx.searchReport}
                           className="px-3 py-2.5 rounded-lg bg-[#f37121] text-white text-sm hover:bg-[#e06010] transition-colors">
                           <Search className="w-4 h-4" />
                         </button>
                       </div>
                       {purchaseReportMsg && (
-                        <p className={`text-xs mt-1 ${purchaseReportMsg.startsWith('Found') ? 'text-green-600' : 'text-red-600'}`}>{purchaseReportMsg}</p>
+                        <p className={`text-xs mt-1 ${purchaseReportFound ? 'text-green-600' : 'text-red-600'}`}>{purchaseReportMsg}</p>
                       )}
                     </div>
 
@@ -1480,7 +1486,7 @@ export default function WalletPage() {
                 <h2 className="text-white font-bold text-lg flex items-center gap-2">
                   <Lock className="w-5 h-5 text-[#f37121]" /> {L.closeDay}
                 </h2>
-                <button type="button" onClick={() => setShowCloseModal(false)} className="text-slate-300 hover:text-white" aria-label="Close"><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => setShowCloseModal(false)} className="text-slate-300 hover:text-white" aria-label={txx.close}><X className="w-5 h-5" /></button>
               </div>
 
               <div className="p-6 space-y-4">
@@ -1543,7 +1549,7 @@ export default function WalletPage() {
                 <h2 className="text-white font-bold text-lg flex items-center gap-2">
                   <Download className="w-5 h-5 text-[#f37121]" /> {L.exportToExcel}
                 </h2>
-                <button type="button" onClick={() => !exporting && setShowExportModal(false)} className="text-slate-300 hover:text-white" aria-label="Close" disabled={exporting}><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => !exporting && setShowExportModal(false)} className="text-slate-300 hover:text-white" aria-label={txx.close} disabled={exporting}><X className="w-5 h-5" /></button>
               </div>
 
               <div className="p-6 space-y-4">
@@ -1669,29 +1675,29 @@ export default function WalletPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'عمود رقم التخريج' : 'Delivery Column'}</label>
-                      <select aria-label="delivery column" value={manualDeliveryCol} onChange={(e) => setManualDeliveryCol(Number(e.target.value))}
+                      <select aria-label={txx.deliveryColumn} value={manualDeliveryCol} onChange={(e) => setManualDeliveryCol(Number(e.target.value))}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-2 py-2 text-sm">
-                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>Col {i}</option>)}
+                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>{txx.colLabel} {i}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'عمود القيمة' : 'Value Column'}</label>
-                      <select aria-label="value column" value={manualValueCol} onChange={(e) => setManualValueCol(Number(e.target.value))}
+                      <select aria-label={txx.valueColumn} value={manualValueCol} onChange={(e) => setManualValueCol(Number(e.target.value))}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-2 py-2 text-sm">
-                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>Col {i}</option>)}
+                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>{txx.colLabel} {i}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'عمود الفرع (اختياري)' : 'Branch Column (optional)'}</label>
-                      <select aria-label="branch column" value={manualBranchCol} onChange={(e) => setManualBranchCol(Number(e.target.value))}
+                      <select aria-label={txx.branchColumn} value={manualBranchCol} onChange={(e) => setManualBranchCol(Number(e.target.value))}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-2 py-2 text-sm">
                         <option value={-1}>{lang === 'ar' ? '— بدون —' : '— None —'}</option>
-                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>Col {i}</option>)}
+                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>{txx.colLabel} {i}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'البيانات تبدأ من صف' : 'Data starts at row'}</label>
-                      <input type="number" min="0" aria-label="data start row" title="Data starts at row" placeholder="0"
+                      <input type="number" min="0" aria-label={txx.dataStartRow} title={txx.dataStartRow} placeholder="0"
                         value={manualDataStart} onChange={(e) => setManualDataStart(Number(e.target.value) || 0)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2 text-sm" />
                     </div>
@@ -1703,7 +1709,7 @@ export default function WalletPage() {
                     <table className="text-xs">
                       <thead className="bg-slate-900 sticky top-0">
                         <tr>
-                          <th className="px-2 py-1 text-slate-300">Row</th>
+                          <th className="px-2 py-1 text-slate-300">{txx.rowLabel}</th>
                           {bulkRawPreview.rows[0]?.map((_: any, i: number) => (
                             <th key={i} className={`px-2 py-1 whitespace-nowrap ${
                               i === manualDeliveryCol ? 'bg-orange-500/30 text-orange-700' :
@@ -1711,7 +1717,7 @@ export default function WalletPage() {
                               i === manualBranchCol ? 'bg-blue-500/30 text-blue-700' :
                               'text-slate-300'
                             }`}>
-                              Col {i}
+                              {txx.colLabel} {i}
                             </th>
                           ))}
                         </tr>

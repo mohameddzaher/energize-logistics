@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
-import { getCollectorsTranslations } from '@/lib/translations';
+import { getCollectorsTranslations, getCollectorsExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import StatCard from '@/components/system/StatCard';
@@ -22,6 +22,7 @@ export default function CollectorsPage() {
   const router = useRouter();
   const { lang } = useLanguage();
   const T = getCollectorsTranslations(lang);
+  const txx = getCollectorsExtraTranslations(lang);
   const [ranking, setRanking] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -66,17 +67,17 @@ export default function CollectorsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
         <button type="button" onClick={() => exportToExcel(ranking, [
-          { header: 'Collector', key: 'collector.name', width: 22 },
-          { header: 'Role', key: 'collector.role', width: 16 },
+          { header: txx.collector, key: 'collector.name', width: 22 },
+          { header: txx.role, key: 'collector.role', width: 16 },
           { header: T.target, key: 'target', transform: fmt.money, width: 14 },
           { header: T.totalCollected, key: 'totalCollected', transform: fmt.money, width: 18 },
-          { header: 'Assigned Collected', key: 'assignedCollected', transform: fmt.money, width: 20 },
-          { header: 'Extra Collected', key: 'extraCollected', transform: fmt.money, width: 18 },
+          { header: txx.assignedCollected, key: 'assignedCollected', transform: fmt.money, width: 20 },
+          { header: txx.extraCollected, key: 'extraCollected', transform: fmt.money, width: 18 },
           { header: `${T.efficiency} %`, key: 'efficiency', width: 14 },
-          { header: 'Promises', key: 'totalPromises', width: 12 },
-          { header: 'Promise Fulfillment %', key: 'promiseFulfillment', width: 22 },
-          { header: 'Avg Delay (days)', key: 'avgDelay', width: 18 },
-          { header: 'Activities', key: 'activityCount', width: 12 },
+          { header: txx.promises, key: 'totalPromises', width: 12 },
+          { header: txx.promiseFulfillmentPct, key: 'promiseFulfillment', width: 22 },
+          { header: txx.avgDelayDays, key: 'avgDelay', width: 18 },
+          { header: txx.activities, key: 'activityCount', width: 12 },
           { header: T.assignedCustomers, key: 'assignedCustomers', width: 18 },
         ], `collector-performance-${new Date().toISOString().split('T')[0]}`, 'Performance')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
           <Download className="w-4 h-4" /> {T.downloadExcel}
@@ -118,12 +119,12 @@ export default function CollectorsPage() {
                 <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.target}</th>
                 <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.totalCollected}</th>
                 <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.assignedCustomers}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Extra</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.extra}</th>
                 <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.efficiency}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Promises</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Fulfilled</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Avg Delay</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">Activities</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.promises}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.fulfilled}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.avgDelay}</th>
+                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.activities}</th>
                 <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.customers}</th>
               </tr>
             </thead>
@@ -139,7 +140,7 @@ export default function CollectorsPage() {
                     <div className="flex items-center gap-2">
                       <span>{p.collector?.name}</span>
                       {p.collector?.role === 'admin' && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-600">Dept Manager</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-600">{txx.deptManager}</span>
                       )}
                     </div>
                   </td>

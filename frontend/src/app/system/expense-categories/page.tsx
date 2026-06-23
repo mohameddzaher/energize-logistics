@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Tags, Plus, Search, X, Check, Edit, Trash2, Loader2, Download } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getExpenseCategoriesTranslations } from '@/lib/translations';
+import { getExpenseCategoriesTranslations, getExpenseCategoriesExtraTranslations } from '@/lib/translations';
 
 interface ExpenseCategory {
   _id: string;
@@ -23,6 +23,7 @@ export default function ExpenseCategoriesPage() {
   const isSuperAdmin = user?.role === 'super_admin';
   const { lang } = useLanguage();
   const T = getExpenseCategoriesTranslations(lang);
+  const txx = getExpenseCategoriesExtraTranslations(lang);
 
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,10 +155,10 @@ export default function ExpenseCategoriesPage() {
                 {isSuperAdmin && (
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title="Edit">
+                      <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={T.edit}>
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button type="button" onClick={() => handleDelete(c._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title="Delete">
+                      <button type="button" onClick={() => handleDelete(c._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={T.delete}>
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -184,12 +185,12 @@ export default function ExpenseCategoriesPage() {
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.categoryName + ' *'}</label>
                   <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. Office Supplies" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.namePlaceholder} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.description}</label>
                   <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none" placeholder="e.g. Expenses related to office supplies" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none" placeholder={txx.descriptionPlaceholder} />
                 </div>
                 {editCategory && (
                   <div className="flex items-center gap-2">

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getWalletDashboardTranslations } from '@/lib/translations';
+import { getWalletDashboardTranslations, getWalletDashboardExtraTranslations } from '@/lib/translations';
 
 interface BranchData {
   branch: { _id: string; name: string; code: string };
@@ -37,6 +37,7 @@ export default function WalletDashboardPage() {
   const router = useRouter();
   const { lang } = useLanguage();
   const T = getWalletDashboardTranslations(lang);
+  const txx = getWalletDashboardExtraTranslations(lang);
   const [branches, setBranches] = useState<BranchData[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateMode, setDateMode] = useState<DateMode>('single');
@@ -70,14 +71,14 @@ export default function WalletDashboardPage() {
   const handleExportExcel = () => {
     if (branches.length === 0) return;
     const columns = [
-      { header: 'Branch', key: 'branch.name', width: 20 },
-      { header: 'Branch Code', key: 'branch.code', width: 12 },
-      { header: 'Collections (SAR)', key: 'totalCollections', transform: fmt.money, width: 18 },
-      { header: 'Expenses (SAR)', key: 'totalExpenses', transform: fmt.money, width: 18 },
-      { header: 'Purchases (SAR)', key: 'totalPurchases', transform: fmt.money, width: 18 },
-      { header: 'Net Movement (SAR)', key: 'netMovement', transform: fmt.money, width: 18 },
-      { header: 'Closing Balance (SAR)', key: 'closingBalance', transform: fmt.money, width: 20 },
-      { header: 'Active Wallets', key: 'activeWallets', width: 14 },
+      { header: txx.colBranch, key: 'branch.name', width: 20 },
+      { header: txx.colBranchCode, key: 'branch.code', width: 12 },
+      { header: txx.colCollections, key: 'totalCollections', transform: fmt.money, width: 18 },
+      { header: txx.colExpenses, key: 'totalExpenses', transform: fmt.money, width: 18 },
+      { header: txx.colPurchases, key: 'totalPurchases', transform: fmt.money, width: 18 },
+      { header: txx.colNetMovement, key: 'netMovement', transform: fmt.money, width: 18 },
+      { header: txx.colClosingBalance, key: 'closingBalance', transform: fmt.money, width: 20 },
+      { header: txx.colActiveWallets, key: 'activeWallets', width: 14 },
     ];
     exportToExcel(branches, columns, `Wallet_Dashboard_${dateLabel}`, 'Branches');
   };
@@ -136,7 +137,7 @@ export default function WalletDashboardPage() {
           {dateMode === 'single' ? (
             <>
               <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="Select date" />
+                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.selectDate} />
               <button type="button" onClick={() => setSelectedDate(getTodayStr())}
                 className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{T.today}</button>
             </>
@@ -144,10 +145,10 @@ export default function WalletDashboardPage() {
             <>
               <div className="flex items-center gap-1.5">
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="From date" />
+                  className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.fromDate} />
                 <span className="text-slate-500 text-sm">{T.to}</span>
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="To date" />
+                  className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.toDate} />
               </div>
               <button type="button" onClick={() => { setDateFrom(getTodayStr()); setDateTo(getTodayStr()); }}
                 className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{T.today}</button>
@@ -155,7 +156,7 @@ export default function WalletDashboardPage() {
           )}
 
           <button type="button" onClick={handleExportExcel} disabled={branches.length === 0}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50" title="Export to Excel">
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50" title={txx.exportToExcel}>
             <Download className="w-4 h-4" /> {T.export}
           </button>
         </div>

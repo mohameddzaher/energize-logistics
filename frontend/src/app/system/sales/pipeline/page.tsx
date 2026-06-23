@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { TrendingUp } from 'lucide-react';
 import { isSalesStaff, money, userName } from '@/lib/finance';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import { getSalesPipelineTranslations } from '@/lib/translations';
 
 // Mirrors backend config/crmDefaults PIPELINE_STAGES.
 const STAGES = [
@@ -23,6 +24,7 @@ export default function SalesPipelinePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  const tx = getSalesPipelineTranslations(lang);
   const [deals, setDeals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,14 +35,14 @@ export default function SalesPipelinePage() {
   useEffect(() => { load(); }, [load]);
   useSocket('crm:deal', useCallback(() => load(), [load]));
 
-  if (!isSalesStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isSalesStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   const companyName = (c: any) => (!c ? '—' : ar && c.arabicName ? c.arabicName : c.name || '—');
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<TrendingUp className="w-5 h-5" />} title={ar ? 'مسار البيع' : 'Sales Pipeline'}
+      <PageHeader icon={<TrendingUp className="w-5 h-5" />} title={tx.pageTitle}
         subtitle={`${deals.length} · ${money(deals.filter((d) => d.status === 'open').reduce((s, d) => s + (d.value || 0), 0))}`} />
 
       <div className="flex gap-4 overflow-x-auto pb-4">
@@ -74,7 +76,7 @@ export default function SalesPipelinePage() {
           );
         })}
       </div>
-      <p className="text-slate-500 text-xs">{ar ? 'لإدارة الصفقات بالكامل (سحب وإفلات/إضافة) استخدم قسم CRM ← الصفقات.' : 'To fully manage deals (drag-drop / add) use CRM → Deals.'}</p>
+      <p className="text-slate-500 text-xs">{tx.manageDealsHint}</p>
     </div>
   );
 }

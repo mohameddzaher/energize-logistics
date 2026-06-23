@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useCallback, useMemo } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
-import { getDispatchSheetsTranslations } from '@/lib/translations';
+import { getDispatchSheetsTranslations, getOperationsDispatchSheetsExtraTranslations } from '@/lib/translations';
 import {
   Upload, FileSpreadsheet, X, AlertCircle, Loader2, Download,
   CheckCircle2, FileText, ChevronDown, ChevronUp, RotateCcw,
@@ -18,6 +18,7 @@ const ORANGE = '#f37121';
 export default function DispatchSheetsPage() {
   const { lang, isRTL } = useLanguage();
   const T = getDispatchSheetsTranslations(lang);
+  const txx = getOperationsDispatchSheetsExtraTranslations(lang);
 
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -152,7 +153,7 @@ export default function DispatchSheetsPage() {
             accept=".xlsx"
             className="hidden"
             onChange={onSelect}
-            aria-label="Excel file"
+            aria-label={txx.excelFileAria}
           />
         </div>
       )}
@@ -178,7 +179,7 @@ export default function DispatchSheetsPage() {
               </ul>
             )}
           </div>
-          <button onClick={reset} className="text-red-700 hover:text-red-100" aria-label="dismiss">
+          <button onClick={reset} className="text-red-700 hover:text-red-100" aria-label={txx.dismissAria}>
             <X className="w-4 h-4" />
           </button>
         </div>

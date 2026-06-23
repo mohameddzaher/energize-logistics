@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { getCollectionsTranslations } from '@/lib/translations';
+import { getCollectionsTranslations, getCollectionsExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import DataTable from '@/components/system/DataTable';
@@ -61,6 +61,7 @@ export default function CollectionsPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getCollectionsTranslations(lang);
+  const txx = getCollectionsExtraTranslations(lang);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [followUps, setFollowUps] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -174,10 +175,10 @@ export default function CollectionsPage() {
     e.preventDefault();
     setModalError('');
 
-    if (!form.customer) { setModalError('Please select a customer'); return; }
-    if (!form.type) { setModalError('Please select an activity type'); return; }
-    if (form.type === 'promise' && !form.promiseDate) { setModalError('Promise date is required for promise activities'); return; }
-    if (form.type === 'follow_up' && !form.followUpDate) { setModalError('Follow-up date is required'); return; }
+    if (!form.customer) { setModalError(txx.errSelectCustomer); return; }
+    if (!form.type) { setModalError(txx.errSelectActivityType); return; }
+    if (form.type === 'promise' && !form.promiseDate) { setModalError(txx.errPromiseDateRequired); return; }
+    if (form.type === 'follow_up' && !form.followUpDate) { setModalError(txx.errFollowUpDateRequired); return; }
 
     setSubmitting(true);
     try {
@@ -198,7 +199,7 @@ export default function CollectionsPage() {
       fetchActivities();
       fetchFollowUps();
     } catch (err: any) {
-      setModalError(err.message || 'Failed to log activity');
+      setModalError(err.message || txx.errFailedToLog);
     } finally {
       setSubmitting(false);
     }
@@ -282,7 +283,7 @@ export default function CollectionsPage() {
     },
     {
       key: 'collector',
-      label: 'Collector',
+      label: txx.collector,
       render: (_: any, row: Activity) => (
         <span className="text-slate-700 text-sm">
           {row.collector ? `${row.collector.firstName} ${row.collector.lastName}` : '-'}
@@ -311,14 +312,14 @@ export default function CollectionsPage() {
       render: (_: any, row: Activity) => {
         if (row.type === 'promise') {
           return row.promiseFulfilled ? (
-            <span className="px-2 py-0.5 rounded text-xs bg-green-500/20 text-green-600">Fulfilled</span>
+            <span className="px-2 py-0.5 rounded text-xs bg-green-500/20 text-green-600">{txx.fulfilled}</span>
           ) : (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); handleMarkPromise(row._id, true); }}
               className="px-2 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-700 hover:bg-yellow-500/30 transition-colors"
             >
-              Pending
+              {txx.pending}
             </button>
           );
         }
@@ -326,7 +327,7 @@ export default function CollectionsPage() {
           const isOverdue = new Date(row.followUpDate) < new Date();
           return (
             <span className={`px-2 py-0.5 rounded text-xs ${isOverdue ? 'bg-red-500/20 text-red-600' : 'bg-blue-500/20 text-blue-600'}`}>
-              {isOverdue ? 'Overdue' : formatDate(row.followUpDate)}
+              {isOverdue ? txx.overdue : formatDate(row.followUpDate)}
             </span>
           );
         }
@@ -354,7 +355,7 @@ export default function CollectionsPage() {
             <Phone className="w-6 h-6 text-[#f37121]" />
             {T.title}
           </h1>
-          <p className="text-slate-500 text-sm mt-1">{total} total activities</p>
+          <p className="text-slate-500 text-sm mt-1">{total} {txx.totalActivities}</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -527,10 +528,10 @@ export default function CollectionsPage() {
                 <div key={fu._id} className={`bg-white border rounded-xl p-4 ${isOverdue ? 'border-red-500/30' : 'border-slate-200'} shadow-sm`}>
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-slate-900 font-medium text-sm">{fu.customer?.companyName || 'Unknown'}</p>
-                      <p className="text-slate-500 text-xs mt-1">{fu.notes || 'No notes'}</p>
+                      <p className="text-slate-900 font-medium text-sm">{fu.customer?.companyName || txx.unknown}</p>
+                      <p className="text-slate-500 text-xs mt-1">{fu.notes || txx.noNotes}</p>
                       {fu.invoice && (
-                        <p className="text-[#f37121] text-xs mt-1">Invoice: {fu.invoice.invoiceNumber}</p>
+                        <p className="text-[#f37121] text-xs mt-1">{txx.invoiceLabel}: {fu.invoice.invoiceNumber}</p>
                       )}
                     </div>
                     <div className="flex items-start gap-3">
@@ -540,7 +541,7 @@ export default function CollectionsPage() {
                         </p>
                         {isOverdue && (
                           <span className="text-xs text-red-600 flex items-center gap-1 mt-1 justify-end">
-                            <AlertCircle className="w-3 h-3" /> Overdue
+                            <AlertCircle className="w-3 h-3" /> {txx.overdue}
                           </span>
                         )}
                         <p className="text-slate-500 text-xs mt-1">
@@ -599,7 +600,7 @@ export default function CollectionsPage() {
                     if (fu) {
                       return (
                         <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                          <p className="text-slate-900 text-sm font-medium">{fu.customer?.companyName || 'Unknown'}</p>
+                          <p className="text-slate-900 text-sm font-medium">{fu.customer?.companyName || txx.unknown}</p>
                           <p className="text-slate-500 text-xs mt-1">
                             {T.followUpDate}: {fu.followUpDate ? formatDate(fu.followUpDate) : '-'}
                           </p>
@@ -615,7 +616,7 @@ export default function CollectionsPage() {
                       value={completionNotes}
                       onChange={(e) => setCompletionNotes(e.target.value)}
                       rows={3}
-                      placeholder="Add notes about this follow-up completion..."
+                      placeholder={txx.completionNotesPlaceholder}
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 resize-none"
                     />
                   </div>
@@ -695,7 +696,7 @@ export default function CollectionsPage() {
                   <div>
                     <label className="block text-slate-500 text-xs mb-1.5">{T.invoice}</label>
                     {loadingInvoices ? (
-                      <div className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 text-sm">Loading...</div>
+                      <div className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 text-sm">{T.loading}</div>
                     ) : (
                       <select
                         value={form.invoice}
@@ -705,7 +706,7 @@ export default function CollectionsPage() {
                       >
                         <option value="">{T.selectInvoice}</option>
                         {invoices.map(inv => (
-                          <option key={inv._id} value={inv._id}>{inv.invoiceNumber} (Balance: ${inv.balance?.toLocaleString()})</option>
+                          <option key={inv._id} value={inv._id}>{inv.invoiceNumber} ({txx.balanceLabel}: ${inv.balance?.toLocaleString()})</option>
                         ))}
                       </select>
                     )}
@@ -739,9 +740,9 @@ export default function CollectionsPage() {
                       onChange={(e) => setForm({ ...form, status: e.target.value })}
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     >
-                      <option value="done">Done</option>
-                      <option value="postponed">Postponed</option>
-                      <option value="cancelled">Cancelled</option>
+                      <option value="done">{txx.statusDone}</option>
+                      <option value="postponed">{txx.statusPostponed}</option>
+                      <option value="cancelled">{txx.statusCancelled}</option>
                     </select>
                   </div>
 
@@ -813,7 +814,7 @@ export default function CollectionsPage() {
                       value={form.notes}
                       onChange={(e) => setForm({ ...form, notes: e.target.value })}
                       rows={3}
-                      placeholder="Add notes about this activity..."
+                      placeholder={txx.activityNotesPlaceholder}
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
                     />
                   </div>

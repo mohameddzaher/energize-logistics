@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getCollectorsTranslations } from '@/lib/translations';
+import { getCollectorsTranslations, getCollectorsIdExtraTranslations } from '@/lib/translations';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, CartesianGrid, PieChart, Pie, Cell
@@ -26,6 +26,7 @@ export default function CollectorProfilePage() {
   const { user: currentUser } = useAuth();
   const { lang } = useLanguage();
   const T = getCollectorsTranslations(lang);
+  const txx = getCollectorsIdExtraTranslations(lang);
   const [collector, setCollector] = useState<any>(null);
   const [performance, setPerformance] = useState<any>(null);
   const [trend, setTrend] = useState<any[]>([]);
@@ -96,7 +97,7 @@ export default function CollectorProfilePage() {
         setTaskStats(results[4].value as any);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load collector profile');
+      setError(err.message || txx.failedToLoad);
     } finally {
       setLoading(false);
     }
@@ -134,7 +135,7 @@ export default function CollectorProfilePage() {
     return (
       <div className="text-center py-20">
         <p className="text-slate-500">{T.noCollectors}</p>
-        <button type="button" onClick={() => router.back()} className="text-[#f37121] mt-2 text-sm hover:underline">Go back</button>
+        <button type="button" onClick={() => router.back()} className="text-[#f37121] mt-2 text-sm hover:underline">{txx.goBack}</button>
       </div>
     );
   }
@@ -168,7 +169,7 @@ export default function CollectorProfilePage() {
               <h1 className="text-2xl font-bold text-slate-900">{collector.firstName} {collector.lastName}</h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${isAdmin ? 'bg-purple-500/20 text-purple-600' : 'bg-blue-500/20 text-blue-600'}`}>
-                  {isAdmin ? 'Department Manager' : 'Collector'}
+                  {isAdmin ? txx.departmentManager : txx.collector}
                 </span>
                 <span className="text-slate-500 text-xs">{collector.email}</span>
               </div>
@@ -223,11 +224,11 @@ export default function CollectorProfilePage() {
 
       {/* Date Filter */}
       <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
-        <span className="text-slate-500 text-sm font-medium">Period:</span>
+        <span className="text-slate-500 text-sm font-medium">{txx.period}</span>
         {[
-          { value: 'current', label: 'This Month' },
-          { value: 'lastMonth', label: 'Last Month' },
-          { value: 'custom', label: 'Custom' },
+          { value: 'current', label: txx.thisMonth },
+          { value: 'lastMonth', label: txx.lastMonth },
+          { value: 'custom', label: txx.custom },
         ].map((opt) => (
           <button
             key={opt.value}
@@ -244,7 +245,7 @@ export default function CollectorProfilePage() {
           <>
             <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
               className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]" />
-            <span className="text-slate-500 text-xs">to</span>
+            <span className="text-slate-500 text-xs">{txx.to}</span>
             <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
               className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]" />
           </>
@@ -266,8 +267,8 @@ export default function CollectorProfilePage() {
           <p className="text-green-600 text-lg font-bold mt-1">{formatCurrency(performance?.totalCollected || 0)}</p>
           {!isAdmin && (performance?.extraCollected || 0) > 0 && (
             <div className="mt-1 space-y-0.5">
-              <p className="text-cyan-700 text-xs">Assigned: {formatCurrency(performance?.assignedCollected || 0)}</p>
-              <p className="text-[#f37121] text-xs">Extra: {formatCurrency(performance?.extraCollected || 0)}</p>
+              <p className="text-cyan-700 text-xs">{txx.assignedLabel} {formatCurrency(performance?.assignedCollected || 0)}</p>
+              <p className="text-[#f37121] text-xs">{txx.extraLabel} {formatCurrency(performance?.extraCollected || 0)}</p>
             </div>
           )}
         </div>
@@ -282,13 +283,13 @@ export default function CollectorProfilePage() {
           <p className="text-slate-900 text-lg font-bold mt-1">{performance?.paymentCount || 0}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-slate-500 text-xs uppercase">Promise %</p>
+          <p className="text-slate-500 text-xs uppercase">{txx.promisePct}</p>
           <p className="text-[#f37121] text-lg font-bold mt-1">{performance?.promiseFulfillment || 0}%</p>
           <p className="text-slate-500 text-xs">{performance?.fulfilledPromises || 0}/{performance?.totalPromises || 0}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <p className="text-slate-500 text-xs uppercase">{T.performance}</p>
-          <p className="text-slate-900 text-lg font-bold mt-1">{performance?.avgDelay || 0} days</p>
+          <p className="text-slate-900 text-lg font-bold mt-1">{performance?.avgDelay || 0} {txx.days}</p>
         </div>
       </div>
 
@@ -316,7 +317,7 @@ export default function CollectorProfilePage() {
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-green-600" />
-              Top 5 Performers
+              {txx.top5Performers}
             </h3>
             <div className="space-y-2">
               {topPerformers.map((r, i) => (
@@ -335,12 +336,12 @@ export default function CollectorProfilePage() {
                   </div>
                 </div>
               ))}
-              {topPerformers.length === 0 && <p className="text-slate-500 text-sm">No data</p>}
+              {topPerformers.length === 0 && <p className="text-slate-500 text-sm">{txx.noData}</p>}
             </div>
 
             <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mt-6 mb-4 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-600" />
-              Bottom 5 Performers
+              {txx.bottom5Performers}
             </h3>
             <div className="space-y-2">
               {bottomPerformers.map((r, i) => (
@@ -359,7 +360,7 @@ export default function CollectorProfilePage() {
                   </div>
                 </div>
               ))}
-              {bottomPerformers.length === 0 && <p className="text-slate-500 text-sm">No data</p>}
+              {bottomPerformers.length === 0 && <p className="text-slate-500 text-sm">{txx.noData}</p>}
             </div>
           </div>
 
@@ -367,7 +368,7 @@ export default function CollectorProfilePage() {
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
               <Users className="w-4 h-4 text-[#f37121]" />
-              Collection Distribution
+              {txx.collectionDistribution}
             </h3>
             {pieData.length > 0 ? (
               <ResponsiveContainer width="100%" height={350}>
@@ -392,7 +393,7 @@ export default function CollectorProfilePage() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-slate-500 text-sm text-center py-10">No collections in this period</p>
+              <p className="text-slate-500 text-sm text-center py-10">{txx.noCollectionsPeriod}</p>
             )}
           </div>
         </div>
@@ -444,35 +445,35 @@ export default function CollectorProfilePage() {
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
             <ListTodo className="w-4 h-4 text-[#f37121]" />
-            Task Performance
+            {txx.taskPerformance}
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-slate-500 text-xs">Total Tasks</p>
+              <p className="text-slate-500 text-xs">{txx.totalTasks}</p>
               <p className="text-slate-900 text-lg font-bold">{taskStats.total}</p>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-slate-500 text-xs">Completed</p>
+              <p className="text-slate-500 text-xs">{txx.completed}</p>
               <p className="text-green-600 text-lg font-bold">{taskStats.done}</p>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-slate-500 text-xs">Pending</p>
+              <p className="text-slate-500 text-xs">{txx.pending}</p>
               <p className="text-yellow-700 text-lg font-bold">{taskStats.pending}</p>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-slate-500 text-xs">Postponed</p>
+              <p className="text-slate-500 text-xs">{txx.postponed}</p>
               <p className="text-blue-600 text-lg font-bold">{taskStats.postponed}</p>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-slate-500 text-xs">Cancelled</p>
+              <p className="text-slate-500 text-xs">{txx.cancelled}</p>
               <p className="text-red-600 text-lg font-bold">{taskStats.cancelled}</p>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-slate-500 text-xs">Completion %</p>
+              <p className="text-slate-500 text-xs">{txx.completionPct}</p>
               <p className="text-[#f37121] text-lg font-bold">{taskStats.completionRate}%</p>
             </div>
             <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-slate-500 text-xs">Collected via Tasks</p>
+              <p className="text-slate-500 text-xs">{txx.collectedViaTasks}</p>
               <p className="text-green-600 text-lg font-bold">{formatCurrency(taskStats.totalCollected)}</p>
             </div>
           </div>
@@ -480,12 +481,12 @@ export default function CollectorProfilePage() {
           {/* Recent Tasks */}
           {taskStats.recentTasks && taskStats.recentTasks.length > 0 && (
             <div className="mt-4">
-              <h4 className="text-slate-500 text-xs uppercase mb-2">Recent Tasks</h4>
+              <h4 className="text-slate-500 text-xs uppercase mb-2">{txx.recentTasks}</h4>
               <div className="space-y-1.5 max-h-[250px] overflow-y-auto">
                 {taskStats.recentTasks.map((t: any) => (
                   <div key={t._id} className="flex items-center justify-between border border-slate-200 rounded-lg p-2.5">
                     <div>
-                      <span className="text-slate-900 text-sm">{t.customer?.companyName || 'Unknown'}</span>
+                      <span className="text-slate-900 text-sm">{t.customer?.companyName || txx.unknown}</span>
                       <span className="text-slate-500 text-xs ml-2 capitalize">{t.contactMethod}</span>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
@@ -517,7 +518,7 @@ export default function CollectorProfilePage() {
               activities.map((a: any) => (
                 <div key={a._id} className="border border-slate-200 rounded-lg p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-900 text-sm font-medium">{a.customer?.companyName || 'Unknown'}</span>
+                    <span className="text-slate-900 text-sm font-medium">{a.customer?.companyName || txx.unknown}</span>
                     <span className="text-slate-500 text-xs">{formatDate(a.createdAt)}</span>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
@@ -544,7 +545,7 @@ export default function CollectorProfilePage() {
               recentPayments.map((p: any) => (
                 <div key={p._id} className="border border-slate-200 rounded-lg p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-900 text-sm font-medium">{p.customer?.companyName || p.invoice?.customer?.companyName || 'Unknown'}</span>
+                    <span className="text-slate-900 text-sm font-medium">{p.customer?.companyName || p.invoice?.customer?.companyName || txx.unknown}</span>
                     <span className="text-green-600 text-sm font-medium">{formatCurrency(p.amount)}</span>
                   </div>
                   <div className="flex items-center justify-between mt-1">
@@ -573,7 +574,7 @@ export default function CollectorProfilePage() {
           </div>
           <div>
             <p className="text-slate-500 text-xs uppercase">{T.date}</p>
-            <p className="text-slate-900 text-sm mt-1">{collector.lastLogin ? formatDate(collector.lastLogin) : 'Never'}</p>
+            <p className="text-slate-900 text-sm mt-1">{collector.lastLogin ? formatDate(collector.lastLogin) : txx.never}</p>
           </div>
         </div>
       </div>

@@ -175,6 +175,9 @@ exports.changePassword = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
+    // Ensure staff logins (incl. the super admin / demo accounts) always have a
+    // linked employee profile so the HR self-service features are usable.
+    try { await require('../utils/ensureSelfEmployee')(req.user); } catch (e) {}
     const user = await User.findById(req.user._id)
       .populate('linkedCustomer', 'companyName creditTerm')
       .populate('assignedCustomers', 'companyName')

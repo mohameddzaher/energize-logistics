@@ -10,6 +10,7 @@ import {
   ChevronLeft, ChevronRight, Download, Search,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { getWorkshopPurchasesTranslations } from '@/lib/translations';
 
 interface PurchaseRequest {
   _id: string;
@@ -34,16 +35,23 @@ interface InventorySearchItem {
   quantity: number;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; labelAr: string; color: string; bg: string }> = {
-  pending: { label: 'New Request', labelAr: 'طلب جديد', color: 'text-yellow-700', bg: 'bg-yellow-500/20' },
-  received: { label: 'Under Preparation', labelAr: 'قيد التجهيز', color: 'text-blue-600', bg: 'bg-blue-500/20' },
-  fulfilled: { label: 'Ready for Pickup', labelAr: 'جاهز للاستلام', color: 'text-green-600', bg: 'bg-green-500/20' },
+const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
+  pending: { color: 'text-yellow-700', bg: 'bg-yellow-500/20' },
+  received: { color: 'text-blue-600', bg: 'bg-blue-500/20' },
+  fulfilled: { color: 'text-green-600', bg: 'bg-green-500/20' },
 };
 
 export default function WorkshopPurchasesPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const isAr = lang === 'ar';
+  const tx = getWorkshopPurchasesTranslations(lang);
+
+  const statusLabels: Record<string, string> = {
+    pending: tx.statusPending,
+    received: tx.statusReceived,
+    fulfilled: tx.statusFulfilled,
+  };
 
   const [purchases, setPurchases] = useState<PurchaseRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,7 +149,7 @@ export default function WorkshopPurchasesPage() {
         // Mark received with inventory deduction
         await api.put(`/api/workshop/purchases/${id}/received`, { inventoryItemId: selectedInventoryItem._id });
         // Immediately fulfill since it's from stock
-        await api.put(`/api/workshop/purchases/${id}/fulfilled`, { cost: 0, supplier: isAr ? 'من المخزون' : 'From Inventory' });
+        await api.put(`/api/workshop/purchases/${id}/fulfilled`, { cost: 0, supplier: tx.fromInventory });
       } else {
         // Just mark as received (under preparation)
         await api.put(`/api/workshop/purchases/${id}/received`);
@@ -200,7 +208,7 @@ export default function WorkshopPurchasesPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <ShoppingCart className="w-7 h-7 text-[#f37121]" />
-          <h1 className="text-2xl font-bold text-slate-900">{isAr ? 'مشتريات الورشة' : 'Workshop Purchases'}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{tx.pageTitle}</h1>
         </div>
         <button
           type="button"
@@ -209,7 +217,7 @@ export default function WorkshopPurchasesPage() {
           className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
         >
           <Download className="w-4 h-4" />
-          {isAr ? 'تصدير' : 'Export'}
+          {tx.export}
         </button>
       </div>
 
@@ -229,10 +237,10 @@ export default function WorkshopPurchasesPage() {
           onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
         >
-          <option value="">{isAr ? 'كل الحالات' : 'All Status'}</option>
-          <option value="pending">{isAr ? 'طلب جديد' : 'New Request'}</option>
-          <option value="received">{isAr ? 'قيد التجهيز' : 'Under Preparation'}</option>
-          <option value="fulfilled">{isAr ? 'جاهز للاستلام' : 'Ready for Pickup'}</option>
+          <option value="">{tx.allStatus}</option>
+          <option value="pending">{tx.statusPending}</option>
+          <option value="received">{tx.statusReceived}</option>
+          <option value="fulfilled">{tx.statusFulfilled}</option>
         </select>
       </div>
 
@@ -244,7 +252,7 @@ export default function WorkshopPurchasesPage() {
       ) : purchases.length === 0 ? (
         <div className="text-center py-20 text-slate-500">
           <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p>{isAr ? 'لا توجد طلبات شراء' : 'No purchase requests found'}</p>
+          <p>{tx.emptyState}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -252,15 +260,15 @@ export default function WorkshopPurchasesPage() {
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
                 {[
-                  isAr ? 'الصنف' : 'Item',
-                  isAr ? 'الكمية' : 'Qty',
-                  isAr ? 'رقم المركبة' : 'Vehicle #',
-                  isAr ? 'طلب بواسطة' : 'Requested By',
-                  isAr ? 'التاريخ' : 'Date',
-                  isAr ? 'الحالة' : 'Status',
-                  isAr ? 'التكلفة' : 'Cost',
-                  isAr ? 'المورد' : 'Supplier',
-                  isAr ? 'إجراءات' : 'Actions',
+                  tx.colItem,
+                  tx.colQty,
+                  tx.colVehicle,
+                  tx.colRequestedBy,
+                  tx.colDate,
+                  tx.colStatus,
+                  tx.colCost,
+                  tx.colSupplier,
+                  tx.colActions,
                 ].map((h, i) => (
                   <th key={i} className="text-left text-slate-300 font-semibold py-3 px-3 whitespace-nowrap">{h}</th>
                 ))}
@@ -280,7 +288,7 @@ export default function WorkshopPurchasesPage() {
                     </td>
                     <td className="py-3 px-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${sc.bg} ${sc.color}`}>
-                        {isAr ? sc.labelAr : sc.label}
+                        {statusLabels[p.status] || statusLabels.pending}
                       </span>
                     </td>
                     <td className="py-3 px-3 text-slate-700">{p.cost ? `${p.cost.toLocaleString()}` : '-'}</td>
@@ -294,7 +302,7 @@ export default function WorkshopPurchasesPage() {
                             className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-600 hover:bg-blue-500/30 text-xs font-medium transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {receivingIds.has(p._id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Package className="w-3 h-3" />}
-                            {isAr ? 'تأكيد الطلب' : 'Acknowledge'}
+                            {tx.acknowledge}
                           </button>
                         )}
                         {p.status === 'received' && (
@@ -306,11 +314,11 @@ export default function WorkshopPurchasesPage() {
                             className="px-3 py-1.5 rounded-lg bg-green-500/20 text-green-600 hover:bg-green-500/30 text-xs font-medium transition-colors flex items-center gap-1"
                           >
                             <Check className="w-3 h-3" />
-                            {isAr ? 'جاهز للاستلام' : 'Mark Ready'}
+                            {tx.markReady}
                           </button>
                         )}
                         {p.status === 'fulfilled' && (
-                          <span className="text-green-500 text-xs flex items-center gap-1"><Check className="w-3 h-3" />{isAr ? 'جاهز' : 'Ready'}</span>
+                          <span className="text-green-500 text-xs flex items-center gap-1"><Check className="w-3 h-3" />{tx.ready}</span>
                         )}
                       </div>
                     </td>
@@ -325,7 +333,7 @@ export default function WorkshopPurchasesPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-slate-500 text-sm">{isAr ? `${total} نتيجة` : `${total} results`}</p>
+          <p className="text-slate-500 text-sm">{isAr ? `${total} ${tx.results}` : `${total} ${tx.results}`}</p>
           <div className="flex items-center gap-2">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
               className="p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed">
@@ -354,7 +362,7 @@ export default function WorkshopPurchasesPage() {
             >
               <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 space-y-4 shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
-                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{isAr ? 'تأكيد استلام الطلب' : 'Acknowledge Request'}</h2>
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{tx.acknowledgeModalTitle}</h2>
                   <button onClick={() => setAcknowledgeModal(null)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
                 </div>
 
@@ -373,7 +381,7 @@ export default function WorkshopPurchasesPage() {
                     }}
                     className="w-4 h-4 rounded border-slate-300 bg-slate-50 text-[#f37121] focus:ring-[#f37121]"
                   />
-                  <span className="text-slate-900 text-sm">{isAr ? 'متوفر في المخزون؟' : 'Available in stock?'}</span>
+                  <span className="text-slate-900 text-sm">{tx.availableInStock}</span>
                 </label>
 
                 {/* Inventory Search (shown when inStock is checked) */}
@@ -385,7 +393,7 @@ export default function WorkshopPurchasesPage() {
                         type="text"
                         value={inventorySearch}
                         onChange={e => handleInventorySearchChange(e.target.value)}
-                        placeholder={isAr ? 'ابحث في المخزون...' : 'Search inventory...'}
+                        placeholder={tx.searchInventoryPlaceholder}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]"
                       />
                       {searchingInventory && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" />}
@@ -406,7 +414,7 @@ export default function WorkshopPurchasesPage() {
                           >
                             <p className="text-slate-900 text-sm font-medium">{item.name}</p>
                             <p className="text-slate-500 text-xs">
-                              {isAr ? 'الكود' : 'Code'}: {item.code} | {isAr ? 'المتاح' : 'Available'}: {item.quantity}
+                              {tx.code}: {item.code} | {tx.available}: {item.quantity}
                             </p>
                           </button>
                         ))}
@@ -418,9 +426,9 @@ export default function WorkshopPurchasesPage() {
                       <div className="flex items-center justify-between bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2.5">
                         <div>
                           <p className="text-green-600 text-sm font-medium">{selectedInventoryItem.name}</p>
-                          <p className="text-slate-500 text-xs">{isAr ? 'المتاح' : 'Available'}: {selectedInventoryItem.quantity}</p>
+                          <p className="text-slate-500 text-xs">{tx.available}: {selectedInventoryItem.quantity}</p>
                         </div>
-                        <button type="button" title={isAr ? 'إزالة' : 'Remove'} onClick={() => {
+                        <button type="button" title={tx.remove} onClick={() => {
                           setSelectedInventoryItem(null);
                           setInventorySearch('');
                         }} className="text-slate-500 hover:text-slate-900">
@@ -431,9 +439,7 @@ export default function WorkshopPurchasesPage() {
 
                     {inStock && selectedInventoryItem && (
                       <p className="text-blue-600 text-xs">
-                        {isAr
-                          ? 'سيتم خصم الكمية من المخزون ونقل الطلب مباشرة إلى "جاهز للاستلام"'
-                          : 'Quantity will be deducted from inventory and request moved directly to "Ready for Pickup"'}
+                        {tx.deductInventoryNote}
                       </p>
                     )}
                   </div>
@@ -441,15 +447,13 @@ export default function WorkshopPurchasesPage() {
 
                 {!inStock && (
                   <p className="text-slate-500 text-xs">
-                    {isAr
-                      ? 'سيتم نقل الطلب إلى "قيد التجهيز" حتى يتم توفير القطعة'
-                      : 'Request will move to "Under Preparation" until the item is procured'}
+                    {tx.underPreparationNote}
                   </p>
                 )}
 
                 <div className="flex justify-end gap-3 pt-2">
                   <button onClick={() => setAcknowledgeModal(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {isAr ? 'إلغاء' : 'Cancel'}
+                    {tx.cancel}
                   </button>
                   <button
                     onClick={handleAcknowledge}
@@ -458,7 +462,7 @@ export default function WorkshopPurchasesPage() {
                   >
                     {acknowledging && <Loader2 className="w-4 h-4 animate-spin" />}
                     <Check className="w-4 h-4" />
-                    {isAr ? 'تأكيد' : 'Confirm'}
+                    {tx.confirm}
                   </button>
                 </div>
               </div>
@@ -481,35 +485,35 @@ export default function WorkshopPurchasesPage() {
             >
               <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 space-y-4 shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
-                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{isAr ? 'تأكيد التوريد' : 'Fulfill Purchase'}</h2>
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{tx.fulfillModalTitle}</h2>
                   <button onClick={() => setFulfillModal(null)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'التكلفة' : 'Cost'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{tx.colCost}</label>
                     <input type="number" value={fulfillForm.cost} onChange={e => setFulfillForm(p => ({ ...p, cost: e.target.value }))}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                   </div>
                   <div>
-                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'المورد' : 'Supplier'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{tx.colSupplier}</label>
                     <input type="text" value={fulfillForm.supplier} onChange={e => setFulfillForm(p => ({ ...p, supplier: e.target.value }))}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                   </div>
                   <div>
-                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'رقم الفاتورة' : 'Invoice #'}</label>
+                    <label className="text-slate-500 text-sm block mb-1">{tx.invoiceNumber}</label>
                     <input type="text" value={fulfillForm.invoiceNumber} onChange={e => setFulfillForm(p => ({ ...p, invoiceNumber: e.target.value }))}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <button onClick={() => setFulfillModal(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {isAr ? 'إلغاء' : 'Cancel'}
+                    {tx.cancel}
                   </button>
                   <button onClick={handleFulfill} disabled={fulfilling}
                     className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2">
                     {fulfilling && <Loader2 className="w-4 h-4 animate-spin" />}
                     <Check className="w-4 h-4" />
-                    {isAr ? 'تأكيد' : 'Confirm'}
+                    {tx.confirm}
                   </button>
                 </div>
               </div>

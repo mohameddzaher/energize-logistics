@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getCustomersTranslations } from '@/lib/translations';
+import { getCustomersTranslations, getCustomersIdExtraTranslations } from '@/lib/translations';
 
 interface Customer {
   _id: string;
@@ -107,7 +107,12 @@ interface CustomerSummary {
   overdueCount: number;
 }
 
-const riskBadge = (level: string, score?: number) => {
+const riskLevelLabels = (lang: 'en' | 'ar'): Record<string, string> =>
+  lang === 'ar'
+    ? { low: 'منخفض', medium: 'متوسط', high: 'مرتفع' }
+    : { low: 'Low', medium: 'Medium', high: 'High' };
+
+const riskBadge = (level: string, lang: 'en' | 'ar', score?: number) => {
   const styles: Record<string, string> = {
     low: 'bg-green-500/20 text-green-600 border-green-500/30',
     medium: 'bg-yellow-500/20 text-yellow-700 border-yellow-500/30',
@@ -115,12 +120,12 @@ const riskBadge = (level: string, score?: number) => {
   };
   return (
     <span className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize border ${styles[level] || 'bg-slate-500/20 text-slate-500 border-slate-500/30'}`}>
-      {level}{score !== undefined ? ` (${score}%)` : ''}
+      {riskLevelLabels(lang)[level] || level}{score !== undefined ? ` (${score}%)` : ''}
     </span>
   );
 };
 
-const gradeBadge = (grade: string) => {
+const gradeBadge = (grade: string, lang: 'en' | 'ar') => {
   const styles: Record<string, string> = {
     A: 'bg-green-500/20 text-green-600 border-green-500/30',
     B: 'bg-blue-500/20 text-blue-600 border-blue-500/30',
@@ -129,10 +134,37 @@ const gradeBadge = (grade: string) => {
   };
   return (
     <span className={`px-2.5 py-1 rounded-lg text-xs font-bold capitalize border ${styles[grade] || 'bg-slate-500/20 text-slate-500 border-slate-500/30'}`}>
-      Grade {grade}
+      {lang === 'ar' ? 'تصنيف' : 'Grade'} {grade}
     </span>
   );
 };
+
+const clientStatusLabelsByLang = (lang: 'en' | 'ar'): Record<string, string> =>
+  lang === 'ar'
+    ? {
+        good_client: 'عميل جيد',
+        late_payment: 'تأخر في الدفع',
+        stopped_by_us: 'موقوف من قبلنا',
+        stopped_by_client: 'موقوف من قبل العميل',
+        under_review: 'قيد المراجعة',
+        legal_action: 'إجراء قانوني',
+        write_off: 'شطب',
+        payment_plan: 'خطة سداد',
+        new_client: 'عميل جديد',
+        vip_client: 'عميل مميز',
+      }
+    : {
+        good_client: 'Good Client',
+        late_payment: 'Late Payment',
+        stopped_by_us: 'Stopped by Us',
+        stopped_by_client: 'Stopped by Client',
+        under_review: 'Under Review',
+        legal_action: 'Legal Action',
+        write_off: 'Write Off',
+        payment_plan: 'Payment Plan',
+        new_client: 'New Client',
+        vip_client: 'VIP Client',
+      };
 
 const clientStatusLabels: Record<string, string> = {
   good_client: 'Good Client',
@@ -160,15 +192,20 @@ const clientStatusStyles: Record<string, string> = {
   vip_client: 'bg-amber-500/20 text-amber-700 border-amber-500/30',
 };
 
-const clientStatusBadge = (status: string) => {
+const clientStatusBadge = (status: string, lang: 'en' | 'ar') => {
   return (
     <span className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${clientStatusStyles[status] || 'bg-slate-500/20 text-slate-500 border-slate-500/30'}`}>
-      {clientStatusLabels[status] || status?.replace(/_/g, ' ') || '-'}
+      {clientStatusLabelsByLang(lang)[status] || status?.replace(/_/g, ' ') || '-'}
     </span>
   );
 };
 
-const statusBadge = (status: string) => {
+const invoiceStatusLabels = (lang: 'en' | 'ar'): Record<string, string> =>
+  lang === 'ar'
+    ? { paid: 'مدفوع', partial: 'جزئي', pending: 'قيد الانتظار', overdue: 'متأخر', cancelled: 'ملغى' }
+    : { paid: 'Paid', partial: 'Partial', pending: 'Pending', overdue: 'Overdue', cancelled: 'Cancelled' };
+
+const statusBadge = (status: string, lang: 'en' | 'ar') => {
   const styles: Record<string, string> = {
     paid: 'bg-green-500/20 text-green-600',
     partial: 'bg-yellow-500/20 text-yellow-700',
@@ -178,7 +215,7 @@ const statusBadge = (status: string) => {
   };
   return (
     <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${styles[status] || 'bg-slate-500/20 text-slate-500'}`}>
-      {status}
+      {invoiceStatusLabels(lang)[status] || status}
     </span>
   );
 };
@@ -195,6 +232,7 @@ export default function CustomerDetailPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getCustomersTranslations(lang);
+  const txx = getCustomersIdExtraTranslations(lang);
   const customerId = params.id as string;
 
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -229,7 +267,7 @@ export default function CustomerDetailPage() {
       setCustomer(data.customer);
       setNewCreditTerm(data.customer.creditTerm);
     } catch (err: any) {
-      setError(err.message || 'Failed to load customer');
+      setError(err.message || txx.failedToLoadCustomer);
     }
   }, [customerId]);
 
@@ -316,7 +354,7 @@ export default function CustomerDetailPage() {
       setShowCreditModal(false);
       fetchCustomer();
     } catch (err: any) {
-      setCreditError(err.message || 'Failed to update credit term');
+      setCreditError(err.message || txx.failedToUpdateCreditTerm);
     } finally {
       setCreditSubmitting(false);
     }
@@ -401,22 +439,22 @@ export default function CustomerDetailPage() {
   };
 
   const invoiceColumns = [
-    { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
+    { key: 'invoiceNumber', label: T.invoiceNumber, sortable: true },
     {
       key: 'amount',
-      label: 'Amount',
+      label: T.amount,
       sortable: true,
       render: (value: number) => <span className="text-slate-900 font-medium">{formatCurrency(value)}</span>,
     },
     {
       key: 'paidAmount',
-      label: 'Paid',
+      label: T.paidAmount,
       sortable: true,
       render: (value: number) => <span className="text-green-600">{formatCurrency(value)}</span>,
     },
     {
       key: 'balance',
-      label: 'Balance',
+      label: T.balance,
       sortable: true,
       render: (value: number) => (
         <span className={value > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>{formatCurrency(value)}</span>
@@ -424,13 +462,13 @@ export default function CustomerDetailPage() {
     },
     {
       key: 'status',
-      label: 'Status',
+      label: T.status,
       sortable: true,
-      render: (value: string) => statusBadge(value),
+      render: (value: string) => statusBadge(value, lang),
     },
     {
       key: 'dueDate',
-      label: 'Due Date',
+      label: T.dueDate,
       sortable: true,
       render: (value: string) => formatDate(value),
     },
@@ -439,19 +477,19 @@ export default function CustomerDetailPage() {
   const paymentColumns = [
     {
       key: 'paymentDate',
-      label: 'Date',
+      label: T.date,
       sortable: true,
       render: (value: string) => formatDate(value),
     },
     {
       key: 'amount',
-      label: 'Amount',
+      label: T.amount,
       sortable: true,
       render: (value: number) => <span className="text-green-600 font-medium">{formatCurrency(value)}</span>,
     },
     {
       key: 'paymentMethod',
-      label: 'Method',
+      label: txx.method,
       sortable: true,
       render: (value: string) => (
         <span className="capitalize">{value?.replace(/_/g, ' ') || '-'}</span>
@@ -459,20 +497,20 @@ export default function CustomerDetailPage() {
     },
     {
       key: 'invoice',
-      label: 'Invoice #',
+      label: T.invoiceNumber,
       sortable: false,
       render: (_: any, row: Payment) => row.invoice?.invoiceNumber || '-',
     },
     {
       key: 'receivedBy',
-      label: 'Collected By',
+      label: txx.collectedBy,
       sortable: false,
       render: (_: any, row: Payment) =>
         row.receivedBy ? `${row.receivedBy.firstName} ${row.receivedBy.lastName}` : '-',
     },
     {
       key: 'notes',
-      label: 'Notes',
+      label: T.notes,
       sortable: false,
       render: (value: string) => value || '-',
     },
@@ -481,22 +519,22 @@ export default function CustomerDetailPage() {
   const collectionColumns = [
     {
       key: 'date',
-      label: 'Date',
+      label: T.date,
       sortable: true,
       render: (value: string) => formatDate(value),
     },
     {
       key: 'type',
-      label: 'Type',
+      label: T.type,
       sortable: true,
       render: (value: string) => (
         <span className="capitalize">{value?.replace(/_/g, ' ') || '-'}</span>
       ),
     },
-    { key: 'notes', label: 'Notes', sortable: false },
+    { key: 'notes', label: T.notes, sortable: false },
     {
       key: 'result',
-      label: 'Result',
+      label: txx.result,
       sortable: true,
       render: (value: string) => (
         <span className="capitalize">{value?.replace(/_/g, ' ') || '-'}</span>
@@ -504,7 +542,7 @@ export default function CustomerDetailPage() {
     },
     {
       key: 'collectedBy',
-      label: 'Agent',
+      label: txx.agent,
       sortable: false,
       render: (_: any, row: CollectionActivity) =>
         row.collectedBy ? `${row.collectedBy.firstName} ${row.collectedBy.lastName}` : '-',
@@ -605,27 +643,27 @@ export default function CustomerDetailPage() {
               </div>
               <div className="flex items-center gap-2 flex-wrap mt-1">
                 <span className="text-slate-500 text-sm flex items-center gap-1">
-                  <MapPin className="w-3 h-3" /> {customer.office || 'No office'}
+                  <MapPin className="w-3 h-3" /> {customer.office || txx.noOffice}
                 </span>
                 <span className="text-slate-600">|</span>
-                {riskBadge(customer.riskLevel, customer.riskScore)}
+                {riskBadge(customer.riskLevel, lang, customer.riskScore)}
                 {customer.grade && (
                   <>
                     <span className="text-slate-600">|</span>
-                    {gradeBadge(customer.grade)}
+                    {gradeBadge(customer.grade, lang)}
                   </>
                 )}
                 {customer.clientStatus && (
                   <>
                     <span className="text-slate-600">|</span>
-                    {clientStatusBadge(customer.clientStatus)}
+                    {clientStatusBadge(customer.clientStatus, lang)}
                   </>
                 )}
                 {customer.isStopped && (
                   <>
                     <span className="text-slate-600">|</span>
                     <span className="px-2.5 py-1 rounded-lg text-xs font-bold border bg-red-500/20 text-red-600 border-red-500/30">
-                      STOPPED
+                      {txx.stoppedBadge}
                     </span>
                   </>
                 )}
@@ -636,14 +674,14 @@ export default function CustomerDetailPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <input
             type="date"
-            aria-label="Statement from date"
+            aria-label={txx.statementFromDate}
             value={statementFrom}
             onChange={(e) => setStatementFrom(e.target.value)}
             className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
           />
           <input
             type="date"
-            aria-label="Statement to date"
+            aria-label={txx.statementToDate}
             value={statementTo}
             onChange={(e) => setStatementTo(e.target.value)}
             className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
@@ -660,7 +698,7 @@ export default function CustomerDetailPage() {
             type="button"
             onClick={handleExportCustomerDetails}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm hover:bg-slate-100 transition-colors"
-            title="Export to Excel"
+            title={txx.exportToExcel}
           >
             <FileSpreadsheet className="w-4 h-4" />
             {T.downloadExcel}
@@ -722,7 +760,7 @@ export default function CustomerDetailPage() {
             <CreditCard className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-xs text-slate-500">{T.creditTerm}</p>
-              <p className="text-sm text-slate-900">{customer.creditTerm} days</p>
+              <p className="text-sm text-slate-900">{customer.creditTerm} {txx.daysUnit}</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
@@ -743,7 +781,7 @@ export default function CustomerDetailPage() {
             <AlertTriangle className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-xs text-slate-500">{T.riskLevel}</p>
-              <div className="mt-0.5">{riskBadge(customer.riskLevel, customer.riskScore)}</div>
+              <div className="mt-0.5">{riskBadge(customer.riskLevel, lang, customer.riskScore)}</div>
             </div>
           </div>
           {customer.customerNumber && (
@@ -769,7 +807,7 @@ export default function CustomerDetailPage() {
               <TrendingUp className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-xs text-slate-500">{T.grade}</p>
-                <div className="mt-0.5">{gradeBadge(customer.grade)}</div>
+                <div className="mt-0.5">{gradeBadge(customer.grade, lang)}</div>
               </div>
             </div>
           )}
@@ -778,7 +816,7 @@ export default function CustomerDetailPage() {
               <Activity className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-xs text-slate-500">{T.clientStatus}</p>
-                <div className="mt-0.5">{clientStatusBadge(customer.clientStatus)}</div>
+                <div className="mt-0.5">{clientStatusBadge(customer.clientStatus, lang)}</div>
               </div>
             </div>
           )}
@@ -827,13 +865,13 @@ export default function CustomerDetailPage() {
               <p className="text-slate-700 text-sm mt-1">{followUp.recommendedAction}</p>
               <div className="flex flex-wrap gap-4 mt-3">
                 <span className="text-xs text-slate-500">
-                  Suggested Date: <span className="text-slate-900">{formatDate(followUp.suggestedDate)}</span>
+                  {txx.suggestedDate}: <span className="text-slate-900">{formatDate(followUp.suggestedDate)}</span>
                 </span>
                 <span className="text-xs text-slate-500">
-                  Priority: <span className={`font-medium capitalize ${followUp.priority === 'high' ? 'text-red-600' : followUp.priority === 'medium' ? 'text-yellow-700' : 'text-green-600'}`}>{followUp.priority}</span>
+                  {txx.priority}: <span className={`font-medium capitalize ${followUp.priority === 'high' ? 'text-red-600' : followUp.priority === 'medium' ? 'text-yellow-700' : 'text-green-600'}`}>{riskLevelLabels(lang)[followUp.priority] || followUp.priority}</span>
                 </span>
                 <span className="text-xs text-slate-500">
-                  Reason: <span className="text-slate-900">{followUp.reason}</span>
+                  {txx.reason}: <span className="text-slate-900">{followUp.reason}</span>
                 </span>
               </div>
             </div>
@@ -890,7 +928,7 @@ export default function CustomerDetailPage() {
                   columns={invoiceColumns}
                   data={invoices}
                   searchable
-                  searchPlaceholder="Search invoices..."
+                  searchPlaceholder={txx.searchInvoices}
                   onRowClick={(row) => router.push(`/system/invoices/${row._id}`)}
                   emptyMessage={T.noInvoices}
                 />
@@ -907,7 +945,7 @@ export default function CustomerDetailPage() {
                   columns={paymentColumns}
                   data={payments}
                   searchable
-                  searchPlaceholder="Search payments..."
+                  searchPlaceholder={txx.searchPayments}
                   emptyMessage={T.noPayments}
                 />
               </motion.div>
@@ -923,7 +961,7 @@ export default function CustomerDetailPage() {
                   columns={collectionColumns}
                   data={collections}
                   searchable
-                  searchPlaceholder="Search collection activities..."
+                  searchPlaceholder={txx.searchCollections}
                   emptyMessage={T.noActivity}
                 />
               </motion.div>
@@ -939,7 +977,7 @@ export default function CustomerDetailPage() {
                   columns={pendingInvoiceColumns}
                   data={pendingInvoices}
                   searchable
-                  searchPlaceholder="Search pending invoices..."
+                  searchPlaceholder={txx.searchPendingInvoices}
                   emptyMessage={T.noPendingInvoices}
                 />
               </motion.div>
@@ -962,14 +1000,14 @@ export default function CustomerDetailPage() {
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-              <p className="text-xs text-slate-500 uppercase tracking-wide">Overall Risk Score</p>
+              <p className="text-xs text-slate-500 uppercase tracking-wide">{txx.overallRiskScore}</p>
               <p className="text-3xl font-bold text-slate-900 mt-1">{riskAnalysis.riskScore}%</p>
-              <div className="mt-1">{riskBadge(riskAnalysis.riskLevel)}</div>
+              <div className="mt-1">{riskBadge(riskAnalysis.riskLevel, lang)}</div>
             </div>
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-              <p className="text-xs text-slate-500 uppercase tracking-wide">Risk Factors</p>
+              <p className="text-xs text-slate-500 uppercase tracking-wide">{txx.riskFactors}</p>
               <p className="text-3xl font-bold text-slate-900 mt-1">{riskAnalysis.factors.length}</p>
-              <p className="text-xs text-slate-500 mt-1">Contributing factors</p>
+              <p className="text-xs text-slate-500 mt-1">{txx.contributingFactors}</p>
             </div>
           </div>
 
@@ -982,7 +1020,7 @@ export default function CustomerDetailPage() {
                   </p>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-slate-500">
-                      Weight: {(factor.weight * 100).toFixed(0)}%
+                      {txx.weight}: {(factor.weight * 100).toFixed(0)}%
                     </span>
                     <span className={`text-sm font-bold ${
                       factor.score >= 70 ? 'text-red-600' :
@@ -1056,7 +1094,7 @@ export default function CustomerDetailPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Current Credit Term: <span className="text-[#f37121] font-bold">{customer.creditTerm} days</span>
+                    {txx.currentCreditTerm}: <span className="text-[#f37121] font-bold">{customer.creditTerm} {txx.daysUnit}</span>
                   </label>
                 </div>
 
@@ -1067,10 +1105,10 @@ export default function CustomerDetailPage() {
                     onChange={(e) => setNewCreditTerm(Number(e.target.value))}
                     className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
-                    <option value={15}>15 Days</option>
-                    <option value={30}>30 Days</option>
-                    <option value={45}>45 Days</option>
-                    <option value={60}>60 Days</option>
+                    <option value={15}>15 {txx.daysUnit}</option>
+                    <option value={30}>30 {txx.daysUnit}</option>
+                    <option value={45}>45 {txx.daysUnit}</option>
+                    <option value={60}>60 {txx.daysUnit}</option>
                   </select>
                 </div>
 

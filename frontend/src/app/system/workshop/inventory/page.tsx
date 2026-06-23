@@ -11,6 +11,7 @@ import {
   Check, XCircle,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { getWorkshopInventoryTranslations } from '@/lib/translations';
 
 interface InventoryItem {
   _id: string;
@@ -45,7 +46,7 @@ const EMPTY_FORM = {
 export default function InventoryPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
-  const isAr = lang === 'ar';
+  const tx = getWorkshopInventoryTranslations(lang);
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,7 +144,7 @@ export default function InventoryPage() {
 
   const handleSave = async () => {
     if (!form.code.trim() || !form.name.trim()) {
-      setError(isAr ? 'الكود والاسم مطلوبان' : 'Code and name are required');
+      setError(tx.codeNameRequired);
       return;
     }
     try {
@@ -192,17 +193,17 @@ export default function InventoryPage() {
 
   const handleExport = () => {
     exportToExcel(items, [
-      { header: isAr ? 'الكود' : 'Code', key: 'code', width: 15 },
-      { header: isAr ? 'الاسم' : 'Name', key: 'name', width: 25 },
-      { header: isAr ? 'الفئة' : 'Category', key: 'category', width: 15 },
-      { header: isAr ? 'الكمية' : 'Quantity', key: 'quantity', width: 10 },
-      { header: isAr ? 'الحد الأدنى' : 'Min Qty', key: 'minQuantity', width: 10 },
-      { header: isAr ? 'الوحدة' : 'Unit', key: 'unit', width: 10 },
-      { header: isAr ? 'سعر التكلفة' : 'Cost Price', key: 'costPrice', transform: fmt.money, width: 12 },
-      { header: isAr ? 'الموقع' : 'Location', key: 'location', width: 15 },
-      { header: isAr ? 'المورد' : 'Supplier', key: 'supplier', width: 20 },
-      { header: isAr ? 'ملاحظات' : 'Notes', key: 'notes', width: 25 },
-    ], 'inventory', isAr ? 'المخزون' : 'Inventory');
+      { header: tx.colCode, key: 'code', width: 15 },
+      { header: tx.colName, key: 'name', width: 25 },
+      { header: tx.colCategory, key: 'category', width: 15 },
+      { header: tx.colQuantity, key: 'quantity', width: 10 },
+      { header: tx.colMinQty, key: 'minQuantity', width: 10 },
+      { header: tx.colUnit, key: 'unit', width: 10 },
+      { header: tx.colCostPrice, key: 'costPrice', transform: fmt.money, width: 12 },
+      { header: tx.colLocation, key: 'location', width: 15 },
+      { header: tx.colSupplier, key: 'supplier', width: 20 },
+      { header: tx.colNotes, key: 'notes', width: 25 },
+    ], 'inventory', tx.pageTitle);
   };
 
   // Collect unique categories for filter
@@ -219,7 +220,7 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <Package className="w-7 h-7 text-[#f37121]" />
-          <h1 className="text-2xl font-bold text-slate-900">{isAr ? 'المخزون' : 'Inventory'}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{tx.pageTitle}</h1>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -229,7 +230,7 @@ export default function InventoryPage() {
             className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            {isAr ? 'تصدير' : 'Export'}
+            {tx.export}
           </button>
           {canEdit && (
             <button
@@ -238,7 +239,7 @@ export default function InventoryPage() {
               className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e06010] text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
             >
               <Plus className="w-4 h-4" />
-              {isAr ? 'إضافة صنف' : 'Add Item'}
+              {tx.addItem}
             </button>
           )}
         </div>
@@ -254,12 +255,12 @@ export default function InventoryPage() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[240px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
-            placeholder={isAr ? 'بحث بالاسم أو الكود...' : 'Search by name or code...'}
+            placeholder={tx.searchPlaceholder}
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
             className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 text-sm pl-10 pr-3 py-2.5 focus:outline-none focus:border-[#f37121]"
@@ -268,9 +269,9 @@ export default function InventoryPage() {
         <select
           value={categoryFilter}
           onChange={e => { setCategoryFilter(e.target.value); setPage(1); }}
-          className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
+          className="w-full sm:w-44 shrink-0 bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
         >
-          <option value="">{isAr ? 'كل الفئات' : 'All Categories'}</option>
+          <option value="">{tx.allCategories}</option>
           {categories.map(c => (
             <option key={c} value={c}>{c}</option>
           ))}
@@ -279,13 +280,13 @@ export default function InventoryPage() {
           <select
             value={approvalFilter}
             onChange={e => { setApprovalFilter(e.target.value); setPage(1); }}
-            aria-label={isAr ? 'تصفية حالة الموافقة' : 'Filter by approval status'}
-            className="bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
+            aria-label={tx.filterByApproval}
+            className="w-full sm:w-44 shrink-0 bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
           >
-            <option value="">{isAr ? 'كل الحالات' : 'All Statuses'}</option>
-            <option value="pending">{isAr ? 'قيد الانتظار' : 'Pending'}</option>
-            <option value="approved">{isAr ? 'موافق عليه' : 'Approved'}</option>
-            <option value="rejected">{isAr ? 'مرفوض' : 'Rejected'}</option>
+            <option value="">{tx.allStatuses}</option>
+            <option value="pending">{tx.pending}</option>
+            <option value="approved">{tx.approved}</option>
+            <option value="rejected">{tx.rejected}</option>
           </select>
         )}
       </div>
@@ -298,7 +299,7 @@ export default function InventoryPage() {
       ) : items.length === 0 ? (
         <div className="text-center py-20 text-slate-500">
           <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p>{isAr ? 'لا توجد أصناف في المخزون' : 'No inventory items found'}</p>
+          <p>{tx.noItems}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -306,17 +307,17 @@ export default function InventoryPage() {
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
                 {[
-                  isAr ? 'الكود' : 'Code',
-                  isAr ? 'الاسم' : 'Name',
-                  isAr ? 'الفئة' : 'Category',
-                  isAr ? 'الكمية' : 'Qty',
-                  isAr ? 'الحد الأدنى' : 'Min',
-                  isAr ? 'الوحدة' : 'Unit',
-                  isAr ? 'التكلفة' : 'Cost',
-                  isAr ? 'الموقع' : 'Location',
-                  isAr ? 'المورد' : 'Supplier',
-                  isAr ? 'الموافقة' : 'Approval',
-                  isAr ? 'إجراءات' : 'Actions',
+                  tx.colCode,
+                  tx.colName,
+                  tx.colCategory,
+                  tx.thQty,
+                  tx.thMin,
+                  tx.colUnit,
+                  tx.thCost,
+                  tx.colLocation,
+                  tx.colSupplier,
+                  tx.thApproval,
+                  tx.thActions,
                 ].map((h, i) => (
                   <th key={i} className="text-left text-slate-300 font-semibold py-3 px-3 whitespace-nowrap">{h}</th>
                 ))}
@@ -333,7 +334,7 @@ export default function InventoryPage() {
                     <div className="flex items-center gap-2">
                       {item.name}
                       {item.lowStock && (
-                        <span className="flex items-center gap-1 text-orange-600" title={isAr ? 'مخزون منخفض' : 'Low Stock'}>
+                        <span className="flex items-center gap-1 text-orange-600" title={tx.lowStock}>
                           <AlertTriangle className="w-3.5 h-3.5" />
                         </span>
                       )}
@@ -352,17 +353,17 @@ export default function InventoryPage() {
                     <div className="flex items-center gap-2">
                       {item.approvalStatus === 'approved' && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-600">
-                          {isAr ? 'موافق عليه' : 'Approved'}
+                          {tx.approved}
                         </span>
                       )}
                       {item.approvalStatus === 'rejected' && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-600">
-                          {isAr ? 'مرفوض' : 'Rejected'}
+                          {tx.rejected}
                         </span>
                       )}
                       {(!item.approvalStatus || item.approvalStatus === 'pending') && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-700">
-                          {isAr ? 'قيد الانتظار' : 'Pending Approval'}
+                          {tx.pendingApproval}
                         </span>
                       )}
                       {canApprove && (!item.approvalStatus || item.approvalStatus === 'pending') && (
@@ -372,7 +373,7 @@ export default function InventoryPage() {
                             onClick={() => handleApproval(item._id, 'approved')}
                             disabled={approving === item._id}
                             className="p-1 rounded-md bg-green-500/20 text-green-600 hover:bg-green-500/30 transition-colors disabled:opacity-50"
-                            title={isAr ? 'موافقة' : 'Approve'}
+                            title={tx.approve}
                           >
                             {approving === item._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                           </button>
@@ -381,7 +382,7 @@ export default function InventoryPage() {
                             onClick={() => { setRejectModalId(item._id); setRejectNote(''); }}
                             disabled={approving === item._id}
                             className="p-1 rounded-md bg-red-500/20 text-red-600 hover:bg-red-500/30 transition-colors disabled:opacity-50"
-                            title={isAr ? 'رفض' : 'Reject'}
+                            title={tx.reject}
                           >
                             <XCircle className="w-3.5 h-3.5" />
                           </button>
@@ -395,7 +396,7 @@ export default function InventoryPage() {
                         <button
                           onClick={() => openEditModal(item)}
                           className="p-1.5 rounded-lg bg-blue-500/20 text-blue-600 hover:bg-blue-500/30 transition-colors"
-                          title={isAr ? 'تعديل' : 'Edit'}
+                          title={tx.edit}
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -404,7 +405,7 @@ export default function InventoryPage() {
                         <button
                           onClick={() => setDeleteId(item._id)}
                           className="p-1.5 rounded-lg bg-red-500/20 text-red-600 hover:bg-red-500/30 transition-colors"
-                          title={isAr ? 'حذف' : 'Delete'}
+                          title={tx.delete}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -421,7 +422,7 @@ export default function InventoryPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-slate-500 text-sm">{isAr ? `${total} نتيجة` : `${total} results`}</p>
+          <p className="text-slate-500 text-sm">{`${total} ${tx.resultsSuffix}`}</p>
           <div className="flex items-center gap-2">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
               className="p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed">
@@ -451,68 +452,62 @@ export default function InventoryPage() {
               <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-sm" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
                   <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">
-                    {editingId
-                      ? (isAr ? 'تعديل صنف' : 'Edit Item')
-                      : (isAr ? 'إضافة صنف جديد' : 'Add New Item')
-                    }
+                    {editingId ? tx.editItem : tx.addNewItem}
                   </h2>
                   <button onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>{isAr ? 'الكود' : 'Code'} *</label>
+                    <label className={labelClass}>{tx.colCode} *</label>
                     <input type="text" value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value }))} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{isAr ? 'الاسم' : 'Name'} *</label>
+                    <label className={labelClass}>{tx.colName} *</label>
                     <input type="text" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{isAr ? 'الفئة' : 'Category'}</label>
+                    <label className={labelClass}>{tx.colCategory}</label>
                     <input type="text" value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{isAr ? 'الكمية' : 'Quantity'}</label>
+                    <label className={labelClass}>{tx.colQuantity}</label>
                     <input type="number" min={0} value={form.quantity} onChange={e => setForm(p => ({ ...p, quantity: parseInt(e.target.value) || 0 }))} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{isAr ? 'الحد الأدنى' : 'Min Quantity'}</label>
+                    <label className={labelClass}>{tx.minQuantity}</label>
                     <input type="number" min={0} value={form.minQuantity} onChange={e => setForm(p => ({ ...p, minQuantity: parseInt(e.target.value) || 0 }))} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{isAr ? 'الوحدة' : 'Unit'}</label>
+                    <label className={labelClass}>{tx.colUnit}</label>
                     <input type="text" value={form.unit} onChange={e => setForm(p => ({ ...p, unit: e.target.value }))} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{isAr ? 'سعر التكلفة' : 'Cost Price'}</label>
+                    <label className={labelClass}>{tx.colCostPrice}</label>
                     <input type="number" min={0} step="0.01" value={form.costPrice} onChange={e => setForm(p => ({ ...p, costPrice: parseFloat(e.target.value) || 0 }))} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{isAr ? 'الموقع' : 'Location'}</label>
+                    <label className={labelClass}>{tx.colLocation}</label>
                     <input type="text" value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{isAr ? 'المورد' : 'Supplier'}</label>
+                    <label className={labelClass}>{tx.colSupplier}</label>
                     <input type="text" value={form.supplier} onChange={e => setForm(p => ({ ...p, supplier: e.target.value }))} className={inputClass} />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className={labelClass}>{isAr ? 'ملاحظات' : 'Notes'}</label>
+                    <label className={labelClass}>{tx.colNotes}</label>
                     <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} className={inputClass} />
                   </div>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-2">
                   <button onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {isAr ? 'إلغاء' : 'Cancel'}
+                    {tx.cancel}
                   </button>
                   <button onClick={handleSave} disabled={saving}
                     className="px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2">
                     {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {editingId
-                      ? (isAr ? 'حفظ التعديلات' : 'Save Changes')
-                      : (isAr ? 'إضافة' : 'Add Item')
-                    }
+                    {editingId ? tx.saveChanges : tx.add}
                   </button>
                 </div>
               </div>
@@ -539,18 +534,18 @@ export default function InventoryPage() {
                     <Trash2 className="w-5 h-5 text-red-600" />
                   </div>
                   <div>
-                    <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold mb-3">{isAr ? 'تأكيد الحذف' : 'Confirm Delete'}</h3>
-                    <p className="text-slate-500 text-sm">{isAr ? 'هل أنت متأكد من حذف هذا الصنف؟' : 'Are you sure you want to delete this item?'}</p>
+                    <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold mb-3">{tx.confirmDelete}</h3>
+                    <p className="text-slate-500 text-sm">{tx.deleteConfirmText}</p>
                   </div>
                 </div>
                 <div className="flex justify-end gap-3">
                   <button onClick={() => setDeleteId(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {isAr ? 'إلغاء' : 'Cancel'}
+                    {tx.cancel}
                   </button>
                   <button onClick={handleDelete} disabled={deleting}
                     className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2">
                     {deleting && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {isAr ? 'حذف' : 'Delete'}
+                    {tx.delete}
                   </button>
                 </div>
               </div>
@@ -576,20 +571,20 @@ export default function InventoryPage() {
                     <XCircle className="w-5 h-5 text-red-600" />
                   </div>
                   <div>
-                    <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold mb-3">{isAr ? 'رفض الصنف' : 'Reject Item'}</h3>
-                    <p className="text-slate-500 text-sm">{isAr ? 'أضف ملاحظة (اختياري)' : 'Add a note (optional)'}</p>
+                    <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold mb-3">{tx.rejectItem}</h3>
+                    <p className="text-slate-500 text-sm">{tx.addNoteOptional}</p>
                   </div>
                 </div>
                 <textarea
                   value={rejectNote}
                   onChange={e => setRejectNote(e.target.value)}
-                  placeholder={isAr ? 'سبب الرفض...' : 'Reason for rejection...'}
+                  placeholder={tx.rejectionReasonPlaceholder}
                   rows={3}
                   className={inputClass}
                 />
                 <div className="flex justify-end gap-3">
                   <button type="button" onClick={() => setRejectModalId(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {isAr ? 'إلغاء' : 'Cancel'}
+                    {tx.cancel}
                   </button>
                   <button
                     type="button"
@@ -598,7 +593,7 @@ export default function InventoryPage() {
                     className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2"
                   >
                     {approving === rejectModalId && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {isAr ? 'رفض' : 'Reject'}
+                    {tx.reject}
                   </button>
                 </div>
               </div>

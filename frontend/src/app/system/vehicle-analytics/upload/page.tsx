@@ -4,6 +4,8 @@ import vehicleDB, { STORES } from '@/lib/vehicleAnalyticsDB';
 import type { UploadSession } from '@/lib/vehicleAnalyticsDB';
 import * as XLSX from 'xlsx';
 import { Upload, Fuel, MapPin, Truck, Loader2, Trash2, ChevronDown, ChevronUp, Database, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
+import { getVehicleAnalyticsUploadTranslations } from '@/lib/translations';
 
 function simpleHash(str: string): string {
   let h = 0;
@@ -253,13 +255,15 @@ function parseHTTrips(wb: XLSX.WorkBook): { trips: Record<string, any>[]; kms: R
   return { trips, kms };
 }
 
-const SECTIONS: { key: SourceKey; title: string; subtitle: string; icon: typeof Fuel; stores: string[] }[] = [
-  { key: 'petro_app', title: 'Petro App', subtitle: 'Fuel consumption data', icon: Fuel, stores: [STORES.PETRO] },
-  { key: 'location_solution', title: 'Location Solution', subtitle: 'GPS movements & odometer', icon: MapPin, stores: [STORES.GPS_MOVEMENTS, STORES.GPS_ODOMETER] },
-  { key: 'ht_trips', title: 'HT Trips', subtitle: 'Trip records & KM data', icon: Truck, stores: [STORES.HT_TRIPS, STORES.HT_KMS] },
+const SECTIONS: { key: SourceKey; titleKey: 'petroAppTitle' | 'locationSolutionTitle' | 'htTripsTitle'; subtitleKey: 'petroAppSubtitle' | 'locationSolutionSubtitle' | 'htTripsSubtitle'; icon: typeof Fuel; stores: string[] }[] = [
+  { key: 'petro_app', titleKey: 'petroAppTitle', subtitleKey: 'petroAppSubtitle', icon: Fuel, stores: [STORES.PETRO] },
+  { key: 'location_solution', titleKey: 'locationSolutionTitle', subtitleKey: 'locationSolutionSubtitle', icon: MapPin, stores: [STORES.GPS_MOVEMENTS, STORES.GPS_ODOMETER] },
+  { key: 'ht_trips', titleKey: 'htTripsTitle', subtitleKey: 'htTripsSubtitle', icon: Truck, stores: [STORES.HT_TRIPS, STORES.HT_KMS] },
 ];
 
 export default function VehicleAnalyticsUploadPage() {
+  const { lang } = useLanguage();
+  const tx = getVehicleAnalyticsUploadTranslations(lang);
   const [sections, setSections] = useState<Record<SourceKey, SectionState>>({ petro_app: { ...initialSection }, location_solution: { ...initialSection }, ht_trips: { ...initialSection } });
   const [summary, setSummary] = useState({ petroCount: 0, gpsMovCount: 0, gpsOdoCount: 0, htTripsCount: 0, htKmsCount: 0 });
   const fileRefs = { petro_app: useRef<HTMLInputElement>(null), location_solution: useRef<HTMLInputElement>(null), ht_trips: useRef<HTMLInputElement>(null) };
@@ -292,7 +296,7 @@ export default function VehicleAnalyticsUploadPage() {
 
       // Duplicate check
       const dup = await vehicleDB.isDuplicate(key, hash);
-      if (dup) { updateSection(key, { loading: false, error: 'This file was already imported.' }); return; }
+      if (dup) { updateSection(key, { loading: false, error: tx.errorDuplicate }); return; }
       updateSection(key, { progress: 40 });
 
       // Parse
@@ -320,22 +324,22 @@ export default function VehicleAnalyticsUploadPage() {
         totalRecords = trips.length + kms.length;
       }
 
-      if (totalRecords === 0) { updateSection(key, { loading: false, error: 'No records found in file.' }); return; }
+      if (totalRecords === 0) { updateSection(key, { loading: false, error: tx.errorNoRecords }); return; }
 
       // Log session
       await vehicleDB.addSession({
         source: key, uploadDate: new Date().toISOString(), periodStart: '', periodEnd: '',
         recordCount: totalRecords, fileName: file.name, fileHash: hash,
       });
-      updateSection(key, { progress: 100, loading: false, success: `Imported ${totalRecords} records from ${file.name}` });
+      updateSection(key, { progress: 100, loading: false, success: `${tx.importedPrefix} ${totalRecords} ${tx.recordsFromMid} ${file.name}` });
       await loadStats();
     } catch (err: any) {
-      updateSection(key, { loading: false, error: err.message || 'Failed to parse file' });
+      updateSection(key, { loading: false, error: err.message || tx.errorParseFailed });
     }
   };
 
   const handleClear = async (key: SourceKey) => {
-    if (!confirm('Clear all data for this source? This cannot be undone.')) return;
+    if (!confirm(tx.confirmClear)) return;
     await vehicleDB.clearSource(key);
     updateSection(key, { file: null, success: '', error: '', sessions: [], recordCount: 0 });
     await loadStats();
@@ -346,7 +350,7 @@ export default function VehicleAnalyticsUploadPage() {
     updateSection(key, { dragOver: false });
     const file = e.dataTransfer.files?.[0];
     if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) handleImport(key, file);
-    else updateSection(key, { error: 'Please upload an .xlsx or .xls file' });
+    else updateSection(key, { error: tx.errorFileType });
   };
 
   const onFileChange = (key: SourceKey) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -363,13 +367,13 @@ export default function VehicleAnalyticsUploadPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
           <Database className="w-7 h-7 text-[#f37121]" />
-          Vehicle Analytics Upload Center
+          {tx.pageTitle}
         </h1>
-        <p className="text-slate-500 text-sm mt-1">Import data from Petro App, Location Solution, and HT Trips</p>
+        <p className="text-slate-500 text-sm mt-1">{tx.pageSubtitle}</p>
       </div>
 
       {/* Upload Sections */}
-      {SECTIONS.map(({ key, title, subtitle, icon: Icon }) => {
+      {SECTIONS.map(({ key, titleKey, subtitleKey, icon: Icon }) => {
         const s = sections[key];
         const lastSession = s.sessions[s.sessions.length - 1];
         return (
@@ -381,18 +385,18 @@ export default function VehicleAnalyticsUploadPage() {
                   <Icon className="w-5 h-5 text-[#f37121]" />
                 </div>
                 <div>
-                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{title}</h2>
-                  <p className="text-slate-500 text-xs">{subtitle}</p>
+                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx[titleKey]}</h2>
+                  <p className="text-slate-500 text-xs">{tx[subtitleKey]}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 {s.recordCount > 0 && (
                   <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-                    {s.recordCount.toLocaleString()} records
+                    {s.recordCount.toLocaleString()} {tx.records}
                   </span>
                 )}
                 {s.recordCount > 0 && (
-                  <button onClick={() => handleClear(key)} title="Clear data"
+                  <button onClick={() => handleClear(key)} title={tx.clearData}
                     className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-400/10 rounded-lg transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -403,9 +407,9 @@ export default function VehicleAnalyticsUploadPage() {
             {/* Last import info */}
             {lastSession && (
               <div className="px-5 py-2.5 bg-slate-100 border-b border-slate-200 text-xs text-slate-500 flex items-center gap-4">
-                <span>Last: <span className="text-slate-700">{lastSession.fileName}</span></span>
+                <span>{tx.lastLabel} <span className="text-slate-700">{lastSession.fileName}</span></span>
                 <span>{new Date(lastSession.uploadDate).toLocaleDateString()}</span>
-                <span>{lastSession.recordCount} records</span>
+                <span>{lastSession.recordCount} {tx.records}</span>
               </div>
             )}
 
@@ -434,7 +438,7 @@ export default function VehicleAnalyticsUploadPage() {
                 {s.loading ? (
                   <div className="space-y-3">
                     <Loader2 className="w-8 h-8 text-[#f37121] mx-auto animate-spin" />
-                    <p className="text-slate-500 text-sm">Importing... {s.progress}%</p>
+                    <p className="text-slate-500 text-sm">{tx.importing} {s.progress}%</p>
                     <div className="w-48 mx-auto h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full bg-[#f37121] rounded-full transition-all duration-300" style={{ width: `${s.progress}%` }} />
                     </div>
@@ -442,7 +446,7 @@ export default function VehicleAnalyticsUploadPage() {
                 ) : (
                   <>
                     <Upload className="w-7 h-7 text-slate-500 mx-auto mb-2" />
-                    <p className="text-slate-500 text-sm">Drop Excel file here or click to browse</p>
+                    <p className="text-slate-500 text-sm">{tx.dropZone}</p>
                     <p className="text-slate-600 text-xs mt-1">.xlsx / .xls</p>
                   </>
                 )}
@@ -455,7 +459,7 @@ export default function VehicleAnalyticsUploadPage() {
               <div className="border-t border-slate-200">
                 <button onClick={() => updateSection(key, { historyOpen: !s.historyOpen })}
                   className="w-full px-5 py-2.5 flex items-center justify-between text-xs text-slate-500 hover:bg-slate-100 transition-colors">
-                  <span>Import History ({s.sessions.length})</span>
+                  <span>{tx.importHistory} ({s.sessions.length})</span>
                   {s.historyOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
                 {s.historyOpen && (
@@ -464,7 +468,7 @@ export default function VehicleAnalyticsUploadPage() {
                       <div key={i} className="flex items-center justify-between text-xs bg-slate-100 rounded-lg px-3 py-2">
                         <span className="text-slate-700 truncate max-w-[200px]">{sess.fileName}</span>
                         <div className="flex items-center gap-3 text-slate-500">
-                          <span>{sess.recordCount} records</span>
+                          <span>{sess.recordCount} {tx.records}</span>
                           <span>{new Date(sess.uploadDate).toLocaleString()}</span>
                         </div>
                       </div>
@@ -480,15 +484,15 @@ export default function VehicleAnalyticsUploadPage() {
       {/* Summary Footer */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm mb-3 flex items-center gap-2">
-          <Database className="w-4 h-4 text-[#f37121]" /> Data Summary
+          <Database className="w-4 h-4 text-[#f37121]" /> {tx.dataSummary}
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            { label: 'Petro App', count: summary.petroCount },
-            { label: 'GPS Movements', count: summary.gpsMovCount },
-            { label: 'GPS Odometer', count: summary.gpsOdoCount },
-            { label: 'HT Trips', count: summary.htTripsCount },
-            { label: 'HT KMs', count: summary.htKmsCount },
+            { label: tx.summaryPetro, count: summary.petroCount },
+            { label: tx.summaryGpsMovements, count: summary.gpsMovCount },
+            { label: tx.summaryGpsOdometer, count: summary.gpsOdoCount },
+            { label: tx.summaryHtTrips, count: summary.htTripsCount },
+            { label: tx.summaryHtKms, count: summary.htKmsCount },
           ].map(({ label, count }) => (
             <div key={label} className="bg-slate-50 rounded-lg px-3 py-2.5 text-center">
               <p className="text-lg font-bold text-slate-900">{count.toLocaleString()}</p>
@@ -497,7 +501,7 @@ export default function VehicleAnalyticsUploadPage() {
           ))}
         </div>
         <div className="mt-3 text-right text-xs text-slate-500">
-          Total: <span className="text-[#f37121] font-medium">{totalRecords.toLocaleString()}</span> records across all sources
+          {tx.totalLabel} <span className="text-[#f37121] font-medium">{totalRecords.toLocaleString()}</span> {tx.recordsAcrossAllSources}
         </div>
       </div>
     </div>

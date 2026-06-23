@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { getCRMTranslations } from '@/lib/translations';
+import { getCRMTranslations, getCrmContactsExtraTranslations } from '@/lib/translations';
 import { Users, Plus, Edit, Trash2, Star } from 'lucide-react';
 import {
   isCrmStaff, CrmContact, CrmCompany, companyName, contactName, exportToExcel, fmt, today,
@@ -21,6 +21,7 @@ export default function CrmContactsPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const T = getCRMTranslations(lang);
+  const txx = getCrmContactsExtraTranslations(lang);
 
   const [items, setItems] = useState<CrmContact[]>([]);
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
@@ -80,22 +81,22 @@ export default function CrmContactsPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Users className="w-5 h-5" />} title={T.contacts} subtitle={`${items.length} ${T.contacts}`}>
         <ExportButton label={T.export} onClick={() => exportToExcel(items, [
-          { header: 'First Name', key: 'firstName', width: 18 },
-          { header: 'Last Name', key: 'lastName', width: 18 },
-          { header: 'Company', key: 'company', transform: (v) => companyName(v), width: 24 },
-          { header: 'Title', key: 'title', width: 18 },
-          { header: 'Phone', key: 'phone', width: 16 },
-          { header: 'Mobile', key: 'mobile', width: 16 },
-          { header: 'Email', key: 'email', width: 24 },
-          { header: 'Primary', key: 'isPrimary', transform: fmt.yesNo, width: 8 },
-          { header: 'Created', key: 'createdAt', transform: fmt.date, width: 14 },
+          { header: T.firstName, key: 'firstName', width: 18 },
+          { header: T.lastName, key: 'lastName', width: 18 },
+          { header: T.company, key: 'company', transform: (v) => companyName(v), width: 24 },
+          { header: txx.colTitle, key: 'title', width: 18 },
+          { header: T.phone, key: 'phone', width: 16 },
+          { header: T.mobile, key: 'mobile', width: 16 },
+          { header: T.email, key: 'email', width: 24 },
+          { header: T.primary, key: 'isPrimary', transform: fmt.yesNo, width: 8 },
+          { header: txx.colCreated, key: 'createdAt', transform: fmt.date, width: 14 },
         ], `crm-contacts-${today()}`, 'Contacts')} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {T.addContact}</PrimaryButton>
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder={T.search} /></div>
-        <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+        <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={T.search} /></div>
+        <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="w-full sm:w-52 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
           <option value="">{T.companies}</option>
           {companies.map((c) => <option key={c._id} value={c._id}>{companyName(c, lang)}</option>)}
         </select>

@@ -4,8 +4,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { motion } from 'framer-motion';
-import { CalendarDays, Clock, Plane, Hourglass, RefreshCw } from 'lucide-react';
+import { CalendarDays, Clock, Plane, Hourglass, RefreshCw, Download } from 'lucide-react';
 import { isRemoteStaff, fmtDuration } from '@/lib/remote';
+import { getRemoteDashboardTranslations } from '@/lib/translations';
+import { exportToExcel } from '@/utils/exportExcel';
 
 interface PerEmployee { userId: string; name: string; daysWorked: number; totalMinutes: number; leaveDays: number }
 interface DashData {
@@ -19,6 +21,7 @@ export default function RemoteDashboardPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  const tx = getRemoteDashboardTranslations(lang);
   const staff = isRemoteStaff(user?.role);
 
   const [data, setData] = useState<DashData | null>(null);
@@ -46,35 +49,59 @@ export default function RemoteDashboardPage() {
   }, [staff]);
 
   const cards = [
-    { icon: <CalendarDays className="w-6 h-6" />, label: ar ? 'أيام العمل' : 'Days Worked', value: data?.summary.daysWorked ?? 0, color: 'text-blue-600 bg-blue-500/10' },
-    { icon: <Clock className="w-6 h-6" />, label: ar ? 'إجمالي الساعات' : 'Total Hours', value: data ? fmtDuration(data.summary.totalMinutes, ar ? 'ar' : 'en') : '—', color: 'text-green-600 bg-green-500/10' },
-    { icon: <Plane className="w-6 h-6" />, label: ar ? 'أيام الإجازات' : 'Leave Days', value: data?.summary.leaveDays ?? 0, color: 'text-purple-600 bg-purple-500/10' },
-    { icon: <Hourglass className="w-6 h-6" />, label: ar ? 'إجازات معلقة' : 'Pending Leaves', value: data?.summary.pendingLeaves ?? 0, color: 'text-amber-700 bg-amber-500/10' },
+    { icon: <CalendarDays className="w-6 h-6" />, label: tx.daysWorked, value: data?.summary.daysWorked ?? 0, color: 'text-blue-600 bg-blue-500/10' },
+    { icon: <Clock className="w-6 h-6" />, label: tx.totalHours, value: data ? fmtDuration(data.summary.totalMinutes, ar ? 'ar' : 'en') : '—', color: 'text-green-600 bg-green-500/10' },
+    { icon: <Plane className="w-6 h-6" />, label: tx.leaveDays, value: data?.summary.leaveDays ?? 0, color: 'text-purple-600 bg-purple-500/10' },
+    { icon: <Hourglass className="w-6 h-6" />, label: tx.pendingLeaves, value: data?.summary.pendingLeaves ?? 0, color: 'text-amber-700 bg-amber-500/10' },
   ];
+
+  const handleExport = () => {
+    const rows = data?.perEmployee ?? [];
+    exportToExcel(
+      rows,
+      [
+        { header: tx.employee, key: 'name', width: 26 },
+        { header: tx.colDays, key: 'daysWorked', width: 14 },
+        { header: tx.colHours, key: 'totalMinutes', width: 16, transform: (v) => fmtDuration(v, ar ? 'ar' : 'en') },
+        { header: tx.leaveDays, key: 'leaveDays', width: 14 },
+      ],
+      'remote-dashboard',
+      tx.perEmployeeBreakdown,
+    );
+  };
+
+  const canExport = staff && !!data && data.perEmployee.length > 0;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">{staff ? (ar ? 'لوحة فريق العمل عن بُعد' : 'Remote Team Dashboard') : (ar ? 'لوحتي' : 'My Dashboard')}</h1>
-        <button type="button" onClick={load} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title="Refresh"><RefreshCw className="w-4 h-4" /></button>
+        <h1 className="text-2xl font-bold text-slate-900">{staff ? tx.teamDashboardTitle : tx.myDashboardTitle}</h1>
+        <div className="flex items-center gap-2">
+          {canExport && (
+            <button type="button" onClick={handleExport} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
+              <Download className="w-4 h-4" />{ar ? 'تصدير Excel' : 'Export Excel'}
+            </button>
+          )}
+          <button type="button" onClick={load} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}><RefreshCw className="w-4 h-4" /></button>
+        </div>
       </div>
 
       {staff && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 shadow-sm">
           <div>
-            <label className="block text-slate-500 text-xs mb-1">{ar ? 'الموظف' : 'Employee'}</label>
-            <select aria-label="Employee" value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm">
-              <option value="">{ar ? 'كل الفريق' : 'Whole team'}</option>
+            <label className="block text-slate-500 text-xs mb-1">{tx.employee}</label>
+            <select aria-label={tx.employee} value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm">
+              <option value="">{tx.wholeTeam}</option>
               {employees.map((e) => <option key={e._id} value={e._id}>{e.firstName} {e.lastName}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-slate-500 text-xs mb-1">{ar ? 'من' : 'From'}</label>
-            <input aria-label="From" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
+            <label className="block text-slate-500 text-xs mb-1">{tx.from}</label>
+            <input aria-label={tx.from} type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
           </div>
           <div>
-            <label className="block text-slate-500 text-xs mb-1">{ar ? 'إلى' : 'To'}</label>
-            <input aria-label="To" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
+            <label className="block text-slate-500 text-xs mb-1">{tx.to}</label>
+            <input aria-label={tx.to} type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" />
           </div>
         </div>
       )}
@@ -95,14 +122,14 @@ export default function RemoteDashboardPage() {
 
           {staff && data && data.perEmployee.length > 0 && (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden overflow-x-auto shadow-sm">
-              <div className="px-4 py-3 border-b border-slate-200"><h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{ar ? 'تفصيل لكل موظف' : 'Per-Employee Breakdown'}</h2></div>
+              <div className="px-4 py-3 border-b border-slate-200"><h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.perEmployeeBreakdown}</h2></div>
               <table className="w-full text-sm">
                 <thead className="bg-slate-900 text-slate-300 text-xs uppercase">
                   <tr>
-                    <th className="text-start px-4 py-3">{ar ? 'الموظف' : 'Employee'}</th>
-                    <th className="text-start px-4 py-3">{ar ? 'أيام العمل' : 'Days'}</th>
-                    <th className="text-start px-4 py-3">{ar ? 'الساعات' : 'Hours'}</th>
-                    <th className="text-start px-4 py-3">{ar ? 'الإجازات' : 'Leave Days'}</th>
+                    <th className="text-start px-4 py-3">{tx.employee}</th>
+                    <th className="text-start px-4 py-3">{tx.colDays}</th>
+                    <th className="text-start px-4 py-3">{tx.colHours}</th>
+                    <th className="text-start px-4 py-3">{tx.leaveDays}</th>
                   </tr>
                 </thead>
                 <tbody>

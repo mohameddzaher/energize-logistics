@@ -8,7 +8,9 @@ import { BookOpen, Plus, Edit, Trash2, Eye } from 'lucide-react';
 import {
   isFinanceStaff, isFinanceAdmin, ChartAccount, ACCOUNT_TYPE_STYLE, accountName, money, fmtDate,
 } from '@/lib/finance';
-import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, TextArea, Select, ExportButton } from '@/components/hr/HRKit';
+import { getAccountingAccountsTranslations } from '@/lib/translations';
+import { exportToExcel } from '@/utils/exportExcel';
 
 const TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
 const EMPTY = { code: '', nameEn: '', nameAr: '', type: 'asset', description: '' };
@@ -17,6 +19,7 @@ export default function ChartOfAccountsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  const tx = getAccountingAccountsTranslations(lang);
   const [items, setItems] = useState<ChartAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -45,7 +48,7 @@ export default function ChartOfAccountsPage() {
   const openCreate = () => { setEditing(null); setForm(EMPTY); setShowModal(true); };
   const openEdit = (a: ChartAccount) => { setEditing(a); setForm({ ...EMPTY, ...a }); setShowModal(true); };
   const save = async () => {
-    if (!form.code.trim() || !form.nameEn.trim()) { alert(ar ? 'الكود والاسم مطلوبان' : 'Code and name required'); return; }
+    if (!form.code.trim() || !form.nameEn.trim()) { alert(tx.codeAndNameRequired); return; }
     setSaving(true);
     try {
       if (editing) await api.put(`/api/accounting/accounts/${editing._id}`, form);
@@ -54,26 +57,34 @@ export default function ChartOfAccountsPage() {
     } catch (e: any) { alert(e.message); } finally { setSaving(false); }
   };
   const remove = async (a: ChartAccount) => {
-    if (!confirm(ar ? `حذف ${a.nameEn}؟` : `Delete ${a.nameEn}?`)) return;
+    if (!confirm(`${tx.deletePrefix}${a.nameEn}${tx.deleteSuffix}`)) return;
     try { await api.delete(`/api/accounting/accounts/${a._id}`); load(); } catch (e: any) { alert(e.message); }
   };
   const openLedger = async (a: ChartAccount) => {
     try { setLedger(await api.get(`/api/accounting/ledger/${a._id}`)); } catch (e: any) { alert(e.message); }
   };
+  const exportXlsx = () => {
+    exportToExcel(items, [
+      { header: tx.code, key: 'code', width: 14 },
+      { header: tx.name, key: 'nameEn', width: 28, transform: (_v, r) => (ar && r.nameAr ? r.nameAr : r.nameEn) },
+      { header: tx.type, key: 'type', width: 16, transform: (v) => (ar ? ACCOUNT_TYPE_STYLE[v]?.ar : ACCOUNT_TYPE_STYLE[v]?.en) || v },
+    ], 'chart-of-accounts', tx.pageTitle);
+  };
 
-  if (!isFinanceStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isFinanceStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<BookOpen className="w-5 h-5" />} title={ar ? 'دليل الحسابات' : 'Chart of Accounts'} subtitle={`${items.length}`}>
-        <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'حساب جديد' : 'New Account'}</PrimaryButton>
+      <PageHeader icon={<BookOpen className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${items.length}`}>
+        <ExportButton onClick={exportXlsx} label={ar ? 'تصدير Excel' : 'Export Excel'} />
+        <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.newAccount}</PrimaryButton>
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث...' : 'Search...'} /></div>
-        <select value={typeF} onChange={(e) => setTypeF(e.target.value)} className="px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
-          <option value="">{ar ? 'كل الأنواع' : 'All Types'}</option>
+        <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
+        <select value={typeF} onChange={(e) => setTypeF(e.target.value)} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+          <option value="">{tx.allTypes}</option>
           {TYPES.map((t) => <option key={t} value={t}>{ar ? ACCOUNT_TYPE_STYLE[t].ar : ACCOUNT_TYPE_STYLE[t].en}</option>)}
         </select>
       </div>
@@ -81,21 +92,21 @@ export default function ChartOfAccountsPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-left">
-            <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'الكود' : 'Code'}</th>
-            <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'الاسم' : 'Name'}</th>
-            <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'النوع' : 'Type'}</th>
-            <th className="px-4 py-3 text-slate-300 font-semibold text-right">{ar ? 'الإجراءات' : 'Actions'}</th>
+            <th className="px-4 py-3 text-slate-300 font-semibold">{tx.code}</th>
+            <th className="px-4 py-3 text-slate-300 font-semibold">{tx.name}</th>
+            <th className="px-4 py-3 text-slate-300 font-semibold">{tx.type}</th>
+            <th className="px-4 py-3 text-slate-300 font-semibold text-right">{tx.actions}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {items.length === 0 ? <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((a) => (
               <tr key={a._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-700 font-mono">{a.code}</td>
-                <td className="px-4 py-3 text-slate-900">{ar && a.nameAr ? a.nameAr : a.nameEn}{a.system && <span className="ml-2 text-[10px] text-slate-500">({ar ? 'نظام' : 'system'})</span>}</td>
+                <td className="px-4 py-3 text-slate-900">{ar && a.nameAr ? a.nameAr : a.nameEn}{a.system && <span className="ml-2 text-[10px] text-slate-500">({tx.systemLabel})</span>}</td>
                 <td className="px-4 py-3"><Badge style={ACCOUNT_TYPE_STYLE[a.type]} lang={lang} /></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
-                  <button type="button" title={ar ? 'دفتر الأستاذ' : 'Ledger'} onClick={() => openLedger(a)} className="text-slate-500 hover:text-slate-900"><Eye className="w-4 h-4" /></button>
-                  <button type="button" title={ar ? 'تعديل' : 'Edit'} onClick={() => openEdit(a)} className="text-blue-600 hover:text-blue-700"><Edit className="w-4 h-4" /></button>
-                  {canDelete && !a.system && <button type="button" title={ar ? 'حذف' : 'Delete'} onClick={() => remove(a)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}
+                  <button type="button" title={tx.ledger} onClick={() => openLedger(a)} className="text-slate-500 hover:text-slate-900"><Eye className="w-4 h-4" /></button>
+                  <button type="button" title={tx.edit} onClick={() => openEdit(a)} className="text-blue-600 hover:text-blue-700"><Edit className="w-4 h-4" /></button>
+                  {canDelete && !a.system && <button type="button" title={tx.delete} onClick={() => remove(a)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}
                 </div></td>
               </tr>
             ))}
@@ -104,29 +115,29 @@ export default function ChartOfAccountsPage() {
       </div>
 
       {/* Create/Edit */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? (ar ? 'تعديل حساب' : 'Edit Account') : (ar ? 'حساب جديد' : 'New Account')}
-        footer={<><button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-          <PrimaryButton onClick={save} disabled={saving}>{saving ? '...' : (ar ? 'حفظ' : 'Save')}</PrimaryButton></>}>
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tx.editAccount : tx.newAccount}
+        footer={<><button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{tx.cancel}</button>
+          <PrimaryButton onClick={save} disabled={saving}>{saving ? '...' : tx.save}</PrimaryButton></>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label={ar ? 'الكود' : 'Code'}><TextInput value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} dir="ltr" disabled={!!editing?.system} /></Field>
-          <Field label={ar ? 'النوع' : 'Type'}><Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+          <Field label={tx.code}><TextInput value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} dir="ltr" disabled={!!editing?.system} /></Field>
+          <Field label={tx.type}><Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
             {TYPES.map((t) => <option key={t} value={t}>{ar ? ACCOUNT_TYPE_STYLE[t].ar : ACCOUNT_TYPE_STYLE[t].en}</option>)}
           </Select></Field>
-          <Field label={ar ? 'الاسم (EN)' : 'Name (EN)'}><TextInput value={form.nameEn} onChange={(e) => setForm({ ...form, nameEn: e.target.value })} /></Field>
-          <Field label={ar ? 'الاسم (AR)' : 'Name (AR)'}><TextInput value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} dir="rtl" /></Field>
-          <Field label={ar ? 'وصف' : 'Description'} span2><TextArea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          <Field label={tx.nameEn}><TextInput value={form.nameEn} onChange={(e) => setForm({ ...form, nameEn: e.target.value })} /></Field>
+          <Field label={tx.nameAr}><TextInput value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} dir="rtl" /></Field>
+          <Field label={tx.description} span2><TextArea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         </div>
       </Modal>
 
       {/* Ledger */}
-      <Modal open={!!ledger} onClose={() => setLedger(null)} wide title={ledger ? `${ar ? 'دفتر الأستاذ' : 'Ledger'} — ${accountName(ledger.account, lang)}` : ''}
-        footer={<button type="button" onClick={() => setLedger(null)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{ar ? 'إغلاق' : 'Close'}</button>}>
+      <Modal open={!!ledger} onClose={() => setLedger(null)} wide title={ledger ? `${tx.ledger} — ${accountName(ledger.account, lang)}` : ''}
+        footer={<button type="button" onClick={() => setLedger(null)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{tx.close}</button>}>
         {ledger && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-left text-slate-300">
-                <th className="px-2 py-2">{ar ? 'التاريخ' : 'Date'}</th><th className="px-2 py-2">#</th><th className="px-2 py-2">{ar ? 'البيان' : 'Memo'}</th>
-                <th className="px-2 py-2 text-right">{ar ? 'مدين' : 'Debit'}</th><th className="px-2 py-2 text-right">{ar ? 'دائن' : 'Credit'}</th><th className="px-2 py-2 text-right">{ar ? 'الرصيد' : 'Balance'}</th>
+                <th className="px-2 py-2">{tx.date}</th><th className="px-2 py-2">#</th><th className="px-2 py-2">{tx.memo}</th>
+                <th className="px-2 py-2 text-right">{tx.debit}</th><th className="px-2 py-2 text-right">{tx.credit}</th><th className="px-2 py-2 text-right">{tx.balance}</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-200">
                 {ledger.rows.length === 0 ? <tr><td colSpan={6} className="px-2 py-6 text-center text-slate-500">—</td></tr> : ledger.rows.map((r, i) => (
@@ -140,7 +151,7 @@ export default function ChartOfAccountsPage() {
                   </tr>
                 ))}
               </tbody>
-              <tfoot><tr className="border-t border-slate-200"><td colSpan={5} className="px-2 py-2 text-right text-slate-500">{ar ? 'الرصيد الختامي' : 'Closing balance'}</td><td className="px-2 py-2 text-right text-slate-900 font-bold">{money(ledger.closingBalance, '')}</td></tr></tfoot>
+              <tfoot><tr className="border-t border-slate-200"><td colSpan={5} className="px-2 py-2 text-right text-slate-500">{tx.closingBalance}</td><td className="px-2 py-2 text-right text-slate-900 font-bold">{money(ledger.closingBalance, '')}</td></tr></tfoot>
             </table>
           </div>
         )}

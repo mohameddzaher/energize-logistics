@@ -130,6 +130,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Customs Clearance
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/guide', label: L.customsGuide, icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+    // Vehicles & Authorizations (المركبات والتفاويض) — super admin + HR + Accounting
+    { href: '/system/vehicles/dashboard', label: L.vehiclesDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles', label: L.vehiclesFleet, icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/accidents', label: L.vehiclesAccidents, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     // B2C
     { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
     { href: '/system/b2c/reps-performance', label: L.b2cRepsPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
@@ -164,13 +168,13 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/hr/my-leaves', label: L.hrMyLeaves, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager'], section: 'Self Service' },
     { href: '/system/hr/my-requests', label: L.hrMyRequests, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager'], section: 'Self Service' },
     // CRM
-    { href: '/system/crm/dashboard', label: L.crmDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
-    { href: '/system/crm/companies', label: L.crmCompanies, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
-    { href: '/system/crm/contacts', label: L.crmContacts, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
-    { href: '/system/crm/deals', label: L.crmDeals, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
-    { href: '/system/crm/tasks', label: L.crmTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
-    { href: '/system/crm/calendar', label: L.crmCalendar, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
-    { href: '/system/crm/activities', label: L.crmActivities, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'], section: 'CRM' },
+    { href: '/system/crm/dashboard', label: L.crmDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
+    { href: '/system/crm/companies', label: L.crmCompanies, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
+    { href: '/system/crm/contacts', label: L.crmContacts, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
+    { href: '/system/crm/deals', label: L.crmDeals, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
+    { href: '/system/crm/tasks', label: L.crmTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
+    { href: '/system/crm/calendar', label: L.crmCalendar, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
+    { href: '/system/crm/activities', label: L.crmActivities, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
     // Sales
     { href: '/system/sales/dashboard', label: L.salesDashboard, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
     { href: '/system/sales/pipeline', label: L.salesPipeline, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
@@ -196,7 +200,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Admin (configuration & oversight — kept near the bottom)
     { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
     { href: '/system/expense-categories', label: L.expenseCategories, icon: <Tags className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
-    { href: '/system/settings/reference-data', label: lang === 'ar' ? 'القوائم المرجعية' : 'Reference Data', icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing', 'crm_manager', 'crm_specialist', 'sales_manager'], section: 'Admin' },
+    { href: '/system/settings/reference-data', label: lang === 'ar' ? 'القوائم المرجعية' : 'Reference Data', icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'sales_manager'], section: 'Admin' },
     { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Admin' },
     { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'workshop_manager', 'operations_manager'], section: 'Admin' },

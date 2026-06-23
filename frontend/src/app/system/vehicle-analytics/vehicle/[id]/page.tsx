@@ -4,51 +4,9 @@ import { useRouter } from 'next/navigation';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { detectTrips, type GPSMovement } from '@/lib/tripDetection';
 import { useLanguage } from '@/context/LanguageContext';
-import { ArrowLeft, Truck, Activity, DollarSign, MapPin, Navigation, Route, TrendingUp, AlertTriangle, Gauge, Fuel, Users, Calendar, CheckCircle, XCircle } from 'lucide-react';
-
-const T = (lang: string) => lang === 'ar' ? {
-  back: 'رجوع', overview: 'نظرة عامة', trips: 'الرحلات', gpsMov: 'حركات GPS', fuel: 'الوقود',
-  financials: 'المالية', compliance: 'الامتثال', status: 'الحالة', branch: 'الفرع', driver: 'السائق',
-  model: 'الموديل', year: 'السنة', fuelType: 'نوع الوقود', category: 'الفئة',
-  totalDetectedTrips: 'إجمالي الرحلات المكتشفة', totalDistance: 'إجمالي المسافة (كم)',
-  totalRevenue: 'إجمالي الإيرادات', totalExpenses: 'إجمالي المصروفات', profit: 'الربح', profitMargin: 'هامش الربح %',
-  avgRevPerTrip: 'متوسط الإيراد/رحلة', avgTripDistance: 'متوسط مسافة الرحلة', maxSpeedRecorded: 'أقصى سرعة',
-  speedViolations: 'تجاوزات السرعة', fuelConsumption: 'استهلاك الوقود %', htTripCount: 'عدد رحلات HT',
-  activeMonths: 'أشهر نشطة', uniqueDrivers: 'سائقون فريدون',
-  vehicle: 'المركبة', route: 'المسار', startTime: 'البدء', endTime: 'الانتهاء', duration: 'المدة',
-  distance: 'المسافة', maxSpeed: 'أقصى سرعة', avgSpeed: 'متوسط السرعة', segments: 'المقاطع',
-  violations: 'التجاوزات', allRoutes: 'كل المسارات', search: 'بحث...',
-  date: 'التاريخ', from: 'من', to: 'إلى', days: 'أيام', revenue: 'الإيراد', expenses: 'المصروفات',
-  client: 'العميل', monthlyRevenue: 'الإيرادات الشهرية', expenseBreakdown: 'تفصيل المصروفات',
-  fuelTypeLabel: 'نوع الوقود', consType: 'نوع الاستهلاك', currentRate: 'المعدل الحالي', maxConsump: 'الحد الأقصى',
-  loaded: 'تم التحميل', unloaded: 'تم النزيل', photoSent: 'تم إرسال الصورة', receiptDelivered: 'تم تسليم السند',
-  noData: 'لا توجد بيانات', loading: 'جاري التحميل...', vehicleNotFound: 'المركبة غير موجودة',
-  noTrips: 'لا توجد رحلات', noSegments: 'لا توجد مقاطع GPS', noFuel: 'لا توجد بيانات وقود',
-  noFinancials: 'لا توجد بيانات مالية', noCompliance: 'لا توجد بيانات امتثال',
-  sortBy: 'ترتيب حسب', time: 'الوقت', speed: 'السرعة', alertHigh: 'تنبيه: استهلاك عالٍ',
-  alertModerate: 'تحذير: استهلاك متوسط',
-} : {
-  back: 'Back', overview: 'Overview', trips: 'Trips', gpsMov: 'GPS Movements', fuel: 'Fuel',
-  financials: 'Financials', compliance: 'Compliance', status: 'Status', branch: 'Branch', driver: 'Driver',
-  model: 'Model', year: 'Year', fuelType: 'Fuel Type', category: 'Category',
-  totalDetectedTrips: 'Total Detected Trips', totalDistance: 'Total Distance (km)',
-  totalRevenue: 'Total Revenue', totalExpenses: 'Total Expenses', profit: 'Profit', profitMargin: 'Profit Margin %',
-  avgRevPerTrip: 'Avg Revenue/Trip', avgTripDistance: 'Avg Trip Distance', maxSpeedRecorded: 'Max Speed',
-  speedViolations: 'Speed Violations', fuelConsumption: 'Fuel Consumption %', htTripCount: 'HT Trip Count',
-  activeMonths: 'Active Months', uniqueDrivers: 'Unique Drivers',
-  vehicle: 'Vehicle', route: 'Route', startTime: 'Start Time', endTime: 'End Time', duration: 'Duration',
-  distance: 'Distance', maxSpeed: 'Max Speed', avgSpeed: 'Avg Speed', segments: 'Segments',
-  violations: 'Violations', allRoutes: 'All Routes', search: 'Search...',
-  date: 'Date', from: 'From', to: 'To', days: 'Days', revenue: 'Revenue', expenses: 'Expenses',
-  client: 'Client', monthlyRevenue: 'Monthly Revenue', expenseBreakdown: 'Expense Breakdown',
-  fuelTypeLabel: 'Fuel Type', consType: 'Consumption Type', currentRate: 'Current Rate', maxConsump: 'Max Rate',
-  loaded: 'Loaded', unloaded: 'Unloaded', photoSent: 'Photo Sent', receiptDelivered: 'Receipt Delivered',
-  noData: 'No data', loading: 'Loading...', vehicleNotFound: 'Vehicle not found',
-  noTrips: 'No trips', noSegments: 'No GPS segments', noFuel: 'No fuel data',
-  noFinancials: 'No financial data', noCompliance: 'No compliance data',
-  sortBy: 'Sort by', time: 'Time', speed: 'Speed', alertHigh: 'Alert: High consumption',
-  alertModerate: 'Warning: Moderate consumption',
-};
+import { getVehicleAnalyticsVehicleIdTranslations } from '@/lib/translations';
+import { ArrowLeft, Truck, Activity, DollarSign, MapPin, Navigation, Route, TrendingUp, AlertTriangle, Gauge, Fuel, Users, Calendar, CheckCircle, XCircle, Download } from 'lucide-react';
+import { exportToExcel } from '@/utils/exportExcel';
 
 type Tab = 'overview' | 'trips' | 'gps' | 'fuel' | 'financials' | 'compliance';
 type GpsSortKey = 'time' | 'distance' | 'speed';
@@ -57,7 +15,7 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
   const { id } = use(params);
   const router = useRouter();
   const { lang } = useLanguage();
-  const t = T(lang);
+  const tx = getVehicleAnalyticsVehicleIdTranslations(lang);
 
   const [petro, setPetro] = useState<any[]>([]);
   const [gpsMov, setGpsMov] = useState<any[]>([]);
@@ -144,14 +102,14 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
   // Expense breakdown
   const expenseBreakdown = useMemo(() => {
     const fields: { key: string; label: string }[] = [
-      { key: 'actualDriverExpense', label: 'Driver' }, { key: 'fuelCost', label: 'Fuel' },
-      { key: 'puncture', label: 'Puncture' }, { key: 'spareParts', label: 'Parts' },
-      { key: 'washing', label: 'Washing' }, { key: 'salesCommission', label: 'Sales Comm.' },
-      { key: 'brokerCommission', label: 'Broker Comm.' }, { key: 'fridayBonus', label: 'Friday Bonus' },
-      { key: 'bonus', label: 'Bonus' },
+      { key: 'actualDriverExpense', label: tx.expDriver }, { key: 'fuelCost', label: tx.expFuel },
+      { key: 'puncture', label: tx.expPuncture }, { key: 'spareParts', label: tx.expParts },
+      { key: 'washing', label: tx.expWashing }, { key: 'salesCommission', label: tx.expSalesComm },
+      { key: 'brokerCommission', label: tx.expBrokerComm }, { key: 'fridayBonus', label: tx.expFridayBonus },
+      { key: 'bonus', label: tx.expBonus },
     ];
     return fields.map(f => ({ label: f.label, total: htTrips.reduce((s, r) => s + parseNum(r[f.key]), 0) })).filter(x => x.total > 0).sort((a, b) => b.total - a.total);
-  }, [htTrips]);
+  }, [htTrips, tx]);
 
   // Fuel
   const fuel = useMemo(() => {
@@ -203,17 +161,30 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
     return d;
   }, [gpsMov, gpsSearch, gpsSort]);
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{t.loading}</div>;
+  const exportGps = () => {
+    exportToExcel(filteredGpsMov, [
+      { header: tx.startTime, key: 'beginning', transform: (v) => v || '-', width: 18 },
+      { header: tx.endTime, key: 'end', transform: (v) => v || '-', width: 18 },
+      { header: tx.from, key: 'initialLocation', transform: (v) => v || '-', width: 28 },
+      { header: tx.to, key: 'finalLocation', transform: (v) => v || '-', width: 28 },
+      { header: tx.duration, key: 'duration', transform: (v) => v || '-', width: 14 },
+      { header: tx.distance, key: 'distance', transform: (v) => parseNum(v).toFixed(1), width: 12 },
+      { header: tx.maxSpeed, key: 'maxSpeed', transform: (v) => parseNum(v).toFixed(0), width: 12 },
+      { header: tx.avgSpeed, key: 'avgSpeed', transform: (v) => parseNum(v).toFixed(0), width: 12 },
+    ], `gps-${id}`, lang === 'ar' ? 'حركة GPS' : 'GPS Movements');
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{tx.loading}</div>;
 
   const hasAnyData = petro.length > 0 || gpsMov.length > 0 || gpsOdo.length > 0 || htTrips.length > 0;
   if (!hasAnyData) {
     return (
       <div className="space-y-4">
         <button onClick={() => router.push('/system/vehicle-analytics')} className="text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm">
-          <ArrowLeft className="w-4 h-4" /> {t.back}
+          <ArrowLeft className="w-4 h-4" /> {tx.back}
         </button>
         <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 shadow-sm">
-          {t.vehicleNotFound}: {id}
+          {tx.vehicleNotFound}: {id}
         </div>
       </div>
     );
@@ -223,32 +194,32 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
   const maxExpense = Math.max(1, ...expenseBreakdown.map(e => e.total));
 
   const kpiCards = [
-    { label: t.totalDetectedTrips, value: detectedTrips.length, icon: Route, color: 'text-indigo-600', bg: 'bg-indigo-400/10' },
-    { label: t.totalDistance, value: fmtNum(kpis.totalDist), icon: MapPin, color: 'text-purple-600', bg: 'bg-purple-400/10' },
-    { label: t.totalRevenue, value: fmtNum(financials.totalRevenue), icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-400/10' },
-    { label: t.totalExpenses, value: fmtNum(financials.totalExpenses), icon: TrendingUp, color: 'text-red-600', bg: 'bg-red-400/10' },
-    { label: t.profit, value: fmtNum(financials.profit), icon: DollarSign, color: financials.profit >= 0 ? 'text-green-600' : 'text-red-600', bg: financials.profit >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
-    { label: t.profitMargin, value: financials.margin.toFixed(1) + '%', icon: TrendingUp, color: financials.margin >= 0 ? 'text-green-600' : 'text-red-600', bg: financials.margin >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
-    { label: t.avgRevPerTrip, value: fmtNum(financials.avgRevPerTrip), icon: DollarSign, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
-    { label: t.avgTripDistance, value: fmtNum(kpis.avgTripDist), icon: Navigation, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
-    { label: t.maxSpeedRecorded, value: kpis.maxSpeed.toFixed(0), icon: Gauge, color: 'text-amber-700', bg: 'bg-amber-400/10' },
-    { label: t.speedViolations, value: kpis.speedViolations, icon: AlertTriangle, color: kpis.speedViolations > 0 ? 'text-red-600' : 'text-slate-500', bg: kpis.speedViolations > 0 ? 'bg-red-400/10' : 'bg-slate-100' },
-    { label: t.fuelConsumption, value: fuel ? fuel.pct.toFixed(0) + '%' : '-', icon: Fuel, color: fuel && fuel.pct > 90 ? 'text-red-600' : 'text-blue-600', bg: fuel && fuel.pct > 90 ? 'bg-red-400/10' : 'bg-blue-400/10' },
-    { label: t.htTripCount, value: htTrips.length, icon: Activity, color: 'text-purple-600', bg: 'bg-purple-400/10' },
-    { label: t.activeMonths, value: kpis.activeMonths, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-400/10' },
-    { label: t.uniqueDrivers, value: kpis.uniqueDrivers, icon: Users, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
+    { label: tx.totalDetectedTrips, value: detectedTrips.length, icon: Route, color: 'text-indigo-600', bg: 'bg-indigo-400/10' },
+    { label: tx.totalDistance, value: fmtNum(kpis.totalDist), icon: MapPin, color: 'text-purple-600', bg: 'bg-purple-400/10' },
+    { label: tx.totalRevenue, value: fmtNum(financials.totalRevenue), icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-400/10' },
+    { label: tx.totalExpenses, value: fmtNum(financials.totalExpenses), icon: TrendingUp, color: 'text-red-600', bg: 'bg-red-400/10' },
+    { label: tx.profit, value: fmtNum(financials.profit), icon: DollarSign, color: financials.profit >= 0 ? 'text-green-600' : 'text-red-600', bg: financials.profit >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
+    { label: tx.profitMargin, value: financials.margin.toFixed(1) + '%', icon: TrendingUp, color: financials.margin >= 0 ? 'text-green-600' : 'text-red-600', bg: financials.margin >= 0 ? 'bg-green-400/10' : 'bg-red-400/10' },
+    { label: tx.avgRevPerTrip, value: fmtNum(financials.avgRevPerTrip), icon: DollarSign, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
+    { label: tx.avgTripDistance, value: fmtNum(kpis.avgTripDist), icon: Navigation, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
+    { label: tx.maxSpeedRecorded, value: kpis.maxSpeed.toFixed(0), icon: Gauge, color: 'text-amber-700', bg: 'bg-amber-400/10' },
+    { label: tx.speedViolations, value: kpis.speedViolations, icon: AlertTriangle, color: kpis.speedViolations > 0 ? 'text-red-600' : 'text-slate-500', bg: kpis.speedViolations > 0 ? 'bg-red-400/10' : 'bg-slate-100' },
+    { label: tx.fuelConsumption, value: fuel ? fuel.pct.toFixed(0) + '%' : '-', icon: Fuel, color: fuel && fuel.pct > 90 ? 'text-red-600' : 'text-blue-600', bg: fuel && fuel.pct > 90 ? 'bg-red-400/10' : 'bg-blue-400/10' },
+    { label: tx.htTripCount, value: htTrips.length, icon: Activity, color: 'text-purple-600', bg: 'bg-purple-400/10' },
+    { label: tx.activeMonths, value: kpis.activeMonths, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-400/10' },
+    { label: tx.uniqueDrivers, value: kpis.uniqueDrivers, icon: Users, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
   ];
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'overview', label: t.overview }, { key: 'trips', label: t.trips },
-    { key: 'gps', label: t.gpsMov }, { key: 'fuel', label: t.fuel },
-    { key: 'financials', label: t.financials }, { key: 'compliance', label: t.compliance },
+    { key: 'overview', label: tx.overview }, { key: 'trips', label: tx.trips },
+    { key: 'gps', label: tx.gpsMov }, { key: 'fuel', label: tx.fuel },
+    { key: 'financials', label: tx.financials }, { key: 'compliance', label: tx.compliance },
   ];
 
   return (
     <div className="space-y-6">
       <button onClick={() => router.push('/system/vehicle-analytics')} className="text-slate-500 hover:text-slate-900 flex items-center gap-2 text-sm">
-        <ArrowLeft className="w-4 h-4" /> {t.back}
+        <ArrowLeft className="w-4 h-4" /> {tx.back}
       </button>
 
       {/* Header */}
@@ -263,12 +234,12 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
               </span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
-              <div><p className="text-slate-500 text-xs">{t.model}</p><p className="text-slate-800">{vInfo.model || '-'}</p></div>
-              <div><p className="text-slate-500 text-xs">{t.year}</p><p className="text-slate-800">{vInfo.year || '-'}</p></div>
-              <div><p className="text-slate-500 text-xs">{t.fuelType}</p><p className="text-slate-800">{vInfo.fuel || '-'}</p></div>
-              <div><p className="text-slate-500 text-xs">{t.category}</p><p className="text-slate-800">{vInfo.category || '-'}</p></div>
-              <div><p className="text-slate-500 text-xs">{t.branch}</p><p className="text-slate-800">{vInfo.branch || '-'}</p></div>
-              <div><p className="text-slate-500 text-xs">{t.driver}</p><p className="text-slate-800">{vInfo.driver || '-'}</p></div>
+              <div><p className="text-slate-500 text-xs">{tx.model}</p><p className="text-slate-800">{vInfo.model || '-'}</p></div>
+              <div><p className="text-slate-500 text-xs">{tx.year}</p><p className="text-slate-800">{vInfo.year || '-'}</p></div>
+              <div><p className="text-slate-500 text-xs">{tx.fuelType}</p><p className="text-slate-800">{vInfo.fuel || '-'}</p></div>
+              <div><p className="text-slate-500 text-xs">{tx.category}</p><p className="text-slate-800">{vInfo.category || '-'}</p></div>
+              <div><p className="text-slate-500 text-xs">{tx.branch}</p><p className="text-slate-800">{vInfo.branch || '-'}</p></div>
+              <div><p className="text-slate-500 text-xs">{tx.driver}</p><p className="text-slate-800">{vInfo.driver || '-'}</p></div>
             </div>
           </div>
         </div>
@@ -301,24 +272,24 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
       {tab === 'trips' && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.trips} ({filteredTrips.length})</h3>
-            <select title={t.route} value={routeFilter} onChange={e => setRouteFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 max-w-[260px]">
-              <option value="">{t.allRoutes}</option>
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.trips} ({filteredTrips.length})</h3>
+            <select title={tx.route} value={routeFilter} onChange={e => setRouteFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 max-w-[260px]">
+              <option value="">{tx.allRoutes}</option>
               {allRoutes.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-900"><tr className="text-slate-300 border-b border-slate-200">
-                <th className="text-left py-2 px-2">{t.route}</th>
-                <th className="text-left py-2 px-2">{t.startTime}</th>
-                <th className="text-left py-2 px-2">{t.endTime}</th>
-                <th className="text-right py-2 px-2">{t.duration}</th>
-                <th className="text-right py-2 px-2">{t.distance}</th>
-                <th className="text-right py-2 px-2">{t.maxSpeed}</th>
-                <th className="text-right py-2 px-2">{t.avgSpeed}</th>
-                <th className="text-right py-2 px-2">{t.violations}</th>
-                <th className="text-right py-2 px-2">{t.segments}</th>
+                <th className="text-left py-2 px-2">{tx.route}</th>
+                <th className="text-left py-2 px-2">{tx.startTime}</th>
+                <th className="text-left py-2 px-2">{tx.endTime}</th>
+                <th className="text-right py-2 px-2">{tx.duration}</th>
+                <th className="text-right py-2 px-2">{tx.distance}</th>
+                <th className="text-right py-2 px-2">{tx.maxSpeed}</th>
+                <th className="text-right py-2 px-2">{tx.avgSpeed}</th>
+                <th className="text-right py-2 px-2">{tx.violations}</th>
+                <th className="text-right py-2 px-2">{tx.segments}</th>
               </tr></thead>
               <tbody>
                 {filteredTrips.map((tr, i) => (
@@ -334,7 +305,7 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                     <td className="py-2 px-2 text-right text-slate-500">{tr.segmentCount}</td>
                   </tr>
                 ))}
-                {filteredTrips.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-4">{t.noTrips}</td></tr>}
+                {filteredTrips.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-4">{tx.noTrips}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -344,27 +315,30 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
       {/* GPS Movements */}
       {tab === 'gps' && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-3 mb-3 flex-wrap">
-            <input value={gpsSearch} onChange={e => setGpsSearch(e.target.value)} placeholder={t.search}
-              className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 min-w-[240px]" />
-            <select title={t.sortBy} value={gpsSort} onChange={e => setGpsSort(e.target.value as GpsSortKey)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300">
-              <option value="time">{t.time}</option>
-              <option value="distance">{t.distance}</option>
-              <option value="speed">{t.speed}</option>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
+            <input value={gpsSearch} onChange={e => setGpsSearch(e.target.value)} placeholder={tx.search}
+              className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 flex-1 min-w-[240px]" />
+            <select title={tx.sortBy} value={gpsSort} onChange={e => setGpsSort(e.target.value as GpsSortKey)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 w-full sm:w-44 shrink-0">
+              <option value="time">{tx.time}</option>
+              <option value="distance">{tx.distance}</option>
+              <option value="speed">{tx.speed}</option>
             </select>
-            <span className="text-slate-500 text-sm">{filteredGpsMov.length}</span>
+            <span className="text-slate-500 text-sm shrink-0">{filteredGpsMov.length}</span>
+            <button type="button" onClick={exportGps} className="shrink-0 inline-flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 border border-slate-300">
+              <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+            </button>
           </div>
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-900"><tr className="text-slate-300 border-b border-slate-200">
-                <th className="text-left py-2 px-2">{t.startTime}</th>
-                <th className="text-left py-2 px-2">{t.endTime}</th>
-                <th className="text-left py-2 px-2">{t.from}</th>
-                <th className="text-left py-2 px-2">{t.to}</th>
-                <th className="text-left py-2 px-2">{t.duration}</th>
-                <th className="text-right py-2 px-2">{t.distance}</th>
-                <th className="text-right py-2 px-2">{t.maxSpeed}</th>
-                <th className="text-right py-2 px-2">{t.avgSpeed}</th>
+                <th className="text-left py-2 px-2">{tx.startTime}</th>
+                <th className="text-left py-2 px-2">{tx.endTime}</th>
+                <th className="text-left py-2 px-2">{tx.from}</th>
+                <th className="text-left py-2 px-2">{tx.to}</th>
+                <th className="text-left py-2 px-2">{tx.duration}</th>
+                <th className="text-right py-2 px-2">{tx.distance}</th>
+                <th className="text-right py-2 px-2">{tx.maxSpeed}</th>
+                <th className="text-right py-2 px-2">{tx.avgSpeed}</th>
               </tr></thead>
               <tbody>
                 {filteredGpsMov.slice(0, 500).map((r, i) => (
@@ -379,7 +353,7 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                     <td className="py-2 px-2 text-right text-slate-700">{parseNum(r.avgSpeed).toFixed(0)}</td>
                   </tr>
                 ))}
-                {filteredGpsMov.length === 0 && <tr><td colSpan={8} className="text-center text-slate-500 py-4">{t.noSegments}</td></tr>}
+                {filteredGpsMov.length === 0 && <tr><td colSpan={8} className="text-center text-slate-500 py-4">{tx.noSegments}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -390,30 +364,30 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
       {tab === 'fuel' && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4 shadow-sm">
           {!fuel ? (
-            <p className="text-slate-500 text-center py-8">{t.noFuel}</p>
+            <p className="text-slate-500 text-center py-8">{tx.noFuel}</p>
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-blue-400/10 border border-slate-200 rounded-lg p-3">
-                  <p className="text-slate-500 text-xs">{t.fuelTypeLabel}</p>
+                  <p className="text-slate-500 text-xs">{tx.fuelTypeLabel}</p>
                   <p className="text-blue-600 font-bold">{fuel.fuelType || '-'}</p>
                 </div>
                 <div className="bg-cyan-400/10 border border-slate-200 rounded-lg p-3">
-                  <p className="text-slate-500 text-xs">{t.consType}</p>
+                  <p className="text-slate-500 text-xs">{tx.consType}</p>
                   <p className="text-cyan-700 font-bold">{fuel.consType || '-'}</p>
                 </div>
                 <div className="bg-purple-400/10 border border-slate-200 rounded-lg p-3">
-                  <p className="text-slate-500 text-xs">{t.currentRate}</p>
+                  <p className="text-slate-500 text-xs">{tx.currentRate}</p>
                   <p className="text-purple-600 font-bold">{fuel.cur.toFixed(2)}</p>
                 </div>
                 <div className="bg-amber-400/10 border border-slate-200 rounded-lg p-3">
-                  <p className="text-slate-500 text-xs">{t.maxConsump}</p>
+                  <p className="text-slate-500 text-xs">{tx.maxConsump}</p>
                   <p className="text-amber-700 font-bold">{fuel.max.toFixed(2)}</p>
                 </div>
               </div>
               <div>
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-700">{t.fuelConsumption}</span>
+                  <span className="text-slate-700">{tx.fuelConsumption}</span>
                   <span className={`font-bold ${fuel.pct > 90 ? 'text-red-600' : fuel.pct > 70 ? 'text-amber-700' : 'text-green-600'}`}>{fuel.pct.toFixed(1)}%</span>
                 </div>
                 <div className="bg-slate-100 rounded-full h-4 overflow-hidden">
@@ -423,13 +397,13 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
               {fuel.pct > 90 && (
                 <div className="bg-red-500/20 border border-red-500/40 rounded-lg p-3 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-red-600" />
-                  <span className="text-red-700 text-sm">{t.alertHigh}</span>
+                  <span className="text-red-700 text-sm">{tx.alertHigh}</span>
                 </div>
               )}
               {fuel.pct > 70 && fuel.pct <= 90 && (
                 <div className="bg-amber-500/20 border border-amber-500/40 rounded-lg p-3 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-amber-700" />
-                  <span className="text-amber-700 text-sm">{t.alertModerate}</span>
+                  <span className="text-amber-700 text-sm">{tx.alertModerate}</span>
                 </div>
               )}
             </>
@@ -441,13 +415,13 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
       {tab === 'financials' && (
         <div className="space-y-4">
           {htTrips.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 shadow-sm">{t.noFinancials}</div>
+            <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 shadow-sm">{tx.noFinancials}</div>
           ) : (
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Monthly revenue chart */}
                 <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.monthlyRevenue}</h3>
+                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.monthlyRevenue}</h3>
                   <div className="flex items-end gap-1 h-[240px] px-2">
                     {monthlyRevenue.map(([m, v]) => (
                       <div key={m} className="flex-1 flex flex-col items-center justify-end h-full gap-1">
@@ -461,7 +435,7 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                 </div>
                 {/* Expense breakdown */}
                 <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.expenseBreakdown}</h3>
+                  <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.expenseBreakdown}</h3>
                   <div className="space-y-2">
                     {expenseBreakdown.map(e => (
                       <div key={e.label} className="flex items-center gap-2 text-sm">
@@ -479,18 +453,18 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
 
               {/* HT Trips Table */}
               <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.trips} ({htTrips.length})</h3>
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.trips} ({htTrips.length})</h3>
                 <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-slate-900"><tr className="text-slate-300 border-b border-slate-200">
-                      <th className="text-left py-2 px-2">{t.date}</th>
-                      <th className="text-left py-2 px-2">{t.route}</th>
-                      <th className="text-right py-2 px-2">{t.days}</th>
-                      <th className="text-right py-2 px-2">{t.revenue}</th>
-                      <th className="text-right py-2 px-2">{t.expenses}</th>
-                      <th className="text-right py-2 px-2">{t.profit}</th>
-                      <th className="text-left py-2 px-2">{t.client}</th>
-                      <th className="text-left py-2 px-2">{t.driver}</th>
+                      <th className="text-left py-2 px-2">{tx.date}</th>
+                      <th className="text-left py-2 px-2">{tx.route}</th>
+                      <th className="text-right py-2 px-2">{tx.days}</th>
+                      <th className="text-right py-2 px-2">{tx.revenue}</th>
+                      <th className="text-right py-2 px-2">{tx.expenses}</th>
+                      <th className="text-right py-2 px-2">{tx.profit}</th>
+                      <th className="text-left py-2 px-2">{tx.client}</th>
+                      <th className="text-left py-2 px-2">{tx.driver}</th>
                     </tr></thead>
                     <tbody>
                       {htTrips.map((r, i) => {
@@ -524,15 +498,15 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
       {tab === 'compliance' && (
         <div className="space-y-4">
           {htTrips.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 shadow-sm">{t.noCompliance}</div>
+            <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 shadow-sm">{tx.noCompliance}</div>
           ) : (
             <>
               <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
                 {[
-                  { label: t.loaded, value: compliance.loaded, keyword: 'تم التحميل' },
-                  { label: t.unloaded, value: compliance.unloaded, keyword: 'تم النزيل' },
-                  { label: t.photoSent, value: compliance.photoSent, keyword: 'تم ارسال صوره السند' },
-                  { label: t.receiptDelivered, value: compliance.receiptDelivered, keyword: 'تم تسليم السند' },
+                  { label: tx.loaded, value: compliance.loaded, keyword: 'تم التحميل' },
+                  { label: tx.unloaded, value: compliance.unloaded, keyword: 'تم النزيل' },
+                  { label: tx.photoSent, value: compliance.photoSent, keyword: 'تم ارسال صوره السند' },
+                  { label: tx.receiptDelivered, value: compliance.receiptDelivered, keyword: 'تم تسليم السند' },
                 ].map(item => {
                   const pct = (item.value / compliance.total) * 100;
                   return (
@@ -549,16 +523,16 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                 })}
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.compliance} - {t.trips}</h3>
+                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.compliance} - {tx.trips}</h3>
                 <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-slate-900"><tr className="text-slate-300 border-b border-slate-200">
-                      <th className="text-left py-2 px-2">{t.date}</th>
-                      <th className="text-left py-2 px-2">{t.route}</th>
-                      <th className="text-center py-2 px-2">{t.loaded}</th>
-                      <th className="text-center py-2 px-2">{t.unloaded}</th>
-                      <th className="text-center py-2 px-2">{t.photoSent}</th>
-                      <th className="text-center py-2 px-2">{t.receiptDelivered}</th>
+                      <th className="text-left py-2 px-2">{tx.date}</th>
+                      <th className="text-left py-2 px-2">{tx.route}</th>
+                      <th className="text-center py-2 px-2">{tx.loaded}</th>
+                      <th className="text-center py-2 px-2">{tx.unloaded}</th>
+                      <th className="text-center py-2 px-2">{tx.photoSent}</th>
+                      <th className="text-center py-2 px-2">{tx.receiptDelivered}</th>
                     </tr></thead>
                     <tbody>
                       {htTrips.map((r, i) => {

@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { getSettingsTranslations } from '@/lib/translations';
+import { getSettingsTranslations, getSettingsExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { Settings, Shield, RefreshCw, Lock, Eye, EyeOff, CheckCircle2, User } from 'lucide-react';
 
@@ -12,6 +12,7 @@ export default function SettingsPage() {
 
   const { lang } = useLanguage();
   const T = getSettingsTranslations(lang);
+  const txx = getSettingsExtraTranslations(lang);
 
   // Change password
   const [currentPassword, setCurrentPassword] = useState('');
@@ -26,6 +27,7 @@ export default function SettingsPage() {
   // Risk recalculation
   const [recalculating, setRecalculating] = useState(false);
   const [riskMessage, setRiskMessage] = useState('');
+  const [riskError, setRiskError] = useState(false);
 
   const handleChangePassword = async () => {
     setPwError('');
@@ -52,7 +54,7 @@ export default function SettingsPage() {
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
-      setPwError(err.message || 'Failed to change password');
+      setPwError(err.message || txx.failedChangePassword);
     } finally {
       setPwLoading(false);
     }
@@ -61,11 +63,13 @@ export default function SettingsPage() {
   const handleRecalculateRisk = async () => {
     setRecalculating(true);
     setRiskMessage('');
+    setRiskError(false);
     try {
       const data = await api.post<any>('/api/analytics/risk/recalculate');
-      setRiskMessage(`Risk scores recalculated for ${data.results?.length || 0} customers.`);
+      setRiskMessage(`${txx.riskRecalcPrefix}${data.results?.length || 0}${txx.riskRecalcSuffix}`);
     } catch (err: any) {
-      setRiskMessage(`Error: ${err.message}`);
+      setRiskError(true);
+      setRiskMessage(`${txx.errorPrefix}${err.message}`);
     } finally {
       setRecalculating(false);
     }
@@ -108,7 +112,7 @@ export default function SettingsPage() {
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
-                placeholder="Enter current password"
+                placeholder={txx.enterCurrentPassword}
               />
               <button
                 type="button"
@@ -128,7 +132,7 @@ export default function SettingsPage() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
-                placeholder="Enter new password (min 6 characters)"
+                placeholder={txx.enterNewPassword}
               />
               <button
                 type="button"
@@ -147,7 +151,7 @@ export default function SettingsPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-              placeholder="Confirm new password"
+              placeholder={txx.confirmNewPassword}
             />
           </div>
 
@@ -158,7 +162,7 @@ export default function SettingsPage() {
             className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium transition-all disabled:opacity-50"
           >
             {pwLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-            {pwLoading ? 'Changing...' : T.changePasswordBtn}
+            {pwLoading ? txx.changing : T.changePasswordBtn}
           </button>
         </div>
       </div>
@@ -167,19 +171,19 @@ export default function SettingsPage() {
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
         <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
           <User className="w-5 h-5 text-[#f37121]" />
-          Account Information
+          {txx.accountInformation}
         </h3>
         <div className="space-y-3 text-sm">
           <div className="flex justify-between py-2 border-b border-slate-200/70">
-            <span className="text-slate-500">Name</span>
+            <span className="text-slate-500">{txx.name}</span>
             <span className="text-slate-900">{user?.firstName} {user?.lastName}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-slate-200/70">
-            <span className="text-slate-500">Email</span>
+            <span className="text-slate-500">{txx.email}</span>
             <span className="text-slate-900">{user?.email}</span>
           </div>
           <div className="flex justify-between py-2">
-            <span className="text-slate-500">Role</span>
+            <span className="text-slate-500">{txx.role}</span>
             <span className="text-slate-900 capitalize">{user?.role?.replace('_', ' ')}</span>
           </div>
         </div>
@@ -198,7 +202,7 @@ export default function SettingsPage() {
               {T.recalculateRiskDesc}
             </p>
             {riskMessage && (
-              <div className={`p-3 rounded-lg border text-sm mb-4 ${riskMessage.startsWith('Error') ? 'bg-red-500/10 border-red-500/30 text-red-600' : 'bg-green-500/10 border-green-500/30 text-green-600'}`}>
+              <div className={`p-3 rounded-lg border text-sm mb-4 ${riskError ? 'bg-red-500/10 border-red-500/30 text-red-600' : 'bg-green-500/10 border-green-500/30 text-green-600'}`}>
                 {riskMessage}
               </div>
             )}
@@ -209,7 +213,7 @@ export default function SettingsPage() {
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium transition-all disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${recalculating ? 'animate-spin' : ''}`} />
-              {recalculating ? 'Recalculating...' : T.recalculate}
+              {recalculating ? txx.recalculating : T.recalculate}
             </button>
           </div>
 
@@ -217,24 +221,24 @@ export default function SettingsPage() {
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
               <Settings className="w-5 h-5 text-slate-500" />
-              System Information
+              {txx.systemInformation}
             </h3>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between py-2 border-b border-slate-200/70">
-                <span className="text-slate-500">System</span>
+                <span className="text-slate-500">{txx.system}</span>
                 <span className="text-slate-900">Energize Logistics — Enterprise Management System</span>
               </div>
               <div className="flex justify-between py-2 border-b border-slate-200/70">
-                <span className="text-slate-500">Version</span>
+                <span className="text-slate-500">{txx.version}</span>
                 <span className="text-slate-900">1.0.0</span>
               </div>
               <div className="flex justify-between py-2 border-b border-slate-200/70">
-                <span className="text-slate-500">Credit Terms Supported</span>
-                <span className="text-slate-900">30, 45, 60 days</span>
+                <span className="text-slate-500">{txx.creditTermsSupported}</span>
+                <span className="text-slate-900">{txx.creditTermsDays}</span>
               </div>
               <div className="flex justify-between py-2">
-                <span className="text-slate-500">Risk Score Range</span>
-                <span className="text-slate-900">0-100 (Low: 0-30, Medium: 31-60, High: 61-100)</span>
+                <span className="text-slate-500">{txx.riskScoreRange}</span>
+                <span className="text-slate-900">{txx.riskScoreRangeValue}</span>
               </div>
             </div>
           </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { getTasksTranslations } from '@/lib/translations';
+import { getTasksTranslations, getTasksExtraTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -106,6 +106,7 @@ export default function TasksPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getTasksTranslations(lang);
+  const txx = getTasksExtraTranslations(lang);
   const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
 
   const contactMethodLabel = (value: string) => {
@@ -349,7 +350,7 @@ export default function TasksPage() {
 
   // ─── DELETE TASK ───────────────────────────────────────────
   const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Delete this task?')) return;
+    if (!confirm(txx.confirmDeleteTask)) return;
     try {
       await api.delete(`/api/tasks/${taskId}`);
       fetchTasks();
@@ -359,7 +360,7 @@ export default function TasksPage() {
 
   // ─── CLEAR FOLLOW-UP (remove follow-up date only, keep task) ──
   const handleClearFollowUp = async (taskId: string) => {
-    if (!confirm('Remove follow-up from this task?')) return;
+    if (!confirm(txx.confirmRemoveFollowUp)) return;
     try {
       await api.put(`/api/tasks/${taskId}`, { nextFollowUpDate: null });
       fetchTasks();
@@ -461,11 +462,11 @@ export default function TasksPage() {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const followStart = new Date(followDate.getFullYear(), followDate.getMonth(), followDate.getDate());
     const diff = Math.round((followStart.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
-    if (diff < 0) return { label: `Overdue ${Math.abs(diff)}d`, color: 'text-red-600 bg-red-500/20' };
-    if (diff === 0) return { label: 'Today', color: 'text-[#f37121] bg-[#f37121]/20' };
-    if (diff === 1) return { label: 'Tomorrow', color: 'text-yellow-700 bg-yellow-500/20' };
-    if (diff <= 3) return { label: `In ${diff} days`, color: 'text-yellow-700 bg-yellow-500/20' };
-    return { label: `In ${diff} days`, color: 'text-green-600 bg-green-500/20' };
+    if (diff < 0) return { label: `${txx.overduePrefix} ${Math.abs(diff)}${txx.daysShortSuffix}`, color: 'text-red-600 bg-red-500/20' };
+    if (diff === 0) return { label: T.today, color: 'text-[#f37121] bg-[#f37121]/20' };
+    if (diff === 1) return { label: txx.tomorrow, color: 'text-yellow-700 bg-yellow-500/20' };
+    if (diff <= 3) return { label: `${txx.inPrefix} ${diff} ${txx.daysSuffix}`, color: 'text-yellow-700 bg-yellow-500/20' };
+    return { label: `${txx.inPrefix} ${diff} ${txx.daysSuffix}`, color: 'text-green-600 bg-green-500/20' };
   };
 
   if (loading) {
@@ -496,20 +497,20 @@ export default function TasksPage() {
           <button
             type="button"
             onClick={() => exportToExcel(tasks, [
-              { header: 'Customer', key: 'customer.companyName', width: 24 },
-              { header: 'Customer #', key: 'customer.customerNumber', width: 14 },
-              { header: 'Assigned To', key: 'assignedTo', transform: (_: any, row: any) => row.assignedTo ? `${row.assignedTo.firstName} ${row.assignedTo.lastName}` : '', width: 20 },
-              { header: 'Created By', key: 'createdBy', transform: (_: any, row: any) => row.createdBy ? `${row.createdBy.firstName} ${row.createdBy.lastName}` : '', width: 20 },
-              { header: 'Contact Method', key: 'contactMethod', width: 16 },
-              { header: 'Status', key: 'status', transform: fmt.status, width: 12 },
-              { header: 'Outstanding', key: 'customer.currentOutstanding', transform: fmt.money, width: 16 },
-              { header: 'Collected Amount', key: 'collectedAmount', transform: fmt.money, width: 18 },
-              { header: 'Due Date', key: 'dueDate', transform: fmt.date, width: 14 },
-              { header: 'Completed At', key: 'completedAt', transform: fmt.datetime, width: 20 },
-              { header: 'Follow-Up Date', key: 'nextFollowUpDate', transform: fmt.date, width: 16 },
-              { header: 'Notes', key: 'actionNotes', width: 30 },
-              { header: 'Created At', key: 'createdAt', transform: fmt.date, width: 14 },
-            ], `tasks-${new Date().toISOString().split('T')[0]}`, 'Tasks')}
+              { header: T.customer, key: 'customer.companyName', width: 24 },
+              { header: txx.exCustomerNumber, key: 'customer.customerNumber', width: 14 },
+              { header: T.assignedTo, key: 'assignedTo', transform: (_: any, row: any) => row.assignedTo ? `${row.assignedTo.firstName} ${row.assignedTo.lastName}` : '', width: 20 },
+              { header: txx.exCreatedBy, key: 'createdBy', transform: (_: any, row: any) => row.createdBy ? `${row.createdBy.firstName} ${row.createdBy.lastName}` : '', width: 20 },
+              { header: T.contactMethod, key: 'contactMethod', width: 16 },
+              { header: T.status, key: 'status', transform: fmt.status, width: 12 },
+              { header: txx.exOutstanding, key: 'customer.currentOutstanding', transform: fmt.money, width: 16 },
+              { header: T.collectedAmount, key: 'collectedAmount', transform: fmt.money, width: 18 },
+              { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
+              { header: txx.exCompletedAt, key: 'completedAt', transform: fmt.datetime, width: 20 },
+              { header: T.nextFollowUp, key: 'nextFollowUpDate', transform: fmt.date, width: 16 },
+              { header: txx.exNotes, key: 'actionNotes', width: 30 },
+              { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
+            ], `tasks-${new Date().toISOString().split('T')[0]}`, T.title)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
           >
             <Download className="w-4 h-4" /> {T.downloadExcel}
@@ -616,7 +617,7 @@ export default function TasksPage() {
                                   type="button"
                                   onClick={() => openUpdateModal(task)}
                                   className="p-1.5 rounded-lg text-slate-500 hover:text-green-600 hover:bg-slate-100 transition-colors"
-                                  title="Update / Complete"
+                                  title={txx.updateComplete}
                                 >
                                   <Check className="w-4 h-4" />
                                 </button>
@@ -624,7 +625,7 @@ export default function TasksPage() {
                                   type="button"
                                   onClick={() => openEditModal(task)}
                                   className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors"
-                                  title="Edit task"
+                                  title={txx.editTaskTooltip}
                                 >
                                   <Edit className="w-4 h-4" />
                                 </button>
@@ -632,7 +633,7 @@ export default function TasksPage() {
                                   type="button"
                                   onClick={() => handleClearFollowUp(task._id)}
                                   className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors"
-                                  title="Remove follow-up"
+                                  title={txx.removeFollowUp}
                                 >
                                   <X className="w-4 h-4" />
                                 </button>
@@ -709,7 +710,7 @@ export default function TasksPage() {
 
           {/* Search + Filters */}
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-[240px]">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
                 {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               </div>
@@ -726,19 +727,19 @@ export default function TasksPage() {
                   type="button"
                   onClick={() => { setSearchInput(''); setSearch(''); setPage(1); searchInputRef.current?.focus(); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
-                  title="Clear search"
+                  title={txx.clearSearch}
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <select
                 value={statusFilter}
                 onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                aria-label="Filter by status"
-                className="px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                aria-label={txx.filterByStatus}
+                className="w-full sm:w-44 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
               >
                 <option value="">{T.all} {T.status}</option>
                 <option value="pending">{T.pending}</option>
@@ -750,7 +751,7 @@ export default function TasksPage() {
               <button
                 type="button"
                 onClick={() => setShowFilters(!showFilters)}
-                aria-label="Toggle filters"
+                aria-label={txx.toggleFilters}
                 className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-colors ${
                   showFilters ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-900'
                 }`}
@@ -888,7 +889,7 @@ export default function TasksPage() {
                                   type="button"
                                   onClick={() => openUpdateModal(task)}
                                   className="p-1.5 rounded-lg text-slate-500 hover:text-green-600 hover:bg-slate-100 transition-colors"
-                                  title="Complete task"
+                                  title={txx.completeTask}
                                 >
                                   <Check className="w-4 h-4" />
                                 </button>
@@ -897,7 +898,7 @@ export default function TasksPage() {
                                 type="button"
                                 onClick={() => openEditModal(task)}
                                 className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors"
-                                title="Edit task"
+                                title={txx.editTaskTooltip}
                               >
                                 <Edit className="w-4 h-4" />
                               </button>
@@ -906,7 +907,7 @@ export default function TasksPage() {
                                   type="button"
                                   onClick={() => handleDeleteTask(task._id)}
                                   className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors"
-                                  title="Delete task"
+                                  title={txx.deleteTask}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -1193,7 +1194,7 @@ export default function TasksPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="text-slate-900 font-medium truncate">{s.customer?.companyName}</h4>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${RISK_COLORS[s.riskLevel] || 'bg-slate-100 text-slate-500'}`}>
-                        {s.riskLevel}
+                        {(T as any)[s.riskLevel] || s.riskLevel}
                       </span>
                     </div>
                     <p className="text-slate-500 text-sm">{s.reason}</p>
@@ -1248,7 +1249,7 @@ export default function TasksPage() {
               {/* Header */}
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
                 <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold text-lg mb-3">{T.createTask}</h2>
-                <button type="button" onClick={() => setShowCreateModal(false)} className="text-slate-500 hover:text-slate-900" aria-label="Close">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="text-slate-500 hover:text-slate-900" aria-label={T.close}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1261,7 +1262,7 @@ export default function TasksPage() {
                   <select
                     value={selectedCollector}
                     onChange={(e) => setSelectedCollector(e.target.value)}
-                    aria-label="Select collector"
+                    aria-label={txx.selectCollector}
                     className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                   >
                     <option value="">...</option>
@@ -1297,7 +1298,7 @@ export default function TasksPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-slate-500 text-xs">{T.title} {index + 1}</span>
                           {taskBatch.length > 1 && (
-                            <button type="button" onClick={() => removeTaskFromBatch(index)} className="text-slate-500 hover:text-red-600" aria-label="Remove task">
+                            <button type="button" onClick={() => removeTaskFromBatch(index)} className="text-slate-500 hover:text-red-600" aria-label={txx.removeTask}>
                               <X className="w-4 h-4" />
                             </button>
                           )}
@@ -1309,7 +1310,7 @@ export default function TasksPage() {
                             <select
                               value={task.customer}
                               onChange={(e) => updateTaskBatch(index, 'customer', e.target.value)}
-                              aria-label="Customer"
+                              aria-label={T.customer}
                               className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                             >
                               <option value="">...</option>
@@ -1341,13 +1342,13 @@ export default function TasksPage() {
                                 value={task.dueDate}
                                 onChange={(e) => updateTaskBatch(index, 'dueDate', e.target.value)}
                                 className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
-                                aria-label="Due date"
+                                aria-label={T.dueDate}
                               />
                               <button
                                 type="button"
                                 onClick={() => updateTaskBatch(index, 'dueDate', getTodayLocal())}
                                 className="px-2 py-2 rounded-lg bg-slate-100 text-[#f37121] text-xs font-medium hover:bg-slate-200 transition-colors whitespace-nowrap"
-                                title="Set to today"
+                                title={txx.setToToday}
                               >
                                 {T.today}
                               </button>
@@ -1406,7 +1407,7 @@ export default function TasksPage() {
                   <h2 className="text-white font-bold text-lg">{T.editTask}</h2>
                   <p className="text-slate-300 text-sm mt-1">{selectedTask.customer?.companyName}</p>
                 </div>
-                <button type="button" onClick={() => setShowUpdateModal(false)} className="text-slate-500 hover:text-slate-900" aria-label="Close">
+                <button type="button" onClick={() => setShowUpdateModal(false)} className="text-slate-500 hover:text-slate-900" aria-label={T.close}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1472,13 +1473,13 @@ export default function TasksPage() {
                       value={updateForm.nextFollowUpDate}
                       onChange={(e) => setUpdateForm((prev) => ({ ...prev, nextFollowUpDate: e.target.value }))}
                       className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
-                      aria-label="Follow-up date"
+                      aria-label={T.nextFollowUp}
                     />
                     <button
                       type="button"
                       onClick={() => setUpdateForm((prev) => ({ ...prev, nextFollowUpDate: getTodayLocal() }))}
                       className="px-3 py-2.5 rounded-lg bg-slate-100 text-[#f37121] text-xs font-medium hover:bg-slate-200 transition-colors whitespace-nowrap"
-                      title="Set to today"
+                      title={txx.setToToday}
                     >
                       {T.today}
                     </button>
@@ -1536,7 +1537,7 @@ export default function TasksPage() {
                     {editTask.customer?.companyName} — {editTask.assignedTo?.firstName} {editTask.assignedTo?.lastName}
                   </p>
                 </div>
-                <button type="button" onClick={() => setShowEditModal(false)} className="text-slate-500 hover:text-slate-900" aria-label="Close">
+                <button type="button" onClick={() => setShowEditModal(false)} className="text-slate-500 hover:text-slate-900" aria-label={T.close}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -1566,7 +1567,7 @@ export default function TasksPage() {
                       value={editForm.dueDate}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, dueDate: e.target.value }))}
                       className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
-                      aria-label="Due date"
+                      aria-label={T.dueDate}
                     />
                     <button
                       type="button"
@@ -1612,7 +1613,7 @@ export default function TasksPage() {
                       value={editForm.nextFollowUpDate}
                       onChange={(e) => setEditForm((prev) => ({ ...prev, nextFollowUpDate: e.target.value }))}
                       className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
-                      aria-label="Follow-up date"
+                      aria-label={T.nextFollowUp}
                     />
                     <button
                       type="button"

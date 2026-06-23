@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { getCRMTranslations } from '@/lib/translations';
+import { getCRMTranslations, getCrmCalendarExtraTranslations } from '@/lib/translations';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { isCrmStaff, CrmActivity, CrmTask, CrmOptions, optLabel, companyName, fmtDateTime } from '@/lib/crm';
 import { Spinner, PageHeader, Tabs } from '@/components/crm/CrmKit';
@@ -21,6 +21,7 @@ export default function CrmCalendarPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const T = getCRMTranslations(lang);
+  const txx = getCrmCalendarExtraTranslations(lang);
 
   const [cursor, setCursor] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [activities, setActivities] = useState<CrmActivity[]>([]);
@@ -81,9 +82,9 @@ export default function CrmCalendarPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <button type="button" title="prev" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="text-slate-500 hover:text-slate-900 p-1">{isRTL ? <ChevronRight /> : <ChevronLeft />}</button>
+          <button type="button" title={txx.prevMonth} onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="text-slate-500 hover:text-slate-900 p-1">{isRTL ? <ChevronRight /> : <ChevronLeft />}</button>
           <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-bold text-lg mb-3">{months[cursor.getMonth()]} {cursor.getFullYear()}</h2>
-          <button type="button" title="next" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="text-slate-500 hover:text-slate-900 p-1">{isRTL ? <ChevronLeft /> : <ChevronRight />}</button>
+          <button type="button" title={txx.nextMonth} onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="text-slate-500 hover:text-slate-900 p-1">{isRTL ? <ChevronLeft /> : <ChevronRight />}</button>
         </div>
 
         {loading ? <Spinner /> : (

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getInvoicesTranslations } from '@/lib/translations';
+import { getInvoicesTranslations, getInvoicesIdExtraTranslations } from '@/lib/translations';
 
 interface InvoiceDetail {
   _id: string;
@@ -94,6 +94,24 @@ export default function InvoiceDetailPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getInvoicesTranslations(lang);
+  const txx = getInvoicesIdExtraTranslations(lang);
+
+  const STATUS_LABELS: Record<string, string> = {
+    paid: T.paid,
+    partial: T.partial,
+    overdue: T.overdue,
+    pending: T.pendingStatus,
+    frozen: T.frozen,
+    disputed: T.disputed,
+    refunded: T.refunded,
+  };
+  const PAYMENT_METHOD_LABELS: Record<string, string> = {
+    bank_transfer: txx.methodBankTransfer,
+    check: txx.methodCheck,
+    cash: txx.methodCash,
+    online: txx.methodOnline,
+    other: txx.methodOther,
+  };
 
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -133,7 +151,7 @@ export default function InvoiceDetailPage() {
       const data = await api.get<InvoiceResponse>(`/api/invoices/${id}`);
       setInvoice(data.invoice);
     } catch (err: any) {
-      setError(err.message || 'Failed to load invoice');
+      setError(err.message || txx.errLoadInvoice);
     } finally {
       setLoading(false);
     }
@@ -166,15 +184,15 @@ export default function InvoiceDetailPage() {
     setPaymentError('');
 
     if (!paymentForm.amount || Number(paymentForm.amount) <= 0) {
-      setPaymentError('Amount must be greater than 0');
+      setPaymentError(txx.errAmountPositive);
       return;
     }
     if (invoice && Number(paymentForm.amount) > invoice.balance) {
-      setPaymentError(`Amount cannot exceed the remaining balance of ${formatCurrency(invoice.balance)}`);
+      setPaymentError(`${txx.errExceedBalance} ${formatCurrency(invoice.balance)}`);
       return;
     }
     if (!paymentForm.paymentDate) {
-      setPaymentError('Payment date is required');
+      setPaymentError(txx.errPaymentDateRequired);
       return;
     }
 
@@ -199,7 +217,7 @@ export default function InvoiceDetailPage() {
       fetchInvoice();
       fetchPayments();
     } catch (err: any) {
-      setPaymentError(err.message || 'Failed to log payment');
+      setPaymentError(err.message || txx.errLogPayment);
     } finally {
       setLoggingPayment(false);
     }
@@ -210,7 +228,7 @@ export default function InvoiceDetailPage() {
     setStatusError('');
 
     if (!overrideStatus) {
-      setStatusError('Please select a status');
+      setStatusError(txx.errSelectStatus);
       return;
     }
 
@@ -221,7 +239,7 @@ export default function InvoiceDetailPage() {
       setOverrideStatus('');
       fetchInvoice();
     } catch (err: any) {
-      setStatusError(err.message || 'Failed to override status');
+      setStatusError(err.message || txx.errOverrideStatus);
     } finally {
       setSubmittingStatus(false);
     }
@@ -233,7 +251,7 @@ export default function InvoiceDetailPage() {
       await api.put(`/api/invoices/${id}/freeze`);
       fetchInvoice();
     } catch (err: any) {
-      setError(err.message || 'Failed to toggle freeze');
+      setError(err.message || txx.errToggleFreeze);
     } finally {
       setFreezing(false);
     }
@@ -247,7 +265,7 @@ export default function InvoiceDetailPage() {
       fetchInvoice();
       fetchPayments();
     } catch (err: any) {
-      setError(err.message || 'Failed to refund invoice');
+      setError(err.message || txx.errRefundInvoice);
     } finally {
       setRefunding(false);
     }
@@ -292,7 +310,7 @@ export default function InvoiceDetailPage() {
           className="flex items-center gap-2 text-slate-500 hover:text-slate-900 text-sm transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Invoices
+          {T.back} {T.invoices}
         </button>
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-red-600 text-center">
           {error}
@@ -308,8 +326,8 @@ export default function InvoiceDetailPage() {
     invoice.status === 'paid'
       ? null
       : invoice.remainingDays < 0
-        ? `${invoice.overdueDays} days overdue`
-        : `${invoice.remainingDays} days remaining`;
+        ? `${invoice.overdueDays} ${txx.daysOverdue}`
+        : `${invoice.remainingDays} ${txx.daysRemaining}`;
   const remainingColor =
     invoice.status === 'paid'
       ? ''
@@ -342,12 +360,12 @@ export default function InvoiceDetailPage() {
             <FileText className="w-6 h-6 text-[#f37121]" />
             {invoice.invoiceNumber}
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${badge.bg} ${badge.text}`}>
-              {badge.label}
+              {STATUS_LABELS[invoice.status] || badge.label}
             </span>
             {invoice.isFrozen && (
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/20 text-cyan-700 flex items-center gap-1">
                 <Snowflake className="w-3 h-3" />
-                Frozen
+                {T.frozen}
               </span>
             )}
           </h1>
@@ -457,7 +475,7 @@ export default function InvoiceDetailPage() {
               }`}
             >
               <Snowflake className="w-4 h-4" />
-              {freezing ? 'Processing...' : invoice.isFrozen ? 'Unfreeze' : 'Freeze'}
+              {freezing ? txx.processing : invoice.isFrozen ? txx.unfreeze : txx.freeze}
             </button>
           )}
 
@@ -469,7 +487,7 @@ export default function InvoiceDetailPage() {
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors"
             >
               <AlertTriangle className="w-4 h-4" />
-              Refund
+              {txx.refund}
             </button>
           )}
         </div>
@@ -531,7 +549,7 @@ export default function InvoiceDetailPage() {
             </div>
             <div>
               <p className="text-slate-500 text-xs uppercase tracking-wide">{T.creditTerm}</p>
-              <p className="text-slate-900 text-xl font-bold mt-1">{invoice.creditTerm} days</p>
+              <p className="text-slate-900 text-xl font-bold mt-1">{invoice.creditTerm} {txx.days}</p>
             </div>
           </div>
 
@@ -587,7 +605,7 @@ export default function InvoiceDetailPage() {
               <p className="text-slate-500 text-xs uppercase tracking-wide">{T.status}</p>
               <p className="mt-1">
                 <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${badge.bg} ${badge.text}`}>
-                  {badge.label}
+                  {STATUS_LABELS[invoice.status] || badge.label}
                 </span>
               </p>
             </div>
@@ -610,8 +628,8 @@ export default function InvoiceDetailPage() {
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
             <p className="text-red-600 font-medium">{T.refunded}</p>
             <p className="text-slate-500 text-sm mt-1">
-              Refunded on {formatDate(invoice.refundedAt)}
-              {invoice.refundedBy && ` by ${invoice.refundedBy.firstName} ${invoice.refundedBy.lastName}`}
+              {txx.refundedOn} {formatDate(invoice.refundedAt)}
+              {invoice.refundedBy && ` ${txx.byUser} ${invoice.refundedBy.firstName} ${invoice.refundedBy.lastName}`}
             </p>
           </div>
         )}
@@ -659,7 +677,7 @@ export default function InvoiceDetailPage() {
             )}
             <div>
               <p className="text-slate-500 text-xs uppercase tracking-wide">{T.creditTerm}</p>
-              <p className="text-slate-700 mt-1">{invoice.customer.creditTerm} days</p>
+              <p className="text-slate-700 mt-1">{invoice.customer.creditTerm} {txx.days}</p>
             </div>
           </div>
         </div>
@@ -734,7 +752,7 @@ export default function InvoiceDetailPage() {
                     <td className="px-4 py-3 text-sm text-slate-700">{formatDate(payment.paymentDate)}</td>
                     <td className="px-4 py-3 text-sm text-green-600 font-medium">{formatCurrency(payment.amount)}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">
-                      {PAYMENT_METHODS[payment.paymentMethod] || payment.paymentMethod}
+                      {PAYMENT_METHOD_LABELS[payment.paymentMethod] || PAYMENT_METHODS[payment.paymentMethod] || payment.paymentMethod}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-500">{payment.reference || '-'}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">
@@ -795,7 +813,7 @@ export default function InvoiceDetailPage() {
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 text-xs mb-1.5">Amount (USD) *</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{txx.amountUsdLabel} *</label>
                     <input
                       type="number"
                       step="0.01"
@@ -809,7 +827,7 @@ export default function InvoiceDetailPage() {
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 text-xs mb-1.5">Payment Date *</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{txx.paymentDate} *</label>
                     <input
                       type="date"
                       value={paymentForm.paymentDate}
@@ -819,38 +837,38 @@ export default function InvoiceDetailPage() {
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 text-xs mb-1.5">Payment Method *</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{txx.paymentMethod} *</label>
                     <select
                       value={paymentForm.paymentMethod}
                       onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     >
-                      <option value="bank_transfer">Bank Transfer</option>
-                      <option value="check">Check</option>
-                      <option value="cash">Cash</option>
-                      <option value="online">Online</option>
-                      <option value="other">Other</option>
+                      <option value="bank_transfer">{txx.methodBankTransfer}</option>
+                      <option value="check">{txx.methodCheck}</option>
+                      <option value="cash">{txx.methodCash}</option>
+                      <option value="online">{txx.methodOnline}</option>
+                      <option value="other">{txx.methodOther}</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 text-xs mb-1.5">Reference</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{T.reference}</label>
                     <input
                       type="text"
                       value={paymentForm.reference}
                       onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
-                      placeholder="e.g. TRX-12345"
+                      placeholder={txx.referencePlaceholder}
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 text-xs mb-1.5">Notes</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{T.notes}</label>
                     <textarea
                       value={paymentForm.notes}
                       onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
                       rows={2}
-                      placeholder="Optional notes..."
+                      placeholder={txx.notesPlaceholder}
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 resize-none"
                     />
                   </div>
@@ -918,19 +936,19 @@ export default function InvoiceDetailPage() {
                   )}
 
                   <div>
-                    <label className="block text-slate-500 text-xs mb-1.5">New Status *</label>
+                    <label className="block text-slate-500 text-xs mb-1.5">{txx.newStatusLabel} *</label>
                     <select
                       value={overrideStatus}
                       onChange={(e) => setOverrideStatus(e.target.value)}
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     >
-                      <option value="">Select status...</option>
-                      <option value="pending">Pending</option>
-                      <option value="partial">Partial</option>
-                      <option value="paid">Paid</option>
-                      <option value="overdue">Overdue</option>
-                      <option value="frozen">Frozen</option>
-                      <option value="disputed">Disputed</option>
+                      <option value="">{txx.selectStatusPlaceholder}</option>
+                      <option value="pending">{T.pendingStatus}</option>
+                      <option value="partial">{T.partial}</option>
+                      <option value="paid">{T.paid}</option>
+                      <option value="overdue">{T.overdue}</option>
+                      <option value="frozen">{T.frozen}</option>
+                      <option value="disputed">{T.disputed}</option>
                     </select>
                   </div>
 
@@ -985,7 +1003,7 @@ export default function InvoiceDetailPage() {
                   <div>
                     <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">{T.refunded}</h3>
                     <p className="text-slate-500 text-sm mt-2">
-                      Are you sure you want to refund invoice <span className="text-slate-900 font-medium">{invoice.invoiceNumber}</span>? This will reset the balance and update the customer&apos;s outstanding amount.
+                      {txx.refundConfirmPrefix} <span className="text-slate-900 font-medium">{invoice.invoiceNumber}</span>{txx.refundConfirmSuffix}
                     </p>
                   </div>
                   <div className="flex gap-3">

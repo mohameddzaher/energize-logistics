@@ -4,14 +4,17 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { MessageSquare, Send, Link2 } from 'lucide-react';
+import { MessageSquare, Send, Link2, Download } from 'lucide-react';
 import { isHRStaff, HRRequest, REQUEST_STATUS, categoryLabel, userName, fmtDateTime } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, Badge, Modal, TextInput, Select, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
+import { getHrRequestsTranslations } from '@/lib/translations';
+import { exportToExcel } from '@/utils/exportExcel';
 
 export default function HRRequestsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  const tx = getHrRequestsTranslations(lang);
   const staff = isHRStaff(user?.role);
 
   const [requests, setRequests] = useState<HRRequest[]>([]);
@@ -54,33 +57,46 @@ export default function HRRequestsPage() {
   const filtered = requests.filter((r) => !search.trim() || r.subject.toLowerCase().includes(search.toLowerCase()) || userName(r.requester).toLowerCase().includes(search.toLowerCase()));
   const openCount = requests.filter((r) => r.status === 'open' || r.status === 'in_progress').length;
 
-  if (!staff) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
+  const handleExport = () => {
+    exportToExcel(filtered, [
+      { header: tx.colEmployee, key: 'requester', transform: (v) => userName(v), width: 22 },
+      { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 18 },
+      { header: tx.colSubject, key: 'subject', width: 32 },
+      { header: tx.colStatus, key: 'status', transform: (v) => (REQUEST_STATUS[v] ? (ar ? REQUEST_STATUS[v].ar : REQUEST_STATUS[v].en) : v), width: 16 },
+      { header: tx.colUpdated, key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 20 },
+    ], 'hr-requests', tx.pageTitle);
+  };
+
+  if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<MessageSquare className="w-5 h-5" />} title={ar ? 'طلبات الموظفين' : 'Employee Requests'} subtitle={`${openCount} ${ar ? 'مفتوحة' : 'open'}`} />
+      <PageHeader icon={<MessageSquare className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${openCount} ${tx.openCountSuffix}`} />
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث بالموضوع أو الموظف...' : 'Search by subject or employee...'} /></div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
-          <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
+        <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+          <option value="">{tx.allStatuses}</option>
           {Object.entries(REQUEST_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
         </select>
+        <button type="button" onClick={handleExport} className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm hover:bg-slate-50">
+          <Download className="w-4 h-4" /> {ar ? 'تصدير Excel' : 'Export Excel'}
+        </button>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الموظف' : 'Employee'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'النوع' : 'Category'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الموضوع' : 'Subject'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الحالة' : 'Status'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'آخر تحديث' : 'Updated'}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colEmployee}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colCategory}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colSubject}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colUpdated}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={5} className="text-center text-slate-500 py-12">{ar ? 'لا توجد طلبات' : 'No requests'}</td></tr>
+              <tr><td colSpan={5} className="text-center text-slate-500 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((r) => (
               <tr key={r._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
                 <td className="px-4 py-3 text-slate-900 font-medium">{userName(r.requester)} {!r.readByHR && <span className="ml-1 inline-block w-2 h-2 rounded-full bg-[#f37121]" />}</td>
@@ -107,7 +123,7 @@ export default function HRRequestsPage() {
               <span>{userName(open.requester)}</span> · <span>{categoryLabel(open.category, lang)}</span> · <Badge style={REQUEST_STATUS[open.status]} lang={lang} />
             </div>
             <div className="space-y-3 max-h-64 overflow-y-auto">
-              {open.thread.length === 0 && <p className="text-slate-500 text-sm">{ar ? 'لا توجد رسائل بعد' : 'No messages yet'}</p>}
+              {open.thread.length === 0 && <p className="text-slate-500 text-sm">{tx.noMessagesYet}</p>}
               {open.thread.map((m, i) => {
                 const mine = String(m.sender?._id || m.sender) === String(user?._id);
                 const fromStaff = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].includes(m.sender?.role);
@@ -116,16 +132,16 @@ export default function HRRequestsPage() {
                     <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${fromStaff ? 'bg-[#f37121]/20 text-white' : 'bg-slate-100 text-slate-900'}`}>
                       <p className="text-xs text-slate-500 mb-1">{userName(m.sender)} · {fmtDateTime(m.at)}</p>
                       {m.body && <p className="whitespace-pre-wrap">{m.body}</p>}
-                      {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="text-[#f37121] underline flex items-center gap-1 mt-1"><Link2 className="w-3 h-3" /> {ar ? 'الرابط' : 'Open link'}</a>}
+                      {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="text-[#f37121] underline flex items-center gap-1 mt-1"><Link2 className="w-3 h-3" /> {tx.openLink}</a>}
                     </div>
                   </div>
                 );
               })}
             </div>
             <div className="border-t border-slate-200 pt-3 space-y-2">
-              <TextInput placeholder={ar ? 'اكتب ردًا...' : 'Write a reply...'} value={reply} onChange={(e) => setReply(e.target.value)} />
-              <TextInput placeholder={ar ? 'رابط مستند (اختياري)' : 'Document link (optional)'} value={link} onChange={(e) => setLink(e.target.value)} />
-              <div className="flex justify-end"><PrimaryButton onClick={sendReply} disabled={busy || (!reply.trim() && !link.trim())}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {ar ? 'إرسال' : 'Send'}</PrimaryButton></div>
+              <TextInput placeholder={tx.replyPlaceholder} value={reply} onChange={(e) => setReply(e.target.value)} />
+              <TextInput placeholder={tx.linkPlaceholder} value={link} onChange={(e) => setLink(e.target.value)} />
+              <div className="flex justify-end"><PrimaryButton onClick={sendReply} disabled={busy || (!reply.trim() && !link.trim())}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {tx.send}</PrimaryButton></div>
             </div>
           </div>
         )}

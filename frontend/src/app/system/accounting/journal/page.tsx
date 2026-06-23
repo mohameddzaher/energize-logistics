@@ -8,7 +8,9 @@ import { FileText, Plus, Trash2, RefreshCw, X } from 'lucide-react';
 import {
   isFinanceStaff, isFinanceAdmin, ChartAccount, JournalEntry, accountName, money, fmtDate, today,
 } from '@/lib/finance';
-import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select, ExportButton } from '@/components/hr/HRKit';
+import { getAccountingJournalTranslations } from '@/lib/translations';
+import { exportToExcel } from '@/utils/exportExcel';
 
 const emptyLine = () => ({ account: '', debit: '', credit: '', description: '' });
 
@@ -16,6 +18,7 @@ export default function JournalPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  const tx = getAccountingJournalTranslations(lang);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +52,7 @@ export default function JournalPage() {
 
   const openCreate = () => { setForm({ date: today(), memo: '', lines: [emptyLine(), emptyLine()] }); setShowModal(true); };
   const save = async () => {
-    if (!balanced) { alert(ar ? 'القيد غير متوازن' : 'Entry is not balanced'); return; }
+    if (!balanced) { alert(tx.entryNotBalanced); return; }
     setSaving(true);
     try {
       const lines = form.lines.filter((l) => l.account && (Number(l.debit) > 0 || Number(l.credit) > 0))
@@ -59,7 +62,7 @@ export default function JournalPage() {
     } catch (e: any) { alert(e.message); } finally { setSaving(false); }
   };
   const remove = async (e: JournalEntry) => {
-    if (!confirm(ar ? 'حذف القيد؟' : 'Delete entry?')) return;
+    if (!confirm(tx.deleteEntryConfirm)) return;
     try { await api.delete(`/api/accounting/journal/${e._id}`); load(); } catch (er: any) { alert(er.message); }
   };
   const sync = async () => {
@@ -68,19 +71,39 @@ export default function JournalPage() {
     catch (e: any) { alert(e.message); } finally { setSyncing(false); }
   };
 
-  if (!isFinanceStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  const handleExport = () => {
+    const rows = entries.flatMap((e) => (e.lines || []).map((l) => ({
+      entryNumber: e.entryNumber,
+      date: e.date,
+      memo: e.memo,
+      account: l.account,
+      debit: l.debit,
+      credit: l.credit,
+    })));
+    exportToExcel(rows, [
+      { header: ar ? 'رقم القيد' : 'Entry #', key: 'entryNumber', width: 14 },
+      { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: (v) => fmtDate(v), width: 14 },
+      { header: ar ? 'البيان' : 'Memo', key: 'memo', transform: (v) => v || '', width: 28 },
+      { header: ar ? 'الحساب' : 'Account', key: 'account', transform: (v) => accountName(v, lang), width: 28 },
+      { header: tx.debit, key: 'debit', transform: (v) => v ? money(v, '') : '', width: 14 },
+      { header: tx.credit, key: 'credit', transform: (v) => v ? money(v, '') : '', width: 14 },
+    ], 'journal', ar ? 'دفتر اليومية' : 'Journal');
+  };
+
+  if (!isFinanceStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<FileText className="w-5 h-5" />} title={ar ? 'القيود اليومية' : 'Journal'} subtitle={`${entries.length}`}>
+      <PageHeader icon={<FileText className="w-5 h-5" />} title={tx.journal} subtitle={`${entries.length}`}>
         <button type="button" onClick={sync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
-          <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} /> {ar ? 'ترحيل تلقائي' : 'Auto-post'}
+          <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} /> {tx.autoPost}
         </button>
-        <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'قيد جديد' : 'New Entry'}</PrimaryButton>
+        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={handleExport} />
+        <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.newEntry}</PrimaryButton>
       </PageHeader>
 
-      <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث...' : 'Search...'} />
+      <SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} />
 
       <div className="space-y-3">
         {entries.length === 0 ? <div className="bg-white border border-slate-200 rounded-xl py-10 text-center text-slate-500 shadow-sm">—</div> : entries.map((e) => (
@@ -89,11 +112,11 @@ export default function JournalPage() {
               <div className="flex items-center gap-2">
                 <span className="text-slate-500 font-mono text-xs">{e.entryNumber}</span>
                 <span className="text-slate-900 text-sm font-medium">{e.memo || '—'}</span>
-                {e.source?.auto && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600">{ar ? 'تلقائي' : 'auto'} · {e.source.type}</span>}
+                {e.source?.auto && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600">{tx.auto} · {e.source.type}</span>}
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-slate-500 text-xs">{fmtDate(e.date)}</span>
-                {canDelete && <button type="button" title={ar ? 'حذف' : 'Delete'} onClick={() => remove(e)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}
+                {canDelete && <button type="button" title={tx.delete} onClick={() => remove(e)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}
               </div>
             </div>
             <table className="w-full text-xs">
@@ -111,30 +134,30 @@ export default function JournalPage() {
         ))}
       </div>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} wide title={ar ? 'قيد يومية جديد' : 'New Journal Entry'}
-        footer={<><button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-          <PrimaryButton onClick={save} disabled={saving || !balanced}>{saving ? '...' : (ar ? 'حفظ' : 'Post')}</PrimaryButton></>}>
+      <Modal open={showModal} onClose={() => setShowModal(false)} wide title={tx.newJournalEntry}
+        footer={<><button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{tx.cancel}</button>
+          <PrimaryButton onClick={save} disabled={saving || !balanced}>{saving ? '...' : tx.post}</PrimaryButton></>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label={ar ? 'التاريخ' : 'Date'}><TextInput type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-          <Field label={ar ? 'البيان' : 'Memo'}><TextInput value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} /></Field>
+          <Field label={tx.date}><TextInput type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <Field label={tx.memo}><TextInput value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} /></Field>
         </div>
         <div className="mt-2 space-y-2">
           {form.lines.map((l, i) => (
             <div key={i} className="flex items-center gap-2">
               <select value={l.account} onChange={(e) => setLine(i, { account: e.target.value })} className="flex-1 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
-                <option value="">{ar ? 'اختر حساب' : 'Account'}</option>
+                <option value="">{tx.account}</option>
                 {accounts.map((a) => <option key={a._id} value={a._id}>{a.code} · {ar && a.nameAr ? a.nameAr : a.nameEn}</option>)}
               </select>
-              <input type="number" placeholder={ar ? 'مدين' : 'Debit'} value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: '' })} className="w-24 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
-              <input type="number" placeholder={ar ? 'دائن' : 'Credit'} value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: '' })} className="w-24 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
-              <button type="button" title={ar ? 'حذف السطر' : 'Remove line'} onClick={() => removeLine(i)} className="text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
+              <input type="number" placeholder={tx.debit} value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: '' })} className="w-24 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
+              <input type="number" placeholder={tx.credit} value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: '' })} className="w-24 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
+              <button type="button" title={tx.removeLine} onClick={() => removeLine(i)} className="text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
             </div>
           ))}
-          <button type="button" onClick={addLine} className="text-[#f37121] text-sm flex items-center gap-1"><Plus className="w-4 h-4" /> {ar ? 'إضافة سطر' : 'Add line'}</button>
+          <button type="button" onClick={addLine} className="text-[#f37121] text-sm flex items-center gap-1"><Plus className="w-4 h-4" /> {tx.addLine}</button>
           <div className={`flex justify-end gap-6 text-sm pt-2 border-t border-slate-200 ${balanced ? 'text-green-600' : 'text-red-600'}`}>
-            <span>{ar ? 'مدين' : 'Debit'}: {money(totalDebit, '')}</span>
-            <span>{ar ? 'دائن' : 'Credit'}: {money(totalCredit, '')}</span>
-            <span>{balanced ? (ar ? '✓ متوازن' : '✓ Balanced') : (ar ? '✗ غير متوازن' : '✗ Not balanced')}</span>
+            <span>{tx.debit}: {money(totalDebit, '')}</span>
+            <span>{tx.credit}: {money(totalCredit, '')}</span>
+            <span>{balanced ? tx.balancedMark : tx.notBalancedMark}</span>
           </div>
         </div>
       </Modal>

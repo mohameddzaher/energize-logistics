@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
-import { getB2CTranslations } from '@/lib/translations';
+import { getB2CTranslations, getB2cDashboardTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -77,6 +77,7 @@ const perfBucket = (pct: number) => {
 export default function B2CDashboard() {
   const { lang } = useLanguage();
   const T = getB2CTranslations(lang);
+  const tx = getB2cDashboardTranslations(lang);
   const monthNames = lang === 'ar' ? MONTH_NAMES_AR : MONTH_NAMES_EN;
 
   // Filters — default to "all data" so users see everything immediately after upload.
@@ -288,7 +289,7 @@ export default function B2CDashboard() {
             }`}>
             <Filter className="w-4 h-4" /> {T.filters}
           </button>
-          <button type="button" onClick={fetchDashboard} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title="Refresh">
+          <button type="button" onClick={fetchDashboard} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}>
             <RefreshCw className={`w-4 h-4 ${loading || refreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
@@ -301,22 +302,22 @@ export default function B2CDashboard() {
             className="overflow-hidden">
             <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 shadow-sm">
               <div>
-                <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{lang === 'ar' ? 'السنة' : 'Year'}</label>
-                <input type="number" value={year} onChange={(e) => setYear(e.target.value === '' ? '' : Number(e.target.value))} aria-label="Year"
-                  placeholder={lang === 'ar' ? 'كل السنوات' : 'All years'}
+                <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{tx.year}</label>
+                <input type="number" value={year} onChange={(e) => setYear(e.target.value === '' ? '' : Number(e.target.value))} aria-label={tx.year}
+                  placeholder={tx.allYears}
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
               </div>
               <div>
-                <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{lang === 'ar' ? 'الشهر' : 'Month'}</label>
-                <select aria-label="Month" value={month} onChange={(e) => setMonth(e.target.value === '' ? '' : Number(e.target.value))}
+                <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{tx.month}</label>
+                <select aria-label={tx.month} value={month} onChange={(e) => setMonth(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
-                  <option value="">{lang === 'ar' ? 'كل الشهور' : 'All months'}</option>
+                  <option value="">{tx.allMonths}</option>
                   {monthNames.map((n, i) => <option key={i} value={i + 1}>{n}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.project}</label>
-                <select aria-label="Project" value={project} onChange={(e) => setProject(e.target.value)}
+                <select aria-label={T.project} value={project} onChange={(e) => setProject(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                   <option value="">{T.allProjects}</option>
                   {projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
@@ -324,7 +325,7 @@ export default function B2CDashboard() {
               </div>
               <div>
                 <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.branch}</label>
-                <select aria-label="Branch" value={branch} onChange={(e) => setBranch(e.target.value)}
+                <select aria-label={T.branch} value={branch} onChange={(e) => setBranch(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                   <option value="">{T.allBranches}</option>
                   {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
@@ -332,7 +333,7 @@ export default function B2CDashboard() {
               </div>
               <div>
                 <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.rep}</label>
-                <select aria-label="Rep" value={rep} onChange={(e) => setRep(e.target.value)}
+                <select aria-label={T.rep} value={rep} onChange={(e) => setRep(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                   <option value="">{T.allReps}</option>
                   {reps.map((r) => <option key={r._id} value={r._id}>{r.englishName}</option>)}
@@ -340,12 +341,12 @@ export default function B2CDashboard() {
               </div>
               <div>
                 <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.dateFrom}</label>
-                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="Date from"
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label={T.dateFrom}
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
               </div>
               <div>
                 <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{T.dateTo}</label>
-                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="Date to"
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label={T.dateTo}
                   className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
               </div>
               <div className="col-span-1 sm:col-span-2 md:col-span-4 lg:col-span-7 flex justify-end">
@@ -370,7 +371,7 @@ export default function B2CDashboard() {
                 ? 'bg-[#f37121] text-white shadow-lg shadow-[#f37121]/20'
                 : 'bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}>
-            📊 {lang === 'ar' ? 'نظرة عامة' : 'Overview'}
+            📊 {tx.overviewPicker}
           </button>
           <div className="w-px h-7 bg-slate-100 flex-shrink-0" />
           {allMonths.map((m) => {
@@ -395,7 +396,7 @@ export default function B2CDashboard() {
         {[
           { id: 'overview', label: T.overview },
           { id: 'evaluation', label: T.evaluationTitle },
-          { id: 'analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics' },
+          { id: 'analytics', label: tx.analytics },
         ].map((t) => (
           <button key={t.id} type="button" onClick={() => setActiveTab(t.id as any)}
             className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
@@ -423,12 +424,10 @@ export default function B2CDashboard() {
         <div className="bg-white border border-slate-200 rounded-xl p-12 text-center shadow-sm">
           <BarChart3 className="w-12 h-12 text-slate-600 mx-auto mb-3" />
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-2">
-            {lang === 'ar' ? 'لا توجد بيانات في النطاق المحدد' : 'No data in this scope'}
+            {tx.noDataInScope}
           </h3>
           <p className="text-slate-500 text-sm mb-4">
-            {lang === 'ar'
-              ? 'جرب تمسح الفلاتر، أو ارفع ملف Excel من صفحة "أداء المناديب"، أو ابدأ إدخال يومي.'
-              : 'Try clearing filters, upload an Excel from "Reps Performance" page, or start a daily entry.'}
+            {tx.noDataInScopeHint}
           </p>
           {(year || month || project || branch || rep || dateFrom || dateTo) && (
             <button type="button" onClick={clearFilters}
@@ -757,6 +756,7 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
 }
 
 function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
+  const tx = getB2cDashboardTranslations(lang);
   const [grade, setGrade] = useState('');
   const filtered = grade ? evaluations.filter((e: any) => e.grade === grade) : evaluations;
 
@@ -788,7 +788,7 @@ function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
               grade === g ? 'border-[#f37121] bg-[#f37121]/10' : 'border-slate-200 bg-white hover:border-slate-300'
             }`}>
             <p className="text-2xl font-bold" style={{ color: gradeColor(g) }}>{g}</p>
-            <p className="text-slate-500 text-xs mt-1">{count} {lang === 'ar' ? 'مندوب' : 'reps'}</p>
+            <p className="text-slate-500 text-xs mt-1">{count} {tx.repsUnit}</p>
           </button>
         ))}
       </div>
@@ -845,6 +845,7 @@ function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
 }
 
 function AnalyticsView({ dashboard, T, lang }: any) {
+  const tx = getB2cDashboardTranslations(lang);
   const byRep = dashboard.byRep || [];
   const topPerformers = [...byRep].sort((a: any, b: any) => b.performancePercent - a.performancePercent).slice(0, 5);
   const atRisk = byRep.filter((r: any) => r.performancePercent < 60);
@@ -877,12 +878,10 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
           <div>
             <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm mb-3">
-              {lang === 'ar' ? 'تحقيق الهدف الإجمالي' : 'Total Target Achievement'}
+              {tx.totalTargetAchievement}
             </h3>
             <p className="text-slate-500 text-xs mt-0.5">
-              {lang === 'ar'
-                ? `الهدف = ${monthsCount} شهر × عدد المناديب النشطين × 400 طلب`
-                : `Target = ${monthsCount} month(s) × active reps × 400 orders`}
+              {`${tx.targetFormulaPrefix} ${monthsCount} ${tx.targetFormulaSuffix}`}
             </p>
           </div>
           <span className={`text-2xl font-bold ${teamUsed >= teamCapacity ? 'text-green-600' : 'text-amber-700'}`}>
@@ -897,21 +896,21 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
           <div className="p-3 bg-slate-100 rounded-lg">
-            <p className="text-slate-500 text-xs">{lang === 'ar' ? 'الفعلي' : 'Actual Orders'}</p>
+            <p className="text-slate-500 text-xs">{tx.actualOrders}</p>
             <p className="text-slate-900 font-bold text-lg">{teamUsed.toLocaleString()}</p>
           </div>
           <div className="p-3 bg-slate-100 rounded-lg">
-            <p className="text-slate-500 text-xs">{lang === 'ar' ? 'الهدف الإجمالي' : 'Target'}</p>
+            <p className="text-slate-500 text-xs">{tx.target}</p>
             <p className="text-slate-900 font-bold text-lg">{teamCapacity.toLocaleString()}</p>
           </div>
           <div className="p-3 bg-slate-100 rounded-lg">
-            <p className="text-slate-500 text-xs">{lang === 'ar' ? 'الفارق' : 'Delta'}</p>
+            <p className="text-slate-500 text-xs">{tx.delta}</p>
             <p className={`font-bold text-lg ${teamUsed >= teamCapacity ? 'text-green-600' : 'text-red-600'}`}>
               {teamUsed >= teamCapacity ? '+' : ''}{(teamUsed - teamCapacity).toLocaleString()}
             </p>
           </div>
           <div className="p-3 bg-slate-100 rounded-lg">
-            <p className="text-slate-500 text-xs">{lang === 'ar' ? 'متوسط/مندوب/شهر' : 'Avg / Rep / Month'}</p>
+            <p className="text-slate-500 text-xs">{tx.avgPerRepPerMonth}</p>
             <p className="text-slate-900 font-bold text-lg">
               {totalReps > 0 && monthsCount > 0 ? Math.round(teamUsed / totalReps / monthsCount).toLocaleString() : 0}
             </p>
@@ -922,27 +921,27 @@ function AnalyticsView({ dashboard, T, lang }: any) {
       {/* Team Summary — clear performance buckets */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 text-sm">
-          {lang === 'ar' ? `توزيع الأداء (${totalReps} مندوب)` : `Performance Distribution (${totalReps} reps)`}
+          {`${tx.perfDistributionPrefix} (${totalReps} ${tx.repsUnit})`}
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-center">
             <p className="text-green-600 text-2xl font-bold">{aboveCount}</p>
-            <p className="text-green-700/80 text-xs mt-1">{lang === 'ar' ? '🏆 فوق الهدف (≥100%)' : '🏆 Above Target (≥100%)'}</p>
+            <p className="text-green-700/80 text-xs mt-1">{tx.bucketAboveTarget}</p>
             <p className="text-slate-500 text-[10px]">{totalReps > 0 ? pct((aboveCount / totalReps) * 100) : '0%'}</p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-center">
             <p className="text-amber-700 text-2xl font-bold">{onTrackCount}</p>
-            <p className="text-amber-700/80 text-xs mt-1">{lang === 'ar' ? '⚡ على المسار (80-99%)' : '⚡ On Track (80-99%)'}</p>
+            <p className="text-amber-700/80 text-xs mt-1">{tx.bucketOnTrack}</p>
             <p className="text-slate-500 text-[10px]">{totalReps > 0 ? pct((onTrackCount / totalReps) * 100) : '0%'}</p>
           </div>
           <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20 text-center">
             <p className="text-orange-600 text-2xl font-bold">{belowCount}</p>
-            <p className="text-orange-700/80 text-xs mt-1">{lang === 'ar' ? '⚠️ تحت الهدف (<80%)' : '⚠️ Below Target (<80%)'}</p>
+            <p className="text-orange-700/80 text-xs mt-1">{tx.bucketBelowTarget}</p>
             <p className="text-slate-500 text-[10px]">{totalReps > 0 ? pct((belowCount / totalReps) * 100) : '0%'}</p>
           </div>
           <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-center">
             <p className="text-red-600 text-2xl font-bold">{atRiskCount}</p>
-            <p className="text-red-700/80 text-xs mt-1">{lang === 'ar' ? '🚨 في خطر (<60%)' : '🚨 At Risk (<60%)'}</p>
+            <p className="text-red-700/80 text-xs mt-1">{tx.bucketAtRisk}</p>
             <p className="text-slate-500 text-[10px]">{totalReps > 0 ? pct((atRiskCount / totalReps) * 100) : '0%'}</p>
           </div>
         </div>
@@ -952,22 +951,22 @@ function AnalyticsView({ dashboard, T, lang }: any) {
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 text-sm flex items-center gap-2">
           <CalendarDays className="w-4 h-4 text-purple-600" />
-          {lang === 'ar' ? 'إجمالي الحضور والغياب' : 'Team Attendance Summary'}
+          {tx.teamAttendanceSummary}
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/20 text-center">
             <p className="text-green-600 text-2xl font-bold">{(dashboard.kpis?.totalWorkingDays ?? 0).toLocaleString()}</p>
-            <p className="text-green-700/80 text-xs mt-1">{lang === 'ar' ? '✅ إجمالي أيام العمل' : '✅ Total Worked Days'}</p>
+            <p className="text-green-700/80 text-xs mt-1">{tx.totalWorkedDays}</p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-center">
             <p className="text-amber-700 text-2xl font-bold">{(dashboard.kpis?.totalDaysOff ?? 0).toLocaleString()}</p>
-            <p className="text-amber-700/80 text-xs mt-1">{lang === 'ar' ? "🛌 إجمالي أيام الغياب" : "🛌 Total Days Off"}</p>
-            <p className="text-slate-500 text-[10px]">{lang === 'ar' ? "(القيمة في الشيت = 0)" : "(cell = 0 in sheet)"}</p>
+            <p className="text-amber-700/80 text-xs mt-1">{tx.totalDaysOff}</p>
+            <p className="text-slate-500 text-[10px]">{tx.cellZeroInSheet}</p>
           </div>
           <div className="p-3 rounded-lg bg-slate-100 border border-slate-200 text-center">
             <p className="text-slate-700 text-2xl font-bold">{(dashboard.kpis?.totalNoDataDays ?? 0).toLocaleString()}</p>
-            <p className="text-slate-500 text-xs mt-1">{lang === 'ar' ? '⚪ بدون بيانات' : '⚪ No-Data Days'}</p>
-            <p className="text-slate-500 text-[10px]">{lang === 'ar' ? "(لم تُدخَل بعد)" : "(not entered yet)"}</p>
+            <p className="text-slate-500 text-xs mt-1">{tx.noDataDays}</p>
+            <p className="text-slate-500 text-[10px]">{tx.notEnteredYet}</p>
           </div>
         </div>
       </div>
@@ -977,7 +976,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <Award className="w-4 h-4 text-green-600" />
-            {lang === 'ar' ? '🏆 أعلى أداء (نسبة %)' : '🏆 Top Performers (by %)'}
+            {tx.topPerformersByPct}
           </h3>
           <div className="space-y-2">
             {topPerformers.length === 0 ? (
@@ -993,7 +992,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
                 </div>
                 <div className="text-right">
                   <span className="text-green-600 text-sm font-bold">{pct(r.performancePercent)}</span>
-                  <p className="text-slate-500 text-[10px]">{r.totalOrders.toLocaleString()} {lang === 'ar' ? 'طلب' : 'orders'}</p>
+                  <p className="text-slate-500 text-[10px]">{r.totalOrders.toLocaleString()} {tx.ordersUnit}</p>
                 </div>
               </div>
             ))}
@@ -1003,11 +1002,11 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <AlertCircle className="w-4 h-4 text-red-600" />
-            {lang === 'ar' ? '🚨 مناديب في خطر (<60%)' : '🚨 At-Risk Reps (<60%)'}
+            {tx.atRiskRepsHeading}
           </h3>
           <div className="space-y-2">
             {atRisk.length === 0 ? (
-              <p className="text-slate-500 text-sm text-center py-2">{lang === 'ar' ? '✅ لا يوجد مناديب في خطر' : '✅ No at-risk reps'}</p>
+              <p className="text-slate-500 text-sm text-center py-2">{tx.noAtRiskReps}</p>
             ) : atRisk.slice(0, 5).map((r: any, i: number) => (
               <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1019,7 +1018,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
                 </div>
                 <div className="text-right">
                   <span className="text-red-600 text-sm font-bold">{pct(r.performancePercent)}</span>
-                  <p className="text-slate-500 text-[10px]">{r.totalOrders.toLocaleString()} {lang === 'ar' ? 'طلب' : 'orders'}</p>
+                  <p className="text-slate-500 text-[10px]">{r.totalOrders.toLocaleString()} {tx.ordersUnit}</p>
                 </div>
               </div>
             ))}
@@ -1032,22 +1031,22 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <TrendingUp className="w-4 h-4 text-green-600" />
-            {lang === 'ar' ? '📈 أعلى المتحسنين' : '📈 Top Improvers'}
+            {tx.topImprovers}
             <span className="text-slate-500 text-[10px] font-normal ml-auto">
-              {lang === 'ar' ? '(آخر شهر مقابل أول شهر)' : '(last month vs first)'}
+              {tx.lastMonthVsFirst}
             </span>
           </h3>
           <div className="space-y-2">
             {topImprovers.length === 0 ? (
               <p className="text-slate-500 text-sm text-center py-2">
-                {lang === 'ar' ? 'تحتاج بيانات لـ ≥ شهرين' : 'Needs ≥2 months of data'}
+                {tx.needsTwoMonthsData}
               </p>
             ) : topImprovers.map((r: any, i: number) => (
               <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100">
                 <div className="min-w-0 flex-1">
                   <p className="text-slate-900 text-sm truncate">{r.englishName}</p>
                   <p className="text-slate-500 text-[10px]">
-                    {r.firstMonthAvg.toFixed(1)} → {r.lastMonthAvg.toFixed(1)} {lang === 'ar' ? 'طلب/يوم' : 'orders/day'}
+                    {r.firstMonthAvg.toFixed(1)} → {r.lastMonthAvg.toFixed(1)} {tx.ordersPerDay}
                   </p>
                 </div>
                 <span className="text-green-600 text-sm font-bold">+{pct(r.deltaPercent)}</span>
@@ -1059,22 +1058,22 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <TrendingDown className="w-4 h-4 text-red-600" />
-            {lang === 'ar' ? '📉 أعلى المتراجعين' : '📉 Top Decliners'}
+            {tx.topDecliners}
             <span className="text-slate-500 text-[10px] font-normal ml-auto">
-              {lang === 'ar' ? '(يحتاجون اهتمام)' : '(needs attention)'}
+              {tx.needsAttention}
             </span>
           </h3>
           <div className="space-y-2">
             {topDecliners.length === 0 ? (
               <p className="text-slate-500 text-sm text-center py-2">
-                {lang === 'ar' ? '✅ مفيش متراجعين' : '✅ No decliners'}
+                {tx.noDecliners}
               </p>
             ) : topDecliners.map((r: any, i: number) => (
               <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100">
                 <div className="min-w-0 flex-1">
                   <p className="text-slate-900 text-sm truncate">{r.englishName}</p>
                   <p className="text-slate-500 text-[10px]">
-                    {r.firstMonthAvg.toFixed(1)} → {r.lastMonthAvg.toFixed(1)} {lang === 'ar' ? 'طلب/يوم' : 'orders/day'}
+                    {r.firstMonthAvg.toFixed(1)} → {r.lastMonthAvg.toFixed(1)} {tx.ordersPerDay}
                   </p>
                 </div>
                 <span className="text-red-600 text-sm font-bold">{pct(r.deltaPercent)}</span>
@@ -1089,22 +1088,22 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <Minus className="w-4 h-4 text-blue-600" />
-            {lang === 'ar' ? '🎯 الأكثر ثباتاً' : '🎯 Most Consistent'}
+            {tx.mostConsistent}
             <span className="text-slate-500 text-[10px] font-normal ml-auto">
-              {lang === 'ar' ? '(انخفاض التذبذب الشهري)' : '(low monthly variance)'}
+              {tx.lowMonthlyVariance}
             </span>
           </h3>
           <div className="space-y-2">
             {mostConsistent.length === 0 ? (
               <p className="text-slate-500 text-sm text-center py-2">
-                {lang === 'ar' ? 'تحتاج بيانات لـ ≥ شهرين' : 'Needs ≥2 months'}
+                {tx.needsTwoMonths}
               </p>
             ) : mostConsistent.map((r: any, i: number) => (
               <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100">
                 <div className="min-w-0 flex-1">
                   <p className="text-slate-900 text-sm truncate">{r.englishName}</p>
                   <p className="text-slate-500 text-[10px]">
-                    {r.totalOrders.toLocaleString()} {lang === 'ar' ? 'طلب على' : 'orders over'} {r.monthsActive} {lang === 'ar' ? 'شهر' : 'months'}
+                    {r.totalOrders.toLocaleString()} {tx.ordersOver} {r.monthsActive} {tx.monthsUnit}
                   </p>
                 </div>
                 <span className="text-blue-600 text-sm font-bold">{r.consistency.toFixed(0)}%</span>
@@ -1116,7 +1115,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <Award className="w-4 h-4 text-[#f37121]" />
-            {lang === 'ar' ? '🔥 أفضل أيام فردية' : '🔥 Best Single-Day Records'}
+            {tx.bestSingleDayRecords}
           </h3>
           <div className="space-y-2">
             {bestSingleDays.length === 0 ? (
@@ -1127,7 +1126,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
                   <p className="text-slate-900 text-sm truncate">{d.englishName}</p>
                   <p className="text-slate-500 text-[10px]">{d.dateKey} · {d.project || '—'}</p>
                 </div>
-                <span className="text-[#f37121] text-sm font-bold">{d.orders} {lang === 'ar' ? 'طلب' : 'orders'}</span>
+                <span className="text-[#f37121] text-sm font-bold">{d.orders} {tx.ordersUnit}</span>
               </div>
             ))}
           </div>
@@ -1139,9 +1138,9 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <CalendarDays className="w-4 h-4 text-purple-600" />
-            {lang === 'ar' ? '📅 تحليل أيام الأسبوع' : '📅 Day-of-Week Analysis'}
+            {tx.dayOfWeekAnalysis}
             <span className="text-slate-500 text-[10px] font-normal ml-auto">
-              {lang === 'ar' ? '(متوسط طلب/مندوب)' : '(avg orders / rep)'}
+              {tx.avgOrdersPerRep}
             </span>
           </h3>
           <div className="space-y-1.5">
@@ -1156,7 +1155,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
                     <div className="h-full bg-purple-400/40"
                       style={{ width: `${(d.avgPerWorker / maxAvg) * 100}%` }} />
                     <span className="absolute inset-0 flex items-center px-2 text-slate-900 text-[10px] font-medium">
-                      {d.avgPerWorker.toFixed(1)} · {d.totalOrders.toLocaleString()} total
+                      {d.avgPerWorker.toFixed(1)} · {d.totalOrders.toLocaleString()} {tx.totalSuffix}
                     </span>
                   </div>
                 </div>
@@ -1168,7 +1167,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <Award className="w-4 h-4 text-emerald-600" />
-            {lang === 'ar' ? '🚀 أكثر الأيام إنتاجاً للفريق' : '🚀 Most Productive Team Days'}
+            {tx.mostProductiveTeamDays}
           </h3>
           <div className="space-y-2">
             {topTeamDays.length === 0 ? (
@@ -1179,7 +1178,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
                   <span className="text-slate-500 text-xs w-4">{i + 1}</span>
                   <div className="min-w-0">
                     <p className="text-slate-900 text-sm">{d.dateKey}</p>
-                    <p className="text-slate-500 text-[10px]">{d.repsActive} {lang === 'ar' ? 'مندوب نشط' : 'active reps'}</p>
+                    <p className="text-slate-500 text-[10px]">{d.repsActive} {tx.activeRepsUnit}</p>
                   </div>
                 </div>
                 <span className="text-emerald-600 text-sm font-bold">{d.totalOrders.toLocaleString()}</span>
@@ -1199,6 +1198,7 @@ function DailyCardsSection({
   days: any[]; lang: string; T: any; onDayClick: (d: string) => void;
   activeMonthLabel: string | null;
 }) {
+  const tx = getB2cDashboardTranslations(lang as 'en' | 'ar');
   if (!days || days.length === 0) return null;
 
   // Group by month so big windows (multiple months) stay readable
@@ -1230,10 +1230,10 @@ function DailyCardsSection({
         <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm flex items-center gap-2 mb-3">
           <CalendarDays className="w-4 h-4 text-[#f37121]" />
           {isSingleMonth
-            ? (lang === 'ar' ? `📆 أيام ${activeMonthLabel} — اضغط أي يوم لرؤية التفاصيل` : `📆 Days of ${activeMonthLabel} — click any day for details`)
-            : (lang === 'ar' ? '📆 العرض اليومي (كل الشهور) — اضغط أي يوم' : '📆 Daily view (all months) — click any day')}
+            ? `${tx.daysOfPrefix} ${activeMonthLabel} ${tx.clickDayForDetails}`
+            : tx.dailyViewAllMonths}
         </h3>
-        <span className="text-slate-500 text-xs">{days.length} {lang === 'ar' ? 'يوم' : 'days'}</span>
+        <span className="text-slate-500 text-xs">{days.length} {tx.daysUnit}</span>
       </div>
 
       {sortedMonths.map(([monthKey, daysOfMonth]) => (
@@ -1272,22 +1272,22 @@ function DailyCardsSection({
                       <>
                         <p className="text-[#f37121] text-base font-bold mt-1">{d.totalOrders.toLocaleString()}</p>
                         <p className="text-slate-500 text-[10px]">
-                          {d.repsActive} {lang === 'ar' ? 'اشتغلوا' : 'worked'} · {avg.toFixed(1)} {lang === 'ar' ? 'ط/م' : 'avg'}
+                          {d.repsActive} {tx.workedShort} · {avg.toFixed(1)} {tx.avgShort}
                         </p>
                         {(d.repsNotWorked ?? 0) > 0 && (
                           <p className="text-slate-500 text-[10px]">
-                            🛌 {d.repsNotWorked} {lang === 'ar' ? 'ما اشتغلوش' : 'off'}
+                            🛌 {d.repsNotWorked} {tx.offShort}
                           </p>
                         )}
                         {d.targetSum != null && (
                           <p className="text-[10px] mt-0.5"
                             style={{ color: ach >= 100 ? '#10b981' : ach >= 70 ? '#f59e0b' : '#ef4444' }}>
-                            {ach.toFixed(0)}% {lang === 'ar' ? 'هدف' : 'target'}
+                            {ach.toFixed(0)}% {tx.targetShort}
                           </p>
                         )}
                       </>
                     ) : (
-                      <p className="text-slate-600 text-[11px] mt-1">{lang === 'ar' ? 'لا بيانات' : 'No data'}</p>
+                      <p className="text-slate-600 text-[11px] mt-1">{tx.noDataShort}</p>
                     )}
                   </div>
                 </button>
@@ -1302,6 +1302,7 @@ function DailyCardsSection({
 
 // ─── Day Details Modal ───────────────────────────────────────────────────────
 function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }: any) {
+  const tx = getB2cDashboardTranslations(lang);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -1333,7 +1334,7 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
               <CalendarDays className="w-5 h-5 text-[#f37121]" />
               {date} {data && <span className="text-slate-500 text-sm font-normal">— {(lang === 'ar' ? dowAr : dowEn)[data.dow]}</span>}
             </h2>
-            <button type="button" onClick={onClose} className="text-slate-500 hover:text-slate-900" title="Close"><X className="w-5 h-5" /></button>
+            <button type="button" onClick={onClose} className="text-slate-500 hover:text-slate-900" title={tx.close}><X className="w-5 h-5" /></button>
           </div>
           <div className="p-5">
             {loading ? (
@@ -1346,33 +1347,33 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
               <div className="space-y-4">
                 {/* KPIs — comprehensive view of the day */}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <DayKpi label={lang === 'ar' ? 'إجمالي الطلبات' : 'Total Orders'} value={data.totalOrders.toLocaleString()} color="#f37121" />
-                  <DayKpi label={lang === 'ar' ? 'مناديب اشتغلوا' : 'Worked Today'} value={data.repsActive} color="#3b82f6" />
-                  <DayKpi label={lang === 'ar' ? 'متوسط طلبات/مندوب' : 'Avg / Rep'} value={data.avgPerRep.toFixed(1)} color="#8b5cf6" />
-                  <DayKpi label={lang === 'ar' ? 'أعلى مندوب' : 'Top Rep'}
+                  <DayKpi label={tx.totalOrdersLabel} value={data.totalOrders.toLocaleString()} color="#f37121" />
+                  <DayKpi label={tx.workedToday} value={data.repsActive} color="#3b82f6" />
+                  <DayKpi label={tx.avgPerRepLabel} value={data.avgPerRep.toFixed(1)} color="#8b5cf6" />
+                  <DayKpi label={tx.topRep}
                     value={data.bestRepOrders ?? data.bestRep?.orders ?? 0} color="#eab308" />
-                  <DayKpi label={lang === 'ar' ? 'حققوا الهدف' : 'Hit Target'} value={data.repsAboveTarget} color="#10b981" />
-                  <DayKpi label={lang === 'ar' ? 'نسبة التحقيق' : 'Achievement Rate'}
+                  <DayKpi label={tx.hitTarget} value={data.repsAboveTarget} color="#10b981" />
+                  <DayKpi label={tx.achievementRate}
                     value={`${(data.hitTargetPercent ?? 0).toFixed(0)}%`}
                     color={performanceColor(data.hitTargetPercent ?? 0)} />
                 </div>
 
                 {/* Secondary stats — not-worked + below + no-data */}
                 <div className="grid grid-cols-3 gap-3">
-                  <DayKpi label={lang === 'ar' ? '🛌 ما اشتغلوش' : "🛌 Didn't Work"}
+                  <DayKpi label={tx.didntWork}
                     value={data.repsNotWorked ?? 0} color="#9ca3af" />
-                  <DayKpi label={lang === 'ar' ? '⚠️ تحت الهدف' : '⚠️ Below Target'}
+                  <DayKpi label={tx.belowTargetLabel}
                     value={data.repsBelowTarget} color="#ef4444" />
-                  <DayKpi label={lang === 'ar' ? '⚪ بدون بيانات' : '⚪ No Data'}
+                  <DayKpi label={tx.noDataLabel}
                     value={data.noDataCount ?? 0} color="#6b7280" />
                 </div>
 
                 {data.bestRep && (
                   <button type="button" onClick={() => onRepClick(data.bestRep.repId)}
                     className="w-full bg-gradient-to-r from-[#f37121]/10 via-white to-slate-100 border border-[#f37121]/30 rounded-xl p-3 text-left hover:border-[#f37121]/50 transition-colors">
-                    <p className="text-[#f37121] text-xs uppercase font-medium">🏆 {lang === 'ar' ? 'أفضل مندوب اليوم' : 'Top Rep Today'}</p>
+                    <p className="text-[#f37121] text-xs uppercase font-medium">🏆 {tx.topRepToday}</p>
                     <p className="text-slate-900 font-bold mt-1">{data.bestRep.englishName}</p>
-                    <p className="text-slate-700 text-sm">{data.bestRep.orders} {lang === 'ar' ? 'طلب' : 'orders'}</p>
+                    <p className="text-slate-700 text-sm">{data.bestRep.orders} {tx.ordersUnit}</p>
                   </button>
                 )}
 
@@ -1381,13 +1382,13 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
                   <table className="w-full min-w-[700px]">
                     <thead>
                       <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
-                        <th className="text-left py-2 px-3">{lang === 'ar' ? 'المندوب' : 'Rep'}</th>
-                        <th className="text-left py-2 px-3">{lang === 'ar' ? 'المشروع' : 'Project'}</th>
-                        <th className="text-center py-2 px-3">{lang === 'ar' ? 'الطلبات' : 'Orders'}</th>
-                        <th className="text-center py-2 px-3">{lang === 'ar' ? 'الفارق' : 'Diff'}</th>
-                        <th className="text-center py-2 px-3">{lang === 'ar' ? 'الحالة' : 'Status'}</th>
-                        <th className="text-center py-2 px-3" title={lang === 'ar' ? 'الشيت والصف اللي القيمة جت منه في Excel' : 'Sheet + row in Excel that produced this value'}>
-                          {lang === 'ar' ? 'المصدر' : 'Source'}
+                        <th className="text-left py-2 px-3">{tx.repCol}</th>
+                        <th className="text-left py-2 px-3">{tx.projectCol}</th>
+                        <th className="text-center py-2 px-3">{tx.ordersCol}</th>
+                        <th className="text-center py-2 px-3">{tx.diffCol}</th>
+                        <th className="text-center py-2 px-3">{tx.statusCol}</th>
+                        <th className="text-center py-2 px-3" title={tx.sourceColTooltip}>
+                          {tx.sourceCol}
                         </th>
                       </tr>
                     </thead>
@@ -1418,10 +1419,10 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
                           <td className="py-2 px-3 text-center text-[10px] text-slate-500">
                             {r.sourceSheet ? (
                               <span title={`Sheet "${r.sourceSheet}", row ${r.sourceRow ?? '?'}`}>
-                                {r.sourceSheet} · {lang === 'ar' ? 'صف' : 'row'} {r.sourceRow ?? '?'}
+                                {r.sourceSheet} · {tx.rowLabel} {r.sourceRow ?? '?'}
                               </span>
                             ) : (
-                              <span className="text-slate-600">{lang === 'ar' ? 'يدوي' : 'manual'}</span>
+                              <span className="text-slate-600">{tx.manualLabel}</span>
                             )}
                           </td>
                         </tr>
@@ -1448,17 +1449,18 @@ function DayKpi({ label, value, color }: { label: string; value: any; color: str
 }
 
 function StatusPill({ status, lang }: { status: string; lang: string }) {
-  const m: Record<string, { bg: string; text: string; labelEn: string; labelAr: string }> = {
-    above:      { bg: 'bg-green-500/20',  text: 'text-green-600',  labelEn: 'Above', labelAr: 'فوق' },
-    on_track:   { bg: 'bg-amber-500/20',  text: 'text-amber-700',  labelEn: 'On Track', labelAr: 'متوسط' },
-    below:      { bg: 'bg-red-500/20',    text: 'text-red-600',    labelEn: 'Below', labelAr: 'تحت' },
-    not_worked: { bg: 'bg-slate-500/20',   text: 'text-slate-700',   labelEn: 'Off',   labelAr: 'ما اشتغل' },
-    no_data:    { bg: 'bg-slate-100',      text: 'text-slate-500',   labelEn: '—',     labelAr: '—' },
+  const tx = getB2cDashboardTranslations(lang as 'en' | 'ar');
+  const m: Record<string, { bg: string; text: string; label: string }> = {
+    above:      { bg: 'bg-green-500/20',  text: 'text-green-600',  label: tx.statusAbove },
+    on_track:   { bg: 'bg-amber-500/20',  text: 'text-amber-700',  label: tx.statusOnTrack },
+    below:      { bg: 'bg-red-500/20',    text: 'text-red-600',    label: tx.statusBelow },
+    not_worked: { bg: 'bg-slate-500/20',   text: 'text-slate-700',   label: tx.statusOff },
+    no_data:    { bg: 'bg-slate-100',      text: 'text-slate-500',   label: '—' },
   };
   const c = m[status] || m.no_data;
   return (
     <span className={`px-2 py-0.5 rounded text-xs ${c.bg} ${c.text}`}>
-      {lang === 'ar' ? c.labelAr : c.labelEn}
+      {c.label}
     </span>
   );
 }

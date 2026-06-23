@@ -13,7 +13,9 @@ module.exports = {
     HR_MANAGER: 'hr_manager',
     HR_SPECIALIST: 'hr_specialist',
     CRM_MANAGER: 'crm_manager',
+    CRM_TEAM_LEAD: 'crm_team_lead',
     CRM_SPECIALIST: 'crm_specialist',
+    CRM_AGENT: 'crm_agent',
     FINANCE_MANAGER: 'finance_manager',
     ACCOUNTANT: 'accountant',
     SALES_MANAGER: 'sales_manager',
@@ -42,7 +44,9 @@ module.exports = {
     hr_manager: 'admin',
     hr_specialist: 'hr_manager',
     crm_manager: 'admin',
-    crm_specialist: 'crm_manager',
+    crm_team_lead: 'crm_manager',
+    crm_specialist: 'crm_team_lead',
+    crm_agent: 'crm_team_lead',
     finance_manager: 'admin',
     accountant: 'finance_manager',
     sales_manager: 'admin',
@@ -69,11 +73,20 @@ module.exports = {
   HR_STAFF_ROLES: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'],
 
   // Roles that can access the CRM section (companies, contacts, deals, tasks,
-  // activities, calendar). crm_manager can also delete; crm_specialist cannot.
-  CRM_STAFF_ROLES: ['super_admin', 'admin', 'crm_manager', 'crm_specialist'],
+  // activities, calendar). Tiered: crm_manager (full) > crm_team_lead (delete /
+  // reassign) > crm_specialist (write, no delete) > crm_agent (entry level).
+  // crm_manager + crm_team_lead are the "admin" tier (delete + privileged ops).
+  CRM_STAFF_ROLES: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'],
+  CRM_ADMIN_ROLES: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead'],
 
   // Roles that can access the Customs Clearance section (التخليص الجمركى).
   CUSTOMS_STAFF_ROLES: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'],
+
+  // Roles that can access the Vehicles & Authorizations section (المركبات
+  // والتفاويض): super admin + HR + Accounting. Delete ops are further limited to
+  // the admin tier (super_admin, admin, hr_manager, finance_manager).
+  VEHICLE_STAFF_ROLES: ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
+  VEHICLE_ADMIN_ROLES: ['super_admin', 'admin', 'hr_manager', 'finance_manager'],
 
   // Pages inside the Remote (work-from-home) section. A remote_employee is
   // granted a subset of these via User.remoteAccess; remote_manager and

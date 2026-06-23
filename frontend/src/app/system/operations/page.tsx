@@ -1,6 +1,7 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { ColumnFilter } from '@/components/ColumnFilter';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getOperationsTranslations } from '@/lib/translations';
@@ -74,6 +75,12 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }>
   completed: { label: 'Completed', color: 'text-green-600', bg: 'bg-green-500/20' },
 };
 
+// Stable empty set so unfiltered columns don't create new refs each render.
+const EMPTY_SET = new Set<string>();
+// Columns whose filter-dropdown labels should be formatted as dates / money.
+const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
+const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
+
 export default function OperationsWorkflowPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -110,6 +117,14 @@ export default function OperationsWorkflowPage() {
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showBulkReview, setShowBulkReview] = useState(false);
   const [bulkReviewText, setBulkReviewText] = useState('تم');
+  // Excel-style per-column filters: field → set of allowed raw string values.
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  // Once the user engages any column filter we load the WHOLE matching dataset
+  // (not just the current 50-row page) so the filter spans everything, then
+  // paginate client-side.
+  const [loadAll, setLoadAll] = useState(false);
+  const [clientPage, setClientPage] = useState(1);
+  const hasColFilters = Object.keys(colFilters).length > 0;
 
   const role = user?.role || '';
   const canCreate = role === 'super_admin' || role === 'moderator';
@@ -130,6 +145,10 @@ export default function OperationsWorkflowPage() {
         params.append('pendingOnly', 'true');
         params.append('page', '1');
         params.append('limit', '10000');
+      } else if (loadAll) {
+        // Full dataset for client-side Excel-style column filtering.
+        params.append('page', '1');
+        params.append('limit', '100000');
       } else {
         params.append('page', String(page));
         params.append('limit', '50');
@@ -144,13 +163,39 @@ export default function OperationsWorkflowPage() {
       setSearching(false);
       initialLoadDone.current = true;
     }
-  }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly]);
+  }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, loadAll]);
 
   // Initial load
   useEffect(() => { fetchWorkflows(); }, [fetchWorkflows]);
 
   // Clear selection when filters/page change
   useEffect(() => { setSelectedIds(new Set()); }, [stageFilter, search, page, dateFrom, dateTo]);
+
+  // Apply the Excel-style column filters client-side over the loaded rows.
+  const displayed = useMemo(() => {
+    const fields = Object.keys(colFilters);
+    if (!fields.length) return workflows;
+    return workflows.filter((row) => fields.every((f) => colFilters[f].has(String((row as any)[f] ?? ''))));
+  }, [workflows, colFilters]);
+
+  // Client-side pagination when in full-load mode (filtering); otherwise the
+  // server already paginated to 50.
+  const CLIENT_PAGE_SIZE = 50;
+  const clientMode = loadAll || showPendingOnly;
+  const clientPaged = clientMode ? displayed.slice((clientPage - 1) * CLIENT_PAGE_SIZE, clientPage * CLIENT_PAGE_SIZE) : displayed;
+
+  const setColFilter = (field: string, set: Set<string>) => {
+    if (!loadAll) setLoadAll(true);
+    setClientPage(1);
+    setColFilters((prev) => {
+      const next = { ...prev };
+      if (set.size === 0) delete next[field]; else next[field] = set;
+      return next;
+    });
+  };
+
+  // Reset client pagination when the result set changes.
+  useEffect(() => { setClientPage(1); }, [stageFilter, search, dateFrom, dateTo, showPendingOnly]);
 
   // WebSocket real-time
   const handleCreated = useCallback((wf: Workflow) => { setWorkflows((p) => [wf, ...p]); setTotal((t) => t + 1); }, []);
@@ -275,12 +320,14 @@ export default function OperationsWorkflowPage() {
   };
 
   const toggleSelectAll = () => {
-    const displayed = workflows;
-    if (selectedIds.size === displayed.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(displayed.map((w) => w._id)));
-    }
+    const visibleIds = clientPaged.map((w) => w._id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) visibleIds.forEach((id) => next.delete(id));
+      else visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
   };
 
   const handleExportExcel = () => {
@@ -296,6 +343,25 @@ export default function OperationsWorkflowPage() {
   const formatMoney = (v: number) => v ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
 
   const pendingCount = showPendingOnly ? total : workflows.filter(w => !w.paymentDate && !w.invoiceNumber).length;
+
+  // A column header with an Excel-style filter funnel. `field` is the Workflow
+  // key it filters on; pass filterable={false} for non-data columns.
+  const ColHead = (field: keyof Workflow, label: string, color = 'text-slate-300') => (
+    <th className="px-3 py-3 text-left text-xs font-semibold whitespace-nowrap">
+      <span className={`inline-flex items-center ${color}`}>
+        {label}
+        <ColumnFilter
+          rows={workflows}
+          field={field as string}
+          selected={colFilters[field as string] || EMPTY_SET}
+          onChange={(s) => setColFilter(field as string, s)}
+          onOpen={() => setLoadAll(true)}
+          lang={lang}
+          format={field === 'stage' ? ((v: any) => stageLabels[v] || v) : DATE_FIELDS.has(field as string) ? formatDate : NUM_FIELDS.has(field as string) ? (formatMoney as any) : undefined}
+        />
+      </span>
+    </th>
+  );
 
   if (loading && workflows.length === 0) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>;
@@ -369,7 +435,7 @@ export default function OperationsWorkflowPage() {
       {/* Filters */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1 max-w-md">
+          <div className="relative flex-1 min-w-[260px]">
             {searching ? (
               <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#f37121] animate-spin" />
             ) : (
@@ -464,7 +530,7 @@ export default function OperationsWorkflowPage() {
                     <input
                       type="checkbox"
                       title={T.selectAll}
-                      checked={workflows.length > 0 && selectedIds.size === workflows.length}
+                      checked={clientPaged.length > 0 && clientPaged.every((w) => selectedIds.has(w._id))}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 appearance-none rounded border border-slate-300 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
                     />
@@ -472,56 +538,56 @@ export default function OperationsWorkflowPage() {
                   </div>
                 </th>
                 {/* Application Details */}
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thReportNumber}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thReportDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thFrom}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thTo}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thBranch}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thCarOwner}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thCarNumber}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thOwnerType}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thExecution}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thApplication}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thPaymentMethod}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thUsername}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thUserPhone}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thTaxIndicator}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thPurchaseValue}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thSellingValue}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thLoadingTime}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thDriverName}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thDriverPhone}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thTruckType}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thTruckSize}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thLoadType}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thQuantity}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thReference}</th>
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thRepresentative}</th>
+                {ColHead('reportNumber', T.thReportNumber)}
+                {ColHead('reportDate', T.thReportDate)}
+                {ColHead('fromLocation', T.thFrom)}
+                {ColHead('toLocation', T.thTo)}
+                {ColHead('branch', T.thBranch)}
+                {ColHead('carOwner', T.thCarOwner)}
+                {ColHead('carNumber', T.thCarNumber)}
+                {ColHead('ownerType', T.thOwnerType)}
+                {ColHead('executionStatus', T.thExecution)}
+                {ColHead('applicationStatus', T.thApplication)}
+                {ColHead('paymentMethod', T.thPaymentMethod)}
+                {ColHead('username', T.thUsername)}
+                {ColHead('userPhone', T.thUserPhone)}
+                {ColHead('taxIndicator', T.thTaxIndicator)}
+                {ColHead('purchaseValue', T.thPurchaseValue)}
+                {ColHead('sellingValue', T.thSellingValue)}
+                {ColHead('loadingTime', T.thLoadingTime)}
+                {ColHead('driverName', T.thDriverName)}
+                {ColHead('driverPhone', T.thDriverPhone)}
+                {ColHead('truckType', T.thTruckType)}
+                {ColHead('truckSize', T.thTruckSize)}
+                {ColHead('loadType', T.thLoadType)}
+                {ColHead('quantity', T.thQuantity)}
+                {ColHead('reference', T.thReference)}
+                {ColHead('representativeName', T.thRepresentative)}
                 {/* Operations Review */}
-                <th className="px-3 py-3 text-left text-xs text-yellow-400 font-semibold whitespace-nowrap">{T.thOpsReview}</th>
+                {ColHead('operationsReview', T.thOpsReview, 'text-yellow-400')}
                 {/* Manual Moderator */}
-                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thPaymentDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thPayingBranch}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thDocNumber}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thSendingDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thDeliveryDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-purple-300 font-semibold whitespace-nowrap">{T.thAccountingReview}</th>
+                {ColHead('paymentDate', T.thPaymentDate, 'text-purple-300')}
+                {ColHead('payingBranch', T.thPayingBranch, 'text-purple-300')}
+                {ColHead('documentNumber', T.thDocNumber, 'text-purple-300')}
+                {ColHead('sendingDate', T.thSendingDate, 'text-purple-300')}
+                {ColHead('deliveryDate', T.thDeliveryDate, 'text-purple-300')}
+                {ColHead('accountingReview', T.thAccountingReview, 'text-purple-300')}
                 {/* Collections */}
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thInvoiceNumber}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thNetInvoice}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thTax}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thTotalInvoice}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thInvoiceDate}</th>
-                <th className="px-3 py-3 text-left text-xs text-green-400 font-semibold whitespace-nowrap">{T.thCollectionDate}</th>
+                {ColHead('invoiceNumber', T.thInvoiceNumber, 'text-green-400')}
+                {ColHead('netInvoice', T.thNetInvoice, 'text-green-400')}
+                {ColHead('tax', T.thTax, 'text-green-400')}
+                {ColHead('totalInvoice', T.thTotalInvoice, 'text-green-400')}
+                {ColHead('invoiceDate', T.thInvoiceDate, 'text-green-400')}
+                {ColHead('collectionDate', T.thCollectionDate, 'text-green-400')}
                 {/* Meta */}
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap">{T.thStage}</th>
+                {ColHead('stage', T.thStage)}
                 <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap w-10">{T.lock}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {workflows.length === 0 ? (
-                <tr><td colSpan={41} className="px-4 py-12 text-center text-slate-500 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : T.noWorkflows}</td></tr>
-              ) : workflows.map((wf) => {
+              {displayed.length === 0 ? (
+                <tr><td colSpan={41} className="px-4 py-12 text-center text-slate-500 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : (hasColFilters ? (lang === 'ar' ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : T.noWorkflows)}</td></tr>
+              ) : clientPaged.map((wf) => {
                 const locked = isLockedByOther(wf);
                 const transitions = getTransitions(wf);
                 const sc = STAGE_CONFIG[wf.stage] || STAGE_CONFIG.draft;
@@ -658,7 +724,7 @@ export default function OperationsWorkflowPage() {
           </table>
         </div>
 
-        {!showPendingOnly && total > 50 && (
+        {!clientMode && total > 50 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
             <span className="text-slate-500 text-sm">{T.showing} {(page - 1) * 50 + 1}-{Math.min(page * 50, total)} {T.of} {total}</span>
             <div className="flex gap-2">
@@ -667,16 +733,30 @@ export default function OperationsWorkflowPage() {
             </div>
           </div>
         )}
+        {clientMode && displayed.length > CLIENT_PAGE_SIZE && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+            <span className="text-slate-500 text-sm">{T.showing} {(clientPage - 1) * CLIENT_PAGE_SIZE + 1}-{Math.min(clientPage * CLIENT_PAGE_SIZE, displayed.length)} {T.of} {displayed.length}{hasColFilters ? ` (${lang === 'ar' ? 'مُفلتر' : 'filtered'})` : ''}</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setClientPage((p) => Math.max(1, p - 1))} disabled={clientPage === 1} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.previous}</button>
+              <button type="button" onClick={() => setClientPage((p) => p + 1)} disabled={clientPage * CLIENT_PAGE_SIZE >= displayed.length} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.next}</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stage counts */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 items-center">
         {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
           <div key={key} className={`px-3 py-2 rounded-lg ${cfg.bg} ${cfg.color} text-xs font-medium`}>
-            {stageLabels[key] || cfg.label}: {workflows.filter((w) => w.stage === key).length}
+            {stageLabels[key] || cfg.label}: {displayed.filter((w) => w.stage === key).length}
           </div>
         ))}
-        <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">{T.total}: {total}</div>
+        <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">{T.total}: {hasColFilters ? `${displayed.length} / ${total}` : total}</div>
+        {hasColFilters && (
+          <button type="button" onClick={() => { setColFilters({}); setClientPage(1); }} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-medium hover:bg-[#f37121]/20 transition-colors">
+            <X className="w-3.5 h-3.5" /> {lang === 'ar' ? `مسح كل الفلاتر (${Object.keys(colFilters).length})` : `Clear all filters (${Object.keys(colFilters).length})`}
+          </button>
+        )}
       </div>
 
       {/* Confirm Modal */}

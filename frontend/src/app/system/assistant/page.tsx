@@ -4,7 +4,7 @@ import api from '@/lib/api';
 import { motion } from 'framer-motion';
 import { Bot, Send, User, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
-import { getAssistantTranslations } from '@/lib/translations';
+import { getAssistantTranslations, getAssistantExtraTranslations } from '@/lib/translations';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -17,28 +17,29 @@ interface Message {
 export default function AssistantPage() {
   const { lang } = useLanguage();
   const T = getAssistantTranslations(lang);
+  const txx = getAssistantExtraTranslations(lang);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: 'Hello! I\'m your Collection Intelligence Assistant. Ask me your daily business questions — I\'ll give you real-time answers from your data.',
+      content: txx.greeting,
       suggestions: [
-        'Total outstanding right now',
-        "How much was collected yesterday?",
-        'Invoices due soon',
-        'Collection rate vs last week',
-        'This month vs last month',
-        'Top debtors',
-        'Show high risk clients',
-        'Show stopped clients',
-        "Today's collections",
-        'Show overdue invoices',
-        'Collector ranking',
-        'Customers near credit limit',
-        'New customers this month',
-        'Show frozen invoices',
-        'Which clients exceed credit limit?',
-        'Show aging breakdown',
-        'Clients under review',
+        txx.sgTotalOutstanding,
+        txx.sgCollectedYesterday,
+        txx.sgInvoicesDueSoon,
+        txx.sgCollectionRateVsLastWeek,
+        txx.sgThisMonthVsLastMonth,
+        txx.sgTopDebtors,
+        txx.sgHighRiskClients,
+        txx.sgStoppedClients,
+        txx.sgTodaysCollections,
+        txx.sgOverdueInvoices,
+        txx.sgCollectorRanking,
+        txx.sgNearCreditLimit,
+        txx.sgNewCustomersThisMonth,
+        txx.sgFrozenInvoices,
+        txx.sgExceedCreditLimit,
+        txx.sgAgingBreakdown,
+        txx.sgClientsUnderReview,
       ],
     },
   ]);
@@ -62,7 +63,7 @@ export default function AssistantPage() {
       const data = await api.post<any>('/api/assistant/query', { query });
       const assistantMsg: Message = {
         role: 'assistant',
-        content: data.summary || 'Here are the results:',
+        content: data.summary || txx.hereAreResults,
         data: data.data,
         type: data.type,
         suggestions: data.suggestions,
@@ -71,7 +72,7 @@ export default function AssistantPage() {
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: `Error: ${err.message || 'Failed to process query'}` },
+        { role: 'assistant', content: `${txx.errorPrefix}${err.message || txx.failedToProcess}` },
       ]);
     } finally {
       setLoading(false);
@@ -127,7 +128,7 @@ export default function AssistantPage() {
                       </div>
                     ))}
                     {msg.data.length > 10 && (
-                      <p className="text-xs text-slate-500">... and {msg.data.length - 10} more</p>
+                      <p className="text-xs text-slate-500">{txx.andMorePrefix}{msg.data.length - 10}{txx.andMoreSuffix}</p>
                     )}
                   </div>
                 </div>
@@ -182,8 +183,8 @@ export default function AssistantPage() {
         />
         <button
           type="submit"
-          aria-label="Send"
-          title="Send"
+          aria-label={T.send}
+          title={T.send}
           disabled={loading || !input.trim()}
           className="px-5 py-3 rounded-xl bg-[#f37121] hover:bg-[#e06010] text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { getOperationsTranslations } from '@/lib/translations';
+import { getOperationsTranslations, getOperationsIdExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { motion } from 'framer-motion';
@@ -161,6 +161,7 @@ export default function WorkflowDetailPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getOperationsTranslations(lang);
+  const txx = getOperationsIdExtraTranslations(lang);
 
   const stageLabels: Record<string, string> = {
     draft: T.draft,
@@ -373,7 +374,7 @@ export default function WorkflowDetailPage() {
                 transform: f.type === 'date' ? fmt.date : f.type === 'number' ? fmt.money : undefined,
                 width: 18,
               }));
-              exportToExcel(exportData, columns, `operation-${workflow.reportNumber || workflow._id}`, 'Workflow Details');
+              exportToExcel(exportData, columns, `operation-${workflow.reportNumber || workflow._id}`, txx.workflowDetailsSheet);
             }} className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors flex items-center gap-2">
               <Download className="w-4 h-4" /> {T.exportExcel}
             </button>

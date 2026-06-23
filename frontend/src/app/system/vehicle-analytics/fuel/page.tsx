@@ -3,35 +3,14 @@ import { useState, useEffect, useMemo } from 'react';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
 import { exportToExcel } from '@/utils/exportExcel';
+import { getVehicleAnalyticsFuelTranslations } from '@/lib/translations';
 import { Fuel, Truck, Activity, AlertTriangle, Search, Filter, Droplets, Gauge, Building2, Download } from 'lucide-react';
-
-const T = (lang: string) => lang === 'ar' ? {
-  title: 'تحليل الوقود', totalVehicles: 'إجمالي المركبات', active: 'نشطة', diesel: 'ديزل',
-  gasoline: 'بنزين', overLimit: 'تجاوز الحد', monthlyAccounts: 'حسابات شهرية', opened: 'مفتوحة',
-  alerts: 'تنبيهات الاستهلاك', vehicle: 'المركبة', branch: 'الفرع', model: 'الموديل',
-  year: 'السنة', fuelType: 'نوع الوقود', consumption: 'الاستهلاك %', status: 'الحالة',
-  category: 'الفئة', allBranches: 'كل الفروع', allFuel: 'كل الوقود', allStatus: 'كل الحالات',
-  allCategories: 'كل الفئات', allAlerts: 'كل التنبيهات', critical: 'حرج', warning: 'تحذير',
-  normal: 'طبيعي', search: 'بحث باللوحة أو الموديل...', noData: 'لا توجد بيانات وقود',
-  loading: 'جاري التحميل...', vehicleFuelTable: 'جدول وقود المركبات', num: '#',
-  alertLevel: 'مستوى التنبيه', maxConsump: 'الحد الأقصى', currentRate: 'المعدل الحالي',
-} : {
-  title: 'Fuel Analysis', totalVehicles: 'Total Vehicles', active: 'Active', diesel: 'Diesel',
-  gasoline: 'Gasoline', overLimit: 'Over Limit', monthlyAccounts: 'Monthly Accounts', opened: 'Opened',
-  alerts: 'Consumption Alerts', vehicle: 'Vehicle', branch: 'Branch', model: 'Model',
-  year: 'Year', fuelType: 'Fuel Type', consumption: 'Consumption %', status: 'Status',
-  category: 'Category', allBranches: 'All Branches', allFuel: 'All Fuel', allStatus: 'All Statuses',
-  allCategories: 'All Categories', allAlerts: 'All Alerts', critical: 'Critical', warning: 'Warning',
-  normal: 'Normal', search: 'Search plate or model...', noData: 'No fuel data uploaded yet',
-  loading: 'Loading...', vehicleFuelTable: 'Vehicle Fuel Table', num: '#',
-  alertLevel: 'Alert Level', maxConsump: 'Max Consumption', currentRate: 'Current Rate',
-};
 
 interface PetroRow { vehicleId: string; branch?: string; vehicle?: string; model?: string; year?: string; fuel?: string; maxConsump?: number; currentRate?: number; status?: string; category?: string; consType?: string; [k: string]: any }
 
 export default function FuelAnalysisPage() {
   const { lang } = useLanguage();
-  const t = T(lang);
+  const tx = getVehicleAnalyticsFuelTranslations(lang);
   const [data, setData] = useState<PetroRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -102,71 +81,71 @@ export default function FuelAnalysisPage() {
     return { total, active, dieselCount, gasolineCount, overLimit, monthlyAccounts, openedAccounts };
   }, [filtered]);
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{t.loading}</div>;
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{tx.loading}</div>;
 
   const kpiCards = [
-    { label: t.totalVehicles, value: kpis.total, icon: Truck, color: 'text-blue-600', bg: 'bg-blue-400/10' },
-    { label: t.active, value: kpis.active, icon: Activity, color: 'text-green-600', bg: 'bg-green-400/10' },
-    { label: t.diesel, value: kpis.dieselCount, icon: Fuel, color: 'text-amber-700', bg: 'bg-amber-400/10' },
-    { label: t.gasoline, value: kpis.gasolineCount, icon: Droplets, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
-    { label: t.overLimit, value: kpis.overLimit, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-400/10' },
-    { label: t.monthlyAccounts, value: kpis.monthlyAccounts, icon: Gauge, color: 'text-purple-600', bg: 'bg-purple-400/10' },
-    { label: t.opened, value: kpis.openedAccounts, icon: Building2, color: 'text-indigo-600', bg: 'bg-indigo-400/10' },
+    { label: tx.totalVehicles, value: kpis.total, icon: Truck, color: 'text-blue-600', bg: 'bg-blue-400/10' },
+    { label: tx.active, value: kpis.active, icon: Activity, color: 'text-green-600', bg: 'bg-green-400/10' },
+    { label: tx.diesel, value: kpis.dieselCount, icon: Fuel, color: 'text-amber-700', bg: 'bg-amber-400/10' },
+    { label: tx.gasoline, value: kpis.gasolineCount, icon: Droplets, color: 'text-cyan-700', bg: 'bg-cyan-400/10' },
+    { label: tx.overLimit, value: kpis.overLimit, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-400/10' },
+    { label: tx.monthlyAccounts, value: kpis.monthlyAccounts, icon: Gauge, color: 'text-purple-600', bg: 'bg-purple-400/10' },
+    { label: tx.opened, value: kpis.openedAccounts, icon: Building2, color: 'text-indigo-600', bg: 'bg-indigo-400/10' },
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">{t.title}</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{tx.title}</h1>
         {filtered.length > 0 && (
           <button type="button" onClick={() => exportToExcel(filtered.map((r, i) => ({
             num: r.num || i + 1, branch: r.branch || '', vehicle: r.vehicle || r.vehicleId, model: r.model || '',
             year: r.year || '', fuel: r.fuel || '', consumption: getConsumptionPct(r).toFixed(0) + '%', status: r.status || '', category: r.category || '',
           })), [
-            { header: '#', key: 'num' }, { header: t.branch, key: 'branch' }, { header: t.vehicle, key: 'vehicle' },
-            { header: t.model, key: 'model' }, { header: t.year, key: 'year' }, { header: t.fuelType, key: 'fuel' },
-            { header: t.consumption, key: 'consumption' }, { header: t.status, key: 'status' }, { header: t.category, key: 'category' },
+            { header: '#', key: 'num' }, { header: tx.branch, key: 'branch' }, { header: tx.vehicle, key: 'vehicle' },
+            { header: tx.model, key: 'model' }, { header: tx.year, key: 'year' }, { header: tx.fuelType, key: 'fuel' },
+            { header: tx.consumption, key: 'consumption' }, { header: tx.status, key: 'status' }, { header: tx.category, key: 'category' },
           ], 'fuel-analysis', 'Fuel')} className="px-3 py-2 bg-emerald-500/20 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
-            <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+            <Download className="w-4 h-4" /> {tx.exportExcel}
           </button>
         )}
       </div>
 
       {/* Filters */}
-      <div className="sticky top-0 z-20 bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-sm">
-        <div className="relative">
+      <div className="sticky top-0 z-20 bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center shadow-sm">
+        <div className="relative flex-1 min-w-[240px]">
           <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-slate-500 pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.search}
-            className="bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none min-w-[200px]" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tx.search}
+            className="w-full bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none" />
         </div>
-        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
-          <option value="">{t.allBranches}</option>
+        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
+          <option value="">{tx.allBranches}</option>
           {branches.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
-        <select value={fuelFilter} onChange={e => setFuelFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
-          <option value="">{t.allFuel}</option>
+        <select value={fuelFilter} onChange={e => setFuelFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
+          <option value="">{tx.allFuel}</option>
           {fuelTypes.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
-          <option value="">{t.allStatus}</option>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
+          <option value="">{tx.allStatus}</option>
           {statuses.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
-          <option value="">{t.allCategories}</option>
+        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
+          <option value="">{tx.allCategories}</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select value={alertFilter} onChange={e => setAlertFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
-          <option value="">{t.allAlerts}</option>
-          <option value="critical">{t.critical}</option>
-          <option value="warning">{t.warning}</option>
-          <option value="normal">{t.normal}</option>
+        <select value={alertFilter} onChange={e => setAlertFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
+          <option value="">{tx.allAlerts}</option>
+          <option value="critical">{tx.critical}</option>
+          <option value="warning">{tx.warning}</option>
+          <option value="normal">{tx.normal}</option>
         </select>
       </div>
 
       {data.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-slate-500 gap-3">
           <Filter className="w-12 h-12" />
-          <p className="text-lg">{t.noData}</p>
+          <p className="text-lg">{tx.noData}</p>
         </div>
       ) : (
         <>
@@ -185,18 +164,18 @@ export default function FuelAnalysisPage() {
           {alertRows.length > 0 && (
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-700" /> {t.alerts} ({alertRows.length})
+                <AlertTriangle className="w-5 h-5 text-amber-700" /> {tx.alerts} ({alertRows.length})
               </h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                    <th className="text-left py-2 px-2">{t.vehicle}</th>
-                    <th className="text-left py-2 px-2">{t.branch}</th>
-                    <th className="text-left py-2 px-2">{t.model}</th>
-                    <th className="text-right py-2 px-2">{t.currentRate}</th>
-                    <th className="text-right py-2 px-2">{t.maxConsump}</th>
-                    <th className="text-right py-2 px-2">{t.consumption}</th>
-                    <th className="text-center py-2 px-2">{t.alertLevel}</th>
+                    <th className="text-left py-2 px-2">{tx.vehicle}</th>
+                    <th className="text-left py-2 px-2">{tx.branch}</th>
+                    <th className="text-left py-2 px-2">{tx.model}</th>
+                    <th className="text-right py-2 px-2">{tx.currentRate}</th>
+                    <th className="text-right py-2 px-2">{tx.maxConsump}</th>
+                    <th className="text-right py-2 px-2">{tx.consumption}</th>
+                    <th className="text-center py-2 px-2">{tx.alertLevel}</th>
                   </tr></thead>
                   <tbody>
                     {alertRows.map((r, i) => {
@@ -212,7 +191,7 @@ export default function FuelAnalysisPage() {
                           <td className={`py-2 px-2 text-right font-bold ${level === 'critical' ? 'text-red-600' : 'text-amber-700'}`}>{pct.toFixed(0)}%</td>
                           <td className="py-2 px-2 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-xs ${level === 'critical' ? 'bg-red-500/20 text-red-600' : 'bg-amber-500/20 text-amber-700'}`}>
-                              {level === 'critical' ? t.critical : t.warning}
+                              {level === 'critical' ? tx.critical : tx.warning}
                             </span>
                           </td>
                         </tr>
@@ -226,19 +205,19 @@ export default function FuelAnalysisPage() {
 
           {/* Vehicle Fuel Table */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{t.vehicleFuelTable} ({filtered.length})</h3>
+            <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.vehicleFuelTable} ({filtered.length})</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                  <th className="text-left py-2 px-2">{t.num}</th>
-                  <th className="text-left py-2 px-2">{t.branch}</th>
-                  <th className="text-left py-2 px-2">{t.vehicle}</th>
-                  <th className="text-left py-2 px-2">{t.model}</th>
-                  <th className="text-left py-2 px-2">{t.year}</th>
-                  <th className="text-left py-2 px-2">{t.fuelType}</th>
-                  <th className="text-right py-2 px-2">{t.consumption}</th>
-                  <th className="text-center py-2 px-2">{t.status}</th>
-                  <th className="text-left py-2 px-2">{t.category}</th>
+                  <th className="text-left py-2 px-2">{tx.num}</th>
+                  <th className="text-left py-2 px-2">{tx.branch}</th>
+                  <th className="text-left py-2 px-2">{tx.vehicle}</th>
+                  <th className="text-left py-2 px-2">{tx.model}</th>
+                  <th className="text-left py-2 px-2">{tx.year}</th>
+                  <th className="text-left py-2 px-2">{tx.fuelType}</th>
+                  <th className="text-right py-2 px-2">{tx.consumption}</th>
+                  <th className="text-center py-2 px-2">{tx.status}</th>
+                  <th className="text-left py-2 px-2">{tx.category}</th>
                 </tr></thead>
                 <tbody>
                   {filtered.map((r, i) => {

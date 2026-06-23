@@ -6,12 +6,15 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { ClipboardList, Plus, Send, Link2, Check } from 'lucide-react';
 import { HRRequest, REQUEST_STATUS, REQUEST_CATEGORIES, categoryLabel, userName, fmtDateTime } from '@/lib/hr';
-import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Loader2, ExportButton } from '@/components/hr/HRKit';
+import { getHrMyRequestsTranslations } from '@/lib/translations';
+import { exportToExcel } from '@/utils/exportExcel';
 
 export default function MyRequestsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  const tx = getHrMyRequestsTranslations(lang);
 
   const [requests, setRequests] = useState<HRRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,24 +48,34 @@ export default function MyRequestsPage() {
     setBusy(false);
   };
 
+  const exportRows = () => {
+    exportToExcel(requests, [
+      { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 22 },
+      { header: tx.colSubject, key: 'subject', width: 32 },
+      { header: tx.colStatus, key: 'status', transform: (v) => (ar ? REQUEST_STATUS[v]?.ar : REQUEST_STATUS[v]?.en) || v, width: 16 },
+      { header: tx.colUpdated, key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 20 },
+    ], 'my-requests', tx.pageTitle);
+  };
+
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<ClipboardList className="w-5 h-5" />} title={ar ? 'طلباتي' : 'My Requests'}>
-        <PrimaryButton onClick={() => setShowForm(true)}><Plus className="w-4 h-4" /> {ar ? 'طلب جديد' : 'New Request'}</PrimaryButton>
+      <PageHeader icon={<ClipboardList className="w-5 h-5" />} title={tx.pageTitle}>
+        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={exportRows} />
+        <PrimaryButton onClick={() => setShowForm(true)}><Plus className="w-4 h-4" /> {tx.newRequest}</PrimaryButton>
       </PageHeader>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'النوع' : 'Category'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الموضوع' : 'Subject'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الحالة' : 'Status'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'آخر تحديث' : 'Updated'}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colCategory}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colSubject}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
+            <th className="text-start font-semibold px-4 py-3">{tx.colUpdated}</th>
           </tr></thead>
           <tbody>
-            {requests.length === 0 ? <tr><td colSpan={4} className="text-center text-slate-500 py-10">{ar ? 'لا توجد طلبات' : 'No requests'}</td></tr> :
+            {requests.length === 0 ? <tr><td colSpan={4} className="text-center text-slate-500 py-10">{tx.noRequests}</td></tr> :
               requests.map((r) => (
                 <tr key={r._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
                   <td className="px-4 py-3 text-slate-700">{categoryLabel(r.category, lang)}</td>
@@ -76,15 +89,15 @@ export default function MyRequestsPage() {
       </div>
 
       {/* New request */}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title={ar ? 'طلب جديد للموارد البشرية' : 'New HR Request'}
+      <Modal open={showForm} onClose={() => setShowForm(false)} title={tx.newHrRequest}
         footer={<>
-          <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-          <PrimaryButton onClick={submit} disabled={saving || !form.subject.trim()}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'إرسال' : 'Submit'}</PrimaryButton>
+          <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
+          <PrimaryButton onClick={submit} disabled={saving || !form.subject.trim()}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.submit}</PrimaryButton>
         </>}>
         <div className="space-y-3">
-          <Field label={ar ? 'نوع الطلب' : 'Category'}><Select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>{REQUEST_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{ar ? c.ar : c.en}</option>)}</Select></Field>
-          <Field label={ar ? 'الموضوع *' : 'Subject *'}><TextInput value={form.subject} onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))} /></Field>
-          <Field label={ar ? 'التفاصيل' : 'Details'}><TextArea rows={4} value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} placeholder={ar ? 'اكتب تفاصيل طلبك...' : 'Describe your request...'} /></Field>
+          <Field label={tx.categoryLabel}><Select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>{REQUEST_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{ar ? c.ar : c.en}</option>)}</Select></Field>
+          <Field label={tx.subjectLabel}><TextInput value={form.subject} onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))} /></Field>
+          <Field label={tx.detailsLabel}><TextArea rows={4} value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} placeholder={tx.detailsPlaceholder} /></Field>
         </div>
       </Modal>
 
@@ -94,7 +107,7 @@ export default function MyRequestsPage() {
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm text-slate-500">{categoryLabel(open.category, lang)} · <Badge style={REQUEST_STATUS[open.status]} lang={lang} /></div>
             <div className="space-y-3 max-h-64 overflow-y-auto">
-              {open.thread.length === 0 && <p className="text-slate-500 text-sm">{ar ? 'لا توجد رسائل بعد' : 'No messages yet'}</p>}
+              {open.thread.length === 0 && <p className="text-slate-500 text-sm">{tx.noMessagesYet}</p>}
               {open.thread.map((m, i) => {
                 const mine = String(m.sender?._id || m.sender) === String(user?._id);
                 return (
@@ -102,7 +115,7 @@ export default function MyRequestsPage() {
                     <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${mine ? 'bg-[#f37121]/20 text-white' : 'bg-slate-100 text-slate-900'}`}>
                       <p className="text-xs text-slate-500 mb-1">{userName(m.sender)} · {fmtDateTime(m.at)}</p>
                       {m.body && <p className="whitespace-pre-wrap">{m.body}</p>}
-                      {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="text-[#f37121] underline flex items-center gap-1 mt-1"><Link2 className="w-3 h-3" /> {ar ? 'فتح الرابط' : 'Open link'}</a>}
+                      {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="text-[#f37121] underline flex items-center gap-1 mt-1"><Link2 className="w-3 h-3" /> {tx.openLink}</a>}
                     </div>
                   </div>
                 );
@@ -110,7 +123,7 @@ export default function MyRequestsPage() {
             </div>
             {!['resolved', 'closed'].includes(open.status) && (
               <div className="border-t border-slate-200 pt-3 flex items-center gap-2">
-                <div className="flex-1"><TextInput placeholder={ar ? 'اكتب ردًا...' : 'Write a reply...'} value={reply} onChange={(e) => setReply(e.target.value)} /></div>
+                <div className="flex-1"><TextInput placeholder={tx.replyPlaceholder} value={reply} onChange={(e) => setReply(e.target.value)} /></div>
                 <PrimaryButton onClick={sendReply} disabled={busy || !reply.trim()}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}</PrimaryButton>
               </div>
             )}

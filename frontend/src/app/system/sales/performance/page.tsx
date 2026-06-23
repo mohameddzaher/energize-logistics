@@ -6,12 +6,14 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { BarChart3 } from 'lucide-react';
 import { isSalesStaff, money, pct, thisPeriod } from '@/lib/finance';
-import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, ExportButton } from '@/components/hr/HRKit';
+import { getSalesPerformanceTranslations } from '@/lib/translations';
+import { exportToExcel } from '@/utils/exportExcel';
 
 export default function SalesPerformancePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
-  const ar = lang === 'ar';
+  const tx = getSalesPerformanceTranslations(lang);
   const [period, setPeriod] = useState(thisPeriod());
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,23 +25,36 @@ export default function SalesPerformancePage() {
   useEffect(() => { load(); }, [load]);
   useSocket('crm:deal', useCallback(() => load(), [load]));
 
-  if (!isSalesStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  const handleExport = () => {
+    exportToExcel(rows, [
+      { header: tx.colRep, key: 'rep', width: 24, transform: (_v, r) => r.rep?.name ?? '' },
+      { header: tx.colWon, key: 'wonValue', width: 16, transform: (_v, r) => money(r.wonValue) },
+      { header: lang === 'ar' ? 'عدد الصفقات الفائزة' : 'Won Count', key: 'wonCount', width: 14 },
+      { header: tx.colTarget, key: 'target', width: 16, transform: (v) => money(v) },
+      { header: tx.colAttainment, key: 'attainment', width: 14, transform: (v) => pct(v) },
+      { header: tx.colOpen, key: 'openValue', width: 16, transform: (_v, r) => money(r.openValue) },
+      { header: lang === 'ar' ? 'عدد الصفقات المفتوحة' : 'Open Count', key: 'openCount', width: 14 },
+    ], `sales-performance-${period}`, lang === 'ar' ? 'أداء المبيعات' : 'Sales Performance');
+  };
+
+  if (!isSalesStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<BarChart3 className="w-5 h-5" />} title={ar ? 'أداء المبيعات' : 'Sales Performance'}>
-        <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" aria-label="period" />
+      <PageHeader icon={<BarChart3 className="w-5 h-5" />} title={tx.title}>
+        <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" aria-label={tx.periodAria} />
+        <ExportButton onClick={handleExport} label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} />
       </PageHeader>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-left text-slate-300">
-            <th className="px-4 py-3">{ar ? 'المندوب' : 'Rep'}</th>
-            <th className="px-4 py-3 text-right">{ar ? 'محقق' : 'Won'}</th>
-            <th className="px-4 py-3 text-right">{ar ? 'الهدف' : 'Target'}</th>
-            <th className="px-4 py-3 text-right">{ar ? 'التحقيق' : 'Attainment'}</th>
-            <th className="px-4 py-3 text-right">{ar ? 'مفتوحة' : 'Open'}</th>
+            <th className="px-4 py-3">{tx.colRep}</th>
+            <th className="px-4 py-3 text-right">{tx.colWon}</th>
+            <th className="px-4 py-3 text-right">{tx.colTarget}</th>
+            <th className="px-4 py-3 text-right">{tx.colAttainment}</th>
+            <th className="px-4 py-3 text-right">{tx.colOpen}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">—</td></tr> : rows.map((r) => (

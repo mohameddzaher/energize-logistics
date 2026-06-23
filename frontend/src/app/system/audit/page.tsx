@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { getAuditTranslations } from '@/lib/translations';
+import { getAuditTranslations, getAuditExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import DataTable from '@/components/system/DataTable';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -40,6 +40,7 @@ export default function AuditPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getAuditTranslations(lang);
+  const txx = getAuditExtraTranslations(lang);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -77,7 +78,7 @@ export default function AuditPage() {
         });
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load audit logs');
+      setError(err.message || txx.failedToLoad);
     } finally {
       setLoading(false);
     }
@@ -123,10 +124,10 @@ export default function AuditPage() {
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffMins < 1) return txx.justNow;
+    if (diffMins < 60) return `${diffMins}${txx.minutesAgo}`;
+    if (diffHours < 24) return `${diffHours}${txx.hoursAgo}`;
+    if (diffDays < 7) return `${diffDays}${txx.daysAgo}`;
     return formatTimestamp(date);
   };
 
@@ -151,7 +152,7 @@ export default function AuditPage() {
   };
 
   const renderJsonDiff = (before: Record<string, any> | undefined, after: Record<string, any> | undefined) => {
-    if (!before && !after) return <p className="text-slate-500 text-xs">No change details available</p>;
+    if (!before && !after) return <p className="text-slate-500 text-xs">{txx.noChangeDetails}</p>;
 
     const allKeys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
 
@@ -225,7 +226,7 @@ export default function AuditPage() {
             type="button"
             onClick={() => exportToExcel(logs, [
               { header: T.date, key: 'createdAt', transform: fmt.datetime, width: 22 },
-              { header: T.user, key: 'user', transform: (_: any, row: any) => row.user ? `${row.user.firstName} ${row.user.lastName}` : 'System', width: 20 },
+              { header: T.user, key: 'user', transform: (_: any, row: any) => row.user ? `${row.user.firstName} ${row.user.lastName}` : txx.system, width: 20 },
               { header: T.email, key: 'user.email', width: 24 },
               { header: T.action, key: 'action', width: 20 },
               { header: T.entity, key: 'entity', width: 14 },
@@ -256,7 +257,7 @@ export default function AuditPage() {
             type="button"
             onClick={() => { setLoading(true); fetchLogs(pagination.page); }}
             className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
-            title="Refresh"
+            title={txx.refresh}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -407,7 +408,7 @@ export default function AuditPage() {
                             <span className="text-slate-500 text-xs block">{log.user.email}</span>
                           </div>
                         ) : (
-                          <span className="text-slate-500 text-xs">System</span>
+                          <span className="text-slate-500 text-xs">{txx.system}</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm">

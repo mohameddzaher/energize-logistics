@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -45,6 +46,7 @@ const kpiRoutes = require('./routes/kpi');
 const procurementRoutes = require('./routes/procurement');
 const lookupRoutes = require('./routes/lookups');
 const customsClearanceRoutes = require('./routes/customsClearance');
+const vehicleRoutes = require('./routes/vehicles');
 
 const app = express();
 const server = http.createServer(app);
@@ -70,10 +72,17 @@ app.use(cors({
 }));
 app.use(mongoSanitize());
 
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+// Body parsing. Limit is generous because employee documents are uploaded as
+// base64 data URLs in JSON (no multer dependency) — see utils/fileStore.js.
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(cookieParser());
+
+// Static serving of uploaded files (employee documents). Mounted under
+// /api/uploads so the frontend's /api/* proxy forwards it (same-origin). Placed
+// BEFORE the rate limiter so viewing files doesn't consume the API quota.
+// Filenames are random and unguessable; the app is internal (behind login).
+app.use('/api/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Logging
 if (process.env.NODE_ENV !== 'production') {
@@ -115,6 +124,7 @@ app.use('/api/kpi', kpiRoutes);
 app.use('/api/procurement', procurementRoutes);
 app.use('/api/lookups', lookupRoutes);
 app.use('/api/customs-clearance', customsClearanceRoutes);
+app.use('/api/vehicles', vehicleRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

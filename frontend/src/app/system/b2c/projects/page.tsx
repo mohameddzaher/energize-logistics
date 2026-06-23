@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
-import { getB2CTranslations } from '@/lib/translations';
+import { getB2CTranslations, getB2cProjectsTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,6 +33,7 @@ const DEFAULT_FORM = {
 export default function B2CProjectsPage() {
   const { lang } = useLanguage();
   const T = getB2CTranslations(lang);
+  const tx = getB2cProjectsTranslations(lang);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -82,7 +83,7 @@ export default function B2CProjectsPage() {
       setShowModal(false);
       fetchProjects();
     } catch (err: any) {
-      setError(err.message || 'Failed');
+      setError(err.message || tx.failed);
     } finally {
       setSaving(false);
     }
@@ -94,7 +95,7 @@ export default function B2CProjectsPage() {
       await api.delete(`/api/b2c/projects/${p._id}`);
       fetchProjects();
     } catch (err: any) {
-      alert(err.message || 'Failed');
+      alert(err.message || tx.failed);
     }
   };
 
@@ -107,11 +108,11 @@ export default function B2CProjectsPage() {
             {T.projects}
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            {lang === 'ar' ? 'إدارة مشاريع B2C (كيتا، هانجرستيشن، أمازون...)' : 'Manage B2C projects (Keeta, HungerStation, Amazon...)'}
+            {tx.subtitle}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={fetchProjects} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title="Refresh">
+          <button type="button" onClick={fetchProjects} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}>
             <RefreshCw className="w-4 h-4" />
           </button>
           <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] text-white rounded-lg text-sm font-medium">
@@ -127,7 +128,7 @@ export default function B2CProjectsPage() {
       ) : projects.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-sm">
           <Target className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-500 mb-4">{lang === 'ar' ? 'لا توجد مشاريع بعد' : 'No projects yet'}</p>
+          <p className="text-slate-500 mb-4">{tx.noProjectsYet}</p>
           <button type="button" onClick={openCreate} className="px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] text-white rounded-lg text-sm">
             {T.addProject}
           </button>
@@ -165,13 +166,13 @@ export default function B2CProjectsPage() {
                   <p className="text-slate-900 text-sm font-bold">{p.dailyTarget}</p>
                 </div>
                 <div className="bg-slate-100 rounded-lg p-2">
-                  <p className="text-slate-500 text-[10px] uppercase">{lang === 'ar' ? 'أيام' : 'Days'}</p>
+                  <p className="text-slate-500 text-[10px] uppercase">{tx.days}</p>
                   <p className="text-slate-900 text-sm font-bold">{p.expectedWorkingDays}</p>
                 </div>
               </div>
               <div className="mt-3 flex items-center gap-2">
                 <span className={`inline-block w-2 h-2 rounded-full ${p.isActive ? 'bg-green-400' : 'bg-slate-300'}`} />
-                <span className="text-xs text-slate-500">{p.isActive ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'متوقف' : 'Inactive')}</span>
+                <span className="text-xs text-slate-500">{p.isActive ? tx.active : tx.inactive}</span>
               </div>
             </motion.div>
           ))}
@@ -190,7 +191,7 @@ export default function B2CProjectsPage() {
               <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between p-5 border-b border-slate-200">
                   <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">{editing ? T.editProject : T.addProject}</h2>
-                  <button type="button" onClick={() => setShowModal(false)} className="text-slate-500 hover:text-slate-900" title="Close"><X className="w-5 h-5" /></button>
+                  <button type="button" onClick={() => setShowModal(false)} className="text-slate-500 hover:text-slate-900" title={tx.close}><X className="w-5 h-5" /></button>
                 </div>
                 <form onSubmit={handleSubmit} className="p-5 space-y-4">
                   {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">{error}</div>}

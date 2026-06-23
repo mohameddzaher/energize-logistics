@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Building2, Plus, Search, X, Check, Edit, Trash2, Loader2, Download } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getBranchesTranslations } from '@/lib/translations';
+import { getBranchesTranslations, getBranchesExtraTranslations } from '@/lib/translations';
 
 interface Branch {
   _id: string;
@@ -24,6 +24,7 @@ export default function BranchesPage() {
   const isSuperAdmin = user?.role === 'super_admin';
   const { lang } = useLanguage();
   const T = getBranchesTranslations(lang);
+  const txx = getBranchesExtraTranslations(lang);
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,11 +111,11 @@ export default function BranchesPage() {
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => exportToExcel(filtered, [
-            { header: 'Name', key: 'name', width: 20 },
-            { header: 'Code', key: 'code', width: 10 },
-            { header: 'City', key: 'city', width: 16 },
-            { header: 'Status', key: 'isActive', transform: (v: boolean) => v ? 'Active' : 'Inactive', width: 10 },
-            { header: 'Created At', key: 'createdAt', transform: fmt.date, width: 14 },
+            { header: T.name, key: 'name', width: 20 },
+            { header: T.code, key: 'code', width: 10 },
+            { header: T.city, key: 'city', width: 16 },
+            { header: T.status, key: 'isActive', transform: (v: boolean) => v ? T.active : T.inactive, width: 10 },
+            { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
           ], `branches-${new Date().toISOString().split('T')[0]}`, 'Branches')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
             <Download className="w-4 h-4" /> {T.downloadExcel}
           </button>
@@ -160,10 +161,10 @@ export default function BranchesPage() {
                 {isSuperAdmin && (
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button type="button" onClick={() => openEdit(b)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title="Edit">
+                      <button type="button" onClick={() => openEdit(b)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={T.edit}>
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button type="button" onClick={() => handleDelete(b._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title="Delete">
+                      <button type="button" onClick={() => handleDelete(b._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={T.delete}>
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -184,23 +185,23 @@ export default function BranchesPage() {
               onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
               <div className="px-6 py-4 bg-slate-900 flex items-center justify-between">
                 <h2 className="text-white font-bold text-lg">{editBranch ? T.editBranch : T.addBranch}</h2>
-                <button type="button" onClick={() => setShowModal(false)} className="text-slate-300 hover:text-white" aria-label="Close"><X className="w-5 h-5" /></button>
+                <button type="button" onClick={() => setShowModal(false)} className="text-slate-300 hover:text-white" aria-label={T.close}><X className="w-5 h-5" /></button>
               </div>
               <div className="p-6 space-y-4">
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.branchName + ' *'}</label>
                   <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. Riyadh" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.placeholderCity} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.code}</label>
                   <input type="text" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. RUH" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.placeholderCode} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{T.city}</label>
                   <input type="text" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="e.g. Riyadh" />
+                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={txx.placeholderCity} />
                 </div>
                 {editBranch && (
                   <div className="flex items-center gap-2">

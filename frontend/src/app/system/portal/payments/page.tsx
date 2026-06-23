@@ -47,11 +47,11 @@ export default function ClientPaymentsPage() {
     exportToExcel(
       payments,
       [
-        { header: 'Date', key: 'paymentDate', transform: fmt.date, width: 14 },
-        { header: 'Invoice #', key: 'invoice.invoiceNumber', width: 14 },
-        { header: 'Amount', key: 'amount', transform: fmt.money, width: 16 },
-        { header: 'Method', key: 'paymentMethod', transform: (v: any) => v?.replace('_', ' ') || '', width: 16 },
-        { header: 'Reference', key: 'reference', width: 20 },
+        { header: T.paymentDate, key: 'paymentDate', transform: fmt.date, width: 14 },
+        { header: T.invoiceNumber, key: 'invoice.invoiceNumber', width: 14 },
+        { header: T.amount, key: 'amount', transform: fmt.money, width: 16 },
+        { header: T.paymentMethod, key: 'paymentMethod', transform: (v: any) => v?.replace('_', ' ') || '', width: 16 },
+        { header: T.reference, key: 'reference', width: 20 },
       ],
       'Payment_History',
       'Payments'

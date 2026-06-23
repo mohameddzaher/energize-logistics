@@ -6,6 +6,11 @@ const LeaveType = require('../models/LeaveType');
 const LeaveRequest = require('../models/LeaveRequest');
 const HRRequest = require('../models/HRRequest');
 const Asset = require('../models/Asset');
+const EmployeeDocument = require('../models/EmployeeDocument');
+const EmployeeRenewal = require('../models/EmployeeRenewal');
+const AuditLog = require('../models/AuditLog');
+const logAudit = require('../utils/auditLogger');
+const { saveEmployeeFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
 const { emitToUser } = require('../websocket/socketManager');
 const { computeBalance, leaveDays } = require('../utils/leaveBalance');
@@ -48,6 +53,12 @@ const notifyUser = async (userId, { title, message, relatedEntity, relatedEntity
 
 const getActiveContract = (employeeId) =>
   Contract.findOne({ employee: employeeId, status: 'active' }).sort({ createdAt: -1 }).lean();
+
+// Lazily provision + link an employee profile for the current login. See the
+// shared util for details. Used so any staff login (incl. the demo super admin)
+// can use HR self-service without HR registering them first.
+const ensureSelfEmployeeUtil = require('../utils/ensureSelfEmployee');
+const ensureSelfEmployee = (req) => ensureSelfEmployeeUtil(req.user);
 
 // Live leave balance for an employee: active contract + sum of approved,
 // balance-affecting leave → progressive accrual maths.
@@ -135,11 +146,13 @@ exports.getEmployee = async (req, res) => {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
 
-    const [contracts, leaves, assets, requests, balanceData] = await Promise.all([
+    const [contracts, leaves, assets, requests, documents, renewals, balanceData] = await Promise.all([
       Contract.find({ employee: id }).sort({ createdAt: -1 }).lean(),
       LeaveRequest.find({ employee: id }).populate('leaveType', 'nameEn nameAr code color').sort({ createdAt: -1 }).limit(200).lean(),
       Asset.find({ employee: id }).sort({ createdAt: -1 }).lean(),
       HRRequest.find({ employee: id }).sort({ createdAt: -1 }).limit(100).lean(),
+      EmployeeDocument.find({ employee: id }).populate('uploadedBy', 'firstName lastName').sort({ createdAt: -1 }).lean(),
+      EmployeeRenewal.find({ employee: id }).populate('renewedBy', 'firstName lastName').sort({ renewedAt: -1 }).limit(200).lean(),
       computeEmployeeBalance(id),
     ]);
 
@@ -151,6 +164,8 @@ exports.getEmployee = async (req, res) => {
       leaves,
       assets,
       requests,
+      documents,
+      renewals,
     });
   } catch (error) {
     console.error('getEmployee error:', error);
@@ -164,6 +179,7 @@ exports.createEmployee = async (req, res) => {
     const body = { ...req.body, createdBy: req.user._id };
     delete body.user; // linking is done from the Users screen, not here
     const employee = await Employee.create(body);
+    await logAudit({ user: req.user._id, action: 'create_employee', entity: 'Employee', entityId: employee._id, changes: { after: { name: fullName(employee) } }, ipAddress: req.ip });
     try { emitToUser(String(req.user._id), 'hr:employee', { id: String(employee._id) }); } catch (e) {}
     await notifyHR({ title: 'New employee added', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.status(201).json({ employee });
@@ -186,11 +202,37 @@ exports.updateEmployee = async (req, res) => {
       'jobTitle', 'department', 'hireDate', 'workLocation', 'branch', 'employmentStatus',
       'phone', 'email', 'address', 'emergencyContactName', 'emergencyContactPhone',
       'basicSalary', 'allowances', 'directManager', 'notes',
+      // Banking
+      'iban', 'bank',
+      // Extra HR-sheet fields
+      'fileStatus', 'absherNumber', 'companyNumber', 'originCountryNumber', 'project', 'registerNumber',
+      'systemStatus', 'workStatusText', 'penaltyClause', 'iqamaProfession', 'classification',
+      'insuranceCompany', 'insuranceExpiry', 'socialInsuranceStatus', 'visaExpiry',
+      'lastTravelDate', 'lastReturnDate',
+      // Driving / vehicle eligibility
+      'vehiclePlate', 'licenseNumber', 'licenseType', 'licenseExpiry',
+      'driverCardNumber', 'driverCardType', 'driverCardStatus', 'driverCardExpiry', 'workCard', 'ajeerStatus', 'ajeerExpiry',
     ];
+    // Capture a before/after diff of only the fields that actually change, so the
+    // audit log (and the profile "history" tab) shows exactly what HR edited.
+    const before = {};
+    const after = {};
     for (const f of fields) {
-      if (req.body[f] !== undefined) employee[f] = req.body[f] === '' && ['branch', 'directManager'].includes(f) ? null : req.body[f];
+      if (req.body[f] === undefined) continue;
+      const next = req.body[f] === '' && ['branch', 'directManager'].includes(f) ? null : req.body[f];
+      const prev = employee[f];
+      const prevCmp = prev && prev.toString ? prev.toString() : prev;
+      const nextCmp = next && next.toString ? next.toString() : next;
+      if (String(prevCmp ?? '') !== String(nextCmp ?? '')) {
+        before[f] = prev;
+        after[f] = next;
+      }
+      employee[f] = next;
     }
     await employee.save();
+    if (Object.keys(after).length) {
+      await logAudit({ user: req.user._id, action: 'update_employee', entity: 'Employee', entityId: employee._id, changes: { before, after }, ipAddress: req.ip });
+    }
     await notifyHR({ title: 'Employee updated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.json({ employee });
   } catch (error) {
@@ -208,11 +250,205 @@ exports.deleteEmployee = async (req, res) => {
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
     // Detach any linked login account.
     if (employee.user) await User.updateOne({ _id: employee.user }, { $unset: { linkedEmployee: 1 } });
+    // Clean up the employee's stored document files, then their sub-records.
+    const docs = await EmployeeDocument.find({ employee: employee._id }).select('fileUrl').lean();
+    docs.forEach((d) => deleteStoredFile(d.fileUrl));
+    await EmployeeDocument.deleteMany({ employee: employee._id });
+    await EmployeeRenewal.deleteMany({ employee: employee._id });
     await employee.deleteOne();
+    await logAudit({ user: req.user._id, action: 'delete_employee', entity: 'Employee', entityId: employee._id, changes: { before: { name: fullName(employee) } }, ipAddress: req.ip });
     await notifyHR({ title: 'Employee removed', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.json({ message: 'Employee deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete employee' });
+  }
+};
+
+// ── Document renewals (iqama / license / insurance ...) ──────────────────────
+// Maps a renewable document type → the employee fields it updates.
+const RENEWAL_FIELDS = {
+  iqama: { expiry: 'iqamaExpiry', number: 'iqamaNumber' },
+  passport: { expiry: 'passportExpiry', number: 'passportNumber' },
+  workPermit: { expiry: 'workPermitExpiry' },
+  insurance: { expiry: 'insuranceExpiry' },
+  visa: { expiry: 'visaExpiry' },
+  license: { expiry: 'licenseExpiry', number: 'licenseNumber' },
+  driverCard: { expiry: 'driverCardExpiry', number: 'driverCardNumber' },
+  ajeer: { expiry: 'ajeerExpiry' },
+  other: {},
+};
+
+// Renew a dated document: bumps the matching expiry (+ number if supplied) on the
+// employee AND records a renewal-history row so the profile keeps a trail.
+exports.renewDocument = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+
+    const { docType, newExpiry, documentNumber, notes } = req.body;
+    const map = RENEWAL_FIELDS[docType];
+    if (!map) return res.status(400).json({ message: 'Invalid document type' });
+
+    const previousExpiry = map.expiry ? employee[map.expiry] : undefined;
+    if (map.expiry && newExpiry) employee[map.expiry] = newExpiry;
+    if (map.number && documentNumber) employee[map.number] = documentNumber;
+    await employee.save();
+
+    const renewal = await EmployeeRenewal.create({
+      employee: employee._id, docType,
+      previousExpiry: previousExpiry || '', newExpiry: newExpiry || '',
+      documentNumber: documentNumber || '', notes: notes || '',
+      renewedBy: req.user._id, renewedAt: new Date(),
+    });
+    await logAudit({ user: req.user._id, action: 'renew_document', entity: 'Employee', entityId: employee._id, changes: { before: { docType, expiry: previousExpiry }, after: { expiry: newExpiry, documentNumber } }, ipAddress: req.ip });
+    await notifyHR({ title: 'Document renewed', message: `${docType} for ${fullName(employee)}`, relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    res.status(201).json({ employee, renewal });
+  } catch (error) {
+    console.error('renewDocument error:', error);
+    res.status(500).json({ message: 'Failed to renew document' });
+  }
+};
+
+// End of service. Blocked while the employee still holds custody (same gate as
+// terminating a contract). Also terminates any active contract.
+exports.terminateEmployee = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+
+    const outstanding = await Asset.countDocuments({ employee: employee._id, status: 'assigned' });
+    if (outstanding > 0) {
+      return res.status(400).json({ message: `Cannot terminate: ${outstanding} custody item(s) not returned`, code: 'CUSTODY_OUTSTANDING', outstanding });
+    }
+
+    const reason = req.body.reason || '';
+    const when = req.body.date ? new Date(req.body.date) : new Date();
+    employee.employmentStatus = 'terminated';
+    employee.terminatedAt = when;
+    employee.terminationReason = reason;
+    await employee.save();
+
+    // Terminate the active contract too so both records agree.
+    await Contract.updateMany(
+      { employee: employee._id, status: 'active' },
+      { $set: { status: 'terminated', terminatedAt: when, terminationReason: reason, custodyReturned: true } }
+    );
+
+    await logAudit({ user: req.user._id, action: 'terminate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { reason, date: when } }, ipAddress: req.ip });
+    await notifyHR({ title: 'Employee terminated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    try { emitToUser(String(req.user._id), 'hr:contract', { id: String(employee._id) }); } catch (e) {}
+    if (employee.user) await notifyUser(employee.user, { title: 'Contract ended', message: 'Your employment has been terminated.', relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    res.json({ employee });
+  } catch (error) {
+    console.error('terminateEmployee error:', error);
+    res.status(500).json({ message: 'Failed to terminate employee' });
+  }
+};
+
+// Re-activate a previously terminated/suspended employee.
+exports.reactivateEmployee = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+    employee.employmentStatus = 'active';
+    employee.terminatedAt = undefined;
+    employee.terminationReason = '';
+    await employee.save();
+    await logAudit({ user: req.user._id, action: 'reactivate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { employmentStatus: 'active' } }, ipAddress: req.ip });
+    await notifyHR({ title: 'Employee reactivated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    res.json({ employee });
+  } catch (error) {
+    console.error('reactivateEmployee error:', error);
+    res.status(500).json({ message: 'Failed to reactivate employee' });
+  }
+};
+
+// ── Employee documents (file uploads) ────────────────────────────────────────
+exports.listDocuments = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const documents = await EmployeeDocument.find({ employee: req.params.id })
+      .populate('uploadedBy', 'firstName lastName').sort({ createdAt: -1 }).lean();
+    res.json({ documents });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load documents' });
+  }
+};
+
+exports.uploadDocument = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const employee = await Employee.findById(req.params.id).select('_id firstName lastName arabicName').lean();
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+
+    const { title, category, expiryDate, notes, dataUrl, fileName } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ message: 'Document name is required' });
+    if (!dataUrl) return res.status(400).json({ message: 'A file is required' });
+
+    let stored;
+    try { stored = saveEmployeeFile(dataUrl, fileName); }
+    catch (e) { return res.status(400).json({ message: e.message }); }
+
+    const doc = await EmployeeDocument.create({
+      employee: employee._id, title: title.trim(), category: category || 'other',
+      expiryDate: expiryDate || undefined, notes: notes || '',
+      uploadedBy: req.user._id, ...stored,
+    });
+    await logAudit({ user: req.user._id, action: 'add_employee_document', entity: 'Employee', entityId: employee._id, changes: { after: { title: doc.title } }, ipAddress: req.ip });
+    await notifyHR({ title: 'Document added', message: `${doc.title} — ${fullName(employee)}`, relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
+    const populated = await EmployeeDocument.findById(doc._id).populate('uploadedBy', 'firstName lastName').lean();
+    res.status(201).json({ document: populated });
+  } catch (error) {
+    console.error('uploadDocument error:', error);
+    res.status(500).json({ message: 'Failed to upload document' });
+  }
+};
+
+exports.updateDocument = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const doc = await EmployeeDocument.findById(req.params.docId);
+    if (!doc) return res.status(404).json({ message: 'Document not found' });
+    ['title', 'category', 'expiryDate', 'notes'].forEach((f) => { if (req.body[f] !== undefined) doc[f] = req.body[f]; });
+    await doc.save();
+    await logAudit({ user: req.user._id, action: 'update_employee_document', entity: 'Employee', entityId: doc.employee, changes: { after: { title: doc.title } }, ipAddress: req.ip });
+    try { emitToUser(String(req.user._id), 'hr:employee', { id: String(doc.employee) }); } catch (e) {}
+    await notifyHR({ title: 'Document updated', message: doc.title, relatedEntity: 'Employee', relatedEntityId: doc.employee, event: 'hr:employee' });
+    const populated = await EmployeeDocument.findById(doc._id).populate('uploadedBy', 'firstName lastName').lean();
+    res.json({ document: populated });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update document' });
+  }
+};
+
+exports.deleteDocument = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const doc = await EmployeeDocument.findById(req.params.docId);
+    if (!doc) return res.status(404).json({ message: 'Document not found' });
+    deleteStoredFile(doc.fileUrl);
+    const employeeId = doc.employee;
+    await doc.deleteOne();
+    await logAudit({ user: req.user._id, action: 'delete_employee_document', entity: 'Employee', entityId: employeeId, changes: { before: { title: doc.title } }, ipAddress: req.ip });
+    await notifyHR({ title: 'Document removed', message: doc.title, relatedEntity: 'Employee', relatedEntityId: employeeId, event: 'hr:employee' });
+    res.json({ message: 'Document deleted' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete document' });
+  }
+};
+
+// Change history for one employee — everything logAudit'd against this id.
+exports.getEmployeeAudit = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const logs = await AuditLog.find({ entity: 'Employee', entityId: req.params.id })
+      .populate('user', 'firstName lastName role').sort({ createdAt: -1 }).limit(300).lean();
+    res.json({ logs });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load history' });
   }
 };
 
@@ -411,7 +647,8 @@ exports.listTeamLeaves = async (req, res) => {
 
 exports.createMyLeave = async (req, res) => {
   try {
-    if (!req.user.linkedEmployee) {
+    const employeeId = await ensureSelfEmployee(req);
+    if (!employeeId) {
       return res.status(400).json({ message: 'Your account is not linked to an employee profile yet. Contact HR.' });
     }
     const { leaveType, startDate, endDate, reason } = req.body;
@@ -552,6 +789,7 @@ exports.createMyRequest = async (req, res) => {
   try {
     const { category, subject, body } = req.body;
     if (!subject || !subject.trim()) return res.status(400).json({ message: 'Subject is required' });
+    await ensureSelfEmployee(req);
     const request = await HRRequest.create({
       requester: req.user._id,
       employee: req.user.linkedEmployee || undefined,
@@ -701,24 +939,81 @@ exports.deleteAsset = async (req, res) => {
 // ── Dashboard (HR staff) ─────────────────────────────────────────────────────
 const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
+// Build an "expiring documents" feed across every dated field on the employee so
+// HR sees ONE list of everything about to lapse (iqama, passport, license ...).
+const EXPIRY_DOCS = [
+  { field: 'iqamaExpiry', type: 'iqama', en: 'Iqama', ar: 'الإقامة' },
+  { field: 'passportExpiry', type: 'passport', en: 'Passport', ar: 'الجواز' },
+  { field: 'workPermitExpiry', type: 'workPermit', en: 'Work Permit', ar: 'رخصة العمل' },
+  { field: 'insuranceExpiry', type: 'insurance', en: 'Insurance', ar: 'التأمين' },
+  { field: 'visaExpiry', type: 'visa', en: 'Visa', ar: 'التأشيرة' },
+  { field: 'licenseExpiry', type: 'license', en: 'Driving License', ar: 'رخصة القيادة' },
+  { field: 'driverCardExpiry', type: 'driverCard', en: 'Driver Card', ar: 'كارت السائق' },
+  { field: 'ajeerExpiry', type: 'ajeer', en: 'Ajeer', ar: 'أجير' },
+];
+
 exports.getDashboard = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     const today = new Date().toISOString().slice(0, 10);
     const in60 = addDays(60);
+    const in90 = addDays(90);
 
-    const [totalEmployees, activeEmployees, pendingLeaves, openRequests, assignedAssets, expiringIqamas, expiringContracts] = await Promise.all([
+    const [
+      totalEmployees, activeEmployees, onLeaveCount, suspendedCount, terminatedCount,
+      pendingLeaves, openRequests, assignedAssets, expiringContracts,
+      byStatusAgg, byDeptAgg, byProjectAgg, byNationalityAgg, recentHiresRaw, docFieldEmployees,
+    ] = await Promise.all([
       Employee.countDocuments({}),
       Employee.countDocuments({ employmentStatus: 'active' }),
+      Employee.countDocuments({ employmentStatus: 'on_leave' }),
+      Employee.countDocuments({ employmentStatus: 'suspended' }),
+      Employee.countDocuments({ employmentStatus: 'terminated' }),
       LeaveRequest.countDocuments({ status: { $in: ['pending_manager', 'pending_hr'] } }),
       HRRequest.countDocuments({ status: { $in: ['open', 'in_progress'] } }),
       Asset.countDocuments({ status: 'assigned' }),
-      Employee.find({ iqamaExpiry: { $gte: today, $lte: in60 } }).select('firstName lastName iqamaNumber iqamaExpiry').sort({ iqamaExpiry: 1 }).limit(50).lean(),
-      Contract.find({ status: 'active', endDate: { $gte: today, $lte: in60 } }).populate('employee', 'firstName lastName').sort({ endDate: 1 }).limit(50).lean(),
+      Contract.find({ status: 'active', endDate: { $gte: today, $lte: in90 } }).populate('employee', 'firstName lastName arabicName').sort({ endDate: 1 }).limit(50).lean(),
+      Employee.aggregate([{ $group: { _id: '$employmentStatus', count: { $sum: 1 } } }]),
+      Employee.aggregate([{ $match: { department: { $nin: [null, ''] } } }, { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
+      Employee.aggregate([{ $match: { project: { $nin: [null, ''] } } }, { $group: { _id: '$project', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
+      Employee.aggregate([{ $match: { nationality: { $nin: [null, ''] } } }, { $group: { _id: '$nationality', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
+      Employee.find({ hireDate: { $nin: [null, ''] } }).select('firstName lastName arabicName jobTitle hireDate').sort({ hireDate: -1 }).limit(8).lean(),
+      // Pull only the fields we scan for expiry, for the whole active-ish workforce.
+      Employee.find({ employmentStatus: { $ne: 'terminated' } })
+        .select('firstName lastName arabicName iqamaNumber ' + EXPIRY_DOCS.map((d) => d.field).join(' '))
+        .limit(5000).lean(),
     ]);
 
+    // Flatten every employee × document into a single sorted "expiring/expired" feed.
+    const expiringDocs = [];
+    for (const e of docFieldEmployees) {
+      for (const d of EXPIRY_DOCS) {
+        const v = e[d.field];
+        if (v && v <= in60) {
+          expiringDocs.push({ employeeId: e._id, employeeName: `${e.firstName || ''} ${e.lastName || ''}`.trim(), arabicName: e.arabicName || '', docType: d.type, docEn: d.en, docAr: d.ar, expiry: v, expired: v < today });
+        }
+      }
+    }
+    expiringDocs.sort((a, b) => (a.expiry < b.expiry ? -1 : 1));
+
+    // Keep the iqama-only list for back-compat with the existing dashboard table.
+    const expiringIqamas = expiringDocs
+      .filter((d) => d.docType === 'iqama')
+      .map((d) => ({ _id: d.employeeId, firstName: d.employeeName.split(' ')[0], lastName: d.employeeName.split(' ').slice(1).join(' '), iqamaExpiry: d.expiry }));
+
     res.json({
-      summary: { totalEmployees, activeEmployees, pendingLeaves, openRequests, assignedAssets },
+      summary: {
+        totalEmployees, activeEmployees, onLeaveCount, suspendedCount, terminatedCount,
+        pendingLeaves, openRequests, assignedAssets,
+        expiringDocsCount: expiringDocs.length,
+        expiredDocsCount: expiringDocs.filter((d) => d.expired).length,
+      },
+      byStatus: byStatusAgg.map((r) => ({ status: r._id || 'unknown', count: r.count })),
+      byDepartment: byDeptAgg.map((r) => ({ name: r._id, count: r.count })),
+      byProject: byProjectAgg.map((r) => ({ name: r._id, count: r.count })),
+      byNationality: byNationalityAgg.map((r) => ({ name: r._id, count: r.count })),
+      recentHires: recentHiresRaw,
+      expiringDocs: expiringDocs.slice(0, 100),
       expiringIqamas,
       expiringContracts,
     });
@@ -731,8 +1026,8 @@ exports.getDashboard = async (req, res) => {
 // ── Self-service profile + team detection ────────────────────────────────────
 exports.getMyProfile = async (req, res) => {
   try {
-    if (!req.user.linkedEmployee) return res.json({ employee: null });
-    const id = req.user.linkedEmployee;
+    const id = await ensureSelfEmployee(req);
+    if (!id) return res.json({ employee: null });
     const [employee, contracts, leaves, assets, balanceData] = await Promise.all([
       Employee.findById(id).populate('directManager', 'firstName lastName email').populate('branch', 'name').lean(),
       Contract.find({ employee: id }).sort({ createdAt: -1 }).lean(),

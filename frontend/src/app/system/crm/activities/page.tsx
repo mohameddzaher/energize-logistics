@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { getCRMTranslations } from '@/lib/translations';
+import { getCRMTranslations, getCrmActivitiesExtraTranslations } from '@/lib/translations';
 import { Phone, Plus, Trash2, Edit, MessageCircle, Mail, Users, MapPin, StickyNote } from 'lucide-react';
 import {
   isCrmStaff, CrmActivity, CrmCompany, CrmOptions, optLabel, companyName, userName, fmtDateTime, exportToExcel, fmt, today,
@@ -21,6 +21,7 @@ export default function CrmActivitiesPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const T = getCRMTranslations(lang);
+  const txx = getCrmActivitiesExtraTranslations(lang);
 
   const [items, setItems] = useState<CrmActivity[]>([]);
   const [companies, setCompanies] = useState<CrmCompany[]>([]);
@@ -82,11 +83,11 @@ export default function CrmActivitiesPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Phone className="w-5 h-5" />} title={T.activities} subtitle={`${items.length} ${T.activities}`}>
         <ExportButton label={T.export} onClick={() => exportToExcel(items, [
-          { header: 'Type', key: 'type', width: 12 },
-          { header: 'Subject', key: 'subject', width: 30 },
-          { header: 'Company', key: 'company', transform: (v) => companyName(v), width: 22 },
-          { header: 'Date', key: 'date', transform: fmt.datetime, width: 18 },
-          { header: 'By', key: 'createdBy', transform: (v) => userName(v), width: 18 },
+          { header: T.type, key: 'type', width: 12 },
+          { header: T.subject, key: 'subject', width: 30 },
+          { header: T.company, key: 'company', transform: (v) => companyName(v), width: 22 },
+          { header: T.date, key: 'date', transform: fmt.datetime, width: 18 },
+          { header: txx.by, key: 'createdBy', transform: (v) => userName(v), width: 18 },
         ], `crm-activities-${today()}`, 'Activities')} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {T.logActivity}</PrimaryButton>
       </PageHeader>

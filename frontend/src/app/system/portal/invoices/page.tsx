@@ -5,13 +5,14 @@ import api from '@/lib/api';
 import { FileText, Download } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getPortalTranslations } from '@/lib/translations';
+import { getPortalTranslations, getPortalInvoicesExtraTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
 
 export default function ClientInvoicesPage() {
   const router = useRouter();
   const { lang } = useLanguage();
   const T = getPortalTranslations(lang);
+  const txx = getPortalInvoicesExtraTranslations(lang);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -46,17 +47,17 @@ export default function ClientInvoicesPage() {
     exportToExcel(
       data.invoices,
       [
-        { header: 'Invoice #', key: 'invoiceNumber', width: 14 },
-        { header: 'Amount', key: 'amount', transform: fmt.money, width: 16 },
-        { header: 'Paid', key: 'paidAmount', transform: fmt.money, width: 16 },
-        { header: 'Balance', key: 'balance', transform: fmt.money, width: 16 },
-        { header: 'Invoice Date', key: 'invoiceDate', transform: fmt.date, width: 14 },
-        { header: 'Due Date', key: 'dueDate', transform: fmt.date, width: 14 },
-        { header: 'Days', key: 'overdueDays', transform: (_v: any, row: any) =>
-          row.isOverdue ? `-${row.overdueDays}d` : row.status === 'paid' ? 'Paid' : `${row.remainingDays}d`,
+        { header: T.invoiceNumber, key: 'invoiceNumber', width: 14 },
+        { header: T.amount, key: 'amount', transform: fmt.money, width: 16 },
+        { header: txx.paid, key: 'paidAmount', transform: fmt.money, width: 16 },
+        { header: T.balance, key: 'balance', transform: fmt.money, width: 16 },
+        { header: T.invoiceDate, key: 'invoiceDate', transform: fmt.date, width: 14 },
+        { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
+        { header: txx.days, key: 'overdueDays', transform: (_v: any, row: any) =>
+          row.isOverdue ? `-${row.overdueDays}${txx.dayUnit}` : row.status === 'paid' ? txx.paid : `${row.remainingDays}${txx.dayUnit}`,
           width: 10,
         },
-        { header: 'Status', key: 'status', transform: fmt.status, width: 12 },
+        { header: T.status, key: 'status', transform: fmt.status, width: 12 },
       ],
       'My_Invoices',
       'Invoices'
@@ -115,7 +116,7 @@ export default function ClientInvoicesPage() {
                     inv.statusColor === 'yellow' ? 'text-yellow-700' :
                     'text-green-600'
                   }`}>
-                    {inv.isOverdue ? `-${inv.overdueDays}d` : inv.status === 'paid' ? 'Paid' : `${inv.remainingDays}d`}
+                    {inv.isOverdue ? `-${inv.overdueDays}${txx.dayUnit}` : inv.status === 'paid' ? txx.paid : `${inv.remainingDays}${txx.dayUnit}`}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm">

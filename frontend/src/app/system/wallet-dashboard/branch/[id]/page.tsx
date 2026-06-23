@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getWalletDashboardTranslations } from '@/lib/translations';
+import { getWalletDashboardTranslations, getWalletDashboardBranchIdExtraTranslations } from '@/lib/translations';
 
 interface WalletSummary {
   _id: string;
@@ -111,6 +111,7 @@ export default function BranchWalletDashboardPage() {
   const [dateTo, setDateTo] = useState(initialDateTo || getTodayStr());
   const { lang } = useLanguage();
   const T = getWalletDashboardTranslations(lang);
+  const txx = getWalletDashboardBranchIdExtraTranslations(lang);
   const [branchName, setBranchName] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
@@ -144,44 +145,44 @@ export default function BranchWalletDashboardPage() {
   const handleExportExcel = () => {
     if (transactions.length === 0 && wallets.length === 0) return;
     const walletColumns = [
-      { header: 'User', key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
-      ...(dateMode === 'range' ? [{ header: 'Date', key: 'date', width: 12 }] : []),
-      { header: 'Opening Balance (SAR)', key: 'openingBalance', transform: fmt.money, width: 20 },
-      { header: 'Collections (SAR)', key: 'totalCollections', transform: fmt.money, width: 18 },
-      { header: 'Expenses (SAR)', key: 'totalExpenses', transform: fmt.money, width: 18 },
-      { header: 'Purchases (SAR)', key: 'totalPurchases', transform: fmt.money, width: 18 },
-      { header: 'Closing Balance (SAR)', key: 'closingBalance', transform: fmt.money, width: 20 },
-      { header: 'Status', key: 'isClosed', transform: (v: any) => v ? 'Closed' : 'Open', width: 10 },
-      { header: 'Actual Cash (SAR)', key: 'actualCash', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : 'Not Closed'), width: 18 },
-      { header: 'Cash Difference (SAR)', key: 'cashDifference', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : 'Not Closed'), width: 20 },
+      { header: T.user, key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
+      ...(dateMode === 'range' ? [{ header: T.date, key: 'date', width: 12 }] : []),
+      { header: txx.openingBalanceSar, key: 'openingBalance', transform: fmt.money, width: 20 },
+      { header: txx.collectionsSar, key: 'totalCollections', transform: fmt.money, width: 18 },
+      { header: txx.expensesSar, key: 'totalExpenses', transform: fmt.money, width: 18 },
+      { header: txx.purchasesSar, key: 'totalPurchases', transform: fmt.money, width: 18 },
+      { header: txx.closingBalanceSar, key: 'closingBalance', transform: fmt.money, width: 20 },
+      { header: T.status, key: 'isClosed', transform: (v: any) => v ? T.closed : T.open, width: 10 },
+      { header: txx.actualCashSar, key: 'actualCash', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : txx.notClosed), width: 18 },
+      { header: txx.cashDifferenceSar, key: 'cashDifference', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : txx.notClosed), width: 20 },
     ];
     const txColumns = [
-      ...(dateMode === 'range' ? [{ header: 'Date', key: 'date', width: 12 }] : []),
-      { header: 'Time', key: 'createdAt', transform: (v: any) => v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '', width: 8 },
-      { header: 'User', key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
-      { header: 'Type', key: 'type', transform: (v: any) => v ? v.charAt(0).toUpperCase() + v.slice(1) : '', width: 12 },
-      { header: 'Amount (SAR)', key: 'amount', transform: fmt.money, width: 15 },
-      { header: 'Customer', key: 'customer', transform: (v: any) => v ? `${v.companyName} (${v.customerNumber})` : '', width: 25 },
-      { header: 'Invoice #', key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
-      { header: 'Invoice Amount', key: 'invoice', transform: (v: any) => v?.amount != null ? fmt.money(v.amount) : '', width: 15 },
-      { header: 'Invoice Balance', key: 'invoice', transform: (v: any) => v?.balance != null ? fmt.money(v.balance) : '', width: 15 },
-      { header: 'Delivery Statement #', key: 'deliveryStatementNumber', width: 20 },
-      { header: 'Vendor', key: 'vendor', transform: (v: any) => v?.name || '', width: 18 },
-      { header: 'Driver', key: 'driver', transform: (v: any) => v?.name || '', width: 18 },
-      { header: 'Category', key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
-      { header: 'Item / Description', key: 'itemName', width: 22 },
-      { header: 'Reference', key: 'reference', width: 15 },
-      { header: 'Client', key: 'operationDetails', transform: (v: any) => v?.client || '', width: 18 },
-      { header: 'From', key: 'operationDetails', transform: (v: any) => v?.from || '', width: 15 },
-      { header: 'To', key: 'operationDetails', transform: (v: any) => v?.to || '', width: 15 },
-      { header: 'Car Type', key: 'operationDetails', transform: (v: any) => v?.carType || '', width: 12 },
-      { header: 'Length', key: 'operationDetails', transform: (v: any) => v?.length || '', width: 10 },
-      { header: 'Car Number', key: 'operationDetails', transform: (v: any) => v?.carNumber || '', width: 15 },
-      { header: 'Report Date', key: 'operationDetails', transform: (v: any) => v?.reportDate ? new Date(v.reportDate).toLocaleDateString('en-GB') : '', width: 14 },
-      { header: 'Notes', key: 'notes', width: 25 },
-      { header: 'Flagged', key: 'isFlagged', transform: fmt.yesNo, width: 8 },
+      ...(dateMode === 'range' ? [{ header: T.date, key: 'date', width: 12 }] : []),
+      { header: T.time, key: 'createdAt', transform: (v: any) => v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '', width: 8 },
+      { header: T.user, key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
+      { header: T.type, key: 'type', transform: (v: any) => v ? (txx[`type_${v}` as keyof typeof txx] || v.charAt(0).toUpperCase() + v.slice(1)) : '', width: 12 },
+      { header: txx.amountSar, key: 'amount', transform: fmt.money, width: 15 },
+      { header: txx.customer, key: 'customer', transform: (v: any) => v ? `${v.companyName} (${v.customerNumber})` : '', width: 25 },
+      { header: txx.invoiceNo, key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
+      { header: txx.invoiceAmount, key: 'invoice', transform: (v: any) => v?.amount != null ? fmt.money(v.amount) : '', width: 15 },
+      { header: txx.invoiceBalance, key: 'invoice', transform: (v: any) => v?.balance != null ? fmt.money(v.balance) : '', width: 15 },
+      { header: txx.deliveryStatementNo, key: 'deliveryStatementNumber', width: 20 },
+      { header: txx.vendor, key: 'vendor', transform: (v: any) => v?.name || '', width: 18 },
+      { header: txx.driver, key: 'driver', transform: (v: any) => v?.name || '', width: 18 },
+      { header: txx.category, key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
+      { header: txx.itemDescription, key: 'itemName', width: 22 },
+      { header: T.reference, key: 'reference', width: 15 },
+      { header: T.client, key: 'operationDetails', transform: (v: any) => v?.client || '', width: 18 },
+      { header: T.from, key: 'operationDetails', transform: (v: any) => v?.from || '', width: 15 },
+      { header: T.to2, key: 'operationDetails', transform: (v: any) => v?.to || '', width: 15 },
+      { header: txx.carTypeHeader, key: 'operationDetails', transform: (v: any) => v?.carType || '', width: 12 },
+      { header: T.length, key: 'operationDetails', transform: (v: any) => v?.length || '', width: 10 },
+      { header: T.carNumber, key: 'operationDetails', transform: (v: any) => v?.carNumber || '', width: 15 },
+      { header: T.reportDate, key: 'operationDetails', transform: (v: any) => v?.reportDate ? new Date(v.reportDate).toLocaleDateString('en-GB') : '', width: 14 },
+      { header: T.notes, key: 'notes', width: 25 },
+      { header: txx.flagged, key: 'isFlagged', transform: fmt.yesNo, width: 8 },
     ];
-    const safeBranchName = branchName || 'Branch';
+    const safeBranchName = branchName || txx.branch;
     exportMultiSheet([
       { name: 'Wallets', data: wallets, columns: walletColumns },
       { name: 'Transactions', data: transactions, columns: txColumns },
@@ -217,7 +218,7 @@ export default function BranchWalletDashboardPage() {
             <Building2 className="w-5 h-5 text-[#f37121]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{branchName || 'Branch'} {T.dashboard}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{branchName || txx.branch} {T.dashboard}</h1>
             <p className="text-slate-500 text-sm">{dateDisplay}</p>
           </div>
         </div>
@@ -237,7 +238,7 @@ export default function BranchWalletDashboardPage() {
           {dateMode === 'single' ? (
             <>
               <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="Select date" />
+                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.selectDate} />
               <button type="button" onClick={() => setSelectedDate(getTodayStr())}
                 className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{T.today}</button>
             </>
@@ -245,10 +246,10 @@ export default function BranchWalletDashboardPage() {
             <>
               <div className="flex items-center gap-1.5">
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="From date" />
+                  className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.fromDate} />
                 <span className="text-slate-500 text-sm">{T.to}</span>
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label="To date" />
+                  className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.toDate} />
               </div>
               <button type="button" onClick={() => { setDateFrom(getTodayStr()); setDateTo(getTodayStr()); }}
                 className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{T.today}</button>
@@ -256,7 +257,7 @@ export default function BranchWalletDashboardPage() {
           )}
 
           <button type="button" onClick={handleExportExcel} disabled={transactions.length === 0 && wallets.length === 0}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50" title="Export to Excel">
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50" title={txx.exportToExcel}>
             <Download className="w-4 h-4" /> {T.export}
           </button>
         </div>
@@ -266,7 +267,7 @@ export default function BranchWalletDashboardPage() {
       {dateMode === 'range' && (
         <div className="bg-[#f37121]/10 border border-[#f37121]/30 rounded-lg px-4 py-2 text-sm text-[#f37121] flex items-center gap-2">
           <CalendarRange className="w-4 h-4" />
-          Showing aggregated data from <span className="font-medium">{dateFrom}</span> to <span className="font-medium">{dateTo}</span>
+          {T.showingData} <span className="font-medium">{dateFrom}</span> {T.to} <span className="font-medium">{dateTo}</span>
         </div>
       )}
 
@@ -361,14 +362,14 @@ export default function BranchWalletDashboardPage() {
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Filter by type"
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label={txx.filterByType}
           className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
           <option value="">{T.allTypes}</option>
           <option value="collection">{T.collections}</option>
           <option value="expense">{T.expenses}</option>
           <option value="purchase">{T.purchases}</option>
         </select>
-        <select value={userFilter} onChange={(e) => setUserFilter(e.target.value)} aria-label="Filter by user"
+        <select value={userFilter} onChange={(e) => setUserFilter(e.target.value)} aria-label={txx.filterByUser}
           className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
           <option value="">{T.allUsers}</option>
           {uniqueUsers.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -418,7 +419,7 @@ export default function BranchWalletDashboardPage() {
                     <td className="px-4 py-3 text-slate-900 text-xs">{tx.user.firstName} {tx.user.lastName}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${tc.bg} ${tc.color}`}>
-                        {tx.type}
+                        {txx[`type_${tx.type}` as keyof typeof txx] || tx.type}
                       </span>
                       {tx.isFlagged && <AlertTriangle className="w-3 h-3 text-red-600 inline ml-1" />}
                     </td>

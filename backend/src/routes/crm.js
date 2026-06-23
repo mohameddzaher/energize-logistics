@@ -3,8 +3,9 @@ const router = express.Router();
 const crm = require('../controllers/crmController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
+const { CRM_STAFF_ROLES } = require('../config/constants');
 
-const STAFF = ['super_admin', 'admin', 'crm_manager', 'crm_specialist'];
+const STAFF = CRM_STAFF_ROLES;
 
 router.use(authenticate);
 router.use(authorize(...STAFF));

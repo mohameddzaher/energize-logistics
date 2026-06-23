@@ -6,12 +6,13 @@ import Link from 'next/link';
 import { ArrowLeft, FileText, Calendar, Clock, DollarSign, Download } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
-import { getPortalTranslations } from '@/lib/translations';
+import { getPortalTranslations, getPortalInvoicesIdExtraTranslations } from '@/lib/translations';
 
 export default function ClientInvoiceDetailPage() {
   const params = useParams();
   const { lang } = useLanguage();
   const T = getPortalTranslations(lang);
+  const txx = getPortalInvoicesIdExtraTranslations(lang);
   const [invoice, setInvoice] = useState<any>(null);
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,7 +97,7 @@ export default function ClientInvoiceDetailPage() {
               {T.invoiceNumber} {invoice.invoiceNumber}
             </h1>
             <p className="text-slate-500 text-sm mt-1">
-              Credit Term: <span className="text-[#f37121] font-bold">{invoice.creditTerm} Days</span>
+              {txx.creditTerm}: <span className="text-[#f37121] font-bold">{invoice.creditTerm} {txx.daysUnit}</span>
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -122,14 +123,14 @@ export default function ClientInvoiceDetailPage() {
         {invoice.isOverdue && (
           <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-lg p-3">
             <p className="text-red-600 text-sm font-medium">
-              This invoice is <strong>{invoice.overdueDays} days overdue</strong> according to your {invoice.creditTerm}-day credit agreement.
+              {txx.overduePrefix} <strong>{invoice.overdueDays} {txx.daysOverdue}</strong> {txx.overdueSuffixPrefix}{invoice.creditTerm}{txx.overdueSuffix}
             </p>
           </div>
         )}
         {!invoice.isOverdue && invoice.remainingDays <= 5 && invoice.status !== 'paid' && (
           <div className="mt-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
             <p className="text-yellow-700 text-sm font-medium">
-              You must pay Invoice #{invoice.invoiceNumber} within <strong>{invoice.remainingDays} days</strong> according to your {invoice.creditTerm}-day credit agreement.
+              {txx.mustPayPrefix}{invoice.invoiceNumber} {txx.within} <strong>{invoice.remainingDays} {txx.daysUnit}</strong> {txx.overdueSuffixPrefix}{invoice.creditTerm}{txx.overdueSuffix}
             </p>
           </div>
         )}
@@ -149,9 +150,9 @@ export default function ClientInvoiceDetailPage() {
             <p className="text-red-600 text-lg font-bold">{invoice.balance?.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-slate-500 text-xs uppercase">{invoice.isOverdue ? 'Overdue Days' : 'Remaining Days'}</p>
+            <p className="text-slate-500 text-xs uppercase">{invoice.isOverdue ? txx.overdueDays : txx.remainingDays}</p>
             <p className={`text-lg font-bold ${invoice.isOverdue ? 'text-red-600' : 'text-green-600'}`}>
-              {invoice.isOverdue ? invoice.overdueDays : invoice.remainingDays} days
+              {invoice.isOverdue ? invoice.overdueDays : invoice.remainingDays} {txx.daysUnit}
             </p>
           </div>
         </div>

@@ -8,7 +8,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Tags, Plus, Edit, Trash2, Check } from 'lucide-react';
-import { Spinner, PageHeader, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, Loader2, ExportButton } from '@/components/hr/HRKit';
+import { getSettingsReferenceDataTranslations } from '@/lib/translations';
+import { exportToExcel } from '@/utils/exportExcel';
 
 interface LookupType { type: string; module: string; nameEn: string; nameAr: string; canManage: boolean }
 interface LookupItem { _id: string; type: string; key: string; nameEn: string; nameAr: string; color?: string; isActive: boolean; isSystem: boolean }
@@ -27,6 +29,7 @@ export default function ReferenceDataPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  const tx = getSettingsReferenceDataTranslations(lang);
 
   const [types, setTypes] = useState<LookupType[]>([]);
   const [activeType, setActiveType] = useState<string>('');
@@ -81,24 +84,33 @@ export default function ReferenceDataPage() {
   };
 
   const remove = async (it: LookupItem) => {
-    if (it.isSystem) { alert(ar ? 'العناصر الافتراضية لا تُحذف — يمكن تعطيلها بدلاً من ذلك.' : 'Default items cannot be deleted — deactivate them instead.'); return; }
-    if (!confirm(ar ? 'حذف هذا العنصر؟' : 'Delete this item?')) return;
+    if (it.isSystem) { alert(tx.cannotDeleteDefault); return; }
+    if (!confirm(tx.confirmDelete)) return;
     try { await api.delete(`/api/lookups/${it._id}`); loadItems(activeType); } catch (e: any) { alert(e.message); }
   };
 
   const toggleActive = async (it: LookupItem) => { try { await api.put(`/api/lookups/${it._id}`, { isActive: !it.isActive }); loadItems(activeType); } catch (e: any) { alert(e.message); } };
 
+  const exportItems = () => {
+    exportToExcel(items, [
+      { header: tx.colName, key: ar ? 'nameAr' : 'nameEn', width: 28 },
+      { header: tx.colKey, key: 'key', width: 22 },
+      { header: tx.colStatus, key: 'isActive', transform: (v: any) => (v ? tx.active : tx.inactive), width: 14 },
+    ], 'reference-data', current ? (ar ? current.nameAr : current.nameEn) : tx.pageTitle);
+  };
+
   if (!user) return <Spinner />;
   if (loading) return <Spinner />;
-  if (!types.length) return <div className="text-slate-500 p-8">{ar ? 'لا توجد قوائم مرجعية متاحة.' : 'No reference lists available.'}</div>;
+  if (!types.length) return <div className="text-slate-500 p-8">{tx.noLists}</div>;
 
   // Group types by module for the left rail.
   const grouped = types.reduce<Record<string, LookupType[]>>((acc, t) => { (acc[t.module] = acc[t.module] || []).push(t); return acc; }, {});
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<Tags className="w-5 h-5" />} title={ar ? 'القوائم المرجعية' : 'Reference Data'} subtitle={ar ? 'إدارة القوائم المنسدلة القابلة للتعديل عبر النظام' : 'Manage the editable dropdown lists across the system'}>
-        {canManage && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة عنصر' : 'Add Item'}</PrimaryButton>}
+      <PageHeader icon={<Tags className="w-5 h-5" />} title={tx.pageTitle} subtitle={tx.pageSubtitle}>
+        {!!items.length && <ExportButton onClick={exportItems} label={ar ? 'تصدير Excel' : 'Export Excel'} />}
+        {canManage && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addItem}</PrimaryButton>}
       </PageHeader>
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
@@ -126,10 +138,10 @@ export default function ReferenceDataPage() {
           ) : (
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-                <th className="text-start font-semibold px-4 py-3">{ar ? 'الاسم' : 'Name'}</th>
-                <th className="text-start font-semibold px-4 py-3">{ar ? 'الكود' : 'Key'}</th>
-                <th className="text-start font-semibold px-4 py-3">{ar ? 'الحالة' : 'Status'}</th>
-                <th className="text-end font-semibold px-4 py-3">{ar ? 'إجراءات' : 'Actions'}</th>
+                <th className="text-start font-semibold px-4 py-3">{tx.colName}</th>
+                <th className="text-start font-semibold px-4 py-3">{tx.colKey}</th>
+                <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
+                <th className="text-end font-semibold px-4 py-3">{tx.colActions}</th>
               </tr></thead>
               <tbody>
                 {items.map((it) => (
@@ -137,12 +149,12 @@ export default function ReferenceDataPage() {
                     <td className="px-4 py-3 text-slate-900 font-medium">
                       <span className="inline-block w-3 h-3 rounded-full mr-2 align-middle" style={{ background: it.color || '#f37121' }} />
                       {ar ? it.nameAr : it.nameEn}
-                      {it.isSystem && <span className="ms-2 text-[10px] text-slate-500">{ar ? '(افتراضي)' : '(default)'}</span>}
+                      {it.isSystem && <span className="ms-2 text-[10px] text-slate-500">{tx.defaultTag}</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-500 font-mono text-xs">{it.key}</td>
                     <td className="px-4 py-3">
                       <button type="button" onClick={() => canManage && toggleActive(it)} disabled={!canManage} className={canManage ? 'cursor-pointer' : 'cursor-default'}>
-                        {it.isActive ? <SmallBadge bg="bg-green-500/20" text="text-green-600" label={ar ? 'مفعّل' : 'Active'} /> : <SmallBadge bg="bg-red-500/20" text="text-red-600" label={ar ? 'معطّل' : 'Inactive'} />}
+                        {it.isActive ? <SmallBadge bg="bg-green-500/20" text="text-green-600" label={tx.active} /> : <SmallBadge bg="bg-red-500/20" text="text-red-600" label={tx.inactive} />}
                       </button>
                     </td>
                     <td className="px-4 py-3">
@@ -153,23 +165,23 @@ export default function ReferenceDataPage() {
                     </td>
                   </tr>
                 ))}
-                {!items.length && <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">{ar ? 'لا توجد عناصر بعد.' : 'No items yet.'}</td></tr>}
+                {!items.length && <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">{tx.noItems}</td></tr>}
               </tbody>
             </table>
           )}
         </div>
       </div>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? (ar ? 'تعديل عنصر' : 'Edit Item') : (ar ? 'عنصر جديد' : 'New Item')}
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tx.editItem : tx.newItem}
         footer={<>
-          <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-          <PrimaryButton onClick={save} disabled={saving || (!form.nameEn.trim() && !form.nameAr.trim())}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'حفظ' : 'Save'}</PrimaryButton>
+          <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
+          <PrimaryButton onClick={save} disabled={saving || (!form.nameEn.trim() && !form.nameAr.trim())}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.save}</PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label={ar ? 'الاسم (عربي)' : 'Name (Arabic)'}><TextInput value={form.nameAr} onChange={(e) => set('nameAr', e.target.value)} /></Field>
-          <Field label={ar ? 'الاسم (إنجليزي)' : 'Name (English)'}><TextInput value={form.nameEn} onChange={(e) => set('nameEn', e.target.value)} /></Field>
-          <Field label={ar ? 'اللون' : 'Color'}><TextInput type="color" value={form.color} onChange={(e) => set('color', e.target.value)} /></Field>
-          <Field label={ar ? 'مفعّل' : 'Active'}><Select value={form.isActive ? '1' : '0'} onChange={(e) => set('isActive', e.target.value === '1')}><option value="1">{ar ? 'نعم' : 'Yes'}</option><option value="0">{ar ? 'لا' : 'No'}</option></Select></Field>
+          <Field label={tx.nameArabic}><TextInput value={form.nameAr} onChange={(e) => set('nameAr', e.target.value)} /></Field>
+          <Field label={tx.nameEnglish}><TextInput value={form.nameEn} onChange={(e) => set('nameEn', e.target.value)} /></Field>
+          <Field label={tx.color}><TextInput type="color" value={form.color} onChange={(e) => set('color', e.target.value)} /></Field>
+          <Field label={tx.activeLabel}><Select value={form.isActive ? '1' : '0'} onChange={(e) => set('isActive', e.target.value === '1')}><option value="1">{tx.yes}</option><option value="0">{tx.no}</option></Select></Field>
         </div>
       </Modal>
     </div>

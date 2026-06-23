@@ -8,7 +8,7 @@ interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_specialist' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager';
+  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_team_lead' | 'crm_specialist' | 'crm_agent' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager';
   linkedCustomer?: { _id: string; companyName: string; creditTerm: number };
   assignedCustomers?: { _id: string; companyName: string }[];
   assignedProjects?: { _id: string; name: string; code?: string }[];

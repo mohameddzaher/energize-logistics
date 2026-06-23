@@ -91,12 +91,12 @@ export default function CrmTasksPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<ListTodo className="w-5 h-5" />} title={T.tasks} subtitle={`${items.length} ${T.tasks}`}>
         <ExportButton label={T.export} onClick={() => exportToExcel(items, [
-          { header: 'Title', key: 'title', width: 28 },
-          { header: 'Company', key: 'company', transform: (v) => companyName(v), width: 22 },
-          { header: 'Assigned', key: 'assignedTo', transform: (v) => userName(v), width: 18 },
-          { header: 'Due', key: 'dueDate', transform: fmt.date, width: 14 },
-          { header: 'Priority', key: 'priority', width: 10 },
-          { header: 'Status', key: 'status', width: 12 },
+          { header: T.taskTitle, key: 'title', width: 28 },
+          { header: T.company, key: 'company', transform: (v) => companyName(v), width: 22 },
+          { header: T.assignedTo, key: 'assignedTo', transform: (v) => userName(v), width: 18 },
+          { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
+          { header: T.priority, key: 'priority', width: 10 },
+          { header: T.status, key: 'status', width: 12 },
         ], `crm-tasks-${today()}`, 'Tasks')} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {T.addTask}</PrimaryButton>
       </PageHeader>

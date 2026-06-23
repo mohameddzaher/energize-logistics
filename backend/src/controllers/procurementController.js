@@ -61,18 +61,64 @@ exports.getDashboard = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [prPending, openPOs, unpaid, spendMonth] = await Promise.all([
+    const OPEN_PO = ['draft', 'sent', 'partially_received', 'received'];
+
+    const [
+      prPending, openPOs, unpaid, overdue, spendMonth,
+      prByStatus, poByStatus, billByStatus,
+      spendByVendor, recentPRs, recentPOs, unpaidBillsList,
+    ] = await Promise.all([
       PurchaseRequest.countDocuments({ status: 'pending_approval' }),
-      PurchaseOrder.aggregate([{ $match: { status: { $in: ['draft', 'sent', 'partially_received', 'received'] } } }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: '$total' } } }]),
-      VendorBill.aggregate([{ $match: { status: { $in: ['unpaid', 'partial'] } } }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
-      VendorBill.aggregate([{ $match: { billDate: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$total' } } }]),
+      PurchaseOrder.aggregate([{ $match: { status: { $in: OPEN_PO } } }, { $group: { _id: null, count: { $sum: 1 }, value: { $sum: '$total' } } }]),
+      VendorBill.aggregate([{ $match: { status: { $in: ['unpaid', 'partial'] } } }, { $group: { _id: null, total: { $sum: '$balance' }, count: { $sum: 1 } } }]),
+      VendorBill.aggregate([{ $match: { status: { $in: ['unpaid', 'partial'] }, dueDate: { $lt: now } } }, { $group: { _id: null, total: { $sum: '$balance' }, count: { $sum: 1 } } }]),
+      VendorBill.aggregate([{ $match: { billDate: { $gte: startOfMonth } } }, { $group: { _id: null, total: { $sum: '$total' }, count: { $sum: 1 } } }]),
+      // Status breakdowns
+      PurchaseRequest.aggregate([{ $group: { _id: '$status', count: { $sum: 1 }, value: { $sum: '$totalEstimate' } } }]),
+      PurchaseOrder.aggregate([{ $group: { _id: '$status', count: { $sum: 1 }, value: { $sum: '$total' } } }]),
+      VendorBill.aggregate([{ $group: { _id: '$status', count: { $sum: 1 }, value: { $sum: '$total' } } }]),
+      // Top vendors by spend this month
+      VendorBill.aggregate([
+        { $match: { billDate: { $gte: startOfMonth } } },
+        { $group: { _id: '$vendor', total: { $sum: '$total' }, count: { $sum: 1 } } },
+        { $sort: { total: -1 } },
+        { $limit: 5 },
+        { $lookup: { from: 'vendors', localField: '_id', foreignField: '_id', as: 'vendor' } },
+        { $project: { total: 1, count: 1, vendor: { $arrayElemAt: ['$vendor', 0] } } },
+      ]),
+      // Recent lists
+      popPR(PurchaseRequest.find({})).sort({ createdAt: -1 }).limit(6).lean(),
+      popPO(PurchaseOrder.find({})).sort({ createdAt: -1 }).limit(6).lean(),
+      popBill(VendorBill.find({ status: { $in: ['unpaid', 'partial'] } })).sort({ dueDate: 1, createdAt: -1 }).limit(6).lean(),
     ]);
+
+    const breakdown = (rows) => rows.map((r) => ({ status: r._id || 'unknown', count: r.count || 0, value: round2(r.value || 0) }));
+    const slimPR = (p) => ({ _id: p._id, requestNumber: p.requestNumber, title: p.title, status: p.status, priority: p.priority, totalEstimate: round2(p.totalEstimate || 0), requester: p.requester, createdAt: p.createdAt });
+    const slimPO = (p) => ({ _id: p._id, poNumber: p.poNumber, status: p.status, total: round2(p.total || 0), vendor: p.vendor, expectedDate: p.expectedDate, createdAt: p.createdAt });
+    const slimBill = (b) => ({ _id: b._id, billNumber: b.billNumber, vendorInvoiceNumber: b.vendorInvoiceNumber, status: b.status, total: round2(b.total || 0), balance: round2(b.balance || 0), vendor: b.vendor, dueDate: b.dueDate, createdAt: b.createdAt });
+
     res.json({
       prPending,
       openPOs: openPOs[0]?.count || 0,
       openPOValue: round2(openPOs[0]?.value || 0),
       unpaidBills: round2(unpaid[0]?.total || 0),
+      unpaidBillsCount: unpaid[0]?.count || 0,
+      overdueBills: round2(overdue[0]?.total || 0),
+      overdueBillsCount: overdue[0]?.count || 0,
       spendThisMonth: round2(spendMonth[0]?.total || 0),
+      spendThisMonthCount: spendMonth[0]?.count || 0,
+      prByStatus: breakdown(prByStatus),
+      poByStatus: breakdown(poByStatus),
+      billByStatus: breakdown(billByStatus),
+      topVendors: spendByVendor.map((v) => ({
+        _id: v._id,
+        name: v.vendor ? (v.vendor.name || v.vendor.companyName || v.vendor.vendorName || '—') : '—',
+        total: round2(v.total || 0),
+        count: v.count || 0,
+      })),
+      recentPRs: (recentPRs || []).map(slimPR),
+      recentPOs: (recentPOs || []).map(slimPO),
+      unpaidBillsList: (unpaidBillsList || []).map(slimBill),
     });
   } catch (error) {
     console.error('getDashboard error:', error);

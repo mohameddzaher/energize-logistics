@@ -121,6 +121,15 @@ exports.getOptions = async (req, res) => {
 exports.getDashboard = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
+    // Dashboard data is identical for every staff viewer, so cache it briefly: a
+    // burst of concurrent loads (and the socket-driven reloads) then share one
+    // computation instead of each hitting the high-latency cluster.
+    const cache = require('../utils/ttlCache');
+    const _ck = `dash:crm:${JSON.stringify(req.query)}`;
+    const _hit = cache.get(_ck);
+    if (_hit !== undefined) return res.json(_hit);
+    const _send = res.json.bind(res);
+    res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 12000); return _send(b); };
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());

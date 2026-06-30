@@ -21,6 +21,14 @@ router.get('/dashboard', authorize('super_admin', 'admin', 'operations_manager',
   try {
     const { dateFrom, dateTo, branch, collector } = req.query;
 
+    // authorize() ran at the route, so the data is the same for every permitted
+    // viewer (per filter set) — cache briefly to absorb concurrent loads / socket
+    // reloads against the high-latency cluster.
+    const cache = require('../utils/ttlCache');
+    const _ck = `dash:analytics:${JSON.stringify(req.query)}`;
+    const _hit = cache.get(_ck);
+    if (_hit !== undefined) return res.json(_hit);
+
     const now = new Date();
     const hasDateFilter = dateFrom && dateTo;
     const periodStart = hasDateFilter ? new Date(dateFrom) : new Date(now.getFullYear(), now.getMonth(), 1);
@@ -30,55 +38,31 @@ router.get('/dashboard', authorize('super_admin', 'admin', 'operations_manager',
     // Total Outstanding — when date-filtered, scope to invoices created in that period
     const outstandingMatch = { status: { $nin: ['paid'] } };
     if (hasDateFilter) outstandingMatch.invoiceDate = { $gte: periodStart, $lte: periodEnd };
-    const totalOutstanding = await Invoice.aggregate([
-      { $match: outstandingMatch },
-      { $group: { _id: null, total: { $sum: '$balance' } } },
-    ]);
 
-    // Collections in period
-    const monthlyCollected = await Payment.aggregate([
-      { $match: { paymentDate: { $gte: periodStart, $lte: periodEnd } } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
-    ]);
+    // Overdue — use periodEnd as reference date when filtered
+    const overdueRef = hasDateFilter ? periodEnd : now;
+    const overdueMatch = { status: { $nin: ['paid', 'frozen'] }, dueDate: { $lt: overdueRef } };
+    if (hasDateFilter) overdueMatch.invoiceDate = { $lte: periodEnd };
 
-    // Collections this year (when date-filtered, show same period total)
-    const yearlyCollected = hasDateFilter
-      ? monthlyCollected
-      : await Payment.aggregate([
-          { $match: { paymentDate: { $gte: yearStart } } },
-          { $group: { _id: null, total: { $sum: '$amount' } } },
-        ]);
-
-    // Total invoiced in period
-    const monthlyInvoiced = await Invoice.aggregate([
-      { $match: { invoiceDate: { $gte: periodStart, $lte: periodEnd } } },
-      { $group: { _id: null, total: { $sum: '$amount' } } },
+    // The cluster has ~90ms per-query latency, so run every INDEPENDENT query in
+    // one parallel wave instead of 8 sequential round-trips (~8x faster here).
+    const [totalOutstanding, monthlyCollected, monthlyInvoiced, yearlyAgg, dso, creditTermDist, overdueCount, customerCount] = await Promise.all([
+      Invoice.aggregate([{ $match: outstandingMatch }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
+      Payment.aggregate([{ $match: { paymentDate: { $gte: periodStart, $lte: periodEnd } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Invoice.aggregate([{ $match: { invoiceDate: { $gte: periodStart, $lte: periodEnd } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      hasDateFilter ? Promise.resolve(null) : Payment.aggregate([{ $match: { paymentDate: { $gte: yearStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      calculateDSO({ dateFrom, dateTo, branch, collector }),
+      Customer.aggregate([{ $match: { isActive: true } }, { $group: { _id: '$creditTerm', count: { $sum: 1 } } }, { $sort: { _id: 1 } }]),
+      Invoice.countDocuments(overdueMatch),
+      Customer.countDocuments({ isActive: true }),
     ]);
 
     const collectedAmt = monthlyCollected[0]?.total || 0;
     const invoicedAmt = monthlyInvoiced[0]?.total || 0;
     const collectionRate = invoicedAmt > 0 ? Math.round((collectedAmt / invoicedAmt) * 100) : 0;
+    const yearlyCollected = hasDateFilter ? monthlyCollected : yearlyAgg;
 
-    // DSO
-    const dso = await calculateDSO({ dateFrom, dateTo, branch, collector });
-
-    // Credit term distribution (current state — no date filter)
-    const creditTermDist = await Customer.aggregate([
-      { $match: { isActive: true } },
-      { $group: { _id: '$creditTerm', count: { $sum: 1 } } },
-      { $sort: { _id: 1 } },
-    ]);
-
-    // Overdue count — use periodEnd as reference date when filtered
-    const overdueRef = hasDateFilter ? periodEnd : now;
-    const overdueMatch = { status: { $nin: ['paid', 'frozen'] }, dueDate: { $lt: overdueRef } };
-    if (hasDateFilter) overdueMatch.invoiceDate = { $lte: periodEnd };
-    const overdueCount = await Invoice.countDocuments(overdueMatch);
-
-    // Customer count (current state)
-    const customerCount = await Customer.countDocuments({ isActive: true });
-
-    res.json({
+    const payload = {
       totalOutstanding: totalOutstanding[0]?.total || 0,
       monthlyCollected: collectedAmt,
       yearlyCollected: yearlyCollected[0]?.total || 0,
@@ -87,7 +71,9 @@ router.get('/dashboard', authorize('super_admin', 'admin', 'operations_manager',
       overdueCount,
       customerCount,
       creditTermDistribution: creditTermDist.map((d) => ({ term: d._id, count: d.count })),
-    });
+    };
+    cache.set(_ck, payload, 12000);
+    res.json(payload);
   } catch (error) {
     console.error('Dashboard error:', error);
     res.status(500).json({ message: 'Failed to load dashboard data' });

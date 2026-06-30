@@ -955,6 +955,14 @@ const EXPIRY_DOCS = [
 exports.getDashboard = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
+    // Same data for every staff viewer — cache briefly so concurrent loads and
+    // socket-driven reloads share one computation. See crm dashboard.
+    const cache = require('../utils/ttlCache');
+    const _ck = `dash:hr:${JSON.stringify(req.query)}`;
+    const _hit = cache.get(_ck);
+    if (_hit !== undefined) return res.json(_hit);
+    const _send = res.json.bind(res);
+    res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 12000); return _send(b); };
     const today = new Date().toISOString().slice(0, 10);
     const in60 = addDays(60);
     const in90 = addDays(90);

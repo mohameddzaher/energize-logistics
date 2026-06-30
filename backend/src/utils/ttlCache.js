@@ -34,4 +34,15 @@ function clear(prefix) {
   for (const k of store.keys()) if (k.startsWith(prefix)) store.delete(k);
 }
 
-module.exports = { get, set, clear };
+// Cache-aside helper: return the cached value for `key`, or run `producer()`,
+// cache its result, and return it. Coalesces identical concurrent computations
+// (e.g. a dashboard requested by many users at once) into one DB round-trip set.
+async function wrap(key, ttlMs, producer) {
+  const hit = get(key);
+  if (hit !== undefined) return hit;
+  const val = await producer();
+  set(key, val, ttlMs);
+  return val;
+}
+
+module.exports = { get, set, clear, wrap };

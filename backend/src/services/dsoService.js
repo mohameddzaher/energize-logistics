@@ -15,26 +15,22 @@ const calculateDSO = async (filters = {}) => {
   if (creditTerm) customerFilter.creditTerm = Number(creditTerm);
   if (collector) customerFilter.assignedCollector = collector;
 
-  const customers = await Customer.find(customerFilter).select('_id');
+  const customers = await Customer.find(customerFilter).select('_id').lean();
   const customerIds = customers.map((c) => c._id);
 
-  // Total AR (current outstanding)
-  const arResult = await Invoice.aggregate([
-    { $match: { customer: { $in: customerIds }, status: { $nin: ['paid'] } } },
-    { $group: { _id: null, totalAR: { $sum: '$balance' } } },
+  // AR (current outstanding) and credit sales in period are independent — run
+  // them in parallel (the cluster has high per-query latency, so one wave not two).
+  const [arResult, salesResult] = await Promise.all([
+    Invoice.aggregate([
+      { $match: { customer: { $in: customerIds }, status: { $nin: ['paid'] } } },
+      { $group: { _id: null, totalAR: { $sum: '$balance' } } },
+    ]),
+    Invoice.aggregate([
+      { $match: { customer: { $in: customerIds }, invoiceDate: { $gte: periodStart, $lte: periodEnd } } },
+      { $group: { _id: null, totalSales: { $sum: '$amount' } } },
+    ]),
   ]);
   const totalAR = arResult[0]?.totalAR || 0;
-
-  // Total Credit Sales in period
-  const salesResult = await Invoice.aggregate([
-    {
-      $match: {
-        customer: { $in: customerIds },
-        invoiceDate: { $gte: periodStart, $lte: periodEnd },
-      },
-    },
-    { $group: { _id: null, totalSales: { $sum: '$amount' } } },
-  ]);
   const totalSales = salesResult[0]?.totalSales || 0;
 
   const dso = totalSales > 0 ? Math.round((totalAR / totalSales) * numberOfDays) : 0;

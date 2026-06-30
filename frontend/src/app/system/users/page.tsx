@@ -327,7 +327,7 @@ export default function UsersPage() {
       if (formData.role === 'b2c_project_manager' || formData.role === 'b2c_head') {
         payload.assignedProjects = formData.assignedProjects;
         payload.assignedBranches = formData.assignedBranches;
-        payload.manager = formData.role === 'b2c_project_manager' ? (formData.manager || null) : null;
+        payload.manager = formData.manager || null;
         payload.remoteAccess = [];
       } else if (formData.role === 'remote_employee') {
         payload.assignedProjects = [];
@@ -632,7 +632,7 @@ export default function UsersPage() {
       {/* Direct manager — org chart. Hidden for top roles (super_admin/admin are
           the CEO/COO — they have no manager) and roles with their own pickers
           below. Optional everywhere; the system auto-suggests one by role. */}
-      {!['client', 'super_admin', 'admin', 'b2c_project_manager', 'b2c_head', 'remote_employee'].includes(formData.role) && (
+      {!['client', 'super_admin', 'admin', 'b2c_project_manager', 'remote_employee'].includes(formData.role) && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">
             {lang === 'ar' ? 'المدير المباشر' : 'Direct Manager'}

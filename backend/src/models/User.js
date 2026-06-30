@@ -51,6 +51,10 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    // When true, this user is the company's DEFAULT manager: the org-chart
+    // auto-suggest prefers them as the manager for department-head roles
+    // (overridable per user). Typically a single super_admin/admin.
+    isDefaultManager: { type: Boolean, default: false },
     // HR section: optional link to the employee record (HR profile) this login
     // account belongs to. Set by super_admin when creating/editing a user.
     linkedEmployee: {

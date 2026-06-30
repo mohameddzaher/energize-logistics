@@ -6,7 +6,7 @@ const CrmCompany = require('../models/CrmCompany');
 const { emitToAll } = require('../websocket/socketManager');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
-const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep'];
+const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'];
 const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'sales_manager'];
 const isStaff = (u) => SALES_STAFF_ROLES.includes(u.role);
 const isAdmin = (u) => SALES_ADMIN_ROLES.includes(u.role);
@@ -46,6 +46,14 @@ const prevPeriod = (period) => {
 exports.getDashboard = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
+    // Same data for every staff viewer (per period) — cache briefly so concurrent
+    // loads and socket-driven reloads share one computation. See crm dashboard.
+    const cache = require('../utils/ttlCache');
+    const _ck = `dash:sales:${JSON.stringify(req.query)}`;
+    const _hit = cache.get(_ck);
+    if (_hit !== undefined) return res.json(_hit);
+    const _send = res.json.bind(res);
+    res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 12000); return _send(b); };
     const period = req.query.period || thisPeriod();
     const { start, end } = periodRange(period);
     const prev = prevPeriod(period);

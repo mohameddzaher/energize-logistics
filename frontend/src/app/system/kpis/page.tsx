@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import { Gauge, Wallet, Users, TrendingUp, Briefcase, Truck, ShoppingBag } from 'lucide-react';
 import { isKpiViewer, money, num } from '@/lib/finance';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
+import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import { getKpisTranslations } from '@/lib/translations';
 
 interface Overview {
@@ -54,6 +55,8 @@ export default function KpisPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Gauge className="w-5 h-5" />} title={tx.pageTitle} subtitle={tx.pageSubtitle} />
+
+      <OpsLiveSummary />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Group icon={<Wallet className="w-4 h-4" />} title={tx.finance} href="/system/accounting/dashboard">

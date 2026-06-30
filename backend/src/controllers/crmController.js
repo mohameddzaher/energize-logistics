@@ -121,6 +121,15 @@ exports.getOptions = async (req, res) => {
 exports.getDashboard = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
+    // Dashboard data is identical for every staff viewer, so cache it briefly: a
+    // burst of concurrent loads (and the socket-driven reloads) then share one
+    // computation instead of each hitting the high-latency cluster.
+    const cache = require('../utils/ttlCache');
+    const _ck = `dash:crm:${JSON.stringify(req.query)}`;
+    const _hit = cache.get(_ck);
+    if (_hit !== undefined) return res.json(_hit);
+    const _send = res.json.bind(res);
+    res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 12000); return _send(b); };
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -227,8 +236,11 @@ exports.listCompanies = async (req, res) => {
       const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ name: rx }, { arabicName: rx }, { email: rx }, { phone: rx }, { city: rx }, { industry: rx }];
     }
-    const companies = await popCompany(CrmCompany.find(filter)).sort({ updatedAt: -1 }).limit(500).lean();
-    res.json({ companies });
+    const [companies, total] = await Promise.all([
+      popCompany(CrmCompany.find(filter)).sort({ updatedAt: -1 }).limit(2000).lean(),
+      CrmCompany.countDocuments(filter),
+    ]);
+    res.json({ companies, total });
   } catch (error) {
     console.error('listCompanies error:', error);
     res.status(500).json({ message: 'Failed to load companies' });

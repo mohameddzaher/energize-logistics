@@ -53,5 +53,8 @@ src/scripts/master_data.json
 backend/src/scripts/master_data.json
 backend/src/scripts/hr-sheet.json
 
+# CRM vendor seed data (contains real vendor phone numbers — PII)
+backend/src/seeds/data/
+
 # uploaded employee documents (local disk storage)
 backend/uploads/

@@ -51,6 +51,14 @@ const crmCompanySchema = new mongoose.Schema(
 
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+    // Provenance for records auto-synced from an external system (the UPL
+    // operations platform). `externalId` is that system's stable id; the unique
+    // partial index dedups so re-syncs update in place instead of duplicating.
+    // Records created manually in the CRM leave these unset and are untouched.
+    externalSource: { type: String, trim: true },
+    externalId: { type: String, trim: true },
+    lastSyncedAt: { type: Date },
   },
   { timestamps: true }
 );
@@ -60,5 +68,10 @@ crmCompanySchema.index({ status: 1 });
 crmCompanySchema.index({ owner: 1 });
 crmCompanySchema.index({ rating: -1 });
 crmCompanySchema.index({ tags: 1 });
+// Dedup key for synced records only (manual records have no externalId).
+crmCompanySchema.index(
+  { externalSource: 1, externalId: 1 },
+  { unique: true, partialFilterExpression: { externalId: { $exists: true } } }
+);
 
 module.exports = mongoose.model('CrmCompany', crmCompanySchema);

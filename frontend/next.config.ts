@@ -1,5 +1,11 @@
+import path from 'node:path';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Pin the workspace root to THIS folder. A stray package-lock.json in the home
+  // directory made Next infer the wrong root, which corrupts the dev webpack
+  // chunk graph (stale chunks referencing modules that no longer exist).
+  outputFileTracingRoot: path.resolve('.'),
   poweredByHeader: false,
   compress: true,
   reactStrictMode: false,

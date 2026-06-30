@@ -11,7 +11,7 @@ const branchSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-branchSchema.index({ name: 1 });
+// `name` is already indexed via `unique: true` above — no separate index needed.
 branchSchema.index({ isActive: 1 });
 
 module.exports = mongoose.model('Branch', branchSchema);

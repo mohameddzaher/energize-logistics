@@ -11,6 +11,7 @@ import {
   isCrmStaff, CrmActivity, CrmCompany, CrmDeal, CrmTask, CrmOptions, optLabel, companyName, contactName, money, fmtDateTime, fmtDate, dueBadge, daysUntil,
 } from '@/lib/crm';
 import { Spinner, PageHeader, StatCard, StarRating } from '@/components/crm/CrmKit';
+import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 
 interface DashboardData {
   companiesTotal: number;
@@ -75,6 +76,8 @@ export default function CrmDashboardPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<BarChart3 className="w-5 h-5" />} title={T.crm} subtitle={T.overview} />
+
+      <OpsLiveSummary />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

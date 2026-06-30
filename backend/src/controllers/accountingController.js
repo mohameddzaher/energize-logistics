@@ -62,6 +62,14 @@ const balancesByAccount = async (match = {}) => {
 exports.getDashboard = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
+    // Same data for every staff viewer — cache briefly so concurrent loads and
+    // socket-driven reloads share one computation. See crm dashboard.
+    const cache = require('../utils/ttlCache');
+    const _ck = `dash:accounting:${JSON.stringify(req.query)}`;
+    const _hit = cache.get(_ck);
+    if (_hit !== undefined) return res.json(_hit);
+    const _send = res.json.bind(res);
+    res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 12000); return _send(b); };
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const day = 24 * 60 * 60 * 1000;

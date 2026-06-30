@@ -99,8 +99,21 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // ══════════════════════════════════════════════════════════
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+    // Provenance for rows auto-synced from the external UPL operations platform.
+    // `externalId` (UPL shipment id) dedups so re-syncs update in place; the
+    // UPL-derived columns are refreshed each run while manually-entered columns
+    // (operations/accounting/invoice review, etc.) are left untouched.
+    externalSource: { type: String, trim: true },
+    externalId: { type: String, trim: true },
+    lastSyncedAt: { type: Date },
   },
   { timestamps: true }
+);
+
+operationsWorkflowSchema.index(
+  { externalSource: 1, externalId: 1 },
+  { unique: true, partialFilterExpression: { externalId: { $exists: true } } }
 );
 
 // Auto-generate report number before save

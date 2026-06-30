@@ -4,14 +4,12 @@ const cookie = require('cookie');
 
 let io;
 
-const initializeSocket = (server) => {
-  const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
-    .split(',')
-    .map(s => s.trim());
+const { isAllowedOrigin } = require('../config/cors');
 
+const initializeSocket = (server) => {
   io = new Server(server, {
     cors: {
-      origin: allowedOrigins,
+      origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
       credentials: true,
     },
   });

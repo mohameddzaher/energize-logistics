@@ -14,10 +14,12 @@ import {
   Store, Truck, Tags, Languages, Wrench, ShoppingCart, MessageSquare, Package,
   Target, Award, CalendarDays, Clock, Megaphone, CalendarCheck,
   Calculator, Scale, BookOpen, Gauge, Ship, ScrollText,
+  Activity, Car, UserSquare, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { homeRouteForRole } from '@/lib/roleRoutes';
+import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
 
 interface NavItem {
   href: string;
@@ -108,7 +110,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/overdue', label: L.overdue, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Main' },
     { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'employee', 'moderator'], section: 'Main' },
     // Customers & Finance
-    { href: '/system/customers', label: L.customers, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Customers & Finance' },
     { href: '/system/invoices', label: L.invoices, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Customers & Finance' },
     { href: '/system/payments', label: L.payments, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'], section: 'Customers & Finance' },
     { href: '/system/collections', label: L.collections, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'], section: 'Customers & Finance' },
@@ -118,7 +119,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Operations
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/operations/dispatch-sheets', label: L.dispatchSheets, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
-    { href: '/system/drivers', label: L.drivers, icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations'], section: 'Operations' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations', 'procurement_manager', 'purchasing'], section: 'Operations' },
     { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'moderator'], section: 'Operations' },
@@ -128,6 +128,22 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vehicle-analytics/trips', label: L.trips, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
     { href: '/system/vehicle-analytics/upload', label: L.dataUpload, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Operations' },
     // Customs Clearance
+    // Operations Platform (قسم الأوبريشن) — live mirror of the external UPL field-ops system (B2B: Fleet + 3PL)
+    { href: '/system/ops', label: lang === 'ar' ? 'لوحة الأوبريشن' : 'Ops Dashboard', icon: <Activity className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/shipments', label: lang === 'ar' ? 'الشحنات' : 'Shipments', icon: <Truck className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <Users className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/cars', label: lang === 'ar' ? 'المركبات' : 'Cars', icon: <Car className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/car-owners', label: lang === 'ar' ? 'أصحاب المركبات' : 'Car Owners', icon: <UserSquare className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/users', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <UserSquare className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/branches', label: lang === 'ar' ? 'الفروع' : 'Branches', icon: <Building2 className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/cities', label: lang === 'ar' ? 'المدن' : 'Cities', icon: <MapPin className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/countries', label: lang === 'ar' ? 'الدول' : 'Countries', icon: <Globe className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/truck-types', label: lang === 'ar' ? 'أنواع الشاحنات' : 'Truck Types', icon: <Boxes className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/truck-sizes', label: lang === 'ar' ? 'أحجام الشاحنات' : 'Truck Sizes', icon: <Ruler className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/load-types', label: lang === 'ar' ? 'أنواع الحمولة' : 'Load Types', icon: <Package className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/car-brands', label: lang === 'ar' ? 'ماركات المركبات' : 'Car Brands', icon: <Tags className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/car-colors', label: lang === 'ar' ? 'ألوان المركبات' : 'Car Colors', icon: <Palette className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/guide', label: L.customsGuide, icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     // Vehicles & Authorizations (المركبات والتفاويض) — super admin + HR + Accounting
@@ -140,6 +156,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
     { href: '/system/b2c/reps', label: L.b2cReps, icon: <Award className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
+    { href: '/system/b2c/custody', label: lang === 'ar' ? 'العهدة' : 'Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },
     // Workshop
     { href: '/system/workshop', label: L.workshop, icon: <Wrench className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
     { href: '/system/workshop/purchases', label: L.workshopPurchases, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'purchasing'], section: 'Workshop' },
@@ -168,18 +185,19 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/hr/my-leaves', label: L.hrMyLeaves, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager'], section: 'Self Service' },
     { href: '/system/hr/my-requests', label: L.hrMyRequests, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager'], section: 'Self Service' },
     // CRM
-    { href: '/system/crm/dashboard', label: L.crmDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
-    { href: '/system/crm/companies', label: L.crmCompanies, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
-    { href: '/system/crm/contacts', label: L.crmContacts, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
-    { href: '/system/crm/deals', label: L.crmDeals, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
-    { href: '/system/crm/tasks', label: L.crmTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
-    { href: '/system/crm/calendar', label: L.crmCalendar, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
-    { href: '/system/crm/activities', label: L.crmActivities, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent'], section: 'CRM' },
+    { href: '/system/crm/dashboard', label: L.crmDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/companies', label: L.crmCompanies, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/vendors', label: lang === 'ar' ? 'الموردين' : 'Vendors', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/contacts', label: L.crmContacts, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/deals', label: L.crmDeals, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/tasks', label: L.crmTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/calendar', label: L.crmCalendar, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/activities', label: L.crmActivities, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
     // Sales
-    { href: '/system/sales/dashboard', label: L.salesDashboard, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
-    { href: '/system/sales/pipeline', label: L.salesPipeline, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
-    { href: '/system/sales/targets', label: L.salesTargets, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
-    { href: '/system/sales/performance', label: L.salesPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep'], section: 'Sales' },
+    { href: '/system/sales/dashboard', label: L.salesDashboard, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'], section: 'Sales' },
+    { href: '/system/sales/pipeline', label: L.salesPipeline, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'], section: 'Sales' },
+    { href: '/system/sales/targets', label: L.salesTargets, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'], section: 'Sales' },
+    { href: '/system/sales/performance', label: L.salesPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'], section: 'Sales' },
     // Accounting
     { href: '/system/accounting/dashboard', label: L.accountingDashboard, icon: <Calculator className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
     { href: '/system/accounting/accounts', label: L.chartOfAccounts, icon: <BookOpen className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
@@ -193,6 +211,25 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/procurement/requests', label: L.purchaseRequests, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing'], section: 'Procurement' },
     { href: '/system/procurement/orders', label: L.purchaseOrders, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing'], section: 'Procurement' },
     { href: '/system/procurement/bills', label: L.vendorBills, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing'], section: 'Procurement' },
+
+    // Per-section Tasks (private) + Complaints — strict visibility (assignee + creator + super_admin)
+    { href: '/system/crm/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/sales/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'], section: 'Sales' },
+    { href: '/system/sales/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'], section: 'Sales' },
+    { href: '/system/accounting/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/accounting/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'finance_manager', 'accountant'], section: 'Accounting' },
+    { href: '/system/procurement/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing'], section: 'Procurement' },
+    { href: '/system/procurement/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing'], section: 'Procurement' },
+    { href: '/system/hr/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/ops/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/ops/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+    { href: '/system/workshop/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'], section: 'Workshop' },
+    { href: '/system/workshop/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'], section: 'Workshop' },
+    { href: '/system/customs/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+    { href: '/system/customs/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+
     // Tools
     { href: '/system/kpis', label: L.kpis, icon: <Gauge className="w-5 h-5" />, roles: ['super_admin', 'admin', 'moderator'], section: 'Tools' },
     { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee'], section: 'Tools' },
@@ -322,7 +359,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Nav Items */}
-        <nav className="flex-1 overflow-y-auto py-2 px-2">
+        <nav className="flex-1 overflow-y-auto py-2 px-2 sidebar-scroll">
           {Object.entries(groupedNav).map(([section, items]) => {
             // Icon-only mode: no section headers, all items always visible
             // (the accordion only makes sense when labels are showing).
@@ -457,7 +494,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <nav className="flex-1 overflow-y-auto py-2 px-2">
+              <nav className="flex-1 overflow-y-auto py-2 px-2 sidebar-scroll">
                 {Object.entries(groupedNav).map(([section, items]) =>
                   renderSection(section, items, () => setMobileMenuOpen(false))
                 )}

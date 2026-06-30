@@ -31,6 +31,7 @@ export default function CrmCompaniesPage() {
   const router = useRouter();
 
   const [items, setItems] = useState<CrmCompany[]>([]);
+  const [total, setTotal] = useState(0);
   const [opts, setOpts] = useState<CrmOptions | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -55,8 +56,9 @@ export default function CrmCompaniesPage() {
       if (search.trim()) qs.set('q', search.trim());
       if (status) qs.set('status', status);
       if (owner) qs.set('owner', owner);
-      const d = await api.get<{ companies: CrmCompany[] }>(`/api/crm/companies?${qs}`);
+      const d = await api.get<{ companies: CrmCompany[]; total?: number }>(`/api/crm/companies?${qs}`);
       setItems(d.companies || []);
+      setTotal(typeof d.total === 'number' ? d.total : (d.companies || []).length);
     } catch { /* */ }
     setLoading(false);
   }, [search, status, owner]);
@@ -130,7 +132,7 @@ export default function CrmCompaniesPage() {
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<Building2 className="w-5 h-5" />} title={T.companies} subtitle={`${items.length} ${T.companies}`}>
+      <PageHeader icon={<Building2 className="w-5 h-5" />} title={T.companies} subtitle={`${total} ${T.companies}`}>
         <ExportButton label={T.export} onClick={() => exportToExcel(items, [
           { header: 'Name', key: 'name', width: 26 },
           { header: 'Arabic Name', key: 'arabicName', width: 22 },

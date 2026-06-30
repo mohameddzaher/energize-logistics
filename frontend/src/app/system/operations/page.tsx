@@ -5,8 +5,10 @@ import { ColumnFilter } from '@/components/ColumnFilter';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getOperationsTranslations } from '@/lib/translations';
+import { SHIPMENT_STATUSES, PAYMENT_METHODS } from '@/lib/ops';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
+import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import {
   ClipboardList, Plus, Search, Filter, Upload,
   Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, Calendar, AlertCircle,
@@ -86,6 +88,10 @@ export default function OperationsWorkflowPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getOperationsTranslations(lang);
+  // Translate raw UPL status/payment values for DISPLAY only (stored raw, so new
+  // values the vendor adds still show — falling back to the raw value).
+  const trStatus = (v: string) => { const s = SHIPMENT_STATUSES.find((x) => x.key === v); return s ? (lang === 'ar' ? s.ar : s.en) : v; };
+  const trPayment = (v: string) => { const p = PAYMENT_METHODS.find((x) => x.value === v); return p ? (lang === 'ar' ? p.ar : p.en) : v; };
 
   const stageLabels: Record<string, string> = {
     draft: T.draft,
@@ -369,6 +375,8 @@ export default function OperationsWorkflowPage() {
 
   return (
     <div className="space-y-4">
+      <OpsLiveSummary />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
@@ -653,6 +661,12 @@ export default function OperationsWorkflowPage() {
                           {isEditing ? <input type="text" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={color}>{(wf as any)[field] || '-'}</span>}
                         </td>
                       );
+                      // Like textCell but translates the value for display (edits the raw value).
+                      const transCell = (field: keyof Workflow, tr: (v: string) => string, color = 'text-slate-700') => (
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
+                          {isEditing ? <input type="text" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={color}>{(wf as any)[field] ? tr((wf as any)[field]) : '-'}</span>}
+                        </td>
+                      );
                       const numCell = (field: keyof Workflow, color = 'text-slate-700') => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
                           {isEditing ? <input type="number" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={color}>{formatMoney((wf as any)[field])}</span>}
@@ -673,9 +687,9 @@ export default function OperationsWorkflowPage() {
                         {textCell('carOwner', 'text-slate-900')}
                         {textCell('carNumber')}
                         {textCell('ownerType')}
-                        {textCell('executionStatus')}
-                        {textCell('applicationStatus')}
-                        {textCell('paymentMethod')}
+                        {transCell('executionStatus', trStatus)}
+                        {transCell('applicationStatus', trStatus)}
+                        {transCell('paymentMethod', trPayment)}
                         {textCell('username')}
                         {textCell('userPhone')}
                         {textCell('taxIndicator')}

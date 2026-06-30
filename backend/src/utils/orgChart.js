@@ -24,7 +24,9 @@ const resolveDefaultManager = async (role, excludeUserId = null) => {
   for (const mgrRole of managerRoleChain(role)) {
     const filter = { role: mgrRole, isActive: true };
     if (excludeUserId) filter._id = { $ne: excludeUserId };
-    const mgr = await User.findOne(filter).sort({ createdAt: 1 }).select('_id').lean();
+    // Prefer the designated default manager (isDefaultManager) at each level,
+    // then fall back to the oldest active user with that role.
+    const mgr = await User.findOne(filter).sort({ isDefaultManager: -1, createdAt: 1 }).select('_id').lean();
     if (mgr) return mgr._id;
   }
   return null;

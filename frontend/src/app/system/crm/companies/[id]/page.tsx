@@ -6,7 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { getCRMTranslations } from '@/lib/translations';
-import { ArrowLeft, Building2, Plus, Trash2, Star, Phone, MapPin } from 'lucide-react';
+import { ArrowLeft, Building2, Plus, Trash2, Star, Phone, MapPin, Pencil } from 'lucide-react';
 import {
   isCrmStaff, isCrmAdmin, CrmCompany, CrmContact, CrmActivity, CrmTask, CrmDeal, CrmOptions,
   COMPANY_STATUS_STYLE, DEAL_STATUS_STYLE, TASK_STATUS_STYLE, PRIORITY_STYLE, optLabel,
@@ -16,6 +16,7 @@ import {
   Spinner, PageHeader, PrimaryButton, Badge, Modal, Tabs,
   Field, TextInput, TextArea, Select, StarRating, ContactButtons,
 } from '@/components/crm/CrmKit';
+import ManagedSelect from '@/components/system/ManagedSelect';
 
 export default function CrmCompanyDetailPage() {
   const { user } = useAuth();
@@ -40,7 +41,13 @@ export default function CrmCompanyDetailPage() {
   const [form, setForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
 
+  // In-place company edit (so you can fix the email/phone/… without going back).
+  const [editingCompany, setEditingCompany] = useState(false);
+  const [cForm, setCForm] = useState<any>({});
+  const [savingCompany, setSavingCompany] = useState(false);
+
   const canDelete = isCrmAdmin(user?.role);
+  const canEdit = isCrmStaff(user?.role);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -92,6 +99,32 @@ export default function CrmCompanyDetailPage() {
   };
   const rate = async (v: number) => { try { await api.patch(`/api/crm/companies/${id}/rate`, { rating: v }); load(); } catch (e: any) { alert(e.message); } };
 
+  const openEditCompany = () => {
+    setCForm({
+      name: company?.name || '', arabicName: company?.arabicName || '', status: company?.status || 'lead', type: company?.type || 'customer',
+      rating: company?.rating || 0, score: company?.score || 0, industry: company?.industry || '', size: company?.size || '',
+      website: company?.website || '', phone: company?.phone || '', whatsapp: company?.whatsapp || '', email: company?.email || '',
+      address: company?.address || '', city: company?.city || '', country: company?.country || '', source: company?.source || '',
+      tags: (company?.tags || []).join(', '), notes: company?.notes || '',
+    });
+    setEditingCompany(true);
+  };
+  const saveCompany = async () => {
+    if (!cForm.name?.trim()) { alert(ar ? 'الاسم مطلوب' : 'Name is required'); return; }
+    setSavingCompany(true);
+    try {
+      const payload = {
+        ...cForm,
+        rating: Number(cForm.rating) || 0,
+        score: Number(cForm.score) || 0,
+        tags: String(cForm.tags || '').split(',').map((t: string) => t.trim()).filter(Boolean),
+      };
+      await api.put(`/api/crm/companies/${id}`, payload);
+      setEditingCompany(false); load();
+    } catch (e: any) { alert(e.message); }
+    finally { setSavingCompany(false); }
+  };
+
   if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
   if (!company) return <div className="text-slate-500 p-8">{T.noResults}</div>;
@@ -126,6 +159,11 @@ export default function CrmCompanyDetailPage() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
+            {canEdit && (
+              <button type="button" onClick={openEditCompany} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010]">
+                <Pencil className="w-4 h-4" /> {ar ? 'تعديل' : 'Edit'}
+              </button>
+            )}
             <ContactButtons phone={company.phone} whatsapp={company.whatsapp} email={company.email} website={company.website} size={18} />
             <div className="text-slate-500 text-sm space-y-0.5 text-right">
               {company.phone && <div dir="ltr">{company.phone}</div>}
@@ -287,6 +325,33 @@ export default function CrmCompanyDetailPage() {
             <Field label={T.value}><TextInput type="number" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} dir="ltr" /></Field>
             <Field label={T.expectedClose} span2><TextInput type="date" value={form.expectedCloseDate} onChange={(e) => setForm({ ...form, expectedCloseDate: e.target.value })} /></Field>
           </>}
+        </div>
+      </Modal>
+
+      {/* Edit company modal — in-place editing from the detail page */}
+      <Modal open={editingCompany} onClose={() => setEditingCompany(false)} wide title={ar ? 'تعديل الشركة' : 'Edit Company'}
+        footer={<><button onClick={() => setEditingCompany(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{T.cancel}</button>
+          <PrimaryButton onClick={saveCompany} disabled={savingCompany}>{savingCompany ? T.saving : T.save}</PrimaryButton></>}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label={T.name}><TextInput value={cForm.name} onChange={(e) => setCForm({ ...cForm, name: e.target.value })} /></Field>
+          <Field label={T.arabicName}><TextInput value={cForm.arabicName} onChange={(e) => setCForm({ ...cForm, arabicName: e.target.value })} dir="rtl" /></Field>
+          <Field label={T.status}><Select value={cForm.status} onChange={(e) => setCForm({ ...cForm, status: e.target.value })}>
+            {['lead', 'prospect', 'active', 'inactive', 'churned'].map((s) => <option key={s} value={s}>{lang === 'ar' ? (COMPANY_STATUS_STYLE[s]?.ar || s) : (COMPANY_STATUS_STYLE[s]?.en || s)}</option>)}
+          </Select></Field>
+          <Field label={T.type}><ManagedSelect type="crm_company_type" value={cForm.type} onChange={(v) => setCForm({ ...cForm, type: v })} placeholder={T.type} /></Field>
+          <Field label={T.industry}><ManagedSelect type="crm_industry" value={cForm.industry} onChange={(v) => setCForm({ ...cForm, industry: v })} placeholder={T.industry} /></Field>
+          <Field label={T.size}><ManagedSelect type="crm_company_size" value={cForm.size} onChange={(v) => setCForm({ ...cForm, size: v })} placeholder={T.size} /></Field>
+          <Field label={T.source}><ManagedSelect type="crm_source" value={cForm.source} onChange={(v) => setCForm({ ...cForm, source: v })} placeholder={T.source} /></Field>
+          <Field label={T.score}><TextInput type="number" value={cForm.score} onChange={(e) => setCForm({ ...cForm, score: e.target.value })} dir="ltr" /></Field>
+          <Field label={T.phone}><TextInput value={cForm.phone} onChange={(e) => setCForm({ ...cForm, phone: e.target.value })} dir="ltr" /></Field>
+          <Field label={T.whatsapp}><TextInput value={cForm.whatsapp} onChange={(e) => setCForm({ ...cForm, whatsapp: e.target.value })} dir="ltr" placeholder="9665XXXXXXXX" /></Field>
+          <Field label={T.email}><TextInput type="email" value={cForm.email} onChange={(e) => setCForm({ ...cForm, email: e.target.value })} dir="ltr" /></Field>
+          <Field label={T.website}><TextInput value={cForm.website} onChange={(e) => setCForm({ ...cForm, website: e.target.value })} dir="ltr" /></Field>
+          <Field label={T.city}><TextInput value={cForm.city} onChange={(e) => setCForm({ ...cForm, city: e.target.value })} /></Field>
+          <Field label={T.country}><TextInput value={cForm.country} onChange={(e) => setCForm({ ...cForm, country: e.target.value })} /></Field>
+          <Field label={T.tags} span2><TextInput value={cForm.tags} onChange={(e) => setCForm({ ...cForm, tags: e.target.value })} placeholder={T.tagsHint} /></Field>
+          <Field label={T.address} span2><TextInput value={cForm.address} onChange={(e) => setCForm({ ...cForm, address: e.target.value })} /></Field>
+          <Field label={T.notes} span2><TextArea rows={3} value={cForm.notes} onChange={(e) => setCForm({ ...cForm, notes: e.target.value })} /></Field>
         </div>
       </Modal>
     </div>

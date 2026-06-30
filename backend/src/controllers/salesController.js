@@ -6,7 +6,7 @@ const CrmCompany = require('../models/CrmCompany');
 const { emitToAll } = require('../websocket/socketManager');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
-const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep'];
+const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'];
 const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'sales_manager'];
 const isStaff = (u) => SALES_STAFF_ROLES.includes(u.role);
 const isAdmin = (u) => SALES_ADMIN_ROLES.includes(u.role);

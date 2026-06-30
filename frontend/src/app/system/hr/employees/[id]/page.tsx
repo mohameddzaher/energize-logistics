@@ -20,6 +20,7 @@ import {
   Spinner, Badge, SmallBadge, Tabs, StatCard, Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2,
 } from '@/components/hr/HRKit';
 import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
+import ContractFormModal from '@/components/hr/ContractFormModal';
 import { getHrEmployeesIdTranslations } from '@/lib/translations';
 import {
   VehicleAuthorization, VehicleAccident, AUTH_STATUS, ACCIDENT_SEVERITY, ACCIDENT_STATUS,
@@ -57,6 +58,8 @@ export default function EmployeeProfilePage() {
 
   // Action modals
   const [showEdit, setShowEdit] = useState(false);
+  const [showContract, setShowContract] = useState(false);
+  const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [showRenew, setShowRenew] = useState(false);
   const [showTerminate, setShowTerminate] = useState(false);
   const [showAddDoc, setShowAddDoc] = useState(false);
@@ -295,21 +298,29 @@ export default function EmployeeProfilePage() {
       )}
 
       {tab === 'contracts' && (
-        <DataCard empty={!data.contracts.length} emptyText={tx.noContracts}>
-          <table className="w-full text-sm">
-            <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <Th>{tx.colType}</Th><Th>{tx.colStart}</Th><Th>{tx.colEnd}</Th><Th>{tx.colAnnualLeave}</Th><Th>{tx.colSalary}</Th><Th>{tx.colStatus}</Th>
-            </tr></thead>
-            <tbody>{data.contracts.map((c) => (
-              <Tr key={c._id}>
-                <Td className="text-slate-900">{c.type === 'unlimited' ? tx.contractUnlimited : tx.contractFixed}</Td>
-                <Td>{fmtDate(c.startDate)}</Td><Td>{c.endDate ? fmtDate(c.endDate) : '—'}</Td>
-                <Td>{c.annualLeaveDays} {tx.dayUnit}</Td><Td>{(c.basicSalary || 0).toLocaleString()}</Td>
-                <Td><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></Td>
-              </Tr>
-            ))}</tbody>
-          </table>
-        </DataCard>
+        <div className="space-y-3">
+          {staff && (
+            <div className="flex justify-end">
+              <PrimaryButton onClick={() => { setEditingContract(null); setShowContract(true); }}><Plus className="w-4 h-4" /> {ar ? 'إضافة عقد' : 'Add contract'}</PrimaryButton>
+            </div>
+          )}
+          <DataCard empty={!data.contracts.length} emptyText={tx.noContracts}>
+            <table className="w-full text-sm">
+              <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+                <Th>{tx.colType}</Th><Th>{tx.colStart}</Th><Th>{tx.colEnd}</Th><Th>{tx.colAnnualLeave}</Th><Th>{tx.colSalary}</Th><Th>{tx.colStatus}</Th>{staff && <Th>{ar ? 'إجراء' : 'Action'}</Th>}
+              </tr></thead>
+              <tbody>{data.contracts.map((c) => (
+                <Tr key={c._id}>
+                  <Td className="text-slate-900">{c.type === 'unlimited' ? tx.contractUnlimited : tx.contractFixed}</Td>
+                  <Td>{fmtDate(c.startDate)}</Td><Td>{c.endDate ? fmtDate(c.endDate) : '—'}</Td>
+                  <Td>{c.annualLeaveDays} {tx.dayUnit}</Td><Td>{(c.basicSalary || 0).toLocaleString()}</Td>
+                  <Td><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></Td>
+                  {staff && <Td><button type="button" onClick={() => { setEditingContract(c); setShowContract(true); }} className="p-1 rounded text-slate-500 hover:text-[#f37121]" title={ar ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button></Td>}
+                </Tr>
+              ))}</tbody>
+            </table>
+          </DataCard>
+        </div>
       )}
 
       {tab === 'requests' && (
@@ -377,6 +388,7 @@ export default function EmployeeProfilePage() {
 
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
       <EmployeeFormModal open={showEdit} employee={e} onClose={() => setShowEdit(false)} onSaved={() => load()} />
+      <ContractFormModal open={showContract} contract={editingContract} employeeId={String(e._id)} onClose={() => setShowContract(false)} onSaved={() => load()} />
       <RenewModal open={showRenew} employeeId={id} ar={ar} onClose={() => setShowRenew(false)} onDone={load} />
       <TerminateModal open={showTerminate} employeeId={id} ar={ar} onClose={() => setShowTerminate(false)} onDone={load} />
       <DocModal open={showAddDoc || !!editDoc} doc={editDoc} employeeId={id} ar={ar} onClose={() => { setShowAddDoc(false); setEditDoc(null); }} onDone={load} />

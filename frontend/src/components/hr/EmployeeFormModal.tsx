@@ -27,8 +27,10 @@ export const EMPTY_EMPLOYEE = {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
-      <h3 className="text-[#f37121] text-sm font-semibold mb-3">{title}</h3>
+    <div className="border-t border-slate-200 pt-5 mt-5 first:border-t-0 first:pt-0 first:mt-0">
+      <h3 className="text-[#f37121] text-sm font-semibold mb-3 flex items-center gap-2">
+        <span className="w-1 h-4 rounded-full bg-[#f37121]" />{title}
+      </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>
     </div>
   );

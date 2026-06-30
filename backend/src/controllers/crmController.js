@@ -227,8 +227,11 @@ exports.listCompanies = async (req, res) => {
       const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ name: rx }, { arabicName: rx }, { email: rx }, { phone: rx }, { city: rx }, { industry: rx }];
     }
-    const companies = await popCompany(CrmCompany.find(filter)).sort({ updatedAt: -1 }).limit(500).lean();
-    res.json({ companies });
+    const [companies, total] = await Promise.all([
+      popCompany(CrmCompany.find(filter)).sort({ updatedAt: -1 }).limit(2000).lean(),
+      CrmCompany.countDocuments(filter),
+    ]);
+    res.json({ companies, total });
   } catch (error) {
     console.error('listCompanies error:', error);
     res.status(500).json({ message: 'Failed to load companies' });

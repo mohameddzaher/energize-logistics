@@ -15,6 +15,7 @@ import {
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
 import { getDashboardTranslations, getDashboardExtraTranslations } from '@/lib/translations';
+import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend,
@@ -432,6 +433,8 @@ export default function DashboardPage() {
   // ─── RENDER ────────────────────────────────────────────────
   return (
     <div className="space-y-6">
+      <OpsLiveSummary />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">{T.executiveDashboard}</h1>

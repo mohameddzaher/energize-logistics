@@ -13,6 +13,9 @@ const { generalLimiter } = require('./middleware/rateLimiter');
 const { initializeSocket } = require('./websocket/socketManager');
 const { startWalletAutoCloseJob } = require('./jobs/walletAutoClose');
 const { startSyncScheduler: startB2CSheetSync, migrateLegacySingletonIndex: migrateB2CSheetIndex } = require('./services/b2cGoogleSheetSyncService');
+const { startOpsPoll } = require('./jobs/opsPoll');
+const { startOpsCustomerSync } = require('./services/opsCustomerSyncService');
+const { startOpsWorkflowSync } = require('./services/opsWorkflowSyncService');
 
 // Route imports
 const authRoutes = require('./routes/auth');
@@ -47,6 +50,10 @@ const procurementRoutes = require('./routes/procurement');
 const lookupRoutes = require('./routes/lookups');
 const customsClearanceRoutes = require('./routes/customsClearance');
 const vehicleRoutes = require('./routes/vehicles');
+const opsRoutes = require('./routes/ops');
+const sectionWorkRoutes = require('./routes/sectionWork');
+const b2cWalletRoutes = require('./routes/b2cWallet');
+const crmVendorRoutes = require('./routes/crmVendors');
 
 const app = express();
 const server = http.createServer(app);
@@ -56,13 +63,11 @@ initializeSocket(server);
 
 // Security middleware
 app.use(helmet());
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
-  .split(',')
-  .map(s => s.trim());
+const { isAllowedOrigin } = require('./config/cors');
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -125,6 +130,10 @@ app.use('/api/procurement', procurementRoutes);
 app.use('/api/lookups', lookupRoutes);
 app.use('/api/customs-clearance', customsClearanceRoutes);
 app.use('/api/vehicles', vehicleRoutes);
+app.use('/api/ops', opsRoutes);
+app.use('/api/section-work', sectionWorkRoutes);
+app.use('/api/b2c-wallet', b2cWalletRoutes);
+app.use('/api/crm-vendors', crmVendorRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -190,6 +199,9 @@ connectDB().then(async () => {
     // Start scheduled jobs
     startWalletAutoCloseJob();
     startB2CSheetSync();
+    startOpsPoll();
+    startOpsCustomerSync();
+    startOpsWorkflowSync();
   });
 });
 

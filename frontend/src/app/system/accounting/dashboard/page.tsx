@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import { Calculator, RefreshCw, BookOpen, Scale, FileText, TrendingUp, Wallet, Clock, ArrowRight, ArrowLeft } from 'lucide-react';
 import { isFinanceStaff, money, fmtDate } from '@/lib/finance';
 import { Spinner, PageHeader, StatCard, PrimaryButton } from '@/components/hr/HRKit';
+import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import { getAccountingDashboardTranslations } from '@/lib/translations';
 
 interface RecentEntry {
@@ -84,6 +85,8 @@ export default function AccountingDashboardPage() {
       <PageHeader icon={<Calculator className="w-5 h-5" />} title={tx.title} subtitle={tx.subtitle}>
         <PrimaryButton onClick={sync} disabled={syncing}><RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} /> {tx.autoPost}</PrimaryButton>
       </PageHeader>
+
+      <OpsLiveSummary />
 
       {/* Position / balance sheet snapshot */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -27,7 +27,9 @@ let lastShipSig = null;
 
 async function pollShipments() {
   try {
-    const out = await upl.get('/admin/shipments', { query: { limit: 20, page: 1, 'sort[updated_at]': 'desc' } });
+    // Pull the 100 most-recently-touched shipments (UPL's page cap) each tick so a
+    // burst of changes in the same window is still caught live — it's one call.
+    const out = await upl.get('/admin/shipments', { query: { limit: 100, page: 1, 'sort[updated_at]': 'desc' } });
     const items = (out.data && out.data.items) || [];
     const sig = JSON.stringify(items.map((s) => [s.id, s.status, s.updated_at, s.deleted_at]));
     if (sig !== lastShipSig) {

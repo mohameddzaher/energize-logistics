@@ -102,6 +102,20 @@ module.exports = {
   ],
   OPS_PLATFORM_ADMIN_ROLES: ['super_admin', 'admin', 'operations_manager'],
 
+  // Roles that can access the Location Solutions section (قسم لوكيشن سوليوشن): the
+  // live Wialon GPS/telemetry mirror (sensors, tires, engine temp, maintenance
+  // alerts). READ is broad across the fleet/ops/workshop side; the admin tier
+  // (super_admin, admin, operations_manager, workshop_manager) can acknowledge
+  // alerts, mark vehicles serviced and tune the alert thresholds.
+  LS2_STAFF_ROLES: [
+    'super_admin', 'admin', 'moderator', 'employee', 'operations_manager', 'operations',
+    'workshop_manager', 'workshop_employee', 'purchasing',
+  ],
+  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'operations_manager', 'workshop_manager'],
+  // Core roles that see the section in their sidebar (others can still reach the
+  // data via direct link / embeds but it isn't pinned to their nav).
+  LS2_SECTION_ROLES: ['super_admin', 'admin', 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
+
   // Roles that can access the Vehicles & Authorizations section (المركبات
   // والتفاويض): super admin + HR + Accounting. Delete ops are further limited to
   // the admin tier (super_admin, admin, hr_manager, finance_manager).

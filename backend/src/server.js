@@ -16,6 +16,7 @@ const { startSyncScheduler: startB2CSheetSync, migrateLegacySingletonIndex: migr
 const { startOpsPoll } = require('./jobs/opsPoll');
 const { startOpsCustomerSync } = require('./services/opsCustomerSyncService');
 const { startOpsWorkflowSync } = require('./services/opsWorkflowSyncService');
+const { startLs2Poll } = require('./jobs/ls2Poll');
 
 // Route imports
 const authRoutes = require('./routes/auth');
@@ -54,6 +55,7 @@ const opsRoutes = require('./routes/ops');
 const sectionWorkRoutes = require('./routes/sectionWork');
 const b2cWalletRoutes = require('./routes/b2cWallet');
 const crmVendorRoutes = require('./routes/crmVendors');
+const ls2Routes = require('./routes/ls2');
 
 const app = express();
 const server = http.createServer(app);
@@ -134,6 +136,7 @@ app.use('/api/ops', opsRoutes);
 app.use('/api/section-work', sectionWorkRoutes);
 app.use('/api/b2c-wallet', b2cWalletRoutes);
 app.use('/api/crm-vendors', crmVendorRoutes);
+app.use('/api/ls2', ls2Routes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -202,6 +205,7 @@ connectDB().then(async () => {
     startOpsPoll();
     startOpsCustomerSync();
     startOpsWorkflowSync();
+    startLs2Poll();
   });
 });
 

@@ -120,6 +120,12 @@ async function tick() {
 
 function startLs2Poll() {
   if (timer) return;
+  // Kill switch: set LS2_POLL_ENABLED=false on the host to stop the live poll +
+  // 20s socket broadcasts without removing the token or redeploying. Reversible.
+  if (String(process.env.LS2_POLL_ENABLED || 'true').toLowerCase() === 'false') {
+    console.log('[ls2Poll] disabled via LS2_POLL_ENABLED=false — live polling off');
+    return;
+  }
   if (!client.isConfigured()) {
     console.log('[ls2Poll] Location Solutions not configured (LS2_TOKEN missing) — polling disabled');
     return;

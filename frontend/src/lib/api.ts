@@ -56,18 +56,39 @@ class ApiClient {
       },
     };
 
+    // Diagnostic timing: log every request's round-trip to the browser console so
+    // slow endpoints (e.g. a cold backend, or the socket/poll proxy stalling
+    // login) are visible. Slow (>2s) requests are warned in orange; failures in
+    // red. Copy these lines to diagnose production latency.
+    const method = (fetchOptions.method || 'GET').toUpperCase();
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const elapsed = () => Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt));
+    const logTiming = (status: number | string) => {
+      if (typeof window === 'undefined') return;
+      const ms = elapsed();
+      const line = `[api] ${method} ${endpoint} → ${status} in ${ms}ms`;
+      if (typeof status === 'number' && status >= 200 && status < 400) {
+        (ms > 2000 ? console.warn : console.log)(ms > 2000 ? `🐢 SLOW ${line}` : line);
+      } else {
+        console.error(`❌ ${line}`);
+      }
+    };
+
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${endpoint}`, config);
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
+        logTiming(`TIMEOUT after ${timeoutMs ?? 45000}ms`);
         throw new Error('Request timed out. Please check your connection and try again.');
       }
+      logTiming(`NETWORK ERROR (${err?.message || 'failed'})`);
       throw err;
     } finally {
       clearTimeout(timeoutId);
     }
+    logTiming(res.status);
 
     // Auth endpoints (login/refresh/logout) must NOT go through the refresh-retry
     // path: a 401 there is the real answer (e.g. wrong password), and retrying a

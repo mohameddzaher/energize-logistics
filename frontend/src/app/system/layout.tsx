@@ -15,7 +15,7 @@ import {
   Target, Award, CalendarDays, Clock, Megaphone, CalendarCheck,
   Calculator, Scale, BookOpen, Gauge, Ship, ScrollText,
   Activity, Car, UserSquare, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck,
-  Thermometer, Satellite,
+  Thermometer, Satellite, Crown,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -108,6 +108,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
   const navItems: NavItem[] = [
     // Main
+    { href: '/system/executive', label: lang === 'ar' ? 'النظرة التنفيذية' : 'Executive Overview', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main' },
     { href: '/system/dashboard', label: L.dashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Main' },
     { href: '/system/overdue', label: L.overdue, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Main' },
     { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'employee', 'moderator'], section: 'Main' },

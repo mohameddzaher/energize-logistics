@@ -57,7 +57,25 @@ const b2cWalletRoutes = require('./routes/b2cWallet');
 const crmVendorRoutes = require('./routes/crmVendors');
 const ls2Routes = require('./routes/ls2');
 
+// Safety net: never let a single bad request/promise take down the whole
+// process. Before this, an unhandled rejection (e.g. express-rate-limit's
+// X-Forwarded-For ValidationError when trust proxy was off) crashed Node,
+// Render restarted, and every user got 503s in a crash loop. Log and stay up.
+process.on('unhandledRejection', (reason) => {
+  console.error('UnhandledRejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('UncaughtException:', err);
+});
+
 const app = express();
+
+// Render (and most PaaS) put the app behind a reverse proxy that sets
+// X-Forwarded-For. Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and req.ip is wrong. `1` = trust the single Render proxy hop (not `true`,
+// which would blindly trust any client-supplied header).
+app.set('trust proxy', 1);
+
 const server = http.createServer(app);
 
 // Initialize Socket.io

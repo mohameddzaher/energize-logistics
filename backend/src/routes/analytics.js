@@ -407,7 +407,7 @@ router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res
         { $match: { date: { $gte: startOfLastMonthStr, $lte: endOfLastMonthStr } } },
         { $group: { _id: '$type', total: { $sum: '$amount' } } },
       ]), []),
-      tryQuery(() => WalletTransaction.countDocuments({ date: yyyymmdd(now), type: 'collection' }), 0),
+      tryQuery(() => WalletTransaction.countDocuments({ date: yyyymmdd(startOfDay), type: 'collection' }), 0),
       tryQuery(() => OperationsWorkflow.aggregate([
         { $match: { driverName: { $exists: true, $ne: '' }, reportDate: { $gte: startOfMonth } } },
         { $group: { _id: '$driverName', trips: { $sum: 1 } } },

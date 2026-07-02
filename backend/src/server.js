@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const http = require('http');
 const cors = require('cors');
+const compression = require('compression');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const morgan = require('morgan');
@@ -17,6 +18,7 @@ const { startOpsPoll } = require('./jobs/opsPoll');
 const { startOpsCustomerSync } = require('./services/opsCustomerSyncService');
 const { startOpsWorkflowSync } = require('./services/opsWorkflowSyncService');
 const { startLs2Poll } = require('./jobs/ls2Poll');
+const { startKeepAlive } = require('./jobs/keepAlive');
 
 // Route imports
 const authRoutes = require('./routes/auth');
@@ -80,6 +82,10 @@ const server = http.createServer(app);
 
 // Initialize Socket.io
 initializeSocket(server);
+
+// gzip-compress responses. Dashboard payloads are large JSON blobs; on a slow
+// free-tier link this cuts transfer size ~70-80% and noticeably speeds up loads.
+app.use(compression());
 
 // Security middleware
 app.use(helmet());
@@ -224,6 +230,7 @@ connectDB().then(async () => {
     startOpsCustomerSync();
     startOpsWorkflowSync();
     startLs2Poll();
+    startKeepAlive();
   });
 });
 

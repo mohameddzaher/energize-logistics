@@ -67,6 +67,12 @@ exports.login = async (req, res) => {
       ipAddress: req.ip,
     }).catch((e) => console.error('Audit log (login) failed:', e.message));
 
+    // Include effective section permissions so the sidebar renders correctly on
+    // the first paint after login (without them, managed sections stay hidden
+    // until a refresh re-fetches /api/auth/me).
+    const { effectivePermissions } = require('../utils/permissions');
+    const permissions = await effectivePermissions(user.role);
+
     res.json({
       user: {
         _id: user._id,
@@ -74,6 +80,7 @@ exports.login = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        permissions,
       },
     });
   } catch (error) {
@@ -184,7 +191,12 @@ exports.getMe = async (req, res) => {
       .populate('manager', 'firstName lastName email role')
       .populate('linkedEmployee', 'firstName lastName employeeNumber jobTitle');
 
-    res.json({ user });
+    // Effective per-section access (drives the sidebar + client-side edit gating).
+    const { effectivePermissions } = require('../utils/permissions');
+    const permissions = user ? await effectivePermissions(user.role) : {};
+    const out = user ? { ...user.toObject(), permissions } : user;
+
+    res.json({ user: out });
   } catch (error) {
     res.status(500).json({ message: 'Failed to retrieve user profile' });
   }

@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import {
-  ClipboardList, Plus, Search, Filter, Upload,
+  ClipboardList, Plus, Search, Filter, FilterX, Upload,
   Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, Calendar, AlertCircle,
   CheckSquare, Check
 } from 'lucide-react';
@@ -120,6 +120,19 @@ export default function OperationsWorkflowPage() {
   const [showPendingOnly, setShowPendingOnly] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
+  // Which field's input to auto-focus after a click-to-edit (so a single click
+  // on a cell drops you straight into typing).
+  const [focusField, setFocusField] = useState<string | null>(null);
+  // Fields pulled from the Operations Platform (read-only in this table — you
+  // edit them at the source). Everything else is manually entered here and is
+  // click-to-edit. المرحلة/stage is system-driven too.
+  const SYSTEM_FIELDS = new Set<string>([
+    'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
+    'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
+    'username', 'userPhone', 'taxIndicator', 'purchaseValue', 'sellingValue', 'loadingTime',
+    'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
+    'reference', 'representativeName', 'stage',
+  ]);
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showBulkReview, setShowBulkReview] = useState(false);
   const [bulkReviewText, setBulkReviewText] = useState('تم');
@@ -135,6 +148,16 @@ export default function OperationsWorkflowPage() {
   const role = user?.role || '';
   const canCreate = role === 'super_admin' || role === 'moderator';
   const canDelete = role === 'super_admin';
+  // Financial columns (invoice #, net, tax, total, invoice/collection dates,
+  // stage) are only visible to owners + accounting. Everyone else never sees them.
+  const canViewFinancials = ['super_admin', 'admin', 'finance_manager', 'accountant'].includes(role);
+  // Who may tick the accounting-review checkbox (matches backend write access).
+  const canEditAccountingReview = ['super_admin', 'admin', 'finance_manager', 'accountant'].includes(role);
+  // Who may tick the operations-review checkbox (matches backend `operations` group).
+  const canEditOperationsReview = ['super_admin', 'operations_manager'].includes(role);
+
+  // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
+  const [stats, setStats] = useState<{ total: number; pendingInvoices: number; sumPurchaseValue: number }>({ total: 0, pendingInvoices: 0, sumPurchaseValue: 0 });
 
   const fetchWorkflows = useCallback(async (isBackground = false) => {
     try {
@@ -174,6 +197,21 @@ export default function OperationsWorkflowPage() {
   // Initial load
   useEffect(() => { fetchWorkflows(); }, [fetchWorkflows]);
 
+  // Fetch full-dataset aggregates (for the summary cards) whenever the server
+  // filters change. Reflects all matching rows, not just the loaded page.
+  const fetchStats = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (stageFilter) params.append('stage', stageFilter);
+      if (search) params.append('search', search);
+      if (dateFrom) params.append('dateFrom', dateFrom);
+      if (dateTo) params.append('dateTo', dateTo);
+      const data = await api.get<any>(`/api/workflows/stats?${params.toString()}`);
+      setStats({ total: data.total || 0, pendingInvoices: data.pendingInvoices || 0, sumPurchaseValue: data.sumPurchaseValue || 0 });
+    } catch { /* non-critical */ }
+  }, [stageFilter, search, dateFrom, dateTo]);
+  useEffect(() => { fetchStats(); }, [fetchStats]);
+
   // Clear selection when filters/page change
   useEffect(() => { setSelectedIds(new Set()); }, [stageFilter, search, page, dateFrom, dateTo]);
 
@@ -185,10 +223,15 @@ export default function OperationsWorkflowPage() {
   }, [workflows, colFilters]);
 
   // Client-side pagination when in full-load mode (filtering); otherwise the
-  // server already paginated to 50.
+  // server already paginated to 50. Note the server-mode branch ALSO slices to a
+  // single page: when leaving full-load mode (e.g. "clear filters") `workflows`
+  // still briefly holds the whole dataset before the 50-row refetch lands, and
+  // rendering tens of thousands of <tr> at once would freeze the tab.
   const CLIENT_PAGE_SIZE = 50;
   const clientMode = loadAll || showPendingOnly;
-  const clientPaged = clientMode ? displayed.slice((clientPage - 1) * CLIENT_PAGE_SIZE, clientPage * CLIENT_PAGE_SIZE) : displayed;
+  const clientPaged = clientMode
+    ? displayed.slice((clientPage - 1) * CLIENT_PAGE_SIZE, clientPage * CLIENT_PAGE_SIZE)
+    : displayed.slice(0, CLIENT_PAGE_SIZE);
 
   const setColFilter = (field: string, set: Set<string>) => {
     if (!loadAll) setLoadAll(true);
@@ -198,6 +241,13 @@ export default function OperationsWorkflowPage() {
       if (set.size === 0) delete next[field]; else next[field] = set;
       return next;
     });
+  };
+
+  // Clear every column filter at once and drop back to normal server paging.
+  const clearColFilters = () => {
+    setColFilters({});
+    setLoadAll(false);
+    setClientPage(1);
   };
 
   // Reset client pagination when the result set changes.
@@ -297,13 +347,51 @@ export default function OperationsWorkflowPage() {
       await api.put(`/api/workflows/${editingId}`, editData);
       setEditingId(null);
       setEditData({});
+      setFocusField(null);
       fetchWorkflows(true);
+      fetchStats();
     } catch (err: any) { setError(err.message); }
   };
 
   const handleInlineCancel = () => {
     setEditingId(null);
     setEditData({});
+    setFocusField(null);
+  };
+
+  // Enter row-edit mode from a single cell click and remember which field to
+  // focus. Skips locked rows.
+  const beginEditField = (wf: Workflow, field: string) => {
+    if (isLockedByOther(wf)) return;
+    setEditingId(wf._id);
+    setEditData({ ...wf });
+    setFocusField(field);
+  };
+
+  // Accounting review is a one-click checklist toggle (تم / not) — no row edit.
+  const toggleAccountingReview = async (wf: Workflow) => {
+    const next = wf.accountingReview ? '' : 'تم';
+    // Optimistic update so the tick feels instant.
+    setWorkflows((p) => p.map((w) => w._id === wf._id ? { ...w, accountingReview: next } : w));
+    try {
+      await api.put(`/api/workflows/${wf._id}`, { accountingReview: next });
+    } catch (err: any) {
+      setError(err.message);
+      fetchWorkflows(true);
+    }
+  };
+
+  // Operations review is a one-click checklist toggle (تم / not) — no row edit.
+  const toggleOperationsReview = async (wf: Workflow) => {
+    const next = wf.operationsReview ? '' : 'تم';
+    // Optimistic update so the tick feels instant.
+    setWorkflows((p) => p.map((w) => w._id === wf._id ? { ...w, operationsReview: next } : w));
+    try {
+      await api.put(`/api/workflows/${wf._id}`, { operationsReview: next });
+    } catch (err: any) {
+      setError(err.message);
+      fetchWorkflows(true);
+    }
   };
 
   const handleBulkReview = async () => {
@@ -348,7 +436,18 @@ export default function OperationsWorkflowPage() {
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('en-GB') : '-';
   const formatMoney = (v: number) => v ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
 
-  const pendingCount = showPendingOnly ? total : workflows.filter(w => !w.paymentDate && !w.invoiceNumber).length;
+  // Summary cards. In "client mode" (a column filter or the pending toggle is
+  // engaged) the full matching dataset is already loaded and filtered in the
+  // browser, so the cards reflect `displayed` live. Otherwise they come from the
+  // backend aggregate over ALL matching rows (not just the 50-row page).
+  const inClientMode = hasColFilters || showPendingOnly;
+  const pendingCount = inClientMode
+    ? displayed.filter((w) => !w.paymentDate && !w.invoiceNumber).length
+    : stats.pendingInvoices;
+  const filteredRowsCount = inClientMode ? displayed.length : (stats.total || total);
+  const filteredPurchaseSum = inClientMode
+    ? displayed.reduce((s, w) => s + (Number(w.purchaseValue) || 0), 0)
+    : stats.sumPurchaseValue;
 
   // A column header with an Excel-style filter funnel. `field` is the Workflow
   // key it filters on; pass filterable={false} for non-data columns.
@@ -503,29 +602,69 @@ export default function OperationsWorkflowPage() {
         </div>
       </div>
 
-      {/* Pending Invoices Card */}
-      <button
-        type="button"
-        onClick={() => setShowPendingOnly(prev => !prev)}
-        className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-all duration-200 ${
-          showPendingOnly
-            ? 'bg-amber-500/20 border-amber-500/60 ring-2 ring-amber-500/30'
-            : 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-500/50'
-        }`}
-      >
-        <div className={`p-2 rounded-lg ${showPendingOnly ? 'bg-amber-500/30' : 'bg-amber-500/20'}`}>
-          <AlertCircle className="w-5 h-5 text-amber-700" />
+      {/* Summary cards */}
+      <div className="flex items-stretch gap-3 flex-wrap">
+        {/* Pending Invoices — over ALL matching rows (click to filter) */}
+        <button
+          type="button"
+          onClick={() => setShowPendingOnly(prev => !prev)}
+          className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-all duration-200 ${
+            showPendingOnly
+              ? 'bg-amber-500/20 border-amber-500/60 ring-2 ring-amber-500/30'
+              : 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-500/50'
+          }`}
+        >
+          <div className={`p-2 rounded-lg ${showPendingOnly ? 'bg-amber-500/30' : 'bg-amber-500/20'}`}>
+            <AlertCircle className="w-5 h-5 text-amber-700" />
+          </div>
+          <div className="flex flex-col items-start">
+            <span className="text-2xl font-bold text-amber-700">{pendingCount.toLocaleString()}</span>
+            <span className="text-xs text-amber-700/80">{lang === 'ar' ? 'فواتير لم تصل' : 'Pending Invoices'}</span>
+          </div>
+          {showPendingOnly && (
+            <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">
+              {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
+            </span>
+          )}
+        </button>
+
+        {/* Filtered row count — live with the active filters */}
+        <div className="flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-blue-500/10 border-blue-500/30">
+          <div className="p-2 rounded-lg bg-blue-500/20">
+            <ClipboardList className="w-5 h-5 text-blue-700" />
+          </div>
+          <div className="flex flex-col items-start">
+            <span className="text-2xl font-bold text-blue-700">{filteredRowsCount.toLocaleString()}</span>
+            <span className="text-xs text-blue-700/80">{lang === 'ar' ? 'عدد الصفوف (حسب الفلتر)' : 'Rows (filtered)'}</span>
+          </div>
         </div>
-        <div className="flex flex-col items-start">
-          <span className="text-2xl font-bold text-amber-700">{pendingCount}</span>
-          <span className="text-xs text-amber-700/80">{lang === 'ar' ? 'فواتير لم تصل' : 'Pending Invoices'}</span>
-        </div>
-        {showPendingOnly && (
-          <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">
-            {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
-          </span>
+
+        {/* Sum of purchase value for the filtered rows — finance-only */}
+        {canViewFinancials && (
+          <div className="flex items-center gap-3 px-5 py-3.5 rounded-xl border bg-emerald-500/10 border-emerald-500/30">
+            <div className="p-2 rounded-lg bg-emerald-500/20">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
+            </div>
+            <div className="flex flex-col items-start">
+              <span className="text-2xl font-bold text-emerald-700">{filteredPurchaseSum.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+              <span className="text-xs text-emerald-700/80">{lang === 'ar' ? 'مجموع قيمة الشراء (حسب الفلتر)' : 'Total purchase value (filtered)'}</span>
+            </div>
+          </div>
         )}
-      </button>
+
+        {/* Clear all column filters */}
+        {hasColFilters && (
+          <button
+            type="button"
+            onClick={clearColFilters}
+            title={lang === 'ar' ? 'مسح كل الفلاتر' : 'Clear all filters'}
+            className="flex items-center gap-2 px-4 py-3.5 rounded-xl border border-slate-300 bg-white text-slate-600 hover:text-red-600 hover:border-red-300 hover:bg-red-50 transition-colors"
+          >
+            <FilterX className="w-5 h-5" />
+            <span className="text-sm font-medium">{lang === 'ar' ? 'مسح الفلاتر' : 'Clear filters'}</span>
+          </button>
+        )}
+      </div>
 
       {/* Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -580,15 +719,15 @@ export default function OperationsWorkflowPage() {
                 {ColHead('sendingDate', T.thSendingDate, 'text-purple-300')}
                 {ColHead('deliveryDate', T.thDeliveryDate, 'text-purple-300')}
                 {ColHead('accountingReview', T.thAccountingReview, 'text-purple-300')}
-                {/* Collections */}
-                {ColHead('invoiceNumber', T.thInvoiceNumber, 'text-green-400')}
-                {ColHead('netInvoice', T.thNetInvoice, 'text-green-400')}
-                {ColHead('tax', T.thTax, 'text-green-400')}
-                {ColHead('totalInvoice', T.thTotalInvoice, 'text-green-400')}
-                {ColHead('invoiceDate', T.thInvoiceDate, 'text-green-400')}
-                {ColHead('collectionDate', T.thCollectionDate, 'text-green-400')}
-                {/* Meta */}
-                {ColHead('stage', T.thStage)}
+                {/* Collections — financial columns, finance/owner roles only */}
+                {canViewFinancials && ColHead('invoiceNumber', T.thInvoiceNumber, 'text-green-400')}
+                {canViewFinancials && ColHead('netInvoice', T.thNetInvoice, 'text-green-400')}
+                {canViewFinancials && ColHead('tax', T.thTax, 'text-green-400')}
+                {canViewFinancials && ColHead('totalInvoice', T.thTotalInvoice, 'text-green-400')}
+                {canViewFinancials && ColHead('invoiceDate', T.thInvoiceDate, 'text-green-400')}
+                {canViewFinancials && ColHead('collectionDate', T.thCollectionDate, 'text-green-400')}
+                {/* Meta — stage/المرحلة is treated as financial too */}
+                {canViewFinancials && ColHead('stage', T.thStage)}
                 <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap w-10">{T.lock}</th>
               </tr>
             </thead>
@@ -625,7 +764,7 @@ export default function OperationsWorkflowPage() {
                         ) : (
                           <>
                             {!locked && (
-                              <button type="button" onClick={() => { setEditingId(wf._id); setEditData({...wf}); }} className="p-1 text-slate-500 hover:text-[#f37121] rounded" title={T.edit}>
+                              <button type="button" onClick={() => { setEditingId(wf._id); setEditData({...wf}); setFocusField(null); }} className="p-1 text-slate-500 hover:text-[#f37121] rounded" title={T.edit}>
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
                             )}
@@ -656,25 +795,64 @@ export default function OperationsWorkflowPage() {
                     {(() => {
                       const isEditing = editingId === wf._id;
                       const ic = "w-full px-1.5 py-1 rounded bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:ring-1 focus:ring-[#f37121] focus:outline-none";
+                      // Click-to-edit: a single click on a manual (non-system) cell
+                      // enters edit mode for the row and focuses that field. System
+                      // cells keep the row's navigate-on-click behaviour.
+                      const editableClass = 'cursor-text hover:bg-amber-50 rounded px-1 -mx-1';
+                      const cellClick = (field: keyof Workflow) => {
+                        if (isEditing) return (e: any) => e.stopPropagation();
+                        if (!SYSTEM_FIELDS.has(field as string) && !locked) return (e: any) => { e.stopPropagation(); beginEditField(wf, field as string); };
+                        return undefined;
+                      };
+                      const spanCls = (field: keyof Workflow, color: string) =>
+                        `${color} ${!isEditing && !SYSTEM_FIELDS.has(field as string) && !locked ? editableClass : ''}`;
                       const textCell = (field: keyof Workflow, color = 'text-slate-700') => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
-                          {isEditing ? <input type="text" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={color}>{(wf as any)[field] || '-'}</span>}
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={cellClick(field)}>
+                          {isEditing ? <input type="text" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={spanCls(field, color)}>{(wf as any)[field] || '-'}</span>}
                         </td>
                       );
                       // Like textCell but translates the value for display (edits the raw value).
                       const transCell = (field: keyof Workflow, tr: (v: string) => string, color = 'text-slate-700') => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
-                          {isEditing ? <input type="text" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={color}>{(wf as any)[field] ? tr((wf as any)[field]) : '-'}</span>}
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={cellClick(field)}>
+                          {isEditing ? <input type="text" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={spanCls(field, color)}>{(wf as any)[field] ? tr((wf as any)[field]) : '-'}</span>}
                         </td>
                       );
                       const numCell = (field: keyof Workflow, color = 'text-slate-700') => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
-                          {isEditing ? <input type="number" title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={color}>{formatMoney((wf as any)[field])}</span>}
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={cellClick(field)}>
+                          {isEditing ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={spanCls(field, color)}>{formatMoney((wf as any)[field])}</span>}
                         </td>
                       );
                       const dateCell = (field: keyof Workflow, color = 'text-slate-700') => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isEditing ? (e) => e.stopPropagation() : undefined}>
-                          {isEditing ? <input type="date" title={field} className={`${ic} [&::-webkit-calendar-picker-indicator]:invert`} value={(editData as any)[field] ? (editData as any)[field].slice(0, 10) : ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={color}>{formatDate((wf as any)[field])}</span>}
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={cellClick(field)}>
+                          {isEditing ? <input type="date" autoFocus={focusField === field} title={field} className={`${ic} [&::-webkit-calendar-picker-indicator]:invert`} value={(editData as any)[field] ? (editData as any)[field].slice(0, 10) : ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={spanCls(field, color)}>{formatDate((wf as any)[field])}</span>}
+                        </td>
+                      );
+                      // Operations review is a one-click checkbox (checklist), not text.
+                      const operationsReviewCell = () => (
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={T.thOpsReview}
+                            title={T.thOpsReview}
+                            disabled={!canEditOperationsReview || locked}
+                            checked={!!wf.operationsReview}
+                            onChange={() => toggleOperationsReview(wf)}
+                            className="w-4 h-4 appearance-none rounded border border-slate-300 bg-white checked:bg-yellow-500 checked:border-yellow-500 cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                          />
+                        </td>
+                      );
+                      // Accounting review is a one-click checkbox (checklist), not text.
+                      const accountingReviewCell = () => (
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={T.thAccountingReview}
+                            title={T.thAccountingReview}
+                            disabled={!canEditAccountingReview || locked}
+                            checked={!!wf.accountingReview}
+                            onChange={() => toggleAccountingReview(wf)}
+                            className="w-4 h-4 appearance-none rounded border border-slate-300 bg-white checked:bg-purple-600 checked:border-purple-600 cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                          />
                         </td>
                       );
                       return (<>
@@ -705,25 +883,27 @@ export default function OperationsWorkflowPage() {
                         {textCell('reference')}
                         {textCell('representativeName')}
                         {/* Operations Review */}
-                        {textCell('operationsReview', 'text-yellow-700')}
+                        {operationsReviewCell()}
                         {/* Manual Moderator */}
                         {dateCell('paymentDate', 'text-purple-700')}
                         {textCell('payingBranch', 'text-purple-700')}
                         {textCell('documentNumber', 'text-purple-700')}
                         {dateCell('sendingDate', 'text-purple-700')}
                         {dateCell('deliveryDate', 'text-purple-700')}
-                        {textCell('accountingReview', 'text-purple-700')}
-                        {/* Collections */}
-                        {textCell('invoiceNumber', 'text-green-700')}
-                        {numCell('netInvoice', 'text-green-700')}
-                        {numCell('tax', 'text-green-700')}
-                        {numCell('totalInvoice', 'text-green-700')}
-                        {dateCell('invoiceDate', 'text-green-700')}
-                        {dateCell('collectionDate', 'text-green-700')}
+                        {accountingReviewCell()}
+                        {/* Collections — financial, finance/owner roles only */}
+                        {canViewFinancials && textCell('invoiceNumber', 'text-green-700')}
+                        {canViewFinancials && numCell('netInvoice', 'text-green-700')}
+                        {canViewFinancials && numCell('tax', 'text-green-700')}
+                        {canViewFinancials && numCell('totalInvoice', 'text-green-700')}
+                        {canViewFinancials && dateCell('invoiceDate', 'text-green-700')}
+                        {canViewFinancials && dateCell('collectionDate', 'text-green-700')}
                       </>);
                     })()}
-                    {/* Meta */}
-                    <td className="px-3 py-2.5 whitespace-nowrap"><span className={`px-2 py-0.5 rounded text-xs font-medium ${sc.bg} ${sc.color}`}>{stageLabels[wf.stage] || sc.label}</span></td>
+                    {/* Meta — stage/المرحلة, finance/owner roles only */}
+                    {canViewFinancials && (
+                      <td className="px-3 py-2.5 whitespace-nowrap"><span className={`px-2 py-0.5 rounded text-xs font-medium ${sc.bg} ${sc.color}`}>{stageLabels[wf.stage] || sc.label}</span></td>
+                    )}
                     <td className="px-3 py-2.5">
                       {wf.lockedBy ? (
                         <div className="flex items-center gap-1" title={T.lockedByTooltip.replace('{name}', wf.lockedByName)}>

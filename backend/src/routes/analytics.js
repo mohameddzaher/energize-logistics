@@ -397,8 +397,10 @@ router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res
       tryQuery(() => Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] } }), 0),
       tryQuery(() => Dispute.countDocuments({ status: { $in: ['open', 'under_review'] } }), 0),
       tryQuery(() => MaintenanceRequest.countDocuments({ status: { $in: ['open', 'in_progress'] } }), 0),
-      tryQuery(() => OperationsWorkflow.countDocuments({ reportDate: { $gte: startOfMonth } }), 0),
-      tryQuery(() => OperationsWorkflow.countDocuments({ reportDate: { $gte: startOfLastMonth, $lt: startOfMonth } }), 0),
+      // Exclude cancelled shipments — we only want operations that actually
+      // completed and generated revenue. UPL's status lands in executionStatus.
+      tryQuery(() => OperationsWorkflow.countDocuments({ reportDate: { $gte: startOfMonth }, executionStatus: { $ne: 'cancelled' } }), 0),
+      tryQuery(() => OperationsWorkflow.countDocuments({ reportDate: { $gte: startOfLastMonth, $lt: startOfMonth }, executionStatus: { $ne: 'cancelled' } }), 0),
       tryQuery(() => B2CDailyOrder.aggregate([
         { $match: { date: { $gte: startOfLastMonth, $lt: startOfMonth } } },
         { $group: { _id: null, total: { $sum: { $ifNull: ['$orders', 0] } } } },

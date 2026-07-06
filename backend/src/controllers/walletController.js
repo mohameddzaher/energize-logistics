@@ -195,7 +195,16 @@ exports.addTransaction = async (req, res) => {
       vendor, driver, vendorName, driverName, expenseCategory, itemName, reference, notes,
       collectionSource, description,
       purchaseDeliveryStatementNumber, purchaseDriverName, purchaseReceiptNumber, purchaseBranch,
+      mismatchReason, mismatchNote,
     } = req.body;
+
+    // Validate the amount-mismatch reason: only these enum values, and 'other'
+    // needs an explanatory note (so a difference is never left unexplained).
+    const validMismatch = ['daily', 'violation', 'other'];
+    const cleanMismatchReason = validMismatch.includes(mismatchReason) ? mismatchReason : null;
+    if (cleanMismatchReason === 'other' && !(mismatchNote && String(mismatchNote).trim())) {
+      return res.status(400).json({ message: 'A note is required when the mismatch reason is "other"' });
+    }
 
     const txDate = date || toDateStr();
 
@@ -305,6 +314,8 @@ exports.addTransaction = async (req, res) => {
       purchaseDriverName: purchaseDriverName || undefined,
       purchaseReceiptNumber: purchaseReceiptNumber || undefined,
       purchaseBranch: purchaseBranch || undefined,
+      mismatchReason: cleanMismatchReason || undefined,
+      mismatchNote: cleanMismatchReason === 'other' ? (mismatchNote || undefined) : undefined,
       reference: reference || undefined,
       notes: notes || undefined,
       isFlagged,
@@ -940,27 +951,38 @@ exports.lookupByReport = async (req, res) => {
     });
 
     if (!workflow) return res.status(404).json({ message: 'Report not found' });
-    if (!workflow.username) return res.status(404).json({ message: 'No customer linked to this report' });
 
-    const customer = await Customer.findOne({
-      companyName: { $regex: `^${workflow.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
-      isActive: true,
-    });
-
-    if (!customer) return res.status(404).json({ message: `Customer "${workflow.username}" not found` });
-
-    const invoices = await Invoice.find({
-      customer: customer._id,
-      status: { $in: ['pending', 'partial', 'overdue'] },
-      balance: { $gt: 0 },
-    }).select('invoiceNumber amount balance status').sort({ createdAt: -1 });
-
-    res.json({
-      customer: { _id: customer._id, companyName: customer.companyName, customerNumber: customer.customerNumber, currentOutstanding: customer.currentOutstanding },
+    // Core dispatch-sheet data — always returned when the report exists. Purchases
+    // use purchaseValue/driverName/branch (no customer needed); collections use
+    // sellingValue + the linked customer's open invoices.
+    const base = {
       reportNumber: workflow.reportNumber,
-      sellingValue: workflow.sellingValue,
-      invoices,
-    });
+      purchaseValue: workflow.purchaseValue || 0,
+      sellingValue: workflow.sellingValue || 0,
+      driverName: workflow.driverName || '',
+      branch: workflow.branch || '',
+    };
+
+    // Try to resolve the customer + open invoices (collections need this). Missing
+    // customer is NOT an error — purchases don't require it.
+    let customer = null;
+    let invoices = [];
+    if (workflow.username) {
+      const found = await Customer.findOne({
+        companyName: { $regex: `^${workflow.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        isActive: true,
+      });
+      if (found) {
+        customer = { _id: found._id, companyName: found.companyName, customerNumber: found.customerNumber, currentOutstanding: found.currentOutstanding };
+        invoices = await Invoice.find({
+          customer: found._id,
+          status: { $in: ['pending', 'partial', 'overdue'] },
+          balance: { $gt: 0 },
+        }).select('invoiceNumber amount balance status').sort({ createdAt: -1 });
+      }
+    }
+
+    res.json({ ...base, customer, invoices });
   } catch (error) {
     console.error('lookupByReport error:', error);
     res.status(500).json({ message: error.message || 'Failed to lookup report' });

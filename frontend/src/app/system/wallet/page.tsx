@@ -8,9 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, X, Check, Loader2, ArrowUpCircle, ArrowDownCircle,
   ShoppingCart, Lock, Unlock, AlertTriangle, Search,
-  Receipt, Download, Pencil, Upload,
+  Receipt, Download, Pencil,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
 import { getWalletTranslations, getWalletExtraTranslations } from '@/lib/translations';
@@ -125,7 +124,16 @@ export default function WalletPage() {
     amount: '', deliveryStatementNumber: '', itemName: '', notes: '',
     collectionSource: 'client' as 'client' | 'company', description: '',
     purchaseDeliveryStatementNumber: '', purchaseDriverName: '', purchaseReceiptNumber: '', purchaseBranch: '',
+    // Amount-mismatch reason (when entered amount != expected dispatch-sheet value)
+    mismatchReason: '' as '' | 'daily' | 'violation' | 'other', mismatchNote: '',
   });
+  // Empty form used on open/reset — keeps the three reset sites in sync.
+  const EMPTY_TX_FORM = {
+    amount: '', deliveryStatementNumber: '', itemName: '', notes: '',
+    collectionSource: 'client' as 'client' | 'company', description: '',
+    purchaseDeliveryStatementNumber: '', purchaseDriverName: '', purchaseReceiptNumber: '', purchaseBranch: '',
+    mismatchReason: '' as '' | 'daily' | 'violation' | 'other', mismatchNote: '',
+  };
   const [submitting, setSubmitting] = useState(false);
   const [txError, setTxError] = useState('');
 
@@ -152,26 +160,19 @@ export default function WalletPage() {
   // General error banner
   const [actionError, setActionError] = useState('');
 
-  // Bulk upload purchases
-  const [showBulkUpload, setShowBulkUpload] = useState(false);
-  const [bulkRows, setBulkRows] = useState<any[]>([]);
-  const [bulkFileName, setBulkFileName] = useState('');
-  const [bulkError, setBulkError] = useState('');
-  const [bulkProgress, setBulkProgress] = useState(0);
-  const [bulkUploading, setBulkUploading] = useState(false);
-  // Manual column mapping (when auto-detection fails)
-  const [bulkRawPreview, setBulkRawPreview] = useState<{ sheetName: string; rows: any[][] } | null>(null);
-  const [bulkWorkbook, setBulkWorkbook] = useState<XLSX.WorkBook | null>(null);
-  const [manualDeliveryCol, setManualDeliveryCol] = useState<number>(-1);
-  const [manualValueCol, setManualValueCol] = useState<number>(-1);
-  const [manualBranchCol, setManualBranchCol] = useState<number>(-1);
-  const [manualDataStart, setManualDataStart] = useState<number>(0);
 
   // Purchase report lookup
   const [purchaseReportSearch, setPurchaseReportSearch] = useState('');
   const [purchaseReportMsg, setPurchaseReportMsg] = useState('');
   const [purchaseReportFound, setPurchaseReportFound] = useState(false);
   const [purchaseInvoiceAmount, setPurchaseInvoiceAmount] = useState<number | null>(null);
+  // Expected dispatch-sheet values for the amount-match alert: purchaseValue
+  // (سعر الشراء) for purchases, sellingValue (سعر البيع) for collections.
+  const [expectedPurchaseValue, setExpectedPurchaseValue] = useState<number | null>(null);
+  const [expectedSellingValue, setExpectedSellingValue] = useState<number | null>(null);
+  // Collection report lookup (search كشف التخريج to fetch the selling price)
+  const [collectionReportMsg, setCollectionReportMsg] = useState('');
+  const [collectionReportFound, setCollectionReportFound] = useState(false);
 
   // ─── LOAD BRANCHES (super_admin & operations_manager) ───────
   useEffect(() => {
@@ -261,6 +262,23 @@ export default function WalletPage() {
         amount: Number(txForm.amount),
         notes: txForm.notes || undefined,
       };
+      // Expected dispatch-sheet value for this transaction type (null = no lookup done).
+      const expected = txType === 'purchase' ? expectedPurchaseValue : txType === 'collection' ? expectedSellingValue : null;
+      const isMismatch = expected != null && Math.abs(Number(txForm.amount) - expected) > 0.009;
+      if (isMismatch) {
+        if (!txForm.mismatchReason) {
+          setTxError(lang === 'ar' ? 'اختر سبب اختلاف المبلغ' : 'Select a reason for the amount difference');
+          setSubmitting(false);
+          return;
+        }
+        if (txForm.mismatchReason === 'other' && !txForm.mismatchNote.trim()) {
+          setTxError(lang === 'ar' ? 'اكتب سبب الاختلاف' : 'Write the reason for the difference');
+          setSubmitting(false);
+          return;
+        }
+        payload.mismatchReason = txForm.mismatchReason;
+        if (txForm.mismatchReason === 'other') payload.mismatchNote = txForm.mismatchNote.trim();
+      }
       if (txType === 'collection') {
         payload.collectionSource = txForm.collectionSource;
         if (txForm.collectionSource === 'client') {
@@ -280,403 +298,12 @@ export default function WalletPage() {
       }
       await api.post('/api/wallet/transactions', payload);
       setShowTxModal(false);
-      setTxForm({ amount: '', deliveryStatementNumber: '', itemName: '', notes: '', collectionSource: 'client', description: '', purchaseDeliveryStatementNumber: '', purchaseDriverName: '', purchaseReceiptNumber: '', purchaseBranch: '' });
+      setTxForm(EMPTY_TX_FORM);
       fetchWallet(false);
     } catch (err: any) {
       setTxError(err.message || 'Failed to add transaction');
     }
     setSubmitting(false);
-  };
-
-  // ─── BULK UPLOAD PURCHASES ─────────────────────────────────
-  // Detect Arabic month name → month number (1-12)
-  const detectMonthFromName = (name: string): number | null => {
-    const n = name.toLowerCase();
-    const months: Record<string, number> = {
-      'يناير': 1, 'january': 1, 'jan': 1,
-      'فبراير': 2, 'february': 2, 'feb': 2,
-      'مارس': 3, 'march': 3, 'mar': 3,
-      'ابريل': 4, 'أبريل': 4, 'april': 4, 'apr': 4,
-      'مايو': 5, 'may': 5,
-      'يونيو': 6, 'june': 6, 'jun': 6,
-      'يوليو': 7, 'july': 7, 'jul': 7,
-      'اغسطس': 8, 'أغسطس': 8, 'august': 8, 'aug': 8,
-      'سبتمبر': 9, 'september': 9, 'sep': 9,
-      'اكتوبر': 10, 'أكتوبر': 10, 'october': 10, 'oct': 10,
-      'نوفمبر': 11, 'november': 11, 'nov': 11,
-      'ديسمبر': 12, 'december': 12, 'dec': 12,
-    };
-    for (const [key, m] of Object.entries(months)) {
-      if (n.includes(key)) return m;
-    }
-    return null;
-  };
-
-  // Smart parser: scans ALL rows to find headers, then detects delivery/value/branch columns
-  // Very flexible - works regardless of header position or column order
-  const parseSheetSmart = (ws: XLSX.WorkSheet, sheetName: string = ''): Array<{ delivery: string; value: number; branch: string }> => {
-    const ref = ws['!ref'];
-    if (!ref) return [];
-
-    // Read with full range preserved (no blank row skipping, all cells)
-    const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
-    if (raw.length === 0) return [];
-
-    const cleanCell = (cell: any): string => String(cell || '').replace(/\s+/g, ' ').trim();
-
-    // Scan ALL rows to find the header row - identify candidate columns for each field
-    // We collect MULTIPLE candidates per field (e.g. there may be 2 "القيمه" columns)
-    let headerRowIdx = -1;
-    let deliveryCol = -1;
-    let branchCol = -1;
-    const valueCandidates: number[] = []; // list of candidate columns for "القيمه"
-
-    for (let i = 0; i < raw.length; i++) {
-      const row = raw[i] as any[];
-      if (!row || !Array.isArray(row)) continue;
-
-      let rowDelivery = -1;
-      let rowBranch = -1;
-      const rowValueCandidates: number[] = [];
-      // Prefer exact "رقم التخريج" over "رقم كشف التخريج" (both match keyword 'تخريج')
-      let foundExactDelivery = false;
-
-      for (let c = 0; c < row.length; c++) {
-        const cell = cleanCell(row[c]);
-        if (!cell) continue;
-        const cLower = cell.toLowerCase();
-
-        // Delivery column - prefer EXACT match for "رقم التخريج"
-        if (!foundExactDelivery && (cell === 'رقم التخريج' || cell.includes('رقم التخريج'))) {
-          // Make sure it's not "رقم كشف التخريج" (longer form)
-          if (!cell.includes('كشف')) {
-            rowDelivery = c;
-            foundExactDelivery = true;
-          }
-        }
-        // Fallback delivery keywords (only if exact not found)
-        else if (rowDelivery < 0 && !foundExactDelivery && /تخريج|delivery|statement/i.test(cell)) {
-          rowDelivery = c;
-        }
-
-        // Value column - can have multiple candidates
-        if (/^(ال)?قيمه|^(ال)?قيمة|المبلغ|value|amount/i.test(cell) || cLower === 'القيمه' || cLower === 'القيمة' || cLower === 'قيمه' || cLower === 'قيمة') {
-          rowValueCandidates.push(c);
-        }
-
-        // Branch column
-        if (rowBranch < 0 && (cell === 'الفرع' || cell === 'فرع' || /^(ال)?فرع\b|branch/i.test(cell))) {
-          rowBranch = c;
-        }
-      }
-
-      const matches = (rowDelivery >= 0 ? 1 : 0) + (rowValueCandidates.length > 0 ? 1 : 0) + (rowBranch >= 0 ? 1 : 0);
-      const currentBest = (deliveryCol >= 0 ? 1 : 0) + (valueCandidates.length > 0 ? 1 : 0) + (branchCol >= 0 ? 1 : 0);
-      if (matches > currentBest) {
-        headerRowIdx = i;
-        deliveryCol = rowDelivery;
-        branchCol = rowBranch;
-        valueCandidates.length = 0;
-        valueCandidates.push(...rowValueCandidates);
-      }
-
-      // If we found all fields, stop scanning
-      if (deliveryCol >= 0 && valueCandidates.length > 0 && branchCol >= 0) break;
-    }
-
-    // Pick the best value column: the one where data rows have numeric values
-    // matching where delivery column has non-empty values
-    let valueCol = -1;
-    if (valueCandidates.length === 1) {
-      valueCol = valueCandidates[0];
-    } else if (valueCandidates.length > 1 && deliveryCol >= 0 && headerRowIdx >= 0) {
-      // Score each candidate by counting rows where it has a positive number
-      // in the same row where delivery column has a value
-      let bestScore = -1;
-      for (const cand of valueCandidates) {
-        let score = 0;
-        for (let i = headerRowIdx + 1; i < Math.min(headerRowIdx + 30, raw.length); i++) {
-          const row = raw[i] as any[];
-          if (!row) continue;
-          const delRaw = row[deliveryCol];
-          const valRaw = row[cand];
-          if (delRaw === '' || delRaw === null || delRaw === undefined) continue;
-          const n = Number(String(valRaw).replace(/[^\d.-]/g, ''));
-          if (n && !isNaN(n) && n > 0) score++;
-        }
-        if (score > bestScore) { bestScore = score; valueCol = cand; }
-      }
-    }
-
-    console.log(`[BulkUpload][${sheetName}] Header row: ${headerRowIdx}, Cols: delivery=${deliveryCol}, value=${valueCol} (from candidates ${JSON.stringify(valueCandidates)}), branch=${branchCol}`);
-    if (headerRowIdx >= 0) {
-      console.log(`[BulkUpload][${sheetName}] Header content:`, raw[headerRowIdx]);
-    }
-
-    const out: Array<{ delivery: string; value: number; branch: string }> = [];
-
-    // Strategy A: If we found a header, use detected columns
-    if (deliveryCol >= 0 && valueCol >= 0 && headerRowIdx >= 0) {
-      for (let i = headerRowIdx + 1; i < raw.length; i++) {
-        const row = raw[i] as any[];
-        if (!row || !Array.isArray(row) || row.length === 0) continue;
-
-        const deliveryRaw = row[deliveryCol];
-        const valueRaw = row[valueCol];
-        const branchRaw = branchCol >= 0 ? row[branchCol] : '';
-
-        if (deliveryRaw === '' || deliveryRaw === null || deliveryRaw === undefined) continue;
-        const delivery = String(deliveryRaw).trim();
-        if (!delivery || delivery.toLowerCase() === 'nan') continue;
-        if (/^(total|إجمالي|اجمالي|المجموع|sum)/i.test(delivery)) continue;
-
-        const cleanValue = String(valueRaw).replace(/[^\d.-]/g, '');
-        const value = Number(cleanValue);
-        if (!value || isNaN(value) || value <= 0) continue;
-
-        const branch = String(branchRaw || '').trim();
-        out.push({ delivery, value, branch });
-      }
-
-      if (out.length > 0) {
-        console.log(`[BulkUpload][${sheetName}] Strategy A (headers) found ${out.length} rows`);
-        return out;
-      }
-    }
-
-    // Strategy B: Brute-force scan every row for a pattern:
-    // look for any cell that is a non-empty short string (delivery-like) followed by
-    // a cell that is a positive number (value-like), with an optional city name nearby (branch)
-    console.log(`[BulkUpload][${sheetName}] Falling back to Strategy B (pattern scan)`);
-    const cityHints = ['جده', 'جدة', 'الرياض', 'الدمام', 'ينبع', 'مكة', 'مكه', 'المدينة', 'المدينه', 'الخبر', 'الطائف', 'تبوك', 'ابها', 'أبها', 'حائل', 'نجران', 'جازان', 'بريدة', 'بريده', 'الخرج'];
-
-    for (let i = 0; i < raw.length; i++) {
-      const row = raw[i] as any[];
-      if (!row || !Array.isArray(row) || row.length === 0) continue;
-
-      // Find a numeric cell > 0 and a non-numeric short cell (possibly delivery)
-      let foundDelivery: string | null = null;
-      let foundValue: number | null = null;
-      let foundBranch = '';
-
-      for (let c = 0; c < row.length; c++) {
-        const cell = row[c];
-        if (cell === '' || cell === null || cell === undefined) continue;
-        const str = String(cell).trim();
-
-        // Try to parse as number
-        const cleanNum = str.replace(/[^\d.-]/g, '');
-        const num = cleanNum ? Number(cleanNum) : NaN;
-        const isPureNumber = !isNaN(num) && /^[\d.,\s-]+$/.test(str);
-
-        if (isPureNumber && num > 0) {
-          // Largest positive number in the row = likely the value (but also delivery number could be pure digits)
-          // We'll pick the biggest one as value, the other pure-digit cells could be delivery
-          if (foundValue === null || num > foundValue) {
-            // Save previous as candidate delivery if it was different
-            if (foundValue !== null && foundDelivery === null) {
-              foundDelivery = String(foundValue);
-            }
-            foundValue = num;
-          } else if (foundDelivery === null) {
-            foundDelivery = str;
-          }
-        } else if (!isPureNumber && str.length <= 50) {
-          // Non-numeric: could be delivery ID or branch
-          if (cityHints.some(city => str.includes(city))) {
-            foundBranch = str;
-          } else if (!foundDelivery && /[a-zA-Z\d]/.test(str)) {
-            foundDelivery = str;
-          }
-        }
-      }
-
-      if (foundDelivery && foundValue && foundValue > 0 && !/^(total|إجمالي|اجمالي|المجموع|sum|رقم|القيمه|القيمة|الفرع|date|التاريخ)/i.test(foundDelivery)) {
-        out.push({ delivery: foundDelivery, value: foundValue, branch: foundBranch });
-      }
-    }
-
-    console.log(`[BulkUpload][${sheetName}] Strategy B found ${out.length} rows`);
-    return out;
-  };
-
-  const handleBulkFile = (file: File) => {
-    setBulkError('');
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: 'array' });
-
-        // Determine base month/year (from file name, fallback to selectedDate)
-        const selectedD = new Date(selectedDate);
-        const baseYear = selectedD.getFullYear();
-        let baseMonth = selectedD.getMonth() + 1;
-        const detectedMonth = detectMonthFromName(file.name.replace(/\.xlsx?$/i, ''));
-        if (detectedMonth) baseMonth = detectedMonth;
-
-        const allRows: Array<{ deliveryStatement: string; value: number; branch: string; date: string; sheet?: string }> = [];
-
-        // Go through every sheet. For each sheet:
-        // 1. If sheet name is numeric (1-31) → use positional columns (10/13/14) and date from sheet name
-        // 2. Otherwise → try positional columns first; if no data found, fall back to header-based
-        // 3. Skip sheets named DATA or similar metadata sheets unless they contain data
-        for (const sheetName of wb.SheetNames) {
-          const ws = wb.Sheets[sheetName];
-          if (!ws) continue;
-
-          const isDaySheet = /^\d{1,2}$/.test(sheetName);
-          const day = isDaySheet ? parseInt(sheetName, 10) : null;
-          if (isDaySheet && (day! < 1 || day! > 31)) continue;
-
-          // Smart parser: auto-detects headers and columns
-          const parsed = parseSheetSmart(ws, sheetName);
-
-          // Determine date for each row
-          const dateStr = isDaySheet
-            ? `${baseYear}-${String(baseMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-            : selectedDate;
-
-          for (const r of parsed) {
-            allRows.push({
-              deliveryStatement: r.delivery,
-              value: r.value,
-              branch: r.branch,
-              date: dateStr,
-              sheet: sheetName,
-            });
-          }
-        }
-
-        if (allRows.length === 0) {
-          // Auto-detection failed - show manual column picker
-          const firstSheet = wb.Sheets[wb.SheetNames[0]];
-          const rawSample = XLSX.utils.sheet_to_json<any[]>(firstSheet, { header: 1, defval: '' });
-
-          console.log('[BulkUpload] Sheets:', wb.SheetNames);
-          console.log('[BulkUpload] All rows of first sheet:');
-          rawSample.forEach((r, i) => console.log(`  Row ${i}:`, r));
-
-          // Store workbook and show manual picker UI
-          setBulkWorkbook(wb);
-          setBulkRawPreview({ sheetName: wb.SheetNames[0], rows: rawSample });
-          setBulkFileName(file.name);
-          // Suggest defaults based on fixed layout (columns 10/13/14, data from row 4)
-          setManualDeliveryCol(10);
-          setManualValueCol(13);
-          setManualBranchCol(14);
-          setManualDataStart(4);
-          setBulkError('');
-          return;
-        }
-
-        setBulkRows(allRows);
-        setBulkFileName(file.name);
-      } catch (err: any) {
-        setBulkError(err.message || 'Failed to parse Excel file');
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
-  // Apply manual column selection and extract rows from ALL sheets in workbook
-  const handleManualExtract = () => {
-    if (!bulkWorkbook) return;
-    if (manualDeliveryCol < 0 || manualValueCol < 0) {
-      setBulkError(lang === 'ar' ? 'يجب اختيار عمود رقم التخريج وعمود القيمة' : 'You must pick delivery and value columns');
-      return;
-    }
-
-    const selectedD = new Date(selectedDate);
-    const baseYear = selectedD.getFullYear();
-    let baseMonth = selectedD.getMonth() + 1;
-    const detectedMonth = detectMonthFromName((bulkFileName || '').replace(/\.xlsx?$/i, ''));
-    if (detectedMonth) baseMonth = detectedMonth;
-
-    const allRows: Array<{ deliveryStatement: string; value: number; branch: string; date: string; sheet?: string }> = [];
-
-    for (const sheetName of bulkWorkbook.SheetNames) {
-      const ws = bulkWorkbook.Sheets[sheetName];
-      if (!ws) continue;
-
-      const isDaySheet = /^\d{1,2}$/.test(sheetName);
-      const day = isDaySheet ? parseInt(sheetName, 10) : null;
-      if (isDaySheet && (day! < 1 || day! > 31)) continue;
-
-      const raw = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
-      if (raw.length === 0) continue;
-
-      const dateStr = isDaySheet
-        ? `${baseYear}-${String(baseMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-        : selectedDate;
-
-      for (let i = manualDataStart; i < raw.length; i++) {
-        const row = raw[i] as any[];
-        if (!row || !Array.isArray(row) || row.length === 0) continue;
-
-        const deliveryRaw = row[manualDeliveryCol];
-        const valueRaw = row[manualValueCol];
-        const branchRaw = manualBranchCol >= 0 ? row[manualBranchCol] : '';
-
-        if (deliveryRaw === '' || deliveryRaw === null || deliveryRaw === undefined) continue;
-        const delivery = String(deliveryRaw).trim();
-        if (!delivery || delivery.toLowerCase() === 'nan') continue;
-        if (/^(total|إجمالي|اجمالي|المجموع|sum|رصيد الخزينه|اجمال)/i.test(delivery)) continue;
-
-        const cleanValue = String(valueRaw).replace(/[^\d.-]/g, '');
-        const value = Number(cleanValue);
-        if (!value || isNaN(value) || value <= 0) continue;
-
-        const branch = String(branchRaw || '').trim();
-        allRows.push({ deliveryStatement: delivery, value, branch, date: dateStr, sheet: sheetName });
-      }
-    }
-
-    if (allRows.length === 0) {
-      setBulkError(lang === 'ar' ? 'لم يتم العثور على بيانات بالأعمدة المختارة' : 'No data found with selected columns');
-      return;
-    }
-
-    setBulkRows(allRows);
-    setBulkRawPreview(null);
-    setBulkError('');
-  };
-
-  const handleBulkSubmit = async () => {
-    if (bulkRows.length === 0) return;
-    setBulkUploading(true);
-    setBulkProgress(0);
-    let succeeded = 0;
-    let failed = 0;
-
-    for (let i = 0; i < bulkRows.length; i++) {
-      const row = bulkRows[i];
-      try {
-        await api.post('/api/wallet/transactions', {
-          date: row.date || selectedDate,
-          type: 'purchase',
-          amount: row.value,
-          purchaseDeliveryStatementNumber: row.deliveryStatement,
-          purchaseBranch: row.branch,
-        });
-        succeeded++;
-      } catch {
-        failed++;
-      }
-      setBulkProgress(Math.round(((i + 1) / bulkRows.length) * 100));
-    }
-
-    setBulkUploading(false);
-    if (succeeded > 0) {
-      setShowBulkUpload(false);
-      setBulkRows([]);
-      setBulkFileName('');
-      fetchWallet(false);
-      setActionError('');
-    }
-    if (failed > 0) {
-      setActionError((lang === 'ar' ? `فشل في ${failed} معاملة. نجح ${succeeded}` : `${failed} failed, ${succeeded} succeeded`));
-    }
   };
 
   // ─── DELETE TRANSACTION ────────────────────────────────────
@@ -787,24 +414,50 @@ export default function WalletPage() {
     });
   };
 
-  // Search by report number for purchases
+  // Search كشف التخريج for PURCHASES — pulls the driver, branch and purchase
+  // price straight from the Operations Platform data and auto-fills them.
   const handlePurchaseReportSearch = async () => {
     if (!purchaseReportSearch.trim()) return;
     setPurchaseReportMsg('');
     setPurchaseReportFound(false);
     setPurchaseInvoiceAmount(null);
+    setExpectedPurchaseValue(null);
     try {
       const data = await api.get<any>(`/api/wallet/lookup-report?reportNumber=${encodeURIComponent(purchaseReportSearch.trim())}`);
       setTxForm((f) => ({
         ...f,
         purchaseDeliveryStatementNumber: data.reportNumber,
+        // Auto-fill from the dispatch sheet (still editable if wrong).
+        purchaseDriverName: data.driverName || f.purchaseDriverName,
+        purchaseBranch: data.branch || f.purchaseBranch,
       }));
       setPurchaseInvoiceAmount(data.sellingValue || null);
+      setExpectedPurchaseValue(data.purchaseValue != null ? Number(data.purchaseValue) : null);
       setPurchaseReportFound(true);
-      setPurchaseReportMsg(`${txx.foundSellingPrice}: ${(data.sellingValue || 0).toLocaleString()} SAR`);
+      setPurchaseReportMsg(`${txx.purchasePrice}: ${(data.purchaseValue || 0).toLocaleString()} SAR`);
     } catch (err: any) {
       setPurchaseReportFound(false);
       setPurchaseReportMsg(err.message || txx.reportNotFound);
+    }
+  };
+
+  // Search كشف التخريج for COLLECTIONS — fetch the expected selling price so we
+  // can flag a mismatch. Customer/invoice resolution still happens server-side.
+  const handleCollectionReportSearch = async () => {
+    const q = txForm.deliveryStatementNumber.trim();
+    if (!q) return;
+    setCollectionReportMsg('');
+    setCollectionReportFound(false);
+    setExpectedSellingValue(null);
+    try {
+      const data = await api.get<any>(`/api/wallet/lookup-report?reportNumber=${encodeURIComponent(q)}`);
+      setTxForm((f) => ({ ...f, deliveryStatementNumber: data.reportNumber }));
+      setExpectedSellingValue(data.sellingValue != null ? Number(data.sellingValue) : null);
+      setCollectionReportFound(true);
+      setCollectionReportMsg(`${txx.foundSellingPrice}: ${(data.sellingValue || 0).toLocaleString()} SAR`);
+    } catch (err: any) {
+      setCollectionReportFound(false);
+      setCollectionReportMsg(err.message || txx.reportNotFound);
     }
   };
 
@@ -900,12 +553,16 @@ export default function WalletPage() {
 
   const openTxModal = (type: 'collection' | 'expense' | 'purchase') => {
     setTxType(type);
-    setTxForm({ amount: '', deliveryStatementNumber: '', itemName: '', notes: '', collectionSource: 'client', description: '', purchaseDeliveryStatementNumber: '', purchaseDriverName: '', purchaseReceiptNumber: '', purchaseBranch: '' });
+    setTxForm(EMPTY_TX_FORM);
     setTxError('');
     setPurchaseReportSearch('');
     setPurchaseReportMsg('');
     setPurchaseReportFound(false);
     setPurchaseInvoiceAmount(null);
+    setExpectedPurchaseValue(null);
+    setExpectedSellingValue(null);
+    setCollectionReportMsg('');
+    setCollectionReportFound(false);
     setShowTxModal(true);
   };
 
@@ -1195,6 +852,38 @@ export default function WalletPage() {
                   <input type="number" min="0.01" step="0.01" value={txForm.amount}
                     onChange={(e) => setTxForm((f) => ({ ...f, amount: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder="0.00" />
+                  {/* Amount-vs-dispatch-sheet alert. Green when it matches, amber
+                      with a required reason dropdown when it differs. */}
+                  {(() => {
+                    const expected = txType === 'purchase' ? expectedPurchaseValue : txType === 'collection' ? expectedSellingValue : null;
+                    if (expected == null || !txForm.amount) return null;
+                    const isPurchase = txType === 'purchase';
+                    const differs = Math.abs(Number(txForm.amount) - expected) > 0.009;
+                    if (!differs) {
+                      return <p className="text-xs text-green-600 mt-1">✓ {isPurchase ? txx.amountMatchesPurchase : txx.amountMatchesSelling} ({expected.toLocaleString()} SAR)</p>;
+                    }
+                    return (
+                      <div className="mt-2 rounded-lg border border-amber-400/60 bg-amber-50 p-3 space-y-2">
+                        <p className="text-xs text-amber-700 font-medium">⚠ {isPurchase ? txx.amountDiffersPurchase : txx.amountDiffersSelling} ({expected.toLocaleString()} SAR)</p>
+                        <div>
+                          <label className="text-slate-500 text-xs mb-1 block">{txx.mismatchReasonLabel} *</label>
+                          <select value={txForm.mismatchReason} title={txx.mismatchReasonLabel}
+                            onChange={(e) => setTxForm((f) => ({ ...f, mismatchReason: e.target.value as '' | 'daily' | 'violation' | 'other' }))}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
+                            <option value="">—</option>
+                            <option value="daily">{txx.reasonDaily}</option>
+                            <option value="violation">{txx.reasonViolation}</option>
+                            <option value="other">{txx.reasonOther}</option>
+                          </select>
+                        </div>
+                        {txForm.mismatchReason === 'other' && (
+                          <textarea value={txForm.mismatchNote} rows={2} placeholder={txx.mismatchNotePlaceholder}
+                            onChange={(e) => setTxForm((f) => ({ ...f, mismatchNote: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Collection Fields */}
@@ -1215,9 +904,19 @@ export default function WalletPage() {
                     {txForm.collectionSource === 'client' && (
                       <div>
                         <label className="text-slate-500 text-xs mb-1 block">{L.deliveryStatementNumber} *</label>
-                        <input type="text" value={txForm.deliveryStatementNumber}
-                          onChange={(e) => setTxForm((f) => ({ ...f, deliveryStatementNumber: e.target.value }))}
-                          className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDeliveryStatement} />
+                        <div className="flex gap-2">
+                          <input type="text" value={txForm.deliveryStatementNumber}
+                            onChange={(e) => { setTxForm((f) => ({ ...f, deliveryStatementNumber: e.target.value })); setCollectionReportFound(false); setCollectionReportMsg(''); setExpectedSellingValue(null); }}
+                            onKeyDown={(e) => e.key === 'Enter' && handleCollectionReportSearch()}
+                            className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDeliveryStatement} />
+                          <button type="button" onClick={handleCollectionReportSearch} aria-label={txx.searchReport}
+                            className="px-3 py-2.5 rounded-lg bg-[#f37121] text-white text-sm hover:bg-[#e06010] transition-colors">
+                            <Search className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {collectionReportMsg && (
+                          <p className={`text-xs mt-1 ${collectionReportFound ? 'text-green-600' : 'text-red-600'}`}>{collectionReportMsg}</p>
+                        )}
                       </div>
                     )}
 
@@ -1245,14 +944,6 @@ export default function WalletPage() {
                 {/* Purchase Fields (dispatch sheet related payments) */}
                 {txType === 'purchase' && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => { setShowTxModal(false); setShowBulkUpload(true); }}
-                      className="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-blue-500/20 text-blue-600 border border-blue-500/30 text-sm font-medium hover:bg-blue-500/30"
-                    >
-                      <Upload className="w-4 h-4" />
-                      {lang === 'ar' ? 'رفع ملف اكسل جماعي' : 'Bulk Upload Excel'}
-                    </button>
                     {/* Search by Delivery Statement Number */}
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">{L.deliveryStatementNumber} *</label>
@@ -1298,17 +989,13 @@ export default function WalletPage() {
                     </div>
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">{L.branch}</label>
-                      <select
-                        value={txForm.purchaseBranch}
+                      {/* Auto-filled from the dispatch sheet on search (like driver
+                          name). Free text so any branch name the sheet uses fits. */}
+                      <input type="text" value={txForm.purchaseBranch}
+                        name="purchaseBranch"
+                        autoComplete="off"
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseBranch: e.target.value }))}
-                        title={L.branch}
-                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-                      >
-                        <option value="">{L.enterBranchName}</option>
-                        {branchList.map((b) => (
-                          <option key={b._id} value={b.name}>{b.name}</option>
-                        ))}
-                      </select>
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterBranchName} />
                     </div>
                   </>
                 )}
@@ -1636,204 +1323,6 @@ export default function WalletPage() {
         )}
       </AnimatePresence>
 
-      {showBulkUpload && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => !bulkUploading && setShowBulkUpload(false)}>
-          <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">
-                  {lang === 'ar' ? 'رفع مشتريات جماعية من اكسل' : 'Bulk Upload Purchases'}
-                </h3>
-                {!bulkUploading && (
-                  <button type="button" aria-label={lang === 'ar' ? 'إغلاق' : 'Close'} title={lang === 'ar' ? 'إغلاق' : 'Close'} onClick={() => setShowBulkUpload(false)} className="text-slate-500 hover:text-slate-900">
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-
-              <div className="text-slate-500 text-sm mb-3 space-y-1">
-                <p>{lang === 'ar'
-                  ? '✓ شكل 1: ملف فيه شيت واحد ب 3 أعمدة (رقم كشف التخريج - القيمة - الفرع)'
-                  : '✓ Format 1: Single sheet with 3 columns (Delivery # / Value / Branch)'}</p>
-                <p>{lang === 'ar'
-                  ? '✓ شكل 2: ملف شهري فيه 31 شيت (1 إلى 31 = أيام الشهر) + شيت DATA'
-                  : '✓ Format 2: Monthly file with 31 sheets (1-31 = days) + DATA sheet'}</p>
-                <p className="text-slate-500 text-xs">
-                  {lang === 'ar'
-                    ? 'للشكل الشهري: الشهر هيتحدد من اسم الملف (مثلاً "ابريل"), والتاريخ لكل معاملة هيكون من رقم الشيت'
-                    : 'Monthly: month detected from filename (e.g. "ابريل"=April), each transaction dated by its sheet number'}
-                </p>
-              </div>
-
-              {bulkRawPreview ? (
-                <div className="space-y-3">
-                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-700 text-sm">
-                    {lang === 'ar'
-                      ? '⚠️ مش قادر أكتشف الأعمدة تلقائياً. اختار الأعمدة يدوياً من الجدول تحت:'
-                      : '⚠️ Auto-detection failed. Pick columns manually from the preview below:'}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'عمود رقم التخريج' : 'Delivery Column'}</label>
-                      <select aria-label={txx.deliveryColumn} value={manualDeliveryCol} onChange={(e) => setManualDeliveryCol(Number(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-2 py-2 text-sm">
-                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>{txx.colLabel} {i}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'عمود القيمة' : 'Value Column'}</label>
-                      <select aria-label={txx.valueColumn} value={manualValueCol} onChange={(e) => setManualValueCol(Number(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-2 py-2 text-sm">
-                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>{txx.colLabel} {i}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'عمود الفرع (اختياري)' : 'Branch Column (optional)'}</label>
-                      <select aria-label={txx.branchColumn} value={manualBranchCol} onChange={(e) => setManualBranchCol(Number(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-2 py-2 text-sm">
-                        <option value={-1}>{lang === 'ar' ? '— بدون —' : '— None —'}</option>
-                        {bulkRawPreview.rows[0]?.map((_: any, i: number) => <option key={i} value={i}>{txx.colLabel} {i}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-slate-500 text-xs block mb-1">{lang === 'ar' ? 'البيانات تبدأ من صف' : 'Data starts at row'}</label>
-                      <input type="number" min="0" aria-label={txx.dataStartRow} title={txx.dataStartRow} placeholder="0"
-                        value={manualDataStart} onChange={(e) => setManualDataStart(Number(e.target.value) || 0)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2 text-sm" />
-                    </div>
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    {lang === 'ar' ? 'شوف البيانات تحت واعرف كل عمود رقمه كام:' : 'Look at the preview to identify column indices:'}
-                  </div>
-                  <div className="max-h-72 overflow-auto bg-slate-50 rounded-lg border border-slate-200">
-                    <table className="text-xs">
-                      <thead className="bg-slate-900 sticky top-0">
-                        <tr>
-                          <th className="px-2 py-1 text-slate-300">{txx.rowLabel}</th>
-                          {bulkRawPreview.rows[0]?.map((_: any, i: number) => (
-                            <th key={i} className={`px-2 py-1 whitespace-nowrap ${
-                              i === manualDeliveryCol ? 'bg-orange-500/30 text-orange-700' :
-                              i === manualValueCol ? 'bg-green-500/30 text-green-700' :
-                              i === manualBranchCol ? 'bg-blue-500/30 text-blue-700' :
-                              'text-slate-300'
-                            }`}>
-                              {txx.colLabel} {i}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bulkRawPreview.rows.slice(0, 25).map((row: any[], ri: number) => (
-                          <tr key={ri} className={`border-t border-slate-200 ${ri === manualDataStart ? 'bg-slate-50' : ''}`}>
-                            <td className="px-2 py-1 text-slate-500">{ri}</td>
-                            {row.map((cell: any, ci: number) => (
-                              <td key={ci} className={`px-2 py-1 whitespace-nowrap max-w-[150px] truncate ${
-                                ci === manualDeliveryCol ? 'bg-orange-500/10 text-orange-700' :
-                                ci === manualValueCol ? 'bg-green-500/10 text-green-700' :
-                                ci === manualBranchCol ? 'bg-blue-500/10 text-blue-700' :
-                                'text-slate-700'
-                              }`}>
-                                {cell === '' || cell === null ? '' : String(cell)}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => { setBulkRawPreview(null); setBulkWorkbook(null); setBulkFileName(''); }}
-                      className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">
-                      {lang === 'ar' ? 'إلغاء' : 'Cancel'}
-                    </button>
-                    <button type="button" onClick={handleManualExtract}
-                      className="px-4 py-2 bg-[#f37121] hover:bg-[#e06010] text-white rounded-lg text-sm font-medium">
-                      {lang === 'ar' ? 'استخراج البيانات' : 'Extract Data'}
-                    </button>
-                  </div>
-                </div>
-              ) : bulkRows.length === 0 ? (
-                <label className="block border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-[#f37121]/50 transition-colors">
-                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
-                    onChange={(e) => e.target.files?.[0] && handleBulkFile(e.target.files[0])} />
-                  <Upload className="w-10 h-10 text-slate-500 mx-auto mb-2" />
-                  <p className="text-slate-700 text-sm">{lang === 'ar' ? 'اضغط لاختيار ملف اكسل' : 'Click to select Excel file'}</p>
-                  <p className="text-slate-500 text-xs mt-1">.xlsx .xls .csv</p>
-                </label>
-              ) : (
-                <div>
-                  <div className="bg-slate-50 rounded-lg p-3 mb-3 flex items-center justify-between">
-                    <span className="text-slate-900 text-sm">{bulkFileName}</span>
-                    <span className="text-[#f37121] text-sm font-medium">{bulkRows.length} {lang === 'ar' ? 'سطر' : 'rows'}</span>
-                  </div>
-
-                  {bulkUploading && (
-                    <div className="mb-3">
-                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#f37121] transition-all" style={{ width: `${bulkProgress}%` }} />
-                      </div>
-                      <p className="text-center text-slate-500 text-sm mt-2">{bulkProgress}%</p>
-                    </div>
-                  )}
-
-                  <div className="max-h-60 overflow-y-auto bg-slate-50 rounded-lg">
-                    <table className="w-full text-xs">
-                      <thead className="bg-slate-900 sticky top-0">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-slate-300">#</th>
-                          <th className="px-3 py-2 text-left text-slate-300">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
-                          <th className="px-3 py-2 text-left text-slate-300">{lang === 'ar' ? 'رقم كشف التخريج' : 'Delivery Statement'}</th>
-                          <th className="px-3 py-2 text-left text-slate-300">{lang === 'ar' ? 'القيمة' : 'Value'}</th>
-                          <th className="px-3 py-2 text-left text-slate-300">{lang === 'ar' ? 'الفرع' : 'Branch'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bulkRows.map((r: any, i: number) => (
-                          <tr key={i} className="border-t border-slate-200">
-                            <td className="px-3 py-2 text-slate-500">{i + 1}</td>
-                            <td className="px-3 py-2 text-slate-500">{r.date}</td>
-                            <td className="px-3 py-2 text-slate-900">{r.deliveryStatement}</td>
-                            <td className="px-3 py-2 text-green-600">{r.value.toLocaleString()}</td>
-                            <td className="px-3 py-2 text-slate-700">{r.branch}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {bulkError && (
-                <div className="mt-3 bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-red-600 text-sm">
-                  {bulkError}
-                </div>
-              )}
-            </div>
-
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
-              {bulkRows.length > 0 && !bulkUploading && (
-                <button type="button" onClick={() => { setBulkRows([]); setBulkFileName(''); }}
-                  className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">
-                  {lang === 'ar' ? 'إعادة التحديد' : 'Reset'}
-                </button>
-              )}
-              {!bulkUploading && (
-                <button type="button" onClick={() => setShowBulkUpload(false)}
-                  className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">
-                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
-                </button>
-              )}
-              {bulkRows.length > 0 && (
-                <button type="button" onClick={handleBulkSubmit} disabled={bulkUploading}
-                  className="px-4 py-2 bg-[#f37121] hover:bg-[#e06010] text-white rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50">
-                  {bulkUploading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {bulkUploading ? (lang === 'ar' ? 'جاري الرفع...' : 'Uploading...') : (lang === 'ar' ? `رفع ${bulkRows.length} معاملة` : `Upload ${bulkRows.length} transactions`)}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

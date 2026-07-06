@@ -8,12 +8,15 @@ const validate = require('../middleware/validate');
 
 router.use(authenticate);
 
-// All workflow-related roles
-const allWorkflowRoles = ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'];
+// All workflow-related roles. Finance/collections staff (finance_manager,
+// accountant) are included so they can open the operations page, see the
+// financial columns, and tick the accounting-review checkbox.
+const allWorkflowRoles = ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'finance_manager', 'accountant'];
 
 // List & export
 router.get('/export', authorize(...allWorkflowRoles), workflowController.exportWorkflows);
 router.get('/permissions', authorize(...allWorkflowRoles), workflowController.getFieldPermissions);
+router.get('/stats', authorize(...allWorkflowRoles), workflowController.getWorkflowStats);
 router.get('/', authorize(...allWorkflowRoles), workflowController.getWorkflows);
 
 // Bulk delete

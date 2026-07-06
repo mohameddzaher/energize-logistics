@@ -6,6 +6,7 @@ const LeaveType = require('../models/LeaveType');
 const LeaveRequest = require('../models/LeaveRequest');
 const HRRequest = require('../models/HRRequest');
 const Asset = require('../models/Asset');
+const CompanyLicense = require('../models/CompanyLicense');
 const EmployeeDocument = require('../models/EmployeeDocument');
 const EmployeeRenewal = require('../models/EmployeeRenewal');
 const AuditLog = require('../models/AuditLog');
@@ -199,7 +200,7 @@ exports.updateEmployee = async (req, res) => {
       'firstName', 'lastName', 'arabicName', 'employeeNumber', 'gender', 'dateOfBirth', 'nationality', 'photo',
       'idType', 'iqamaNumber', 'iqamaExpiry', 'nationalId', 'passportNumber', 'passportExpiry',
       'qiwaContractNumber', 'gosiNumber', 'absherStatus', 'sponsorName', 'workPermitExpiry',
-      'jobTitle', 'department', 'hireDate', 'workLocation', 'branch', 'employmentStatus',
+      'jobTitle', 'department', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branch', 'employmentStatus',
       'phone', 'email', 'address', 'emergencyContactName', 'emergencyContactPhone',
       'basicSalary', 'allowances', 'directManager', 'notes',
       // Banking
@@ -936,6 +937,65 @@ exports.deleteAsset = async (req, res) => {
   }
 };
 
+// ── Company licenses & subscriptions (التراخيص والاشتراكات) ──────────────────
+exports.listLicenses = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const { q, category, location } = req.query;
+    const filter = {};
+    if (category) filter.category = category;
+    if (location) filter.location = location;
+    if (q && q.trim()) {
+      const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ name: rx }, { category: rx }, { location: rx }, { duration: rx }];
+    }
+    const licenses = await CompanyLicense.find(filter).sort({ expiryDate: 1 }).limit(2000).lean();
+    res.json({ licenses });
+  } catch (error) {
+    console.error('listLicenses error:', error);
+    res.status(500).json({ message: 'Failed to load licenses' });
+  }
+};
+
+exports.createLicense = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    if (!req.body.name || !req.body.category) return res.status(400).json({ message: 'Category and name are required' });
+    const license = await CompanyLicense.create({ ...req.body, createdBy: req.user._id });
+    await notifyHR({ title: 'License added', message: license.name, relatedEntity: 'CompanyLicense', relatedEntityId: license._id, event: 'hr:license' });
+    res.status(201).json({ license });
+  } catch (error) {
+    console.error('createLicense error:', error);
+    res.status(500).json({ message: 'Failed to create license' });
+  }
+};
+
+exports.updateLicense = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const license = await CompanyLicense.findById(req.params.id);
+    if (!license) return res.status(404).json({ message: 'License not found' });
+    ['category', 'name', 'duration', 'expiryDate', 'location', 'notes'].forEach((f) => {
+      if (req.body[f] !== undefined) license[f] = req.body[f];
+    });
+    await license.save();
+    try { emitToUser(String(req.user._id), 'hr:license', { id: String(license._id) }); } catch (e) {}
+    res.json({ license });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update license' });
+  }
+};
+
+exports.deleteLicense = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    await CompanyLicense.findByIdAndDelete(req.params.id);
+    res.json({ message: 'License deleted' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete license' });
+  }
+};
+
 // ── Dashboard (HR staff) ─────────────────────────────────────────────────────
 const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
@@ -971,6 +1031,7 @@ exports.getDashboard = async (req, res) => {
       totalEmployees, activeEmployees, onLeaveCount, suspendedCount, terminatedCount,
       pendingLeaves, openRequests, assignedAssets, expiringContracts,
       byStatusAgg, byDeptAgg, byProjectAgg, byNationalityAgg, recentHiresRaw, docFieldEmployees,
+      licensesAll,
     ] = await Promise.all([
       Employee.countDocuments({}),
       Employee.countDocuments({ employmentStatus: 'active' }),
@@ -990,7 +1051,15 @@ exports.getDashboard = async (req, res) => {
       Employee.find({ employmentStatus: { $ne: 'terminated' } })
         .select('firstName lastName arabicName iqamaNumber ' + EXPIRY_DOCS.map((d) => d.field).join(' '))
         .limit(5000).lean(),
+      // Company licenses & subscriptions — few rows, pull all and compute in JS.
+      CompanyLicense.find({}).select('name category location expiryDate').lean(),
     ]);
+
+    // Licenses about to lapse (or already expired), soonest first.
+    const expiringLicenses = (licensesAll || [])
+      .filter((l) => l.expiryDate && l.expiryDate <= in60)
+      .map((l) => ({ _id: l._id, name: l.name, category: l.category, location: l.location, expiryDate: l.expiryDate, expired: l.expiryDate < today }))
+      .sort((a, b) => (a.expiryDate < b.expiryDate ? -1 : 1));
 
     // Flatten every employee × document into a single sorted "expiring/expired" feed.
     const expiringDocs = [];
@@ -1015,6 +1084,9 @@ exports.getDashboard = async (req, res) => {
         pendingLeaves, openRequests, assignedAssets,
         expiringDocsCount: expiringDocs.length,
         expiredDocsCount: expiringDocs.filter((d) => d.expired).length,
+        licensesTotal: (licensesAll || []).length,
+        licensesExpiringCount: expiringLicenses.length,
+        licensesExpiredCount: expiringLicenses.filter((l) => l.expired).length,
       },
       byStatus: byStatusAgg.map((r) => ({ status: r._id || 'unknown', count: r.count })),
       byDepartment: byDeptAgg.map((r) => ({ name: r._id, count: r.count })),
@@ -1024,6 +1096,7 @@ exports.getDashboard = async (req, res) => {
       expiringDocs: expiringDocs.slice(0, 100),
       expiringIqamas,
       expiringContracts,
+      expiringLicenses: expiringLicenses.slice(0, 100),
     });
   } catch (error) {
     console.error('getDashboard error:', error);

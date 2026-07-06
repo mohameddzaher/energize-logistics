@@ -32,6 +32,11 @@ const walletTransactionSchema = new mongoose.Schema(
     vendorName: { type: String, trim: true },
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'Driver' },
     driverName: { type: String, trim: true },
+    // Amount-mismatch reason — when the entered amount differs from the expected
+    // value on the dispatch sheet (purchaseValue for purchases, sellingValue for
+    // collections), the user must pick why. 'other' requires a free-text note.
+    mismatchReason: { type: String, enum: ['daily', 'violation', 'other', null], default: null },
+    mismatchNote: { type: String, trim: true },
     // Common
     reference: { type: String, trim: true },
     notes: { type: String, trim: true },

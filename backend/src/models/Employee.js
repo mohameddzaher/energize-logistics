@@ -35,6 +35,10 @@ const employeeSchema = new mongoose.Schema(
     jobTitle: { type: String, trim: true },
     department: { type: String, trim: true },
     hireDate: { type: String }, // YYYY-MM-DD
+    // Actual first day on the job (تاريخ مباشرة العمل). Distinct from hireDate/
+    // contract dates — survives contract renewals so we always know when the
+    // employee actually started with us.
+    actualWorkStartDate: { type: String }, // YYYY-MM-DD
     workLocation: { type: String, trim: true },
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
     employmentStatus: {

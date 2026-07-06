@@ -15,7 +15,7 @@ export const EMPTY_EMPLOYEE = {
   firstName: '', lastName: '', arabicName: '', employeeNumber: '', gender: '', dateOfBirth: '', nationality: '',
   idType: 'iqama', iqamaNumber: '', iqamaExpiry: '', nationalId: '', passportNumber: '', passportExpiry: '',
   qiwaContractNumber: '', gosiNumber: '', absherStatus: '', sponsorName: '', workPermitExpiry: '',
-  jobTitle: '', department: '', hireDate: '', workLocation: '', branch: '', employmentStatus: 'active',
+  jobTitle: '', department: '', hireDate: '', actualWorkStartDate: '', workLocation: '', branch: '', employmentStatus: 'active',
   phone: '', email: '', address: '', emergencyContactName: '', emergencyContactPhone: '',
   basicSalary: 0, allowances: 0, directManager: '', notes: '',
   iban: '', bank: '', project: '', registerNumber: '', absherNumber: '', companyNumber: '', originCountryNumber: '',
@@ -130,6 +130,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={tx.jobTitle}><TextInput value={form.jobTitle} onChange={(e) => set('jobTitle', e.target.value)} /></Field>
         <Field label={tx.department}><TextInput value={form.department} onChange={(e) => set('department', e.target.value)} /></Field>
         <Field label={tx.hireDate}><TextInput type="date" value={form.hireDate || ''} onChange={(e) => set('hireDate', e.target.value)} /></Field>
+        <Field label={tx.actualWorkStartDate}><TextInput type="date" value={form.actualWorkStartDate || ''} onChange={(e) => set('actualWorkStartDate', e.target.value)} /></Field>
         <Field label={tx.workLocation}><TextInput value={form.workLocation} onChange={(e) => set('workLocation', e.target.value)} /></Field>
         <Field label={tx.branch}><Select value={form.branch} onChange={(e) => set('branch', e.target.value)}><option value="">—</option>{branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}</Select></Field>
         <Field label={tx.directManager}><Select value={form.directManager} onChange={(e) => set('directManager', e.target.value)}><option value="">—</option>{managers.map((m) => <option key={m._id} value={m._id}>{m.firstName} {m.lastName}</option>)}</Select></Field>

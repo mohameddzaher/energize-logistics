@@ -37,8 +37,11 @@ const ROLE_FIELD_ACCESS = {
   super_admin: [...FIELD_GROUPS.application, ...FIELD_GROUPS.operations, ...FIELD_GROUPS.manual_moderator, ...FIELD_GROUPS.collections],
   moderator: [...FIELD_GROUPS.application, ...FIELD_GROUPS.manual_moderator],
   operations_manager: FIELD_GROUPS.operations,
-  admin: FIELD_GROUPS.collections,
+  admin: [...FIELD_GROUPS.collections, 'accountingReview'],
   employee: FIELD_GROUPS.collections,
+  // Finance/collections staff edit the money columns and tick accounting review.
+  finance_manager: [...FIELD_GROUPS.collections, 'accountingReview'],
+  accountant: [...FIELD_GROUPS.collections, 'accountingReview'],
 };
 
 // Filter update body to only include fields the role can edit
@@ -111,6 +114,67 @@ exports.getWorkflows = async (req, res) => {
   } catch (error) {
     console.error('Get workflows error:', error);
     res.status(500).json({ message: 'Failed to load workflows' });
+  }
+};
+
+// Build the same match filter getWorkflows uses (stage/date/search/pendingOnly)
+// so stats and the table always agree. Kept as a helper for the stats endpoint.
+function buildWorkflowFilter({ stage, search, dateFrom, dateTo, pendingOnly }) {
+  const filter = {};
+  if (pendingOnly === 'true') {
+    filter.$and = [
+      { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] },
+      { $or: [{ invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } }] },
+    ];
+  }
+  if (stage) filter.stage = stage;
+  if (dateFrom || dateTo) {
+    filter.createdAt = {};
+    if (dateFrom) filter.createdAt.$gte = new Date(dateFrom + 'T00:00:00.000Z');
+    if (dateTo) filter.createdAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
+  }
+  if (search) {
+    filter.$or = [
+      { reportNumber: { $regex: search, $options: 'i' } },
+      { carOwner: { $regex: search, $options: 'i' } },
+      { carNumber: { $regex: search, $options: 'i' } },
+      { branch: { $regex: search, $options: 'i' } },
+      { invoiceNumber: { $regex: search, $options: 'i' } },
+    ];
+  }
+  return filter;
+}
+
+// GET /api/workflows/stats — aggregates over the WHOLE matching set (not one
+// page): total rows, "invoices not arrived" count, and total purchase value.
+// Powers the operations-page summary cards so they reflect all ~27k records.
+exports.getWorkflowStats = async (req, res) => {
+  try {
+    const filter = buildWorkflowFilter(req.query);
+    const pendingMatch = {
+      ...filter,
+      $and: [
+        ...(filter.$and || []),
+        { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] },
+        { $or: [{ invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } }] },
+      ],
+    };
+    const [total, pendingInvoices, agg] = await Promise.all([
+      OperationsWorkflow.countDocuments(filter),
+      OperationsWorkflow.countDocuments(pendingMatch),
+      OperationsWorkflow.aggregate([
+        { $match: filter },
+        { $group: { _id: null, sumPurchaseValue: { $sum: '$purchaseValue' } } },
+      ]),
+    ]);
+    res.json({
+      total,
+      pendingInvoices,
+      sumPurchaseValue: agg[0]?.sumPurchaseValue || 0,
+    });
+  } catch (error) {
+    console.error('Get workflow stats error:', error);
+    res.status(500).json({ message: 'Failed to load workflow stats' });
   }
 };
 

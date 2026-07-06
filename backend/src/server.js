@@ -11,6 +11,8 @@ const mongoSanitize = require('express-mongo-sanitize');
 
 const connectDB = require('./config/db');
 const { generalLimiter } = require('./middleware/rateLimiter');
+const authenticate = require('./middleware/auth');
+const sectionGate = require('./middleware/sectionGate');
 const { initializeSocket } = require('./websocket/socketManager');
 const { startWalletAutoCloseJob } = require('./jobs/walletAutoClose');
 const { startSyncScheduler: startB2CSheetSync, migrateLegacySingletonIndex: migrateB2CSheetIndex } = require('./services/b2cGoogleSheetSyncService');
@@ -124,13 +126,18 @@ if (process.env.NODE_ENV !== 'production') {
 app.use('/api/', generalLimiter);
 
 // API Routes
+// Section-owned prefixes are wrapped with authenticate + sectionGate(<section>)
+// so the super_admin's dynamic role→section permissions are enforced on the API
+// (view = read-only, none = 403, and grants let a permitted role through). The
+// routers authenticate again internally, but that lookup is cached. Shared
+// prefixes (auth, users, analytics, notifications, tasks, ...) stay ungated.
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/customers', customerRoutes);
-app.use('/api/invoices', invoiceRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/collections', collectionRoutes);
-app.use('/api/disputes', disputeRoutes);
+app.use('/api/invoices', authenticate, sectionGate('Customers & Finance'), invoiceRoutes);
+app.use('/api/payments', authenticate, sectionGate('Customers & Finance'), paymentRoutes);
+app.use('/api/collections', authenticate, sectionGate('Customers & Finance'), collectionRoutes);
+app.use('/api/disputes', authenticate, sectionGate('Customers & Finance'), disputeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);
@@ -141,26 +148,32 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/expense-categories', expenseCategoryRoutes);
-app.use('/api/wallet', walletRoutes);
+app.use('/api/wallet', authenticate, sectionGate('Operations'), walletRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/workshop', workshopRoutes);
+app.use('/api/workshop', authenticate, sectionGate('Workshop'), workshopRoutes);
 app.use('/api/complaints', complaintRoutes);
-app.use('/api/b2c', b2cRoutes);
-app.use('/api/remote', remoteRoutes);
-app.use('/api/hr', hrRoutes);
-app.use('/api/crm', crmRoutes);
-app.use('/api/accounting', accountingRoutes);
-app.use('/api/sales', salesRoutes);
+app.use('/api/b2c', authenticate, sectionGate('B2C'), b2cRoutes);
+app.use('/api/remote', authenticate, sectionGate('Remote'), remoteRoutes);
+app.use('/api/hr', authenticate, sectionGate('HR'), hrRoutes);
+app.use('/api/crm', authenticate, sectionGate('CRM'), crmRoutes);
+app.use('/api/accounting', authenticate, sectionGate('Accounting'), accountingRoutes);
+app.use('/api/sales', authenticate, sectionGate('Sales'), salesRoutes);
 app.use('/api/kpi', kpiRoutes);
-app.use('/api/procurement', procurementRoutes);
+app.use('/api/procurement', authenticate, sectionGate('Procurement'), procurementRoutes);
 app.use('/api/lookups', lookupRoutes);
-app.use('/api/customs-clearance', customsClearanceRoutes);
-app.use('/api/vehicles', vehicleRoutes);
-app.use('/api/ops', opsRoutes);
+app.use('/api/customs-clearance', authenticate, sectionGate('Customs'), customsClearanceRoutes);
+app.use('/api/vehicles', authenticate, sectionGate('Vehicles'), vehicleRoutes);
+// /api/ops has ONE public route (POST /webhook, secured by a shared secret in
+// the controller) declared before its internal auth — skip the section gate for
+// it so the external UPL webhook keeps working.
+app.use('/api/ops', (req, res, next) => {
+  if (req.path === '/webhook') return next();
+  authenticate(req, res, (err) => (err ? next(err) : sectionGate('Operations Platform')(req, res, next)));
+}, opsRoutes);
 app.use('/api/section-work', sectionWorkRoutes);
-app.use('/api/b2c-wallet', b2cWalletRoutes);
-app.use('/api/crm-vendors', crmVendorRoutes);
-app.use('/api/ls2', ls2Routes);
+app.use('/api/b2c-wallet', authenticate, sectionGate('B2C'), b2cWalletRoutes);
+app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
+app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
 
 // Health check
 app.get('/api/health', (req, res) => {

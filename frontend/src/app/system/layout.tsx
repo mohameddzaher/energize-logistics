@@ -22,6 +22,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { homeRouteForRole } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
+import { isManagedSection, canAccessSection } from '@/lib/sections';
 
 interface NavItem {
   href: string;
@@ -43,7 +44,7 @@ export default function SystemLayout({ children }: { children: React.ReactNode }
 }
 
 function SystemLayoutInner({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout, isAuthenticated } = useAuth();
+  const { user, loading, logout, isAuthenticated, refreshUser } = useAuth();
   const { lang, toggleLang, isRTL } = useLanguage();
   const L = getLayoutTranslations(lang);
   const router = useRouter();
@@ -190,6 +191,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/hr/leaves', label: L.hrLeaves, icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/requests', label: L.hrRequests, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/custody', label: L.hrCustody, icon: <Package className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/licenses', label: lang === 'ar' ? 'التراخيص والاشتراكات' : 'Licenses & Subscriptions', icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/leave-types', label: L.hrLeaveTypes, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     // Self Service (HR pages every employee sees)
     { href: '/system/hr/me', label: L.hrMyProfile, icon: <Briefcase className="w-5 h-5" />, roles: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager'], section: 'Self Service' },
@@ -250,6 +252,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/expense-categories', label: L.expenseCategories, icon: <Tags className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
     { href: '/system/settings/reference-data', label: lang === 'ar' ? 'القوائم المرجعية' : 'Reference Data', icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'admin', 'procurement_manager', 'purchasing', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'sales_manager'], section: 'Admin' },
     { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
+    { href: '/system/permissions', label: lang === 'ar' ? 'الأدوار والصلاحيات' : 'Roles & Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Admin' },
     { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'workshop_manager', 'operations_manager'], section: 'Admin' },
     // Client portal
@@ -263,9 +266,27 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     fetchNotifications();
   }, []));
 
+  // Live permission changes: when the super_admin edits a role's section access,
+  // every logged-in user of that role refetches /me so their sidebar + access
+  // update immediately without re-login.
+  useSocket('permissions:updated', useCallback((data: { role?: string }) => {
+    if (data?.role && user?.role === data.role) refreshUser();
+  }, [user?.role, refreshUser]));
+
   const filteredNav = navItems.filter((item) => {
-    if (!user || !item.roles.includes(user.role)) return false;
-    // Remote employees only see the remote pages they've been granted.
+    if (!user) return false;
+    // Managed sections are governed by the super_admin permission matrix
+    // (sectionKey → none/view/edit) instead of the static role list. This is
+    // what makes granting/removing a section to a role take effect live.
+    if (isManagedSection(item.section)) {
+      if (!canAccessSection(user.permissions, item.section as string)) return false;
+      if (item.remoteKey && user.role === 'remote_employee') {
+        return Array.isArray(user.remoteAccess) && user.remoteAccess.includes(item.remoteKey);
+      }
+      return true;
+    }
+    // Legacy role-gated sections (Main, Tools, Admin, Self Service, Portal).
+    if (!item.roles.includes(user.role)) return false;
     if (item.remoteKey && user.role === 'remote_employee') {
       return Array.isArray(user.remoteAccess) && user.remoteAccess.includes(item.remoteKey);
     }

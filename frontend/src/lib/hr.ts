@@ -27,7 +27,7 @@ export interface Employee {
   iqamaNumber?: string; iqamaExpiry?: string; nationalId?: string;
   passportNumber?: string; passportExpiry?: string;
   qiwaContractNumber?: string; gosiNumber?: string; absherStatus?: string; sponsorName?: string; workPermitExpiry?: string;
-  jobTitle?: string; department?: string; hireDate?: string; workLocation?: string;
+  jobTitle?: string; department?: string; hireDate?: string; actualWorkStartDate?: string; workLocation?: string;
   branch?: { _id: string; name: string } | string;
   employmentStatus?: 'active' | 'on_leave' | 'suspended' | 'terminated';
   terminatedAt?: string; terminationReason?: string;

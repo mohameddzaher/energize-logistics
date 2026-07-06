@@ -16,6 +16,10 @@ interface User {
   remoteAccess?: string[];
   manager?: { _id: string; firstName: string; lastName: string; email: string; role: string } | string;
   linkedEmployee?: { _id: string; firstName: string; lastName: string; employeeNumber?: string; jobTitle?: string } | string;
+  // Effective per-section access set by the super_admin permissions page
+  // (sectionKey → 'none' | 'view' | 'edit'). Drives sidebar visibility and
+  // client-side edit gating. See lib/sections.ts.
+  permissions?: Record<string, 'none' | 'view' | 'edit'>;
 }
 
 interface AuthContextType {

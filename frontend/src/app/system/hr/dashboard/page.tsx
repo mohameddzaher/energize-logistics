@@ -14,10 +14,12 @@ interface ExpiringDoc {
   employeeId: string; employeeName: string; arabicName?: string;
   docType: string; docEn: string; docAr: string; expiry: string; expired: boolean;
 }
+interface ExpiringLicense { _id: string; name: string; category: string; location?: string; expiryDate: string; expired: boolean; }
 interface Dash {
   summary: {
     totalEmployees: number; activeEmployees: number; onLeaveCount: number; suspendedCount: number; terminatedCount: number;
     pendingLeaves: number; openRequests: number; assignedAssets: number; expiringDocsCount: number; expiredDocsCount: number;
+    licensesTotal: number; licensesExpiringCount: number; licensesExpiredCount: number;
   };
   byDepartment: { name: string; count: number }[];
   byProject: { name: string; count: number }[];
@@ -25,6 +27,7 @@ interface Dash {
   recentHires: { _id: string; firstName: string; lastName: string; arabicName?: string; jobTitle?: string; hireDate?: string }[];
   expiringDocs: ExpiringDoc[];
   expiringContracts: { _id: string; employee: any; endDate?: string }[];
+  expiringLicenses: ExpiringLicense[];
 }
 
 export default function HRDashboardPage() {
@@ -46,6 +49,7 @@ export default function HRDashboardPage() {
   useSocket('hr:leave', useCallback(() => load(), [load]));
   useSocket('hr:request', useCallback(() => load(), [load]));
   useSocket('hr:contract', useCallback(() => load(), [load]));
+  useSocket('hr:license', useCallback(() => load(), [load]));
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -70,6 +74,13 @@ export default function HRDashboardPage() {
         <Link href="/system/hr/requests"><StatCard label={tx.openRequests} value={s?.openRequests ?? 0} accent="text-blue-600" /></Link>
         <Link href="/system/hr/custody"><StatCard label={tx.assignedCustody} value={s?.assignedAssets ?? 0} /></Link>
         <StatCard label={ar ? 'مستندات تنتهي قريباً' : 'Docs expiring soon'} value={s?.expiringDocsCount ?? 0} accent={(s?.expiredDocsCount ?? 0) > 0 ? 'text-red-600' : 'text-amber-700'} />
+      </div>
+
+      {/* Licenses & subscriptions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Link href="/system/hr/licenses"><StatCard label={ar ? 'التراخيص والاشتراكات' : 'Licenses & Subscriptions'} value={s?.licensesTotal ?? 0} /></Link>
+        <Link href="/system/hr/licenses"><StatCard label={ar ? 'تراخيص تنتهي خلال ٦٠ يوم' : 'Licenses expiring ≤60d'} value={s?.licensesExpiringCount ?? 0} accent="text-amber-700" /></Link>
+        <Link href="/system/hr/licenses"><StatCard label={ar ? 'تراخيص منتهية' : 'Licenses expired'} value={s?.licensesExpiredCount ?? 0} accent="text-red-600" /></Link>
       </div>
 
       {/* Expiring documents (unified) + expiring contracts */}
@@ -118,6 +129,31 @@ export default function HRDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Licenses & subscriptions expiring / expired */}
+      {!!data?.expiringLicenses?.length && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2 text-slate-900 font-semibold"><AlertTriangle className="w-4 h-4 text-amber-700" /> {ar ? 'تراخيص واشتراكات قاربت على الانتهاء' : 'Licenses & subscriptions expiring / expired'}</div>
+          <div className="max-h-[360px] overflow-y-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                {data!.expiringLicenses.map((l) => {
+                  const b = expiryBadge(l.expiryDate, lang);
+                  return (
+                    <tr key={l._id} className="border-b border-slate-200/70 hover:bg-slate-50">
+                      <td className="px-4 py-2.5"><Link href="/system/hr/licenses" className="text-slate-900 hover:text-[#f37121]">{l.name}</Link></td>
+                      <td className="px-4 py-2.5 text-slate-500">{l.category}</td>
+                      <td className="px-4 py-2.5 text-slate-500">{l.location || '—'}</td>
+                      <td className="px-4 py-2.5 text-slate-500">{fmtDate(l.expiryDate)}</td>
+                      <td className="px-4 py-2.5 text-end">{b && <SmallBadge bg={b.bg} text={b.text} label={b.label} />}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Breakdowns + recent hires */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

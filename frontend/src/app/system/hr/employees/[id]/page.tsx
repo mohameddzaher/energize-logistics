@@ -554,6 +554,7 @@ function Overview({ e, lang, tx, vtx }: { e: Employee; lang: 'en' | 'ar'; tx: Re
     [tx.absherStatus, e.absherStatus],
     [tx.sponsor, e.sponsorName],
     [tx.hireDate, fmtDate(e.hireDate)],
+    [tx.actualWorkStartDate, fmtDate(e.actualWorkStartDate)],
     [tx.workLocation, e.workLocation],
     [tx.directManager, userName(e.directManager)],
     [tx.phone, e.phone],

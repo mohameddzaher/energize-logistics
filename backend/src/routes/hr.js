@@ -67,6 +67,12 @@ router.get('/leaves', authorize(...STAFF), hr.listLeaves);
 router.get('/requests', authorize(...STAFF), hr.listRequests);
 router.patch('/requests/:id/status', authorize(...STAFF), hr.updateRequestStatus);
 
+// Company licenses & subscriptions (التراخيص والاشتراكات) — staff only.
+router.get('/licenses', authorize(...STAFF), hr.listLicenses);
+router.post('/licenses', authorize(...STAFF), hr.createLicense);
+router.put('/licenses/:id', authorize(...STAFF), hr.updateLicense);
+router.delete('/licenses/:id', authorize(...STAFF), hr.deleteLicense);
+
 router.get('/assets', authorize(...STAFF), hr.listAssets);
 router.post('/assets', authorize(...STAFF), hr.createAsset);
 router.put('/assets/:id', authorize(...STAFF), hr.updateAsset);

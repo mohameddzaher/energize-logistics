@@ -4,6 +4,11 @@ const VehicleAuthorization = require('../models/VehicleAuthorization');
 const VehicleAccident = require('../models/VehicleAccident');
 const Employee = require('../models/Employee');
 const { emitToAll } = require('../websocket/socketManager');
+const cache = require('../utils/ttlCache');
+
+// The vehicles dashboard runs ~14 aggregations and is the same for everyone.
+// Cache it briefly; any vehicle/authorization/accident write clears `veh:`.
+const VEH_DASH_TTL = 30 * 1000;
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
 // The Vehicles section is shared by super admin, HR and Accounting.
@@ -21,7 +26,8 @@ const populateVehicle = (q) =>
     .populate('currentEmployee', EMP_FIELDS)
     .populate({ path: 'currentAuthorization', populate: { path: 'employee', select: EMP_FIELDS } });
 
-const emit = (event, payload) => { try { emitToAll(event, payload); } catch (e) {} };
+// Every vehicle mutation flows through emit() → also drop the cached dashboard.
+const emit = (event, payload) => { try { emitToAll(event, payload); } catch (e) {} cache.clear('veh:'); };
 
 // Sync a vehicle's denormalized pointers to its single active authorization.
 const syncVehiclePointers = async (vehicleId) => {
@@ -431,6 +437,9 @@ exports.getEmployeeHistory = async (req, res) => {
 // ── Dashboard ───────────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res) => {
   try {
+    const hit = cache.get('veh:dashboard');
+    if (hit) return res.json(hit);
+
     const now = today();
     const soon = new Date(); soon.setDate(soon.getDate() + 30);
     const soonStr = soon.toISOString().slice(0, 10);
@@ -475,7 +484,7 @@ exports.getDashboard = async (req, res) => {
     const openExpiring = expiringAuths.filter((a) => a.documentExpiry); // already filtered, guard
     const expiredCount = openExpiring.filter((a) => a.documentExpiry < now).length;
 
-    res.json({
+    const payload = {
       totals: {
         vehicles: totalVehicles,
         authorized: statusMap.authorized || 0,
@@ -502,7 +511,9 @@ exports.getDashboard = async (req, res) => {
       expiringAuthorizations: openExpiring,
       recentAccidents,
       recentAuthorizations: recentAuths,
-    });
+    };
+    cache.set('veh:dashboard', payload, VEH_DASH_TTL);
+    res.json(payload);
   } catch (error) {
     console.error('vehicle getDashboard error:', error);
     res.status(500).json({ message: 'Failed to load dashboard' });

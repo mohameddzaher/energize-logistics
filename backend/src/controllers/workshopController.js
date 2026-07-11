@@ -5,7 +5,11 @@ const InventoryItem = require('../models/InventoryItem');
 const Technician = require('../models/Technician');
 const MaintenanceType = require('../models/MaintenanceType');
 const User = require('../models/User');
-const { emitToAll } = require('../websocket/socketManager');
+const socket = require('../websocket/socketManager');
+const cache = require('../utils/ttlCache');
+// Wrap emit so every workshop mutation also drops the cached dashboard (`ws:`).
+const emitToAll = (event, payload) => { try { socket.emitToAll(event, payload); } catch (e) {} cache.clear('ws:'); };
+const WS_DASH_TTL = 30 * 1000;
 const logAudit = require('../utils/auditLogger');
 
 // ═══════════════════════════════════════════════════════════
@@ -631,6 +635,9 @@ const deleteWorkshopTask = async (req, res) => {
 
 const getWorkshopDashboard = async (req, res) => {
   try {
+    const hit = cache.get('ws:dashboard');
+    if (hit) return res.json(hit);
+
     const now = new Date();
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
@@ -853,7 +860,7 @@ const getWorkshopDashboard = async (req, res) => {
 
     const weekChange = lastWeek > 0 ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : 0;
 
-    res.json({
+    const payload = {
       kpis,
       requestsPerDay,
       durationTrend,
@@ -865,7 +872,9 @@ const getWorkshopDashboard = async (req, res) => {
       topVehicles,
       weekComparison: { thisWeek, lastWeek, change: weekChange },
       lowStockCount,
-    });
+    };
+    cache.set('ws:dashboard', payload, WS_DASH_TTL);
+    res.json(payload);
   } catch (error) {
     console.error('Error fetching workshop dashboard:', error);
     res.status(500).json({ message: 'Failed to fetch workshop dashboard' });

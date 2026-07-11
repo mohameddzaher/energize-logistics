@@ -1,12 +1,11 @@
-// Always go through the same origin in the browser. Next.js rewrites proxy
-// /api/* to the backend (see next.config.ts), which keeps the auth cookies
-// first-party. Cross-origin cookies are blocked by Safari/iOS ITP and many
-// mobile browsers — that breaks `me`, refresh, and every authed request,
-// which is why mobile users see empty B2C data and get bounced to login on
-// refresh. Server-side rendering still uses the absolute URL.
-const API_URL = typeof window !== 'undefined'
-  ? ''
-  : (process.env.NEXT_PUBLIC_API_URL || '');
+// Call the backend DIRECTLY at api.<domain>. It's a same-SITE subdomain of the
+// frontend, so the SameSite=None;Secure auth cookies are still sent — the
+// Safari/iOS ITP problem only affects cross-SITE (different registrable domain,
+// e.g. *.onrender.com), NOT a subdomain. Going direct skips Netlify's
+// same-origin /api proxy, which detours through a far region and made every API
+// call ~4x slower (measured 1.1s vs 0.25s). Falls back to same-origin ('') when
+// NEXT_PUBLIC_API_URL is unset (e.g. local dev via the Next.js rewrite).
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;

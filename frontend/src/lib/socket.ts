@@ -1,19 +1,17 @@
 'use client';
 import { io, Socket } from 'socket.io-client';
 
-// Connect to the same origin so the handshake's Cookie header is first-party.
-// Mobile browsers block third-party cookies, which breaks socket auth when
-// pointed cross-origin. The window.location.origin path is rewritten to the
-// backend by Next.js (see next.config.ts /socket.io rewrite). Polling-only
-// transport keeps things working through the Netlify proxy, which doesn't
-// reliably upgrade WebSockets.
+// Connect DIRECTLY to the backend at api.<domain> (a same-SITE subdomain), so
+// the SameSite=None;Secure cookie is still sent on the handshake — no Safari/iOS
+// ITP problem (that only hits cross-SITE domains). Going direct (instead of the
+// Netlify same-origin proxy) lets us actually use WebSockets — nginx upgrades
+// them — instead of slow long-polling.
 let socket: Socket | null = null;
 
 export const getSocket = (): Socket => {
   if (!socket) {
-    const url = typeof window !== 'undefined'
-      ? window.location.origin
-      : (process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001');
+    const url = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL
+      || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001');
     socket = io(url, {
       withCredentials: true,
       autoConnect: false,
@@ -21,7 +19,7 @@ export const getSocket = (): Socket => {
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      transports: ['polling', 'websocket'],
+      transports: ['websocket', 'polling'],
     });
   }
   return socket;

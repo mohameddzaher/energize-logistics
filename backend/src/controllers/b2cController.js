@@ -6,6 +6,13 @@ const B2CExcelUpload = require('../models/B2CExcelUpload');
 const Branch = require('../models/Branch');
 const User = require('../models/User');
 const logAudit = require('../utils/auditLogger');
+const cache = require('../utils/ttlCache');
+
+// Short-lived caches so re-selecting/switching months is instant instead of
+// recomputing the whole dashboard each time. Data changes via sheet-sync/manual
+// entry bust the cache (cache.clear('b2c:')), so staleness is bounded.
+const B2C_DASH_TTL = 60 * 1000;
+const B2C_LIST_TTL = 60 * 1000;
 const { emitToAll } = require('../websocket/socketManager');
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -67,6 +74,7 @@ exports.createProject = async (req, res) => {
       createdBy: req.user._id,
     });
     await logAudit({ user: req.user._id, action: 'create_b2c_project', entity: 'B2CProject', entityId: project._id, changes: { after: { name, code } }, ipAddress: req.ip });
+    cache.clear('b2c:');
     try { emitToAll('b2c:project:created', { project }); } catch (e) {}
     res.status(201).json({ project });
   } catch (error) {
@@ -85,6 +93,7 @@ exports.updateProject = async (req, res) => {
     );
     if (!project) return res.status(404).json({ message: 'Project not found' });
     await logAudit({ user: req.user._id, action: 'update_b2c_project', entity: 'B2CProject', entityId: project._id, changes: { after: { name, code, isActive } }, ipAddress: req.ip });
+    cache.clear('b2c:');
     try { emitToAll('b2c:project:updated', { project }); } catch (e) {}
     res.json({ project });
   } catch (error) {
@@ -112,6 +121,10 @@ exports.deleteProject = async (req, res) => {
 
 exports.getReps = async (req, res) => {
   try {
+    const repsCacheKey = `b2c:reps:${req.user._id}:${JSON.stringify(req.query || {})}`;
+    const cachedReps = cache.get(repsCacheKey);
+    if (cachedReps) return res.json(cachedReps);
+
     const filter = {};
     if (req.query.active === 'true') filter.isActive = true;
     if (req.query.project) filter.project = req.query.project;
@@ -135,8 +148,11 @@ exports.getReps = async (req, res) => {
     const reps = await B2CRep.find(filter)
       .populate('project', 'name code color monthlyTarget dailyTarget expectedWorkingDays')
       .populate('branch', 'name code city')
-      .sort({ englishName: 1 });
-    res.json({ reps });
+      .sort({ englishName: 1 })
+      .lean();
+    const payload = { reps };
+    cache.set(repsCacheKey, payload, B2C_LIST_TTL);
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to load reps' });
   }
@@ -165,6 +181,7 @@ exports.createRep = async (req, res) => {
     try { emitToAll('b2c:rep:created', { rep }); } catch (e) {}
 
     const populated = await B2CRep.findById(rep._id).populate('project', 'name code').populate('branch', 'name code city');
+    cache.clear('b2c:');
     res.status(201).json({ rep: populated });
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to create rep' });
@@ -180,6 +197,7 @@ exports.updateRep = async (req, res) => {
     if (!rep) return res.status(404).json({ message: 'Rep not found' });
 
     await logAudit({ user: req.user._id, action: 'update_b2c_rep', entity: 'B2CRep', entityId: rep._id, ipAddress: req.ip });
+    cache.clear('b2c:');
     try { emitToAll('b2c:rep:updated', { rep }); } catch (e) {}
     res.json({ rep });
   } catch (error) {
@@ -681,6 +699,7 @@ exports.upsertDailyOrder = async (req, res) => {
     }
 
     try { emitToAll('b2c:order:upserted', { order: entry }); } catch (e) {}
+    cache.clear('b2c:'); // data changed → drop cached dashboards/lists
     res.json({ order: entry });
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ message: 'Entry already exists for this rep on this date' });
@@ -829,6 +848,7 @@ exports.bulkUpsertDailyOrders = async (req, res) => {
       });
     }
 
+    cache.clear('b2c:'); // data changed → drop cached dashboards/lists
     try { emitToAll('b2c:bulk:upserted', { inserted, updated, skipped }); } catch (e) {}
     res.json({
       inserted, updated, skipped,
@@ -858,6 +878,12 @@ exports.deleteDailyOrder = async (req, res) => {
 
 exports.getDashboardSummary = async (req, res) => {
   try {
+    // Serve an identical (user + filters) dashboard from cache — makes month
+    // switching feel instant. Keyed by user (scope differs per user) + query.
+    const cacheKey = `b2c:dash:${req.user._id}:${JSON.stringify(req.query || {})}`;
+    const cachedDash = cache.get(cacheKey);
+    if (cachedDash) return res.json(cachedDash);
+
     const filter = {};
     if (req.query.project) filter.project = new mongoose.Types.ObjectId(String(req.query.project));
     if (req.query.branch) filter.branch = new mongoose.Types.ObjectId(String(req.query.branch));
@@ -1193,7 +1219,7 @@ exports.getDashboardSummary = async (req, res) => {
     ]);
     const monthsAvailable = monthsAggregate.map((a) => ({ year: a._id.year, month: a._id.month, entries: a.count }));
 
-    res.json({
+    const payload = {
       kpis,
       byMonth, byProject, byBranch, byRep,
       byDay,
@@ -1206,7 +1232,9 @@ exports.getDashboardSummary = async (req, res) => {
       mostConsistent,
       bestSingleDays,
       topTeamDays,
-    });
+    };
+    cache.set(cacheKey, payload, B2C_DASH_TTL);
+    res.json(payload);
   } catch (error) {
     console.error('Dashboard error:', error);
     res.status(500).json({ message: error.message || 'Failed to load dashboard' });

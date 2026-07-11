@@ -23,8 +23,16 @@ router.post('/refresh', ADMIN, ls2.refresh);
 router.get('/alerts', ls2.listAlerts);
 router.patch('/alerts/:id/ack', ls2.acknowledgeAlert);
 
+router.get('/mileage', ls2.getMileage); // fleet distance over a period
+router.post('/identity/refresh', ADMIN, ls2.refreshIdentity); // re-pull VIN/brand/SIM…
+
 router.get('/vehicles', ls2.listVehicles);
 router.get('/vehicles/:id', ls2.getVehicle);
+router.get('/vehicles/:id/mileage', ls2.getVehicleMileage); // ?from&to[&source=report]
+router.get('/vehicles/:id/history', ls2.getVehicleHistory); // daily distance series
+router.get('/vehicles/:id/trips', ls2.getVehicleTrips); // ?from&to — trips + derived stops
+router.get('/vehicles/:id/fuel', ls2.getVehicleFuel); // ?from&to — CAN fuel consumption
+router.get('/vehicles/:id/track', ls2.getVehicleTrack); // ?from&to — GPS polyline
 router.post('/vehicles/:id/service', ADMIN, ls2.markServiced);
 
 module.exports = router;

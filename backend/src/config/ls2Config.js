@@ -27,8 +27,13 @@ const FLAGS = {
   LAST_MESSAGE: 1024,
   SENSORS: 2048,
   COUNTERS: 8192,
+  MAINTENANCE: 0x8000, // 32768 — service intervals (`si`): the REAL per-vehicle
+                       // maintenance plan configured in Wialon (Group A/B/C, TR…).
 };
-const POLL_FLAGS = FLAGS.BASE | FLAGS.LAST_MESSAGE | FLAGS.SENSORS | FLAGS.COUNTERS; // 11265
+// 44033 = base + last-message&position + sensors + counters + maintenance. The
+// maintenance bit adds each unit's `si` (service intervals) so we mirror Wialon's
+// own service plan instead of inventing a fixed cycle.
+const POLL_FLAGS = FLAGS.BASE | FLAGS.LAST_MESSAGE | FLAGS.SENSORS | FLAGS.COUNTERS | FLAGS.MAINTENANCE; // 44033
 
 // A raw sensor/tire reading equal to this (or temps above MAX_VALID_TIRE_TEMP) is
 // a disconnected/faulty TPMS channel — Wialon reports 65535 as "no data".
@@ -58,14 +63,33 @@ const DEFAULT_THRESHOLDS = {
   idleMinutes: 30, // engine on + not moving for this long → excessive idling
 };
 
-// Default maintenance plan (periodic service by distance). Editable per settings
-// and per vehicle. "Every serviceIntervalKm, alert alertBeforeKm before due."
+// Maintenance plan. The service INTERVALS themselves now come straight from
+// Wialon (each unit's `si`): interval km + the odometer at the last actual
+// service, so "next service = last-service odometer + interval" (matches what
+// Wialon shows). We only keep the pre-alert window here; serviceIntervalKm is a
+// fallback for the rare unit with no Wialon intervals configured.
 const DEFAULT_MAINTENANCE = {
-  serviceIntervalKm: 10000, // periodic service every 10,000 km
-  alertBeforeKm: 3000, // start alerting 3,000 km before the next service
-  engineHoursInterval: 500, // optional: service by engine hours too
-  engineHoursAlertBefore: 50,
+  serviceIntervalKm: 10000, // fallback only — used when a unit has no Wialon `si`
+  alertBeforeKm: 3000, // raise a "service due soon" alert this many km before due
+  alertBeforeDays: 14, // …or this many days before a time-based service is due
 };
+
+// Wialon report engine — authoritative per-vehicle history over any date range.
+// Discovered from the live account; overridable via env. Run PER-UNIT (fleet-wide
+// exec_report times out at the gateway). Group templates also accept a unit id.
+const REPORTS = {
+  RESOURCE_ID: parseInt(process.env.LS2_REPORT_RESOURCE_ID || '91826', 10),
+  DISTANCE_TEMPLATE_ID: parseInt(process.env.LS2_REPORT_DISTANCE_TMPL || '7', 10), // Cumulative distance
+  TRIPS_TEMPLATE_ID: parseInt(process.env.LS2_REPORT_TRIPS_TMPL || '6', 10), // "Trips with Map" — INDIVIDUAL trips
+  FUEL_CONSUMED_TEMPLATE_ID: parseInt(process.env.LS2_REPORT_FUEL_USED_TMPL || '11', 10), // Fuel Consumed (CAN)
+  ALL_UNITS_GROUP_ID: parseInt(process.env.LS2_ALL_UNITS_GROUP_ID || '92335', 10),
+};
+
+// Extra unit data-flags. IDENTITY = base + custom fields (0x8: ICCID, install
+// date, LS Unit ID) + profile fields (0x800000: VIN, brand, year, plate, type).
+// Fetched on a slow cadence (identity rarely changes) so the 20s telemetry poll
+// stays lean.
+const IDENTITY_FLAGS = FLAGS.BASE | 0x8 | 0x800000; // 8388617
 
 // Alert severities (drives colour + priority in the UI).
 const SEVERITY = { CRITICAL: 'critical', WARNING: 'warning', INFO: 'info' };
@@ -99,6 +123,8 @@ module.exports = {
   MAX_VALID_TIRE_TEMP,
   DEFAULT_THRESHOLDS,
   DEFAULT_MAINTENANCE,
+  REPORTS,
+  IDENTITY_FLAGS,
   SEVERITY,
   ALERT_TYPES,
   isConfigured: () => Boolean(BASE_URL && TOKEN),

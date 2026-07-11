@@ -11,14 +11,24 @@
 const client = require('../services/ls2Client');
 const { normalize } = require('../services/ls2Sensors');
 const { evaluate } = require('../services/ls2AlertEngine');
+const { syncIdentity } = require('../services/ls2Identity');
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 const Ls2Alert = require('../models/Ls2Alert');
 const Ls2Settings = require('../models/Ls2Settings');
+const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
 
+// Cairo-local calendar day as 'YYYY-MM-DD' — the key for daily odometer snapshots.
+const cairoDate = (d = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(d);
+
 let timer = null;
 let running = false;
+let tickCount = 0;
+// Re-sync vehicle identity (VIN/brand/plate/SIM…) every ~30 min (identity is
+// near-static). At a 20s poll that's every 90 ticks.
+const IDENTITY_EVERY_TICKS = 90;
 
 const VEHICLE_FIELDS = [
   'name', 'plate', 'driver', 'position', 'lastMessageAt', 'ignition', 'moving', 'speed', 'rpm',
@@ -48,20 +58,50 @@ async function tick() {
 
     const vehicleOps = [];
     const alertOps = [];
+    const odoOps = [];
     let newCritical = 0;
     let totalActive = 0;
     const now = new Date();
+    const today = cairoDate(now);
 
     for (const unit of units) {
       const tel = normalize(unit);
       if (!tel) continue;
       const vehicleDoc = vById.get(tel.unitId) || null;
-      const { conditions, status, alertLevel } = evaluate(tel, vehicleDoc, settings);
+      const { conditions, status, alertLevel, maintenance } = evaluate(tel, vehicleDoc, settings);
       totalActive += conditions.length;
 
       // --- Vehicle snapshot upsert ---
       const set = { status, alertLevel, activeAlertCount: conditions.length, lastSyncedAt: now };
       for (const f of VEHICLE_FIELDS) set[f] = tel[f];
+      // Mirror Wialon's maintenance plan + its rollup for the fleet list.
+      if (maintenance) {
+        set.serviceIntervals = maintenance.intervals;
+        set.maintenanceStatus = maintenance.statusLevel;
+        set.maintenanceOverdueCount = maintenance.overdueCount;
+        set.maintenanceDueCount = maintenance.dueCount;
+        set.kmToService = maintenance.kmToService;
+        set.nextServiceKm = maintenance.nextServiceKm;
+        set.nextServiceName = maintenance.nextServiceName || '';
+        set.upcomingKm = maintenance.upcomingKm;
+        set.upcomingServiceKm = maintenance.upcomingServiceKm;
+        set.upcomingServiceName = maintenance.upcomingServiceName || '';
+      }
+
+      // --- Daily odometer snapshot (keep the day's highest reading) ---
+      if (tel.odometerKm != null) {
+        odoOps.push({
+          updateOne: {
+            filter: { unitId: tel.unitId, date: today },
+            update: {
+              $max: { odometerKm: tel.odometerKm },
+              $set: { engineHours: tel.engineHours, plate: tel.plate },
+              $setOnInsert: { unitId: tel.unitId, date: today },
+            },
+            upsert: true,
+          },
+        });
+      }
       vehicleOps.push({
         updateOne: {
           filter: { unitId: tel.unitId },
@@ -104,12 +144,19 @@ async function tick() {
 
     if (vehicleOps.length) await Ls2Vehicle.bulkWrite(vehicleOps, { ordered: false });
     if (alertOps.length) await Ls2Alert.bulkWrite(alertOps, { ordered: false });
+    if (odoOps.length) await Ls2OdometerDaily.bulkWrite(odoOps, { ordered: false });
 
     // Bust the dashboard cache so the refetch triggered by ls2:updated returns the
     // snapshot we just wrote — no stale window, truly live.
     cache.clear('ls2:');
     emitToAll('ls2:updated', { at: Date.now(), vehicles: units.length, activeAlerts: totalActive, newCritical });
     if (newCritical > 0) emitToAll('ls2:alert', { at: Date.now(), newCritical });
+
+    // Slow identity sync (first tick, then every ~30 min).
+    if (tickCount % IDENTITY_EVERY_TICKS === 0) {
+      syncIdentity().catch((e) => { if (process.env.NODE_ENV !== 'production') console.log('[ls2Poll] identity sync error:', e.message); });
+    }
+    tickCount += 1;
   } catch (e) {
     // transient token/network hiccup — retry next tick
     if (process.env.NODE_ENV !== 'production') console.log('[ls2Poll] tick error:', e.message);

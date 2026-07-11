@@ -30,10 +30,11 @@ function loadLeaflet(): Promise<any> {
   return window.__leafletLoading;
 }
 
-export default function LiveMap({ lat, lng, label, speed, height = 320 }: { lat: number; lng: number; label?: string; speed?: number | null; height?: number }) {
+export default function LiveMap({ lat, lng, label, speed, height = 320, track }: { lat: number; lng: number; label?: string; speed?: number | null; height?: number; track?: { lat: number; lng: number }[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
+  const trackRef = useRef<any>(null);
 
   // Init the map once.
   useEffect(() => {
@@ -58,8 +59,21 @@ export default function LiveMap({ lat, lng, label, speed, height = 320 }: { lat:
     if (!map || !marker || lat == null || lng == null) return;
     marker.setLatLng([lat, lng]);
     if (label) marker.setTooltipContent(`${label}${speed != null ? ` · ${speed} km/h` : ''}`);
-    map.panTo([lat, lng], { animate: true, duration: 0.8 });
-  }, [lat, lng, label, speed]);
+    if (!track || !track.length) map.panTo([lat, lng], { animate: true, duration: 0.8 });
+  }, [lat, lng, label, speed, track]);
+
+  // Draw / clear the route polyline when a track is supplied.
+  useEffect(() => {
+    const map = mapRef.current; const L = (typeof window !== 'undefined' && window.L);
+    if (!map || !L) return;
+    if (trackRef.current) { map.removeLayer(trackRef.current); trackRef.current = null; }
+    if (track && track.length > 1) {
+      const latlngs = track.map((p) => [p.lat, p.lng]);
+      const line = L.polyline(latlngs, { color: '#f37121', weight: 3, opacity: 0.85 }).addTo(map);
+      trackRef.current = line;
+      try { map.fitBounds(line.getBounds(), { padding: [24, 24] }); } catch (e) { /* noop */ }
+    }
+  }, [track]);
 
   return <div ref={containerRef} style={{ height }} className="w-full rounded-b-xl overflow-hidden bg-slate-100" />;
 }

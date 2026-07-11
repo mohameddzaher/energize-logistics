@@ -1,19 +1,29 @@
 'use client';
-// Maintenance — periodic-service tracking driven by the live odometer. Every
-// vehicle shows how far it is from its next service (interval − distance since the
-// last one); the admin tier can record a completed service (which resets the
-// baseline and clears the open service alerts).
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+// Maintenance — a live mirror of each truck's REAL service plan from Location
+// Solutions (Wialon). Every vehicle carries its own service intervals (Group A/B/C,
+// TR Wheels…); each shows when it was last serviced (date + odometer) and how far
+// it is from the next one — next = last-service odometer + interval, exactly as
+// Wialon computes it. Read-only: services are registered inside Location Solutions
+// and reflected here automatically. Expand a row to see every service.
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Wrench, RefreshCw, CheckCircle2 } from 'lucide-react';
-import { Spinner, PageHeader, Modal, Field, TextInput, TextArea, Select, PrimaryButton } from '@/components/hr/HRKit';
-import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, fmtNum, fmtKm, type Lang, type Vehicle } from '@/lib/ls2';
+import { Wrench, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import { ls2Text, isLs2Staff, maintStyle, fmtNum, fmtKm, fmtDate, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
 
 const FILTERS = ['all', 'due', 'overdue'];
+
+// Remaining amount + unit for one service (mileage / days / engine-hours).
+function remainOf(iv: ServiceInterval): { value: number; unit: string; next: string } {
+  if (iv.remainingKm != null) return { value: iv.remainingKm, unit: 'km', next: iv.nextServiceKm != null ? `${Number(iv.nextServiceKm).toLocaleString('en-US')} km` : '—' };
+  if (iv.remainingDays != null) return { value: iv.remainingDays, unit: 'd', next: iv.nextServiceAt ? new Date(iv.nextServiceAt).toLocaleDateString('en-GB') : '—' };
+  return { value: iv.remaining ?? 0, unit: 'h', next: iv.nextServiceValue != null ? `${iv.nextServiceValue} h` : '—' };
+}
 
 export default function Ls2MaintenancePage() {
   const { user } = useAuth();
@@ -21,13 +31,10 @@ export default function Ls2MaintenancePage() {
   const router = useRouter();
   const params = useSearchParams();
   const t = ls2Text(lang as Lang);
-  const admin = isLs2Admin(user?.role);
   const [items, setItems] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState(params.get('filter') || 'all');
-  const [svc, setSvc] = useState<Vehicle | null>(null);
-  const [form, setForm] = useState({ serviceType: 'periodic', odometerKm: '', notes: '' });
-  const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles'); setItems(res.items || []); } catch { /* keep */ }
@@ -37,28 +44,22 @@ export default function Ls2MaintenancePage() {
   useSocket('ls2:updated', useCallback(() => load(), [load]));
 
   const rows = useMemo(() => {
-    let r = items.filter((v) => v.maintenance);
-    if (filter === 'due') r = r.filter((v) => v.maintenance!.statusLevel === 'due');
-    else if (filter === 'overdue') r = r.filter((v) => v.maintenance!.statusLevel === 'overdue');
-    return r.sort((a, b) => (a.maintenance!.kmToService) - (b.maintenance!.kmToService));
+    let r = items.filter((v) => (v.serviceIntervals?.length || 0) > 0);
+    if (filter === 'due') r = r.filter((v) => v.maintenanceStatus === 'due');
+    else if (filter === 'overdue') r = r.filter((v) => v.maintenanceStatus === 'overdue');
+    // Worst first: overdue by how much, then closest to due.
+    return r.sort((a, b) => (a.kmToService ?? 1e9) - (b.kmToService ?? 1e9));
   }, [items, filter]);
 
-  const openService = (v: Vehicle) => { setSvc(v); setForm({ serviceType: 'periodic', odometerKm: String(v.odometerKm ?? ''), notes: '' }); };
-  const submitService = async () => {
-    if (!svc) return;
-    setSaving(true);
-    try {
-      await api.post(`/api/ls2/vehicles/${svc.unitId}/service`, { serviceType: form.serviceType, odometerKm: form.odometerKm ? Number(form.odometerKm) : undefined, notes: form.notes });
-      setSvc(null);
-      await load();
-    } catch { /* ignore */ }
-    setSaving(false);
-  };
+  const toggle = (id: number) => setOpen((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
-  const counts = { due: items.filter((v) => v.maintenance?.statusLevel === 'due').length, overdue: items.filter((v) => v.maintenance?.statusLevel === 'overdue').length };
+  const counts = {
+    due: items.filter((v) => v.maintenanceStatus === 'due').length,
+    overdue: items.filter((v) => v.maintenanceStatus === 'overdue').length,
+  };
 
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -66,12 +67,13 @@ export default function Ls2MaintenancePage() {
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
       </PageHeader>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {FILTERS.map((f) => (
           <button key={f} type="button" onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-full text-xs font-medium border ${filter === f ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200'}`}>
             {f === 'all' ? t.all : f === 'due' ? t.serviceDue : t.serviceOverdue}
           </button>
         ))}
+        <span className="ms-auto text-xs text-slate-400 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> {t.fromWialon}</span>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -79,57 +81,88 @@ export default function Ls2MaintenancePage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs">
+                <th className="px-3 py-3 w-8" />
                 <th className="text-start font-semibold px-4 py-3">{t.plate}</th>
                 <th className="text-start font-semibold px-4 py-3">{t.driver}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.odometer}</th>
-                <th className="text-end font-semibold px-4 py-3">{t.nextService}</th>
-                <th className="text-end font-semibold px-4 py-3">{t.kmToService}</th>
+                <th className="text-end font-semibold px-4 py-3 text-red-300">{t.mostOverdue}</th>
+                <th className="text-end font-semibold px-4 py-3 text-amber-300">{t.nextUpcoming}</th>
                 <th className="text-center font-semibold px-4 py-3">{t.status}</th>
-                {admin && <th className="text-center font-semibold px-4 py-3" />}
               </tr>
             </thead>
             <tbody>
               {rows.map((v) => {
-                const m = v.maintenance!;
-                const ms = maintStyle(m.statusLevel);
+                const ms = maintStyle(v.maintenanceStatus);
+                const isOpen = open.has(v.unitId);
+                const over = (v.kmToService ?? 0) < 0;
                 return (
-                  <tr key={v.unitId} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap cursor-pointer" onClick={() => router.push(`/system/ls2/${v.unitId}`)}>{v.plate || v.name}</td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.driver || '—'}</td>
-                    <td className="px-4 py-3 text-end tabular-nums text-slate-600">{fmtKm(v.odometerKm)}</td>
-                    <td className="px-4 py-3 text-end tabular-nums text-slate-600">{fmtKm(m.nextServiceKm)}</td>
-                    <td className={`px-4 py-3 text-end tabular-nums font-bold ${m.statusLevel === 'overdue' ? 'text-red-600' : m.statusLevel === 'due' ? 'text-amber-600' : 'text-slate-700'}`}>
-                      {m.kmToService <= 0 ? `−${fmtNum(Math.abs(m.kmToService))}` : fmtNum(m.kmToService)}
-                    </td>
-                    <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ms.bg} ${ms.text}`}>{lang === 'ar' ? ms.ar : ms.en}</span></td>
-                    {admin && <td className="px-4 py-3 text-center">
-                      <button type="button" onClick={() => openService(v)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-medium"><CheckCircle2 className="w-3.5 h-3.5" /> {t.markServiced}</button>
-                    </td>}
-                  </tr>
+                  <Fragment key={v.unitId}>
+                    <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => toggle(v.unitId)}>
+                      <td className="px-3 py-3 text-slate-400">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{v.plate || v.name}</td>
+                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.driver || '—'}</td>
+                      <td className="px-4 py-3 text-end tabular-nums text-slate-600">{fmtKm(v.odometerKm)}</td>
+                      {/* Most overdue (or most urgent) service */}
+                      <td className="px-4 py-3 text-end">
+                        {v.kmToService == null ? <span className="text-slate-300">—</span> : (
+                          <div className={`tabular-nums font-bold ${over ? 'text-red-600' : v.maintenanceStatus === 'due' ? 'text-amber-600' : 'text-slate-500'}`}>
+                            {over ? `−${fmtNum(Math.abs(v.kmToService))}` : fmtNum(v.kmToService)} <span className="text-[10px] font-normal text-slate-400">{over ? t.kmOverdue : t.kmLeft}</span>
+                            <p className="text-[10px] font-normal text-slate-400 truncate max-w-[180px] ms-auto">{v.nextServiceName}</p>
+                          </div>
+                        )}
+                      </td>
+                      {/* Nearest upcoming (not-yet-passed) service */}
+                      <td className="px-4 py-3 text-end">
+                        {v.upcomingKm == null ? <span className="text-slate-300 text-xs">{lang === 'ar' ? 'كلها متأخرة' : 'all overdue'}</span> : (
+                          <div className="tabular-nums font-semibold text-slate-700">
+                            {fmtNum(v.upcomingKm)} <span className="text-[10px] font-normal text-slate-400">{t.kmLeft}</span>
+                            <p className="text-[10px] font-normal text-slate-400 truncate max-w-[180px]">{v.upcomingServiceName}</p>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ms.bg} ${ms.text}`}>{lang === 'ar' ? ms.ar : ms.en}</span></td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="bg-slate-50/60 border-b border-slate-100">
+                        <td colSpan={7} className="px-4 py-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {[...v.serviceIntervals].sort((a, b) => a.intervalKm - b.intervalKm).map((iv) => {
+                              const r = remainOf(iv);
+                              const st = maintStyle(iv.statusLevel);
+                              const isOver = r.value < 0;
+                              const Icon = iv.statusLevel === 'overdue' ? AlertCircle : iv.statusLevel === 'due' ? Clock : CheckCircle2;
+                              return (
+                                <div key={iv.id} className="bg-white border border-slate-200 rounded-lg p-3 flex items-start gap-3">
+                                  <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iv.statusLevel === 'overdue' ? 'text-red-500' : iv.statusLevel === 'due' ? 'text-amber-500' : 'text-emerald-500'}`} />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-sm font-medium text-slate-800 truncate">{iv.name}</p>
+                                      <span className={`shrink-0 px-1.5 py-0.5 rounded text-[11px] font-bold tabular-nums ${st.bg} ${st.text}`}>
+                                        {isOver ? `−${fmtNum(Math.abs(r.value))}` : fmtNum(r.value)} {r.unit === 'km' ? (isOver ? t.kmOverdue : t.kmLeft) : r.unit}
+                                      </span>
+                                    </div>
+                                    {iv.description && <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{iv.description}</p>}
+                                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[11px] text-slate-500">
+                                      <span>{t.lastService}: <b className="text-slate-700">{fmtDate(iv.lastServiceAt, lang as Lang)}</b>{iv.lastServiceKm != null && <> · {fmtKm(iv.lastServiceKm)}</>}</span>
+                                      <span>{lang === 'ar' ? 'القادمة' : 'Next'}: <b className="text-slate-700">{r.next}</b></span>
+                                      {iv.serviceCount > 0 && <span>{iv.serviceCount} {t.services}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={admin ? 7 : 6} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
-
-      <Modal open={!!svc} onClose={() => setSvc(null)} title={svc ? `${t.markServiced} · ${svc.plate}` : ''}
-        footer={<><button type="button" onClick={() => setSvc(null)} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 text-sm">{t.cancel}</button><PrimaryButton onClick={submitService} disabled={saving}>{t.confirm}</PrimaryButton></>}>
-        <div className="space-y-4">
-          <Field label={t.serviceType}>
-            <Select value={form.serviceType} onChange={(e) => setForm((p) => ({ ...p, serviceType: e.target.value }))}>
-              <option value="periodic">{lang === 'ar' ? 'صيانة دورية' : 'Periodic'}</option>
-              <option value="repair">{lang === 'ar' ? 'إصلاح' : 'Repair'}</option>
-              <option value="tires">{lang === 'ar' ? 'كاوتش' : 'Tires'}</option>
-              <option value="other">{lang === 'ar' ? 'أخرى' : 'Other'}</option>
-            </Select>
-          </Field>
-          <Field label={`${t.odometer} (km)`}><TextInput type="number" value={form.odometerKm} onChange={(e) => setForm((p) => ({ ...p, odometerKm: e.target.value }))} /></Field>
-          <Field label={t.notes}><TextArea rows={3} value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} /></Field>
-          <p className="text-xs text-slate-400">{lang === 'ar' ? 'تسجيل الصيانة يعيد ضبط عدّاد الصيانة القادمة ويغلق تنبيهات الصيانة الحالية.' : 'Recording a service resets the next-service counter and clears open service alerts.'}</p>
-        </div>
-      </Modal>
     </div>
   );
 }

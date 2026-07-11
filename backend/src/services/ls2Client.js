@@ -141,12 +141,80 @@ async function loadMessages(unitId, timeFrom, timeTo, count = 5000) {
   });
 }
 
+/**
+ * Run a Wialon report and return its already-fetched result rows.
+ *
+ * Reports are stateful server-side: exec_report computes into a slot, then
+ * get_result_rows pages the table out, then cleanup_result frees the slot. Big
+ * fleet-wide reports time out at the gateway, so callers should run this
+ * PER-UNIT (fast, ~2s). Returns { header, rows } for the first table.
+ *
+ * @param {number} templateId  report template id in the resource
+ * @param {number} objectId     unit id (or group id) to report on
+ * @param {number} from,to      epoch seconds
+ */
+async function execReport(templateId, objectId, from, to, { resourceId = cfg.REPORTS.RESOURCE_ID, tableIndex = 0, maxRows = 5000 } = {}) {
+  // Clear any stale slot first (ignore errors — nothing to clean is fine).
+  try { await call('report/cleanup_result', {}); } catch (e) { /* noop */ }
+  const exec = await call('report/exec_report', {
+    reportResourceId: resourceId,
+    reportTemplateId: templateId,
+    reportObjectId: objectId,
+    reportObjectSecId: 0,
+    interval: { from: Math.floor(from), to: Math.floor(to), flags: 0 },
+  });
+  const tables = (exec.reportResult && exec.reportResult.tables) || [];
+  const table = tables[tableIndex];
+  if (!table) { try { await call('report/cleanup_result', {}); } catch (e) {} return { header: [], rows: [] }; }
+  const header = table.header || [];
+  let rows = [];
+  if (table.rows > 0) {
+    const res = await call('report/get_result_rows', { tableIndex, indexFrom: 0, indexTo: Math.min(table.rows, maxRows) });
+    rows = Array.isArray(res) ? res : [];
+  }
+  try { await call('report/cleanup_result', {}); } catch (e) { /* noop */ }
+  return { header, rows, label: table.label || table.name };
+}
+
+/**
+ * Run a report and return its first table as header-keyed row objects:
+ *   { header: [...], rows: [{ "Beginning": "...", "Mileage": "...", ... }] }
+ * Convenience over execReport for the trip/stop/fuel tables. Cells are flattened
+ * to their display text (`t`) with the raw value kept under `__raw[col]`.
+ */
+async function runReport(templateId, objectId, from, to, opts = {}) {
+  const { header, rows } = await execReport(templateId, objectId, from, to, opts);
+  const objs = rows.map((r) => {
+    const cells = r.c || [];
+    const o = { __raw: {} };
+    header.forEach((h, i) => {
+      const cell = cells[i];
+      o[h] = cell && typeof cell === 'object' ? (cell.t ?? null) : cell;
+      o.__raw[h] = cell && typeof cell === 'object' ? (cell.v ?? cell.t ?? null) : cell;
+    });
+    return o;
+  });
+  return { header, rows: objs };
+}
+
+/** Fetch all units with the identity flags (VIN/brand/plate + custom fields). */
+async function searchIdentity() {
+  const data = await call('core/search_items', {
+    spec: { itemsType: 'avl_unit', propName: 'sys_name', propValueMask: '*', sortType: 'sys_name', propType: 'property' },
+    force: 1, flags: cfg.IDENTITY_FLAGS, from: 0, to: 0,
+  });
+  return data.items || [];
+}
+
 module.exports = {
   isConfigured: cfg.isConfigured,
   getSession,
   call,
   searchUnits,
   searchUnit,
+  searchIdentity,
   loadMessages,
+  execReport,
+  runReport,
   _sessionInfo: () => ({ ...session }),
 };

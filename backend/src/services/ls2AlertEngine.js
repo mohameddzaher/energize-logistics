@@ -10,35 +10,95 @@ const { ALERT_TYPES: T, SEVERITY: S } = cfg;
 
 const SEV_RANK = { [S.CRITICAL]: 3, [S.WARNING]: 2, [S.INFO]: 1 };
 
+const STATUS_RANK = { ok: 0, due: 1, overdue: 2 };
+
 /**
- * Compute the periodic-service position for a vehicle.
- * Baseline = the odometer at the last completed service; when never recorded we
- * assume the vehicle is mid-cycle and derive it from the current odometer, so
- * "every 10k, alert 3k before" works out of the box.
+ * Compute each service's position from Wialon's OWN mirrored intervals.
+ *
+ * Every interval already carries the real interval size (`intervalKm`) and the
+ * odometer at the last actual service (`lastServiceKm`), so:
+ *   nextServiceKm  = lastServiceKm + intervalKm
+ *   remainingKm    = nextServiceKm − currentOdometer
+ * i.e. if a truck was serviced late at 152,000 km on a 10,000 km plan, its next
+ * service lands at 162,000 km — exactly as Wialon shows. No fixed cycle, no
+ * guessing a baseline from the current odometer.
+ *
+ * Returns { intervals, summary } or null when the odometer is unknown.
  */
-function maintenanceState(tel, vehicle, maint) {
+function computeMaintenance(tel, maint) {
   const odo = tel.odometerKm;
   if (odo == null) return null;
-  const interval = (vehicle && vehicle.serviceIntervalKm) || maint.serviceIntervalKm || 10000;
-  const alertBefore = maint.alertBeforeKm || 3000;
-  const baseline = (vehicle && vehicle.lastServiceOdometerKm != null)
-    ? vehicle.lastServiceOdometerKm
-    : Math.floor(odo / interval) * interval;
-  const nextServiceKm = baseline + interval;
-  const kmToService = nextServiceKm - odo;
-  let statusLevel = 'ok';
-  if (kmToService <= 0) statusLevel = 'overdue';
-  else if (kmToService <= alertBefore) statusLevel = 'due';
-  return { interval, alertBefore, baseline, nextServiceKm, kmToService, statusLevel };
+  const alertBeforeKm = (maint && maint.alertBeforeKm) || 3000;
+  const alertBeforeDays = (maint && maint.alertBeforeDays) || 14;
+  const source = Array.isArray(tel.serviceIntervals) ? tel.serviceIntervals : [];
+  const now = Date.now();
+
+  const intervals = source.map((s) => {
+    const r = { ...s };
+    if (s.kind === 'engineHours' && s.intervalEngineHrs > 0 && s.lastServiceEngineHrs != null && tel.engineHours != null) {
+      r.nextServiceValue = s.lastServiceEngineHrs + s.intervalEngineHrs;
+      r.remaining = Math.round((r.nextServiceValue - tel.engineHours) * 10) / 10;
+      r.statusLevel = r.remaining <= 0 ? 'overdue' : (r.remaining <= 50 ? 'due' : 'ok');
+    } else if (s.kind === 'time' && s.intervalDays > 0 && s.lastServiceAt) {
+      const dueAt = new Date(s.lastServiceAt).getTime() + s.intervalDays * 86400000;
+      r.nextServiceAt = new Date(dueAt);
+      r.remainingDays = Math.round((dueAt - now) / 86400000);
+      r.statusLevel = r.remainingDays <= 0 ? 'overdue' : (r.remainingDays <= alertBeforeDays ? 'due' : 'ok');
+    } else {
+      // mileage-based (the default; all Energize services are mileage)
+      const base = s.lastServiceKm != null ? s.lastServiceKm : odo;
+      r.nextServiceKm = base + (s.intervalKm || 0);
+      r.remainingKm = r.nextServiceKm - odo;
+      r.statusLevel = r.remainingKm <= 0 ? 'overdue' : (r.remainingKm <= alertBeforeKm ? 'due' : 'ok');
+    }
+    return r;
+  });
+
+  // Fleet-level rollup: worst status wins, nearest upcoming mileage service.
+  let summaryStatus = 'ok';
+  for (const iv of intervals) if (STATUS_RANK[iv.statusLevel] > STATUS_RANK[summaryStatus]) summaryStatus = iv.statusLevel;
+  const overdueCount = intervals.filter((iv) => iv.statusLevel === 'overdue').length;
+  const dueCount = intervals.filter((iv) => iv.statusLevel === 'due').length;
+  const mileageIvs = intervals.filter((iv) => iv.remainingKm != null);
+  // "Worst" = smallest remaining km (overdue services are negative → most urgent
+  // first). Drives triage sorting + the fleet "most overdue" column.
+  const worst = mileageIvs.length
+    ? mileageIvs.reduce((a, b) => (b.remainingKm < a.remainingKm ? b : a))
+    : null;
+  // "Upcoming" = the soonest service that hasn't passed yet (smallest positive
+  // remaining). Null when everything is already overdue.
+  const upcomingCandidates = mileageIvs.filter((iv) => iv.remainingKm > 0);
+  const upcoming = upcomingCandidates.length
+    ? upcomingCandidates.reduce((a, b) => (b.remainingKm < a.remainingKm ? b : a))
+    : null;
+
+  return {
+    intervals,
+    statusLevel: summaryStatus,
+    overdueCount,
+    dueCount,
+    odometerKm: odo,
+    // Most-urgent service (most overdue, or closest to due) — kept as kmToService
+    // for existing callers/sorting.
+    kmToService: worst ? worst.remainingKm : null,
+    nextServiceKm: worst ? worst.nextServiceKm : null,
+    nextServiceName: worst ? worst.name : null,
+    // Nearest UPCOMING service (soonest not-yet-passed).
+    upcomingKm: upcoming ? upcoming.remainingKm : null,
+    upcomingServiceKm: upcoming ? upcoming.nextServiceKm : null,
+    upcomingServiceName: upcoming ? upcoming.name : null,
+  };
 }
 
 /**
- * @param {object} tel      normalized telemetry (ls2Sensors.normalize)
- * @param {object} vehicle  current Ls2Vehicle doc (for maintenance baseline) or null
+ * @param {object} tel      normalized telemetry (ls2Sensors.normalize) — carries
+ *                          the Wialon-mirrored serviceIntervals
+ * @param {object} _vehicle unused (kept for call-site compatibility; maintenance
+ *                          now comes straight from Wialon, not our own baseline)
  * @param {object} settings { thresholds, maintenance }
  * @returns {{ conditions: Array, status: string, alertLevel: string|null, maintenance: object|null }}
  */
-function evaluate(tel, vehicle, settings) {
+function evaluate(tel, _vehicle, settings) {
   const th = { ...cfg.DEFAULT_THRESHOLDS, ...(settings.thresholds || {}) };
   const maint = { ...cfg.DEFAULT_MAINTENANCE, ...(settings.maintenance || {}) };
   const conditions = [];
@@ -152,15 +212,23 @@ function evaluate(tel, vehicle, settings) {
       message: `Low voltage: ${volt} V` });
   }
 
-  // ---- Maintenance (periodic service by distance) ------------------------
-  const m = maintenanceState(tel, vehicle, maint);
+  // ---- Maintenance (Wialon's real per-service intervals) -----------------
+  // One alert per due/overdue service, keyed by the Wialon interval id so each
+  // service (Group A/B/C, TR Wheels…) reconciles independently.
+  const m = computeMaintenance(tel, maint);
   if (m) {
-    if (m.statusLevel === 'overdue') {
-      add({ type: T.MAINTENANCE_OVERDUE, key: '', severity: S.CRITICAL, unit: 'km', value: Math.abs(m.kmToService), threshold: 0,
-        message: `Service overdue by ${Math.abs(m.kmToService).toLocaleString()} km (odo ${tel.odometerKm.toLocaleString()})` });
-    } else if (m.statusLevel === 'due') {
-      add({ type: T.MAINTENANCE_DUE, key: '', severity: S.WARNING, unit: 'km', value: m.kmToService, threshold: m.alertBefore,
-        message: `Service due in ${m.kmToService.toLocaleString()} km (at ${m.nextServiceKm.toLocaleString()} km)` });
+    for (const iv of m.intervals) {
+      if (iv.statusLevel === 'ok') continue;
+      const key = `si${iv.id}`;
+      const rem = iv.remainingKm != null ? iv.remainingKm : (iv.remainingDays != null ? iv.remainingDays : iv.remaining);
+      const unit = iv.remainingKm != null ? 'km' : (iv.remainingDays != null ? 'd' : 'h');
+      if (iv.statusLevel === 'overdue') {
+        add({ type: T.MAINTENANCE_OVERDUE, key, severity: S.CRITICAL, unit, value: Math.abs(rem), threshold: 0,
+          message: `${iv.name}: overdue by ${Math.abs(rem).toLocaleString()} ${unit}` });
+      } else {
+        add({ type: T.MAINTENANCE_DUE, key, severity: S.WARNING, unit, value: rem, threshold: maint.alertBeforeKm,
+          message: `${iv.name}: due in ${rem.toLocaleString()} ${unit}${iv.nextServiceKm != null ? ` (at ${iv.nextServiceKm.toLocaleString()} km)` : ''}` });
+      }
     }
   }
 
@@ -173,4 +241,4 @@ function evaluate(tel, vehicle, settings) {
   return { conditions, status, alertLevel, maintenance: m };
 }
 
-module.exports = { evaluate, maintenanceState, SEV_RANK };
+module.exports = { evaluate, computeMaintenance, SEV_RANK };

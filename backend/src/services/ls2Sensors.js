@@ -101,6 +101,48 @@ function extractTires(params) {
     .sort((a, b) => a.axle - b.axle || a.position - b.position);
 }
 
+// Extract Wialon's own service intervals (`si`) into a clean, mirrored shape.
+// Wialon stores the REAL maintenance plan per unit — one entry per service with:
+//   n  = name (e.g. "1- Regular Service - Group A (20K KMs)")
+//   t  = description (the parts/checklist)
+//   im = interval by mileage (km);  it = by time (s);  ie = by engine-hours (h)
+//   pm = odometer at the last service; pt/pe = last-service time/engine-hours
+//   c  = how many times this service has been registered
+//   ct = created, mt = last modified (≈ last time a service was registered)
+// Next service = last-service reading + interval. We keep the raw mirrored
+// numbers here; remaining/status is computed later where the odometer + pre-alert
+// window are known (ls2AlertEngine.computeMaintenance).
+function extractServiceIntervals(unit) {
+  const si = unit && unit.si;
+  if (!si || typeof si !== 'object') return [];
+  const out = [];
+  for (const key of Object.keys(si)) {
+    const e = si[key];
+    if (!e || typeof e !== 'object') continue;
+    const im = Number(e.im) || 0;
+    const it = Number(e.it) || 0;
+    const ie = Number(e.ie) || 0;
+    const kind = im > 0 ? 'mileage' : it > 0 ? 'time' : ie > 0 ? 'engineHours' : 'mileage';
+    out.push({
+      id: Number(e.id) || Number(key),
+      name: (e.n || '').trim(),
+      description: (e.t || '').replace(/\t+/g, ' ').trim(),
+      kind,
+      intervalKm: im,
+      intervalDays: it > 0 ? Math.round(it / 86400) : 0,
+      intervalEngineHrs: ie,
+      lastServiceKm: e.pm != null ? Number(e.pm) : null,
+      lastServiceEngineHrs: e.pe != null && e.pe > 0 ? Number(e.pe) : null,
+      // pt (last-service time) is only set for time-based services; fall back to
+      // `mt` (last modified = when the service was last registered in Wialon).
+      lastServiceAt: e.pt > 0 ? new Date(e.pt * 1000) : (e.mt ? new Date(e.mt * 1000) : null),
+      serviceCount: Number(e.c) || 0,
+    });
+  }
+  // Group A → B → C order by interval size, then name.
+  return out.sort((a, b) => (a.intervalKm - b.intervalKm) || a.name.localeCompare(b.name));
+}
+
 /**
  * Normalize one raw Wialon unit into our telemetry shape.
  * @param {object} unit raw item from core/search_items (poll flags)
@@ -189,6 +231,8 @@ function normalize(unit) {
     // Counters (maintenance drivers)
     odometerKm: unit.cnm_km != null ? Math.round(unit.cnm_km) : null,
     engineHours: unit.cneh != null ? Math.round(Number(unit.cneh) * 10) / 10 : null,
+    // Wialon's own service plan (mirrored — the real intervals, not a fixed cycle).
+    serviceIntervals: extractServiceIntervals(unit),
     // Tires
     tires,
     tireCount: tires.length,
@@ -198,4 +242,4 @@ function normalize(unit) {
   };
 }
 
-module.exports = { normalize, evalExpr, parseName, extractTires };
+module.exports = { normalize, evalExpr, parseName, extractTires, extractServiceIntervals };

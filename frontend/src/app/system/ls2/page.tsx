@@ -11,12 +11,13 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
   Gauge, Truck, AlertTriangle, Wrench, Thermometer, Activity, ArrowRight, RefreshCw,
-  Satellite, Flame, ShieldAlert, Bell,
+  Satellite, Flame, ShieldAlert, Bell, Route,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import RangePicker from '@/components/ls2/RangePicker';
 import {
-  ls2Text, isLs2Staff, severityStyle, statusStyle, alertTypeLabel, alertMessage, fmtNum, fmtKm, timeAgo, tireTempColor, coolantColor, type Lang,
+  ls2Text, isLs2Staff, severityStyle, statusStyle, alertTypeLabel, alertMessage, fmtNum, fmtKm, timeAgo, tireTempColor, coolantColor, thisMonthToDate, type Lang, type DateRange,
 } from '@/lib/ls2';
 
 interface Dash {
@@ -25,6 +26,7 @@ interface Dash {
   alerts: { totalOpen: number; vehiclesWithAlerts: number; bySeverity: Record<string, number>; byType: Record<string, number>; latest: any[] };
   maintenance: { overdueCount: number; dueCount: number; overdue: any[]; due: any[]; nearest: any[] };
   temperature: { avgTireTempC: number | null; maxTireTempC: number | null; avgCoolantC: number | null; maxCoolantC: number | null; hotTires: number; hotEngines: number; topHotTires: any[] };
+  distance: { from: string; to: string; totalKm: number; movedVehicles: number; avgKm: number; topMovers: any[]; hasData: boolean };
   thresholds: any;
 }
 
@@ -35,11 +37,12 @@ export default function Ls2DashboardPage() {
   const t = ls2Text(lang as Lang);
   const [d, setD] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState<DateRange>(thisMonthToDate());
 
   const load = useCallback(async () => {
-    try { setD(await api.get<Dash>('/api/ls2/dashboard')); } catch { /* keep previous */ }
+    try { setD(await api.get<Dash>(`/api/ls2/dashboard?from=${range.from}&to=${range.to}`)); } catch { /* keep previous */ }
     setLoading(false);
-  }, []);
+  }, [range.from, range.to]);
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
 
@@ -99,6 +102,34 @@ export default function Ls2DashboardPage() {
             </button>
           );
         })}
+      </div>
+
+      {/* Distance travelled over a chosen period (real Wialon odometer) */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Route className="w-4 h-4 text-[#f37121]" /> {t.distanceTraveled}</h2>
+          <button type="button" onClick={() => go('/live')} className="text-xs text-[#f37121] hover:underline">{lang === 'ar' ? 'تفاصيل كل مركبة' : 'Per-vehicle detail'}</button>
+        </div>
+        <RangePicker value={range} onChange={setRange} lang={lang as Lang} labelFrom={t.from} labelTo={t.to} />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <MiniStat label={t.totalDistance} value={`${fmtNum(d.distance?.totalKm ?? 0)} ${t.km}`} accent="text-[#f37121]" />
+          <MiniStat label={t.vehiclesMoved} value={`${fmtNum(d.distance?.movedVehicles ?? 0)} / ${d.fleet.total}`} />
+          <MiniStat label={t.avgPerVehicle} value={`${fmtNum(d.distance?.avgKm ?? 0)} ${t.km}`} />
+        </div>
+        {d.distance?.topMovers?.length ? (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={d.distance.topMovers.map((m: any) => ({ plate: m.plate || m.unitId, km: m.km, unitId: m.unitId }))} layout="vertical" margin={{ left: 8, right: 16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis type="category" dataKey="plate" width={90} tick={{ fontSize: 11, fill: '#334155' }} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v: any) => [`${fmtNum(v)} km`, t.distance]} />
+                <Bar dataKey="km" radius={[0, 6, 6, 0]} fill="#f37121" cursor="pointer"
+                  onClick={(e: any) => e && e.unitId && go(`/${e.unitId}`)} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : <p className="text-slate-400 text-sm py-6 text-center">{lang === 'ar' ? 'لا توجد بيانات مسافة لهذه الفترة بعد — اعمل backfill أو استنى التجميع اليومي' : 'No distance data for this period yet'}</p>}
       </div>
 
       {/* Fleet status distribution */}

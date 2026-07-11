@@ -22,7 +22,23 @@ export const isLs2Admin = (role?: string | null) => !!role && LS2_ADMIN_ROLES.in
 
 // ---- Types (light shapes matching the API) --------------------------------
 export interface Tire { axle: number; position: number; tempC: number | null; pressurePsi: number | null; fault: boolean }
-export interface Maintenance { interval: number; alertBefore: number; baseline: number; nextServiceKm: number; kmToService: number; statusLevel: 'ok' | 'due' | 'overdue' }
+// One Wialon service interval (Group A/B/C, TR Wheels…), mirrored + computed.
+export interface ServiceInterval {
+  id: number; name: string; description: string; kind: 'mileage' | 'time' | 'engineHours';
+  intervalKm: number; intervalDays: number; intervalEngineHrs: number;
+  lastServiceKm: number | null; lastServiceEngineHrs: number | null; lastServiceAt: string | null;
+  serviceCount: number;
+  nextServiceKm?: number | null; remainingKm?: number | null;
+  nextServiceAt?: string | null; remainingDays?: number | null;
+  nextServiceValue?: number | null; remaining?: number | null;
+  statusLevel: 'ok' | 'due' | 'overdue';
+}
+export interface Maintenance {
+  statusLevel: 'ok' | 'due' | 'overdue';
+  kmToService: number | null; nextServiceKm: number | null; nextServiceName: string;
+  upcomingKm: number | null; upcomingServiceKm: number | null; upcomingServiceName: string;
+  overdueCount: number; dueCount: number; intervals: ServiceInterval[];
+}
 export interface Vehicle {
   unitId: number; name: string; plate: string; driver: string;
   position: { lat: number; lng: number; speed: number; course: number | null } | null;
@@ -32,9 +48,28 @@ export interface Vehicle {
   gsmSignal: number | null; odometerKm: number | null; engineHours: number | null;
   tires: Tire[]; tireCount: number; maxTireTempC: number | null; minTirePressurePsi: number | null; tireFaults: number;
   status: string; alertLevel: string | null; activeAlertCount: number;
-  lastServiceOdometerKm: number | null; serviceIntervalKm: number | null; lastServiceAt: string | null;
+  serviceIntervals: ServiceInterval[];
+  maintenanceStatus: 'ok' | 'due' | 'overdue';
+  kmToService: number | null; nextServiceKm: number | null; nextServiceName: string;
+  upcomingKm: number | null; upcomingServiceKm: number | null; upcomingServiceName: string;
   maintenance: Maintenance | null;
+  periodKm?: number; // attached when the list is queried with a from/to range
+  profile?: VehicleProfile;
 }
+// Fleet distance over a period (from /api/ls2/mileage).
+export interface MileageRow { unitId: number; plate: string; driver: string; name: string; odometerKm: number | null; km: number; odoStart: number | null; odoEnd: number | null; activeDays: number; clipped: boolean }
+
+// Vehicle identity (mirrored from Wialon profile + custom fields).
+export interface VehicleProfile {
+  vin: string; brand: string; modelYear: string; vehicleType: string; registrationPlate: string;
+  simIccid: string; installDate: string; lsUnitId: string;
+  extra: { label: string; value: string }[]; syncedAt: string | null;
+}
+export interface Trip { beginTime: string | null; beginLocation: string; endTime: string | null; endLocation: string; durationSec: number | null; km: number; maxSpeed: number | null; avgSpeed: number | null }
+export interface Stop { location: string; from: string | null; to: string | null; durationSec: number }
+export interface TripsResult { unitId: number; from: string; to: string; trips: Trip[]; stops: Stop[]; summary: { tripCount: number; stopCount: number; totalKm: number; totalDriveSec: number; maxSpeed: number } }
+export interface VehicleFuel { unitId: number; from: string; to: string; brand: string; model: string; engineOnSec: number | null; distanceKm: number | null; fuelL: number | null; efficiencyKmL: number | null }
+export interface TrackPoint { lat: number; lng: number; speed: number; t: number }
 export interface Alert {
   _id: string; unitId: number; plate: string; driver: string; type: string; key: string;
   severity: 'critical' | 'warning' | 'info'; status: 'open' | 'resolved'; message: string;
@@ -135,6 +170,56 @@ export function fmtDateTime(iso?: string | null, lang: Lang = 'en'): string {
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
+// Human duration from seconds: "13d 19h", "2h 35m", "45m".
+export function fmtDuration(sec?: number | null, lang: Lang = 'en'): string {
+  if (sec == null || Number.isNaN(sec)) return '—';
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const ar = lang === 'ar';
+  if (d > 0) return ar ? `${d}ي ${h}س` : `${d}d ${h}h`;
+  if (h > 0) return ar ? `${h}س ${m}د` : `${h}h ${m}m`;
+  return ar ? `${m}د` : `${m}m`;
+}
+
+// Wialon last-service date (short, no time — it's a calendar event).
+export function fmtDate(iso?: string | null, lang: Lang = 'en'): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
+}
+
+// ---- Date-range presets for the period filters ----------------------------
+export type DateRange = { from: string; to: string };
+const ymd = (d: Date) => d.toISOString().slice(0, 10);
+export function monthRange(offset = 0): DateRange {
+  const now = new Date();
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+  const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset + 1, 0));
+  return { from: ymd(from), to: ymd(to) };
+}
+export function lastNDays(n: number): DateRange {
+  const to = new Date();
+  const from = new Date(); from.setUTCDate(from.getUTCDate() - (n - 1));
+  return { from: ymd(from), to: ymd(to) };
+}
+export function thisMonthToDate(): DateRange {
+  const now = new Date();
+  return { from: ymd(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))), to: ymd(now) };
+}
+// Bilingual month/preset labels for the range picker.
+export function rangePresets(lang: Lang): { key: string; label: string; range: () => DateRange }[] {
+  const ar = lang === 'ar';
+  return [
+    { key: 'mtd', label: ar ? 'الشهر ده' : 'This month', range: () => thisMonthToDate() },
+    { key: 'prev', label: ar ? 'الشهر اللي فات' : 'Last month', range: () => monthRange(-1) },
+    { key: 'd7', label: ar ? 'آخر ٧ أيام' : 'Last 7 days', range: () => lastNDays(7) },
+    { key: 'd30', label: ar ? 'آخر ٣٠ يوم' : 'Last 30 days', range: () => lastNDays(30) },
+    { key: 'prev2', label: ar ? 'شهرين فاتوا' : '2 months ago', range: () => monthRange(-2) },
+  ];
+}
+
 // OpenStreetMap deep link for a coordinate (no map library needed).
 export const osmLink = (lat: number, lng: number) => `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=14/${lat}/${lng}`;
 export const osmEmbed = (lat: number, lng: number, d = 0.02) =>
@@ -218,6 +303,66 @@ export function ls2Text(lang: Lang) {
     markServiced: t('Mark Serviced', 'تسجيل صيانة'),
     serviceHistory: t('Service History', 'سجل الصيانة'),
     nearestService: t('Nearest to Service', 'الأقرب للصيانة'),
+    // service intervals (mirrored from Wialon)
+    servicePlan: t('Service Plan', 'خطة الصيانة'),
+    serviceName: t('Service', 'الخدمة'),
+    lastService: t('Last Service', 'آخر صيانة'),
+    remaining: t('Remaining', 'المتبقّي'),
+    kmLeft: t('km left', 'كم متبقّي'),
+    kmOverdue: t('km overdue', 'كم متأخّرة'),
+    overdue: t('Overdue', 'متأخّرة'),
+    mostOverdue: t('Most overdue', 'الأكتر تأخيرًا'),
+    nextUpcoming: t('Next upcoming', 'الأقرب جايّة'),
+    services: t('services', 'خدمات'),
+    servicedAt: t('serviced at', 'اتعملت عند'),
+    fromWialon: t('Synced live from Location Solutions', 'متزامن مباشرة من لوكيشن سوليوشن'),
+    // distance / period filters
+    distance: t('Distance', 'المسافة'),
+    distanceTraveled: t('Distance Travelled', 'المسافة المقطوعة'),
+    kmInPeriod: t('KM in period', 'كم في الفترة'),
+    period: t('Period', 'الفترة'),
+    from: t('From', 'من'),
+    to: t('To', 'إلى'),
+    apply: t('Apply', 'تطبيق'),
+    totalDistance: t('Total Distance', 'إجمالي المسافة'),
+    vehiclesMoved: t('Vehicles Moved', 'مركبات تحرّكت'),
+    avgPerVehicle: t('Avg / Vehicle', 'المتوسط / مركبة'),
+    topMovers: t('Top Distance', 'الأكثر مسافة'),
+    dailyDistance: t('Daily Distance', 'المسافة اليومية'),
+    exactFromWialon: t('Exact (Wialon report)', 'الرقم الدقيق (تقرير Wialon)'),
+    km: t('km', 'كم'),
+    partialData: t('Partial — no data before start', 'جزئي — لا توجد بيانات قبل البداية'),
+    // identity
+    identity: t('Vehicle Identity', 'هوية المركبة'),
+    vin: t('VIN', 'رقم الشاسيه'),
+    brand: t('Brand', 'الماركة'),
+    modelYear: t('Year', 'سنة الصنع'),
+    vehicleType: t('Type', 'النوع'),
+    simIccid: t('SIM (ICCID)', 'شريحة الاتصال'),
+    installDate: t('Install Date', 'تاريخ التركيب'),
+    lsUnitId: t('LS Unit ID', 'رقم الوحدة'),
+    // trips / stops / fuel / track
+    trips: t('Trips', 'الرحلات'),
+    stops: t('Stops', 'الوقفات'),
+    trip: t('Trip', 'رحلة'),
+    stop: t('Stop', 'وقفة'),
+    activity: t('Trips & Stops', 'الرحلات والوقفات'),
+    tripCount: t('Trips', 'عدد الرحلات'),
+    stopCount: t('Stops', 'عدد الوقفات'),
+    driveTime: t('Drive Time', 'زمن القيادة'),
+    maxSpeed: t('Max Speed', 'أقصى سرعة'),
+    avgSpeedL: t('Avg Speed', 'متوسط السرعة'),
+    duration: t('Duration', 'المدة'),
+    location: t('Location', 'المكان'),
+    fuelUsed: t('Fuel Consumed', 'الوقود المستهلك'),
+    efficiency: t('Efficiency', 'الكفاءة'),
+    engineOn: t('Engine-on Time', 'زمن تشغيل الموتور'),
+    fuelSection: t('Fuel', 'الوقود'),
+    track: t('Route Track', 'مسار الخط'),
+    showTrack: t('Show route on map', 'اعرض المسار على الخريطة'),
+    noFuelData: t('No CAN fuel data for this period', 'لا توجد بيانات وقود لهذه الفترة'),
+    startLabel: t('Start', 'البداية'),
+    endLabel: t('End', 'النهاية'),
     // vehicle detail
     driver: t('Driver', 'السائق'),
     plate: t('Plate', 'اللوحة'),

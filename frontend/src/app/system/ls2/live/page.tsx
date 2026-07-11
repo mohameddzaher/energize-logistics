@@ -7,9 +7,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Satellite, MapPin, RefreshCw, Search } from 'lucide-react';
+import { Satellite, MapPin, RefreshCw, Search, Route } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { ls2Text, isLs2Staff, statusStyle, severityStyle, tireTempColor, coolantColor, fmtKm, timeAgo, osmLink, type Lang, type Vehicle } from '@/lib/ls2';
+import RangePicker from '@/components/ls2/RangePicker';
+import { ls2Text, isLs2Staff, statusStyle, severityStyle, tireTempColor, coolantColor, fmtKm, fmtNum, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type DateRange } from '@/lib/ls2';
 
 const STATUSES = ['moving', 'idle', 'stopped', 'offline'];
 
@@ -23,21 +24,27 @@ export default function Ls2LivePage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(params.get('status') || '');
   const [q, setQ] = useState('');
+  const [range, setRange] = useState<DateRange>(thisMonthToDate());
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get<{ items: Vehicle[] }>(`/api/ls2/vehicles${status ? `?status=${status}` : ''}`);
+      const qs = new URLSearchParams();
+      if (status) qs.set('status', status);
+      qs.set('from', range.from); qs.set('to', range.to);
+      const res = await api.get<{ items: Vehicle[] }>(`/api/ls2/vehicles?${qs.toString()}`);
       setItems(res.items || []);
     } catch { /* keep */ }
     setLoading(false);
-  }, [status]);
+  }, [status, range.from, range.to]);
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
+
+  const totalPeriodKm = useMemo(() => items.reduce((s, v) => s + (v.periodKm || 0), 0), [items]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return items;
-    return items.filter((v) => `${v.plate} ${v.driver} ${v.name}`.toLowerCase().includes(s));
+    return items.filter((v) => `${v.plate} ${v.driver} ${v.name} ${v.profile?.brand || ''} ${v.profile?.vin || ''}`.toLowerCase().includes(s));
   }, [items, q]);
 
   if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
@@ -48,6 +55,13 @@ export default function Ls2LivePage() {
       <PageHeader icon={<Satellite className="w-5 h-5" />} title={t.liveFleet} subtitle={`${filtered.length} ${lang === 'ar' ? 'مركبة' : 'vehicles'} · ${t.live}`}>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
       </PageHeader>
+
+      {/* Period picker — drives the "km in period" column (real Wialon odometer). */}
+      <RangePicker value={range} onChange={setRange} lang={lang as Lang} labelFrom={t.from} labelTo={t.to} />
+      <div className="flex items-center gap-2 -mt-2 px-1 text-xs text-slate-500">
+        <Route className="w-3.5 h-3.5 text-[#f37121]" />
+        <span>{t.totalDistance}: <b className="text-slate-800 tabular-nums">{fmtNum(Math.round(totalPeriodKm))} {t.km}</b> · {range.from} → {range.to}</span>
+      </div>
 
       <div className="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-2 shadow-sm">
         <div className="relative flex-1 min-w-[200px]">
@@ -80,6 +94,7 @@ export default function Ls2LivePage() {
                 <th className="text-end font-semibold px-4 py-3">{t.maxTireTemp}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.coolant}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.odometer}</th>
+                <th className="text-end font-semibold px-4 py-3 text-[#f9a06b]">{t.kmInPeriod}</th>
                 <th className="text-center font-semibold px-4 py-3">{t.alerts}</th>
                 <th className="text-start font-semibold px-4 py-3">{t.lastSeen}</th>
                 <th className="px-4 py-3" />
@@ -91,13 +106,14 @@ export default function Ls2LivePage() {
                 const sv = severityStyle(v.alertLevel);
                 return (
                   <tr key={v.unitId} onClick={() => router.push(`/system/ls2/${v.unitId}`)} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
-                    <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{v.plate || v.name}</td>
+                    <td className="px-4 py-3 whitespace-nowrap"><p className="font-medium text-slate-800">{v.plate || v.name}</p>{v.profile?.brand && <p className="text-[10px] text-slate-400">{v.profile.brand}{v.profile.modelYear ? ` · ${v.profile.modelYear}` : ''}</p>}</td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.driver || '—'}</td>
                     <td className="px-4 py-3"><span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span></td>
                     <td className="px-4 py-3 text-end tabular-nums">{v.speed != null ? `${v.speed}` : '—'}</td>
                     <td className={`px-4 py-3 text-end tabular-nums font-medium ${v.maxTireTempC != null ? '' : 'text-slate-300'}`}>{v.maxTireTempC != null ? <span className={`px-2 py-0.5 rounded-full text-xs ${tireTempColor(v.maxTireTempC)}`}>{v.maxTireTempC}°C</span> : '—'}</td>
                     <td className={`px-4 py-3 text-end tabular-nums font-medium ${coolantColor(v.coolantC)}`}>{v.coolantC != null ? `${v.coolantC}°C` : '—'}</td>
                     <td className="px-4 py-3 text-end tabular-nums text-slate-600">{fmtKm(v.odometerKm)}</td>
+                    <td className="px-4 py-3 text-end tabular-nums font-semibold text-slate-800">{v.periodKm != null ? `${fmtNum(Math.round(v.periodKm))}` : '—'}</td>
                     <td className="px-4 py-3 text-center">{v.activeAlertCount > 0 ? <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${sv.bg} ${sv.text}`}>{v.activeAlertCount}</span> : <span className="text-slate-300">0</span>}</td>
                     <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{timeAgo(v.lastMessageAt, lang as Lang)}</td>
                     <td className="px-4 py-3">
@@ -106,7 +122,7 @@ export default function Ls2LivePage() {
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={10} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={11} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>

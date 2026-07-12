@@ -23,6 +23,12 @@ router.post('/logout', authenticate, authController.logout);
 
 router.get('/me', authenticate, authController.getMe);
 
+// Personal signatures (manage in profile, apply to leave approvals etc.)
+router.get('/signatures', authenticate, authController.getMySignatures);
+router.post('/signatures', authenticate, authController.addSignature);
+router.put('/signatures/:id', authenticate, authController.updateSignature);
+router.delete('/signatures/:id', authenticate, authController.deleteSignature);
+
 router.post(
   '/change-password',
   authenticate,

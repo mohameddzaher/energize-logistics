@@ -201,3 +201,61 @@ exports.getMe = async (req, res) => {
     res.status(500).json({ message: 'Failed to retrieve user profile' });
   }
 };
+
+// ── Personal signatures ─────────────────────────────────────────────────────
+// Signatures are `select: false` (heavy base64), so we fetch them explicitly.
+const SIG_RX = /^data:image\/(png|jpeg|jpg);base64,/;
+
+exports.getMySignatures = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('+signatures');
+    res.json({ signatures: user?.signatures || [] });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load signatures' });
+  }
+};
+
+exports.addSignature = async (req, res) => {
+  try {
+    const { name, dataUrl, isDefault } = req.body || {};
+    if (!dataUrl || !SIG_RX.test(dataUrl)) return res.status(400).json({ message: 'A valid signature image is required' });
+    if (dataUrl.length > 400000) return res.status(400).json({ message: 'Signature image too large (max ~300KB)' });
+    const user = await User.findById(req.user._id).select('+signatures');
+    const makeDefault = !user.signatures.length || !!isDefault;
+    if (makeDefault) user.signatures.forEach((s) => { s.isDefault = false; });
+    user.signatures.push({ name: (name || 'توقيعي').trim(), dataUrl, isDefault: makeDefault });
+    await user.save();
+    res.status(201).json({ signatures: user.signatures });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to add signature' });
+  }
+};
+
+exports.updateSignature = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('+signatures');
+    const sig = user.signatures.id(req.params.id);
+    if (!sig) return res.status(404).json({ message: 'Signature not found' });
+    if (req.body.name !== undefined) sig.name = String(req.body.name).trim();
+    if (req.body.isDefault) { user.signatures.forEach((s) => { s.isDefault = false; }); sig.isDefault = true; }
+    await user.save();
+    res.json({ signatures: user.signatures });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update signature' });
+  }
+};
+
+exports.deleteSignature = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('+signatures');
+    const sig = user.signatures.id(req.params.id);
+    if (!sig) return res.status(404).json({ message: 'Signature not found' });
+    const wasDefault = sig.isDefault;
+    sig.deleteOne();
+    if (wasDefault && user.signatures.length) user.signatures[0].isDefault = true;
+    await user.save();
+    res.json({ signatures: user.signatures });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete signature' });
+  }
+};

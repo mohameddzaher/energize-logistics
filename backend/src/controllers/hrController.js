@@ -604,6 +604,7 @@ exports.deleteLeaveType = async (req, res) => {
 };
 
 // ── Leave requests ───────────────────────────────────────────────────────────
+const NO_SIG = '-employeeSignature -managerDecision.signature -hrDecision.signature';
 const populateLeave = (q) => q
   .populate('employee', 'firstName lastName arabicName iqamaNumber employeeNumber')
   .populate('requester', 'firstName lastName email')
@@ -618,16 +619,33 @@ exports.listLeaves = async (req, res) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.employee) filter.employee = req.query.employee;
-    const leaves = await populateLeave(LeaveRequest.find(filter)).sort({ createdAt: -1 }).limit(1000).lean();
+    const leaves = await populateLeave(LeaveRequest.find(filter)).select(NO_SIG).sort({ createdAt: -1 }).limit(1000).lean();
     res.json({ leaves });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load leave requests' });
   }
 };
 
+// Single leave WITH signatures — used to render the official PDF sheet.
+exports.getLeave = async (req, res) => {
+  try {
+    const leave = await populateLeave(LeaveRequest.findById(req.params.id)).lean();
+    if (!leave) return res.status(404).json({ message: 'Leave request not found' });
+    // Access: HR staff, the requester, or the direct manager.
+    const uid = String(req.user._id);
+    const allowed = isHRStaff(req.user)
+      || String(leave.requester?._id || leave.requester) === uid
+      || String(leave.manager?._id || leave.manager) === uid;
+    if (!allowed) return res.status(403).json({ message: 'Not allowed' });
+    res.json({ leave });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load leave request' });
+  }
+};
+
 exports.listMyLeaves = async (req, res) => {
   try {
-    const leaves = await populateLeave(LeaveRequest.find({ requester: req.user._id })).sort({ createdAt: -1 }).lean();
+    const leaves = await populateLeave(LeaveRequest.find({ requester: req.user._id })).select(NO_SIG).sort({ createdAt: -1 }).lean();
     let balance = null;
     if (req.user.linkedEmployee) ({ balance } = await computeEmployeeBalance(req.user.linkedEmployee));
     res.json({ leaves, balance });
@@ -639,7 +657,7 @@ exports.listMyLeaves = async (req, res) => {
 // Leave requests from the current user's direct reports awaiting their action.
 exports.listTeamLeaves = async (req, res) => {
   try {
-    const leaves = await populateLeave(LeaveRequest.find({ manager: req.user._id })).sort({ createdAt: -1 }).lean();
+    const leaves = await populateLeave(LeaveRequest.find({ manager: req.user._id })).select(NO_SIG).sort({ createdAt: -1 }).lean();
     res.json({ leaves });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load team leaves' });
@@ -661,6 +679,16 @@ exports.createMyLeave = async (req, res) => {
     const { balance } = await computeEmployeeBalance(req.user.linkedEmployee);
     const hasManager = !!req.user.manager;
 
+    // Attach the requester's signature: the one they picked (signatureId), else
+    // their default. No signature is fine (the sheet just shows a blank line).
+    let employeeSignature = '';
+    try {
+      const me = await User.findById(req.user._id).select('+signatures').lean();
+      const sigs = (me && me.signatures) || [];
+      if (req.body.signatureId) employeeSignature = (sigs.find((s) => String(s._id) === String(req.body.signatureId)) || {}).dataUrl || '';
+      else employeeSignature = ((sigs.find((s) => s.isDefault) || sigs[0]) || {}).dataUrl || '';
+    } catch (e) { /* no signature is fine */ }
+
     const leave = await LeaveRequest.create({
       employee: req.user.linkedEmployee,
       requester: req.user._id,
@@ -668,6 +696,7 @@ exports.createMyLeave = async (req, res) => {
       leaveType,
       leaveTypeCode: lt.code,
       startDate, endDate, days, reason,
+      employeeSignature,
       status: hasManager ? 'pending_manager' : 'pending_hr',
       currentStage: hasManager ? 'manager' : 'hr',
       balanceSnapshot: {
@@ -694,7 +723,7 @@ exports.createMyLeave = async (req, res) => {
 // Manager advances to HR; HR is the final authority. A rejection at any stage ends it.
 exports.decideLeave = async (req, res) => {
   try {
-    const { decision, note } = req.body;
+    const { decision, note, signatureId } = req.body;
     if (!['approved', 'rejected'].includes(decision)) return res.status(400).json({ message: 'decision must be approved or rejected' });
     const leave = await LeaveRequest.findById(req.params.id);
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
@@ -704,7 +733,17 @@ exports.decideLeave = async (req, res) => {
 
     const staff = isHRStaff(req.user);
     const isManager = String(leave.manager || '') === String(req.user._id);
-    const stamp = { by: req.user._id, at: new Date(), decision, note: note || '' };
+
+    // Optional: the approver signs. Resolve the chosen signature (by id) from
+    // their own signatures and snapshot it onto this decision.
+    let signature = '';
+    if (signatureId) {
+      try {
+        const me = await User.findById(req.user._id).select('+signatures').lean();
+        signature = ((me && me.signatures) || []).find((s) => String(s._id) === String(signatureId))?.dataUrl || '';
+      } catch (e) { /* ignore */ }
+    }
+    const stamp = { by: req.user._id, at: new Date(), decision, note: note || '', signature };
 
     if (staff) {
       // HR decision is final regardless of current stage.

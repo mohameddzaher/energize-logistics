@@ -58,3 +58,6 @@ backend/src/seeds/data/
 
 # uploaded employee documents (local disk storage)
 backend/uploads/
+
+# Local infra/ops reference — sensitive, never commit
+INFRASTRUCTURE.md

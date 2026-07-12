@@ -4,10 +4,12 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { CalendarCheck, Check, X } from 'lucide-react';
+import { CalendarCheck, Check, X, FileDown, PenTool } from 'lucide-react';
 import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, exportToExcel, today } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, ExportButton, Badge, Modal, TextArea, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import { getHrLeavesTranslations } from '@/lib/translations';
+import { downloadLeaveSheet } from '@/lib/leavePdf';
+import type { Signature } from '@/components/SignatureManager';
 
 export default function HRLeavesPage() {
   const { user } = useAuth();
@@ -23,6 +25,10 @@ export default function HRLeavesPage() {
   const [review, setReview] = useState<LeaveRequest | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [mySigs, setMySigs] = useState<Signature[]>([]);
+  const [signWith, setSignWith] = useState('');
+  const [pdfBusy, setPdfBusy] = useState('');
+  const t = (en: string, a: string) => (ar ? a : en);
 
   const load = useCallback(async () => {
     try {
@@ -34,16 +40,29 @@ export default function HRLeavesPage() {
   }, [statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { api.get<{ signatures: Signature[] }>('/api/auth/signatures').then((r) => setMySigs(r.signatures || [])).catch(() => {}); }, []);
   useSocket('hr:leave', useCallback(() => load(), [load]));
+
+  const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); };
 
   const decide = async (decision: 'approved' | 'rejected') => {
     if (!review) return;
     setBusy(true);
     try {
-      await api.patch(`/api/hr/leaves/${review._id}/decision`, { decision, note });
-      setReview(null); setNote(''); load();
+      await api.patch(`/api/hr/leaves/${review._id}/decision`, { decision, note, signatureId: signWith || undefined });
+      setReview(null); setNote(''); setSignWith(''); load();
     } catch (e: any) { alert(e.message); }
     setBusy(false);
+  };
+
+  // Fetch the full leave (with signatures) then build the official PDF sheet.
+  const downloadPdf = async (id: string) => {
+    setPdfBusy(id);
+    try {
+      const { leave } = await api.get<{ leave: any }>(`/api/hr/leaves/${id}`);
+      await downloadLeaveSheet(leave, lang as 'ar' | 'en');
+    } catch (e: any) { alert(e.message || 'PDF failed'); }
+    setPdfBusy('');
   };
 
   const filtered = leaves.filter((l) => {
@@ -94,14 +113,18 @@ export default function HRLeavesPage() {
             ) : filtered.map((l) => {
               const over = l.balanceSnapshot && typeof l.balanceSnapshot.remainingAfter === 'number' && l.balanceSnapshot.remainingAfter < 0;
               return (
-                <tr key={l._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => { setReview(l); setNote(''); }}>
+                <tr key={l._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => openReview(l)}>
                   <td className="px-4 py-3 text-slate-900 font-medium">{empName(l.employee, lang)}</td>
                   <td className="px-4 py-3 text-slate-700">{leaveTypeLabel(l.leaveType, lang)}</td>
                   <td className="px-4 py-3 text-slate-700">{fmtDate(l.startDate)} → {fmtDate(l.endDate)}</td>
                   <td className="px-4 py-3 text-slate-700">{l.days}</td>
                   <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.accrued ?? '—'}{over ? ` ${tx.over}` : ''}</span></td>
                   <td className="px-4 py-3"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></td>
-                  <td className="px-4 py-3 text-end text-slate-500 text-xs">{tx.view}</td>
+                  <td className="px-4 py-3 text-end">
+                    <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
+                      {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -126,11 +149,38 @@ export default function HRLeavesPage() {
             {review.reason && <div className="border-t border-slate-200 pt-3"><span className="text-slate-500">{tx.fieldReason}: </span><span className="text-slate-900">{review.reason}</span></div>}
             {review.managerDecision?.decision && <p className="text-xs text-slate-500">{tx.managerDecision}: {review.managerDecision.decision} {review.managerDecision.note ? `— ${review.managerDecision.note}` : ''}</p>}
             {(review.status === 'pending_manager' || review.status === 'pending_hr') && (
-              <div className="border-t border-slate-200 pt-3">
-                <label className="text-slate-500 text-xs mb-1 block">{tx.noteOptional}</label>
-                <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+              <div className="border-t border-slate-200 pt-3 space-y-3">
+                <div>
+                  <label className="text-slate-500 text-xs mb-1 block">{tx.noteOptional}</label>
+                  <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+                </div>
+                {/* Optional: sign this approval with one of your signatures */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input type="checkbox" checked={!!signWith} disabled={mySigs.length === 0}
+                      onChange={(e) => setSignWith(e.target.checked ? (mySigs.find((s) => s.isDefault)?._id || mySigs[0]?._id || '') : '')} />
+                    <PenTool className="w-4 h-4 text-[#f37121]" /> {t('Sign this approval', 'أوقّع على الموافقة')}
+                  </label>
+                  {mySigs.length === 0 && <p className="text-xs text-slate-400 mt-1">{t('Create a signature in Settings first.', 'اعمل توقيع في الإعدادات الأول.')}</p>}
+                  {signWith && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {mySigs.map((s) => (
+                        <button key={s._id} type="button" onClick={() => setSignWith(s._id)} className={`border rounded-lg p-1 bg-white ${signWith === s._id ? 'border-[#f37121] ring-1 ring-[#f37121]' : 'border-slate-200'}`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={s.dataUrl} alt={s.name} className="h-9 w-20 object-contain" />
+                          <div className="text-[10px] text-slate-500 text-center truncate w-20">{s.name}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
+            <div className="border-t border-slate-200 pt-3">
+              <button type="button" onClick={() => downloadPdf(review._id)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
+                {pdfBusy === review._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} {t('Download PDF sheet', 'تحميل ورقة الإجازة PDF')}
+              </button>
+            </div>
           </div>
         )}
       </Modal>

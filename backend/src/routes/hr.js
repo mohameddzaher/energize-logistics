@@ -63,6 +63,7 @@ router.post('/contracts/:id/terminate', authorize(...STAFF), hr.terminateContrac
 router.delete('/contracts/:id', authorize(...STAFF), hr.deleteContract);
 
 router.get('/leaves', authorize(...STAFF), hr.listLeaves);
+router.get('/leaves/:id', hr.getLeave); // single leave + signatures (for the PDF); access checked in controller
 
 router.get('/requests', authorize(...STAFF), hr.listRequests);
 router.patch('/requests/:id/status', authorize(...STAFF), hr.updateRequestStatus);

@@ -66,6 +66,19 @@ const userSchema = new mongoose.Schema(
     lastLogin: { type: Date },
     refreshToken: { type: String, select: false },
     collectionTarget: { type: Number, default: 0 },
+    // Personal signatures (base64 PNG) the user applies to documents (leave
+    // approvals etc.). `select: false` so the heavy data URLs don't bloat every
+    // /me response — fetched on demand via /api/auth/signatures.
+    signatures: {
+      type: [{
+        name: { type: String, default: 'توقيعي', trim: true },
+        dataUrl: { type: String, required: true }, // data:image/png;base64,...
+        isDefault: { type: Boolean, default: false },
+        createdAt: { type: Date, default: Date.now },
+      }],
+      select: false,
+      default: [],
+    },
   },
   { timestamps: true }
 );

@@ -9,6 +9,8 @@ const decisionSchema = new mongoose.Schema(
     at: { type: Date },
     decision: { type: String, enum: ['approved', 'rejected'] },
     note: { type: String, trim: true },
+    // Optional signature (base64 PNG) the approver applied when deciding.
+    signature: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -36,6 +38,9 @@ const leaveRequestSchema = new mongoose.Schema(
 
     managerDecision: decisionSchema,
     hrDecision: decisionSchema,
+
+    // The requester's signature (base64 PNG) applied at submission time.
+    employeeSignature: { type: String, default: '' },
 
     // Snapshot of the balance at request time so reviewers see whether the
     // requested days exceed what the employee had accrued.

@@ -4,7 +4,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getSettingsTranslations, getSettingsExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
-import { Settings, Shield, RefreshCw, Lock, Eye, EyeOff, CheckCircle2, User } from 'lucide-react';
+import { Settings, Shield, RefreshCw, Lock, Eye, EyeOff, CheckCircle2, User, PenTool } from 'lucide-react';
+import SignatureManager from '@/components/SignatureManager';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -81,6 +82,18 @@ export default function SettingsPage() {
         <Settings className="w-6 h-6 text-[#f37121]" />
         {T.title}
       </h1>
+
+      {/* ── My Signatures (All users) ── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-2 flex items-center gap-2">
+          <PenTool className="w-5 h-5 text-[#f37121]" />
+          {lang === 'ar' ? 'توقيعاتي' : 'My Signatures'}
+        </h3>
+        <p className="text-slate-500 text-sm mb-4">
+          {lang === 'ar' ? 'اعمل توقيعك (ارسمه أو ارفع صورة) علشان تستخدمه في الموافقات والمستندات زي طلبات الإجازة.' : 'Create your signature (draw or upload) to apply it on approvals and documents like leave requests.'}
+        </p>
+        <SignatureManager />
+      </div>
 
       {/* ── Change Password (All users) ── */}
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">

@@ -488,6 +488,23 @@ exports.markServiced = async (req, res) => {
   }
 };
 
+// ---- Update editable per-vehicle metadata (manual — e.g. tire brand/type) ---
+exports.updateVehicleMeta = async (req, res) => {
+  try {
+    const unitId = Number(req.params.id);
+    const set = {};
+    if (req.body.tireBrand !== undefined) set.tireBrand = String(req.body.tireBrand).trim().slice(0, 80);
+    if (!Object.keys(set).length) return res.status(400).json({ message: 'Nothing to update' });
+    const v = await Ls2Vehicle.findOneAndUpdate({ unitId }, { $set: set }, { new: true });
+    if (!v) return res.status(404).json({ message: 'Vehicle not found' });
+    cache.clear('ls2:');
+    emitToAll('ls2:updated', { at: Date.now(), meta: unitId });
+    res.json({ vehicle: v });
+  } catch (error) {
+    fail(res, error, 'Failed to update vehicle');
+  }
+};
+
 // ---- Settings (thresholds + maintenance plan) -----------------------------
 exports.getSettings = async (req, res) => {
   try {

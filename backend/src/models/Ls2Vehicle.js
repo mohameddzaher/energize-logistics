@@ -46,6 +46,9 @@ const ls2VehicleSchema = new mongoose.Schema({
   maxTirePressurePsi: Number,
   minTirePressurePsi: Number,
   tireFaults: Number,
+  // Manual, optional: tire brand/type (e.g. Continental) — entered by staff, NOT
+  // from Wialon (TPMS sensors don't report brand). Poll upserts never touch it.
+  tireBrand: { type: String, default: '' },
 
   // ---- Identity (mirrored from Wialon profile + custom fields, slow sync) ----
   profile: {

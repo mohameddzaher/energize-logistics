@@ -134,6 +134,7 @@ export default function Ls2RegistryPage() {
                             <Info label={t.installDate} value={v.profile?.installDate} />
                             <Info label={t.lsUnitId} value={v.profile?.lsUnitId} mono />
                             <Info label={t.vehicleType} value={v.profile?.vehicleType} />
+                            <Info label={t.tireBrand} value={v.tireBrand} />
                             {f && f.fuelL ? <Info label={t.fuelUsed} value={`${fmtNum(Math.round(f.fuelL))} L`} /> : null}
                             {(v.profile?.extra || []).map((e) => <Info key={e.label} label={e.label} value={e.value} />)}
                           </div>

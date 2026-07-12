@@ -11,12 +11,12 @@ export type Lang = 'en' | 'ar';
 
 // Mirror of backend LS2_*_ROLES (config/constants.js).
 export const LS2_STAFF_ROLES = [
-  'super_admin', 'admin', 'moderator', 'employee', 'operations_manager', 'operations',
+  'super_admin', 'admin', 'it_manager', 'moderator', 'employee', 'operations_manager', 'operations',
   'workshop_manager', 'workshop_employee', 'purchasing',
 ];
-export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'operations_manager', 'workshop_manager'];
+export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'workshop_manager'];
 // Roles that see the section pinned in their sidebar.
-export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'operations_manager', 'operations', 'workshop_manager', 'moderator'];
+export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'operations', 'workshop_manager', 'moderator'];
 export const isLs2Staff = (role?: string | null) => !!role && LS2_STAFF_ROLES.includes(role);
 export const isLs2Admin = (role?: string | null) => !!role && LS2_ADMIN_ROLES.includes(role);
 
@@ -47,6 +47,7 @@ export interface Vehicle {
   totalFuelUsedL: number | null; weightKg: number | null; mainPowerV: number | null; backupBatteryV: number | null;
   gsmSignal: number | null; odometerKm: number | null; engineHours: number | null;
   tires: Tire[]; tireCount: number; maxTireTempC: number | null; minTireTempC: number | null; maxTirePressurePsi: number | null; minTirePressurePsi: number | null; tireFaults: number;
+  tireBrand?: string; // manual: tire brand/type (e.g. Continental)
   status: string; alertLevel: string | null; activeAlertCount: number;
   serviceIntervals: ServiceInterval[];
   maintenanceStatus: 'ok' | 'due' | 'overdue';
@@ -291,6 +292,9 @@ export function ls2Text(lang: Lang) {
     maxTireTemp: t('Max Tire Temp', 'أقصى حرارة كاوتش'),
     tireTempMinMax: t('Tire Temp (max/min)', 'حرارة الكاوتش (أقصى/أقل)'),
     tirePressMinMax: t('Tire Pressure (max/min)', 'ضغط الكاوتش (أقصى/أقل)'),
+    tireBrand: t('Tire Brand / Type', 'ماركة / نوع الكاوتش'),
+    notSet: t('Not set', 'غير محدد'),
+    edit: t('Edit', 'تعديل'),
     avgEngineTemp: t('Avg Engine Temp', 'متوسط حرارة الموتور'),
     hottestTires: t('Hottest Tires', 'أسخن الكاوتش'),
     engineCoolant: t('Engine Coolant', 'حرارة الموتور'),

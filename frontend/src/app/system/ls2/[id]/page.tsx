@@ -17,7 +17,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
 import {
-  ls2Text, isLs2Staff, severityStyle, statusStyle, maintStyle, alertTypeLabel, alertMessage, tireTempColor, coolantColor,
+  ls2Text, isLs2Staff, isLs2Admin, severityStyle, statusStyle, maintStyle, alertTypeLabel, alertMessage, tireTempColor, coolantColor,
   fmtNum, fmtKm, fmtDate, fmtDuration, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type Alert, type Tire, type ServiceInterval, type DateRange, type TripsResult, type VehicleFuel, type TrackPoint,
 } from '@/lib/ls2';
 import LiveMap from '@/components/ls2/LiveMap';
@@ -50,10 +50,21 @@ export default function Ls2VehicleDetailPage() {
   const [track, setTrack] = useState<TrackPoint[] | null>(null);
   const [trackLoading, setTrackLoading] = useState(false);
 
+  const [brandEdit, setBrandEdit] = useState(false);
+  const [brandInput, setBrandInput] = useState('');
+  const [brandSaving, setBrandSaving] = useState(false);
+
   const load = useCallback(async () => {
     try { setD(await api.get<Detail>(`/api/ls2/vehicles/${id}`)); } catch { /* keep */ }
     setLoading(false);
   }, [id]);
+
+  const saveBrand = async () => {
+    setBrandSaving(true);
+    try { await api.patch(`/api/ls2/vehicles/${id}/meta`, { tireBrand: brandInput.trim() }); setBrandEdit(false); await load(); }
+    catch (e: any) { alert(e?.message || 'Failed'); }
+    setBrandSaving(false);
+  };
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
 
@@ -321,7 +332,25 @@ export default function Ls2VehicleDetailPage() {
 
       {/* Tire layout */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2"><Activity className="w-4 h-4 text-[#f37121]" /> {t.tireLayout}</h2>
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2"><Activity className="w-4 h-4 text-[#f37121]" /> {t.tireLayout}</h2>
+          {/* Manual tire brand/type (optional) */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400">{t.tireBrand}:</span>
+            {brandEdit ? (
+              <>
+                <input autoFocus value={brandInput} onChange={(e) => setBrandInput(e.target.value)} placeholder="Continental…" className="px-2 py-1 rounded-lg border border-slate-200 text-sm w-40" />
+                <button type="button" onClick={saveBrand} disabled={brandSaving} className="px-2.5 py-1 rounded-lg bg-[#f37121] text-white text-xs font-medium disabled:opacity-60">{brandSaving ? '…' : t.save}</button>
+                <button type="button" onClick={() => setBrandEdit(false)} className="px-2 py-1 text-xs text-slate-400">✕</button>
+              </>
+            ) : (
+              <>
+                <span className={`text-sm font-medium ${v.tireBrand ? 'text-slate-800' : 'text-slate-300'}`}>{v.tireBrand || t.notSet}</span>
+                {isLs2Admin(user?.role) && <button type="button" title={t.edit} onClick={() => { setBrandInput(v.tireBrand || ''); setBrandEdit(true); }} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-[#f37121]"><Wrench className="w-3.5 h-3.5" /></button>}
+              </>
+            )}
+          </div>
+        </div>
         <TireLayout tires={v.tires} t={t} lang={lang as Lang} />
       </div>
 

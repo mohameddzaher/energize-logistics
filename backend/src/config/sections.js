@@ -23,37 +23,37 @@ const SECTIONS = [
   {
     key: 'Customers & Finance',
     apiPrefixes: ['/api/invoices', '/api/payments', '/api/collections', '/api/disputes'],
-    defaultRoles: ['admin', 'employee', 'operations_manager', 'moderator'],
+    defaultRoles: ['admin', 'it_manager', 'employee', 'operations_manager', 'moderator'],
   },
   {
     key: 'Operations',
     apiPrefixes: ['/api/wallet'],
-    defaultRoles: ['admin', 'employee', 'operations_manager', 'operations', 'moderator', 'procurement_manager', 'purchasing'],
+    defaultRoles: ['admin', 'it_manager', 'employee', 'operations_manager', 'operations', 'moderator', 'procurement_manager', 'purchasing'],
   },
   {
     key: 'Operations Platform',
     apiPrefixes: ['/api/ops'],
-    defaultRoles: ['admin', 'operations_manager', 'operations', 'moderator', 'employee'],
+    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations', 'moderator', 'employee'],
   },
   {
     key: 'Customs',
     apiPrefixes: ['/api/customs-clearance'],
-    defaultRoles: ['admin', 'operations_manager', 'customs_manager', 'customs_officer'],
+    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'customs_manager', 'customs_officer'],
   },
   {
     key: 'Vehicles',
     apiPrefixes: ['/api/vehicles'],
-    defaultRoles: ['admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
+    defaultRoles: ['admin', 'it_manager', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
   },
   {
     key: 'Location Solutions',
     apiPrefixes: ['/api/ls2'],
-    defaultRoles: ['admin', 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
+    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
   },
   {
     key: 'B2C',
     apiPrefixes: ['/api/b2c', '/api/b2c-wallet'],
-    defaultRoles: ['admin', 'b2c_head', 'b2c_project_manager'],
+    defaultRoles: ['admin', 'it_manager', 'b2c_head', 'b2c_project_manager'],
   },
   {
     key: 'Workshop',
@@ -63,7 +63,7 @@ const SECTIONS = [
   {
     key: 'Remote',
     apiPrefixes: ['/api/remote'],
-    defaultRoles: ['admin', 'remote_manager', 'remote_employee'],
+    defaultRoles: ['admin', 'it_manager', 'remote_manager', 'remote_employee'],
   },
   {
     key: 'HR',
@@ -73,27 +73,27 @@ const SECTIONS = [
     // must never be blocked by removing back-office HR access, so they are
     // exempt from the gate.
     exemptSelfService: true,
-    defaultRoles: ['admin', 'hr_manager', 'hr_specialist'],
+    defaultRoles: ['admin', 'it_manager', 'hr_manager', 'hr_specialist'],
   },
   {
     key: 'CRM',
     apiPrefixes: ['/api/crm', '/api/crm-vendors'],
-    defaultRoles: ['admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'],
+    defaultRoles: ['admin', 'it_manager', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'],
   },
   {
     key: 'Sales',
     apiPrefixes: ['/api/sales'],
-    defaultRoles: ['admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'],
+    defaultRoles: ['admin', 'it_manager', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'],
   },
   {
     key: 'Accounting',
     apiPrefixes: ['/api/accounting'],
-    defaultRoles: ['admin', 'finance_manager', 'accountant'],
+    defaultRoles: ['admin', 'it_manager', 'finance_manager', 'accountant'],
   },
   {
     key: 'Procurement',
     apiPrefixes: ['/api/procurement'],
-    defaultRoles: ['admin', 'procurement_manager', 'purchasing'],
+    defaultRoles: ['admin', 'it_manager', 'procurement_manager', 'purchasing'],
   },
 ];
 
@@ -108,6 +108,7 @@ const ALL_ROLES = [
   'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
   'finance_manager', 'accountant', 'sales_manager', 'sales_rep',
   'procurement_manager', 'customs_manager', 'customs_officer',
+  'it_manager', 'it_specialist',
 ];
 
 const getSection = (key) => SECTIONS.find((s) => s.key === key);

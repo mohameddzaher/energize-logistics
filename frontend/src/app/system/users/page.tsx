@@ -18,7 +18,7 @@ interface UserRecord {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_team_lead' | 'crm_specialist' | 'crm_agent' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager' | 'customs_manager' | 'customs_officer';
+  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_team_lead' | 'crm_specialist' | 'crm_agent' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager' | 'customs_manager' | 'customs_officer' | 'it_manager' | 'it_specialist';
   branch?: { _id: string; name: string };
   remoteAccess?: string[];
   status?: 'active' | 'locked' | 'inactive';
@@ -72,6 +72,8 @@ const roleConfig: Record<string, { bg: string; text: string }> = {
   b2c_project_manager: { bg: 'bg-rose-500/20', text: 'text-rose-600' },
   remote_employee: { bg: 'bg-indigo-500/20', text: 'text-indigo-600' },
   remote_manager: { bg: 'bg-violet-500/20', text: 'text-violet-600' },
+  it_manager: { bg: 'bg-slate-800/10', text: 'text-slate-800' },
+  it_specialist: { bg: 'bg-sky-500/20', text: 'text-sky-700' },
 };
 
 // Pages inside the Remote section a remote_employee can be granted access to.
@@ -473,6 +475,8 @@ export default function UsersPage() {
     procurement_manager: lang === 'ar' ? 'مدير المشتريات' : 'Procurement Manager',
     customs_manager: lang === 'ar' ? 'مدير التخليص الجمركي' : 'Customs Manager',
     customs_officer: lang === 'ar' ? 'مخلّص جمركي' : 'Customs Officer',
+    it_manager: lang === 'ar' ? 'مدير التقنية والبرمجيات' : 'Head of IT & Software',
+    it_specialist: lang === 'ar' ? 'أخصائي تقنية وبرمجيات' : 'IT & Software Specialist',
   };
 
   const statusLabels: Record<string, string> = {

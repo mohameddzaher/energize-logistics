@@ -23,6 +23,8 @@ module.exports = {
     PROCUREMENT_MANAGER: 'procurement_manager',
     CUSTOMS_MANAGER: 'customs_manager',
     CUSTOMS_OFFICER: 'customs_officer',
+    IT_MANAGER: 'it_manager',
+    IT_SPECIALIST: 'it_specialist',
   },
 
   // Org chart: each role's DEFAULT direct-manager role. Used to auto-suggest a
@@ -56,32 +58,34 @@ module.exports = {
     remote_employee: 'remote_manager',
     customs_manager: 'admin',
     customs_officer: 'customs_manager',
+    it_manager: 'admin',
+    it_specialist: 'it_manager',
     client: null,
   },
 
   // Roles that can access the Accounting section.
-  FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'finance_manager', 'accountant'],
+  FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'finance_manager', 'accountant'],
   // Roles that can access the Sales section (+ the operations team — they need
   // visibility across CRM/Sales for the 3PL workflow).
-  SALES_STAFF_ROLES: ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'],
+  SALES_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'],
   // Roles that can access the Procurement section. Reuses the existing
   // `purchasing` role (officer level) and adds a procurement_manager.
-  PROCUREMENT_STAFF_ROLES: ['super_admin', 'admin', 'procurement_manager', 'purchasing'],
+  PROCUREMENT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'procurement_manager', 'purchasing'],
 
   // Roles that can see/manage the HR back-office (employees, contracts, all
   // leaves/requests, custody, leave types). Everyone else only gets the HR
   // self-service pages (their own profile, requests and leaves).
-  HR_STAFF_ROLES: ['super_admin', 'admin', 'hr_manager', 'hr_specialist'],
+  HR_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'hr_manager', 'hr_specialist'],
 
   // Roles that can access the CRM section (companies, contacts, deals, tasks,
   // activities, calendar). Tiered: crm_manager (full) > crm_team_lead (delete /
   // reassign) > crm_specialist (write, no delete) > crm_agent (entry level).
   // crm_manager + crm_team_lead are the "admin" tier (delete + privileged ops).
-  CRM_STAFF_ROLES: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'],
-  CRM_ADMIN_ROLES: ['super_admin', 'admin', 'crm_manager', 'crm_team_lead'],
+  CRM_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'],
+  CRM_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'crm_manager', 'crm_team_lead'],
 
   // Roles that can access the Customs Clearance section (التخليص الجمركى).
-  CUSTOMS_STAFF_ROLES: ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'],
+  CUSTOMS_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'operations_manager', 'customs_manager', 'customs_officer'],
 
   // Roles that can access the Operations Platform (قسم الأوبريشن): the live
   // mirror of the external UPL field-ops system (B2B — Fleet Management + 3PL).
@@ -90,7 +94,7 @@ module.exports = {
   // dashboards. The admin tier alone can create/update/delete (writes proxied
   // through to UPL).
   OPS_PLATFORM_STAFF_ROLES: [
-    'super_admin', 'admin', 'moderator', 'employee', 'operations_manager', 'operations',
+    'super_admin', 'admin', 'it_manager', 'moderator', 'employee', 'operations_manager', 'operations',
     'workshop_manager', 'workshop_employee', 'purchasing',
     'hr_manager', 'hr_specialist',
     'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
@@ -100,7 +104,7 @@ module.exports = {
     'customs_manager', 'customs_officer',
     'remote_manager',
   ],
-  OPS_PLATFORM_ADMIN_ROLES: ['super_admin', 'admin', 'operations_manager'],
+  OPS_PLATFORM_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'operations_manager'],
 
   // Roles that can access the Location Solutions section (قسم لوكيشن سوليوشن): the
   // live Wialon GPS/telemetry mirror (sensors, tires, engine temp, maintenance
@@ -108,19 +112,19 @@ module.exports = {
   // (super_admin, admin, operations_manager, workshop_manager) can acknowledge
   // alerts, mark vehicles serviced and tune the alert thresholds.
   LS2_STAFF_ROLES: [
-    'super_admin', 'admin', 'moderator', 'employee', 'operations_manager', 'operations',
+    'super_admin', 'admin', 'it_manager', 'moderator', 'employee', 'operations_manager', 'operations',
     'workshop_manager', 'workshop_employee', 'purchasing',
   ],
-  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'operations_manager', 'workshop_manager'],
+  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'operations_manager', 'workshop_manager'],
   // Core roles that see the section in their sidebar (others can still reach the
   // data via direct link / embeds but it isn't pinned to their nav).
-  LS2_SECTION_ROLES: ['super_admin', 'admin', 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
+  LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
 
   // Roles that can access the Vehicles & Authorizations section (المركبات
   // والتفاويض): super admin + HR + Accounting. Delete ops are further limited to
   // the admin tier (super_admin, admin, hr_manager, finance_manager).
-  VEHICLE_STAFF_ROLES: ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
-  VEHICLE_ADMIN_ROLES: ['super_admin', 'admin', 'hr_manager', 'finance_manager'],
+  VEHICLE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
+  VEHICLE_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'hr_manager', 'finance_manager'],
 
   // Pages inside the Remote (work-from-home) section. A remote_employee is
   // granted a subset of these via User.remoteAccess; remote_manager and

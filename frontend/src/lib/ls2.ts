@@ -46,7 +46,7 @@ export interface Vehicle {
   speed: number | null; rpm: number | null; coolantC: number | null; fuelPct: number | null;
   totalFuelUsedL: number | null; weightKg: number | null; mainPowerV: number | null; backupBatteryV: number | null;
   gsmSignal: number | null; odometerKm: number | null; engineHours: number | null;
-  tires: Tire[]; tireCount: number; maxTireTempC: number | null; minTirePressurePsi: number | null; tireFaults: number;
+  tires: Tire[]; tireCount: number; maxTireTempC: number | null; minTireTempC: number | null; maxTirePressurePsi: number | null; minTirePressurePsi: number | null; tireFaults: number;
   status: string; alertLevel: string | null; activeAlertCount: number;
   serviceIntervals: ServiceInterval[];
   maintenanceStatus: 'ok' | 'due' | 'overdue';
@@ -289,6 +289,8 @@ export function ls2Text(lang: Lang) {
     hotEngines: t('Hot Engines', 'موتور ساخن'),
     avgTireTemp: t('Avg Tire Temp', 'متوسط حرارة الكاوتش'),
     maxTireTemp: t('Max Tire Temp', 'أقصى حرارة كاوتش'),
+    tireTempMinMax: t('Tire Temp (max/min)', 'حرارة الكاوتش (أقصى/أقل)'),
+    tirePressMinMax: t('Tire Pressure (max/min)', 'ضغط الكاوتش (أقصى/أقل)'),
     avgEngineTemp: t('Avg Engine Temp', 'متوسط حرارة الموتور'),
     hottestTires: t('Hottest Tires', 'أسخن الكاوتش'),
     engineCoolant: t('Engine Coolant', 'حرارة الموتور'),

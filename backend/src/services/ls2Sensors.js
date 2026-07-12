@@ -237,6 +237,8 @@ function normalize(unit) {
     tires,
     tireCount: tires.length,
     maxTireTempC: tireTemps.length ? Math.max(...tireTemps) : null,
+    minTireTempC: tireTemps.length ? Math.min(...tireTemps) : null,
+    maxTirePressurePsi: tirePress.length ? Math.max(...tirePress) : null,
     minTirePressurePsi: tirePress.length ? Math.min(...tirePress) : null,
     tireFaults: tires.filter((t) => t.fault).length,
   };

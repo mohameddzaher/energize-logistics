@@ -33,7 +33,7 @@ const IDENTITY_EVERY_TICKS = 90;
 const VEHICLE_FIELDS = [
   'name', 'plate', 'driver', 'position', 'lastMessageAt', 'ignition', 'moving', 'speed', 'rpm',
   'coolantC', 'fuelPct', 'totalFuelUsedL', 'weightKg', 'mainPowerV', 'backupBatteryV', 'gsmSignal',
-  'odometerKm', 'engineHours', 'tires', 'tireCount', 'maxTireTempC', 'minTirePressurePsi', 'tireFaults',
+  'odometerKm', 'engineHours', 'tires', 'tireCount', 'maxTireTempC', 'minTireTempC', 'maxTirePressurePsi', 'minTirePressurePsi', 'tireFaults',
 ];
 
 async function tick() {

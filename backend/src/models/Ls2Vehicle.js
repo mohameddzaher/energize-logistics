@@ -42,6 +42,8 @@ const ls2VehicleSchema = new mongoose.Schema({
   tires: [tireSchema],
   tireCount: Number,
   maxTireTempC: Number,
+  minTireTempC: Number,
+  maxTirePressurePsi: Number,
   minTirePressurePsi: Number,
   tireFaults: Number,
 

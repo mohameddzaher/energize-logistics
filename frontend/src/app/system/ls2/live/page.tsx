@@ -91,7 +91,8 @@ export default function Ls2LivePage() {
                 <th className="text-start font-semibold px-4 py-3">{t.driver}</th>
                 <th className="text-start font-semibold px-4 py-3">{t.status}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.speed}</th>
-                <th className="text-end font-semibold px-4 py-3">{t.maxTireTemp}</th>
+                <th className="text-end font-semibold px-4 py-3">{t.tireTempMinMax}</th>
+                <th className="text-end font-semibold px-4 py-3">{t.tirePressMinMax}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.coolant}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.odometer}</th>
                 <th className="text-end font-semibold px-4 py-3 text-[#f9a06b]">{t.kmInPeriod}</th>
@@ -110,7 +111,18 @@ export default function Ls2LivePage() {
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.driver || '—'}</td>
                     <td className="px-4 py-3"><span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span></td>
                     <td className="px-4 py-3 text-end tabular-nums">{v.speed != null ? `${v.speed}` : '—'}</td>
-                    <td className={`px-4 py-3 text-end tabular-nums font-medium ${v.maxTireTempC != null ? '' : 'text-slate-300'}`}>{v.maxTireTempC != null ? <span className={`px-2 py-0.5 rounded-full text-xs ${tireTempColor(v.maxTireTempC)}`}>{v.maxTireTempC}°C</span> : '—'}</td>
+                    {/* Tire temp: max (colored by heat) / min */}
+                    <td className="px-4 py-3 text-end tabular-nums whitespace-nowrap">
+                      {v.maxTireTempC != null ? (
+                        <span><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tireTempColor(v.maxTireTempC)}`}>{v.maxTireTempC}°</span><span className="text-slate-400 text-xs"> / {v.minTireTempC}°</span></span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    {/* Tire pressure: max / min (min low = red) */}
+                    <td className="px-4 py-3 text-end tabular-nums whitespace-nowrap">
+                      {v.maxTirePressurePsi != null ? (
+                        <span><span className="text-slate-700 font-medium">{v.maxTirePressurePsi}</span><span className={`text-xs ${v.minTirePressurePsi != null && v.minTirePressurePsi < 90 ? 'text-red-500 font-medium' : 'text-slate-400'}`}> / {v.minTirePressurePsi}</span><span className="text-[10px] text-slate-400"> psi</span></span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
                     <td className={`px-4 py-3 text-end tabular-nums font-medium ${coolantColor(v.coolantC)}`}>{v.coolantC != null ? `${v.coolantC}°C` : '—'}</td>
                     <td className="px-4 py-3 text-end tabular-nums text-slate-600">{fmtKm(v.odometerKm)}</td>
                     <td className="px-4 py-3 text-end tabular-nums font-semibold text-slate-800">{v.periodKm != null ? `${fmtNum(Math.round(v.periodKm))}` : '—'}</td>
@@ -122,7 +134,7 @@ export default function Ls2LivePage() {
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={11} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={12} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>

@@ -754,13 +754,13 @@ export default function InvoiceDetailPage() {
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {PAYMENT_METHOD_LABELS[payment.paymentMethod] || PAYMENT_METHODS[payment.paymentMethod] || payment.paymentMethod}
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{payment.reference || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-800">{payment.reference || '-'}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {payment.receivedBy
                         ? `${payment.receivedBy.firstName} ${payment.receivedBy.lastName}`
                         : '-'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">
+                    <td className="px-4 py-3 text-sm text-slate-800 max-w-[200px] truncate">
                       {payment.notes || '-'}
                     </td>
                   </motion.tr>

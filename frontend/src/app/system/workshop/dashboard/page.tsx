@@ -363,7 +363,7 @@ export default function WorkshopDashboardPage() {
                     <td className="py-2.5 px-3 text-slate-900 font-medium">{v._id}</td>
                     <td className="py-2.5 px-3"><span className="px-2 py-0.5 rounded bg-[#f37121]/20 text-[#f37121] text-xs font-medium">{v.visits}x</span></td>
                     <td className="py-2.5 px-3 text-slate-700">{formatDuration(v.totalDuration)}</td>
-                    <td className="py-2.5 px-3 text-slate-500 text-xs">{v.lastVisit ? new Date(v.lastVisit).toLocaleDateString(isAr ? 'ar-EG' : 'en-US') : '-'}</td>
+                    <td className="py-2.5 px-3 text-slate-800 text-xs">{v.lastVisit ? new Date(v.lastVisit).toLocaleDateString(isAr ? 'ar-EG' : 'en-US') : '-'}</td>
                   </tr>
                 ))}
               </tbody>

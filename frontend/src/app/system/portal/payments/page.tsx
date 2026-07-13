@@ -95,7 +95,7 @@ export default function ClientPaymentsPage() {
           <tbody className="divide-y divide-slate-200">
             {payments.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-500 text-sm">{T.noPayments}</td>
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-800 text-sm">{T.noPayments}</td>
               </tr>
             ) : (
               payments.map((p) => (
@@ -104,7 +104,7 @@ export default function ClientPaymentsPage() {
                   <td className="px-4 py-3 text-sm text-slate-900 font-medium">#{p.invoice?.invoiceNumber || '-'}</td>
                   <td className="px-4 py-3 text-sm text-green-600 font-bold">{p.amount?.toLocaleString()}</td>
                   <td className="px-4 py-3 text-sm text-slate-700 capitalize">{p.paymentMethod?.replace('_', ' ')}</td>
-                  <td className="px-4 py-3 text-sm text-slate-500">{p.reference || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-slate-800">{p.reference || '-'}</td>
                 </tr>
               ))
             )}

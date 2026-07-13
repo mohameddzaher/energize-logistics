@@ -75,13 +75,13 @@ export default function MyRequestsPage() {
             <th className="text-start font-semibold px-4 py-3">{tx.colUpdated}</th>
           </tr></thead>
           <tbody>
-            {requests.length === 0 ? <tr><td colSpan={4} className="text-center text-slate-500 py-10">{tx.noRequests}</td></tr> :
+            {requests.length === 0 ? <tr><td colSpan={4} className="text-center text-slate-800 py-10">{tx.noRequests}</td></tr> :
               requests.map((r) => (
                 <tr key={r._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
                   <td className="px-4 py-3 text-slate-700">{categoryLabel(r.category, lang)}</td>
                   <td className="px-4 py-3 text-slate-900 font-medium">{r.subject} {!r.readByRequester && <span className="ms-1 inline-block w-2 h-2 rounded-full bg-[#f37121]" />}</td>
                   <td className="px-4 py-3"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></td>
-                  <td className="px-4 py-3 text-slate-500 text-xs">{fmtDateTime(r.updatedAt)}</td>
+                  <td className="px-4 py-3 text-slate-800 text-xs">{fmtDateTime(r.updatedAt)}</td>
                 </tr>
               ))}
           </tbody>

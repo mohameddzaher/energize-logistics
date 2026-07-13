@@ -747,7 +747,7 @@ export default function WalletPage() {
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={15} className="text-center text-slate-500 py-12">{L.noTransactions}</td></tr>
+                <tr><td colSpan={15} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
               ) : transactions.map((tx) => {
                 const cfg = TYPE_CONFIG[tx.type];
                 const Icon = cfg.icon;
@@ -789,8 +789,8 @@ export default function WalletPage() {
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.length || '—'}</td>
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.carNumber || '—'}</td>
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.operationDetails?.reportDate ? new Date(tx.operationDetails.reportDate).toLocaleDateString('en-GB') : '—'}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs max-w-[150px] truncate">{tx.notes || '—'}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
+                    <td className="px-4 py-3 text-slate-800 text-xs max-w-[150px] truncate">{tx.notes || '—'}</td>
+                    <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap">
                       {new Date(tx.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-3 text-end">

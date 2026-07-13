@@ -65,13 +65,13 @@ export default function PayablesPage() {
             <th className="px-4 py-3 text-end">{tx.daysOverdue}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
-            {data.rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">—</td></tr> : data.rows.map((r, i) => (
+            {data.rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-800">—</td></tr> : data.rows.map((r, i) => (
               <tr key={i} className="hover:bg-slate-100">
                 <td className="px-4 py-2.5 text-slate-700 font-mono text-xs">{r.bill}</td>
                 <td className="px-4 py-2.5 text-slate-900">{r.vendor?.name || '—'}</td>
                 <td className="px-4 py-2.5 text-end text-slate-900">{money(r.balance, '')}</td>
-                <td className="px-4 py-2.5 text-slate-500">{fmtDate(r.dueDate)}</td>
-                <td className={`px-4 py-2.5 text-end ${r.daysOverdue > 0 ? 'text-red-600' : 'text-slate-500'}`}>{r.daysOverdue > 0 ? r.daysOverdue : '—'}</td>
+                <td className="px-4 py-2.5 text-slate-800">{fmtDate(r.dueDate)}</td>
+                <td className={`px-4 py-2.5 text-end ${r.daysOverdue > 0 ? 'text-red-600' : 'text-slate-800'}`}>{r.daysOverdue > 0 ? r.daysOverdue : '—'}</td>
               </tr>
             ))}
           </tbody>

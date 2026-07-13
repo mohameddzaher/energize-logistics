@@ -330,7 +330,7 @@ export default function BranchWalletDashboardPage() {
                 {wallets.map((w) => (
                   <tr key={w._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors">
                     <td className="px-4 py-3 text-slate-900 font-medium">{w.user?.firstName} {w.user?.lastName}</td>
-                    {dateMode === 'range' && <td className="px-4 py-3 text-slate-500 text-xs">{w.date}</td>}
+                    {dateMode === 'range' && <td className="px-4 py-3 text-slate-800 text-xs">{w.date}</td>}
                     <td className="px-4 py-3 text-slate-700">{w.openingBalance.toLocaleString()}</td>
                     <td className="px-4 py-3 text-green-600">+{w.totalCollections.toLocaleString()}</td>
                     <td className="px-4 py-3 text-red-600">-{w.totalExpenses.toLocaleString()}</td>
@@ -407,13 +407,13 @@ export default function BranchWalletDashboardPage() {
             </thead>
             <tbody>
               {filteredTx.length === 0 ? (
-                <tr><td colSpan={dateMode === 'range' ? 16 : 15} className="text-center text-slate-500 py-12">{T.noTransactions}</td></tr>
+                <tr><td colSpan={dateMode === 'range' ? 16 : 15} className="text-center text-slate-800 py-12">{T.noTransactions}</td></tr>
               ) : filteredTx.map((tx) => {
                 const tc = TYPE_COLORS[tx.type] || { color: 'text-slate-500', bg: 'bg-slate-100' };
                 return (
                   <tr key={tx._id} className={`border-b border-slate-200/70 hover:bg-slate-100 transition-colors ${tx.isFlagged ? 'bg-red-500/5' : ''}`}>
-                    {dateMode === 'range' && <td className="px-4 py-3 text-slate-500 text-xs">{tx.date || ''}</td>}
-                    <td className="px-4 py-3 text-slate-500 text-xs">
+                    {dateMode === 'range' && <td className="px-4 py-3 text-slate-800 text-xs">{tx.date || ''}</td>}
+                    <td className="px-4 py-3 text-slate-800 text-xs">
                       {new Date(tx.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-3 text-slate-900 text-xs">{tx.user.firstName} {tx.user.lastName}</td>
@@ -432,7 +432,7 @@ export default function BranchWalletDashboardPage() {
                         {tx.type === 'collection' ? '+' : '-'}{tx.amount.toLocaleString()} SAR
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{tx.reference || '—'}</td>
+                    <td className="px-4 py-3 text-slate-800 text-xs">{tx.reference || '—'}</td>
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.deliveryStatementNumber || tx.purchaseDeliveryStatementNumber || '—'}</td>
                     <td className="px-4 py-3 text-slate-700 text-xs">{tx.operationDetails?.client || '—'}</td>
                     <td className="px-4 py-3 text-slate-700 text-xs">{tx.operationDetails?.from || '—'}</td>
@@ -441,7 +441,7 @@ export default function BranchWalletDashboardPage() {
                     <td className="px-4 py-3 text-slate-700 text-xs">{tx.operationDetails?.length || '—'}</td>
                     <td className="px-4 py-3 text-slate-700 text-xs">{tx.operationDetails?.carNumber || '—'}</td>
                     <td className="px-4 py-3 text-slate-700 text-xs">{tx.operationDetails?.reportDate ? new Date(tx.operationDetails.reportDate).toLocaleDateString('en-GB') : '—'}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs max-w-[150px] truncate">{tx.notes || '—'}</td>
+                    <td className="px-4 py-3 text-slate-800 text-xs max-w-[150px] truncate">{tx.notes || '—'}</td>
                   </tr>
                 );
               })}

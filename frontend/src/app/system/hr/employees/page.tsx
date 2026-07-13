@@ -99,7 +99,7 @@ export default function HREmployeesPage() {
           </thead>
           <tbody>
             {employees.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-slate-500 py-12">{tx.noEmployees}</td></tr>
+              <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noEmployees}</td></tr>
             ) : employees.map((e) => (
               <tr key={e._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/hr/employees/${e._id}`)}>
                 <td className="px-4 py-3 text-slate-900 font-medium">{empName(e, lang)}<div className="text-xs text-slate-500">{e.email || ''}</div></td>

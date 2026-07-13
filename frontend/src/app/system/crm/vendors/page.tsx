@@ -145,7 +145,7 @@ export default function CrmVendorsPage() {
           </thead>
           <tbody>
             {items.length === 0 ? (
-              <tr><td colSpan={10} className="text-center text-slate-500 py-12">{t('No vendors', 'لا يوجد موردين')}</td></tr>
+              <tr><td colSpan={10} className="text-center text-slate-800 py-12">{t('No vendors', 'لا يوجد موردين')}</td></tr>
             ) : items.map((v) => (
               <tr key={v._id} className="border-b border-slate-200/70 hover:bg-slate-50 cursor-pointer" onClick={() => setDetail(v)}>
                 <td className="px-3 py-3 font-semibold text-slate-900 max-w-[220px] truncate">
@@ -153,12 +153,12 @@ export default function CrmVendorsPage() {
                 </td>
                 <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{v.representative || '—'}</td>
                 <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>{(v.mobile || v.email) ? <ContactButtons phone={v.mobile} whatsapp={v.mobile} email={v.email} /> : '—'}</td>
-                <td className="px-3 py-3 text-slate-600 max-w-[160px] truncate">{v.destinations || '—'}</td>
-                <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{v.headOffice || '—'}</td>
+                <td className="px-3 py-3 text-slate-800 max-w-[160px] truncate">{v.destinations || '—'}</td>
+                <td className="px-3 py-3 text-slate-800 whitespace-nowrap">{v.headOffice || '—'}</td>
                 <td className="px-3 py-3 text-slate-700">{v.carsCount ?? '—'}</td>
-                <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{v.vendorType || '—'}</td>
+                <td className="px-3 py-3 text-slate-800 whitespace-nowrap">{v.vendorType || '—'}</td>
                 <td className="px-3 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${statusStyle(v.followUpStatus)}`}>{v.followUpStatus || '—'}</span></td>
-                <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{v.energizeRep || '—'}</td>
+                <td className="px-3 py-3 text-slate-800 whitespace-nowrap">{v.energizeRep || '—'}</td>
                 <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
                     <button type="button" onClick={() => setDetail(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100"><Eye className="w-4 h-4" /></button>

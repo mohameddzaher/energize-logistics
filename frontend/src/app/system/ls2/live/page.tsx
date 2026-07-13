@@ -108,7 +108,7 @@ export default function Ls2LivePage() {
                 return (
                   <tr key={v.unitId} onClick={() => router.push(`/system/ls2/${v.unitId}`)} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
                     <td className="px-4 py-3 whitespace-nowrap"><p className="font-medium text-slate-800">{v.plate || v.name}</p>{v.profile?.brand && <p className="text-[10px] text-slate-400">{v.profile.brand}{v.profile.modelYear ? ` · ${v.profile.modelYear}` : ''}</p>}</td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.driver || '—'}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>
                     <td className="px-4 py-3"><span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span></td>
                     <td className="px-4 py-3 text-end tabular-nums">{v.speed != null ? `${v.speed}` : '—'}</td>
                     {/* Tire temp: max (colored by heat) / min */}
@@ -124,17 +124,17 @@ export default function Ls2LivePage() {
                       ) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className={`px-4 py-3 text-end tabular-nums font-medium ${coolantColor(v.coolantC)}`}>{v.coolantC != null ? `${v.coolantC}°C` : '—'}</td>
-                    <td className="px-4 py-3 text-end tabular-nums text-slate-600">{fmtKm(v.odometerKm)}</td>
+                    <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(v.odometerKm)}</td>
                     <td className="px-4 py-3 text-end tabular-nums font-semibold text-slate-800">{v.periodKm != null ? `${fmtNum(Math.round(v.periodKm))}` : '—'}</td>
                     <td className="px-4 py-3 text-center">{v.activeAlertCount > 0 ? <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${sv.bg} ${sv.text}`}>{v.activeAlertCount}</span> : <span className="text-slate-300">0</span>}</td>
-                    <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{timeAgo(v.lastMessageAt, lang as Lang)}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{timeAgo(v.lastMessageAt, lang as Lang)}</td>
                     <td className="px-4 py-3">
                       {v.position && <a href={osmLink(v.position.lat, v.position.lng)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-slate-400 hover:text-[#f37121]" title={t.openInMap}><MapPin className="w-4 h-4" /></a>}
                     </td>
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={12} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={12} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>

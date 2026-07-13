@@ -109,7 +109,7 @@ export default function HRLeavesPage() {
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-slate-500 py-12">{tx.noRequests}</td></tr>
+              <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((l) => {
               const over = l.balanceSnapshot && typeof l.balanceSnapshot.remainingAfter === 'number' && l.balanceSnapshot.remainingAfter < 0;
               return (

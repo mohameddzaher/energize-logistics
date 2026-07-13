@@ -733,7 +733,7 @@ export default function OperationsWorkflowPage() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {displayed.length === 0 ? (
-                <tr><td colSpan={41} className="px-4 py-12 text-center text-slate-500 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : (hasColFilters ? (lang === 'ar' ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : T.noWorkflows)}</td></tr>
+                <tr><td colSpan={41} className="px-4 py-12 text-center text-slate-800 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : (hasColFilters ? (lang === 'ar' ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : T.noWorkflows)}</td></tr>
               ) : clientPaged.map((wf) => {
                 const locked = isLockedByOther(wf);
                 const transitions = getTransitions(wf);

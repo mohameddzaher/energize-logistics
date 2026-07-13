@@ -344,7 +344,7 @@ export default function InventoryPage() {
                   <td className={`py-3 px-3 font-medium ${item.lowStock ? 'text-orange-600' : 'text-slate-700'}`}>
                     {item.quantity}
                   </td>
-                  <td className="py-3 px-3 text-slate-500">{item.minQuantity}</td>
+                  <td className="py-3 px-3 text-slate-800">{item.minQuantity}</td>
                   <td className="py-3 px-3 text-slate-700">{item.unit}</td>
                   <td className="py-3 px-3 text-slate-700">{item.costPrice ? item.costPrice.toLocaleString() : '-'}</td>
                   <td className="py-3 px-3 text-slate-700">{item.location || '-'}</td>

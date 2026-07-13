@@ -846,7 +846,7 @@ export default function TasksPage() {
                 <tbody>
                   {tasks.length === 0 ? (
                     <tr>
-                      <td colSpan={isAdmin ? 9 : 8} className="text-center text-slate-500 py-12">
+                      <td colSpan={isAdmin ? 9 : 8} className="text-center text-slate-800 py-12">
                         {T.noTasks}
                       </td>
                     </tr>
@@ -1104,7 +1104,7 @@ export default function TasksPage() {
                     </thead>
                     <tbody>
                       {stats.byCollector.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center text-slate-500 py-8">{T.noDataFound}</td></tr>
+                        <tr><td colSpan={7} className="text-center text-slate-800 py-8">{T.noDataFound}</td></tr>
                       ) : (
                         stats.byCollector.map((c: any, i: number) => (
                           <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">
@@ -1142,7 +1142,7 @@ export default function TasksPage() {
                     </thead>
                     <tbody>
                       {stats.byCustomer.length === 0 ? (
-                        <tr><td colSpan={3} className="text-center text-slate-500 py-8">{T.noDataFound}</td></tr>
+                        <tr><td colSpan={3} className="text-center text-slate-800 py-8">{T.noDataFound}</td></tr>
                       ) : (
                         stats.byCustomer.map((c: any, i: number) => (
                           <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">

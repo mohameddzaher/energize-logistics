@@ -448,7 +448,7 @@ export default function DisputesPage() {
             <tbody className="divide-y divide-slate-200">
               {disputes.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length + 2} className="px-4 py-8 text-center text-slate-500 text-sm">
+                  <td colSpan={columns.length + 2} className="px-4 py-8 text-center text-slate-800 text-sm">
                     {T.noDisputes}
                   </td>
                 </tr>
@@ -459,7 +459,7 @@ export default function DisputesPage() {
                       onClick={() => toggleRow(dispute._id)}
                       className="bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
                     >
-                      <td className="px-4 py-3 text-sm text-slate-500">
+                      <td className="px-4 py-3 text-sm text-slate-800">
                         {expandedRow === dispute._id ? (
                           <ChevronUp className="w-4 h-4" />
                         ) : (

@@ -179,7 +179,7 @@ export default function CrmCompaniesPage() {
           </thead>
           <tbody className="divide-y divide-slate-200">
             {items.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">{T.noResults}</td></tr>
+              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-800">{T.noResults}</td></tr>
             ) : items.map((c) => (
               <tr key={c._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3">

@@ -115,7 +115,7 @@ export default function CrmContactsPage() {
           </thead>
           <tbody className="divide-y divide-slate-200">
             {items.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">{T.noResults}</td></tr>
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-800">{T.noResults}</td></tr>
             ) : items.map((c) => (
               <tr key={c._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-900 font-medium flex items-center gap-2">{contactName(c, lang)} {c.isPrimary && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-700" />}</td>

@@ -68,10 +68,10 @@ export default function Ls2TiresPage() {
                   <tr onClick={() => open(v.unitId)} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
                     <td className="px-3 py-3"><button type="button" onClick={(e) => toggle(v.unitId, e)} className="text-slate-400 hover:text-[#f37121]" aria-label="expand">{expanded === v.unitId ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</button></td>
                     <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{v.plate || v.name}</td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.driver || '—'}</td>
-                    <td className="px-4 py-3 text-center text-slate-600">{v.tireCount || 0}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>
+                    <td className="px-4 py-3 text-center text-slate-800">{v.tireCount || 0}</td>
                     <td className="px-4 py-3 text-end">{v.maxTireTempC != null ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tireTempColor(v.maxTireTempC)}`}>{v.maxTireTempC}°C</span> : '—'}</td>
-                    <td className={`px-4 py-3 text-end tabular-nums font-medium ${v.minTirePressurePsi != null && v.minTirePressurePsi < 90 ? 'text-amber-600' : 'text-slate-600'}`}>{v.minTirePressurePsi != null ? `${v.minTirePressurePsi} psi` : '—'}</td>
+                    <td className={`px-4 py-3 text-end tabular-nums font-medium ${v.minTirePressurePsi != null && v.minTirePressurePsi < 90 ? 'text-amber-600' : 'text-slate-800'}`}>{v.minTirePressurePsi != null ? `${v.minTirePressurePsi} psi` : '—'}</td>
                     <td className="px-4 py-3 text-center">{v.tireFaults > 0 ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600"><AlertTriangle className="w-3 h-3" />{v.tireFaults}</span> : <span className="text-slate-300">0</span>}</td>
                   </tr>
                   {expanded === v.unitId && (
@@ -81,7 +81,7 @@ export default function Ls2TiresPage() {
                   )}
                 </Fragment>
               ))}
-              {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>

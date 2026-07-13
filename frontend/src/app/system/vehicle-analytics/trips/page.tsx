@@ -243,7 +243,7 @@ export default function TripsPage() {
                         <td className="py-2 px-2 text-slate-700 text-xs">{r.month || '-'}</td>
                         <td className="py-2 px-2 text-slate-900 font-medium">{r.vehicleNumber || r.vehicleId}</td>
                         <td className="py-2 px-2 text-slate-700">{r.driver1 || '-'}</td>
-                        <td className="py-2 px-2 text-slate-500 text-xs">
+                        <td className="py-2 px-2 text-slate-800 text-xs">
                           <span className="flex items-center gap-1">
                             {r.loadingPlace || '?'} <ArrowRight className="w-3 h-3 text-slate-600 shrink-0" /> {r.unloadingPlace || '?'}
                           </span>
@@ -256,7 +256,7 @@ export default function TripsPage() {
                       </tr>
                     );
                   })}
-                  {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-8">--</td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-slate-800 py-8">--</td></tr>}
                 </tbody>
               </table>
             </div>

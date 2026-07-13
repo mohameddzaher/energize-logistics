@@ -108,8 +108,8 @@ export default function ClientInvoicesPage() {
                 <td className="px-4 py-3 text-sm text-slate-700">{inv.amount?.toLocaleString()}</td>
                 <td className="px-4 py-3 text-sm text-green-600">{inv.paidAmount?.toLocaleString()}</td>
                 <td className="px-4 py-3 text-sm text-slate-700 font-medium">{inv.balance?.toLocaleString()}</td>
-                <td className="px-4 py-3 text-sm text-slate-500">{new Date(inv.invoiceDate).toLocaleDateString()}</td>
-                <td className="px-4 py-3 text-sm text-slate-500">{new Date(inv.dueDate).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-sm text-slate-800">{new Date(inv.invoiceDate).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-sm text-slate-800">{new Date(inv.dueDate).toLocaleDateString()}</td>
                 <td className="px-4 py-3 text-sm">
                   <span className={`font-bold ${
                     inv.statusColor === 'red' ? 'text-red-600' :

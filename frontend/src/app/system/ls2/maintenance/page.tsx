@@ -98,10 +98,10 @@ export default function Ls2MaintenancePage() {
                 return (
                   <Fragment key={v.unitId}>
                     <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => toggle(v.unitId)}>
-                      <td className="px-3 py-3 text-slate-400">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
+                      <td className="px-3 py-3 text-slate-700">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
                       <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{v.plate || v.name}</td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.driver || '—'}</td>
-                      <td className="px-4 py-3 text-end tabular-nums text-slate-600">{fmtKm(v.odometerKm)}</td>
+                      <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>
+                      <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(v.odometerKm)}</td>
                       {/* Most overdue (or most urgent) service */}
                       <td className="px-4 py-3 text-end">
                         {v.kmToService == null ? <span className="text-slate-300">—</span> : (
@@ -158,7 +158,7 @@ export default function Ls2MaintenancePage() {
                   </Fragment>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>

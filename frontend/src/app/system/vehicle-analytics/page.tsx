@@ -451,7 +451,7 @@ export default function VehicleAnalyticsPage() {
                   <td className="py-2 px-3 text-slate-900">{driver}</td><td className="py-2 px-3 text-end text-emerald-600">{fmtNum(data.revenue)}</td>
                   <td className="py-2 px-3 text-end text-slate-700">{data.trips}</td><td className="py-2 px-3 text-end text-purple-600">{fmtNum(data.km)}</td>
                 </tr>))}
-                {driverPerf.length === 0 && <tr><td colSpan={4} className="text-center text-slate-500 py-4">--</td></tr>}
+                {driverPerf.length === 0 && <tr><td colSpan={4} className="text-center text-slate-800 py-4">--</td></tr>}
               </tbody>
             </table></div>
           </div>
@@ -530,7 +530,7 @@ export default function VehicleAnalyticsPage() {
                 </tr></thead>
                 <tbody>{driverPerf.map(([driver, data], i) => (
                   <tr key={driver} className="border-b border-slate-200/70 hover:bg-slate-100">
-                    <td className="py-2 px-3 text-slate-500">{i + 1}</td><td className="py-2 px-3 text-slate-900">{driver}</td>
+                    <td className="py-2 px-3 text-slate-800">{i + 1}</td><td className="py-2 px-3 text-slate-900">{driver}</td>
                     <td className="py-2 px-3 text-end text-emerald-600">{fmtNum(data.revenue)}</td>
                     <td className="py-2 px-3 text-end text-slate-700">{data.trips}</td>
                     <td className="py-2 px-3 text-end text-cyan-700">{data.trips > 0 ? fmtNum(data.revenue / data.trips) : '-'}</td>
@@ -619,7 +619,7 @@ export default function VehicleAnalyticsPage() {
                 <tbody>
                   {topDetectedRoutes.map(([route, d], i) => (
                     <tr key={route} className="border-b border-slate-200/70 hover:bg-slate-100">
-                      <td className="py-2 px-3 text-slate-500">{i + 1}</td>
+                      <td className="py-2 px-3 text-slate-800">{i + 1}</td>
                       <td className="py-2 px-3 text-indigo-700">{route}</td>
                       <td className="py-2 px-3 text-end text-cyan-700">{d.count}</td>
                       <td className="py-2 px-3 text-end text-purple-600">{fmtNum(d.totalDist)} km</td>

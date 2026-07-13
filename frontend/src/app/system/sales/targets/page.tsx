@@ -82,7 +82,7 @@ export default function SalesTargetsPage() {
             <th className="px-4 py-3 text-end">{tx.actions}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
-            {items.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((t) => (
+            {items.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-800">—</td></tr> : items.map((t) => (
               <tr key={t._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-900">{t.rep ? userName(t.rep) : tx.wholeTeam}</td>
                 <td className="px-4 py-3 text-slate-700">{t.period}</td>

@@ -431,7 +431,7 @@ export default function CollectorProfilePage() {
                       }`}>{c.grade || '-'}</span>
                     </td>
                     <td className="px-4 py-2.5 text-sm text-slate-700 capitalize">{c.clientStatus?.replace('_', ' ') || '-'}</td>
-                    <td className="px-4 py-2.5 text-sm text-slate-500">{formatDate(c.lastPaymentDate)}</td>
+                    <td className="px-4 py-2.5 text-sm text-slate-800">{formatDate(c.lastPaymentDate)}</td>
                   </tr>
                 ))}
               </tbody>

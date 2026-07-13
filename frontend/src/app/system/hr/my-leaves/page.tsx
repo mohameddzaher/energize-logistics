@@ -130,7 +130,7 @@ export default function MyLeavesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900"><Tr head><Th>{tx.colType}</Th><Th>{tx.colFrom}</Th><Th>{tx.colTo}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th end></Th></Tr></thead>
             <tbody>
-              {leaves.length === 0 ? <tr><td colSpan={6} className="text-center text-slate-500 py-10">{tx.noRequests}</td></tr> :
+              {leaves.length === 0 ? <tr><td colSpan={6} className="text-center text-slate-800 py-10">{tx.noRequests}</td></tr> :
                 leaves.map((l) => (
                   <Tr key={l._id}>
                     <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
@@ -158,7 +158,7 @@ export default function MyLeavesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900"><Tr head><Th>{tx.colEmployee}</Th><Th>{tx.colType}</Th><Th>{tx.colPeriod}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th end></Th></Tr></thead>
             <tbody>
-              {teamLeaves.length === 0 ? <tr><td colSpan={6} className="text-center text-slate-500 py-10">{tx.noTeamRequests}</td></tr> :
+              {teamLeaves.length === 0 ? <tr><td colSpan={6} className="text-center text-slate-800 py-10">{tx.noTeamRequests}</td></tr> :
                 teamLeaves.map((l) => (
                   <Tr key={l._id}>
                     <Td className="text-slate-900">{userName(l.requester)}</Td>

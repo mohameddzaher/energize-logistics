@@ -375,7 +375,7 @@ export default function AuditPage() {
             <tbody className="divide-y divide-slate-200">
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 text-sm">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-800 text-sm">
                     {T.noLogs}
                   </td>
                 </tr>
@@ -386,7 +386,7 @@ export default function AuditPage() {
                       onClick={() => log.changes ? toggleRow(log._id) : undefined}
                       className={`bg-slate-50 hover:bg-slate-100 transition-colors ${log.changes ? 'cursor-pointer' : ''}`}
                     >
-                      <td className="px-4 py-3 text-sm text-slate-500">
+                      <td className="px-4 py-3 text-sm text-slate-800">
                         {log.changes && (
                           expandedRow === log._id ? (
                             <ChevronUp className="w-4 h-4" />
@@ -426,7 +426,7 @@ export default function AuditPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-500 text-xs max-w-[200px] truncate">
+                      <td className="px-4 py-3 text-sm text-slate-800 text-xs max-w-[200px] truncate">
                         {log.details || '-'}
                       </td>
                     </tr>

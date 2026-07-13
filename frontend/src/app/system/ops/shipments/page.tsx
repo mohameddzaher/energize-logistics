@@ -226,22 +226,22 @@ export default function OpsShipmentsPage() {
           </thead>
           <tbody>
             {items.length === 0 ? (
-              <tr><td colSpan={11} className="text-center text-slate-500 py-12">{tx.noData}</td></tr>
+              <tr><td colSpan={11} className="text-center text-slate-800 py-12">{tx.noData}</td></tr>
             ) : items.map((r) => {
               const s = statusStyle(r.status);
               return (
                 <tr key={r.id} className="border-b border-slate-200/70 hover:bg-slate-50 cursor-pointer" onClick={() => openDetail(r)}>
                   <td className="px-3 py-3 font-bold text-slate-900 whitespace-nowrap">{r.graduation_statement_num ?? '—'}</td>
                   <td className="px-3 py-3">{s ? <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}><span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />{lang === 'ar' ? s.ar : s.en}</span> : r.status}</td>
-                  <td className="px-3 py-3 max-w-[140px] truncate text-slate-600">{r.address_from}</td>
-                  <td className="px-3 py-3 max-w-[140px] truncate text-slate-600">{r.address_to}</td>
+                  <td className="px-3 py-3 max-w-[140px] truncate text-slate-800">{r.address_from}</td>
+                  <td className="px-3 py-3 max-w-[140px] truncate text-slate-800">{r.address_to}</td>
                   <td className="px-3 py-3 whitespace-nowrap">{driverName(r, lang)}</td>
                   <td className="px-3 py-3 whitespace-nowrap">{r.car?.car_number || '—'}</td>
                   <td className="px-3 py-3 max-w-[150px] truncate">{locName(r.user?.name, lang) || '—'}</td>
                   <td className="px-3 py-3 whitespace-nowrap">{locName(r.branch?.name, lang) || '—'}</td>
                   <td className="px-3 py-3 font-medium text-slate-800 whitespace-nowrap">{fmtMoney(r.selling_price)}</td>
-                  <td className="px-3 py-3 text-slate-600">{PAYMENT_METHODS.find((p) => p.value === r.payment_method) ? (lang === 'ar' ? PAYMENT_METHODS.find((p) => p.value === r.payment_method)!.ar : PAYMENT_METHODS.find((p) => p.value === r.payment_method)!.en) : (r.payment_method || '—')}</td>
-                  <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{fmtDateTime(r.created_at, lang)}</td>
+                  <td className="px-3 py-3 text-slate-800">{PAYMENT_METHODS.find((p) => p.value === r.payment_method) ? (lang === 'ar' ? PAYMENT_METHODS.find((p) => p.value === r.payment_method)!.ar : PAYMENT_METHODS.find((p) => p.value === r.payment_method)!.en) : (r.payment_method || '—')}</td>
+                  <td className="px-3 py-3 text-slate-800 whitespace-nowrap">{fmtDateTime(r.created_at, lang)}</td>
                 </tr>
               );
             })}

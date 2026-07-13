@@ -724,7 +724,7 @@ export default function RepsPerformancePage() {
                           <td className="py-2 px-3 text-center text-slate-700">{m.uniqueReps}</td>
                           <td className="py-2 px-3 text-center text-slate-700">{m.daysInMonth}</td>
                           <td className="py-2 px-3 text-center text-[#f37121] font-bold">{m.totalOrders.toLocaleString()}</td>
-                          <td className="py-2 px-3 text-center text-slate-500 text-xs">{m.headerRow}</td>
+                          <td className="py-2 px-3 text-center text-slate-800 text-xs">{m.headerRow}</td>
                         </tr>
                       ))}
                       <tr className="bg-slate-100 font-bold">
@@ -1311,13 +1311,13 @@ export default function RepsPerformancePage() {
               <tbody className="divide-y divide-slate-200">
                 {uploads.map((u) => (
                   <tr key={u._id} className="text-sm">
-                    <td className="py-2 px-2 text-slate-500 text-xs whitespace-nowrap">{new Date(u.createdAt).toLocaleString()}</td>
+                    <td className="py-2 px-2 text-slate-800 text-xs whitespace-nowrap">{new Date(u.createdAt).toLocaleString()}</td>
                     <td className="py-2 px-2 text-slate-700">{u.fileName || '—'}</td>
                     <td className="py-2 px-2 text-slate-700">{u.uploadedBy ? `${u.uploadedBy.firstName} ${u.uploadedBy.lastName}` : '—'}</td>
-                    <td className="py-2 px-2 text-slate-500 text-xs">{(u.monthsDetected || []).join(', ')}</td>
+                    <td className="py-2 px-2 text-slate-800 text-xs">{(u.monthsDetected || []).join(', ')}</td>
                     <td className="py-2 px-2 text-center text-green-600 font-medium">{u.daysInserted}</td>
                     <td className="py-2 px-2 text-center text-blue-600 font-medium">{u.daysUpdated}</td>
-                    <td className="py-2 px-2 text-center text-slate-500">{u.daysSkipped}</td>
+                    <td className="py-2 px-2 text-center text-slate-800">{u.daysSkipped}</td>
                   </tr>
                 ))}
               </tbody>

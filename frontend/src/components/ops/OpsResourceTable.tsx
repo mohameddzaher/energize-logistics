@@ -245,7 +245,7 @@ export default function OpsResourceTable({ cfg }: { cfg: ResourceCfg }) {
           </thead>
           <tbody>
             {items.length === 0 ? (
-              <tr><td colSpan={cfg.columns.length + 1} className="text-center text-slate-500 py-12">{tx.noData}</td></tr>
+              <tr><td colSpan={cfg.columns.length + 1} className="text-center text-slate-800 py-12">{tx.noData}</td></tr>
             ) : items.map((row, i) => (
               <tr key={String(row.id ?? i)} className="border-b border-slate-200/70 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => openRow(row)}>
                 {cfg.columns.map((c) => <td key={c.key} className="px-4 py-3 align-middle max-w-[220px] truncate">{renderCell(row, c)}</td>)}

@@ -1172,7 +1172,7 @@ export default function PaymentsPage() {
                                 <tr>
                                   <td
                                     colSpan={7}
-                                    className="px-3 py-6 text-center text-slate-500 text-sm"
+                                    className="px-3 py-6 text-center text-slate-800 text-sm"
                                   >
                                     {T.noDataFound}
                                   </td>

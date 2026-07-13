@@ -167,7 +167,7 @@ export default function DriversPage() {
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={(canEdit || isSuperAdmin) ? 8 : 6} className="text-center text-slate-500 py-12">{T.noDrivers}</td></tr>
+              <tr><td colSpan={(canEdit || isSuperAdmin) ? 8 : 6} className="text-center text-slate-800 py-12">{T.noDrivers}</td></tr>
             ) : filtered.map((d) => (
               <tr key={d._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors">
                 <td className="px-4 py-3 text-slate-900 font-medium">{d.name}</td>

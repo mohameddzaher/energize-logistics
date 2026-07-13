@@ -301,11 +301,11 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                     <td className="py-2 px-2 text-end text-purple-600">{tr.totalDistance.toFixed(1)}</td>
                     <td className={`py-2 px-2 text-end ${tr.maxSpeed > 120 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{tr.maxSpeed.toFixed(0)}</td>
                     <td className="py-2 px-2 text-end text-slate-700">{tr.avgSpeed.toFixed(0)}</td>
-                    <td className={`py-2 px-2 text-end ${tr.speedViolations > 0 ? 'text-red-600' : 'text-slate-500'}`}>{tr.speedViolations}</td>
-                    <td className="py-2 px-2 text-end text-slate-500">{tr.segmentCount}</td>
+                    <td className={`py-2 px-2 text-end ${tr.speedViolations > 0 ? 'text-red-600' : 'text-slate-800'}`}>{tr.speedViolations}</td>
+                    <td className="py-2 px-2 text-end text-slate-800">{tr.segmentCount}</td>
                   </tr>
                 ))}
-                {filteredTrips.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-4">{tx.noTrips}</td></tr>}
+                {filteredTrips.length === 0 && <tr><td colSpan={9} className="text-center text-slate-800 py-4">{tx.noTrips}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -345,15 +345,15 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                   <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">
                     <td className="py-2 px-2 text-slate-700 text-xs">{r.beginning || '-'}</td>
                     <td className="py-2 px-2 text-slate-700 text-xs">{r.end || '-'}</td>
-                    <td className="py-2 px-2 text-slate-500 text-xs max-w-[180px] truncate">{r.initialLocation || '-'}</td>
-                    <td className="py-2 px-2 text-slate-500 text-xs max-w-[180px] truncate">{r.finalLocation || '-'}</td>
+                    <td className="py-2 px-2 text-slate-800 text-xs max-w-[180px] truncate">{r.initialLocation || '-'}</td>
+                    <td className="py-2 px-2 text-slate-800 text-xs max-w-[180px] truncate">{r.finalLocation || '-'}</td>
                     <td className="py-2 px-2 text-slate-700">{r.duration || '-'}</td>
                     <td className="py-2 px-2 text-end text-purple-600">{parseNum(r.distance).toFixed(1)}</td>
                     <td className={`py-2 px-2 text-end ${parseNum(r.maxSpeed) > 120 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{parseNum(r.maxSpeed).toFixed(0)}</td>
                     <td className="py-2 px-2 text-end text-slate-700">{parseNum(r.avgSpeed).toFixed(0)}</td>
                   </tr>
                 ))}
-                {filteredGpsMov.length === 0 && <tr><td colSpan={8} className="text-center text-slate-500 py-4">{tx.noSegments}</td></tr>}
+                {filteredGpsMov.length === 0 && <tr><td colSpan={8} className="text-center text-slate-800 py-4">{tx.noSegments}</td></tr>}
               </tbody>
             </table>
           </div>

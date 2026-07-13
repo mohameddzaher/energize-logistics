@@ -203,7 +203,7 @@ export default function B2CCustodyPage() {
               </thead>
               <tbody>
                 {(wallet.entries || []).length === 0 ? (
-                  <tr><td colSpan={7} className="text-center text-slate-500 py-10">{t('No movements', 'لا توجد حركات')}</td></tr>
+                  <tr><td colSpan={7} className="text-center text-slate-800 py-10">{t('No movements', 'لا توجد حركات')}</td></tr>
                 ) : wallet.entries.map((e) => (
                   <tr key={e._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                     <td className="px-3 py-2.5">
@@ -212,10 +212,10 @@ export default function B2CCustodyPage() {
                         : <span className="inline-flex items-center gap-1 text-rose-700 font-medium"><ArrowUpCircle className="w-4 h-4" /> {t('Spent', 'صرف')}</span>}
                     </td>
                     <td className={`px-3 py-2.5 font-bold ${e.direction === 'in' ? 'text-emerald-700' : 'text-rose-700'}`}>{e.direction === 'in' ? '+' : '−'}{money(e.amount)}</td>
-                    <td className="px-3 py-2.5 text-slate-600">{e.method ? (ar ? METHODS.find((m) => m.value === e.method)?.ar : METHODS.find((m) => m.value === e.method)?.en) || e.method : '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-800">{e.method ? (ar ? METHODS.find((m) => m.value === e.method)?.ar : METHODS.find((m) => m.value === e.method)?.en) || e.method : '—'}</td>
                     <td className="px-3 py-2.5 text-slate-700 max-w-[260px] truncate">{e.reason || '—'}</td>
-                    <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{personName(e.createdBy)}</td>
-                    <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{fmt(e.createdAt, lang)}</td>
+                    <td className="px-3 py-2.5 text-slate-800 whitespace-nowrap">{personName(e.createdBy)}</td>
+                    <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{fmt(e.createdAt, lang)}</td>
                     <td className="px-3 py-2.5">
                       {mine(e) && (
                         <div className="flex items-center gap-1">

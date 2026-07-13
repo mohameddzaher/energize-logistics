@@ -169,7 +169,7 @@ export default function CustomsPage() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filtered.length === 0 ? (
-                <tr><td colSpan={canDelete ? 7 : 6} className="text-center text-slate-500 py-12">{T.noClearances}</td></tr>
+                <tr><td colSpan={canDelete ? 7 : 6} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
               ) : filtered.map((c) => (
                 <tr key={c._id} onClick={() => router.push(`/system/customs/${c._id}`)}
                   className="bg-white hover:bg-slate-50 transition-colors cursor-pointer">

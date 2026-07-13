@@ -96,8 +96,8 @@ export default function HRDashboardPage() {
                     return (
                       <tr key={`${d.employeeId}-${d.docType}-${i}`} className="border-b border-slate-200/70 hover:bg-slate-50">
                         <td className="px-4 py-2.5"><Link href={`/system/hr/employees/${d.employeeId}`} className="text-slate-900 hover:text-[#f37121]">{ar ? (d.arabicName || d.employeeName) : d.employeeName}</Link></td>
-                        <td className="px-4 py-2.5 text-slate-500">{ar ? d.docAr : d.docEn}</td>
-                        <td className="px-4 py-2.5 text-slate-500">{fmtDate(d.expiry)}</td>
+                        <td className="px-4 py-2.5 text-slate-800">{ar ? d.docAr : d.docEn}</td>
+                        <td className="px-4 py-2.5 text-slate-800">{fmtDate(d.expiry)}</td>
                         <td className="px-4 py-2.5 text-end">{b && <SmallBadge bg={b.bg} text={b.text} label={b.label} />}</td>
                       </tr>
                     );
@@ -119,7 +119,7 @@ export default function HRDashboardPage() {
                   return (
                     <tr key={c._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                       <td className="px-4 py-2.5"><Link href={`/system/hr/employees/${empId}`} className="text-slate-900 hover:text-[#f37121]">{empName(c.employee, lang)}</Link></td>
-                      <td className="px-4 py-2.5 text-slate-500">{fmtDate(c.endDate)}</td>
+                      <td className="px-4 py-2.5 text-slate-800">{fmtDate(c.endDate)}</td>
                       <td className="px-4 py-2.5 text-end">{b && <SmallBadge bg={b.bg} text={b.text} label={b.label} />}</td>
                     </tr>
                   );
@@ -142,9 +142,9 @@ export default function HRDashboardPage() {
                   return (
                     <tr key={l._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                       <td className="px-4 py-2.5"><Link href="/system/hr/licenses" className="text-slate-900 hover:text-[#f37121]">{l.name}</Link></td>
-                      <td className="px-4 py-2.5 text-slate-500">{l.category}</td>
-                      <td className="px-4 py-2.5 text-slate-500">{l.location || '—'}</td>
-                      <td className="px-4 py-2.5 text-slate-500">{fmtDate(l.expiryDate)}</td>
+                      <td className="px-4 py-2.5 text-slate-800">{l.category}</td>
+                      <td className="px-4 py-2.5 text-slate-800">{l.location || '—'}</td>
+                      <td className="px-4 py-2.5 text-slate-800">{fmtDate(l.expiryDate)}</td>
                       <td className="px-4 py-2.5 text-end">{b && <SmallBadge bg={b.bg} text={b.text} label={b.label} />}</td>
                     </tr>
                   );
@@ -170,8 +170,8 @@ export default function HRDashboardPage() {
               {data!.recentHires.map((e) => (
                 <tr key={e._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                   <td className="px-4 py-2.5"><Link href={`/system/hr/employees/${e._id}`} className="text-slate-900 hover:text-[#f37121]">{empName(e, lang)}</Link></td>
-                  <td className="px-4 py-2.5 text-slate-500">{e.jobTitle || '—'}</td>
-                  <td className="px-4 py-2.5 text-slate-500 text-end">{fmtDate(e.hireDate)}</td>
+                  <td className="px-4 py-2.5 text-slate-800">{e.jobTitle || '—'}</td>
+                  <td className="px-4 py-2.5 text-slate-800 text-end">{fmtDate(e.hireDate)}</td>
                 </tr>
               ))}
             </tbody>

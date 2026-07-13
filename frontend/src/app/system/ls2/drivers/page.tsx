@@ -107,9 +107,9 @@ export default function Ls2DriversPage() {
                 return (
                   <Fragment key={d.driver}>
                     <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => toggle(d.driver)}>
-                      <td className="px-3 py-3 text-slate-400">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
+                      <td className="px-3 py-3 text-slate-700">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
                       <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{d.driver}</td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                      <td className="px-4 py-3 text-slate-800 whitespace-nowrap">
                         {d.currentVehicle ? (
                           <button type="button" onClick={(e) => { e.stopPropagation(); router.push(`/system/ls2/${d.currentVehicle!.unitId}`); }} className="text-[#f37121] hover:underline">
                             {d.currentVehicle.plate}
@@ -117,7 +117,7 @@ export default function Ls2DriversPage() {
                         ) : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-3 text-end tabular-nums font-semibold text-slate-800">{fmtNum(Math.round(d.km))}</td>
-                      <td className="px-4 py-3 text-center text-slate-600">{d.vehicleCount || '—'}</td>
+                      <td className="px-4 py-3 text-center text-slate-800">{d.vehicleCount || '—'}</td>
                       <td className="px-4 py-3 text-end">
                         <button type="button" onClick={(e) => { e.stopPropagation(); downloadPdf(d.driver); }} disabled={pdfBusy === d.driver}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs disabled:opacity-60">
@@ -144,7 +144,7 @@ export default function Ls2DriversPage() {
                   </Fragment>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={6} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={6} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>

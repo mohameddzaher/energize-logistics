@@ -106,13 +106,13 @@ export default function VendorBillsPage() {
             <th className="px-4 py-3 text-end">{tx.actions}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
-            {items.length === 0 ? <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((b) => (
+            {items.length === 0 ? <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-800">—</td></tr> : items.map((b) => (
               <tr key={b._id} className="hover:bg-slate-100">
-                <td className="px-4 py-3 text-slate-500 font-mono text-xs">{b.billNumber}</td>
+                <td className="px-4 py-3 text-slate-800 font-mono text-xs">{b.billNumber}</td>
                 <td className="px-4 py-3 text-slate-900">{vendorName(b.vendor)}{b.vendorInvoiceNumber && <div className="text-slate-500 text-xs">{b.vendorInvoiceNumber}</div>}</td>
                 <td className="px-4 py-3 text-end text-slate-800">{money(b.total)}</td>
                 <td className="px-4 py-3 text-end text-red-600">{money(b.balance)}</td>
-                <td className="px-4 py-3 text-slate-500">{fmtDate(b.dueDate)}</td>
+                <td className="px-4 py-3 text-slate-800">{fmtDate(b.dueDate)}</td>
                 <td className="px-4 py-3"><Badge style={BILL_STATUS_STYLE[b.status]} lang={lang} /></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
                   {b.status !== 'paid' && <button type="button" title={tx.pay} onClick={() => openPay(b)} className="text-green-600 hover:text-green-700"><DollarSign className="w-4 h-4" /></button>}

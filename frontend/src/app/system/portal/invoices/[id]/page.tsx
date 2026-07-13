@@ -195,7 +195,7 @@ export default function ClientInvoiceDetailPage() {
                   <td className="px-4 py-3 text-sm text-slate-700">{new Date(p.paymentDate).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-sm text-green-600 font-medium">{p.amount?.toLocaleString()}</td>
                   <td className="px-4 py-3 text-sm text-slate-700 capitalize">{p.paymentMethod?.replace('_', ' ')}</td>
-                  <td className="px-4 py-3 text-sm text-slate-500">{p.reference || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-slate-800">{p.reference || '-'}</td>
                 </tr>
               ))}
             </tbody>

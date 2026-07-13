@@ -57,7 +57,7 @@ export default function SalesPerformancePage() {
             <th className="px-4 py-3 text-end">{tx.colOpen}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
-            {rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">—</td></tr> : rows.map((r) => (
+            {rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-800">—</td></tr> : rows.map((r) => (
               <tr key={r.rep._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-900">{r.rep.name}</td>
                 <td className="px-4 py-3 text-end text-green-600">{money(r.wonValue)} <span className="text-slate-500 text-xs">({r.wonCount})</span></td>

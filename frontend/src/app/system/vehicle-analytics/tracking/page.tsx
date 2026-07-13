@@ -276,8 +276,8 @@ export default function GpsTrackingPage() {
                         <td className="py-2 px-2 text-slate-900 font-medium">{r.vehicleId}</td>
                         <td className="py-2 px-2 text-slate-700 text-xs">{r.beginning || '-'}</td>
                         <td className="py-2 px-2 text-slate-700 text-xs">{r.end || '-'}</td>
-                        <td className="py-2 px-2 text-slate-500 text-xs max-w-[150px] truncate">{r.initialLocation || '-'}</td>
-                        <td className="py-2 px-2 text-slate-500 text-xs max-w-[150px] truncate">{r.finalLocation || '-'}</td>
+                        <td className="py-2 px-2 text-slate-800 text-xs max-w-[150px] truncate">{r.initialLocation || '-'}</td>
+                        <td className="py-2 px-2 text-slate-800 text-xs max-w-[150px] truncate">{r.finalLocation || '-'}</td>
                         <td className="py-2 px-2 text-slate-700">{r.duration || '-'}</td>
                         <td className="py-2 px-2 text-end text-purple-600">{parseNum(r.distance) > 0 ? parseNum(r.distance).toFixed(1) : '-'}</td>
                         <td className="py-2 px-2 text-end text-red-600 font-bold">{parseNum(r.maxSpeed).toFixed(0)} km/h</td>
@@ -354,12 +354,12 @@ export default function GpsTrackingPage() {
                       <td className="py-2 px-2 text-end text-purple-600">{tr.totalDistance.toFixed(1)}</td>
                       <td className={`py-2 px-2 text-end ${tr.maxSpeed > 120 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{tr.maxSpeed.toFixed(0)}</td>
                       <td className="py-2 px-2 text-end text-slate-700">{tr.avgSpeed.toFixed(0)}</td>
-                      <td className={`py-2 px-2 text-end ${tr.speedViolations > 0 ? 'text-red-600' : 'text-slate-500'}`}>{tr.speedViolations}</td>
-                      <td className="py-2 px-2 text-end text-slate-500">{tr.segmentCount}</td>
+                      <td className={`py-2 px-2 text-end ${tr.speedViolations > 0 ? 'text-red-600' : 'text-slate-800'}`}>{tr.speedViolations}</td>
+                      <td className="py-2 px-2 text-end text-slate-800">{tr.segmentCount}</td>
                     </tr>
                   ))}
                   {filteredTrips.length === 0 && (
-                    <tr><td colSpan={10} className="text-center text-slate-500 py-4">--</td></tr>
+                    <tr><td colSpan={10} className="text-center text-slate-800 py-4">--</td></tr>
                   )}
                 </tbody>
               </table>

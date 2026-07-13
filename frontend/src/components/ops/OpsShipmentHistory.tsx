@@ -134,18 +134,18 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
           </thead>
           <tbody>
             {ships.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-slate-500 py-12">{lang === 'ar' ? 'لا توجد شحنات' : 'No shipments'}</td></tr>
+              <tr><td colSpan={7} className="text-center text-slate-800 py-12">{lang === 'ar' ? 'لا توجد شحنات' : 'No shipments'}</td></tr>
             ) : ships.map((r) => {
               const st = statusStyle(r.status);
               return (
                 <tr key={r.id} className="border-b border-slate-200/70 hover:bg-slate-50 cursor-pointer" onClick={() => openDetail(r)}>
                   <td className="px-3 py-3 font-bold text-slate-900 whitespace-nowrap">{r.graduation_statement_num ?? '—'}</td>
                   <td className="px-3 py-3">{st ? <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span> : r.status}</td>
-                  <td className="px-3 py-3 max-w-[150px] truncate text-slate-600">{r.address_from}</td>
-                  <td className="px-3 py-3 max-w-[150px] truncate text-slate-600">{r.address_to}</td>
+                  <td className="px-3 py-3 max-w-[150px] truncate text-slate-800">{r.address_from}</td>
+                  <td className="px-3 py-3 max-w-[150px] truncate text-slate-800">{r.address_to}</td>
                   <td className="px-3 py-3 whitespace-nowrap">{filterKey === 'driver_id' ? (locName(r.user?.name, lang) || '—') : driverName(r, lang)}</td>
                   <td className="px-3 py-3 font-medium text-slate-800 whitespace-nowrap">{fmtMoney(r.selling_price)}</td>
-                  <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{fmtDateTime(r.created_at, lang)}</td>
+                  <td className="px-3 py-3 text-slate-800 whitespace-nowrap">{fmtDateTime(r.created_at, lang)}</td>
                 </tr>
               );
             })}

@@ -112,7 +112,7 @@ export default function VehicleAccidentsPage() {
           </thead>
           <tbody>
             {accidents.length === 0 ? (
-              <tr><td colSpan={8} className="text-center text-slate-500 py-12">{tx.noAccidents}</td></tr>
+              <tr><td colSpan={8} className="text-center text-slate-800 py-12">{tx.noAccidents}</td></tr>
             ) : accidents.map((a) => (
               <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-700">{fmtDate(a.date)}</td>

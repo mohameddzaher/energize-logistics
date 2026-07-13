@@ -115,12 +115,12 @@ export default function Ls2RegistryPage() {
                 return (
                   <Fragment key={v.unitId}>
                     <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => toggle(v.unitId)}>
-                      <td className="px-3 py-3 text-slate-400">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
+                      <td className="px-3 py-3 text-slate-700">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
                       <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap" onClick={(e) => { e.stopPropagation(); router.push(`/system/ls2/${v.unitId}`); }}>{v.plate || v.name}</td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap text-xs">{v.profile?.brand || '—'}{v.profile?.modelYear ? ` · ${v.profile.modelYear}` : ''}</td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{v.driver || '—'}</td>
+                      <td className="px-4 py-3 text-slate-800 whitespace-nowrap text-xs">{v.profile?.brand || '—'}{v.profile?.modelYear ? ` · ${v.profile.modelYear}` : ''}</td>
+                      <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>
                       <td className="px-4 py-3"><span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span></td>
-                      <td className="px-4 py-3 text-end tabular-nums text-slate-600">{fmtKm(v.odometerKm)}</td>
+                      <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(v.odometerKm)}</td>
                       <td className="px-4 py-3 text-end tabular-nums font-semibold text-slate-800">{v.periodKm != null ? fmtNum(Math.round(v.periodKm)) : '—'}</td>
                       <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ms.bg} ${ms.text}`}>{lang === 'ar' ? ms.ar : ms.en}</span></td>
                       <td className="px-4 py-3 text-end tabular-nums text-slate-700">{f === undefined ? <span className="text-slate-300">—</span> : (f && f.efficiencyKmL) ? <span className="font-semibold">{f.efficiencyKmL} <span className="text-[10px] text-slate-400">km/L</span></span> : <span className="text-slate-300 text-xs">{lang === 'ar' ? 'لا يوجد' : 'n/a'}</span>}</td>
@@ -158,7 +158,7 @@ export default function Ls2RegistryPage() {
                   </Fragment>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>

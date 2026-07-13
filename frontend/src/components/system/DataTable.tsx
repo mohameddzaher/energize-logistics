@@ -91,7 +91,7 @@ export default function DataTable({ columns, data, searchable, searchPlaceholder
           <tbody className="divide-y divide-slate-200">
             {sortedData.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (actions ? 1 : 0)} className="px-4 py-8 text-center text-slate-500 text-sm">
+                <td colSpan={columns.length + (actions ? 1 : 0)} className="px-4 py-8 text-center text-slate-800 text-sm">
                   {emptyMessage || 'No data found'}
                 </td>
               </tr>

@@ -644,7 +644,7 @@ export default function B2CDashboard() {
                   {dashboard.byRep.map((r, i) => (
                     <tr key={r.repId || i} onClick={() => r.repId && openRepProfile(r.repId)}
                       className="hover:bg-slate-100 cursor-pointer transition-colors">
-                      <td className="py-2 px-3 text-slate-500 text-sm">{i + 1}</td>
+                      <td className="py-2 px-3 text-slate-800 text-sm">{i + 1}</td>
                       <td className="py-2 px-3">
                         <div>
                           <p className="text-slate-900 font-medium text-sm">{r.englishName}</p>
@@ -664,7 +664,7 @@ export default function B2CDashboard() {
                     </tr>
                   ))}
                   {dashboard.byRep.length === 0 && (
-                    <tr><td colSpan={7} className="py-8 text-center text-slate-500 text-sm">{T.noData}</td></tr>
+                    <tr><td colSpan={7} className="py-8 text-center text-slate-800 text-sm">{T.noData}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -812,7 +812,7 @@ function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
             <tbody className="divide-y divide-slate-200">
               {filtered.map((e: any, i: number) => (
                 <tr key={e.repId} onClick={() => onRepClick(e.repId)} className="hover:bg-slate-100 cursor-pointer transition-colors">
-                  <td className="py-2 px-3 text-slate-500 text-sm">{i + 1}</td>
+                  <td className="py-2 px-3 text-slate-800 text-sm">{i + 1}</td>
                   <td className="py-2 px-3">
                     <p className="text-slate-900 font-medium text-sm">{e.englishName}</p>
                     {e.arabicName && <p className="text-slate-500 text-xs">{e.arabicName}</p>}
@@ -834,7 +834,7 @@ function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-slate-500 text-sm">{T.noData}</td></tr>
+                <tr><td colSpan={9} className="py-8 text-center text-slate-800 text-sm">{T.noData}</td></tr>
               )}
             </tbody>
           </table>
@@ -1394,7 +1394,7 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                       {data.reps.length === 0 ? (
-                        <tr><td colSpan={6} className="py-6 text-center text-slate-500 text-sm">{T.noData}</td></tr>
+                        <tr><td colSpan={6} className="py-6 text-center text-slate-800 text-sm">{T.noData}</td></tr>
                       ) : data.reps.map((r: any, i: number) => (
                         <tr key={i} onClick={() => r.repId && onRepClick(r.repId)} className="cursor-pointer hover:bg-slate-100">
                           <td className="py-2 px-3">
@@ -1416,7 +1416,7 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
                           <td className="py-2 px-3 text-center">
                             <StatusPill status={r.status} lang={lang} />
                           </td>
-                          <td className="py-2 px-3 text-center text-[10px] text-slate-500">
+                          <td className="py-2 px-3 text-center text-[10px] text-slate-800">
                             {r.sourceSheet ? (
                               <span title={`Sheet "${r.sourceSheet}", row ${r.sourceRow ?? '?'}`}>
                                 {r.sourceSheet} · {tx.rowLabel} {r.sourceRow ?? '?'}

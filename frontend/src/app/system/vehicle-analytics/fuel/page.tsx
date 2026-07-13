@@ -225,7 +225,7 @@ export default function FuelAnalysisPage() {
                     const level = getAlertLevel(r);
                     return (
                       <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">
-                        <td className="py-2 px-2 text-slate-500">{r.num || i + 1}</td>
+                        <td className="py-2 px-2 text-slate-800">{r.num || i + 1}</td>
                         <td className="py-2 px-2 text-slate-700">{r.branch || '-'}</td>
                         <td className="py-2 px-2 text-slate-900 font-medium">{r.vehicle || r.vehicleId}</td>
                         <td className="py-2 px-2 text-slate-700">{r.model || '-'}</td>
@@ -248,7 +248,7 @@ export default function FuelAnalysisPage() {
                       </tr>
                     );
                   })}
-                  {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-8">--</td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={9} className="text-center text-slate-800 py-8">--</td></tr>}
                 </tbody>
               </table>
             </div>

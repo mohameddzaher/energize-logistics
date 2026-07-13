@@ -111,13 +111,13 @@ export default function PurchaseOrdersPage() {
             <th className="px-4 py-3">{tx.expected}</th><th className="px-4 py-3 text-end">{tx.actions}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
-            {items.length === 0 ? <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((po) => (
+            {items.length === 0 ? <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-800">—</td></tr> : items.map((po) => (
               <tr key={po._id} className="hover:bg-slate-100">
-                <td className="px-4 py-3 text-slate-500 font-mono text-xs">{po.poNumber}</td>
+                <td className="px-4 py-3 text-slate-800 font-mono text-xs">{po.poNumber}</td>
                 <td className="px-4 py-3 text-slate-900">{vendorName(po.vendor)}</td>
                 <td className="px-4 py-3 text-end text-slate-800">{money(po.total, po.currency)}<div className="text-slate-500 text-xs">{tx.vatShort} {money(po.vatAmount, '')}</div></td>
                 <td className="px-4 py-3"><Badge style={PO_STATUS_STYLE[po.status]} lang={lang} /></td>
-                <td className="px-4 py-3 text-slate-500">{fmtDate(po.expectedDate)}</td>
+                <td className="px-4 py-3 text-slate-800">{fmtDate(po.expectedDate)}</td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
                   {['draft', 'sent', 'partially_received'].includes(po.status) && <button type="button" title={tx.receive} onClick={() => receive(po)} className="text-green-600 hover:text-green-700"><PackageCheck className="w-4 h-4" /></button>}
                   {po.status !== 'cancelled' && po.status !== 'billed' && <button type="button" title={tx.createBill} onClick={() => setBillFor(po)} className="text-purple-600 hover:text-purple-700"><Receipt className="w-4 h-4" /></button>}

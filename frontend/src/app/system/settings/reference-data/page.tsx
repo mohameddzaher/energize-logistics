@@ -151,7 +151,7 @@ export default function ReferenceDataPage() {
                       {ar ? it.nameAr : it.nameEn}
                       {it.isSystem && <span className="ms-2 text-[10px] text-slate-500">{tx.defaultTag}</span>}
                     </td>
-                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">{it.key}</td>
+                    <td className="px-4 py-3 text-slate-800 font-mono text-xs">{it.key}</td>
                     <td className="px-4 py-3">
                       <button type="button" onClick={() => canManage && toggleActive(it)} disabled={!canManage} className={canManage ? 'cursor-pointer' : 'cursor-default'}>
                         {it.isActive ? <SmallBadge bg="bg-green-500/20" text="text-green-600" label={tx.active} /> : <SmallBadge bg="bg-red-500/20" text="text-red-600" label={tx.inactive} />}
@@ -165,7 +165,7 @@ export default function ReferenceDataPage() {
                     </td>
                   </tr>
                 ))}
-                {!items.length && <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">{tx.noItems}</td></tr>}
+                {!items.length && <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-800">{tx.noItems}</td></tr>}
               </tbody>
             </table>
           )}

@@ -92,9 +92,9 @@ export default function Ls2AlertsPage() {
                   <tr key={a._id} onClick={() => router.push(`/system/ls2/${a.unitId}`)} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
                     <td className="px-4 py-3"><span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span></td>
                     <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{a.plate}</td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{alertTypeLabel(a.type, lang as Lang)}</td>
-                    <td className="px-4 py-3 text-slate-600">{alertMessage(a, lang as Lang)}</td>
-                    <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{timeAgo(a.firstSeenAt, lang as Lang)}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{alertTypeLabel(a.type, lang as Lang)}</td>
+                    <td className="px-4 py-3 text-slate-800">{alertMessage(a, lang as Lang)}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{timeAgo(a.firstSeenAt, lang as Lang)}</td>
                     <td className="px-4 py-3 text-end whitespace-nowrap">
                       {a.status === 'resolved' ? <span className="text-xs text-emerald-600">{t.resolved}</span>
                         : a.acknowledgedAt ? <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Check className="w-3.5 h-3.5" /> {t.acknowledged}</span>
@@ -103,7 +103,7 @@ export default function Ls2AlertsPage() {
                   </tr>
                 );
               })}
-              {items.length === 0 && <tr><td colSpan={6} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              {items.length === 0 && <tr><td colSpan={6} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>

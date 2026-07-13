@@ -5,8 +5,8 @@ export { exportToExcel, fmt };
 
 // Tiered CRM roles: crm_manager (full) > crm_team_lead (delete/reassign) >
 // crm_specialist (write, no delete) > crm_agent (entry level).
-export const CRM_STAFF_ROLES = ['super_admin', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'];
-export const CRM_ADMIN_ROLES = ['super_admin', 'admin', 'crm_manager', 'crm_team_lead'];
+export const CRM_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'];
+export const CRM_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead'];
 export const isCrmStaff = (role?: string | null) => !!role && CRM_STAFF_ROLES.includes(role);
 export const isCrmAdmin = (role?: string | null) => !!role && CRM_ADMIN_ROLES.includes(role);
 

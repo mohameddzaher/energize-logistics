@@ -3,6 +3,7 @@
 // for the model and the no-lockout guarantee.
 const RolePermission = require('../models/RolePermission');
 const { SECTIONS, SECTION_KEYS, defaultAccess } = require('../config/sections');
+const { FULL_ACCESS_ROLES } = require('../config/constants');
 
 const TTL = 20 * 1000;
 const cache = new Map(); // role -> { overrides: {sectionKey: level}, expires }
@@ -30,7 +31,7 @@ const getOverrides = async (role) => {
 // Gate use: the explicit override for one section, or null when the role has no
 // saved override for it (→ caller falls through to legacy authorize).
 const getOverride = async (role, sectionKey) => {
-  if (role === 'super_admin') return 'edit';
+  if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
   const overrides = await getOverrides(role);
   return Object.prototype.hasOwnProperty.call(overrides, sectionKey) ? overrides[sectionKey] : null;
 };
@@ -39,7 +40,7 @@ const getOverride = async (role, sectionKey) => {
 // Used by getMe (drives the sidebar) and the permissions page display.
 const effectivePermissions = async (role) => {
   const out = {};
-  if (role === 'super_admin') {
+  if (FULL_ACCESS_ROLES.includes(role)) {
     for (const k of SECTION_KEYS) out[k] = 'edit';
     return out;
   }

@@ -26,7 +26,7 @@ export default function PermissionsPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getPermissionsTranslations(lang);
-  const isSuper = user?.role === 'super_admin';
+  const isSuper = ['super_admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
 
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);

@@ -15,11 +15,15 @@ const crmDefaults = require('../config/crmDefaults');
 // crm_specialist (write, no delete) > crm_agent (entry level). Admin tier
 // (manager + team lead) can delete and perform privileged ops.
 const { CRM_STAFF_ROLES, CRM_ADMIN_ROLES } = require('../config/constants');
+const { grantedBySection } = require('../utils/sectionAccess');
 const isCrmStaff = (user) => CRM_STAFF_ROLES.includes(user.role);
+// A role the super_admin granted this section to counts as staff too —
+// otherwise the grant passes the route gate but the handler still rejects it.
+const crmStaffReq = (req) => isCrmStaff(req.user) || grantedBySection(req);
 const isCrmAdmin = (user) => CRM_ADMIN_ROLES.includes(user.role);
 
 const denyNonStaff = (req, res) => {
-  if (!isCrmStaff(req.user)) {
+  if (!crmStaffReq(req)) {
     res.status(403).json({ message: 'Insufficient permissions' });
     return true;
   }

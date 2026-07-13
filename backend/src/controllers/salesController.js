@@ -4,13 +4,17 @@ const SalesTarget = require('../models/SalesTarget');
 const CrmDeal = require('../models/CrmDeal');
 const CrmCompany = require('../models/CrmCompany');
 const { emitToAll } = require('../websocket/socketManager');
+const { grantedBySection } = require('../utils/sectionAccess');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
 const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'];
 const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'sales_manager'];
 const isStaff = (u) => SALES_STAFF_ROLES.includes(u.role);
+// A role the super_admin granted this section to counts as staff too —
+// otherwise the grant passes the route gate but the handler still rejects it.
+const staffReq = (req) => isStaff(req.user) || grantedBySection(req);
 const isAdmin = (u) => SALES_ADMIN_ROLES.includes(u.role);
-const denyNonStaff = (req, res) => { if (!isStaff(req.user)) { res.status(403).json({ message: 'Insufficient permissions' }); return true; } return false; };
+const denyNonStaff = (req, res) => { if (!staffReq(req)) { res.status(403).json({ message: 'Insufficient permissions' }); return true; } return false; };
 const denyNonAdmin = (req, res) => { if (!isAdmin(req.user)) { res.status(403).json({ message: 'Only sales managers can perform this action' }); return true; } return false; };
 const badId = (id, res) => { if (!mongoose.isValidObjectId(id)) { res.status(400).json({ message: 'Invalid id' }); return true; } return false; };
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;

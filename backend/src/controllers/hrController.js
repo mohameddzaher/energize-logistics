@@ -19,8 +19,11 @@ const { computeBalance, leaveDays } = require('../utils/leaveBalance');
 // ── Roles / helpers ──────────────────────────────────────────────────────────
 const HR_STAFF_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'];
 const isHRStaff = (user) => HR_STAFF_ROLES.includes(user.role);
+// A role the super_admin granted this section to counts as staff too —
+// otherwise the grant passes the route gate but the handler still rejects it.
+const hrStaffReq = (req) => isHRStaff(req.user) || grantedBySection(req);
 const denyNonStaff = (req, res) => {
-  if (!isHRStaff(req.user)) {
+  if (!hrStaffReq(req)) {
     res.status(403).json({ message: 'Insufficient permissions' });
     return true;
   }
@@ -59,6 +62,7 @@ const getActiveContract = (employeeId) =>
 // shared util for details. Used so any staff login (incl. the demo super admin)
 // can use HR self-service without HR registering them first.
 const ensureSelfEmployeeUtil = require('../utils/ensureSelfEmployee');
+const { grantedBySection } = require('../utils/sectionAccess');
 const ensureSelfEmployee = (req) => ensureSelfEmployeeUtil(req.user);
 
 // Live leave balance for an employee: active contract + sum of approved,
@@ -143,7 +147,7 @@ exports.getEmployee = async (req, res) => {
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
     // Self-service users may only read their OWN profile via this route.
-    if (!isHRStaff(req.user) && String(employee.user?._id || employee.user) !== String(req.user._id)) {
+    if (!hrStaffReq(req) && String(employee.user?._id || employee.user) !== String(req.user._id)) {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
 
@@ -556,7 +560,7 @@ exports.deleteContract = async (req, res) => {
 exports.listLeaveTypes = async (req, res) => {
   try {
     // Everyone can read; employees only see active ones for the dropdown.
-    const filter = isHRStaff(req.user) ? {} : { active: true };
+    const filter = hrStaffReq(req) ? {} : { active: true };
     const leaveTypes = await LeaveType.find(filter).sort({ createdAt: 1 }).lean();
     res.json({ leaveTypes });
   } catch (error) {
@@ -633,7 +637,7 @@ exports.getLeave = async (req, res) => {
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
     // Access: HR staff, the requester, or the direct manager.
     const uid = String(req.user._id);
-    const allowed = isHRStaff(req.user)
+    const allowed = hrStaffReq(req)
       || String(leave.requester?._id || leave.requester) === uid
       || String(leave.manager?._id || leave.manager) === uid;
     if (!allowed) return res.status(403).json({ message: 'Not allowed' });
@@ -731,7 +735,7 @@ exports.decideLeave = async (req, res) => {
       return res.status(400).json({ message: 'This request has already been finalised' });
     }
 
-    const staff = isHRStaff(req.user);
+    const staff = hrStaffReq(req);
     const isManager = String(leave.manager || '') === String(req.user._id);
 
     // Optional: the approver signs. Resolve the chosen signature (by id) from
@@ -854,7 +858,7 @@ exports.replyRequest = async (req, res) => {
   try {
     const request = await HRRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: 'Request not found' });
-    const staff = isHRStaff(req.user);
+    const staff = hrStaffReq(req);
     const owner = String(request.requester) === String(req.user._id);
     if (!staff && !owner) return res.status(403).json({ message: 'No access to this request' });
 

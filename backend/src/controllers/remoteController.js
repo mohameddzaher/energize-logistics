@@ -8,10 +8,14 @@ const RemoteReport = require('../models/RemoteReport');
 const RemoteAnnouncement = require('../models/RemoteAnnouncement');
 const { createNotification } = require('../services/notificationService');
 const { emitToUser } = require('../websocket/socketManager');
+const { grantedBySection } = require('../utils/sectionAccess');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 const STAFF_ROLES = ['super_admin', 'admin', 'remote_manager'];
 const isStaff = (user) => STAFF_ROLES.includes(user.role);
+// A role the super_admin granted this section to counts as staff too —
+// otherwise the grant passes the route gate but the handler still rejects it.
+const staffReq = (req) => isStaff(req.user) || grantedBySection(req);
 const isFullAdmin = (user) => user.role === 'super_admin' || user.role === 'admin';
 
 // Cairo-local calendar day as YYYY-MM-DD (en-CA formats as ISO date).
@@ -167,7 +171,7 @@ exports.getDashboard = async (req, res) => {
     }
 
     res.json({
-      scope: isStaff(req.user) ? 'team' : 'self',
+      scope: staffReq(req) ? 'team' : 'self',
       summary: {
         daysWorked,
         totalMinutes,
@@ -245,7 +249,7 @@ exports.listLeaves = async (req, res) => {
 
 exports.reviewLeave = async (req, res) => {
   try {
-    if (!isStaff(req.user)) {
+    if (!staffReq(req)) {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
     const { status, reviewNote } = req.body;
@@ -290,7 +294,7 @@ exports.reviewLeave = async (req, res) => {
 // For staff: list of employee threads with last message + unread count.
 exports.listThreads = async (req, res) => {
   try {
-    if (!isStaff(req.user)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const ids = await scopeEmployeeIds(req.user);
     const employees = await User.find(
       ids === null ? { role: 'remote_employee' } : { _id: { $in: ids } }
@@ -414,7 +418,7 @@ exports.listTasks = async (req, res) => {
 
 exports.createTask = async (req, res) => {
   try {
-    if (!isStaff(req.user)) return res.status(403).json({ message: 'Only managers assign tasks' });
+    if (!staffReq(req)) return res.status(403).json({ message: 'Only managers assign tasks' });
     const { user, title, description, dueDate } = req.body;
     if (!user || !title) return res.status(400).json({ message: 'Assignee and title are required' });
 
@@ -450,7 +454,7 @@ exports.updateTask = async (req, res) => {
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     const owner = String(task.user) === String(req.user._id);
-    if (!owner && !isStaff(req.user)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!owner && !staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
     if (req.user.role === 'remote_manager' && !owner) {
       const ids = await scopeEmployeeIds(req.user);
       if (!ids.map(String).includes(String(task.user))) {
@@ -464,7 +468,7 @@ exports.updateTask = async (req, res) => {
       task.completedAt = done ? new Date() : undefined;
     }
     // Only staff may edit task content.
-    if (isStaff(req.user)) {
+    if (staffReq(req)) {
       if (title !== undefined) task.title = title;
       if (description !== undefined) task.description = description;
       if (dueDate !== undefined) task.dueDate = dueDate;
@@ -478,7 +482,7 @@ exports.updateTask = async (req, res) => {
 
 exports.deleteTask = async (req, res) => {
   try {
-    if (!isStaff(req.user)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const task = await RemoteTask.findById(req.params.id);
     if (!task) return res.status(404).json({ message: 'Task not found' });
     if (req.user.role === 'remote_manager') {
@@ -577,7 +581,7 @@ exports.listAnnouncements = async (req, res) => {
 
 exports.createAnnouncement = async (req, res) => {
   try {
-    if (!isStaff(req.user)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const { title, body, audience } = req.body;
     if (!title || !body) return res.status(400).json({ message: 'Title and body are required' });
 
@@ -620,7 +624,7 @@ exports.createAnnouncement = async (req, res) => {
 
 exports.deleteAnnouncement = async (req, res) => {
   try {
-    if (!isStaff(req.user)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const a = await RemoteAnnouncement.findById(req.params.id);
     if (!a) return res.status(404).json({ message: 'Announcement not found' });
     if (req.user.role === 'remote_manager' && String(a.author) !== String(req.user._id)) {
@@ -636,7 +640,7 @@ exports.deleteAnnouncement = async (req, res) => {
 // ── Team directory (for filters / task assignment) ──────────────────────────
 exports.listEmployees = async (req, res) => {
   try {
-    if (!isStaff(req.user)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const ids = await scopeEmployeeIds(req.user);
     const employees = await User.find(
       ids === null ? { role: 'remote_employee' } : { _id: { $in: ids } }

@@ -9,7 +9,7 @@ import SignatureManager from '@/components/SignatureManager';
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'super_admin';
+  const isSuperAdmin = ['super_admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
 
   const { lang } = useLanguage();
   const T = getSettingsTranslations(lang);

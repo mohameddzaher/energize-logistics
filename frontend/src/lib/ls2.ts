@@ -11,12 +11,12 @@ export type Lang = 'en' | 'ar';
 
 // Mirror of backend LS2_*_ROLES (config/constants.js).
 export const LS2_STAFF_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'moderator', 'employee', 'operations_manager', 'operations',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations',
   'workshop_manager', 'workshop_employee', 'purchasing',
 ];
-export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'workshop_manager'];
+export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager'];
 // Roles that see the section pinned in their sidebar.
-export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'operations', 'workshop_manager', 'moderator'];
+export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'workshop_manager', 'moderator'];
 export const isLs2Staff = (role?: string | null) => !!role && LS2_STAFF_ROLES.includes(role);
 export const isLs2Admin = (role?: string | null) => !!role && LS2_ADMIN_ROLES.includes(role);
 

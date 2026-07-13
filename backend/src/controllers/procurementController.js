@@ -9,13 +9,17 @@ const { CODES } = require('../config/accountingDefaults');
 const { accountIdsByCode, postJournalEntry, reverseSource, round2 } = require('../utils/accountingPoster');
 const { createNotification } = require('../services/notificationService');
 const { emitToUser, emitToAll } = require('../websocket/socketManager');
+const { grantedBySection } = require('../utils/sectionAccess');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
 const STAFF = ['super_admin', 'admin', 'procurement_manager', 'purchasing'];
 const MANAGERS = ['super_admin', 'admin', 'procurement_manager'];
 const isStaff = (u) => STAFF.includes(u.role);
+// A role the super_admin granted this section to counts as staff too —
+// otherwise the grant passes the route gate but the handler still rejects it.
+const staffReq = (req) => isStaff(req.user) || grantedBySection(req);
 const isManager = (u) => MANAGERS.includes(u.role);
-const denyNonStaff = (req, res) => { if (!isStaff(req.user)) { res.status(403).json({ message: 'Insufficient permissions' }); return true; } return false; };
+const denyNonStaff = (req, res) => { if (!staffReq(req)) { res.status(403).json({ message: 'Insufficient permissions' }); return true; } return false; };
 const denyNonManager = (req, res) => { if (!isManager(req.user)) { res.status(403).json({ message: 'Only procurement managers can perform this action' }); return true; } return false; };
 const badId = (id, res) => { if (!mongoose.isValidObjectId(id)) { res.status(400).json({ message: 'Invalid id' }); return true; } return false; };
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} };

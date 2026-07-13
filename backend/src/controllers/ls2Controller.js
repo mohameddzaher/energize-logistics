@@ -149,7 +149,7 @@ exports.getDashboard = async (req, res) => {
 
     // Latest critical/warning alerts feed
     const latestAlerts = [...openAlerts]
-      .sort((a, b) => new Date(b.lastSeenAt) - new Date(a.lastSeenAt)).slice(0, 12)
+      .sort((a, b) => new Date(b.firstSeenAt) - new Date(a.firstSeenAt)).slice(0, 12)
       .map((a) => ({ id: a._id, unitId: a.unitId, plate: a.plate, type: a.type, severity: a.severity, message: a.message, value: a.value, unit: a.unit, lastSeenAt: a.lastSeenAt }));
 
     // Distance travelled over the selected period (from daily odometer snapshots).
@@ -282,7 +282,7 @@ exports.getVehicle = async (req, res) => {
     const v = await Ls2Vehicle.findOne({ unitId: Number(req.params.id) }).lean();
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
     const [alerts, serviceLog] = await Promise.all([
-      Ls2Alert.find({ unitId: v.unitId }).sort({ status: 1, lastSeenAt: -1 }).limit(50).lean(),
+      Ls2Alert.find({ unitId: v.unitId }).sort({ status: 1, firstSeenAt: -1 }).limit(50).lean(),
       Ls2ServiceLog.find({ unitId: v.unitId }).sort({ createdAt: -1 }).limit(20).lean(),
     ]);
     res.json({ vehicle: withMaintenance(v), alerts, serviceLog });
@@ -441,7 +441,7 @@ exports.listAlerts = async (req, res) => {
     if (type) filter.type = type;
     if (unitId) filter.unitId = Number(unitId);
     const items = await Ls2Alert.find(filter)
-      .sort({ status: 1, severity: 1, lastSeenAt: -1 }).limit(500).lean();
+      .sort({ status: 1, firstSeenAt: -1 }).limit(500).lean();
     res.json({ items, total: items.length });
   } catch (error) {
     fail(res, error, 'Failed to list alerts');

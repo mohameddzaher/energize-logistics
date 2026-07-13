@@ -64,7 +64,12 @@ const userSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     isLocked: { type: Boolean, default: false },
     lastLogin: { type: Date },
+    // Legacy single-session token (kept so sessions alive at deploy time survive).
     refreshToken: { type: String, select: false },
+    // Concurrent sessions: one refresh token per device/browser. Storing only ONE
+    // meant a login on a 2nd device invalidated the 1st → users were constantly
+    // logged out. Capped (oldest dropped) so it can't grow unbounded.
+    refreshTokens: { type: [String], select: false, default: [] },
     collectionTarget: { type: Number, default: 0 },
     // Personal signatures (base64 PNG) the user applies to documents (leave
     // approvals etc.). `select: false` so the heavy data URLs don't bloat every
@@ -103,6 +108,7 @@ userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
   delete obj.refreshToken;
+  delete obj.refreshTokens;
   return obj;
 };
 

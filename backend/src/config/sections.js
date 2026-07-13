@@ -116,8 +116,9 @@ const getSection = (key) => SECTIONS.find((s) => s.key === key);
 // Default (pre-configuration) access for a role on a section — mirrors the
 // current sidebar/role behaviour. Used only for display + as the value the page
 // starts from; not used to deny anything at the gate.
+const { FULL_ACCESS_ROLES } = require('./constants');
 const defaultAccess = (role, sectionKey) => {
-  if (role === 'super_admin') return 'edit';
+  if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
   const s = getSection(sectionKey);
   if (!s) return 'none';
   return s.defaultRoles.includes(role) ? 'edit' : 'none';

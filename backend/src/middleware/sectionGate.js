@@ -13,6 +13,7 @@
 // users out on a transient DB issue.
 const { getOverride } = require('../utils/permissions');
 const { getSection } = require('../config/sections');
+const { FULL_ACCESS_ROLES } = require('../config/constants');
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -35,7 +36,7 @@ const sectionGate = (sectionKey) => {
   return async (req, res, next) => {
     try {
       if (!req.user) return res.status(401).json({ message: 'Authentication required' });
-      if (req.user.role === 'super_admin') { req.sectionAccess = 'edit'; return next(); }
+      if (FULL_ACCESS_ROLES.includes(req.user.role)) { req.sectionAccess = 'edit'; return next(); }
       if (exempt && exempt(req)) return next();
 
       const access = await getOverride(req.user.role, sectionKey); // 'none'|'view'|'edit'|null

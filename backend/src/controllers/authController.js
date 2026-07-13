@@ -4,6 +4,9 @@ const logAudit = require('../utils/auditLogger');
 const { invalidateUserCache } = require('../middleware/auth');
 const { COOKIE_OPTIONS } = require('../config/constants');
 
+// How many concurrent devices/browsers a user can stay logged in on.
+const MAX_SESSIONS = 8;
+
 const generateAccessToken = (userId, role) => {
   return jwt.sign({ userId, role }, process.env.JWT_ACCESS_SECRET, {
     expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m',
@@ -41,7 +44,11 @@ exports.login = async (req, res) => {
     const accessToken = generateAccessToken(user._id, user.role);
     const refreshToken = generateRefreshToken(user._id);
 
-    user.refreshToken = refreshToken;
+    // Keep this device's session ALONGSIDE any existing ones (phone + desktop +
+    // other browsers all stay logged in). Cap to the most recent MAX_SESSIONS.
+    const existing = Array.isArray(user.refreshTokens) ? user.refreshTokens : [];
+    user.refreshTokens = [...existing, refreshToken].slice(-MAX_SESSIONS);
+    user.refreshToken = refreshToken; // legacy field, kept in sync
     user.lastLogin = new Date();
     await user.save();
     // A cached (pre-login) copy may be stale now that we've updated the user.
@@ -97,10 +104,20 @@ exports.refresh = async (req, res) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-    const user = await User.findById(decoded.userId).select('+refreshToken');
+    const user = await User.findById(decoded.userId).select('+refreshToken +refreshTokens');
 
-    if (!user || user.refreshToken !== token) {
+    // Valid if this token belongs to ANY of the user's active sessions. The
+    // legacy single-token field is still honoured so sessions that were alive
+    // before this change keep working.
+    const sessions = Array.isArray(user && user.refreshTokens) ? user.refreshTokens : [];
+    const known = !!user && (sessions.includes(token) || user.refreshToken === token);
+    if (!user || !known) {
       return res.status(401).json({ message: 'Invalid refresh token' });
+    }
+    // Migrate a legacy-only session into the sessions array.
+    if (!sessions.includes(token)) {
+      user.refreshTokens = [...sessions, token].slice(-MAX_SESSIONS);
+      await user.save();
     }
 
     if (!user.isActive || user.isLocked) {
@@ -129,7 +146,12 @@ exports.refresh = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     if (req.user) {
-      await User.findByIdAndUpdate(req.user._id, { refreshToken: null });
+      // Sign out THIS device only — other devices stay logged in.
+      const thisToken = req.cookies?.refreshToken;
+      const update = thisToken
+        ? { $pull: { refreshTokens: thisToken }, $set: { refreshToken: null } }
+        : { $set: { refreshToken: null, refreshTokens: [] } };
+      await User.findByIdAndUpdate(req.user._id, update);
       invalidateUserCache(req.user._id);
       logAudit({
         user: req.user._id,

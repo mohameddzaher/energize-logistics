@@ -8,6 +8,7 @@ const Ls2Vehicle = require('../models/Ls2Vehicle');
 const Ls2Alert = require('../models/Ls2Alert');
 const Ls2Settings = require('../models/Ls2Settings');
 const Ls2ServiceLog = require('../models/Ls2ServiceLog');
+const Ls2DriverAssignment = require('../models/Ls2DriverAssignment');
 const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
 const reports = require('../services/ls2Reports');
 const cfg = require('../config/ls2Config');
@@ -281,11 +282,12 @@ exports.getVehicle = async (req, res) => {
   try {
     const v = await Ls2Vehicle.findOne({ unitId: Number(req.params.id) }).lean();
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
-    const [alerts, serviceLog] = await Promise.all([
+    const [alerts, serviceLog, driverHistory] = await Promise.all([
       Ls2Alert.find({ unitId: v.unitId }).sort({ status: 1, firstSeenAt: -1 }).limit(50).lean(),
       Ls2ServiceLog.find({ unitId: v.unitId }).sort({ createdAt: -1 }).limit(20).lean(),
+      Ls2DriverAssignment.find({ unitId: v.unitId }).sort({ from: -1 }).limit(50).lean(),
     ]);
-    res.json({ vehicle: withMaintenance(v), alerts, serviceLog });
+    res.json({ vehicle: withMaintenance(v), alerts, serviceLog, driverHistory });
   } catch (error) {
     fail(res, error, 'Failed to load vehicle');
   }

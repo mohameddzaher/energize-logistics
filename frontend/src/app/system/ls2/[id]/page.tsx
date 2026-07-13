@@ -11,8 +11,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
-  Truck, ArrowLeft, RefreshCw, Gauge, Thermometer, Fuel, Weight, Activity, Zap, MapPin, Wrench, Bell, Clock, Satellite, Route, AlertCircle, CheckCircle2, FileText, Fingerprint, Navigation, Droplet, MapPinned,
+  Truck, ArrowLeft, RefreshCw, Gauge, Thermometer, Fuel, Weight, Activity, Zap, MapPin, Wrench, Bell, Clock, Satellite, Route, AlertCircle, CheckCircle2, FileText, Fingerprint, Navigation, Droplet, MapPinned, FileDown, Loader2,
 } from 'lucide-react';
+import { downloadVehicleReport } from '@/lib/vehicleReport';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
@@ -53,6 +54,16 @@ export default function Ls2VehicleDetailPage() {
   const [brandEdit, setBrandEdit] = useState(false);
   const [brandInput, setBrandInput] = useState('');
   const [brandSaving, setBrandSaving] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  // Full vehicle report over the period selected above (identity, distance,
+  // maintenance, service history, drivers, trips, fuel, alerts) → PDF.
+  const downloadPdf = async () => {
+    setPdfBusy(true);
+    try { await downloadVehicleReport(Number(id), range.from, range.to, lang as Lang); }
+    catch (e: any) { alert(e?.message || 'PDF failed'); }
+    setPdfBusy(false);
+  };
 
   const load = useCallback(async () => {
     try { setD(await api.get<Detail>(`/api/ls2/vehicles/${id}`)); } catch { /* keep */ }
@@ -141,6 +152,11 @@ export default function Ls2VehicleDetailPage() {
       <PageHeader icon={<Truck className="w-5 h-5" />} title={`${v.plate || v.name}`} subtitle={v.driver}>
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span>
         <span className="text-xs text-slate-400">{t.lastSeen}: {timeAgo(v.lastMessageAt, lang as Lang)}</span>
+        <button type="button" onClick={downloadPdf} disabled={pdfBusy}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium disabled:opacity-60">
+          {pdfBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+          {lang === 'ar' ? 'تحميل تقرير PDF' : 'Download PDF Report'}
+        </button>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
       </PageHeader>
 

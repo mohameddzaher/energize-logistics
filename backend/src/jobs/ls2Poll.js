@@ -14,6 +14,7 @@ const { evaluate } = require('../services/ls2AlertEngine');
 const { syncIdentity } = require('../services/ls2Identity');
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 const Ls2Alert = require('../models/Ls2Alert');
+const Ls2DriverAssignment = require('../models/Ls2DriverAssignment');
 const Ls2Settings = require('../models/Ls2Settings');
 const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
 const { emitToAll } = require('../websocket/socketManager');
@@ -50,6 +51,10 @@ async function tick() {
     const vById = new Map(existing.map((v) => [v.unitId, v]));
     // Open alerts grouped by unit for reconciliation.
     const openAlerts = await Ls2Alert.find({ status: 'open' }).lean();
+    // Currently-open driver assignments (to: null) — one per unit at most.
+    const openAssigns = await Ls2DriverAssignment.find({ to: null }).lean();
+    const assignByUnit = new Map(openAssigns.map((a) => [a.unitId, a]));
+    const driverOps = [];
     const openByUnit = new Map();
     for (const a of openAlerts) {
       if (!openByUnit.has(a.unitId)) openByUnit.set(a.unitId, []);
@@ -110,6 +115,18 @@ async function tick() {
         },
       });
 
+      // --- Driver history: Wialon only gives the CURRENT driver, so record a
+      // change the moment we see one (close the old assignment, open a new one).
+      if (tel.driver) {
+        const open = assignByUnit.get(tel.unitId);
+        if (!open) {
+          driverOps.push({ insertOne: { document: { unitId: tel.unitId, plate: tel.plate, driver: tel.driver, from: now, to: null } } });
+        } else if (open.driver !== tel.driver) {
+          driverOps.push({ updateMany: { filter: { unitId: tel.unitId, to: null }, update: { $set: { to: now } } } });
+          driverOps.push({ insertOne: { document: { unitId: tel.unitId, plate: tel.plate, driver: tel.driver, from: now, to: null } } });
+        }
+      }
+
       // --- Alert reconciliation ---
       const prior = openByUnit.get(tel.unitId) || [];
       const priorByKey = new Map(prior.map((a) => [`${a.type}|${a.key}`, a]));
@@ -143,6 +160,7 @@ async function tick() {
     }
 
     if (vehicleOps.length) await Ls2Vehicle.bulkWrite(vehicleOps, { ordered: false });
+    if (driverOps.length) await Ls2DriverAssignment.bulkWrite(driverOps, { ordered: false });
     if (alertOps.length) await Ls2Alert.bulkWrite(alertOps, { ordered: false });
     if (odoOps.length) await Ls2OdometerDaily.bulkWrite(odoOps, { ordered: false });
 

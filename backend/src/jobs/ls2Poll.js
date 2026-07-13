@@ -30,6 +30,9 @@ let tickCount = 0;
 // Re-sync vehicle identity (VIN/brand/plate/SIM…) every ~30 min (identity is
 // near-static). At a 20s poll that's every 90 ticks.
 const IDENTITY_EVERY_TICKS = 90;
+// Backdate a truck's FIRST observed driver to before any data we hold, so their
+// historical km is attributed to them (see the driver-assignment comment above).
+const HISTORY_START = new Date('2020-01-01T00:00:00Z');
 
 const VEHICLE_FIELDS = [
   'name', 'plate', 'driver', 'position', 'lastMessageAt', 'ignition', 'moving', 'speed', 'rpm',
@@ -120,7 +123,11 @@ async function tick() {
       if (tel.driver) {
         const open = assignByUnit.get(tel.unitId);
         if (!open) {
-          driverOps.push({ insertOne: { document: { unitId: tel.unitId, plate: tel.plate, driver: tel.driver, from: now, to: null } } });
+          // First time we see this truck's driver: we have no evidence of an
+          // earlier change, so credit them from the start of our history (they
+          // are demonstrably the current driver). Real changes we OBSERVE from
+          // here on get an accurate timestamp.
+          driverOps.push({ insertOne: { document: { unitId: tel.unitId, plate: tel.plate, driver: tel.driver, from: HISTORY_START, to: null } } });
         } else if (open.driver !== tel.driver) {
           driverOps.push({ updateMany: { filter: { unitId: tel.unitId, to: null }, update: { $set: { to: now } } } });
           driverOps.push({ insertOne: { document: { unitId: tel.unitId, plate: tel.plate, driver: tel.driver, from: now, to: null } } });

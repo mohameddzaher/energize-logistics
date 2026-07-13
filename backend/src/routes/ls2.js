@@ -26,6 +26,10 @@ router.patch('/alerts/:id/ack', ls2.acknowledgeAlert);
 router.get('/mileage', ls2.getMileage); // fleet distance over a period
 router.post('/identity/refresh', ADMIN, ls2.refreshIdentity); // re-pull VIN/brand/SIM…
 
+// Drivers — km attributed per day to whoever was on the truck that day
+router.get('/drivers', ls2.listDrivers); // ?from&to
+router.get('/drivers/:driver', ls2.getDriver); // ?from&to
+
 router.get('/vehicles', ls2.listVehicles);
 router.get('/vehicles/:id', ls2.getVehicle);
 router.get('/vehicles/:id/mileage', ls2.getVehicleMileage); // ?from&to[&source=report]

@@ -490,6 +490,129 @@ exports.markServiced = async (req, res) => {
   }
 };
 
+// ---- Drivers: who drove what, and how far --------------------------------
+// Attribution: each DAY's distance for a truck (from the daily odometer
+// snapshots) is credited to whichever driver was assigned to that truck on that
+// day (Ls2DriverAssignment). That keeps a driver's km honest even when they
+// switch trucks mid-period.
+async function driverStats(from, to) {
+  const [snaps, assigns] = await Promise.all([
+    // One day before `from` too, so the first day's delta has a baseline.
+    Ls2OdometerDaily.find({ date: { $gte: addDays(from, -1), $lte: to } }).sort({ unitId: 1, date: 1 }).lean(),
+    Ls2DriverAssignment.find({
+      $or: [{ to: null }, { to: { $gte: new Date(from + 'T00:00:00Z') } }],
+      from: { $lte: new Date(to + 'T23:59:59Z') },
+    }).lean(),
+  ]);
+
+  // Daily km per unit: odo(day) − odo(previous snapshot for that unit).
+  const dayKm = []; // { unitId, date, km }
+  let prev = null;
+  for (const s of snaps) {
+    if (prev && prev.unitId === s.unitId && s.date >= from) {
+      const km = Math.max(0, Math.round((s.odometerKm - prev.odometerKm) * 10) / 10);
+      if (km > 0) dayKm.push({ unitId: s.unitId, date: s.date, km });
+    }
+    prev = s;
+  }
+
+  // Who was on a unit on a given day?
+  const byUnit = new Map();
+  for (const a of assigns) {
+    if (!byUnit.has(a.unitId)) byUnit.set(a.unitId, []);
+    byUnit.get(a.unitId).push(a);
+  }
+  const driverOn = (unitId, date) => {
+    const day = new Date(date + 'T12:00:00Z'); // midday → unambiguous
+    const list = byUnit.get(unitId) || [];
+    const hit = list.find((a) => new Date(a.from) <= day && (!a.to || new Date(a.to) >= day));
+    return hit ? hit.driver : null;
+  };
+
+  const out = new Map(); // driver -> { driver, km, days:Set, units:Map(unitId->km) }
+  for (const d of dayKm) {
+    const drv = driverOn(d.unitId, d.date);
+    if (!drv) continue;
+    if (!out.has(drv)) out.set(drv, { driver: drv, km: 0, days: new Set(), units: new Map() });
+    const rec = out.get(drv);
+    rec.km += d.km;
+    rec.days.add(d.date);
+    rec.units.set(d.unitId, Math.round(((rec.units.get(d.unitId) || 0) + d.km) * 10) / 10);
+  }
+  return { stats: out, assigns };
+}
+
+exports.listDrivers = async (req, res) => {
+  try {
+    const today = cairoDate();
+    const to = req.query.to || today;
+    const from = req.query.from || `${today.slice(0, 7)}-01`;
+    if (from > to) return res.status(400).json({ message: 'from must be on or before to' });
+
+    const [{ stats, assigns }, vehicles] = await Promise.all([
+      driverStats(from, to),
+      Ls2Vehicle.find({}).select('unitId plate driver').lean(),
+    ]);
+    const plateOf = new Map(vehicles.map((v) => [v.unitId, v.plate]));
+
+    // Every driver we know of: currently on a truck, or seen in the period.
+    const names = new Set([...stats.keys()]);
+    for (const v of vehicles) if (v.driver) names.add(v.driver);
+
+    const currentUnitOf = new Map();
+    for (const v of vehicles) if (v.driver) currentUnitOf.set(v.driver, { unitId: v.unitId, plate: v.plate });
+
+    const items = [...names].map((name) => {
+      const s = stats.get(name);
+      const cur = currentUnitOf.get(name) || null;
+      return {
+        driver: name,
+        km: s ? Math.round(s.km * 10) / 10 : 0,
+        activeDays: s ? s.days.size : 0,
+        vehicleCount: s ? s.units.size : 0,
+        vehicles: s ? [...s.units.entries()].map(([unitId, km]) => ({ unitId, plate: plateOf.get(unitId) || '', km })) : [],
+        currentVehicle: cur,
+        assignmentCount: assigns.filter((a) => a.driver === name).length,
+      };
+    }).sort((a, b) => b.km - a.km);
+
+    res.json({ from, to, items, total: items.length });
+  } catch (error) {
+    fail(res, error, 'Failed to load drivers');
+  }
+};
+
+// One driver: their km, the trucks they drove, and their full assignment history.
+exports.getDriver = async (req, res) => {
+  try {
+    const name = decodeURIComponent(req.params.driver || '');
+    const today = cairoDate();
+    const to = req.query.to || today;
+    const from = req.query.from || `${today.slice(0, 7)}-01`;
+
+    const [{ stats }, history, vehicles] = await Promise.all([
+      driverStats(from, to),
+      Ls2DriverAssignment.find({ driver: name }).sort({ from: -1 }).limit(100).lean(),
+      Ls2Vehicle.find({}).select('unitId plate driver odometerKm').lean(),
+    ]);
+    const plateOf = new Map(vehicles.map((v) => [v.unitId, v.plate]));
+    const s = stats.get(name);
+    const current = vehicles.find((v) => v.driver === name) || null;
+
+    res.json({
+      from, to,
+      driver: name,
+      km: s ? Math.round(s.km * 10) / 10 : 0,
+      activeDays: s ? s.days.size : 0,
+      vehicles: s ? [...s.units.entries()].map(([unitId, km]) => ({ unitId, plate: plateOf.get(unitId) || '', km })).sort((a, b) => b.km - a.km) : [],
+      currentVehicle: current ? { unitId: current.unitId, plate: current.plate, odometerKm: current.odometerKm } : null,
+      history: history.map((h) => ({ unitId: h.unitId, plate: h.plate || plateOf.get(h.unitId) || '', from: h.from, to: h.to })),
+    });
+  } catch (error) {
+    fail(res, error, 'Failed to load driver');
+  }
+};
+
 // ---- Update editable per-vehicle metadata (manual — e.g. tire brand/type) ---
 exports.updateVehicleMeta = async (req, res) => {
   try {

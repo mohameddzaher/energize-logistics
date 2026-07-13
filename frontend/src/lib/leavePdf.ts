@@ -62,8 +62,8 @@ export async function downloadLeaveSheet(leave: any, lang: 'ar' | 'en') {
   el.setAttribute('dir', ar ? 'rtl' : 'ltr');
   el.style.cssText = `position:fixed;left:-99999px;top:0;width:794px;height:1123px;background:#fff;font-family:'Segoe UI',Tahoma,Arial,sans-serif;`;
   el.innerHTML = `
-    <img src="${LETTERHEAD}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" crossorigin="anonymous" />
-    <div style="position:absolute;left:0;right:0;top:190px;bottom:150px;padding:0 64px;display:flex;flex-direction:column">
+    <img src="${LETTERHEAD}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill" crossorigin="anonymous" />
+    <div style="position:absolute;left:0;right:0;top:170px;bottom:175px;padding:0 60px;display:flex;flex-direction:column">
       <h1 style="text-align:center;font-size:22px;font-weight:800;color:#0f172a;margin:0 0 4px">${t('Leave Request', 'طلب إجازة')}</h1>
       <div style="text-align:center;font-size:12px;color:#f37121;font-weight:700;margin-bottom:16px">${t('Energize Logistics', 'إنرجايز لوجيستيك')}</div>
       <table style="width:100%;border-collapse:collapse;font-size:13px">${detailRows}</table>

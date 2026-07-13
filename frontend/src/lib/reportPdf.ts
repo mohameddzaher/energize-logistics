@@ -13,10 +13,14 @@ const LETTERHEAD = '/images/payroll.png';
 // A4 at 96dpi.
 const PAGE_W = 794;
 const PAGE_H = 1123;
-// Letterhead safe area — content sits between the printed header and footer.
-const TOP = 170;
-const BOTTOM = 120;
-const SIDE = 52;
+// Safe area measured against payroll.png itself: the printed logo block ends
+// ~125px down, and the printed footer (orange rules + address) starts ~1014px
+// down. Content must live strictly between them, and our page-number strip sits
+// just ABOVE the printed footer — never on top of it.
+const TOP = 150;          // clears the logo
+const FOOTER_LINE = 150;  // page-number strip, measured from the bottom (y≈973)
+const BOTTOM = 175;       // content stops here (y≈948) — well clear of the footer
+const SIDE = 56;
 const CONTENT_H = PAGE_H - TOP - BOTTOM;
 
 const ORANGE = '#f37121';
@@ -138,11 +142,11 @@ export async function downloadReport({ fileName, lang, blocks, footerNote }: Rep
     pageEl.setAttribute('dir', dir);
     pageEl.style.cssText = `position:fixed;left:-99999px;top:0;width:${PAGE_W}px;height:${PAGE_H}px;background:#fff;font-family:'Segoe UI',Tahoma,Arial,sans-serif;`;
     pageEl.innerHTML = `
-      <img src="${LETTERHEAD}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" crossorigin="anonymous" />
+      <img src="${LETTERHEAD}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill" crossorigin="anonymous" />
       <div style="position:absolute;left:${SIDE}px;right:${SIDE}px;top:${TOP}px;height:${CONTENT_H}px;overflow:hidden">
         ${pages[p].map((b) => blockHtml(b, rtl)).join('')}
       </div>
-      <div style="position:absolute;left:${SIDE}px;right:${SIDE}px;bottom:${BOTTOM - 34}px;display:flex;justify-content:space-between;
+      <div style="position:absolute;left:${SIDE}px;right:${SIDE}px;bottom:${FOOTER_LINE}px;display:flex;justify-content:space-between;
         font-size:10px;color:${MUTED};border-top:1px solid #e5e7eb;padding-top:5px">
         <span>${esc(footerNote || '')}</span>
         <span>${rtl ? `صفحة ${p + 1} من ${pages.length}` : `Page ${p + 1} of ${pages.length}`}</span>

@@ -65,8 +65,8 @@ export default function Ls2LivePage() {
 
       <div className="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-2 shadow-sm">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-200 text-sm" />
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} className="w-full ps-10 pe-3 py-2 rounded-lg border border-slate-200 text-sm" />
         </div>
         <button type="button" onClick={() => setStatus('')} className={`px-3 py-1.5 rounded-full text-xs font-medium border ${!status ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200'}`}>{t.all}</button>
         {STATUSES.map((s) => {

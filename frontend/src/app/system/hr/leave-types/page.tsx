@@ -80,7 +80,7 @@ export default function LeaveTypesPage() {
           <tbody>
             {types.map((t) => (
               <tr key={t._id} className="border-b border-slate-200/70 hover:bg-slate-100">
-                <td className="px-4 py-3 text-slate-900 font-medium"><span className="inline-block w-3 h-3 rounded-full mr-2 align-middle" style={{ background: t.color || '#f37121' }} />{ar ? t.nameAr : t.nameEn}</td>
+                <td className="px-4 py-3 text-slate-900 font-medium"><span className="inline-block w-3 h-3 rounded-full me-2 align-middle" style={{ background: t.color || '#f37121' }} />{ar ? t.nameAr : t.nameEn}</td>
                 <td className="px-4 py-3 text-slate-500">{t.code}</td>
                 <td className="px-4 py-3">{t.paid ? <SmallBadge bg="bg-green-500/20" text="text-green-600" label={tx.yes} /> : <SmallBadge bg="bg-slate-500/20" text="text-slate-500" label={tx.no} />}</td>
                 <td className="px-4 py-3">{t.affectsBalance ? <SmallBadge bg="bg-blue-500/20" text="text-blue-600" label={tx.yes} /> : <SmallBadge bg="bg-slate-500/20" text="text-slate-500" label={tx.no} />}</td>

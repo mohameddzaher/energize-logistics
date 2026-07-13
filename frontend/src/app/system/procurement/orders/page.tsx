@@ -105,17 +105,17 @@ export default function PurchaseOrdersPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
-          <thead><tr className="bg-slate-900 border-b border-slate-200 text-left text-slate-300">
+          <thead><tr className="bg-slate-900 border-b border-slate-200 text-start text-slate-300">
             <th className="px-4 py-3">#</th><th className="px-4 py-3">{tx.vendor}</th>
-            <th className="px-4 py-3 text-right">{tx.total}</th><th className="px-4 py-3">{tx.status}</th>
-            <th className="px-4 py-3">{tx.expected}</th><th className="px-4 py-3 text-right">{tx.actions}</th>
+            <th className="px-4 py-3 text-end">{tx.total}</th><th className="px-4 py-3">{tx.status}</th>
+            <th className="px-4 py-3">{tx.expected}</th><th className="px-4 py-3 text-end">{tx.actions}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {items.length === 0 ? <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((po) => (
               <tr key={po._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-500 font-mono text-xs">{po.poNumber}</td>
                 <td className="px-4 py-3 text-slate-900">{vendorName(po.vendor)}</td>
-                <td className="px-4 py-3 text-right text-slate-800">{money(po.total, po.currency)}<div className="text-slate-500 text-xs">{tx.vatShort} {money(po.vatAmount, '')}</div></td>
+                <td className="px-4 py-3 text-end text-slate-800">{money(po.total, po.currency)}<div className="text-slate-500 text-xs">{tx.vatShort} {money(po.vatAmount, '')}</div></td>
                 <td className="px-4 py-3"><Badge style={PO_STATUS_STYLE[po.status]} lang={lang} /></td>
                 <td className="px-4 py-3 text-slate-500">{fmtDate(po.expectedDate)}</td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
@@ -145,7 +145,7 @@ export default function PurchaseOrdersPage() {
               <input placeholder={tx.description} value={l.description} onChange={(e) => setItem(i, { description: e.target.value })} className="flex-1 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" />
               <input type="number" placeholder={tx.qty} value={l.quantity} onChange={(e) => setItem(i, { quantity: e.target.value })} className="w-20 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
               <input type="number" placeholder={tx.price} value={l.unitPrice} onChange={(e) => setItem(i, { unitPrice: e.target.value })} className="w-24 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
-              <span className="w-24 text-right text-slate-500 text-sm">{money((Number(l.quantity) || 0) * (Number(l.unitPrice) || 0), '')}</span>
+              <span className="w-24 text-end text-slate-500 text-sm">{money((Number(l.quantity) || 0) * (Number(l.unitPrice) || 0), '')}</span>
               <button type="button" title={tx.remove} onClick={() => rmItem(i)} className="text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
             </div>
           ))}

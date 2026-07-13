@@ -733,12 +733,12 @@ export default function InvoiceDetailPage() {
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-200">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.date}</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.amount}</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.type}</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.reference}</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.user}</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.notes}</th>
+                  <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.date}</th>
+                  <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.amount}</th>
+                  <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.type}</th>
+                  <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.reference}</th>
+                  <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.user}</th>
+                  <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.notes}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">

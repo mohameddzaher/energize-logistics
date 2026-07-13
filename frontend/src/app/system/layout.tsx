@@ -465,7 +465,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto"
+                    className="absolute end-0 mt-2 w-80 bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto"
                   >
                     <div className="p-3 border-b border-slate-200 flex items-center justify-between">
                       <span className="text-slate-900 font-medium text-sm">{L.notifications}</span>

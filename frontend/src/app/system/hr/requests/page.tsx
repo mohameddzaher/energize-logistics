@@ -99,7 +99,7 @@ export default function HRRequestsPage() {
               <tr><td colSpan={5} className="text-center text-slate-500 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((r) => (
               <tr key={r._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
-                <td className="px-4 py-3 text-slate-900 font-medium">{userName(r.requester)} {!r.readByHR && <span className="ml-1 inline-block w-2 h-2 rounded-full bg-[#f37121]" />}</td>
+                <td className="px-4 py-3 text-slate-900 font-medium">{userName(r.requester)} {!r.readByHR && <span className="ms-1 inline-block w-2 h-2 rounded-full bg-[#f37121]" />}</td>
                 <td className="px-4 py-3 text-slate-700">{categoryLabel(r.category, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{r.subject}</td>
                 <td className="px-4 py-3"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></td>

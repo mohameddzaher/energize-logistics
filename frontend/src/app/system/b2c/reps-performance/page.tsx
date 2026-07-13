@@ -706,7 +706,7 @@ export default function RepsPerformancePage() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-900 text-slate-300 text-xs uppercase">
                       <tr>
-                        <th className="text-left py-2 px-3">{lang === 'ar' ? 'الشهر' : 'Month'}</th>
+                        <th className="text-start py-2 px-3">{lang === 'ar' ? 'الشهر' : 'Month'}</th>
                         <th className="text-center py-2 px-3">{lang === 'ar' ? 'صفوف' : 'Rows'}</th>
                         <th className="text-center py-2 px-3">{lang === 'ar' ? 'مناديب' : 'Reps'}</th>
                         <th className="text-center py-2 px-3">{lang === 'ar' ? 'أيام' : 'Days'}</th>
@@ -787,7 +787,7 @@ export default function RepsPerformancePage() {
                           <span className="text-orange-700 font-mono text-xs">{d.repKey}</span>
                           <span className="text-slate-900 text-sm font-medium">{d.englishName || '—'}</span>
                           {d.arabicName && <span className="text-slate-500 text-xs">({d.arabicName})</span>}
-                          <span className="text-slate-500 text-[10px] ml-auto">{d.sheetLabel}</span>
+                          <span className="text-slate-500 text-[10px] ms-auto">{d.sheetLabel}</span>
                         </div>
                         <div className="space-y-1.5">
                           {d.details.map((rd, idx) => {
@@ -808,7 +808,7 @@ export default function RepsPerformancePage() {
                                     {lang === 'ar' ? 'إجمالي الصف' : 'Row total'}: <strong>{rd.totalOrders}</strong>
                                   </span>
                                   {isWinner && (
-                                    <span className="ml-auto px-1.5 py-0.5 rounded bg-green-500/30 text-green-200 text-[10px] uppercase">
+                                    <span className="ms-auto px-1.5 py-0.5 rounded bg-green-500/30 text-green-200 text-[10px] uppercase">
                                       {lang === 'ar' ? '✓ مختار' : '✓ Used'}
                                     </span>
                                   )}
@@ -890,7 +890,7 @@ export default function RepsPerformancePage() {
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm mb-3 flex items-start gap-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{sheetError}</span>
-            <button type="button" onClick={() => setSheetError('')} className="ml-auto text-red-600 hover:text-red-700" title={tx.close}>
+            <button type="button" onClick={() => setSheetError('')} className="ms-auto text-red-600 hover:text-red-700" title={tx.close}>
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -930,7 +930,7 @@ export default function RepsPerformancePage() {
                 </div>
                 <div>
                   <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">
-                    <Link2 className="w-3.5 h-3.5 inline mr-1" />
+                    <Link2 className="w-3.5 h-3.5 inline me-1" />
                     {lang === 'ar' ? 'رابط Google Sheet (اختياري — تقدر تضيفه لاحقاً)' : 'Google Sheet URL (optional — can be added later)'}
                   </label>
                   <input type="url" value={addForm.sheetUrl}
@@ -1041,7 +1041,7 @@ export default function RepsPerformancePage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="md:col-span-3">
                       <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">
-                        <Link2 className="w-3.5 h-3.5 inline mr-1" />
+                        <Link2 className="w-3.5 h-3.5 inline me-1" />
                         {lang === 'ar' ? 'رابط Google Sheet' : 'Google Sheet URL'}
                       </label>
                       <input type="url" value={editForm.sheetUrl}
@@ -1083,13 +1083,13 @@ export default function RepsPerformancePage() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
                     <div className="md:col-span-3">
-                      <span className="text-slate-500 uppercase mr-2">{tx.urlLabel}</span>
+                      <span className="text-slate-500 uppercase me-2">{tx.urlLabel}</span>
                       {cfg.sheetUrl
                         ? <a href={cfg.sheetUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline font-mono break-all">{cfg.sheetUrl}</a>
                         : <span className="text-slate-500 italic">{lang === 'ar' ? 'لم يُحدَّد بعد' : 'not set yet'}</span>}
                     </div>
-                    <div><span className="text-slate-500 uppercase mr-2">{lang === 'ar' ? 'الفترة:' : 'Interval:'}</span><span className="text-slate-700">{cfg.intervalMinutes} {tx.minutesUnit}</span></div>
-                    <div className="md:col-span-2"><span className="text-slate-500 uppercase mr-2">{lang === 'ar' ? 'الوضع:' : 'Mode:'}</span><span className="text-slate-700">{cfg.syncMode === 'overwrite' ? (lang === 'ar' ? 'إعادة كتابة' : 'overwrite') : (lang === 'ar' ? 'أيام جديدة فقط' : 'new days only')}</span></div>
+                    <div><span className="text-slate-500 uppercase me-2">{lang === 'ar' ? 'الفترة:' : 'Interval:'}</span><span className="text-slate-700">{cfg.intervalMinutes} {tx.minutesUnit}</span></div>
+                    <div className="md:col-span-2"><span className="text-slate-500 uppercase me-2">{lang === 'ar' ? 'الوضع:' : 'Mode:'}</span><span className="text-slate-700">{cfg.syncMode === 'overwrite' ? (lang === 'ar' ? 'إعادة كتابة' : 'overwrite') : (lang === 'ar' ? 'أيام جديدة فقط' : 'new days only')}</span></div>
                   </div>
                 )}
 
@@ -1143,7 +1143,7 @@ export default function RepsPerformancePage() {
                       </button>
                       <button type="button" onClick={() => handleSyncConfig(cfg._id)}
                         disabled={isSyncing || !cfg.sheetId}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white text-sm font-medium ml-auto">
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white text-sm font-medium ms-auto">
                         <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                         {isSyncing
                           ? (lang === 'ar' ? 'جاري المزامنة...' : 'Syncing...')
@@ -1299,10 +1299,10 @@ export default function RepsPerformancePage() {
             <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="bg-slate-900 text-slate-300 text-xs uppercase border-b border-slate-200">
-                  <th className="text-left py-2 px-2">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
-                  <th className="text-left py-2 px-2">{lang === 'ar' ? 'الملف' : 'File'}</th>
-                  <th className="text-left py-2 px-2">{lang === 'ar' ? 'بواسطة' : 'By'}</th>
-                  <th className="text-left py-2 px-2">{T.monthsDetected}</th>
+                  <th className="text-start py-2 px-2">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+                  <th className="text-start py-2 px-2">{lang === 'ar' ? 'الملف' : 'File'}</th>
+                  <th className="text-start py-2 px-2">{lang === 'ar' ? 'بواسطة' : 'By'}</th>
+                  <th className="text-start py-2 px-2">{T.monthsDetected}</th>
                   <th className="text-center py-2 px-2">{T.daysInserted}</th>
                   <th className="text-center py-2 px-2">{T.daysUpdated}</th>
                   <th className="text-center py-2 px-2">{T.daysSkipped}</th>

@@ -281,15 +281,15 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-900"><tr className="text-slate-300 border-b border-slate-200">
-                <th className="text-left py-2 px-2">{tx.route}</th>
-                <th className="text-left py-2 px-2">{tx.startTime}</th>
-                <th className="text-left py-2 px-2">{tx.endTime}</th>
-                <th className="text-right py-2 px-2">{tx.duration}</th>
-                <th className="text-right py-2 px-2">{tx.distance}</th>
-                <th className="text-right py-2 px-2">{tx.maxSpeed}</th>
-                <th className="text-right py-2 px-2">{tx.avgSpeed}</th>
-                <th className="text-right py-2 px-2">{tx.violations}</th>
-                <th className="text-right py-2 px-2">{tx.segments}</th>
+                <th className="text-start py-2 px-2">{tx.route}</th>
+                <th className="text-start py-2 px-2">{tx.startTime}</th>
+                <th className="text-start py-2 px-2">{tx.endTime}</th>
+                <th className="text-end py-2 px-2">{tx.duration}</th>
+                <th className="text-end py-2 px-2">{tx.distance}</th>
+                <th className="text-end py-2 px-2">{tx.maxSpeed}</th>
+                <th className="text-end py-2 px-2">{tx.avgSpeed}</th>
+                <th className="text-end py-2 px-2">{tx.violations}</th>
+                <th className="text-end py-2 px-2">{tx.segments}</th>
               </tr></thead>
               <tbody>
                 {filteredTrips.map((tr, i) => (
@@ -297,12 +297,12 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                     <td className="py-2 px-2 text-indigo-700 text-xs">{tr.startCity} → {tr.endCity}</td>
                     <td className="py-2 px-2 text-slate-700 text-xs">{tr.startTime}</td>
                     <td className="py-2 px-2 text-slate-700 text-xs">{tr.endTime}</td>
-                    <td className="py-2 px-2 text-right text-cyan-700">{fmtDur(tr.durationMinutes)}</td>
-                    <td className="py-2 px-2 text-right text-purple-600">{tr.totalDistance.toFixed(1)}</td>
-                    <td className={`py-2 px-2 text-right ${tr.maxSpeed > 120 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{tr.maxSpeed.toFixed(0)}</td>
-                    <td className="py-2 px-2 text-right text-slate-700">{tr.avgSpeed.toFixed(0)}</td>
-                    <td className={`py-2 px-2 text-right ${tr.speedViolations > 0 ? 'text-red-600' : 'text-slate-500'}`}>{tr.speedViolations}</td>
-                    <td className="py-2 px-2 text-right text-slate-500">{tr.segmentCount}</td>
+                    <td className="py-2 px-2 text-end text-cyan-700">{fmtDur(tr.durationMinutes)}</td>
+                    <td className="py-2 px-2 text-end text-purple-600">{tr.totalDistance.toFixed(1)}</td>
+                    <td className={`py-2 px-2 text-end ${tr.maxSpeed > 120 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{tr.maxSpeed.toFixed(0)}</td>
+                    <td className="py-2 px-2 text-end text-slate-700">{tr.avgSpeed.toFixed(0)}</td>
+                    <td className={`py-2 px-2 text-end ${tr.speedViolations > 0 ? 'text-red-600' : 'text-slate-500'}`}>{tr.speedViolations}</td>
+                    <td className="py-2 px-2 text-end text-slate-500">{tr.segmentCount}</td>
                   </tr>
                 ))}
                 {filteredTrips.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-4">{tx.noTrips}</td></tr>}
@@ -331,14 +331,14 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-900"><tr className="text-slate-300 border-b border-slate-200">
-                <th className="text-left py-2 px-2">{tx.startTime}</th>
-                <th className="text-left py-2 px-2">{tx.endTime}</th>
-                <th className="text-left py-2 px-2">{tx.from}</th>
-                <th className="text-left py-2 px-2">{tx.to}</th>
-                <th className="text-left py-2 px-2">{tx.duration}</th>
-                <th className="text-right py-2 px-2">{tx.distance}</th>
-                <th className="text-right py-2 px-2">{tx.maxSpeed}</th>
-                <th className="text-right py-2 px-2">{tx.avgSpeed}</th>
+                <th className="text-start py-2 px-2">{tx.startTime}</th>
+                <th className="text-start py-2 px-2">{tx.endTime}</th>
+                <th className="text-start py-2 px-2">{tx.from}</th>
+                <th className="text-start py-2 px-2">{tx.to}</th>
+                <th className="text-start py-2 px-2">{tx.duration}</th>
+                <th className="text-end py-2 px-2">{tx.distance}</th>
+                <th className="text-end py-2 px-2">{tx.maxSpeed}</th>
+                <th className="text-end py-2 px-2">{tx.avgSpeed}</th>
               </tr></thead>
               <tbody>
                 {filteredGpsMov.slice(0, 500).map((r, i) => (
@@ -348,9 +348,9 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                     <td className="py-2 px-2 text-slate-500 text-xs max-w-[180px] truncate">{r.initialLocation || '-'}</td>
                     <td className="py-2 px-2 text-slate-500 text-xs max-w-[180px] truncate">{r.finalLocation || '-'}</td>
                     <td className="py-2 px-2 text-slate-700">{r.duration || '-'}</td>
-                    <td className="py-2 px-2 text-right text-purple-600">{parseNum(r.distance).toFixed(1)}</td>
-                    <td className={`py-2 px-2 text-right ${parseNum(r.maxSpeed) > 120 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{parseNum(r.maxSpeed).toFixed(0)}</td>
-                    <td className="py-2 px-2 text-right text-slate-700">{parseNum(r.avgSpeed).toFixed(0)}</td>
+                    <td className="py-2 px-2 text-end text-purple-600">{parseNum(r.distance).toFixed(1)}</td>
+                    <td className={`py-2 px-2 text-end ${parseNum(r.maxSpeed) > 120 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{parseNum(r.maxSpeed).toFixed(0)}</td>
+                    <td className="py-2 px-2 text-end text-slate-700">{parseNum(r.avgSpeed).toFixed(0)}</td>
                   </tr>
                 ))}
                 {filteredGpsMov.length === 0 && <tr><td colSpan={8} className="text-center text-slate-500 py-4">{tx.noSegments}</td></tr>}
@@ -443,7 +443,7 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                         <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                           <div className="bg-red-500 h-full rounded-full" style={{ width: `${(e.total / maxExpense) * 100}%` }} />
                         </div>
-                        <span className="text-red-600 w-16 text-right text-xs">{fmtNum(e.total)}</span>
+                        <span className="text-red-600 w-16 text-end text-xs">{fmtNum(e.total)}</span>
                       </div>
                     ))}
                     {expenseBreakdown.length === 0 && <p className="text-slate-500 text-sm text-center py-4">--</p>}
@@ -457,14 +457,14 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                 <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-slate-900"><tr className="text-slate-300 border-b border-slate-200">
-                      <th className="text-left py-2 px-2">{tx.date}</th>
-                      <th className="text-left py-2 px-2">{tx.route}</th>
-                      <th className="text-right py-2 px-2">{tx.days}</th>
-                      <th className="text-right py-2 px-2">{tx.revenue}</th>
-                      <th className="text-right py-2 px-2">{tx.expenses}</th>
-                      <th className="text-right py-2 px-2">{tx.profit}</th>
-                      <th className="text-left py-2 px-2">{tx.client}</th>
-                      <th className="text-left py-2 px-2">{tx.driver}</th>
+                      <th className="text-start py-2 px-2">{tx.date}</th>
+                      <th className="text-start py-2 px-2">{tx.route}</th>
+                      <th className="text-end py-2 px-2">{tx.days}</th>
+                      <th className="text-end py-2 px-2">{tx.revenue}</th>
+                      <th className="text-end py-2 px-2">{tx.expenses}</th>
+                      <th className="text-end py-2 px-2">{tx.profit}</th>
+                      <th className="text-start py-2 px-2">{tx.client}</th>
+                      <th className="text-start py-2 px-2">{tx.driver}</th>
                     </tr></thead>
                     <tbody>
                       {htTrips.map((r, i) => {
@@ -476,10 +476,10 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                           <tr key={i} className="border-b border-slate-200/70 hover:bg-slate-100">
                             <td className="py-2 px-2 text-slate-700 text-xs">{r.month || r.date || '-'}</td>
                             <td className="py-2 px-2 text-indigo-700 text-xs">{(r.loadingPlace || '?')} → {(r.unloadingPlace || '?')}</td>
-                            <td className="py-2 px-2 text-right text-slate-700">{parseNum(r.days) || '-'}</td>
-                            <td className="py-2 px-2 text-right text-emerald-600">{fmtNum(rev)}</td>
-                            <td className="py-2 px-2 text-right text-red-600">{fmtNum(expensesTotal)}</td>
-                            <td className={`py-2 px-2 text-right ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmtNum(profit)}</td>
+                            <td className="py-2 px-2 text-end text-slate-700">{parseNum(r.days) || '-'}</td>
+                            <td className="py-2 px-2 text-end text-emerald-600">{fmtNum(rev)}</td>
+                            <td className="py-2 px-2 text-end text-red-600">{fmtNum(expensesTotal)}</td>
+                            <td className={`py-2 px-2 text-end ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmtNum(profit)}</td>
                             <td className="py-2 px-2 text-slate-700 text-xs max-w-[140px] truncate">{r.client || '-'}</td>
                             <td className="py-2 px-2 text-slate-700 text-xs">{r.driver1 || '-'}</td>
                           </tr>
@@ -527,8 +527,8 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
                 <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-slate-900"><tr className="text-slate-300 border-b border-slate-200">
-                      <th className="text-left py-2 px-2">{tx.date}</th>
-                      <th className="text-left py-2 px-2">{tx.route}</th>
+                      <th className="text-start py-2 px-2">{tx.date}</th>
+                      <th className="text-start py-2 px-2">{tx.route}</th>
                       <th className="text-center py-2 px-2">{tx.loaded}</th>
                       <th className="text-center py-2 px-2">{tx.unloaded}</th>
                       <th className="text-center py-2 px-2">{tx.photoSent}</th>

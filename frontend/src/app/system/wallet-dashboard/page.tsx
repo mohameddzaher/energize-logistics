@@ -208,7 +208,7 @@ export default function WalletDashboardPage() {
         ) : branches.map((b) => (
           <button key={b.branch._id} type="button"
             onClick={() => router.push(buildBranchLink(b.branch._id))}
-            className="bg-white border border-slate-200 rounded-xl p-5 text-left hover:border-[#f37121]/50 hover:bg-slate-50 transition-all group shadow-sm">
+            className="bg-white border border-slate-200 rounded-xl p-5 text-start hover:border-[#f37121]/50 hover:bg-slate-50 transition-all group shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-[#f37121]" />

@@ -122,7 +122,7 @@ export default function CustomsDetailPage() {
             const cur = i === currentIdx && !c.cancelled;
             return (
               <button key={s} type="button" disabled={!canEdit} onClick={() => patch({ stage: s })}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-start transition-colors ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${
                   cur ? 'bg-[#f37121] text-white' : done ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
                 }`}>
                 <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold ${cur ? 'bg-white/20' : done ? 'bg-green-500/30 text-green-300' : 'bg-slate-700 text-slate-400'}`}>
@@ -249,7 +249,7 @@ function FieldSelect({ label, value, options, onSave, disabled }: { label: strin
 function Toggle({ label, on, onToggle, disabled }: { label: string; on?: boolean; onToggle: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button type="button" disabled={disabled} onClick={() => onToggle(!on)}
-      className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm text-left transition-colors ${disabled ? 'cursor-default' : 'hover:bg-slate-50'}`}>
+      className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm text-start transition-colors ${disabled ? 'cursor-default' : 'hover:bg-slate-50'}`}>
       <span className={`w-5 h-5 shrink-0 rounded-md border flex items-center justify-center transition-colors ${on ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-slate-300'}`}>
         {on && <Check className="w-3.5 h-3.5" />}
       </span>

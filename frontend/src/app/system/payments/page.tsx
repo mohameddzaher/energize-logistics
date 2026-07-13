@@ -632,7 +632,7 @@ export default function PaymentsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="filter-date-from" className="block text-slate-500 text-xs mb-1.5">
-                    <Calendar className="w-3 h-3 inline mr-1" />
+                    <Calendar className="w-3 h-3 inline me-1" />
                     {T.from}
                   </label>
                   <input
@@ -648,7 +648,7 @@ export default function PaymentsPage() {
                 </div>
                 <div>
                   <label htmlFor="filter-date-to" className="block text-slate-500 text-xs mb-1.5">
-                    <Calendar className="w-3 h-3 inline mr-1" />
+                    <Calendar className="w-3 h-3 inline me-1" />
                     {T.to}
                   </label>
                   <input
@@ -888,19 +888,19 @@ export default function PaymentsPage() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -5 }}
                             transition={{ duration: 0.15 }}
-                            className="absolute z-10 left-0 right-0 mt-1 bg-slate-50 border border-slate-200 rounded-lg shadow-xl overflow-hidden"
+                            className="absolute z-10 start-0 end-0 mt-1 bg-slate-50 border border-slate-200 rounded-lg shadow-xl overflow-hidden"
                           >
                             {/* Search input */}
                             <div className="p-2 border-b border-slate-200">
                               <div className="relative">
-                                <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                                <Search className="w-4 h-4 absolute start-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
                                 <input
                                   type="text"
                                   value={customerSearch}
                                   onChange={(e) => setCustomerSearch(e.target.value)}
                                   placeholder={`${T.search}...`}
                                   autoFocus
-                                  className="w-full pl-8 pr-3 py-2 rounded-md bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[#f37121]/50"
+                                  className="w-full ps-8 pe-3 py-2 rounded-md bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[#f37121]/50"
                                 />
                               </div>
                             </div>
@@ -916,7 +916,7 @@ export default function PaymentsPage() {
                                     key={c._id}
                                     type="button"
                                     onClick={() => handleSelectCustomer(c._id)}
-                                    className={`w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                                    className={`w-full text-start px-3 py-2.5 text-sm hover:bg-slate-50 transition-colors flex items-center justify-between ${
                                       selectedCustomer === c._id
                                         ? 'bg-[#f37121]/10 text-[#f37121]'
                                         : 'text-slate-700'
@@ -953,13 +953,13 @@ export default function PaymentsPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           {/* Search by invoice number */}
                           <div className="relative">
-                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                            <Search className="w-3.5 h-3.5 absolute start-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
                             <input
                               type="text"
                               value={invoiceSearch}
                               onChange={(e) => setInvoiceSearch(e.target.value)}
                               placeholder={`${T.search}...`}
-                              className="pl-8 pr-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[#f37121]/50 w-40"
+                              className="ps-8 pe-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[#f37121]/50 w-40"
                             />
                           </div>
                           {/* Select All / Deselect All */}
@@ -1047,7 +1047,7 @@ export default function PaymentsPage() {
                       {loadingInvoices ? (
                         <div className="flex items-center justify-center py-12">
                           <div className="w-6 h-6 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />
-                          <span className="ml-3 text-slate-500 text-sm">{lang === 'ar' ? 'جاري التحميل...' : 'Loading invoices...'}</span>
+                          <span className="ms-3 text-slate-500 text-sm">{lang === 'ar' ? 'جاري التحميل...' : 'Loading invoices...'}</span>
                         </div>
                       ) : customerInvoices.length === 0 ? (
                         <div className="text-center py-12">
@@ -1060,25 +1060,25 @@ export default function PaymentsPage() {
                           <table className="w-full">
                             <thead>
                               <tr className="bg-slate-900 border-b border-slate-200">
-                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-10">
+                                <th className="px-3 py-2.5 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider w-10">
                                   {/* Checkbox col */}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.invoice} #
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.amount}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.invoiceBalance}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.status}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.date}
                                 </th>
-                                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                                <th className="px-3 py-2.5 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">
                                   {T.amount}
                                 </th>
                               </tr>
@@ -1195,7 +1195,7 @@ export default function PaymentsPage() {
                             {T.invoice}{selectedCount !== 1 ? (lang === 'ar' ? '' : 's') : ''}
                           </div>
                           <div className="text-sm">
-                            <span className="text-slate-500 mr-2">{T.amount}:</span>
+                            <span className="text-slate-500 me-2">{T.amount}:</span>
                             <span className="text-green-600 font-bold text-base">
                               {formatCurrency(totalAmount)}
                             </span>

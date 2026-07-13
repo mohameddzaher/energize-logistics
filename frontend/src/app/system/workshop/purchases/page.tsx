@@ -226,7 +226,7 @@ export default function WorkshopPurchasesPage() {
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-red-600" />
           <span className="text-red-600 text-sm">{error}</span>
-          <button onClick={() => setError('')} className="ml-auto text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
+          <button onClick={() => setError('')} className="ms-auto text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
         </div>
       )}
 
@@ -270,7 +270,7 @@ export default function WorkshopPurchasesPage() {
                   tx.colSupplier,
                   tx.colActions,
                 ].map((h, i) => (
-                  <th key={i} className="text-left text-slate-300 font-semibold py-3 px-3 whitespace-nowrap">{h}</th>
+                  <th key={i} className="text-start text-slate-300 font-semibold py-3 px-3 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -388,15 +388,15 @@ export default function WorkshopPurchasesPage() {
                 {inStock && (
                   <div className="space-y-2">
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                       <input
                         type="text"
                         value={inventorySearch}
                         onChange={e => handleInventorySearchChange(e.target.value)}
                         placeholder={tx.searchInventoryPlaceholder}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 ps-10 pe-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]"
                       />
-                      {searchingInventory && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" />}
+                      {searchingInventory && <Loader2 className="absolute end-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" />}
                     </div>
 
                     {/* Search Results */}
@@ -410,7 +410,7 @@ export default function WorkshopPurchasesPage() {
                               setInventorySearch(item.name);
                               setInventoryResults([]);
                             }}
-                            className="w-full text-left px-3 py-2.5 hover:bg-slate-50 transition-colors border-b border-slate-200 last:border-0"
+                            className="w-full text-start px-3 py-2.5 hover:bg-slate-50 transition-colors border-b border-slate-200 last:border-0"
                           >
                             <p className="text-slate-900 text-sm font-medium">{item.name}</p>
                             <p className="text-slate-500 text-xs">

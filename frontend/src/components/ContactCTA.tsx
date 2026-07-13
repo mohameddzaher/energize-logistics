@@ -10,12 +10,12 @@ const ContactCTA: React.FC = () => {
       <motion.div
         animate={{ scale: [1, 1.2, 1] }}
         transition={{ repeat: Infinity, duration: 10, ease: 'easeInOut' }}
-        className="absolute top-[-100px] left-[20%] w-[300px] h-[300px] bg-[#f37121]/30 rounded-full blur-[120px] opacity-60"
+        className="absolute top-[-100px] start-[20%] w-[300px] h-[300px] bg-[#f37121]/30 rounded-full blur-[120px] opacity-60"
       />
       <motion.div
         animate={{ scale: [1, 1.1, 1] }}
         transition={{ repeat: Infinity, duration: 12, ease: 'easeInOut', delay: 2 }}
-        className="absolute bottom-[-120px] right-[10%] w-[250px] h-[250px] bg-gray-600/30 rounded-full blur-[100px] opacity-50"
+        className="absolute bottom-[-120px] end-[10%] w-[250px] h-[250px] bg-gray-600/30 rounded-full blur-[100px] opacity-50"
       />
 
       <motion.div

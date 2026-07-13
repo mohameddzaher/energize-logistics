@@ -89,7 +89,7 @@ export default function AssistantPage() {
       <h1 className="text-2xl font-bold text-slate-900 mb-4">{T.title}</h1>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+      <div className="flex-1 overflow-y-auto space-y-4 mb-4 pe-2">
         {messages.map((msg, i) => (
           <motion.div
             key={i}

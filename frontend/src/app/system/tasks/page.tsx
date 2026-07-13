@@ -568,14 +568,14 @@ export default function TasksPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-slate-900 border-b border-slate-200">
-                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.customer}</th>
-                      {isAdmin && <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.assignedTo}</th>}
-                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.contactMethod}</th>
-                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.amount}</th>
-                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.nextFollowUp}</th>
-                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.status}</th>
-                      <th className="text-left text-slate-300 font-semibold px-4 py-2 text-xs">{T.date}</th>
-                      <th className="text-right text-slate-300 font-semibold px-4 py-2 text-xs">{T.actions}</th>
+                      <th className="text-start text-slate-300 font-semibold px-4 py-2 text-xs">{T.customer}</th>
+                      {isAdmin && <th className="text-start text-slate-300 font-semibold px-4 py-2 text-xs">{T.assignedTo}</th>}
+                      <th className="text-start text-slate-300 font-semibold px-4 py-2 text-xs">{T.contactMethod}</th>
+                      <th className="text-start text-slate-300 font-semibold px-4 py-2 text-xs">{T.amount}</th>
+                      <th className="text-start text-slate-300 font-semibold px-4 py-2 text-xs">{T.nextFollowUp}</th>
+                      <th className="text-start text-slate-300 font-semibold px-4 py-2 text-xs">{T.status}</th>
+                      <th className="text-start text-slate-300 font-semibold px-4 py-2 text-xs">{T.date}</th>
+                      <th className="text-end text-slate-300 font-semibold px-4 py-2 text-xs">{T.actions}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -611,7 +611,7 @@ export default function TasksPage() {
                                 {fStatus.label}
                               </span>
                             </td>
-                            <td className="px-4 py-2 text-right">
+                            <td className="px-4 py-2 text-end">
                               <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   type="button"
@@ -711,7 +711,7 @@ export default function TasksPage() {
           {/* Search + Filters */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1 min-w-[240px]">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+              <div className="absolute start-3 top-1/2 -translate-y-1/2 text-slate-500">
                 {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               </div>
               <input
@@ -720,13 +720,13 @@ export default function TasksPage() {
                 placeholder={`${T.search}...`}
                 value={searchInput}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                className="w-full ps-10 pe-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
               />
               {searchInput && (
                 <button
                   type="button"
                   onClick={() => { setSearchInput(''); setSearch(''); setPage(1); searchInputRef.current?.focus(); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
+                  className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
                   title={txx.clearSearch}
                 >
                   <X className="w-4 h-4" />
@@ -832,15 +832,15 @@ export default function TasksPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-900 border-b border-slate-200">
-                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.customer}</th>
-                    {isAdmin && <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.assignedTo}</th>}
-                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.contactMethod}</th>
-                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.amount}</th>
-                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.status}</th>
-                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.dueDate}</th>
-                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.createdAt}</th>
-                    <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.collectedAmount}</th>
-                    <th className="text-right text-slate-300 font-semibold px-4 py-3">{T.actions}</th>
+                    <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.customer}</th>
+                    {isAdmin && <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.assignedTo}</th>}
+                    <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.contactMethod}</th>
+                    <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.amount}</th>
+                    <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.status}</th>
+                    <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.dueDate}</th>
+                    <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.createdAt}</th>
+                    <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.collectedAmount}</th>
+                    <th className="text-end text-slate-300 font-semibold px-4 py-3">{T.actions}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -882,7 +882,7 @@ export default function TasksPage() {
                           <td className="px-4 py-3 text-slate-700">
                             {task.collectedAmount > 0 ? `${task.collectedAmount.toLocaleString()} SAR` : '—'}
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-end">
                             <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                               {task.status === 'pending' && (
                                 <button
@@ -1093,13 +1093,13 @@ export default function TasksPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-900 border-b border-slate-200">
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.name}</th>
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.title}</th>
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.done}</th>
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.pending}</th>
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.postponed}</th>
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.cancelled}</th>
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.collectedAmount}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.name}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.title}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.done}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.pending}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.postponed}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.cancelled}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.collectedAmount}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1135,9 +1135,9 @@ export default function TasksPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-900 border-b border-slate-200">
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.customer}</th>
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.title}</th>
-                        <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.done}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.customer}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.title}</th>
+                        <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.done}</th>
                       </tr>
                     </thead>
                     <tbody>

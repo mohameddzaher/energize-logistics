@@ -500,7 +500,7 @@ export default function VehicleAnalyticsUploadPage() {
             </div>
           ))}
         </div>
-        <div className="mt-3 text-right text-xs text-slate-500">
+        <div className="mt-3 text-end text-xs text-slate-500">
           {tx.totalLabel} <span className="text-[#f37121] font-medium">{totalRecords.toLocaleString()}</span> {tx.recordsAcrossAllSources}
         </div>
       </div>

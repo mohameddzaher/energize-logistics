@@ -99,19 +99,19 @@ export default function VendorBillsPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
-          <thead><tr className="bg-slate-900 border-b border-slate-200 text-left text-slate-300">
+          <thead><tr className="bg-slate-900 border-b border-slate-200 text-start text-slate-300">
             <th className="px-4 py-3">#</th><th className="px-4 py-3">{tx.vendor}</th>
-            <th className="px-4 py-3 text-right">{tx.total}</th><th className="px-4 py-3 text-right">{tx.balance}</th>
+            <th className="px-4 py-3 text-end">{tx.total}</th><th className="px-4 py-3 text-end">{tx.balance}</th>
             <th className="px-4 py-3">{tx.due}</th><th className="px-4 py-3">{tx.status}</th>
-            <th className="px-4 py-3 text-right">{tx.actions}</th>
+            <th className="px-4 py-3 text-end">{tx.actions}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {items.length === 0 ? <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((b) => (
               <tr key={b._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-500 font-mono text-xs">{b.billNumber}</td>
                 <td className="px-4 py-3 text-slate-900">{vendorName(b.vendor)}{b.vendorInvoiceNumber && <div className="text-slate-500 text-xs">{b.vendorInvoiceNumber}</div>}</td>
-                <td className="px-4 py-3 text-right text-slate-800">{money(b.total)}</td>
-                <td className="px-4 py-3 text-right text-red-600">{money(b.balance)}</td>
+                <td className="px-4 py-3 text-end text-slate-800">{money(b.total)}</td>
+                <td className="px-4 py-3 text-end text-red-600">{money(b.balance)}</td>
                 <td className="px-4 py-3 text-slate-500">{fmtDate(b.dueDate)}</td>
                 <td className="px-4 py-3"><Badge style={BILL_STATUS_STYLE[b.status]} lang={lang} /></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">

@@ -128,7 +128,7 @@ export default function Header() {
               ))}
               <button
                 onClick={handlePortalClick}
-                className="ml-1 px-3 py-1.5 rounded-md bg-[#f37121] text-white text-xs font-bold hover:bg-[#e06010] transition-all duration-200"
+                className="ms-1 px-3 py-1.5 rounded-md bg-[#f37121] text-white text-xs font-bold hover:bg-[#e06010] transition-all duration-200"
               >
                 ERP Portal
               </button>

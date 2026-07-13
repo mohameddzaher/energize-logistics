@@ -62,7 +62,7 @@ export default function GalleryPreview() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
                 {/* Image Count Badge */}
-                <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-medium">
+                <div className="absolute top-3 end-3 bg-black/70 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-medium">
                   {event.imageCount} Photos
                 </div>
               </div>

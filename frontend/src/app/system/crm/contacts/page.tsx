@@ -105,12 +105,12 @@ export default function CrmContactsPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-slate-900 border-b border-slate-200 text-left">
+            <tr className="bg-slate-900 border-b border-slate-200 text-start">
               <th className="px-4 py-3 text-slate-300 font-semibold">{T.name}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{T.company}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{T.title}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'تواصل' : 'Contact'}</th>
-              <th className="px-4 py-3 text-slate-300 font-semibold text-right">{T.actions}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold text-end">{T.actions}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">

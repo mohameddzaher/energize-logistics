@@ -37,8 +37,8 @@
 //   return (
 //     <section className="relative bg-gray-900 text-white py-14 px-6 md:px-16 text-center overflow-hidden">
 //       {/* 🔸 اللمسة البرتقالية الناعمة */}
-//       <div className="absolute top-[-80px] right-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
-//       <div className="absolute bottom-[-80px] left-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
+//       <div className="absolute top-[-80px] end-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
+//       <div className="absolute bottom-[-80px] start-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
 
 //       <div className="relative z-10">
 //         <h2 className="text-2xl md:text-3xl font-bold text-[#f37121] mb-3">
@@ -119,8 +119,8 @@
 //   return (
 //     <section className="relative bg-gray-900 text-white py-14 px-6 md:px-16 text-center overflow-hidden">
 //       {/* 🔸 اللمسة البرتقالية الناعمة */}
-//       <div className="absolute top-[-80px] right-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
-//       <div className="absolute bottom-[-80px] left-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
+//       <div className="absolute top-[-80px] end-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
+//       <div className="absolute bottom-[-80px] start-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
 
 //       <div className="relative z-10">
 //         <h2 className="text-2xl md:text-3xl font-bold text-[#f37121] mb-3">
@@ -228,7 +228,7 @@ export default function Newsletter() {
     <section className="relative bg-gray-900 text-white py-14 px-6 md:px-16 text-center overflow-hidden">
       {/* Toast Notification */}
       {toast.show && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm ${
+        <div className={`fixed top-4 end-4 z-50 max-w-sm ${
           toast.type === "success" 
             ? "bg-green-600 border-green-500" 
             : "bg-red-600 border-red-500"
@@ -243,8 +243,8 @@ export default function Newsletter() {
       )}
 
       {/* 🔸 اللمسة البرتقالية الناعمة */}
-      <div className="absolute top-[-80px] right-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
-      <div className="absolute bottom-[-80px] left-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
+      <div className="absolute top-[-80px] end-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
+      <div className="absolute bottom-[-80px] start-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
 
       <div className="relative z-10">
         <h2 className="text-2xl md:text-3xl font-bold text-[#f37121] mb-3">

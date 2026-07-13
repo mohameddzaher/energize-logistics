@@ -295,7 +295,7 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
         <table className="w-full min-w-[700px]">
           <thead>
             <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
-              <th className="text-left py-2 px-3">{lang === 'ar' ? 'الشهر' : 'Month'}</th>
+              <th className="text-start py-2 px-3">{lang === 'ar' ? 'الشهر' : 'Month'}</th>
               <th className="text-center py-2 px-3">{T.totalOrders}</th>
               <th className="text-center py-2 px-3" title={lang === 'ar' ? 'أيام اشتغل فيها' : 'Days worked'}>
                 {lang === 'ar' ? '✅ اشتغل' : '✅ Worked'}

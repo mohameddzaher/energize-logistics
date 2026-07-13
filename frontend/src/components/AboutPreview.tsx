@@ -76,7 +76,7 @@ export default function AboutPreview() {
     <section className="relative bg-gray-900 text-white py-20 px-6 overflow-hidden">
       {/* Toast Notification */}
       {toast.show && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm ${
+        <div className={`fixed top-4 end-4 z-50 max-w-sm ${
           toast.type === "success" 
             ? "bg-green-100 border-green-100" 
             : "bg-red-100 border-red-500"
@@ -96,7 +96,7 @@ export default function AboutPreview() {
       <div className="max-w-6xl mx-auto relative z-10">
         {/* --- 1️⃣ INTRO --- */}
         <div className="flex flex-col md:flex-row items-center gap-8 mt-10">
-          <div className="md:w-1/2 text-left space-y-4">
+          <div className="md:w-1/2 text-start space-y-4">
             <h2 className="text-2xl md:text-2xl font-extrabold bg-gradient-to-r from-[#f37121] to-orange-500 bg-clip-text text-transparent">
               About Energize Logistics ⚡
             </h2>
@@ -126,9 +126,9 @@ export default function AboutPreview() {
         {/* --- 2️⃣ STATS COUNTER --- */}
         <div className="relative mt-28">
           {/* Animated circular background */}
-          <div className="absolute top-[-80px] right-[-80px] w-[320px] h-[320px] bg-[#f37121]/30 rounded-full blur-[100px] opacity-60 z-0" />
+          <div className="absolute top-[-80px] end-[-80px] w-[320px] h-[320px] bg-[#f37121]/30 rounded-full blur-[100px] opacity-60 z-0" />
 
-          <div className="absolute bottom-[-60px] left-[-60px] w-[250px] h-[250px] bg-gray-400/30 rounded-full blur-[90px] opacity-50 z-0" />
+          <div className="absolute bottom-[-60px] start-[-60px] w-[250px] h-[250px] bg-gray-400/30 rounded-full blur-[90px] opacity-50 z-0" />
 
           <div className="relative z-10 max-w-6xl mx-auto flex flex-col md:flex-row items-center gap-10">
             <div className="md:w-1/2 w-full">

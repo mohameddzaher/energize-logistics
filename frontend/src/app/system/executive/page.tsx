@@ -356,5 +356,5 @@ function MiniPie({ data, colors }: { data: { name: string; value: number }[]; co
 }
 
 function EmptyChart() {
-  return <div className="h-full flex items-center justify-center text-slate-300 text-xs"><Activity className="w-4 h-4 mr-1" /> —</div>;
+  return <div className="h-full flex items-center justify-center text-slate-300 text-xs"><Activity className="w-4 h-4 me-1" /> —</div>;
 }

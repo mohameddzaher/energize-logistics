@@ -148,9 +148,9 @@ export default function CustomsPage() {
       </div>
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+        <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
         <input type="text" placeholder={T.searchClearance} value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+          className="w-full ps-10 pe-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -158,13 +158,13 @@ export default function CustomsPage() {
           <table className="w-full text-sm min-w-[760px]">
             <thead>
               <tr className="bg-slate-900">
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.refNumber}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.blNumber}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.customerName}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.branch}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.containerCount}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.stage}</th>
-                {canDelete && <th className="text-right text-slate-300 font-semibold px-4 py-3">{T.actions}</th>}
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.refNumber}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.blNumber}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.customerName}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.branch}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.containerCount}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.stage}</th>
+                {canDelete && <th className="text-end text-slate-300 font-semibold px-4 py-3">{T.actions}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -186,7 +186,7 @@ export default function CustomsPage() {
                     </span>
                   </td>
                   {canDelete && (
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-end">
                       <button type="button" onClick={(e) => handleDelete(e, c._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={T.delete}>
                         <Trash2 className="w-4 h-4" />
                       </button>

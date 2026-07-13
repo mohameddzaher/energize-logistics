@@ -55,7 +55,7 @@ export default function Ls2TemperaturePage() {
           <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
             <Flame className="w-4 h-4 text-orange-600" />
             <h2 className="text-sm font-semibold text-slate-900">{t.maxTireTemp}</h2>
-            <span className="ml-auto text-xs text-slate-400">{lang === 'ar' ? `تحذير ≥ ${th.tireTempC}° · حرِج ≥ ${th.tireTempCriticalC}°` : `warn ≥ ${th.tireTempC}° · crit ≥ ${th.tireTempCriticalC}°`}</span>
+            <span className="ms-auto text-xs text-slate-400">{lang === 'ar' ? `تحذير ≥ ${th.tireTempC}° · حرِج ≥ ${th.tireTempCriticalC}°` : `warn ≥ ${th.tireTempC}° · crit ≥ ${th.tireTempCriticalC}°`}</span>
           </div>
           <div className="divide-y divide-slate-100 max-h-[560px] overflow-y-auto">
             {tireRows.map((v) => (
@@ -73,7 +73,7 @@ export default function Ls2TemperaturePage() {
           <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
             <Thermometer className="w-4 h-4 text-red-600" />
             <h2 className="text-sm font-semibold text-slate-900">{t.engineCoolant}</h2>
-            <span className="ml-auto text-xs text-slate-400">{lang === 'ar' ? `تحذير ≥ ${th.coolantTempC}° · حرِج ≥ ${th.coolantTempCriticalC}°` : `warn ≥ ${th.coolantTempC}° · crit ≥ ${th.coolantTempCriticalC}°`}</span>
+            <span className="ms-auto text-xs text-slate-400">{lang === 'ar' ? `تحذير ≥ ${th.coolantTempC}° · حرِج ≥ ${th.coolantTempCriticalC}°` : `warn ≥ ${th.coolantTempC}° · crit ≥ ${th.coolantTempCriticalC}°`}</span>
           </div>
           <div className="divide-y divide-slate-100 max-h-[560px] overflow-y-auto">
             {engineRows.map((v) => (

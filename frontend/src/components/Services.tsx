@@ -59,8 +59,8 @@ export default function Services() {
   return (
     <section id="services" className="relative py-16 bg-gray-800 overflow-hidden">
       {/* ✨ لمسة الخلفية البرتقالية الناعمة */}
-      <div className="absolute top-[-100px] right-[-120px] w-[350px] h-[350px] bg-[#f37121]/20 blur-[120px] rounded-full" />
-      <div className="absolute bottom-[-120px] left-[-120px] w-[300px] h-[300px] bg-[#f37121]/15 blur-[110px] rounded-full" />
+      <div className="absolute top-[-100px] end-[-120px] w-[350px] h-[350px] bg-[#f37121]/20 blur-[120px] rounded-full" />
+      <div className="absolute bottom-[-120px] start-[-120px] w-[300px] h-[300px] bg-[#f37121]/15 blur-[110px] rounded-full" />
 
       <div className="relative z-10 w-full text-center px-6 sm:px-8 md:px-10">
         <h2 className="text-2xl font-bold mb-10 text-white">

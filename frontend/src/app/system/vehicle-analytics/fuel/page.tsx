@@ -114,9 +114,9 @@ export default function FuelAnalysisPage() {
       {/* Filters */}
       <div className="sticky top-0 z-20 bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center shadow-sm">
         <div className="relative flex-1 min-w-[240px]">
-          <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-slate-500 pointer-events-none" />
+          <Search className="w-4 h-4 absolute top-2.5 start-2.5 text-slate-500 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tx.search}
-            className="w-full bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none" />
+            className="w-full bg-slate-100 text-slate-800 text-sm rounded-lg ps-8 pe-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none" />
         </div>
         <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{tx.allBranches}</option>
@@ -169,12 +169,12 @@ export default function FuelAnalysisPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                    <th className="text-left py-2 px-2">{tx.vehicle}</th>
-                    <th className="text-left py-2 px-2">{tx.branch}</th>
-                    <th className="text-left py-2 px-2">{tx.model}</th>
-                    <th className="text-right py-2 px-2">{tx.currentRate}</th>
-                    <th className="text-right py-2 px-2">{tx.maxConsump}</th>
-                    <th className="text-right py-2 px-2">{tx.consumption}</th>
+                    <th className="text-start py-2 px-2">{tx.vehicle}</th>
+                    <th className="text-start py-2 px-2">{tx.branch}</th>
+                    <th className="text-start py-2 px-2">{tx.model}</th>
+                    <th className="text-end py-2 px-2">{tx.currentRate}</th>
+                    <th className="text-end py-2 px-2">{tx.maxConsump}</th>
+                    <th className="text-end py-2 px-2">{tx.consumption}</th>
                     <th className="text-center py-2 px-2">{tx.alertLevel}</th>
                   </tr></thead>
                   <tbody>
@@ -186,9 +186,9 @@ export default function FuelAnalysisPage() {
                           <td className="py-2 px-2 text-slate-900 font-medium">{r.vehicle || r.vehicleId}</td>
                           <td className="py-2 px-2 text-slate-700">{r.branch || '-'}</td>
                           <td className="py-2 px-2 text-slate-700">{r.model || '-'}</td>
-                          <td className="py-2 px-2 text-right text-slate-700">{Number(r.currentRate || 0).toFixed(1)}</td>
-                          <td className="py-2 px-2 text-right text-slate-700">{Number(r.maxConsump || 0).toFixed(1)}</td>
-                          <td className={`py-2 px-2 text-right font-bold ${level === 'critical' ? 'text-red-600' : 'text-amber-700'}`}>{pct.toFixed(0)}%</td>
+                          <td className="py-2 px-2 text-end text-slate-700">{Number(r.currentRate || 0).toFixed(1)}</td>
+                          <td className="py-2 px-2 text-end text-slate-700">{Number(r.maxConsump || 0).toFixed(1)}</td>
+                          <td className={`py-2 px-2 text-end font-bold ${level === 'critical' ? 'text-red-600' : 'text-amber-700'}`}>{pct.toFixed(0)}%</td>
                           <td className="py-2 px-2 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-xs ${level === 'critical' ? 'bg-red-500/20 text-red-600' : 'bg-amber-500/20 text-amber-700'}`}>
                               {level === 'critical' ? tx.critical : tx.warning}
@@ -209,15 +209,15 @@ export default function FuelAnalysisPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                  <th className="text-left py-2 px-2">{tx.num}</th>
-                  <th className="text-left py-2 px-2">{tx.branch}</th>
-                  <th className="text-left py-2 px-2">{tx.vehicle}</th>
-                  <th className="text-left py-2 px-2">{tx.model}</th>
-                  <th className="text-left py-2 px-2">{tx.year}</th>
-                  <th className="text-left py-2 px-2">{tx.fuelType}</th>
-                  <th className="text-right py-2 px-2">{tx.consumption}</th>
+                  <th className="text-start py-2 px-2">{tx.num}</th>
+                  <th className="text-start py-2 px-2">{tx.branch}</th>
+                  <th className="text-start py-2 px-2">{tx.vehicle}</th>
+                  <th className="text-start py-2 px-2">{tx.model}</th>
+                  <th className="text-start py-2 px-2">{tx.year}</th>
+                  <th className="text-start py-2 px-2">{tx.fuelType}</th>
+                  <th className="text-end py-2 px-2">{tx.consumption}</th>
                   <th className="text-center py-2 px-2">{tx.status}</th>
-                  <th className="text-left py-2 px-2">{tx.category}</th>
+                  <th className="text-start py-2 px-2">{tx.category}</th>
                 </tr></thead>
                 <tbody>
                   {filtered.map((r, i) => {
@@ -231,7 +231,7 @@ export default function FuelAnalysisPage() {
                         <td className="py-2 px-2 text-slate-700">{r.model || '-'}</td>
                         <td className="py-2 px-2 text-slate-700">{r.year || '-'}</td>
                         <td className="py-2 px-2 text-slate-700">{r.fuel || '-'}</td>
-                        <td className="py-2 px-2 text-right">
+                        <td className="py-2 px-2 text-end">
                           <div className="flex items-center justify-end gap-2">
                             <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden">
                               <div className={`h-full rounded-full ${level === 'critical' ? 'bg-red-500' : level === 'warning' ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />

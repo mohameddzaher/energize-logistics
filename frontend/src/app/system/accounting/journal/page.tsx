@@ -124,8 +124,8 @@ export default function JournalPage() {
                 {e.lines.map((l, i) => (
                   <tr key={i} className="text-slate-700">
                     <td className="py-1">{accountName(l.account, lang)}</td>
-                    <td className="py-1 text-right text-green-600 w-28">{l.debit ? money(l.debit, '') : ''}</td>
-                    <td className="py-1 text-right text-red-600 w-28">{l.credit ? money(l.credit, '') : ''}</td>
+                    <td className="py-1 text-end text-green-600 w-28">{l.debit ? money(l.debit, '') : ''}</td>
+                    <td className="py-1 text-end text-red-600 w-28">{l.credit ? money(l.credit, '') : ''}</td>
                   </tr>
                 ))}
               </tbody>

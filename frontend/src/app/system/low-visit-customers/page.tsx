@@ -116,7 +116,7 @@ export default function LowVisitCustomersPage() {
 
       {/* Search */}
       <div className="relative max-w-md">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+        <div className="absolute start-3 top-1/2 -translate-y-1/2 text-slate-500">
           <Search className="w-4 h-4" />
         </div>
         <input
@@ -125,13 +125,13 @@ export default function LowVisitCustomersPage() {
           placeholder={txx.searchPlaceholder}
           value={searchInput}
           onChange={(e) => handleSearchChange(e.target.value)}
-          className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f59e0b]/50"
+          className="w-full ps-10 pe-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f59e0b]/50"
         />
         {searchInput && (
           <button
             type="button"
             onClick={() => { setSearchInput(''); setSearch(''); searchInputRef.current?.focus(); }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
+            className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
             title={txx.clearSearch}
           >
             <X className="w-4 h-4" />
@@ -163,14 +163,14 @@ export default function LowVisitCustomersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.customer}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.customer} #</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.outstanding}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.status}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.customer}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.actions}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.lastVisit}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 font-semibold uppercase">{T.daysSinceLastVisit}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 font-semibold uppercase">{T.customer}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 font-semibold uppercase">{T.customer} #</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 font-semibold uppercase">{T.outstanding}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 font-semibold uppercase">{T.status}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 font-semibold uppercase">{T.customer}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 font-semibold uppercase">{T.actions}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 font-semibold uppercase">{T.lastVisit}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 font-semibold uppercase">{T.daysSinceLastVisit}</th>
               </tr>
             </thead>
             <tbody>

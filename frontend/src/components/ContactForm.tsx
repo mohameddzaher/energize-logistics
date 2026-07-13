@@ -35,9 +35,9 @@
 //   return (
 //     <section className="relative bg-gray-900 text-center px-4 md:px-20 overflow-hidden">
 //       {/* 🔸 اللمسة البرتقالية الناعمة (من الشمال فوق) */}
-//       <div className="absolute top-[-80px] left-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
+//       <div className="absolute top-[-80px] start-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
 //       {/* 🔹 اللمسة الرمادية (من اليمين تحت) */}
-//       <div className="absolute bottom-[-80px] right-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
+//       <div className="absolute bottom-[-80px] end-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
 
 //       <div className="relative z-10">
 //         <h3 className="pt-16 text-2xl font-bold text-white">Stay In Touch</h3>
@@ -176,7 +176,7 @@ export default function ContactForm() {
     <section className="relative bg-gray-900 text-center px-4 md:px-20 overflow-hidden">
       {/* Toast Notification */}
       {toast.show && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm ${
+        <div className={`fixed top-4 end-4 z-50 max-w-sm ${
           toast.type === "success" 
             ? "bg-green-600 border-green-500" 
             : "bg-red-600 border-red-500"
@@ -191,9 +191,9 @@ export default function ContactForm() {
       )}
 
       {/* 🔸 اللمسة البرتقالية الناعمة (من الشمال فوق) */}
-      <div className="absolute top-[-80px] left-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
+      <div className="absolute top-[-80px] start-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
       {/* 🔹 اللمسة الرمادية (من اليمين تحت) */}
-      <div className="absolute bottom-[-80px] right-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
+      <div className="absolute bottom-[-80px] end-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
 
       <div className="relative z-10">
         <h3 className="pt-16 text-2xl font-bold text-white">Stay In Touch</h3>

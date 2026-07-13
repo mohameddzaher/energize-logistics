@@ -22,7 +22,7 @@ interface FooterListProps {
 
 const FooterList: React.FC<FooterListProps> = ({ title, items }) => {
   return (
-    <div className="flex flex-col text-center md:text-left">
+    <div className="flex flex-col text-center md:text-start">
       <h5 className="mb-3 text-lg font-bold text-[#f37121]">{title}</h5>
       <ul className="space-y-2">
         {items.map((item, index) => (

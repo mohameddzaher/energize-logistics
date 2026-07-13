@@ -703,13 +703,13 @@ export default function WalletPage() {
           )}
           {!wallet.isClosed && (
             <button type="button" onClick={() => { setCloseForm({ actualCash: '', differenceReason: '', differenceNotes: '' }); setShowCloseModal(true); }}
-              className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors ml-auto">
+              className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors ms-auto">
               <Lock className="w-4 h-4" /> {L.closeDay}
             </button>
           )}
           {wallet.isClosed && isManager && (
             <button type="button" onClick={handleReopenDay}
-              className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 text-yellow-700 rounded-lg text-sm font-medium hover:bg-yellow-500/30 transition-colors border border-yellow-500/30 ml-auto">
+              className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 text-yellow-700 rounded-lg text-sm font-medium hover:bg-yellow-500/30 transition-colors border border-yellow-500/30 ms-auto">
               <Unlock className="w-4 h-4" /> {L.reopenDay}
             </button>
           )}
@@ -728,21 +728,21 @@ export default function WalletPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.type}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.amount}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.details}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.deliveryStatementNumber}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.branch}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.client}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.from}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.to}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.carType}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.length}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.carNumber}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.reportDate}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.notes}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.time}</th>
-                <th className="text-right text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.actions}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.type}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.amount}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.details}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.deliveryStatementNumber}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.branch}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.client}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.from}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.to}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.carType}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.length}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.carNumber}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.reportDate}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.notes}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.time}</th>
+                <th className="text-end text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -793,7 +793,7 @@ export default function WalletPage() {
                     <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
                       {new Date(tx.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-end">
                       {!isReadOnly && (!wallet.isClosed || isManager) && (
                         <div className="flex items-center justify-end gap-1">
                           <button type="button" onClick={() => openEditTx(tx)}
@@ -1042,9 +1042,9 @@ export default function WalletPage() {
               <div className="space-y-3">
                 <div className="bg-white rounded-lg p-3 text-sm">
                   <span className={`font-medium capitalize ${TYPE_CONFIG[editingTx.type]?.color || 'text-slate-900'}`}>{typeLabel(editingTx.type)}</span>
-                  {editingTx.customer && <span className="text-slate-500 ml-2">— {editingTx.customer.companyName}</span>}
-                  {(editingTx.vendor || editingTx.vendorName) && <span className="text-slate-500 ml-2">— {editingTx.vendor?.name || editingTx.vendorName}</span>}
-                  {(editingTx.driver || editingTx.driverName) && <span className="text-slate-500 ml-2">— {editingTx.driver?.name || editingTx.driverName}</span>}
+                  {editingTx.customer && <span className="text-slate-500 ms-2">— {editingTx.customer.companyName}</span>}
+                  {(editingTx.vendor || editingTx.vendorName) && <span className="text-slate-500 ms-2">— {editingTx.vendor?.name || editingTx.vendorName}</span>}
+                  {(editingTx.driver || editingTx.driverName) && <span className="text-slate-500 ms-2">— {editingTx.driver?.name || editingTx.driverName}</span>}
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{L.amountSar} *</label>

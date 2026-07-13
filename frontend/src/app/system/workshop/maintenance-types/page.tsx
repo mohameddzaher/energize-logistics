@@ -118,7 +118,7 @@ export default function MaintenanceTypesPage() {
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-red-600" />
           <span className="text-red-600 text-sm">{error}</span>
-          <button type="button" onClick={() => setError('')} className="ml-auto text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={() => setError('')} className="ms-auto text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
         </div>
       )}
 

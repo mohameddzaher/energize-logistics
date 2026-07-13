@@ -165,7 +165,7 @@ export default function CrmCompanyDetailPage() {
               </button>
             )}
             <ContactButtons phone={company.phone} whatsapp={company.whatsapp} email={company.email} website={company.website} size={18} />
-            <div className="text-slate-500 text-sm space-y-0.5 text-right">
+            <div className="text-slate-500 text-sm space-y-0.5 text-end">
               {company.phone && <div dir="ltr">{company.phone}</div>}
               {company.email && <div dir="ltr">{company.email}</div>}
               {(company.city || company.country) && <div className="flex items-center gap-1 justify-end"><MapPin className="w-3 h-3" /> {[company.city, company.country].filter(Boolean).join(', ')}</div>}
@@ -359,7 +359,7 @@ export default function CrmCompanyDetailPage() {
 }
 
 function Row({ label, value }: { label: string; value: string }) {
-  return <div className="flex justify-between gap-3"><span className="text-slate-500">{label}</span><span className="text-slate-800 text-right">{value}</span></div>;
+  return <div className="flex justify-between gap-3"><span className="text-slate-500">{label}</span><span className="text-slate-800 text-end">{value}</span></div>;
 }
 function Section({ title, addLabel, onAdd, children }: { title: string; addLabel: string; onAdd: () => void; children: React.ReactNode }) {
   return (

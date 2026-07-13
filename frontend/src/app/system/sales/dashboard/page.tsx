@@ -139,15 +139,15 @@ export default function SalesDashboardPage() {
                   <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: `${(s.value / maxStageVal) * 100}%`, backgroundColor: meta.color }} />
                   </div>
-                  <span className="text-slate-500 text-xs w-10 text-right shrink-0">{num(s.count)}</span>
-                  <span className="text-slate-800 text-sm font-medium w-32 text-right shrink-0">{money(s.value)}</span>
+                  <span className="text-slate-500 text-xs w-10 text-end shrink-0">{num(s.count)}</span>
+                  <span className="text-slate-800 text-sm font-medium w-32 text-end shrink-0">{money(s.value)}</span>
                 </div>
               </Link>
             );
           })}
           {data.byStage.every((s) => s.count === 0) && <p className="text-slate-500 text-sm">—</p>}
         </div>
-        <p className="text-slate-400 text-xs mt-3 text-right">{ar ? 'إجمالي خط الأنابيب المفتوح' : 'Total open pipeline'}: {money(stageTotal)}</p>
+        <p className="text-slate-400 text-xs mt-3 text-end">{ar ? 'إجمالي خط الأنابيب المفتوح' : 'Total open pipeline'}: {money(stageTotal)}</p>
       </div>
 
       {/* Per-rep performance with target progress — clickable to performance */}
@@ -175,7 +175,7 @@ export default function SalesDashboardPage() {
                       <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
                         <div className="h-full rounded-full" style={{ width: `${Math.min(100, att)}%`, backgroundColor: barColor }} />
                       </div>
-                      <span className="text-xs font-medium w-12 text-right" style={{ color: barColor }}>{r.target > 0 ? pct(att) : '—'}</span>
+                      <span className="text-xs font-medium w-12 text-end" style={{ color: barColor }}>{r.target > 0 ? pct(att) : '—'}</span>
                     </div>
                     <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-500">
                       <span>{ar ? 'فاز' : 'won'}: {num(r.wonCount)}</span>

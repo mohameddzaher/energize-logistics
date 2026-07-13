@@ -411,7 +411,7 @@ export default function B2CDashboard() {
 
       {/* Subtle thin progress bar at top while refreshing — keeps stale data visible */}
       {refreshing && (
-        <div className="fixed top-0 left-0 right-0 h-0.5 bg-[#f37121]/30 overflow-hidden z-50">
+        <div className="fixed top-0 start-0 end-0 h-0.5 bg-[#f37121]/30 overflow-hidden z-50">
           <div className="h-full w-1/3 bg-[#f37121] animate-pulse" />
         </div>
       )}
@@ -573,7 +573,7 @@ export default function B2CDashboard() {
                 <div className="space-y-2">
                   {dashboard.topReps.map((r, i) => (
                     <button key={r.repId || i} type="button" onClick={() => r.repId && openRepProfile(r.repId)}
-                      className="w-full flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-100 hover:bg-slate-100 border border-slate-200 hover:border-[#f37121]/30 transition-all text-left">
+                      className="w-full flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-100 hover:bg-slate-100 border border-slate-200 hover:border-[#f37121]/30 transition-all text-start">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
                           i === 0 ? 'bg-yellow-500/20 text-yellow-700' :
@@ -586,7 +586,7 @@ export default function B2CDashboard() {
                           {r.project && <p className="text-slate-500 text-xs truncate">{r.project}</p>}
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-end">
                         <p className="text-slate-900 text-sm font-bold">{r.totalOrders.toLocaleString()}</p>
                         <p className="text-xs" style={{ color: performanceColor(r.performancePercent) }}>{formatPct(r.performancePercent)}</p>
                       </div>
@@ -603,7 +603,7 @@ export default function B2CDashboard() {
                 <div className="space-y-2">
                   {dashboard.bottomReps.map((r, i) => (
                     <button key={r.repId || i} type="button" onClick={() => r.repId && openRepProfile(r.repId)}
-                      className="w-full flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-100 hover:bg-slate-100 border border-slate-200 hover:border-red-500/30 transition-all text-left">
+                      className="w-full flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-100 hover:bg-slate-100 border border-slate-200 hover:border-red-500/30 transition-all text-start">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <span className="w-7 h-7 rounded-full bg-red-500/20 text-red-600 flex items-center justify-center text-xs font-bold">!</span>
                         <div className="min-w-0">
@@ -611,7 +611,7 @@ export default function B2CDashboard() {
                           {r.project && <p className="text-slate-500 text-xs truncate">{r.project}</p>}
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-end">
                         <p className="text-slate-900 text-sm font-bold">{r.totalOrders.toLocaleString()}</p>
                         <p className="text-xs" style={{ color: performanceColor(r.performancePercent) }}>{formatPct(r.performancePercent)}</p>
                       </div>
@@ -631,9 +631,9 @@ export default function B2CDashboard() {
               <table className="w-full min-w-[800px]">
                 <thead>
                   <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
-                    <th className="text-left py-2 px-3">#</th>
-                    <th className="text-left py-2 px-3">{T.rep}</th>
-                    <th className="text-left py-2 px-3">{T.project}</th>
+                    <th className="text-start py-2 px-3">#</th>
+                    <th className="text-start py-2 px-3">{T.rep}</th>
+                    <th className="text-start py-2 px-3">{T.project}</th>
                     <th className="text-center py-2 px-3">{T.totalOrders}</th>
                     <th className="text-center py-2 px-3">{T.workingDays}</th>
                     <th className="text-center py-2 px-3">{T.avgDailyRate}</th>
@@ -729,7 +729,7 @@ function HighlightCard({ title, value, subtitle, icon, color, onClick }: any) {
   const Wrapper: any = onClick ? 'button' : 'div';
   return (
     <Wrapper onClick={onClick} type={onClick ? 'button' : undefined}
-      className={`bg-white border border-slate-200 rounded-xl p-4 text-left hover:border-slate-300 transition-all w-full ${onClick ? 'cursor-pointer' : ''} shadow-sm`}
+      className={`bg-white border border-slate-200 rounded-xl p-4 text-start hover:border-slate-300 transition-all w-full ${onClick ? 'cursor-pointer' : ''} shadow-sm`}
       style={{ borderLeftWidth: 4, borderLeftColor: color }}>
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
@@ -798,9 +798,9 @@ function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
           <table className="w-full min-w-[800px]">
             <thead>
               <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
-                <th className="text-left py-2 px-3">#</th>
-                <th className="text-left py-2 px-3">{T.rep}</th>
-                <th className="text-left py-2 px-3">{T.project}</th>
+                <th className="text-start py-2 px-3">#</th>
+                <th className="text-start py-2 px-3">{T.rep}</th>
+                <th className="text-start py-2 px-3">{T.project}</th>
                 <th className="text-center py-2 px-3">{T.grade}</th>
                 <th className="text-center py-2 px-3">{T.totalOrders}</th>
                 <th className="text-center py-2 px-3">{T.monthsActive}</th>
@@ -990,7 +990,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
                     {r.project && <p className="text-slate-500 text-[10px] truncate">{r.project}</p>}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-end">
                   <span className="text-green-600 text-sm font-bold">{pct(r.performancePercent)}</span>
                   <p className="text-slate-500 text-[10px]">{r.totalOrders.toLocaleString()} {tx.ordersUnit}</p>
                 </div>
@@ -1016,7 +1016,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
                     {r.project && <p className="text-slate-500 text-[10px] truncate">{r.project}</p>}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-end">
                   <span className="text-red-600 text-sm font-bold">{pct(r.performancePercent)}</span>
                   <p className="text-slate-500 text-[10px]">{r.totalOrders.toLocaleString()} {tx.ordersUnit}</p>
                 </div>
@@ -1032,7 +1032,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <TrendingUp className="w-4 h-4 text-green-600" />
             {tx.topImprovers}
-            <span className="text-slate-500 text-[10px] font-normal ml-auto">
+            <span className="text-slate-500 text-[10px] font-normal ms-auto">
               {tx.lastMonthVsFirst}
             </span>
           </h3>
@@ -1059,7 +1059,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <TrendingDown className="w-4 h-4 text-red-600" />
             {tx.topDecliners}
-            <span className="text-slate-500 text-[10px] font-normal ml-auto">
+            <span className="text-slate-500 text-[10px] font-normal ms-auto">
               {tx.needsAttention}
             </span>
           </h3>
@@ -1089,7 +1089,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <Minus className="w-4 h-4 text-blue-600" />
             {tx.mostConsistent}
-            <span className="text-slate-500 text-[10px] font-normal ml-auto">
+            <span className="text-slate-500 text-[10px] font-normal ms-auto">
               {tx.lowMonthlyVariance}
             </span>
           </h3>
@@ -1139,7 +1139,7 @@ function AnalyticsView({ dashboard, T, lang }: any) {
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2 text-sm">
             <CalendarDays className="w-4 h-4 text-purple-600" />
             {tx.dayOfWeekAnalysis}
-            <span className="text-slate-500 text-[10px] font-normal ml-auto">
+            <span className="text-slate-500 text-[10px] font-normal ms-auto">
               {tx.avgOrdersPerRep}
             </span>
           </h3>
@@ -1259,7 +1259,7 @@ function DailyCardsSection({
               return (
                 <button key={d.dateKey} type="button"
                   onClick={() => onDayClick(d.dateKey)}
-                  className={`bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:border-[#f37121]/50 transition-all text-left ${opacity}`}
+                  className={`bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:border-[#f37121]/50 transition-all text-start ${opacity}`}
                   title={d.dateKey}
                 >
                   <div className={`h-1 ${stripe}`} />
@@ -1370,7 +1370,7 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
 
                 {data.bestRep && (
                   <button type="button" onClick={() => onRepClick(data.bestRep.repId)}
-                    className="w-full bg-gradient-to-r from-[#f37121]/10 via-white to-slate-100 border border-[#f37121]/30 rounded-xl p-3 text-left hover:border-[#f37121]/50 transition-colors">
+                    className="w-full bg-gradient-to-r from-[#f37121]/10 via-white to-slate-100 border border-[#f37121]/30 rounded-xl p-3 text-start hover:border-[#f37121]/50 transition-colors">
                     <p className="text-[#f37121] text-xs uppercase font-medium">🏆 {tx.topRepToday}</p>
                     <p className="text-slate-900 font-bold mt-1">{data.bestRep.englishName}</p>
                     <p className="text-slate-700 text-sm">{data.bestRep.orders} {tx.ordersUnit}</p>
@@ -1382,8 +1382,8 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
                   <table className="w-full min-w-[700px]">
                     <thead>
                       <tr className="bg-slate-900 text-slate-300 text-xs uppercase">
-                        <th className="text-left py-2 px-3">{tx.repCol}</th>
-                        <th className="text-left py-2 px-3">{tx.projectCol}</th>
+                        <th className="text-start py-2 px-3">{tx.repCol}</th>
+                        <th className="text-start py-2 px-3">{tx.projectCol}</th>
                         <th className="text-center py-2 px-3">{tx.ordersCol}</th>
                         <th className="text-center py-2 px-3">{tx.diffCol}</th>
                         <th className="text-center py-2 px-3">{tx.statusCol}</th>

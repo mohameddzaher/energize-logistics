@@ -53,7 +53,7 @@ export default function LocationMap({
               
               <iframe
                 src="https://www.google.com/maps/embed?pb=!1m17!1m12!1m3!1d3710.23113884275!2d39.16732!3d21.576898999999994!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m2!1m1!2zMjHCsDM0JzM2LjgiTiAzOcKwMTAnMDIuNCJF!5e0!3m2!1sen!2ssa!4v1760014775791!5m2!1sen!2ssa"
-                className="absolute top-0 left-0 w-full h-full border-0"
+                className="absolute top-0 start-0 w-full h-full border-0"
                 loading="lazy"
                 allowFullScreen
                 referrerPolicy="no-referrer-when-downgrade"
@@ -62,7 +62,7 @@ export default function LocationMap({
             </div>
             
             {/* Map Controls */}
-            <div className="absolute bottom-4 right-4 flex gap-2">
+            <div className="absolute bottom-4 end-4 flex gap-2">
               <a
                 href="https://maps.google.com/?q=21.576898,39.16732"
                 target="_blank"

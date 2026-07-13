@@ -81,8 +81,8 @@ export default function Ls2RegistryPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-2 shadow-sm">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={lang === 'ar' ? 'بحث لوحة / سائق / ماركة / VIN / شريحة…' : 'Search plate / driver / brand / VIN / SIM…'} className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-200 text-sm" />
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={lang === 'ar' ? 'بحث لوحة / سائق / ماركة / VIN / شريحة…' : 'Search plate / driver / brand / VIN / SIM…'} className="w-full ps-10 pe-3 py-2 rounded-lg border border-slate-200 text-sm" />
         </div>
         <button type="button" onClick={loadAllFuel} disabled={!!fuelProgress} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-medium disabled:opacity-60">
           {fuelProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <Droplet className="w-4 h-4" />}

@@ -114,7 +114,7 @@ export default function Hero() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 1.5 }}
-        className="absolute bottom-24 left-1/2 transform -translate-x-1/2"
+        className="absolute bottom-24 start-1/2 transform -translate-x-1/2"
       >
         <div className="flex flex-col items-center">
           <span className="text-sm text-gray-400 mb-2">Scroll to explore</span>

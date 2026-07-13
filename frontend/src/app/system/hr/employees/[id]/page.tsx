@@ -523,7 +523,7 @@ function DocModal({ open, doc, employeeId, ar, onClose, onDone }: { open: boolea
       {!doc && (
         <Field label={ar ? 'الملف (صورة / PDF)' : 'File (image / PDF)'}>
           <input type="file" aria-label={ar ? 'اختيار ملف' : 'Choose file'} accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" onChange={(ev) => onFile(ev.target.files?.[0])}
-            className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#f37121] file:text-white file:px-3 file:py-2 file:text-sm" />
+            className="w-full text-sm text-slate-600 file:me-3 file:rounded-lg file:border-0 file:bg-[#f37121] file:text-white file:px-3 file:py-2 file:text-sm" />
           {fileName && <p className="text-slate-500 text-xs mt-1">{fileName}</p>}
         </Field>
       )}

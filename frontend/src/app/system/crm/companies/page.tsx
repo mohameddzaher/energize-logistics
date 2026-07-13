@@ -167,14 +167,14 @@ export default function CrmCompaniesPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-slate-900 border-b border-slate-200 text-left">
+            <tr className="bg-slate-900 border-b border-slate-200 text-start">
               <th className="px-4 py-3 text-slate-300 font-semibold">{T.name}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{T.status}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{T.rating}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{T.industry}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{T.owner}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{ar ? 'تواصل' : 'Contact'}</th>
-              <th className="px-4 py-3 text-slate-300 font-semibold text-right">{T.actions}</th>
+              <th className="px-4 py-3 text-slate-300 font-semibold text-end">{T.actions}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
@@ -244,15 +244,15 @@ export default function CrmCompaniesPage() {
             ) : (
               <div className="relative">
                 <div className="relative">
-                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <SearchIcon className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input value={custQuery} onChange={(e) => setCustQuery(e.target.value)} placeholder={T.linkCustomer}
-                    className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
+                    className="w-full ps-10 pe-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
                 </div>
                 {custResults.length > 0 && (
                   <div className="absolute z-10 mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg max-h-48 overflow-y-auto">
                     {custResults.map((c) => (
                       <button key={c._id} type="button" onClick={() => { setForm({ ...form, linkedCustomer: c._id }); setLinkedLabel(c.companyName); setCustResults([]); setCustQuery(''); }}
-                        className="w-full text-left px-3 py-2 text-sm text-slate-800 hover:bg-slate-100">
+                        className="w-full text-start px-3 py-2 text-sm text-slate-800 hover:bg-slate-100">
                         {c.companyName} {c.phone ? <span className="text-slate-500">· {c.phone}</span> : null}
                       </button>
                     ))}

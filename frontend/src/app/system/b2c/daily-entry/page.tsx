@@ -177,10 +177,10 @@ export default function B2CDailyEntryPage() {
         <div>
           <label className="block text-slate-500 text-xs uppercase font-medium mb-1.5">{tx.search}</label>
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Search className="w-4 h-4 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder={tx.searchRepPlaceholder}
-              className="w-full pl-10 pr-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+              className="w-full ps-10 pe-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
           </div>
         </div>
       </div>
@@ -192,7 +192,7 @@ export default function B2CDailyEntryPage() {
           <p className="text-slate-500 text-xs uppercase">{tx.recordingFor}</p>
           <p className="text-slate-900 font-bold text-lg">{dayName} — {date}</p>
         </div>
-        <div className="text-right">
+        <div className="text-end">
           <p className="text-slate-500 text-xs uppercase">{tx.reps}</p>
           <p className="text-[#f37121] font-bold text-2xl">{filteredReps.length}</p>
         </div>
@@ -243,7 +243,7 @@ export default function B2CDailyEntryPage() {
                         </span>
                       )}
                     </div>
-                    <div className="ml-2 flex items-center justify-center w-6 h-6">
+                    <div className="ms-2 flex items-center justify-center w-6 h-6">
                       {state === 'saving' && <div className="w-3 h-3 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" />}
                       {state === 'saved' && <Check className="w-4 h-4 text-green-600" />}
                       {state === 'error' && <AlertCircle className="w-4 h-4 text-red-600" />}

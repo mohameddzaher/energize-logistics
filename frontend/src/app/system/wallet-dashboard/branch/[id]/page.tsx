@@ -313,17 +313,17 @@ export default function BranchWalletDashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-200">
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.user}</th>
-                  {dateMode === 'range' && <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.date}</th>}
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.opening}</th>
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.collections}</th>
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.expenses}</th>
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.purchases}</th>
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.closing}</th>
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.status}</th>
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.expected}</th>
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.actualCash}</th>
-                  <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.difference}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.user}</th>
+                  {dateMode === 'range' && <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.date}</th>}
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.opening}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.collections}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.expenses}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.purchases}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.closing}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.status}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.expected}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.actualCash}</th>
+                  <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.difference}</th>
                 </tr>
               </thead>
               <tbody>
@@ -387,22 +387,22 @@ export default function BranchWalletDashboardPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                {dateMode === 'range' && <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.date}</th>}
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.time}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.user}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.type}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.customerVendor}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.amount}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.reference}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{lang === 'ar' ? 'رقم كشف التخريج' : 'DS #'}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.client}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.from}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.to2}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.carType}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.length}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.carNumber}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.reportDate}</th>
-                <th className="text-left text-slate-300 font-semibold px-4 py-3">{T.notes}</th>
+                {dateMode === 'range' && <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.date}</th>}
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.time}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.user}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.type}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.customerVendor}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.amount}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.reference}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{lang === 'ar' ? 'رقم كشف التخريج' : 'DS #'}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.client}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.from}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.to2}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.carType}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.length}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.carNumber}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.reportDate}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.notes}</th>
               </tr>
             </thead>
             <tbody>
@@ -421,7 +421,7 @@ export default function BranchWalletDashboardPage() {
                       <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${tc.bg} ${tc.color}`}>
                         {txx[`type_${tx.type}` as keyof typeof txx] || tx.type}
                       </span>
-                      {tx.isFlagged && <AlertTriangle className="w-3 h-3 text-red-600 inline ml-1" />}
+                      {tx.isFlagged && <AlertTriangle className="w-3 h-3 text-red-600 inline ms-1" />}
                     </td>
                     <td className="px-4 py-3 text-slate-700 text-xs">
                       <div>{tx.customer?.companyName || tx.vendor?.name || tx.driver?.name || tx.itemName || '—'}</div>

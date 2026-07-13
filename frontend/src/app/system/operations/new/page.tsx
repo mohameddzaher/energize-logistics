@@ -283,11 +283,11 @@ export default function NewOperationsPage() {
       <div className="flex gap-2">
         <button type="button" onClick={() => setMode('single')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mode === 'single' ? 'bg-[#f37121] text-white' : 'bg-white text-slate-500 border border-slate-200 hover:text-slate-900'}`}>
-          <Plus className="w-4 h-4 inline mr-1.5" />{T.singleRequest}
+          <Plus className="w-4 h-4 inline me-1.5" />{T.singleRequest}
         </button>
         <button type="button" onClick={() => setMode('import')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mode === 'import' ? 'bg-[#f37121] text-white' : 'bg-white text-slate-500 border border-slate-200 hover:text-slate-900'}`}>
-          <Upload className="w-4 h-4 inline mr-1.5" />{T.importExcel}
+          <Upload className="w-4 h-4 inline me-1.5" />{T.importExcel}
         </button>
       </div>
 
@@ -304,7 +304,7 @@ export default function NewOperationsPage() {
                 <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${section.color}`} />
                   {section.label} <span className="text-slate-500 text-xs">({section.labelAr})</span>
-                  {!canEdit && <span className="ml-auto text-slate-500 text-xs italic">{T.viewOnly}</span>}
+                  {!canEdit && <span className="ms-auto text-slate-500 text-xs italic">{T.viewOnly}</span>}
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {section.fields.map((field) => (
@@ -406,9 +406,9 @@ export default function NewOperationsPage() {
                 <table className="w-full min-w-[900px]">
                   <thead>
                     <tr className="bg-slate-900 border-b border-slate-200">
-                      <th className="px-3 py-2 text-left text-xs text-slate-300 w-10">#</th>
+                      <th className="px-3 py-2 text-start text-xs text-slate-300 w-10">#</th>
                       {PREVIEW_COLUMNS.map((f) => (
-                        <th key={f.key} className="px-3 py-2 text-left text-xs text-slate-300">{f.label}</th>
+                        <th key={f.key} className="px-3 py-2 text-start text-xs text-slate-300">{f.label}</th>
                       ))}
                       <th className="px-3 py-2 w-10"><span className="sr-only">{T.actions}</span></th>
                     </tr>

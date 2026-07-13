@@ -74,20 +74,20 @@ export default function SalesTargetsPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
-          <thead><tr className="bg-slate-900 border-b border-slate-200 text-left text-slate-300">
+          <thead><tr className="bg-slate-900 border-b border-slate-200 text-start text-slate-300">
             <th className="px-4 py-3">{tx.rep}</th>
             <th className="px-4 py-3">{tx.period}</th>
-            <th className="px-4 py-3 text-right">{tx.amountTarget}</th>
-            <th className="px-4 py-3 text-right">{tx.dealsTarget}</th>
-            <th className="px-4 py-3 text-right">{tx.actions}</th>
+            <th className="px-4 py-3 text-end">{tx.amountTarget}</th>
+            <th className="px-4 py-3 text-end">{tx.dealsTarget}</th>
+            <th className="px-4 py-3 text-end">{tx.actions}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {items.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((t) => (
               <tr key={t._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-900">{t.rep ? userName(t.rep) : tx.wholeTeam}</td>
                 <td className="px-4 py-3 text-slate-700">{t.period}</td>
-                <td className="px-4 py-3 text-right text-slate-900">{money(t.amountTarget)}</td>
-                <td className="px-4 py-3 text-right text-slate-700">{t.dealsTarget}</td>
+                <td className="px-4 py-3 text-end text-slate-900">{money(t.amountTarget)}</td>
+                <td className="px-4 py-3 text-end text-slate-700">{t.dealsTarget}</td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
                   {canEdit && <button type="button" title={tx.edit} onClick={() => openEdit(t)} className="text-blue-600 hover:text-blue-700"><Edit className="w-4 h-4" /></button>}
                   {canEdit && <button type="button" title={tx.delete} onClick={() => remove(t)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}

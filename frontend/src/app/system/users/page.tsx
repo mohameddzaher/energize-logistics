@@ -595,7 +595,7 @@ export default function UsersPage() {
             type={showFormPassword ? 'text' : 'password'}
             value={formData.password}
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
+            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pe-10"
             {...(!isEdit ? { required: true } : {})}
             minLength={6}
           />
@@ -603,7 +603,7 @@ export default function UsersPage() {
             type="button"
             aria-label={showFormPassword ? txx.hidePassword : txx.showPassword}
             onClick={() => setShowFormPassword(!showFormPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
+            className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
           >
             {showFormPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
@@ -640,7 +640,7 @@ export default function UsersPage() {
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">
             {lang === 'ar' ? 'المدير المباشر' : 'Direct Manager'}
-            <span className="text-slate-500 text-xs font-normal ml-2">{lang === 'ar' ? '(اختياري — يُقترح تلقائيًا حسب القسم)' : '(optional — auto-suggested by role)'}</span>
+            <span className="text-slate-500 text-xs font-normal ms-2">{lang === 'ar' ? '(اختياري — يُقترح تلقائيًا حسب القسم)' : '(optional — auto-suggested by role)'}</span>
           </label>
           <select
             value={formData.manager}
@@ -694,7 +694,7 @@ export default function UsersPage() {
                       className="w-full text-start px-3 py-2 hover:bg-slate-50 text-sm"
                     >
                       <span className="text-slate-900">{emp.firstName} {emp.lastName}</span>
-                      <span className="text-slate-500 text-xs ml-2">{emp.iqamaNumber || emp.employeeNumber || ''} {emp.jobTitle ? `· ${emp.jobTitle}` : ''}</span>
+                      <span className="text-slate-500 text-xs ms-2">{emp.iqamaNumber || emp.employeeNumber || ''} {emp.jobTitle ? `· ${emp.jobTitle}` : ''}</span>
                     </button>
                   ))}
                 </div>
@@ -746,7 +746,7 @@ export default function UsersPage() {
             <label className="block text-slate-700 text-sm font-medium mb-1.5">
               {lang === 'ar' ? 'المشاريع المعينة' : 'Assigned Projects'} ({formData.assignedProjects.length})
               {formData.role === 'b2c_head' && (
-                <span className="text-slate-500 text-xs font-normal ml-2">
+                <span className="text-slate-500 text-xs font-normal ms-2">
                   {lang === 'ar' ? '(اختياري — له صلاحية كل المشاريع)' : '(optional — has access to all)'}
                 </span>
               )}
@@ -1200,7 +1200,7 @@ export default function UsersPage() {
                         type={showResetPassword ? 'text' : 'password'}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
+                        className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pe-10"
                         required
                         minLength={6}
                         placeholder={txx.newPasswordPlaceholder}
@@ -1209,7 +1209,7 @@ export default function UsersPage() {
                         type="button"
                         aria-label={showResetPassword ? txx.hidePassword : txx.showPassword}
                         onClick={() => setShowResetPassword(!showResetPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
+                        className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
                       >
                         {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>

@@ -314,13 +314,13 @@ export default function AuditPage() {
                 <div>
                   <label className="block text-slate-500 text-xs font-medium mb-1.5">{T.action}</label>
                   <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <Search className="w-3.5 h-3.5 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
                       type="text"
                       value={actionSearch}
                       onChange={(e) => setActionSearch(e.target.value)}
                       placeholder={T.searchAction}
-                      className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                      className="w-full ps-9 pe-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
                     />
                   </div>
                 </div>
@@ -329,12 +329,12 @@ export default function AuditPage() {
                 <div>
                   <label className="block text-slate-500 text-xs font-medium mb-1.5">{T.from}</label>
                   <div className="relative">
-                    <Calendar className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <Calendar className="w-3.5 h-3.5 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
                       type="date"
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
+                      className="w-full ps-9 pe-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
                     />
                   </div>
                 </div>
@@ -343,12 +343,12 @@ export default function AuditPage() {
                 <div>
                   <label className="block text-slate-500 text-xs font-medium mb-1.5">{T.to}</label>
                   <div className="relative">
-                    <Calendar className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <Calendar className="w-3.5 h-3.5 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
                       type="date"
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
+                      className="w-full ps-9 pe-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [color-scheme:light]"
                     />
                   </div>
                 </div>
@@ -364,12 +364,12 @@ export default function AuditPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-8" />
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.date}</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.user}</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.action}</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.entity}</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.details}</th>
+                <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider w-8" />
+                <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.date}</th>
+                <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.user}</th>
+                <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.action}</th>
+                <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.entity}</th>
+                <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.details}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">

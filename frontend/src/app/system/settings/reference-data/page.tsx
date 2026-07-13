@@ -147,7 +147,7 @@ export default function ReferenceDataPage() {
                 {items.map((it) => (
                   <tr key={it._id} className="border-b border-slate-200/70 hover:bg-slate-100">
                     <td className="px-4 py-3 text-slate-900 font-medium">
-                      <span className="inline-block w-3 h-3 rounded-full mr-2 align-middle" style={{ background: it.color || '#f37121' }} />
+                      <span className="inline-block w-3 h-3 rounded-full me-2 align-middle" style={{ background: it.color || '#f37121' }} />
                       {ar ? it.nameAr : it.nameEn}
                       {it.isSystem && <span className="ms-2 text-[10px] text-slate-500">{tx.defaultTag}</span>}
                     </td>

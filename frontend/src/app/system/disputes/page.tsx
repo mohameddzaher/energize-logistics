@@ -327,7 +327,7 @@ export default function DisputesPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         {/* Search */}
         <div className="relative flex-1 min-w-[240px]">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+          <div className="absolute start-3 top-1/2 -translate-y-1/2 text-slate-500">
             {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
           </div>
           <input
@@ -336,13 +336,13 @@ export default function DisputesPage() {
             placeholder={T.searchDisputes}
             value={searchInput}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+            className="w-full ps-10 pe-10 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
           />
           {searchInput && (
             <button
               type="button"
               onClick={() => { setSearchInput(''); setSearch(''); searchInputRef.current?.focus(); }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
+              className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
               title={txx.clearSearch}
             >
               <X className="w-4 h-4" />
@@ -431,17 +431,17 @@ export default function DisputesPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider w-8" />
+                <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider w-8" />
                 {columns.map((col) => (
                   <th
                     key={col.key}
-                    className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider"
+                    className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider"
                   >
                     {col.label}
                   </th>
                 ))}
                 {isAdmin && (
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300 uppercase">{T.actions}</th>
+                  <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase">{T.actions}</th>
                 )}
               </tr>
             </thead>

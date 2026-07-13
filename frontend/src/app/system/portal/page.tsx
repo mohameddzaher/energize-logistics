@@ -169,12 +169,12 @@ export default function ClientPortalPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.invoiceNumber}</th>
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.amount}</th>
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.balance}</th>
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.dueDate}</th>
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.date}</th>
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.status}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.invoiceNumber}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.amount}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.balance}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.dueDate}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.date}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.status}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">

@@ -117,11 +117,11 @@ export default function PurchaseRequestsPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
-          <thead><tr className="bg-slate-900 border-b border-slate-200 text-left text-slate-300">
+          <thead><tr className="bg-slate-900 border-b border-slate-200 text-start text-slate-300">
             <th className="px-4 py-3">#</th><th className="px-4 py-3">{tx.colTitle}</th>
-            <th className="px-4 py-3">{tx.colRequester}</th><th className="px-4 py-3 text-right">{tx.colEstimate}</th>
+            <th className="px-4 py-3">{tx.colRequester}</th><th className="px-4 py-3 text-end">{tx.colEstimate}</th>
             <th className="px-4 py-3">{tx.colPriority}</th><th className="px-4 py-3">{tx.colStatus}</th>
-            <th className="px-4 py-3 text-right">{tx.colActions}</th>
+            <th className="px-4 py-3 text-end">{tx.colActions}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {items.length === 0 ? <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((pr) => (
@@ -129,7 +129,7 @@ export default function PurchaseRequestsPage() {
                 <td className="px-4 py-3 text-slate-500 font-mono text-xs">{pr.requestNumber}</td>
                 <td className="px-4 py-3 text-slate-900">{pr.title}<div className="text-slate-500 text-xs">{pr.department || ''}</div></td>
                 <td className="px-4 py-3 text-slate-700">{userName(pr.requester)}</td>
-                <td className="px-4 py-3 text-right text-slate-800">{money(pr.totalEstimate)}</td>
+                <td className="px-4 py-3 text-end text-slate-800">{money(pr.totalEstimate)}</td>
                 <td className="px-4 py-3"><Badge style={PRIORITY_STYLE[pr.priority]} lang={lang} /></td>
                 <td className="px-4 py-3"><Badge style={PR_STATUS_STYLE[pr.status]} lang={lang} /></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
@@ -170,7 +170,7 @@ export default function PurchaseRequestsPage() {
               <input placeholder={tx.itemDescription} value={l.description} onChange={(e) => setItem(i, { description: e.target.value })} className="flex-1 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" />
               <input type="number" placeholder={tx.itemQty} value={l.quantity} onChange={(e) => setItem(i, { quantity: e.target.value })} className="w-20 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
               <input type="number" placeholder={tx.itemPrice} value={l.unitPrice} onChange={(e) => setItem(i, { unitPrice: e.target.value })} className="w-24 px-2 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" dir="ltr" />
-              <span className="w-24 text-right text-slate-500 text-sm">{money((Number(l.quantity) || 0) * (Number(l.unitPrice) || 0), '')}</span>
+              <span className="w-24 text-end text-slate-500 text-sm">{money((Number(l.quantity) || 0) * (Number(l.unitPrice) || 0), '')}</span>
               <button type="button" title={tx.remove} onClick={() => rmItem(i)} className="text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
             </div>
           ))}

@@ -91,17 +91,17 @@ export default function ChartOfAccountsPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
-          <thead><tr className="bg-slate-900 border-b border-slate-200 text-left">
+          <thead><tr className="bg-slate-900 border-b border-slate-200 text-start">
             <th className="px-4 py-3 text-slate-300 font-semibold">{tx.code}</th>
             <th className="px-4 py-3 text-slate-300 font-semibold">{tx.name}</th>
             <th className="px-4 py-3 text-slate-300 font-semibold">{tx.type}</th>
-            <th className="px-4 py-3 text-slate-300 font-semibold text-right">{tx.actions}</th>
+            <th className="px-4 py-3 text-slate-300 font-semibold text-end">{tx.actions}</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-200">
             {items.length === 0 ? <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">—</td></tr> : items.map((a) => (
               <tr key={a._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-700 font-mono">{a.code}</td>
-                <td className="px-4 py-3 text-slate-900">{ar && a.nameAr ? a.nameAr : a.nameEn}{a.system && <span className="ml-2 text-[10px] text-slate-500">({tx.systemLabel})</span>}</td>
+                <td className="px-4 py-3 text-slate-900">{ar && a.nameAr ? a.nameAr : a.nameEn}{a.system && <span className="ms-2 text-[10px] text-slate-500">({tx.systemLabel})</span>}</td>
                 <td className="px-4 py-3"><Badge style={ACCOUNT_TYPE_STYLE[a.type]} lang={lang} /></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
                   <button type="button" title={tx.ledger} onClick={() => openLedger(a)} className="text-slate-500 hover:text-slate-900"><Eye className="w-4 h-4" /></button>
@@ -135,9 +135,9 @@ export default function ChartOfAccountsPage() {
         {ledger && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="bg-slate-900 border-b border-slate-200 text-left text-slate-300">
+              <thead><tr className="bg-slate-900 border-b border-slate-200 text-start text-slate-300">
                 <th className="px-2 py-2">{tx.date}</th><th className="px-2 py-2">#</th><th className="px-2 py-2">{tx.memo}</th>
-                <th className="px-2 py-2 text-right">{tx.debit}</th><th className="px-2 py-2 text-right">{tx.credit}</th><th className="px-2 py-2 text-right">{tx.balance}</th>
+                <th className="px-2 py-2 text-end">{tx.debit}</th><th className="px-2 py-2 text-end">{tx.credit}</th><th className="px-2 py-2 text-end">{tx.balance}</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-200">
                 {ledger.rows.length === 0 ? <tr><td colSpan={6} className="px-2 py-6 text-center text-slate-500">—</td></tr> : ledger.rows.map((r, i) => (
@@ -145,13 +145,13 @@ export default function ChartOfAccountsPage() {
                     <td className="px-2 py-2 text-slate-700">{fmtDate(r.date)}</td>
                     <td className="px-2 py-2 text-slate-500 font-mono text-xs">{r.entryNumber}</td>
                     <td className="px-2 py-2 text-slate-700">{r.memo || '—'}</td>
-                    <td className="px-2 py-2 text-right text-green-600">{r.debit ? money(r.debit, '') : ''}</td>
-                    <td className="px-2 py-2 text-right text-red-600">{r.credit ? money(r.credit, '') : ''}</td>
-                    <td className="px-2 py-2 text-right text-slate-900">{money(r.balance, '')}</td>
+                    <td className="px-2 py-2 text-end text-green-600">{r.debit ? money(r.debit, '') : ''}</td>
+                    <td className="px-2 py-2 text-end text-red-600">{r.credit ? money(r.credit, '') : ''}</td>
+                    <td className="px-2 py-2 text-end text-slate-900">{money(r.balance, '')}</td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot><tr className="border-t border-slate-200"><td colSpan={5} className="px-2 py-2 text-right text-slate-500">{tx.closingBalance}</td><td className="px-2 py-2 text-right text-slate-900 font-bold">{money(ledger.closingBalance, '')}</td></tr></tfoot>
+              <tfoot><tr className="border-t border-slate-200"><td colSpan={5} className="px-2 py-2 text-end text-slate-500">{tx.closingBalance}</td><td className="px-2 py-2 text-end text-slate-900 font-bold">{money(ledger.closingBalance, '')}</td></tr></tfoot>
             </table>
           </div>
         )}

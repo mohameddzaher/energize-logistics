@@ -136,9 +136,9 @@ export default function TripsPage() {
       {/* Filters */}
       <div className="sticky top-0 z-20 bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-sm">
         <div className="relative flex-1 min-w-[240px]">
-          <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-slate-500 pointer-events-none" />
+          <Search className="w-4 h-4 absolute top-2.5 start-2.5 text-slate-500 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tx.search}
-            className="w-full bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none" />
+            className="w-full bg-slate-100 text-slate-800 text-sm rounded-lg ps-8 pe-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none" />
         </div>
         <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="w-full sm:w-44 shrink-0 bg-slate-100 text-slate-800 text-sm rounded-lg px-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none">
           <option value="">{tx.allMonths}</option>
@@ -205,12 +205,12 @@ export default function TripsPage() {
               <div className="space-y-2 max-h-[320px] overflow-y-auto">
                 {revByClient.map(([client, val], i) => (
                   <div key={client} className="flex items-center gap-2 text-sm">
-                    <span className="text-slate-500 w-5 text-right shrink-0">{i + 1}</span>
+                    <span className="text-slate-500 w-5 text-end shrink-0">{i + 1}</span>
                     <span className="text-slate-700 w-28 shrink-0 truncate">{client}</span>
                     <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                       <div className="bg-cyan-500 h-full rounded-full" style={{ width: `${(val / maxClientRev) * 100}%` }} />
                     </div>
-                    <span className="text-cyan-700 w-16 text-right">{fmtNum(val)}</span>
+                    <span className="text-cyan-700 w-16 text-end">{fmtNum(val)}</span>
                   </div>
                 ))}
                 {revByClient.length === 0 && <p className="text-slate-500 text-sm text-center py-4">--</p>}
@@ -224,15 +224,15 @@ export default function TripsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                  <th className="text-left py-2 px-2">{tx.month}</th>
-                  <th className="text-left py-2 px-2">{tx.vehicle}</th>
-                  <th className="text-left py-2 px-2">{tx.driver}</th>
-                  <th className="text-left py-2 px-2">{tx.route}</th>
-                  <th className="text-right py-2 px-2">{tx.days}</th>
-                  <th className="text-right py-2 px-2">{tx.revenue}</th>
-                  <th className="text-right py-2 px-2">{tx.expenses}</th>
-                  <th className="text-left py-2 px-2">{tx.client}</th>
-                  <th className="text-left py-2 px-2">{tx.branch}</th>
+                  <th className="text-start py-2 px-2">{tx.month}</th>
+                  <th className="text-start py-2 px-2">{tx.vehicle}</th>
+                  <th className="text-start py-2 px-2">{tx.driver}</th>
+                  <th className="text-start py-2 px-2">{tx.route}</th>
+                  <th className="text-end py-2 px-2">{tx.days}</th>
+                  <th className="text-end py-2 px-2">{tx.revenue}</th>
+                  <th className="text-end py-2 px-2">{tx.expenses}</th>
+                  <th className="text-start py-2 px-2">{tx.client}</th>
+                  <th className="text-start py-2 px-2">{tx.branch}</th>
                 </tr></thead>
                 <tbody>
                   {filtered.map((r, i) => {
@@ -248,9 +248,9 @@ export default function TripsPage() {
                             {r.loadingPlace || '?'} <ArrowRight className="w-3 h-3 text-slate-600 shrink-0" /> {r.unloadingPlace || '?'}
                           </span>
                         </td>
-                        <td className="py-2 px-2 text-right text-slate-700">{parseNum(r.days) > 0 ? parseNum(r.days).toFixed(0) : '-'}</td>
-                        <td className="py-2 px-2 text-right text-emerald-600">{rev > 0 ? fmtCurrency(rev) : '-'}</td>
-                        <td className="py-2 px-2 text-right text-red-600">{exp > 0 ? fmtCurrency(exp) : '-'}</td>
+                        <td className="py-2 px-2 text-end text-slate-700">{parseNum(r.days) > 0 ? parseNum(r.days).toFixed(0) : '-'}</td>
+                        <td className="py-2 px-2 text-end text-emerald-600">{rev > 0 ? fmtCurrency(rev) : '-'}</td>
+                        <td className="py-2 px-2 text-end text-red-600">{exp > 0 ? fmtCurrency(exp) : '-'}</td>
                         <td className="py-2 px-2 text-slate-700 text-xs max-w-[120px] truncate">{r.rentalPaymentType || '-'}</td>
                         <td className="py-2 px-2 text-slate-700 text-xs">{r.branch || '-'}</td>
                       </tr>

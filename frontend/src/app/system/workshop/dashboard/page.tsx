@@ -95,7 +95,7 @@ export default function WorkshopDashboardPage() {
       <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-center gap-2">
         <AlertCircle className="w-5 h-5 text-red-600" />
         <span className="text-red-600">{error}</span>
-        <button onClick={() => { setError(''); fetchDashboard(); }} className="ml-auto text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
+        <button onClick={() => { setError(''); fetchDashboard(); }} className="ms-auto text-red-600 hover:text-red-700"><X className="w-4 h-4" /></button>
       </div>
     );
   }
@@ -283,9 +283,9 @@ export default function WorkshopDashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-200">
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colEmployee}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colCompleted}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colAvgDuration}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colEmployee}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colCompleted}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colAvgDuration}</th>
                 </tr>
               </thead>
               <tbody>
@@ -315,11 +315,11 @@ export default function WorkshopDashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-200">
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colTechnician}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colTotalJobs}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colAvgDuration}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colFastest}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colSlowest}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colTechnician}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colTotalJobs}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colAvgDuration}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colFastest}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colSlowest}</th>
                 </tr>
               </thead>
               <tbody>
@@ -351,10 +351,10 @@ export default function WorkshopDashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-200">
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colVehicleNumber}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colVisits}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colTotalTime}</th>
-                  <th className="text-left text-slate-300 font-semibold py-2.5 px-3">{tx.colLastVisit}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colVehicleNumber}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colVisits}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colTotalTime}</th>
+                  <th className="text-start text-slate-300 font-semibold py-2.5 px-3">{tx.colLastVisit}</th>
                 </tr>
               </thead>
               <tbody>

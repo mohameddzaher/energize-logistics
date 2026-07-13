@@ -97,7 +97,7 @@ export default function CrmCalendarPage() {
               const isToday = k === todayKey;
               return (
                 <button type="button" key={i} onClick={() => setSelected(k)}
-                  className={`min-h-[84px] text-left rounded-lg border p-1.5 transition-colors ${isToday ? 'border-[#f37121] bg-[#f37121]/5' : 'border-slate-200 hover:border-slate-300'} ${selected === k ? 'ring-2 ring-[#f37121]/50' : ''}`}>
+                  className={`min-h-[84px] text-start rounded-lg border p-1.5 transition-colors ${isToday ? 'border-[#f37121] bg-[#f37121]/5' : 'border-slate-200 hover:border-slate-300'} ${selected === k ? 'ring-2 ring-[#f37121]/50' : ''}`}>
                   <span className={`text-xs ${isToday ? 'text-[#f37121] font-bold' : 'text-slate-500'}`}>{d.getDate()}</span>
                   <div className="mt-1 space-y-0.5">
                     {(ev?.tasks || []).slice(0, 2).map((t) => (

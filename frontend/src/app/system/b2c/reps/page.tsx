@@ -134,7 +134,7 @@ export default function B2CRepsPage() {
       key: 'englishName', label: T.englishName,
       render: (_: any, row: Rep) => (
         <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedRepId(row._id); }}
-          className="text-left hover:underline">
+          className="text-start hover:underline">
           <p className="text-slate-900 font-medium hover:text-[#f37121] transition-colors">{row.englishName}</p>
           {row.arabicName && <p className="text-slate-500 text-xs mt-0.5">{row.arabicName}</p>}
         </button>
@@ -197,10 +197,10 @@ export default function B2CRepsPage() {
       {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row gap-3 shadow-sm">
         <div className="flex-1 relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search className="w-4 h-4 absolute start-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder={tx.searchPlaceholder}
-            className="w-full pl-10 pr-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+            className="w-full ps-10 pe-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
         </div>
         <select aria-label="Project" value={filterProject} onChange={(e) => setFilterProject(e.target.value)}
           className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">

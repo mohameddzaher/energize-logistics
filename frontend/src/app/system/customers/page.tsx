@@ -925,14 +925,14 @@ export default function CustomersPage() {
                               type={showClientPassword ? 'text' : 'password'}
                               value={form.password}
                               onChange={(e) => updateField('password', e.target.value)}
-                              className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pr-10"
+                              className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pe-10"
                               placeholder={T.password}
                             />
                             <button
                               type="button"
                               aria-label={showClientPassword ? txx.hidePassword : txx.showPassword}
                               onClick={() => setShowClientPassword(!showClientPassword)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
+                              className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 transition-colors"
                             >
                               {showClientPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>

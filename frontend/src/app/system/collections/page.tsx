@@ -535,7 +535,7 @@ export default function CollectionsPage() {
                       )}
                     </div>
                     <div className="flex items-start gap-3">
-                      <div className="text-right">
+                      <div className="text-end">
                         <p className={`text-xs font-medium ${isOverdue ? 'text-red-600' : 'text-orange-600'}`}>
                           {fu.followUpDate ? formatDate(fu.followUpDate) : '-'}
                         </p>

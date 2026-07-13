@@ -452,7 +452,7 @@ export default function OperationsWorkflowPage() {
   // A column header with an Excel-style filter funnel. `field` is the Workflow
   // key it filters on; pass filterable={false} for non-data columns.
   const ColHead = (field: keyof Workflow, label: string, color = 'text-slate-300') => (
-    <th className="px-3 py-3 text-left text-xs font-semibold whitespace-nowrap">
+    <th className="px-3 py-3 text-start text-xs font-semibold whitespace-nowrap">
       <span className={`inline-flex items-center ${color}`}>
         {label}
         <ColumnFilter
@@ -494,7 +494,7 @@ export default function OperationsWorkflowPage() {
                 <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'مراجعة' : 'Review'} ({selectedIds.size})
               </button>
               {showBulkReview && (
-                <div className="absolute top-full mt-2 right-0 bg-slate-50 border border-slate-200 rounded-lg shadow-xl z-50 p-3 min-w-[220px]">
+                <div className="absolute top-full mt-2 end-0 bg-slate-50 border border-slate-200 rounded-lg shadow-xl z-50 p-3 min-w-[220px]">
                   <label className="block text-xs text-slate-500 mb-1">{lang === 'ar' ? 'نص المراجعة:' : 'Review text:'}</label>
                   <input
                     type="text"
@@ -544,9 +544,9 @@ export default function OperationsWorkflowPage() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1 min-w-[260px]">
             {searching ? (
-              <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#f37121] animate-spin" />
+              <Loader2 className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#f37121] animate-spin" />
             ) : (
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             )}
             <input
               ref={searchInputRef}
@@ -559,10 +559,10 @@ export default function OperationsWorkflowPage() {
                 debounceRef.current = setTimeout(() => { setSearch(val); setPage(1); }, 300);
               }}
               placeholder={T.searchPlaceholder}
-              className="w-full pl-10 pr-8 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+              className="w-full ps-10 pe-8 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
             />
             {searchInput && (
-              <button type="button" title={T.clearSearch} onClick={() => { setSearchInput(''); setSearch(''); setPage(1); searchInputRef.current?.focus(); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900">
+              <button type="button" title={T.clearSearch} onClick={() => { setSearchInput(''); setSearch(''); setPage(1); searchInputRef.current?.focus(); }} className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -622,7 +622,7 @@ export default function OperationsWorkflowPage() {
             <span className="text-xs text-amber-700/80">{lang === 'ar' ? 'فواتير لم تصل' : 'Pending Invoices'}</span>
           </div>
           {showPendingOnly && (
-            <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">
+            <span className="ms-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">
               {lang === 'ar' ? 'مُفعّل' : 'ACTIVE'}
             </span>
           )}
@@ -672,7 +672,7 @@ export default function OperationsWorkflowPage() {
           <table className="w-full min-w-[3200px]">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th className="px-3 py-3 sticky left-0 bg-slate-900 z-10 w-20">
+                <th className="px-3 py-3 sticky start-0 bg-slate-900 z-10 w-20">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -728,7 +728,7 @@ export default function OperationsWorkflowPage() {
                 {canViewFinancials && ColHead('collectionDate', T.thCollectionDate, 'text-green-400')}
                 {/* Meta — stage/المرحلة is treated as financial too */}
                 {canViewFinancials && ColHead('stage', T.thStage)}
-                <th className="px-3 py-3 text-left text-xs text-slate-300 font-semibold whitespace-nowrap w-10">{T.lock}</th>
+                <th className="px-3 py-3 text-start text-xs text-slate-300 font-semibold whitespace-nowrap w-10">{T.lock}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -743,7 +743,7 @@ export default function OperationsWorkflowPage() {
                   <tr key={wf._id} className={`hover:bg-slate-100 transition-colors ${editingId === wf._id ? '' : 'cursor-pointer'} ${locked ? 'opacity-60' : ''} ${isSelected ? 'bg-[#f37121]/5' : ''} ${editingId === wf._id ? 'ring-1 ring-[#f37121]/40' : ''}`}
                     onClick={() => { if (editingId !== wf._id) router.push(`/system/operations/${wf._id}`); }}>
                     {/* Checkbox + Actions */}
-                    <td className="px-3 py-2.5 sticky left-0 bg-white z-10" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-3 py-2.5 sticky start-0 bg-white z-10" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         <input
                           type="checkbox"
@@ -778,10 +778,10 @@ export default function OperationsWorkflowPage() {
                                 <button type="button" className="p-1 text-slate-500 hover:text-blue-600 rounded" title={T.stageTransition}>
                                   {transitioningId === wf._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
                                 </button>
-                                <div className="absolute left-0 top-full mt-1 bg-slate-50 border border-slate-200 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[160px]">
+                                <div className="absolute start-0 top-full mt-1 bg-slate-50 border border-slate-200 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[160px]">
                                   {transitions.map((t) => (
                                     <button key={t.stage} type="button" onClick={() => handleTransition(wf._id, t.stage)}
-                                      className="block w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors">
+                                      className="block w-full text-start px-3 py-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors">
                                       {t.label}
                                     </button>
                                   ))}

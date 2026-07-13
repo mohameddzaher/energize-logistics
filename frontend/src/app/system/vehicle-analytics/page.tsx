@@ -347,8 +347,8 @@ export default function VehicleAnalyticsPage() {
       {/* Filter Bar */}
       <div className="sticky top-0 z-20 bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-sm">
         <div className="relative">
-          <Search className="w-4 h-4 absolute top-2.5 left-2.5 text-slate-500 pointer-events-none" />
-          <select value={vehicleFilter} onChange={e => setVehicleFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg pl-8 pr-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none min-w-[160px]">
+          <Search className="w-4 h-4 absolute top-2.5 start-2.5 text-slate-500 pointer-events-none" />
+          <select value={vehicleFilter} onChange={e => setVehicleFilter(e.target.value)} className="bg-slate-100 text-slate-800 text-sm rounded-lg ps-8 pe-3 py-2 border border-slate-300 focus:border-[#f37121] focus:outline-none min-w-[160px]">
             <option value="">{tx.allVehicles}</option>
             {allVehicleIds.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
@@ -403,7 +403,7 @@ export default function VehicleAnalyticsPage() {
                       <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                         <div className={`${chart.color} h-full rounded-full`} style={{ width: `${(val / maxBar(chart.data)) * 100}%` }} />
                       </div>
-                      <span className={`${chart.textColor} w-16 text-right`}>{fmtNum(val)}</span>
+                      <span className={`${chart.textColor} w-16 text-end`}>{fmtNum(val)}</span>
                     </div>
                   ))}
                   {chart.data.length === 0 && <p className="text-slate-500 text-sm text-center py-4">--</p>}
@@ -443,13 +443,13 @@ export default function VehicleAnalyticsPage() {
             <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.driverPerformance}</h3>
             <div className="overflow-x-auto"><table className="w-full text-sm">
               <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                <th className="text-left py-2 px-3">{tx.driver}</th><th className="text-right py-2 px-3">{tx.revenue}</th>
-                <th className="text-right py-2 px-3">{tx.trips}</th><th className="text-right py-2 px-3">{tx.gpsKm}</th>
+                <th className="text-start py-2 px-3">{tx.driver}</th><th className="text-end py-2 px-3">{tx.revenue}</th>
+                <th className="text-end py-2 px-3">{tx.trips}</th><th className="text-end py-2 px-3">{tx.gpsKm}</th>
               </tr></thead>
               <tbody>{driverPerf.map(([driver, data]) => (
                 <tr key={driver} className="border-b border-slate-200/70 hover:bg-slate-100">
-                  <td className="py-2 px-3 text-slate-900">{driver}</td><td className="py-2 px-3 text-right text-emerald-600">{fmtNum(data.revenue)}</td>
-                  <td className="py-2 px-3 text-right text-slate-700">{data.trips}</td><td className="py-2 px-3 text-right text-purple-600">{fmtNum(data.km)}</td>
+                  <td className="py-2 px-3 text-slate-900">{driver}</td><td className="py-2 px-3 text-end text-emerald-600">{fmtNum(data.revenue)}</td>
+                  <td className="py-2 px-3 text-end text-slate-700">{data.trips}</td><td className="py-2 px-3 text-end text-purple-600">{fmtNum(data.km)}</td>
                 </tr>))}
                 {driverPerf.length === 0 && <tr><td colSpan={4} className="text-center text-slate-500 py-4">--</td></tr>}
               </tbody>
@@ -462,17 +462,17 @@ export default function VehicleAnalyticsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                  <th className="text-left py-2 px-2 cursor-pointer" onClick={() => toggleSort('vehicleId')}>{tx.vehicle} <SortIcon k="vehicleId" /></th>
-                  <th className="text-left py-2 px-2">{tx.model}</th>
-                  <th className="text-left py-2 px-2">{tx.branch}</th>
-                  <th className="text-left py-2 px-2">{tx.driver}</th>
-                  <th className="text-left py-2 px-2">{tx.status}</th>
-                  <th className="text-right py-2 px-2 cursor-pointer" onClick={() => toggleSort('fuelPct')}>{tx.fuelPct} <SortIcon k="fuelPct" /></th>
-                  <th className="text-right py-2 px-2 cursor-pointer" onClick={() => toggleSort('gpsKm')}>{tx.gpsKm} <SortIcon k="gpsKm" /></th>
-                  <th className="text-right py-2 px-2">{tx.avgSpeed}</th>
-                  <th className="text-right py-2 px-2 cursor-pointer" onClick={() => toggleSort('trips')}>{tx.trips} <SortIcon k="trips" /></th>
-                  <th className="text-right py-2 px-2 cursor-pointer" onClick={() => toggleSort('revenue')}>{tx.revenue} <SortIcon k="revenue" /></th>
-                  <th className="text-right py-2 px-2">{tx.expenses}</th>
+                  <th className="text-start py-2 px-2 cursor-pointer" onClick={() => toggleSort('vehicleId')}>{tx.vehicle} <SortIcon k="vehicleId" /></th>
+                  <th className="text-start py-2 px-2">{tx.model}</th>
+                  <th className="text-start py-2 px-2">{tx.branch}</th>
+                  <th className="text-start py-2 px-2">{tx.driver}</th>
+                  <th className="text-start py-2 px-2">{tx.status}</th>
+                  <th className="text-end py-2 px-2 cursor-pointer" onClick={() => toggleSort('fuelPct')}>{tx.fuelPct} <SortIcon k="fuelPct" /></th>
+                  <th className="text-end py-2 px-2 cursor-pointer" onClick={() => toggleSort('gpsKm')}>{tx.gpsKm} <SortIcon k="gpsKm" /></th>
+                  <th className="text-end py-2 px-2">{tx.avgSpeed}</th>
+                  <th className="text-end py-2 px-2 cursor-pointer" onClick={() => toggleSort('trips')}>{tx.trips} <SortIcon k="trips" /></th>
+                  <th className="text-end py-2 px-2 cursor-pointer" onClick={() => toggleSort('revenue')}>{tx.revenue} <SortIcon k="revenue" /></th>
+                  <th className="text-end py-2 px-2">{tx.expenses}</th>
                 </tr></thead>
                 <tbody>
                   {vehicleTable.map(row => (
@@ -486,12 +486,12 @@ export default function VehicleAnalyticsPage() {
                           {row.status || '-'}
                         </span>
                       </td>
-                      <td className={`py-2 px-2 text-right ${row.fuelPct > 90 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{row.fuelPct > 0 ? row.fuelPct.toFixed(0) + '%' : '-'}</td>
-                      <td className="py-2 px-2 text-right text-purple-600">{row.gpsKm > 0 ? fmtNum(row.gpsKm) : '-'}</td>
-                      <td className="py-2 px-2 text-right text-slate-700">{row.avgSpeed > 0 ? row.avgSpeed.toFixed(0) : '-'}</td>
-                      <td className="py-2 px-2 text-right text-slate-700">{row.trips > 0 ? row.trips : '-'}</td>
-                      <td className="py-2 px-2 text-right text-emerald-600">{row.revenue > 0 ? fmtNum(row.revenue) : '-'}</td>
-                      <td className="py-2 px-2 text-right text-red-600">{row.expenses > 0 ? fmtNum(row.expenses) : '-'}</td>
+                      <td className={`py-2 px-2 text-end ${row.fuelPct > 90 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{row.fuelPct > 0 ? row.fuelPct.toFixed(0) + '%' : '-'}</td>
+                      <td className="py-2 px-2 text-end text-purple-600">{row.gpsKm > 0 ? fmtNum(row.gpsKm) : '-'}</td>
+                      <td className="py-2 px-2 text-end text-slate-700">{row.avgSpeed > 0 ? row.avgSpeed.toFixed(0) : '-'}</td>
+                      <td className="py-2 px-2 text-end text-slate-700">{row.trips > 0 ? row.trips : '-'}</td>
+                      <td className="py-2 px-2 text-end text-emerald-600">{row.revenue > 0 ? fmtNum(row.revenue) : '-'}</td>
+                      <td className="py-2 px-2 text-end text-red-600">{row.expenses > 0 ? fmtNum(row.expenses) : '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -506,12 +506,12 @@ export default function VehicleAnalyticsPage() {
               <div className="space-y-2 max-h-[360px] overflow-y-auto">
                 {revenuePerKm.map((item, i) => (
                   <div key={item.vehicleId} className="flex items-center gap-2 text-sm">
-                    <span className="text-slate-500 w-6 text-right shrink-0">{i + 1}</span>
+                    <span className="text-slate-500 w-6 text-end shrink-0">{i + 1}</span>
                     <span className="text-slate-700 w-24 shrink-0 truncate">{item.vehicleId}</span>
                     <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                       <div className="bg-amber-500 h-full rounded-full" style={{ width: `${(item.ratio / (revenuePerKm[0]?.ratio || 1)) * 100}%` }} />
                     </div>
-                    <span className="text-amber-700 w-20 text-right">{item.ratio.toFixed(1)}</span>
+                    <span className="text-amber-700 w-20 text-end">{item.ratio.toFixed(1)}</span>
                   </div>
                 ))}
               </div>
@@ -524,17 +524,17 @@ export default function VehicleAnalyticsPage() {
               <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.driverLeaderboard}</h3>
               <div className="overflow-x-auto"><table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                  <th className="text-left py-2 px-3">#</th><th className="text-left py-2 px-3">{tx.driver}</th>
-                  <th className="text-right py-2 px-3">{tx.totalRev}</th><th className="text-right py-2 px-3">{tx.trips}</th>
-                  <th className="text-right py-2 px-3">{tx.revenuePerTrip}</th><th className="text-right py-2 px-3">{tx.totalKms}</th>
+                  <th className="text-start py-2 px-3">#</th><th className="text-start py-2 px-3">{tx.driver}</th>
+                  <th className="text-end py-2 px-3">{tx.totalRev}</th><th className="text-end py-2 px-3">{tx.trips}</th>
+                  <th className="text-end py-2 px-3">{tx.revenuePerTrip}</th><th className="text-end py-2 px-3">{tx.totalKms}</th>
                 </tr></thead>
                 <tbody>{driverPerf.map(([driver, data], i) => (
                   <tr key={driver} className="border-b border-slate-200/70 hover:bg-slate-100">
                     <td className="py-2 px-3 text-slate-500">{i + 1}</td><td className="py-2 px-3 text-slate-900">{driver}</td>
-                    <td className="py-2 px-3 text-right text-emerald-600">{fmtNum(data.revenue)}</td>
-                    <td className="py-2 px-3 text-right text-slate-700">{data.trips}</td>
-                    <td className="py-2 px-3 text-right text-cyan-700">{data.trips > 0 ? fmtNum(data.revenue / data.trips) : '-'}</td>
-                    <td className="py-2 px-3 text-right text-purple-600">{fmtNum(data.km)}</td>
+                    <td className="py-2 px-3 text-end text-emerald-600">{fmtNum(data.revenue)}</td>
+                    <td className="py-2 px-3 text-end text-slate-700">{data.trips}</td>
+                    <td className="py-2 px-3 text-end text-cyan-700">{data.trips > 0 ? fmtNum(data.revenue / data.trips) : '-'}</td>
+                    <td className="py-2 px-3 text-end text-purple-600">{fmtNum(data.km)}</td>
                   </tr>))}
                 </tbody>
               </table></div>
@@ -547,17 +547,17 @@ export default function VehicleAnalyticsPage() {
               <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3">{tx.routeAnalysis}</h3>
               <div className="overflow-x-auto"><table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                  <th className="text-left py-2 px-3">{tx.route}</th><th className="text-right py-2 px-3">{tx.tripCount}</th>
-                  <th className="text-right py-2 px-3">{tx.avgRevenue}</th><th className="text-right py-2 px-3">{tx.avgDays}</th>
-                  <th className="text-right py-2 px-3">{tx.totalRev}</th>
+                  <th className="text-start py-2 px-3">{tx.route}</th><th className="text-end py-2 px-3">{tx.tripCount}</th>
+                  <th className="text-end py-2 px-3">{tx.avgRevenue}</th><th className="text-end py-2 px-3">{tx.avgDays}</th>
+                  <th className="text-end py-2 px-3">{tx.totalRev}</th>
                 </tr></thead>
                 <tbody>{routeAnalysis.map(([route, data]) => (
                   <tr key={route} className="border-b border-slate-200/70 hover:bg-slate-100">
                     <td className="py-2 px-3 text-slate-900 text-xs">{route}</td>
-                    <td className="py-2 px-3 text-right text-slate-700">{data.count}</td>
-                    <td className="py-2 px-3 text-right text-cyan-700">{fmtNum(data.totalRev / data.count)}</td>
-                    <td className="py-2 px-3 text-right text-slate-700">{data.count > 0 ? (data.totalDays / data.count).toFixed(1) : '-'}</td>
-                    <td className="py-2 px-3 text-right text-emerald-600">{fmtNum(data.totalRev)}</td>
+                    <td className="py-2 px-3 text-end text-slate-700">{data.count}</td>
+                    <td className="py-2 px-3 text-end text-cyan-700">{fmtNum(data.totalRev / data.count)}</td>
+                    <td className="py-2 px-3 text-end text-slate-700">{data.count > 0 ? (data.totalDays / data.count).toFixed(1) : '-'}</td>
+                    <td className="py-2 px-3 text-end text-emerald-600">{fmtNum(data.totalRev)}</td>
                   </tr>))}
                 </tbody>
               </table></div>
@@ -595,7 +595,7 @@ export default function VehicleAnalyticsPage() {
                     <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
                       <div className={`h-full rounded-full ${v.pct >= 75 ? 'bg-green-500' : v.pct >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${v.pct}%` }} />
                     </div>
-                    <span className={`w-14 text-right text-xs font-medium ${v.pct >= 75 ? 'text-green-600' : v.pct >= 40 ? 'text-amber-700' : 'text-red-600'}`}>{v.pct.toFixed(0)}%</span>
+                    <span className={`w-14 text-end text-xs font-medium ${v.pct >= 75 ? 'text-green-600' : v.pct >= 40 ? 'text-amber-700' : 'text-red-600'}`}>{v.pct.toFixed(0)}%</span>
                   </div>
                 ))}
               </div>
@@ -610,20 +610,20 @@ export default function VehicleAnalyticsPage() {
               </h3>
               <div className="overflow-x-auto"><table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 text-slate-300 border-b border-slate-200">
-                  <th className="text-left py-2 px-3">#</th>
-                  <th className="text-left py-2 px-3">{tx.route}</th>
-                  <th className="text-right py-2 px-3">{tx.tripCount}</th>
-                  <th className="text-right py-2 px-3">{tx.totalDistance}</th>
-                  <th className="text-right py-2 px-3">{tx.avgDuration}</th>
+                  <th className="text-start py-2 px-3">#</th>
+                  <th className="text-start py-2 px-3">{tx.route}</th>
+                  <th className="text-end py-2 px-3">{tx.tripCount}</th>
+                  <th className="text-end py-2 px-3">{tx.totalDistance}</th>
+                  <th className="text-end py-2 px-3">{tx.avgDuration}</th>
                 </tr></thead>
                 <tbody>
                   {topDetectedRoutes.map(([route, d], i) => (
                     <tr key={route} className="border-b border-slate-200/70 hover:bg-slate-100">
                       <td className="py-2 px-3 text-slate-500">{i + 1}</td>
                       <td className="py-2 px-3 text-indigo-700">{route}</td>
-                      <td className="py-2 px-3 text-right text-cyan-700">{d.count}</td>
-                      <td className="py-2 px-3 text-right text-purple-600">{fmtNum(d.totalDist)} km</td>
-                      <td className="py-2 px-3 text-right text-slate-700">{fmtDur(d.totalDur / d.count)}</td>
+                      <td className="py-2 px-3 text-end text-cyan-700">{d.count}</td>
+                      <td className="py-2 px-3 text-end text-purple-600">{fmtNum(d.totalDist)} km</td>
+                      <td className="py-2 px-3 text-end text-slate-700">{fmtDur(d.totalDur / d.count)}</td>
                     </tr>
                   ))}
                 </tbody>

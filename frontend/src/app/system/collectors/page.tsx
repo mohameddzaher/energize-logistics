@@ -114,18 +114,18 @@ export default function CollectorsPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">#</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.name}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.target}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.totalCollected}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.assignedCustomers}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.extra}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.efficiency}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.promises}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.fulfilled}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.avgDelay}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{txx.activities}</th>
-                <th className="px-4 py-3 text-left text-xs text-slate-300 uppercase">{T.customers}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">#</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{T.name}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{T.target}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{T.totalCollected}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{T.assignedCustomers}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{txx.extra}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{T.efficiency}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{txx.promises}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{txx.fulfilled}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{txx.avgDelay}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{txx.activities}</th>
+                <th className="px-4 py-3 text-start text-xs text-slate-300 uppercase">{T.customers}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">

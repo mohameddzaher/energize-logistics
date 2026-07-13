@@ -410,11 +410,11 @@ export default function CollectorProfilePage() {
             <table className="w-full">
               <thead className="sticky top-0 bg-slate-900">
                 <tr className="border-b border-slate-200">
-                  <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.customer}</th>
-                  <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.totalOutstanding}</th>
-                  <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.status}</th>
-                  <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.status}</th>
-                  <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.payments}</th>
+                  <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.customer}</th>
+                  <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.totalOutstanding}</th>
+                  <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.status}</th>
+                  <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.status}</th>
+                  <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.payments}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -487,7 +487,7 @@ export default function CollectorProfilePage() {
                   <div key={t._id} className="flex items-center justify-between border border-slate-200 rounded-lg p-2.5">
                     <div>
                       <span className="text-slate-900 text-sm">{t.customer?.companyName || txx.unknown}</span>
-                      <span className="text-slate-500 text-xs ml-2 capitalize">{t.contactMethod}</span>
+                      <span className="text-slate-500 text-xs ms-2 capitalize">{t.contactMethod}</span>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                       t.status === 'done' ? 'bg-green-500/20 text-green-600' :

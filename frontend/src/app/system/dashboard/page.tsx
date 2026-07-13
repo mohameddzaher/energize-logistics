@@ -1135,13 +1135,13 @@ function CollectorRankingTable({ performance, T }: { performance: any; T: any })
         <table className="w-full">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200">
-              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.rank}</th>
-              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.collector}</th>
-              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.target}</th>
-              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.collected}</th>
-              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.efficiency}</th>
-              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.promisePercent}</th>
-              <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.avgDelay}</th>
+              <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.rank}</th>
+              <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.collector}</th>
+              <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.target}</th>
+              <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.collected}</th>
+              <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.efficiency}</th>
+              <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.promisePercent}</th>
+              <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.avgDelay}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">

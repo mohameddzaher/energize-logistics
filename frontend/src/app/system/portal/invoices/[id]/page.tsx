@@ -183,10 +183,10 @@ export default function ClientInvoiceDetailPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.paymentDate}</th>
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.amount}</th>
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.paymentMethod}</th>
-                <th className="px-4 py-2 text-left text-xs text-slate-300 uppercase">{T.reference}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.paymentDate}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.amount}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.paymentMethod}</th>
+                <th className="px-4 py-2 text-start text-xs text-slate-300 uppercase">{T.reference}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">

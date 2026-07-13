@@ -500,15 +500,15 @@ export default function DisputesPage() {
                               <div className="px-6 py-4 bg-slate-100 border-t border-slate-200/70 space-y-3">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                   <div>
-                                    <p className="text-slate-500 text-xs uppercase font-medium mb-1">{T.reason}</p>
+                                    <p className="text-slate-700 text-xs uppercase font-medium mb-1">{T.reason}</p>
                                     <p className="text-slate-900 text-sm">{dispute.reason}</p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 text-xs uppercase font-medium mb-1">{T.resolution}</p>
+                                    <p className="text-slate-700 text-xs uppercase font-medium mb-1">{T.resolution}</p>
                                     <p className="text-slate-900 text-sm">{dispute.resolution || '-'}</p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 text-xs uppercase font-medium mb-1">{T.name}</p>
+                                    <p className="text-slate-700 text-xs uppercase font-medium mb-1">{T.name}</p>
                                     <p className="text-slate-900 text-sm">
                                       {dispute.assignedTo
                                         ? `${dispute.assignedTo.firstName} ${dispute.assignedTo.lastName}`
@@ -516,7 +516,7 @@ export default function DisputesPage() {
                                     </p>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-4 text-xs text-slate-500 pt-2 border-t border-slate-200/70">
+                                <div className="flex items-center gap-4 text-xs text-slate-700 pt-2 border-t border-slate-200/70">
                                   <span>{T.createdAt}: {formatDate(dispute.createdAt)}</span>
                                   <span>{T.date}: {formatDate(dispute.updatedAt)}</span>
                                 </div>

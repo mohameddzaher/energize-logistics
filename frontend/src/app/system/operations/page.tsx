@@ -764,18 +764,18 @@ export default function OperationsWorkflowPage() {
                         ) : (
                           <>
                             {!locked && (
-                              <button type="button" onClick={() => { setEditingId(wf._id); setEditData({...wf}); setFocusField(null); }} className="p-1 text-slate-500 hover:text-[#f37121] rounded" title={T.edit}>
+                              <button type="button" onClick={() => { setEditingId(wf._id); setEditData({...wf}); setFocusField(null); }} className="p-1 text-slate-700 hover:text-[#f37121] rounded" title={T.edit}>
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
                             )}
                             {canDelete && (
-                              <button type="button" onClick={() => handleDelete(wf._id)} className="p-1 text-slate-500 hover:text-red-600 rounded" title={T.delete}>
+                              <button type="button" onClick={() => handleDelete(wf._id)} className="p-1 text-slate-700 hover:text-red-600 rounded" title={T.delete}>
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
                             {transitions.length > 0 && (
                               <div className="relative group">
-                                <button type="button" className="p-1 text-slate-500 hover:text-blue-600 rounded" title={T.stageTransition}>
+                                <button type="button" className="p-1 text-slate-700 hover:text-blue-600 rounded" title={T.stageTransition}>
                                   {transitioningId === wf._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
                                 </button>
                                 <div className="absolute start-0 top-full mt-1 bg-slate-50 border border-slate-200 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[160px]">

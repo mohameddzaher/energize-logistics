@@ -184,7 +184,7 @@ export default function CrmCompaniesPage() {
               <tr key={c._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3">
                   <button onClick={() => router.push(`/system/crm/companies/${c._id}`)} className="text-slate-900 font-medium hover:text-[#f37121]">{companyName(c, lang)}</button>
-                  {c.city && <div className="text-slate-500 text-xs">{c.city}</div>}
+                  {c.city && <div className="text-slate-700 text-xs">{c.city}</div>}
                 </td>
                 <td className="px-4 py-3"><Badge style={COMPANY_STATUS_STYLE[c.status]} lang={lang} /></td>
                 <td className="px-4 py-3"><StarRating value={c.rating || 0} size={14} onChange={(v) => rate(c, v)} /></td>
@@ -193,7 +193,7 @@ export default function CrmCompaniesPage() {
                 <td className="px-4 py-3"><ContactButtons phone={c.phone} whatsapp={c.whatsapp} email={c.email} website={c.website} /></td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    <button onClick={() => router.push(`/system/crm/companies/${c._id}`)} className="text-slate-500 hover:text-slate-900" title={T.view}><Eye className="w-4 h-4" /></button>
+                    <button onClick={() => router.push(`/system/crm/companies/${c._id}`)} className="text-slate-700 hover:text-slate-900" title={T.view}><Eye className="w-4 h-4" /></button>
                     <button onClick={() => openEdit(c)} className="text-blue-600 hover:text-blue-700" title={T.edit}><Edit className="w-4 h-4" /></button>
                     {canDelete && <button onClick={() => remove(c)} className="text-red-600 hover:text-red-700" title={T.delete}><Trash2 className="w-4 h-4" /></button>}
                   </div>

@@ -769,7 +769,7 @@ export default function WalletPage() {
                       {tx.type === 'collection' && tx.collectionSource === 'company' && <div className="text-blue-600">{L.fromCompany}</div>}
                       {tx.description && <div>{tx.description}</div>}
                       {tx.customer && <div>{tx.customer.companyName} ({tx.customer.customerNumber})</div>}
-                      {tx.invoice && <div className="text-slate-500">{txx.invoiceShort}: {tx.invoice.invoiceNumber}</div>}
+                      {tx.invoice && <div className="text-slate-700">{txx.invoiceShort}: {tx.invoice.invoiceNumber}</div>}
                       {(tx.vendor || tx.vendorName) && <div>{L.vendor}: {tx.vendor?.name || tx.vendorName}</div>}
                       {(tx.driver || tx.driverName) && <div>{L.driver}: {tx.driver?.name || tx.driverName}</div>}
                       {tx.expenseCategory && <div>{L.category}: {tx.expenseCategory.name}</div>}
@@ -797,11 +797,11 @@ export default function WalletPage() {
                       {!isReadOnly && (!wallet.isClosed || isManager) && (
                         <div className="flex items-center justify-end gap-1">
                           <button type="button" onClick={() => openEditTx(tx)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={L.edit}>
+                            className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={L.edit}>
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button type="button" onClick={() => handleDeleteTx(tx._id)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={L.delete}>
+                            className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100 transition-colors" title={L.delete}>
                             <X className="w-4 h-4" />
                           </button>
                         </div>

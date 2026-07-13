@@ -178,7 +178,7 @@ export default function LowVisitCustomersPage() {
                 <tr>
                   <td colSpan={8} className="text-center py-16">
                     <UserX className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                    <p className="text-slate-500">{T.noCustomers}</p>
+                    <p className="text-slate-700">{T.noCustomers}</p>
                   </td>
                 </tr>
               ) : (

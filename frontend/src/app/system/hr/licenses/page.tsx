@@ -187,11 +187,11 @@ export default function LicensesPage() {
                   <td className="px-4 py-3 text-slate-700">{l.duration || '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{fmtDate(l.expiryDate)}</td>
                   <td className="px-4 py-3 text-slate-700">{l.location || '—'}</td>
-                  <td className="px-4 py-3">{d === null ? <span className="text-slate-400">—</span> : b && <SmallBadge bg={b.bg} text={b.text} label={d < 0 ? tx.expiredLabel : `${d} ${tx.dayUnit}`} />}</td>
+                  <td className="px-4 py-3">{d === null ? <span className="text-slate-700">—</span> : b && <SmallBadge bg={b.bg} text={b.text} label={d < 0 ? tx.expiredLabel : `${d} ${tx.dayUnit}`} />}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <button type="button" onClick={() => openEdit(l)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={tx.actionEdit}><Edit className="w-4 h-4" /></button>
-                      <button type="button" onClick={() => remove(l)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={tx.actionDelete}><Trash2 className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => openEdit(l)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.actionEdit}><Edit className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => remove(l)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.actionDelete}><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>

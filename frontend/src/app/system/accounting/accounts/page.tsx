@@ -101,10 +101,10 @@ export default function ChartOfAccountsPage() {
             {items.length === 0 ? <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-800">—</td></tr> : items.map((a) => (
               <tr key={a._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-700 font-mono">{a.code}</td>
-                <td className="px-4 py-3 text-slate-900">{ar && a.nameAr ? a.nameAr : a.nameEn}{a.system && <span className="ms-2 text-[10px] text-slate-500">({tx.systemLabel})</span>}</td>
+                <td className="px-4 py-3 text-slate-900">{ar && a.nameAr ? a.nameAr : a.nameEn}{a.system && <span className="ms-2 text-[10px] text-slate-700">({tx.systemLabel})</span>}</td>
                 <td className="px-4 py-3"><Badge style={ACCOUNT_TYPE_STYLE[a.type]} lang={lang} /></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
-                  <button type="button" title={tx.ledger} onClick={() => openLedger(a)} className="text-slate-500 hover:text-slate-900"><Eye className="w-4 h-4" /></button>
+                  <button type="button" title={tx.ledger} onClick={() => openLedger(a)} className="text-slate-700 hover:text-slate-900"><Eye className="w-4 h-4" /></button>
                   <button type="button" title={tx.edit} onClick={() => openEdit(a)} className="text-blue-600 hover:text-blue-700"><Edit className="w-4 h-4" /></button>
                   {canDelete && !a.system && <button type="button" title={tx.delete} onClick={() => remove(a)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}
                 </div></td>

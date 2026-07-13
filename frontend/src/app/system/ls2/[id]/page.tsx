@@ -315,8 +315,8 @@ export default function Ls2VehicleDetailPage() {
                 <tbody>
                   {activity.trips.map((tr, i) => (
                     <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="px-3 py-2"><p className="text-slate-700 font-medium tabular-nums">{tr.beginTime?.slice(5, 16)}</p><p className="text-slate-400 truncate max-w-[220px]">{tr.beginLocation}</p></td>
-                      <td className="px-3 py-2"><p className="text-slate-700 font-medium tabular-nums">{tr.endTime?.slice(5, 16)}</p><p className="text-slate-400 truncate max-w-[220px]">{tr.endLocation}</p></td>
+                      <td className="px-3 py-2"><p className="text-slate-700 font-medium tabular-nums">{tr.beginTime?.slice(5, 16)}</p><p className="text-slate-700 truncate max-w-[220px]">{tr.beginLocation}</p></td>
+                      <td className="px-3 py-2"><p className="text-slate-700 font-medium tabular-nums">{tr.endTime?.slice(5, 16)}</p><p className="text-slate-700 truncate max-w-[220px]">{tr.endLocation}</p></td>
                       <td className="px-3 py-2 text-end tabular-nums font-semibold text-slate-800">{fmtNum(Math.round(tr.km))}</td>
                       <td className="px-3 py-2 text-end tabular-nums text-slate-800">{fmtDuration(tr.durationSec, lang as Lang)}</td>
                       <td className="px-3 py-2 text-end tabular-nums text-slate-800">{tr.maxSpeed ?? '—'}</td>

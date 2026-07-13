@@ -648,7 +648,7 @@ export default function B2CDashboard() {
                       <td className="py-2 px-3">
                         <div>
                           <p className="text-slate-900 font-medium text-sm">{r.englishName}</p>
-                          {r.arabicName && <p className="text-slate-500 text-xs">{r.arabicName}</p>}
+                          {r.arabicName && <p className="text-slate-700 text-xs">{r.arabicName}</p>}
                         </div>
                       </td>
                       <td className="py-2 px-3 text-slate-700 text-sm">{r.project || '—'}</td>
@@ -815,7 +815,7 @@ function EvaluationsView({ evaluations, T, lang, onRepClick }: any) {
                   <td className="py-2 px-3 text-slate-800 text-sm">{i + 1}</td>
                   <td className="py-2 px-3">
                     <p className="text-slate-900 font-medium text-sm">{e.englishName}</p>
-                    {e.arabicName && <p className="text-slate-500 text-xs">{e.arabicName}</p>}
+                    {e.arabicName && <p className="text-slate-700 text-xs">{e.arabicName}</p>}
                   </td>
                   <td className="py-2 px-3 text-slate-700 text-sm">{e.project || '—'}</td>
                   <td className="py-2 px-3 text-center">
@@ -1399,7 +1399,7 @@ function DayDetailsModal({ date, project, branch, onClose, onRepClick, lang, T }
                         <tr key={i} onClick={() => r.repId && onRepClick(r.repId)} className="cursor-pointer hover:bg-slate-100">
                           <td className="py-2 px-3">
                             <p className="text-slate-900 text-sm">{r.englishName}</p>
-                            {r.arabicName && <p className="text-slate-500 text-xs">{r.arabicName}</p>}
+                            {r.arabicName && <p className="text-slate-700 text-xs">{r.arabicName}</p>}
                             {r.accountId && <p className="text-slate-600 text-[10px] font-mono">#{r.accountId}</p>}
                           </td>
                           <td className="py-2 px-3 text-slate-700 text-sm">{r.project || '—'}</td>

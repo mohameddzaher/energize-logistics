@@ -589,7 +589,7 @@ export default function TasksPage() {
                           >
                             <td className="px-4 py-2">
                               <div className="text-slate-900 font-medium text-xs">{task.customer?.companyName || '—'}</div>
-                              <div className="text-slate-500 text-xs">{task.customer?.customerNumber || ''}</div>
+                              <div className="text-slate-700 text-xs">{task.customer?.customerNumber || ''}</div>
                             </td>
                             {isAdmin && (
                               <td className="px-4 py-2 text-slate-700 text-xs">
@@ -616,7 +616,7 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => openUpdateModal(task)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-green-600 hover:bg-slate-100 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-700 hover:text-green-600 hover:bg-slate-100 transition-colors"
                                   title={txx.updateComplete}
                                 >
                                   <Check className="w-4 h-4" />
@@ -624,7 +624,7 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => openEditModal(task)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100 transition-colors"
                                   title={txx.editTaskTooltip}
                                 >
                                   <Edit className="w-4 h-4" />
@@ -632,15 +632,15 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleClearFollowUp(task._id)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100 transition-colors"
                                   title={txx.removeFollowUp}
                                 >
                                   <X className="w-4 h-4" />
                                 </button>
                                 {expandedFollowUpId === task._id ? (
-                                  <ChevronUp className="w-4 h-4 text-slate-500" />
+                                  <ChevronUp className="w-4 h-4 text-slate-700" />
                                 ) : (
-                                  <ChevronDown className="w-4 h-4 text-slate-500" />
+                                  <ChevronDown className="w-4 h-4 text-slate-700" />
                                 )}
                               </div>
                             </td>
@@ -652,39 +652,39 @@ export default function TasksPage() {
                               <td colSpan={isAdmin ? 8 : 7} className="px-4 py-4">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                   <div>
-                                    <p className="text-slate-500 text-xs mb-1">{T.name}</p>
+                                    <p className="text-slate-700 text-xs mb-1">{T.name}</p>
                                     <p className="text-slate-900 text-sm">{task.createdBy?.firstName} {task.createdBy?.lastName}</p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 text-xs mb-1">{T.createdAt}</p>
+                                    <p className="text-slate-700 text-xs mb-1">{T.createdAt}</p>
                                     <p className="text-slate-900 text-sm">{formatDateTime(task.createdAt)}</p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 text-xs mb-1">{T.dueDate}</p>
+                                    <p className="text-slate-700 text-xs mb-1">{T.dueDate}</p>
                                     <p className="text-slate-900 text-sm">{formatDateTime(task.dueDate)}</p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 text-xs mb-1">{T.done}</p>
+                                    <p className="text-slate-700 text-xs mb-1">{T.done}</p>
                                     <p className="text-slate-900 text-sm">{formatDateTime(task.completedAt)}</p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 text-xs mb-1">{T.collectedAmount}</p>
+                                    <p className="text-slate-700 text-xs mb-1">{T.collectedAmount}</p>
                                     <p className="text-slate-900 text-sm">
                                       {task.collectedAmount > 0 ? `${task.collectedAmount.toLocaleString()} SAR` : '—'}
                                     </p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 text-xs mb-1">{T.nextFollowUp}</p>
+                                    <p className="text-slate-700 text-xs mb-1">{T.nextFollowUp}</p>
                                     <p className={`text-sm ${task.nextFollowUpDate ? 'text-[#f37121] font-medium' : 'text-slate-900'}`}>
                                       {formatDateTime(task.nextFollowUpDate)}
                                     </p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 text-xs mb-1">{T.contactMethod}</p>
+                                    <p className="text-slate-700 text-xs mb-1">{T.contactMethod}</p>
                                     <p className="text-slate-900 text-sm">{contactMethodLabel(task.contactMethod)}</p>
                                   </div>
                                   <div>
-                                    <p className="text-slate-500 text-xs mb-1">{T.amount}</p>
+                                    <p className="text-slate-700 text-xs mb-1">{T.amount}</p>
                                     <p className="text-red-600 text-sm font-medium">
                                       {task.customer?.currentOutstanding?.toLocaleString() || 0} SAR
                                     </p>
@@ -692,7 +692,7 @@ export default function TasksPage() {
                                 </div>
                                 {task.actionNotes && (
                                   <div className="mt-4 p-3 bg-white border border-slate-200 rounded-lg">
-                                    <p className="text-slate-500 text-xs mb-1">{T.actionNotes}</p>
+                                    <p className="text-slate-700 text-xs mb-1">{T.actionNotes}</p>
                                     <p className="text-slate-900 text-sm whitespace-pre-wrap">{task.actionNotes}</p>
                                   </div>
                                 )}
@@ -859,7 +859,7 @@ export default function TasksPage() {
                         >
                           <td className="px-4 py-3">
                             <div className="text-slate-900 font-medium">{task.customer?.companyName || '—'}</div>
-                            <div className="text-slate-500 text-xs">{task.customer?.customerNumber || ''}</div>
+                            <div className="text-slate-700 text-xs">{task.customer?.customerNumber || ''}</div>
                           </td>
                           {isAdmin && (
                             <td className="px-4 py-3 text-slate-700">
@@ -888,7 +888,7 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => openUpdateModal(task)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-green-600 hover:bg-slate-100 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-700 hover:text-green-600 hover:bg-slate-100 transition-colors"
                                   title={txx.completeTask}
                                 >
                                   <Check className="w-4 h-4" />
@@ -897,7 +897,7 @@ export default function TasksPage() {
                               <button
                                 type="button"
                                 onClick={() => openEditModal(task)}
-                                className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors"
+                                className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100 transition-colors"
                                 title={txx.editTaskTooltip}
                               >
                                 <Edit className="w-4 h-4" />
@@ -906,16 +906,16 @@ export default function TasksPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTask(task._id)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors"
+                                  className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100 transition-colors"
                                   title={txx.deleteTask}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               )}
                               {expandedTaskId === task._id ? (
-                                <ChevronUp className="w-4 h-4 text-slate-500" />
+                                <ChevronUp className="w-4 h-4 text-slate-700" />
                               ) : (
-                                <ChevronDown className="w-4 h-4 text-slate-500" />
+                                <ChevronDown className="w-4 h-4 text-slate-700" />
                               )}
                             </div>
                           </td>
@@ -927,39 +927,39 @@ export default function TasksPage() {
                             <td colSpan={isAdmin ? 9 : 8} className="px-4 py-4">
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div>
-                                  <p className="text-slate-500 text-xs mb-1">{T.name}</p>
+                                  <p className="text-slate-700 text-xs mb-1">{T.name}</p>
                                   <p className="text-slate-900 text-sm">{task.createdBy?.firstName} {task.createdBy?.lastName}</p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 text-xs mb-1">{T.createdAt}</p>
+                                  <p className="text-slate-700 text-xs mb-1">{T.createdAt}</p>
                                   <p className="text-slate-900 text-sm">{formatDateTime(task.createdAt)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 text-xs mb-1">{T.dueDate}</p>
+                                  <p className="text-slate-700 text-xs mb-1">{T.dueDate}</p>
                                   <p className="text-slate-900 text-sm">{formatDateTime(task.dueDate)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 text-xs mb-1">{T.done}</p>
+                                  <p className="text-slate-700 text-xs mb-1">{T.done}</p>
                                   <p className="text-slate-900 text-sm">{formatDateTime(task.completedAt)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 text-xs mb-1">{T.collectedAmount}</p>
+                                  <p className="text-slate-700 text-xs mb-1">{T.collectedAmount}</p>
                                   <p className="text-slate-900 text-sm">
                                     {task.collectedAmount > 0 ? `${task.collectedAmount.toLocaleString()} SAR` : '—'}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 text-xs mb-1">{T.nextFollowUp}</p>
+                                  <p className="text-slate-700 text-xs mb-1">{T.nextFollowUp}</p>
                                   <p className={`text-sm ${task.nextFollowUpDate ? 'text-[#f37121] font-medium' : 'text-slate-900'}`}>
                                     {formatDateTime(task.nextFollowUpDate)}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 text-xs mb-1">{T.contactMethod}</p>
+                                  <p className="text-slate-700 text-xs mb-1">{T.contactMethod}</p>
                                   <p className="text-slate-900 text-sm">{contactMethodLabel(task.contactMethod)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 text-xs mb-1">{T.amount}</p>
+                                  <p className="text-slate-700 text-xs mb-1">{T.amount}</p>
                                   <p className="text-red-600 text-sm font-medium">
                                     {task.customer?.currentOutstanding?.toLocaleString() || 0} SAR
                                   </p>
@@ -967,7 +967,7 @@ export default function TasksPage() {
                               </div>
                               {task.actionNotes && (
                                 <div className="mt-4 p-3 bg-white border border-slate-200 rounded-lg">
-                                  <p className="text-slate-500 text-xs mb-1">{T.actionNotes}</p>
+                                  <p className="text-slate-700 text-xs mb-1">{T.actionNotes}</p>
                                   <p className="text-slate-900 text-sm whitespace-pre-wrap">{task.actionNotes}</p>
                                 </div>
                               )}

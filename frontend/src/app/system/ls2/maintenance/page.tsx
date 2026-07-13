@@ -105,9 +105,9 @@ export default function Ls2MaintenancePage() {
                       {/* Most overdue (or most urgent) service */}
                       <td className="px-4 py-3 text-end">
                         {v.kmToService == null ? <span className="text-slate-300">—</span> : (
-                          <div className={`tabular-nums font-bold ${over ? 'text-red-600' : v.maintenanceStatus === 'due' ? 'text-amber-600' : 'text-slate-500'}`}>
-                            {over ? `−${fmtNum(Math.abs(v.kmToService))}` : fmtNum(v.kmToService)} <span className="text-[10px] font-normal text-slate-400">{over ? t.kmOverdue : t.kmLeft}</span>
-                            <p className="text-[10px] font-normal text-slate-400 truncate max-w-[180px] ms-auto">{v.nextServiceName}</p>
+                          <div className={`tabular-nums font-bold ${over ? 'text-red-600' : v.maintenanceStatus === 'due' ? 'text-amber-600' : 'text-slate-700'}`}>
+                            {over ? `−${fmtNum(Math.abs(v.kmToService))}` : fmtNum(v.kmToService)} <span className="text-[10px] font-normal text-slate-700">{over ? t.kmOverdue : t.kmLeft}</span>
+                            <p className="text-[10px] font-normal text-slate-700 truncate max-w-[180px] ms-auto">{v.nextServiceName}</p>
                           </div>
                         )}
                       </td>
@@ -115,8 +115,8 @@ export default function Ls2MaintenancePage() {
                       <td className="px-4 py-3 text-end">
                         {v.upcomingKm == null ? <span className="text-slate-300 text-xs">{lang === 'ar' ? 'كلها متأخرة' : 'all overdue'}</span> : (
                           <div className="tabular-nums font-semibold text-slate-700">
-                            {fmtNum(v.upcomingKm)} <span className="text-[10px] font-normal text-slate-400">{t.kmLeft}</span>
-                            <p className="text-[10px] font-normal text-slate-400 truncate max-w-[180px]">{v.upcomingServiceName}</p>
+                            {fmtNum(v.upcomingKm)} <span className="text-[10px] font-normal text-slate-700">{t.kmLeft}</span>
+                            <p className="text-[10px] font-normal text-slate-700 truncate max-w-[180px]">{v.upcomingServiceName}</p>
                           </div>
                         )}
                       </td>
@@ -141,8 +141,8 @@ export default function Ls2MaintenancePage() {
                                         {isOver ? `−${fmtNum(Math.abs(r.value))}` : fmtNum(r.value)} {r.unit === 'km' ? (isOver ? t.kmOverdue : t.kmLeft) : r.unit}
                                       </span>
                                     </div>
-                                    {iv.description && <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{iv.description}</p>}
-                                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[11px] text-slate-500">
+                                    {iv.description && <p className="text-[11px] text-slate-700 mt-0.5 line-clamp-2">{iv.description}</p>}
+                                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[11px] text-slate-700">
                                       <span>{t.lastService}: <b className="text-slate-700">{fmtDate(iv.lastServiceAt, lang as Lang)}</b>{iv.lastServiceKm != null && <> · {fmtKm(iv.lastServiceKm)}</>}</span>
                                       <span>{lang === 'ar' ? 'القادمة' : 'Next'}: <b className="text-slate-700">{r.next}</b></span>
                                       {iv.serviceCount > 0 && <span>{iv.serviceCount} {t.services}</span>}

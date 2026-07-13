@@ -251,9 +251,9 @@ export default function OpsResourceTable({ cfg }: { cfg: ResourceCfg }) {
                 {cfg.columns.map((c) => <td key={c.key} className="px-4 py-3 align-middle max-w-[220px] truncate">{renderCell(row, c)}</td>)}
                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => openRow(row)} className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100" title={tx.details}><Eye className="w-4 h-4" /></button>
-                    {writable && <button type="button" onClick={() => openEdit(row)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>}
-                    {admin && <button type="button" onClick={() => remove(row)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>}
+                    <button type="button" onClick={() => openRow(row)} className="p-1.5 rounded-lg text-slate-700 hover:text-slate-900 hover:bg-slate-100" title={tx.details}><Eye className="w-4 h-4" /></button>
+                    {writable && <button type="button" onClick={() => openEdit(row)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>}
+                    {admin && <button type="button" onClick={() => remove(row)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>}
                   </div>
                 </td>
               </tr>

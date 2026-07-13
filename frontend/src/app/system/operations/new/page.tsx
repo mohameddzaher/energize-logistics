@@ -429,7 +429,7 @@ export default function NewOperationsPage() {
                           </td>
                         ))}
                         <td className="px-3 py-2">
-                          <button type="button" onClick={() => removeImportRow(i)} title={T.removeRow} className="p-1 text-slate-500 hover:text-red-600">
+                          <button type="button" onClick={() => removeImportRow(i)} title={T.removeRow} className="p-1 text-slate-700 hover:text-red-600">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </td>

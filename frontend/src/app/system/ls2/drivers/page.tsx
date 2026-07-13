@@ -133,11 +133,11 @@ export default function Ls2DriversPage() {
                               {d.vehicles.map((v) => (
                                 <span key={v.unitId} className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs">
                                   <span className="font-medium text-slate-700">{v.plate || v.unitId}</span>
-                                  <span className="text-slate-400"> · {fmtNum(Math.round(v.km))} {t.km}</span>
+                                  <span className="text-slate-700"> · {fmtNum(Math.round(v.km))} {t.km}</span>
                                 </span>
                               ))}
                             </div>
-                          ) : <p className="text-xs text-slate-400">{tx('No distance in this period.', 'لا توجد مسافة في هذه الفترة.')}</p>}
+                          ) : <p className="text-xs text-slate-700">{tx('No distance in this period.', 'لا توجد مسافة في هذه الفترة.')}</p>}
                         </td>
                       </tr>
                     )}

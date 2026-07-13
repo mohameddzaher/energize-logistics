@@ -175,11 +175,11 @@ export default function VendorsPage() {
                 {canEdit && (
                   <td className="px-4 py-3 text-end">
                     <div className="flex items-center justify-end gap-1">
-                      <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={T.edit}>
+                      <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={T.edit}>
                         <Edit className="w-4 h-4" />
                       </button>
                       {isSuperAdmin && (
-                        <button type="button" onClick={() => handleDelete(v._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={T.delete}>
+                        <button type="button" onClick={() => handleDelete(v._id)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100 transition-colors" title={T.delete}>
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}

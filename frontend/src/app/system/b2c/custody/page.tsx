@@ -219,8 +219,8 @@ export default function B2CCustodyPage() {
                     <td className="px-3 py-2.5">
                       {mine(e) && (
                         <div className="flex items-center gap-1">
-                          <button type="button" onClick={() => openEdit(e)} className="p-1 rounded text-slate-400 hover:text-[#f37121]" title={t('Edit', 'تعديل')}><Edit className="w-4 h-4" /></button>
-                          <button type="button" onClick={() => remove(e._id)} className="p-1 rounded text-slate-400 hover:text-red-600" title={t('Delete', 'حذف')}><Trash2 className="w-4 h-4" /></button>
+                          <button type="button" onClick={() => openEdit(e)} className="p-1 rounded text-slate-700 hover:text-[#f37121]" title={t('Edit', 'تعديل')}><Edit className="w-4 h-4" /></button>
+                          <button type="button" onClick={() => remove(e._id)} className="p-1 rounded text-slate-700 hover:text-red-600" title={t('Delete', 'حذف')}><Trash2 className="w-4 h-4" /></button>
                         </div>
                       )}
                     </td>

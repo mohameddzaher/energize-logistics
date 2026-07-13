@@ -124,9 +124,9 @@ export default function VehicleAccidentsPage() {
                 <td className="px-4 py-3"><Badge style={ACCIDENT_STATUS[a.status || 'reported']} lang={lang} /></td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
                     {isVehicleAdmin(user?.role) && (
-                      <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
                     )}
                   </div>
                 </td>

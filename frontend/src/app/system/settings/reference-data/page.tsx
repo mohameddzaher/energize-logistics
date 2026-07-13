@@ -149,7 +149,7 @@ export default function ReferenceDataPage() {
                     <td className="px-4 py-3 text-slate-900 font-medium">
                       <span className="inline-block w-3 h-3 rounded-full me-2 align-middle" style={{ background: it.color || '#f37121' }} />
                       {ar ? it.nameAr : it.nameEn}
-                      {it.isSystem && <span className="ms-2 text-[10px] text-slate-500">{tx.defaultTag}</span>}
+                      {it.isSystem && <span className="ms-2 text-[10px] text-slate-700">{tx.defaultTag}</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-800 font-mono text-xs">{it.key}</td>
                     <td className="px-4 py-3">
@@ -159,8 +159,8 @@ export default function ReferenceDataPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        {canManage && <button type="button" onClick={() => openEdit(it)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100"><Edit className="w-4 h-4" /></button>}
-                        {canManage && !it.isSystem && <button type="button" onClick={() => remove(it)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100"><Trash2 className="w-4 h-4" /></button>}
+                        {canManage && <button type="button" onClick={() => openEdit(it)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100"><Edit className="w-4 h-4" /></button>}
+                        {canManage && !it.isSystem && <button type="button" onClick={() => remove(it)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100"><Trash2 className="w-4 h-4" /></button>}
                       </div>
                     </td>
                   </tr>

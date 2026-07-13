@@ -140,15 +140,15 @@ export default function VehiclesPage() {
                 <td className="px-4 py-3 text-slate-700">
                   {v.currentEmployee
                     ? <span className="text-slate-900 font-medium">{empRefName(v.currentEmployee, lang)}</span>
-                    : <span className="text-slate-400">{tx.notAuthorizedYet}</span>}
+                    : <span className="text-slate-700">{tx.notAuthorizedYet}</span>}
                 </td>
                 <td className="px-4 py-3 text-slate-700">{v.department || '—'}</td>
                 <td className="px-4 py-3"><Badge style={VEHICLE_STATUS[v.status]} lang={lang} /></td>
                 <td className="px-4 py-3" onClick={(ev) => ev.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
                     {isVehicleAdmin(user?.role) && (
-                      <button type="button" onClick={() => remove(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => remove(v)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
                     )}
                   </div>
                 </td>

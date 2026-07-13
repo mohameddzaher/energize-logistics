@@ -123,7 +123,7 @@ export default function Ls2RegistryPage() {
                       <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(v.odometerKm)}</td>
                       <td className="px-4 py-3 text-end tabular-nums font-semibold text-slate-800">{v.periodKm != null ? fmtNum(Math.round(v.periodKm)) : '—'}</td>
                       <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ms.bg} ${ms.text}`}>{lang === 'ar' ? ms.ar : ms.en}</span></td>
-                      <td className="px-4 py-3 text-end tabular-nums text-slate-700">{f === undefined ? <span className="text-slate-300">—</span> : (f && f.efficiencyKmL) ? <span className="font-semibold">{f.efficiencyKmL} <span className="text-[10px] text-slate-400">km/L</span></span> : <span className="text-slate-300 text-xs">{lang === 'ar' ? 'لا يوجد' : 'n/a'}</span>}</td>
+                      <td className="px-4 py-3 text-end tabular-nums text-slate-700">{f === undefined ? <span className="text-slate-300">—</span> : (f && f.efficiencyKmL) ? <span className="font-semibold">{f.efficiencyKmL} <span className="text-[10px] text-slate-700">km/L</span></span> : <span className="text-slate-300 text-xs">{lang === 'ar' ? 'لا يوجد' : 'n/a'}</span>}</td>
                     </tr>
                     {isOpen && (
                       <tr className="bg-slate-50/60 border-b border-slate-100">

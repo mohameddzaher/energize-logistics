@@ -97,7 +97,7 @@ export default function Ls2AlertsPage() {
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{timeAgo(a.firstSeenAt, lang as Lang)}</td>
                     <td className="px-4 py-3 text-end whitespace-nowrap">
                       {a.status === 'resolved' ? <span className="text-xs text-emerald-600">{t.resolved}</span>
-                        : a.acknowledgedAt ? <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Check className="w-3.5 h-3.5" /> {t.acknowledged}</span>
+                        : a.acknowledgedAt ? <span className="inline-flex items-center gap-1 text-xs text-slate-700"><Check className="w-3.5 h-3.5" /> {t.acknowledged}</span>
                         : <button type="button" onClick={(e) => ack(a._id, e)} className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium">{t.acknowledge}</button>}
                     </td>
                   </tr>

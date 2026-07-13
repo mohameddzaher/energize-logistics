@@ -184,12 +184,12 @@ export default function DriversPage() {
                   <td className="px-4 py-3 text-end">
                     <div className="flex items-center justify-end gap-1">
                       {canEdit && (
-                        <button type="button" onClick={() => openEdit(d)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={txx.edit}>
+                        <button type="button" onClick={() => openEdit(d)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={txx.edit}>
                           <Edit className="w-4 h-4" />
                         </button>
                       )}
                       {isSuperAdmin && (
-                        <button type="button" onClick={() => handleDelete(d._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={txx.delete}>
+                        <button type="button" onClick={() => handleDelete(d._id)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100 transition-colors" title={txx.delete}>
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}

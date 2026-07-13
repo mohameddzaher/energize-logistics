@@ -66,7 +66,7 @@ export default function Ls2TiresPage() {
               {rows.map((v) => (
                 <Fragment key={v.unitId}>
                   <tr onClick={() => open(v.unitId)} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
-                    <td className="px-3 py-3"><button type="button" onClick={(e) => toggle(v.unitId, e)} className="text-slate-400 hover:text-[#f37121]" aria-label="expand">{expanded === v.unitId ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</button></td>
+                    <td className="px-3 py-3"><button type="button" onClick={(e) => toggle(v.unitId, e)} className="text-slate-700 hover:text-[#f37121]" aria-label="expand">{expanded === v.unitId ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</button></td>
                     <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{v.plate || v.name}</td>
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>
                     <td className="px-4 py-3 text-center text-slate-800">{v.tireCount || 0}</td>

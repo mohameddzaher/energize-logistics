@@ -398,17 +398,17 @@ export default function AuditPage() {
                       <td className="px-4 py-3 text-sm">
                         <div>
                           <span className="text-slate-700 text-xs">{formatTimestamp(log.createdAt)}</span>
-                          <span className="text-slate-500 text-xs block">{formatRelativeTime(log.createdAt)}</span>
+                          <span className="text-slate-700 text-xs block">{formatRelativeTime(log.createdAt)}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm">
                         {log.user ? (
                           <div>
                             <span className="text-slate-900 text-xs font-medium">{log.user.firstName} {log.user.lastName}</span>
-                            <span className="text-slate-500 text-xs block">{log.user.email}</span>
+                            <span className="text-slate-700 text-xs block">{log.user.email}</span>
                           </div>
                         ) : (
-                          <span className="text-slate-500 text-xs">{txx.system}</span>
+                          <span className="text-slate-700 text-xs">{txx.system}</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm">
@@ -421,7 +421,7 @@ export default function AuditPage() {
                           {log.entity}
                         </span>
                         {log.entityId && (
-                          <span className="text-slate-500 text-xs block font-mono truncate max-w-[120px]">
+                          <span className="text-slate-700 text-xs block font-mono truncate max-w-[120px]">
                             {log.entityId}
                           </span>
                         )}
@@ -447,7 +447,7 @@ export default function AuditPage() {
                                   {renderJsonDiff(log.changes.before, log.changes.after)}
                                 </div>
                                 {log.ipAddress && (
-                                  <p className="text-slate-500 text-xs mt-3">{T.ipAddress}: {log.ipAddress}</p>
+                                  <p className="text-slate-700 text-xs mt-3">{T.ipAddress}: {log.ipAddress}</p>
                                 )}
                               </div>
                             </motion.div>

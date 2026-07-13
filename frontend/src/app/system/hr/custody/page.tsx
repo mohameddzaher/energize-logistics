@@ -112,16 +112,16 @@ export default function CustodyPage() {
             ) : filtered.map((a) => (
               <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-900 font-medium">{empName(a.employee, lang)}</td>
-                <td className="px-4 py-3 text-slate-700">{a.name}{a.brand ? <span className="text-slate-500"> · {a.brand} {a.model}</span> : ''}</td>
+                <td className="px-4 py-3 text-slate-700">{a.name}{a.brand ? <span className="text-slate-700"> · {a.brand} {a.model}</span> : ''}</td>
                 <td className="px-4 py-3 text-slate-700">{assetTypeLabel(a.type, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{a.serialNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{a.condition ? conditionLabel(a.condition, lang) : '—'}</td>
                 <td className="px-4 py-3">{a.status === 'assigned' ? <SmallBadge bg="bg-amber-500/20" text="text-amber-700" label={tx.badgeAssigned} /> : <SmallBadge bg="bg-green-500/20" text="text-green-600" label={`${tx.badgeReturned} ${fmtDate(a.returnedDate)}`} />}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
-                    {a.status === 'assigned' && <button type="button" onClick={() => returnAsset(a)} className="p-1.5 rounded-lg text-slate-500 hover:text-green-600 hover:bg-slate-100" title={tx.actionReturn}><Undo2 className="w-4 h-4" /></button>}
-                    <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={tx.actionEdit}><Edit className="w-4 h-4" /></button>
-                    <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={tx.actionDelete}><Trash2 className="w-4 h-4" /></button>
+                    {a.status === 'assigned' && <button type="button" onClick={() => returnAsset(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-green-600 hover:bg-slate-100" title={tx.actionReturn}><Undo2 className="w-4 h-4" /></button>}
+                    <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.actionEdit}><Edit className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.actionDelete}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </td>
               </tr>

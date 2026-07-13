@@ -315,7 +315,7 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
                 <td className="py-2 px-3 text-center text-slate-900">{m.totalOrders}</td>
                 <td className="py-2 px-3 text-center text-green-700">{m.workingDays}</td>
                 <td className="py-2 px-3 text-center">
-                  <span className={(m.daysOff ?? 0) > 0 ? 'text-amber-700' : 'text-slate-500'}>
+                  <span className={(m.daysOff ?? 0) > 0 ? 'text-amber-700' : 'text-slate-700'}>
                     {m.daysOff ?? 0}
                   </span>
                 </td>

@@ -127,7 +127,7 @@ export default function PurchaseRequestsPage() {
             {items.length === 0 ? <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-800">—</td></tr> : items.map((pr) => (
               <tr key={pr._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-800 font-mono text-xs">{pr.requestNumber}</td>
-                <td className="px-4 py-3 text-slate-900">{pr.title}<div className="text-slate-500 text-xs">{pr.department || ''}</div></td>
+                <td className="px-4 py-3 text-slate-900">{pr.title}<div className="text-slate-700 text-xs">{pr.department || ''}</div></td>
                 <td className="px-4 py-3 text-slate-700">{userName(pr.requester)}</td>
                 <td className="px-4 py-3 text-end text-slate-800">{money(pr.totalEstimate)}</td>
                 <td className="px-4 py-3"><Badge style={PRIORITY_STYLE[pr.priority]} lang={lang} /></td>

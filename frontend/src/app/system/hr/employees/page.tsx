@@ -102,7 +102,7 @@ export default function HREmployeesPage() {
               <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noEmployees}</td></tr>
             ) : employees.map((e) => (
               <tr key={e._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/hr/employees/${e._id}`)}>
-                <td className="px-4 py-3 text-slate-900 font-medium">{empName(e, lang)}<div className="text-xs text-slate-500">{e.email || ''}</div></td>
+                <td className="px-4 py-3 text-slate-900 font-medium">{empName(e, lang)}<div className="text-xs text-slate-700">{e.email || ''}</div></td>
                 <td className="px-4 py-3 text-slate-700">{e.employeeNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{e.jobTitle || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{e.idType === 'national_id' ? (e.nationalId || '—') : (e.iqamaNumber || '—')}</td>
@@ -110,9 +110,9 @@ export default function HREmployeesPage() {
                 <td className="px-4 py-3"><Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} /></td>
                 <td className="px-4 py-3" onClick={(ev) => ev.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => openEdit(e)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => openEdit(e)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
                     {(user?.role === 'super_admin' || user?.role === 'hr_manager') && (
-                      <button type="button" onClick={() => remove(e)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => remove(e)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
                     )}
                   </div>
                 </td>

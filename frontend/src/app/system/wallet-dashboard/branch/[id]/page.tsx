@@ -342,7 +342,7 @@ export default function BranchWalletDashboardPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-[#f37121] font-medium text-xs">{w.closingBalance.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-slate-700 text-xs">{w.actualCash != null ? w.actualCash.toLocaleString() : <span className="text-slate-500">—</span>}</td>
+                    <td className="px-4 py-3 text-slate-700 text-xs">{w.actualCash != null ? w.actualCash.toLocaleString() : <span className="text-slate-700">—</span>}</td>
                     <td className="px-4 py-3">
                       {w.cashDifference != null && w.cashDifference !== 0 ? (
                         <div>
@@ -350,7 +350,7 @@ export default function BranchWalletDashboardPage() {
                             {w.cashDifference > 0 ? `${T.deficit} -` : `${T.surplus} +`}{Math.abs(w.cashDifference).toLocaleString()} SAR
                           </span>
                         </div>
-                      ) : w.isClosed ? <span className="text-green-600 text-xs">{T.matched}</span> : <span className="text-slate-500">—</span>}
+                      ) : w.isClosed ? <span className="text-green-600 text-xs">{T.matched}</span> : <span className="text-slate-700">—</span>}
                     </td>
                   </tr>
                 ))}
@@ -425,7 +425,7 @@ export default function BranchWalletDashboardPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-700 text-xs">
                       <div>{tx.customer?.companyName || tx.vendor?.name || tx.driver?.name || tx.itemName || '—'}</div>
-                      {tx.purchaseReceiptNumber && <div className="text-slate-500">{T.reference}: {tx.purchaseReceiptNumber}</div>}
+                      {tx.purchaseReceiptNumber && <div className="text-slate-700">{T.reference}: {tx.purchaseReceiptNumber}</div>}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`font-bold text-xs ${tx.type === 'collection' ? 'text-green-600' : 'text-red-600'}`}>

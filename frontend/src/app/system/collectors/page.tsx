@@ -151,7 +151,7 @@ export default function CollectorsPage() {
                     {(p.extraCollected || 0) > 0 ? (
                       <span className="text-[#f37121] font-medium">{p.extraCollected?.toLocaleString()}</span>
                     ) : (
-                      <span className="text-slate-500">0</span>
+                      <span className="text-slate-700">0</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm">

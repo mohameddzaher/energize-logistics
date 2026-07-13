@@ -1103,7 +1103,7 @@ export default function PaymentsPage() {
                                         onClick={() =>
                                           handleToggleInvoice(inv._id, inv.balance)
                                         }
-                                        className="text-slate-500 hover:text-[#f37121] transition-colors"
+                                        className="text-slate-700 hover:text-[#f37121] transition-colors"
                                       >
                                         {isSelected ? (
                                           <CheckSquare className="w-4.5 h-4.5 text-[#f37121]" />

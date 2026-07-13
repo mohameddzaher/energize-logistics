@@ -178,7 +178,7 @@ export default function CustomsPage() {
                   <td className="px-4 py-3 text-slate-700">{c.customerName || '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{c.branch === 'dammam' ? T.dammam : T.jeddah}</td>
                   <td className="px-4 py-3 text-slate-700">
-                    <span className="inline-flex items-center gap-1"><Container className="w-3.5 h-3.5 text-slate-400" />{c.containerCount || 0}</span>
+                    <span className="inline-flex items-center gap-1"><Container className="w-3.5 h-3.5 text-slate-700" />{c.containerCount || 0}</span>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${stageBadge(c.stage, c.cancelled)}`}>
@@ -187,7 +187,7 @@ export default function CustomsPage() {
                   </td>
                   {canDelete && (
                     <td className="px-4 py-3 text-end">
-                      <button type="button" onClick={(e) => handleDelete(e, c._id)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={T.delete}>
+                      <button type="button" onClick={(e) => handleDelete(e, c._id)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100 transition-colors" title={T.delete}>
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </td>

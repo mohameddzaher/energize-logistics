@@ -504,6 +504,7 @@ function openDeferrals(history, currentOdo) {
         deferKm: c.deferKm,
         dueAtOdometerKm: c.dueAtOdometerKm,
         remainingKm: currentOdo != null ? Math.round(c.dueAtOdometerKm - currentOdo) : null,
+        intervalId: log.intervalId,
         intervalName: log.intervalName,
         deferredAt: log.serviceDate || log.createdAt,
         deferredAtOdometerKm: log.odometerKm,
@@ -834,7 +835,7 @@ exports.updateVehicleMeta = async (req, res) => {
 exports.getSettings = async (req, res) => {
   try {
     const s = await Ls2Settings.getOrCreate();
-    res.json({ thresholds: s.thresholds, maintenance: s.maintenance, checklists: s.checklists || {}, defaults: { thresholds: cfg.DEFAULT_THRESHOLDS, maintenance: cfg.DEFAULT_MAINTENANCE } });
+    res.json({ thresholds: s.thresholds, maintenance: s.maintenance, checklists: s.checklists || {}, alertBefore: s.alertBefore || {}, defaults: { thresholds: cfg.DEFAULT_THRESHOLDS, maintenance: cfg.DEFAULT_MAINTENANCE } });
   } catch (error) {
     fail(res, error, 'Failed to load settings');
   }
@@ -843,18 +844,25 @@ exports.getSettings = async (req, res) => {
 exports.updateSettings = async (req, res) => {
   try {
     const s = await Ls2Settings.getOrCreate();
-    const { thresholds, maintenance, checklists } = req.body || {};
+    const { thresholds, maintenance, checklists, alertBefore } = req.body || {};
     if (thresholds && typeof thresholds === 'object') s.thresholds = { ...s.thresholds, ...thresholds };
     if (maintenance && typeof maintenance === 'object') s.maintenance = { ...s.maintenance, ...maintenance };
     // Our per-service checklist templates: replace wholesale (the editor sends the
     // full map), so removing a task actually removes it.
     if (checklists && typeof checklists === 'object') s.checklists = checklists;
+    // Per-service warn windows: replace wholesale, and keep only real numbers so a
+    // cleared box means "fall back to the default" rather than "warn at 0 km".
+    if (alertBefore && typeof alertBefore === 'object') {
+      s.alertBefore = Object.fromEntries(
+        Object.entries(alertBefore).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)])
+      );
+    }
     s.updatedBy = req.user._id;
-    s.markModified('thresholds'); s.markModified('maintenance'); s.markModified('checklists');
+    s.markModified('thresholds'); s.markModified('maintenance'); s.markModified('checklists'); s.markModified('alertBefore');
     await s.save();
     cache.clear('ls2:');
     emitToAll('ls2:updated', { at: Date.now(), settings: true });
-    res.json({ thresholds: s.thresholds, maintenance: s.maintenance, checklists: s.checklists || {} });
+    res.json({ thresholds: s.thresholds, maintenance: s.maintenance, checklists: s.checklists || {}, alertBefore: s.alertBefore || {} });
   } catch (error) {
     fail(res, error, 'Failed to update settings');
   }

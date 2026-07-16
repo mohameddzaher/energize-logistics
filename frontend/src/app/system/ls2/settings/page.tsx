@@ -1,23 +1,23 @@
 'use client';
 // Settings — everything that governs the section, in two tabs: the alert
-// thresholds (grouped by the system each one guards, maintenance among them) and
-// our own per-service checklists. Admin-only; the alert engine re-reads the
-// thresholds on its next poll and the checklists appear when registering a service.
+// thresholds (grouped by the system each one guards) and the four periodic
+// services. Admin-only; the alert engine re-reads all of it on its next poll.
 //
-// Note there is no "service interval" to set: every vehicle carries its own real
-// intervals from Location Solutions. All we configure is how early to warn.
+// There is no "service interval" to set: every vehicle carries its own real
+// intervals from Location Solutions. What we configure per service is how early it
+// warns and the checklist of tasks it consists of.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import {
-  Settings as SettingsIcon, Save, RotateCcw, Plus, Trash2, ListChecks, Bell, Wrench,
+  Settings as SettingsIcon, Save, RotateCcw, Plus, Trash2, ListChecks, Bell,
   Activity, Thermometer, Gauge, Zap, GripVertical, Check, AlertTriangle,
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
-  ls2Text, isLs2Admin, THRESHOLD_GROUPS, MAINTENANCE_FIELDS, thresholdField,
-  type Lang, type ChecklistTemplates, type ServiceInterval, type Vehicle,
+  ls2Text, isLs2Admin, THRESHOLD_GROUPS, thresholdField, fmtNum,
+  type Lang, type ChecklistTemplates, type AlertBeforeMap, type ServiceInterval, type Vehicle,
 } from '@/lib/ls2';
 
 type Tab = 'thresholds' | 'checklists';
@@ -33,6 +33,7 @@ export default function Ls2SettingsPage() {
   const [thresholds, setThresholds] = useState<any>({});
   const [maintenance, setMaintenance] = useState<any>({});
   const [checklists, setChecklists] = useState<ChecklistTemplates>({});
+  const [alertBefore, setAlertBefore] = useState<Record<string, string>>({});
   const [services, setServices] = useState<ServiceInterval[]>([]);
   const [defaults, setDefaults] = useState<any>({ thresholds: {}, maintenance: {} });
   const [saved, setSaved] = useState<string>(''); // JSON of the last saved state
@@ -50,7 +51,9 @@ export default function Ls2SettingsPage() {
       setMaintenance(s.maintenance || {});
       setChecklists(s.checklists || {});
       setDefaults(s.defaults || {});
-      setSaved(JSON.stringify({ t: s.thresholds || {}, m: s.maintenance || {}, c: s.checklists || {} }));
+      // Kept as strings so a cleared box stays cleared (and means "use the default").
+      setAlertBefore(Object.fromEntries(Object.entries(s.alertBefore || {}).map(([k, v]) => [k, String(v)])));
+      setSaved(JSON.stringify({ t: s.thresholds || {}, m: s.maintenance || {}, c: s.checklists || {}, a: s.alertBefore || {} }));
       // The 4 services are identical fleet-wide — take the plan off any vehicle.
       setServices((v.items || []).find((x) => (x.serviceIntervals?.length || 0) > 0)?.serviceIntervals || []);
     } catch { /* keep */ }
@@ -59,9 +62,13 @@ export default function Ls2SettingsPage() {
   useEffect(() => { load(); }, [load]);
 
   // Warn before leaving with edits still in the form.
+  const cleanWindows = (): AlertBeforeMap => Object.fromEntries(
+    Object.entries(alertBefore).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)])
+  );
   const dirty = useMemo(
-    () => !!saved && JSON.stringify({ t: thresholds, m: maintenance, c: checklists }) !== saved,
-    [thresholds, maintenance, checklists, saved]
+    () => !!saved && JSON.stringify({ t: thresholds, m: maintenance, c: checklists, a: cleanWindows() }) !== saved,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [thresholds, maintenance, checklists, alertBefore, saved]
   );
   useEffect(() => {
     if (!dirty) return;
@@ -83,10 +90,11 @@ export default function Ls2SettingsPage() {
         const kept = (items || []).filter((i) => i.label.trim());
         if (kept.length) cleaned[k] = kept.map((i) => ({ label: i.label.trim(), labelAr: (i.labelAr || '').trim() }));
       }
-      const body = { thresholds: num(thresholds), maintenance: num(maintenance), checklists: cleaned };
+      const windows = cleanWindows();
+      const body = { thresholds: num(thresholds), maintenance: num(maintenance), checklists: cleaned, alertBefore: windows };
       await api.put('/api/ls2/settings', body);
       setChecklists(cleaned);
-      setSaved(JSON.stringify({ t: body.thresholds, m: body.maintenance, c: cleaned }));
+      setSaved(JSON.stringify({ t: body.thresholds, m: body.maintenance, c: cleaned, a: windows }));
       setMsg({ text: t.saved, ok: true });
       setTimeout(() => setMsg(null), 2500);
     } catch { setMsg({ text: t.saveFailed, ok: false }); }
@@ -98,7 +106,7 @@ export default function Ls2SettingsPage() {
   const taskCount = Object.values(checklists).reduce((a, x) => a + (x?.length || 0), 0);
   const TABS: { key: Tab; label: string; icon: any; badge?: string }[] = [
     { key: 'thresholds', label: t.alertThresholds, icon: Bell },
-    { key: 'checklists', label: t.checklists, icon: ListChecks, badge: taskCount ? String(taskCount) : undefined },
+    { key: 'checklists', label: t.periodicServices, icon: ListChecks, badge: taskCount ? String(taskCount) : undefined },
   ];
 
   return (
@@ -108,13 +116,15 @@ export default function Ls2SettingsPage() {
           subtitle={ar ? 'تُطبَّق فورًا على كل التنبيهات' : 'Applied to every alert immediately'} />
 
         {/* Tabs — the page is three unrelated jobs, not one long scroll */}
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-xl overflow-x-auto">
+        <div className="flex gap-2 p-1.5 bg-slate-100 rounded-xl overflow-x-auto border border-slate-200">
           {TABS.map((x) => {
             const Icon = x.icon;
             const on = tab === x.key;
             return (
               <button key={x.key} type="button" onClick={() => setTab(x.key)}
-                className={`flex-1 min-w-max flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition ${on ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}>
+                className={`flex-1 min-w-max flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border transition ${on
+                  ? 'bg-white border-slate-300 shadow-sm text-slate-900'
+                  : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300 hover:text-slate-900'}`}>
                 <Icon className={`w-4 h-4 ${on ? 'text-[#f37121]' : ''}`} /> {x.label}
                 {x.badge && <span className={`px-1.5 py-0.5 rounded-full text-[10px] tabular-nums ${on ? 'bg-[#f37121] text-white' : 'bg-slate-200 text-slate-600'}`}>{x.badge}</span>}
               </button>
@@ -162,29 +172,6 @@ export default function Ls2SettingsPage() {
                 </div>
               );
             })}
-            {/* Maintenance is an alert window like any other, so it lives here */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
-                <Wrench className="w-4 h-4 text-[#f37121]" /> {t.maintenanceAlerts}
-              </h2>
-              <div className="p-5 space-y-3">
-                <p className="text-xs text-slate-500 leading-relaxed">{t.maintenanceAlertsHint}</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {MAINTENANCE_FIELDS.map((f) => (
-                    <div key={f.key}>
-                      <label className="text-xs font-medium text-slate-600 mb-1 block">{ar ? f.ar : f.en}</label>
-                      <div className="relative">
-                        <input type="number" value={maintenance[f.key] ?? ''}
-                          onChange={(e) => setMaintenance((p: any) => ({ ...p, [f.key]: e.target.value }))}
-                          className="w-full ps-3 pe-12 py-2 rounded-lg border border-slate-200 focus:border-[#f37121] outline-none text-sm tabular-nums text-slate-900" />
-                        <span className="absolute top-1/2 -translate-y-1/2 end-3 text-[11px] text-slate-400 pointer-events-none">{f.unit}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             <button type="button" onClick={resetDefaults}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
               <RotateCcw className="w-4 h-4" /> {t.reset}
@@ -195,7 +182,7 @@ export default function Ls2SettingsPage() {
         {/* ---- Our own per-service checklists ---- */}
         {tab === 'checklists' && (
           <div className="space-y-4">
-            <p className="text-xs text-slate-500">{t.checklistHint}</p>
+            <p className="text-xs text-slate-500">{t.periodicServicesHint}</p>
             {services.length === 0 && (
               <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-400">{t.noData}</div>
             )}
@@ -212,11 +199,33 @@ export default function Ls2SettingsPage() {
               };
               return (
                 <div key={sv.id} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                  <div className="flex items-center justify-between gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{sv.name}</p>
-                      <p className="text-[11px] text-slate-500">{items.length} {ar ? 'بند' : items.length === 1 ? 'task' : 'tasks'}</p>
+                  <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900 truncate">{sv.name}</p>
+                        <p className="text-[11px] text-slate-500">
+                          {sv.intervalKm > 0 && <>{t.everyKm} {fmtNum(sv.intervalKm)} km · </>}
+                          {items.length} {ar ? 'بند' : items.length === 1 ? 'task' : 'tasks'}
+                        </p>
+                      </div>
+                      {/* This service's own warn window — 3,000 km means something
+                          different on a 20K service than on an 80K one. */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <label className="text-[11px] font-medium text-slate-600">{t.warnBefore}</label>
+                        <div className="relative">
+                          <input type="number" value={alertBefore[key] ?? ''}
+                            onChange={(e) => setAlertBefore((p) => ({ ...p, [key]: e.target.value }))}
+                            placeholder={String(defaults.maintenance?.alertBeforeKm ?? 3000)}
+                            className="w-28 ps-3 pe-9 py-1.5 rounded-lg border border-slate-200 focus:border-[#f37121] outline-none text-sm tabular-nums text-slate-900" />
+                          <span className="absolute top-1/2 -translate-y-1/2 end-2.5 text-[10px] text-slate-400 pointer-events-none">km</span>
+                        </div>
+                        {!alertBefore[key] && <span className="text-[10px] text-slate-400">({t.usingDefault})</span>}
+                      </div>
                     </div>
+                    <p className="text-[10px] text-slate-500 mt-1.5">{t.warnBeforeHint}</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 px-5 py-2.5 border-b border-slate-100">
+                    <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5"><ListChecks className="w-3.5 h-3.5 text-[#f37121]" /> {t.checklist}</p>
                     <button type="button" onClick={() => setItems([...items, { label: '', labelAr: '' }])}
                       className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-xs font-medium">
                       <Plus className="w-3.5 h-3.5" /> {t.addTask}

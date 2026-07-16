@@ -30,6 +30,10 @@ function computeMaintenance(tel, maint) {
   if (odo == null) return null;
   const alertBeforeKm = (maint && maint.alertBeforeKm) || 3000;
   const alertBeforeDays = (maint && maint.alertBeforeDays) || 14;
+  // Each of the four services warns on its own window — a 20K and an 80K service
+  // are nothing alike. Falls back to the global only where none is set.
+  const perService = (maint && maint.alertBefore) || {};
+  const windowFor = (id) => Number(perService[id]) > 0 ? Number(perService[id]) : alertBeforeKm;
   const source = Array.isArray(tel.serviceIntervals) ? tel.serviceIntervals : [];
   const now = Date.now();
 
@@ -49,7 +53,8 @@ function computeMaintenance(tel, maint) {
       const base = s.lastServiceKm != null ? s.lastServiceKm : odo;
       r.nextServiceKm = base + (s.intervalKm || 0);
       r.remainingKm = r.nextServiceKm - odo;
-      r.statusLevel = r.remainingKm <= 0 ? 'overdue' : (r.remainingKm <= alertBeforeKm ? 'due' : 'ok');
+      r.alertBeforeKm = windowFor(s.id); // exposed so the UI can show each window
+      r.statusLevel = r.remainingKm <= 0 ? 'overdue' : (r.remainingKm <= r.alertBeforeKm ? 'due' : 'ok');
     }
     return r;
   });
@@ -226,7 +231,7 @@ function evaluate(tel, _vehicle, settings, deferrals = []) {
         add({ type: T.MAINTENANCE_OVERDUE, key, severity: S.CRITICAL, unit, value: Math.abs(rem), threshold: 0,
           message: `${iv.name}: overdue by ${Math.abs(rem).toLocaleString()} ${unit}` });
       } else {
-        add({ type: T.MAINTENANCE_DUE, key, severity: S.WARNING, unit, value: rem, threshold: maint.alertBeforeKm,
+        add({ type: T.MAINTENANCE_DUE, key, severity: S.WARNING, unit, value: rem, threshold: iv.alertBeforeKm ?? maint.alertBeforeKm,
           message: `${iv.name}: due in ${rem.toLocaleString()} ${unit}${iv.nextServiceKm != null ? ` (at ${iv.nextServiceKm.toLocaleString()} km)` : ''}` });
       }
     }
@@ -235,10 +240,15 @@ function evaluate(tel, _vehicle, settings, deferrals = []) {
   // ---- Deferred checklist tasks (OUR extension, not Wialon) -------------
   // A task judged "still good for another N km" at a service gets an odometer
   // deadline. Warn before those km run out, escalate once they're used up.
+  const perServiceWindow = (maint && maint.alertBefore) || {};
   for (const d of deferrals) {
     if (tel.odometerKm == null || d.dueAtOdometerKm == null) continue;
     const remaining = Math.round(d.dueAtOdometerKm - tel.odometerKm);
-    if (remaining > maint.alertBeforeKm) continue; // still comfortably within the grant
+    // The task was deferred at a service, so it warns on that service's window.
+    const before = Number(perServiceWindow[d.intervalId]) > 0
+      ? Number(perServiceWindow[d.intervalId])
+      : (maint.alertBeforeKm || 3000);
+    if (remaining > before) continue; // still comfortably within the grant
     const overdue = remaining < 0;
     add({
       type: T.DEFERRED_TASK,
@@ -246,7 +256,7 @@ function evaluate(tel, _vehicle, settings, deferrals = []) {
       severity: overdue ? S.CRITICAL : S.WARNING,
       unit: 'km',
       value: Math.abs(remaining),
-      threshold: maint.alertBeforeKm,
+      threshold: before,
       message: overdue
         ? `Deferred task "${d.label}" is overdue by ${Math.abs(remaining).toLocaleString()} km`
         : `Deferred task "${d.label}" is due in ${remaining.toLocaleString()} km (at ${d.dueAtOdometerKm.toLocaleString()} km)`,

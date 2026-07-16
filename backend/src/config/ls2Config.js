@@ -72,6 +72,9 @@ const DEFAULT_THRESHOLDS = {
 // the real intervals. Nothing ever read it, so it has been removed rather than
 // left to look meaningful.
 const DEFAULT_MAINTENANCE = {
+  // Fallback only: each of the four real services carries its own warn-window in
+  // settings.alertBefore (keyed by Wialon interval id). This applies to a service
+  // with no value of its own, and to time-based intervals.
   alertBeforeKm: 3000, // raise a "service due soon" alert this many km before due
   alertBeforeDays: 14, // …or this many days before a time-based service is due
 };

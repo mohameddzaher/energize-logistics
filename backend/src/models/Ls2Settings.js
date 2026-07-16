@@ -15,6 +15,10 @@ const ls2SettingsSchema = new mongoose.Schema({
   // up each service. Keyed by the Wialon service-interval id ("1".."4"), since the
   // 4 services are the same across the fleet. Fully editable from Settings.
   checklists: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }, // { [intervalId]: [{label,labelAr}] }
+  // How early to warn for EACH of the real Wialon services, keyed by interval id.
+  // A single fleet-wide number can't fit them: 3,000 km before a 20K service is
+  // 15% of its life, but only 3.7% of an 80K one. Missing/blank → DEFAULT_ALERT_BEFORE_KM.
+  alertBefore: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }, // { [intervalId]: km }
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });
 

@@ -59,13 +59,14 @@ async function tick() {
     const deferByUnit = new Map();
     const logsWithDefer = await Ls2ServiceLog.find({
       checklist: { $elemMatch: { status: 'deferred', resolved: false } },
-    }).select('unitId intervalName checklist').lean();
+    }).select('unitId intervalId intervalName checklist').lean();
     for (const log of logsWithDefer) {
       for (const c of log.checklist || []) {
         if (c.status !== 'deferred' || c.resolved || c.dueAtOdometerKm == null) continue;
         if (!deferByUnit.has(log.unitId)) deferByUnit.set(log.unitId, []);
         deferByUnit.get(log.unitId).push({
-          logId: log._id, label: c.label, dueAtOdometerKm: c.dueAtOdometerKm, intervalName: log.intervalName,
+          logId: log._id, label: c.label, dueAtOdometerKm: c.dueAtOdometerKm,
+          intervalId: log.intervalId, intervalName: log.intervalName,
         });
       }
     }

@@ -31,6 +31,7 @@ export interface ServiceInterval {
   nextServiceKm?: number | null; remainingKm?: number | null;
   nextServiceAt?: string | null; remainingDays?: number | null;
   nextServiceValue?: number | null; remaining?: number | null;
+  alertBeforeKm?: number; // the warn window this service actually fired on
   statusLevel: 'ok' | 'due' | 'overdue';
 }
 // OUR OWN extensions beyond the Location Solutions API ------------------------
@@ -38,6 +39,9 @@ export interface ServiceInterval {
 export interface ChecklistItem { _id?: string; label: string; labelAr?: string }
 // The map Settings edits + Register-service reads: { [intervalId]: items }
 export type ChecklistTemplates = Record<string, ChecklistItem[]>;
+// How early each of the four services warns, keyed by interval id. One fleet-wide
+// number cannot fit them — 3,000 km is 15% of a 20K service but 3.7% of an 80K.
+export type AlertBeforeMap = Record<string, number>;
 // One task's outcome on a registered service.
 export interface ChecklistResult {
   label: string;
@@ -506,8 +510,12 @@ export function ls2Text(lang: Lang) {
     // settings
     alertThresholds: t('Alert Thresholds', 'حدود التنبيهات'),
     thresholdsHint: t('The reading at which each alert fires. Applied on the next poll — no restart needed.', 'القيمة التي يصدر عندها كل تنبيه. تُطبَّق عند التحديث التالي دون الحاجة لإعادة تشغيل.'),
-    maintenanceAlerts: t('Maintenance', 'الصيانة'),
-    maintenanceAlertsHint: t('Each vehicle carries its own service intervals from Location Solutions (20K / 40K / 80K km). This only sets how early the warning appears — it also governs the deferred-task warnings.', 'كل مركبة لها خدمات الصيانة الخاصة بها من Location Solutions (٢٠ / ٤٠ / ٨٠ ألف كم). هذا يحدّد فقط مدى تبكير التنبيه — وينطبق كذلك على تنبيهات البنود المؤجّلة.'),
+    periodicServices: t('Periodic Services', 'الصيانات الدورية'),
+    periodicServicesHint: t('The four services come from Location Solutions with their own intervals. Set how early each one warns, and the checklist of tasks it consists of.', 'الصيانات الأربع تأتي من Location Solutions بفتراتها الخاصة. حدّد لكل واحدة مدى تبكير تنبيهها، وقائمة البنود التي تتكوّن منها.'),
+    warnBefore: t('Warn before due', 'التنبيه قبل الاستحقاق بـ'),
+    warnBeforeHint: t('This service turns amber once it is this close. It also bounds the warnings for any task deferred at it.', 'تتحوّل هذه الصيانة إلى اللون البرتقالي عند اقترابها بهذه المسافة. وينطبق ذلك أيضًا على تنبيهات البنود المؤجّلة عندها.'),
+    everyKm: t('Every', 'كل'),
+    usingDefault: t('default', 'الافتراضي'),
     unsavedChanges: t('You have unsaved changes', 'لديك تغييرات غير محفوظة'),
     maintenancePlan: t('Maintenance Plan', 'خطة الصيانة'),
     save: t('Save', 'حفظ'),
@@ -559,9 +567,7 @@ export const THRESHOLD_GROUPS: { key: string; en: string; ar: string; icon: stri
 ];
 export const thresholdField = (key: string) => THRESHOLD_FIELDS.find((f) => f.key === key);
 
-// Each vehicle's real service intervals come from Wialon (20K / 40K / 80K…), so
-// nothing here defines an interval. All that is left is how early to warn — which
-// is an alert threshold, and is presented as one.
-export const MAINTENANCE_FIELDS: { key: string; en: string; ar: string; unit: string }[] = [
-  { key: 'alertBeforeKm', en: 'Warn before a service is due', ar: 'التنبيه قبل استحقاق الصيانة بـ', unit: 'km' },
-];
+// Nothing fleet-wide left to configure for maintenance: each vehicle's intervals
+// come from Wialon, and each service's warn window is set per service (keyed by
+// interval id) in the Periodic Services tab.
+export const MAINTENANCE_FIELDS: { key: string; en: string; ar: string; unit: string }[] = [];

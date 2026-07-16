@@ -38,6 +38,7 @@ router.get('/vehicles/:id/trips', ls2.getVehicleTrips); // ?from&to — trips + 
 router.get('/vehicles/:id/fuel', ls2.getVehicleFuel); // ?from&to — CAN fuel consumption
 router.get('/vehicles/:id/track', ls2.getVehicleTrack); // ?from&to — GPS polyline
 router.post('/vehicles/:id/service', ADMIN, ls2.markServiced);
+router.post('/vehicles/:id/register-service', ADMIN, ls2.registerServiceInterval); // writes ONE interval to Location Solutions
 router.patch('/vehicles/:id/meta', ADMIN, ls2.updateVehicleMeta); // manual metadata (tire brand/type)
 
 module.exports = router;

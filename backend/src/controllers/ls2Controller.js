@@ -490,6 +490,60 @@ exports.markServiced = async (req, res) => {
   }
 };
 
+// ---- Register a completed service on ONE interval → writes to Location -------
+// Solutions (Wialon) AND keeps our own richer record (real date, who, notes).
+exports.registerServiceInterval = async (req, res) => {
+  try {
+    const client = require('../services/ls2Client');
+    const unitId = Number(req.params.id);
+    const v = await Ls2Vehicle.findOne({ unitId });
+    if (!v) return res.status(404).json({ message: 'Vehicle not found' });
+
+    const { intervalId, odometerKm, serviceDate, engineHours, cost, notes = '' } = req.body || {};
+    if (intervalId == null) return res.status(400).json({ message: 'intervalId is required' });
+    const odo = odometerKm != null ? Number(odometerKm) : v.odometerKm;
+    if (odo == null || Number.isNaN(odo)) return res.status(400).json({ message: 'A valid odometer is required' });
+
+    const iv = (v.serviceIntervals || []).find((s) => Number(s.id) === Number(intervalId));
+    const intervalName = iv ? iv.name : '';
+
+    // 1) Write it into Location Solutions (sets pm + bumps the executions count).
+    let synced = false;
+    try {
+      await client.registerService(unitId, Number(intervalId), odo, engineHours);
+      synced = true;
+    } catch (e) {
+      // Surface the upstream reason but still keep our own record below.
+      console.error('registerService (Wialon) failed:', e.message, e.wialonError);
+    }
+
+    // 2) Our own record — the REAL service date, exactly as entered.
+    const log = await Ls2ServiceLog.create({
+      unitId, plate: v.plate, action: 'serviced',
+      odometerKm: odo, intervalId: Number(intervalId), intervalName,
+      serviceDate: serviceDate ? new Date(serviceDate) : new Date(),
+      engineHours: engineHours != null ? Number(engineHours) : null,
+      cost: cost != null ? Number(cost) : null,
+      notes, serviceType: 'periodic', syncedToWialon: synced,
+      performedBy: req.user._id, performedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+    });
+
+    // 3) Refresh our mirror from Wialon so the new "km left" shows immediately.
+    if (synced) { try { await require('../jobs/ls2Poll').tick(); } catch (e) {} }
+    cache.clear('ls2:');
+    emitToAll('ls2:updated', { at: Date.now(), serviced: unitId, intervalId });
+
+    const fresh = await Ls2Vehicle.findOne({ unitId }).lean();
+    res.status(201).json({
+      ok: true, syncedToWialon: synced,
+      message: synced ? 'Service registered in Location Solutions' : 'Saved locally, but Location Solutions write failed',
+      vehicle: fresh ? withMaintenance(fresh) : null, log,
+    });
+  } catch (error) {
+    fail(res, error, 'Failed to register service');
+  }
+};
+
 // ---- Drivers: who drove what, and how far --------------------------------
 // Attribution: each DAY's distance for a truck (from the daily odometer
 // snapshots) is credited to whichever driver was assigned to that truck on that

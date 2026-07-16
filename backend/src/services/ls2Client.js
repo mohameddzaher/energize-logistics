@@ -126,6 +126,49 @@ async function searchUnit(id, flags = cfg.POLL_FLAGS) {
   return data.item || null;
 }
 
+/** Read a unit's service intervals (`si`) as an array. */
+async function getServiceIntervals(unitId) {
+  const data = await call('core/search_item', { id: Number(unitId), flags: 1 | 0x8000 });
+  const si = (data.item && data.item.si) || {};
+  return Object.values(si);
+}
+
+/**
+ * Register a completed service on a Wialon service interval — mirrors what the
+ * Location Solutions "Register maintenance" dialog does: sets the last-service
+ * mileage (`pm`)/engine-hours (`pe`) and bumps the executions count (`c`), so the
+ * "km left" recomputes from the odometer we pass. This is `unit/update_service_
+ * interval` (verified callable with our token). We MUST resend the whole interval
+ * config (n/t/im/it/ie/pm/pt/pe/c) or Wialon rejects it.
+ *
+ * @param unitId   Wialon unit id
+ * @param id       interval id (1..n)
+ * @param atOdoKm  odometer AT the service (what the user entered)
+ * @param atEngineHrs optional engine-hours at the service
+ */
+async function registerService(unitId, id, atOdoKm, atEngineHrs) {
+  const intervals = await getServiceIntervals(unitId);
+  const iv = intervals.find((s) => Number(s.id) === Number(id));
+  if (!iv) { const e = new Error('Service interval not found'); e.status = 404; throw e; }
+  await call('unit/update_service_interval', {
+    itemId: Number(unitId),
+    id: Number(id),
+    callMode: 'update',
+    n: iv.n,
+    t: iv.t || '',
+    im: iv.im || 0,
+    it: iv.it || 0,
+    ie: iv.ie || 0,
+    pm: iv.im ? Math.round(Number(atOdoKm)) : (iv.pm || 0), // mileage-based → set last-service mileage
+    pt: iv.it ? Math.floor(Date.now() / 1000) : (iv.pt || 0), // time-based → set last-service time
+    pe: iv.ie ? Math.round(Number(atEngineHrs ?? iv.pe ?? 0)) : (iv.pe || 0), // engine-hours based
+    c: Number(iv.c || 0) + 1, // one more execution
+  });
+  // Return the fresh interval so the caller can confirm.
+  const after = await getServiceIntervals(unitId);
+  return after.find((s) => Number(s.id) === Number(id)) || null;
+}
+
 /**
  * Load raw messages for a unit over a time interval (epoch seconds). Used for the
  * history/track view. `flags`: 1 = data messages (0x0000 gives all).
@@ -213,6 +256,8 @@ module.exports = {
   searchUnits,
   searchUnit,
   searchIdentity,
+  getServiceIntervals,
+  registerService,
   loadMessages,
   execReport,
   runReport,

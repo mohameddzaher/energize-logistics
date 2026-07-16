@@ -506,7 +506,8 @@ export function ls2Text(lang: Lang) {
     // settings
     alertThresholds: t('Alert Thresholds', 'حدود التنبيهات'),
     thresholdsHint: t('The reading at which each alert fires. Applied on the next poll — no restart needed.', 'القيمة التي يصدر عندها كل تنبيه. تُطبَّق عند التحديث التالي دون الحاجة لإعادة تشغيل.'),
-    maintenancePlanHint: t('The fallback plan for vehicles with no service intervals of their own in Location Solutions.', 'الخطة البديلة للمركبات التي ليس لها خدمات صيانة خاصة بها في Location Solutions.'),
+    maintenanceAlerts: t('Maintenance', 'الصيانة'),
+    maintenanceAlertsHint: t('Each vehicle carries its own service intervals from Location Solutions (20K / 40K / 80K km). This only sets how early the warning appears — it also governs the deferred-task warnings.', 'كل مركبة لها خدمات الصيانة الخاصة بها من Location Solutions (٢٠ / ٤٠ / ٨٠ ألف كم). هذا يحدّد فقط مدى تبكير التنبيه — وينطبق كذلك على تنبيهات البنود المؤجّلة.'),
     unsavedChanges: t('You have unsaved changes', 'لديك تغييرات غير محفوظة'),
     maintenancePlan: t('Maintenance Plan', 'خطة الصيانة'),
     save: t('Save', 'حفظ'),
@@ -558,7 +559,9 @@ export const THRESHOLD_GROUPS: { key: string; en: string; ar: string; icon: stri
 ];
 export const thresholdField = (key: string) => THRESHOLD_FIELDS.find((f) => f.key === key);
 
+// Each vehicle's real service intervals come from Wialon (20K / 40K / 80K…), so
+// nothing here defines an interval. All that is left is how early to warn — which
+// is an alert threshold, and is presented as one.
 export const MAINTENANCE_FIELDS: { key: string; en: string; ar: string; unit: string }[] = [
-  { key: 'serviceIntervalKm', en: 'Service every', ar: 'صيانة كل', unit: 'km' },
-  { key: 'alertBeforeKm', en: 'Alert before', ar: 'تنبيه قبلها', unit: 'km' },
+  { key: 'alertBeforeKm', en: 'Warn before a service is due', ar: 'التنبيه قبل استحقاق الصيانة بـ', unit: 'km' },
 ];

@@ -63,13 +63,15 @@ const DEFAULT_THRESHOLDS = {
   idleMinutes: 30, // engine on + not moving for this long → excessive idling
 };
 
-// Maintenance plan. The service INTERVALS themselves now come straight from
+// Maintenance alert windows. The service INTERVALS themselves come straight from
 // Wialon (each unit's `si`): interval km + the odometer at the last actual
 // service, so "next service = last-service odometer + interval" (matches what
-// Wialon shows). We only keep the pre-alert window here; serviceIntervalKm is a
-// fallback for the rare unit with no Wialon intervals configured.
+// Wialon shows). Nothing here defines an interval — only how early we warn.
+//
+// There was once a `serviceIntervalKm: 10000` fallback here, from before we read
+// the real intervals. Nothing ever read it, so it has been removed rather than
+// left to look meaningful.
 const DEFAULT_MAINTENANCE = {
-  serviceIntervalKm: 10000, // fallback only — used when a unit has no Wialon `si`
   alertBeforeKm: 3000, // raise a "service due soon" alert this many km before due
   alertBeforeDays: 14, // …or this many days before a time-based service is due
 };

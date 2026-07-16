@@ -25,6 +25,9 @@ ls2SettingsSchema.statics.getOrCreate = async function () {
   // Backfill any threshold/maintenance keys added after the doc was first seeded.
   const merged = { ...cfg.DEFAULT_THRESHOLDS, ...(doc.thresholds || {}) };
   const mergedM = { ...cfg.DEFAULT_MAINTENANCE, ...(doc.maintenance || {}) };
+  // Retired: a fallback service interval from before we read Wialon's real ones.
+  // No calculation ever used it; strip it from older docs so it stops surfacing.
+  delete mergedM.serviceIntervalKm;
   doc.thresholds = merged;
   doc.maintenance = mergedM;
   return doc;

@@ -1,8 +1,11 @@
 'use client';
-// Settings — everything that governs the section, in three tabs: the alert
-// thresholds (grouped by the system each one guards), the fallback service plan,
-// and our own per-service checklists. Admin-only; the alert engine re-reads the
+// Settings — everything that governs the section, in two tabs: the alert
+// thresholds (grouped by the system each one guards, maintenance among them) and
+// our own per-service checklists. Admin-only; the alert engine re-reads the
 // thresholds on its next poll and the checklists appear when registering a service.
+//
+// Note there is no "service interval" to set: every vehicle carries its own real
+// intervals from Location Solutions. All we configure is how early to warn.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -17,7 +20,7 @@ import {
   type Lang, type ChecklistTemplates, type ServiceInterval, type Vehicle,
 } from '@/lib/ls2';
 
-type Tab = 'thresholds' | 'plan' | 'checklists';
+type Tab = 'thresholds' | 'checklists';
 
 const GROUP_ICONS: Record<string, any> = { tires: Activity, engine: Thermometer, load: Gauge, power: Zap };
 
@@ -95,12 +98,11 @@ export default function Ls2SettingsPage() {
   const taskCount = Object.values(checklists).reduce((a, x) => a + (x?.length || 0), 0);
   const TABS: { key: Tab; label: string; icon: any; badge?: string }[] = [
     { key: 'thresholds', label: t.alertThresholds, icon: Bell },
-    { key: 'plan', label: t.maintenancePlan, icon: Wrench },
     { key: 'checklists', label: t.checklists, icon: ListChecks, badge: taskCount ? String(taskCount) : undefined },
   ];
 
   return (
-    <div className="max-w-4xl" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="space-y-5">
         <PageHeader icon={<SettingsIcon className="w-5 h-5" />} title={`${t.section} · ${t.settings}`}
           subtitle={ar ? 'تُطبَّق فورًا على كل التنبيهات' : 'Applied to every alert immediately'} />
@@ -131,7 +133,7 @@ export default function Ls2SettingsPage() {
                   <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
                     <Icon className="w-4 h-4 text-[#f37121]" /> {ar ? g.ar : g.en}
                   </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-5">
                     {g.fields.map((key) => {
                       const f = thresholdField(key);
                       if (!f) return null;
@@ -160,35 +162,33 @@ export default function Ls2SettingsPage() {
                 </div>
               );
             })}
+            {/* Maintenance is an alert window like any other, so it lives here */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
+                <Wrench className="w-4 h-4 text-[#f37121]" /> {t.maintenanceAlerts}
+              </h2>
+              <div className="p-5 space-y-3">
+                <p className="text-xs text-slate-500 leading-relaxed">{t.maintenanceAlertsHint}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {MAINTENANCE_FIELDS.map((f) => (
+                    <div key={f.key}>
+                      <label className="text-xs font-medium text-slate-600 mb-1 block">{ar ? f.ar : f.en}</label>
+                      <div className="relative">
+                        <input type="number" value={maintenance[f.key] ?? ''}
+                          onChange={(e) => setMaintenance((p: any) => ({ ...p, [f.key]: e.target.value }))}
+                          className="w-full ps-3 pe-12 py-2 rounded-lg border border-slate-200 focus:border-[#f37121] outline-none text-sm tabular-nums text-slate-900" />
+                        <span className="absolute top-1/2 -translate-y-1/2 end-3 text-[11px] text-slate-400 pointer-events-none">{f.unit}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <button type="button" onClick={resetDefaults}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
               <RotateCcw className="w-4 h-4" /> {t.reset}
             </button>
-          </div>
-        )}
-
-        {/* ---- Fallback service plan ---- */}
-        {tab === 'plan' && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
-              <Wrench className="w-4 h-4 text-[#f37121]" /> {t.maintenancePlan}
-            </h2>
-            <div className="p-5 space-y-4">
-              <p className="text-xs text-slate-500">{t.maintenancePlanHint}</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {MAINTENANCE_FIELDS.map((f) => (
-                  <div key={f.key}>
-                    <label className="text-xs font-medium text-slate-600 mb-1 block">{ar ? f.ar : f.en}</label>
-                    <div className="relative">
-                      <input type="number" value={maintenance[f.key] ?? ''}
-                        onChange={(e) => setMaintenance((p: any) => ({ ...p, [f.key]: e.target.value }))}
-                        className="w-full ps-3 pe-12 py-2 rounded-lg border border-slate-200 focus:border-[#f37121] outline-none text-sm tabular-nums text-slate-900" />
-                      <span className="absolute top-1/2 -translate-y-1/2 end-3 text-[11px] text-slate-400 pointer-events-none">{f.unit}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 

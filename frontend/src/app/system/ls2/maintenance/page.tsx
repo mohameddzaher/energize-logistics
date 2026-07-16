@@ -12,20 +12,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Wrench, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, History, FileClock } from 'lucide-react';
+import { Wrench, RefreshCw, ChevronRight } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, fmtNum, fmtKm, fmtDate, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
-import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
+import { ls2Text, isLs2Staff, maintStyle, fmtNum, fmtKm, type Lang, type Vehicle } from '@/lib/ls2';
 
 const FILTERS = ['all', 'due', 'overdue'];
 
-// Remaining amount + unit for one service (mileage / days / engine-hours).
-function remainOf(iv: ServiceInterval): { value: number; unit: string; next: string } {
-  if (iv.remainingKm != null) return { value: iv.remainingKm, unit: 'km', next: iv.nextServiceKm != null ? `${Number(iv.nextServiceKm).toLocaleString('en-US')} km` : '—' };
-  if (iv.remainingDays != null) return { value: iv.remainingDays, unit: 'd', next: iv.nextServiceAt ? new Date(iv.nextServiceAt).toLocaleDateString('en-GB') : '—' };
-  return { value: iv.remaining ?? 0, unit: 'h', next: iv.nextServiceValue != null ? `${iv.nextServiceValue} h` : '—' };
-}
-
+// Click a vehicle → its full maintenance profile at /maintenance/[id].
 export default function Ls2MaintenancePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -34,22 +27,7 @@ export default function Ls2MaintenancePage() {
   const t = ls2Text(lang as Lang);
   const [items, setItems] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState(params.get('filter') || 'all');
-  const [open, setOpen] = useState<Set<number>>(new Set());
-  const admin = isLs2Admin(user?.role);
-  // Register-service dialog
-  const [svc, setSvc] = useState<{ v: Vehicle; iv: ServiceInterval } | null>(null);
-  // Full service-history dialog
-  const [hist, setHist] = useState<Vehicle | null>(null);
-  const [histRows, setHistRows] = useState<any[]>([]);
-  const [histLoading, setHistLoading] = useState(false);
-
-  const openHistory = async (v: Vehicle) => {
-    setHist(v); setHistRows([]); setHistLoading(true);
-    try { const r = await api.get<{ history: any[] }>(`/api/ls2/vehicles/${v.unitId}/maintenance`); setHistRows(r.history || []); }
-    catch { /* keep */ }
-    setHistLoading(false);
-  };
+  const [filter, setFilter] = useState(params?.get('filter') || 'all');
 
   const load = useCallback(async () => {
     try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles'); setItems(res.items || []); } catch { /* keep */ }
@@ -66,7 +44,6 @@ export default function Ls2MaintenancePage() {
     return r.sort((a, b) => (a.kmToService ?? 1e9) - (b.kmToService ?? 1e9));
   }, [items, filter]);
 
-  const toggle = (id: number) => setOpen((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
@@ -108,12 +85,11 @@ export default function Ls2MaintenancePage() {
             <tbody>
               {rows.map((v) => {
                 const ms = maintStyle(v.maintenanceStatus);
-                const isOpen = open.has(v.unitId);
                 const over = (v.kmToService ?? 0) < 0;
                 return (
                   <Fragment key={v.unitId}>
-                    <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => toggle(v.unitId)}>
-                      <td className="px-3 py-3 text-slate-700">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
+                    <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/system/ls2/maintenance/${v.unitId}`)}>
+                      <td className="px-3 py-3 text-slate-400"><ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} /></td>
                       <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{v.plate || v.name}</td>
                       <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>
                       <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(v.odometerKm)}</td>
@@ -137,49 +113,6 @@ export default function Ls2MaintenancePage() {
                       </td>
                       <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ms.bg} ${ms.text}`}>{lang === 'ar' ? ms.ar : ms.en}</span></td>
                     </tr>
-                    {isOpen && (
-                      <tr className="bg-slate-50/60 border-b border-slate-100">
-                        <td colSpan={7} className="px-4 py-3">
-                          <div className="flex items-center justify-end mb-2">
-                            <button type="button" onClick={() => openHistory(v)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-[#f37121] text-slate-700 text-xs font-medium">
-                              <FileClock className="w-3.5 h-3.5 text-[#f37121]" /> {lang === 'ar' ? 'سجل الصيانة الكامل' : 'Full service history'}
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {[...v.serviceIntervals].sort((a, b) => a.intervalKm - b.intervalKm).map((iv) => {
-                              const r = remainOf(iv);
-                              const st = maintStyle(iv.statusLevel);
-                              const isOver = r.value < 0;
-                              const Icon = iv.statusLevel === 'overdue' ? AlertCircle : iv.statusLevel === 'due' ? Clock : CheckCircle2;
-                              return (
-                                <div key={iv.id} className="bg-white border border-slate-200 rounded-lg p-3 flex items-start gap-3">
-                                  <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iv.statusLevel === 'overdue' ? 'text-red-500' : iv.statusLevel === 'due' ? 'text-amber-500' : 'text-emerald-500'}`} />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className="text-sm font-medium text-slate-800 truncate">{iv.name}</p>
-                                      <span className={`shrink-0 px-1.5 py-0.5 rounded text-[11px] font-bold tabular-nums ${st.bg} ${st.text}`}>
-                                        {isOver ? `−${fmtNum(Math.abs(r.value))}` : fmtNum(r.value)} {r.unit === 'km' ? (isOver ? t.kmOverdue : t.kmLeft) : r.unit}
-                                      </span>
-                                    </div>
-                                    {iv.description && <p className="text-[11px] text-slate-700 mt-0.5 line-clamp-2">{iv.description}</p>}
-                                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[11px] text-slate-700">
-                                      <span>{t.lastService}: <b className="text-slate-700">{fmtDate(iv.lastServiceAt, lang as Lang)}</b>{iv.lastServiceKm != null && <> · {fmtKm(iv.lastServiceKm)}</>}</span>
-                                      <span>{lang === 'ar' ? 'القادمة' : 'Next'}: <b className="text-slate-700">{r.next}</b></span>
-                                      {iv.serviceCount > 0 && <span>{iv.serviceCount} {t.services}</span>}
-                                    </div>
-                                    {admin && (
-                                      <button type="button" onClick={() => setSvc({ v, iv })} className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-[11px] font-medium">
-                                        <CheckCircle2 className="w-3 h-3" /> {lang === 'ar' ? 'تم عمل الصيانة' : 'Mark serviced'}
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </Fragment>
                 );
               })}
@@ -189,59 +122,6 @@ export default function Ls2MaintenancePage() {
         </div>
       </div>
 
-      {/* Register-service dialog */}
-      {svc && (
-        <RegisterServiceModal
-          unitId={svc.v.unitId} interval={svc.iv} currentOdo={svc.v.odometerKm}
-          lang={lang as Lang} isRTL={isRTL}
-          onClose={() => setSvc(null)}
-          onSaved={() => { setSvc(null); load(); }}
-        />
-      )}
-
-      {/* Full service-history dialog */}
-      {hist && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4" onClick={() => setHist(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col" dir={isRTL ? 'rtl' : 'ltr'} onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-slate-100 flex items-center gap-2">
-              <History className="w-5 h-5 text-[#f37121]" />
-              <div>
-                <h3 className="text-base font-bold text-slate-900">{lang === 'ar' ? 'سجل صيانة' : 'Service history'} — {hist.plate || hist.name}</h3>
-                <p className="text-xs text-slate-500">{lang === 'ar' ? 'كل الصيانات المسجّلة لهذه المركبة' : 'All services logged for this vehicle'}</p>
-              </div>
-              <button type="button" onClick={() => setHist(null)} className="ms-auto text-slate-400 hover:text-slate-700">✕</button>
-            </div>
-            <div className="p-4 overflow-y-auto">
-              {histLoading ? <Spinner /> : histRows.length === 0 ? (
-                <p className="text-sm text-slate-400 py-8 text-center">{lang === 'ar' ? 'لا توجد صيانات مسجّلة عندنا لهذه المركبة بعد.' : 'No services logged here for this vehicle yet.'}</p>
-              ) : (
-                <table className="w-full text-xs">
-                  <thead><tr className="bg-slate-900 text-slate-300">
-                    <th className="text-start font-semibold px-3 py-2">{lang === 'ar' ? 'الخدمة' : 'Service'}</th>
-                    <th className="text-start font-semibold px-3 py-2">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
-                    <th className="text-end font-semibold px-3 py-2">{t.odometer}</th>
-                    <th className="text-end font-semibold px-3 py-2">{lang === 'ar' ? 'التكلفة' : 'Cost'}</th>
-                    <th className="text-start font-semibold px-3 py-2">{lang === 'ar' ? 'بواسطة' : 'By'}</th>
-                    <th className="text-center font-semibold px-3 py-2">LS2</th>
-                  </tr></thead>
-                  <tbody>
-                    {histRows.map((h) => (
-                      <tr key={h._id} className="border-b border-slate-100">
-                        <td className="px-3 py-2 text-slate-800">{h.intervalName || '—'}{h.notes ? <p className="text-[10px] text-slate-400">{h.notes}</p> : null}</td>
-                        <td className="px-3 py-2 text-slate-800 tabular-nums">{fmtDate(h.serviceDate || h.createdAt, lang as Lang)}</td>
-                        <td className="px-3 py-2 text-end text-slate-800 tabular-nums">{h.odometerKm != null ? fmtKm(h.odometerKm) : '—'}</td>
-                        <td className="px-3 py-2 text-end text-slate-800 tabular-nums">{h.cost != null ? fmtNum(h.cost) : '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{h.performedByName || '—'}</td>
-                        <td className="px-3 py-2 text-center">{h.syncedToWialon ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" /> : <span className="text-slate-300">—</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

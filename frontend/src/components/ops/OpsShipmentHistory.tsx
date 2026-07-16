@@ -17,7 +17,7 @@ type Row = Record<string, any>;
 const driverName = (s: Row, lang: 'en' | 'ar') => locName(s?.driver?.admin?.name, lang) || locName(s?.driver?.name, lang) || '—';
 
 const SEARCH_FIELDS = [
-  { value: '', en: 'Anything', ar: 'أي حاجة' },
+  { value: '', en: 'Anything', ar: 'الكل' },
   { value: 'graduation', en: 'Graduation #', ar: 'كشف التخريج' },
   { value: 'reference', en: 'Reference #', ar: 'رقم المرجع' },
   { value: 'driver_name', en: 'Driver name', ar: 'اسم السائق' },

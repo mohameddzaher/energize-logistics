@@ -709,7 +709,7 @@ export default function DashboardPage() {
                 {(superOverview.operations?.thisMonth || 0).toLocaleString()}
               </p>
               <p className="text-orange-200/60 text-[10px] mt-0.5">
-                {lang === 'ar' ? 'الشهر اللي فات' : 'Last month'}: {(superOverview.operations?.lastMonth || 0).toLocaleString()}
+                {lang === 'ar' ? 'الشهر السابق' : 'Last month'}: {(superOverview.operations?.lastMonth || 0).toLocaleString()}
               </p>
             </div>
           </div>

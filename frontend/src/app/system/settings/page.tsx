@@ -90,7 +90,7 @@ export default function SettingsPage() {
           {lang === 'ar' ? 'توقيعاتي' : 'My Signatures'}
         </h3>
         <p className="text-slate-500 text-sm mb-4">
-          {lang === 'ar' ? 'اعمل توقيعك (ارسمه أو ارفع صورة) علشان تستخدمه في الموافقات والمستندات زي طلبات الإجازة.' : 'Create your signature (draw or upload) to apply it on approvals and documents like leave requests.'}
+          {lang === 'ar' ? 'أنشئ توقيعك (بالرسم أو رفع صورة) لاستخدامه في الموافقات والمستندات زي طلبات الإجازة.' : 'Create your signature (draw or upload) to apply it on approvals and documents like leave requests.'}
         </p>
         <SignatureManager />
       </div>

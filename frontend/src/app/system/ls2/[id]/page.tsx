@@ -18,7 +18,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
 import {
-  ls2Text, isLs2Staff, isLs2Admin, severityStyle, statusStyle, maintStyle, alertTypeLabel, alertMessage, tireTempColor, coolantColor,
+  ls2Text, isLs2Staff, isLs2Admin, severityStyle, statusStyle, maintStyle, alertTypeLabel, alertMessage, tireTempColor, tirePressColor, coolantColor,
   fmtNum, fmtKm, fmtDate, fmtDuration, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type Alert, type Tire, type ServiceInterval, type DateRange, type TripsResult, type VehicleFuel, type TrackPoint,
 } from '@/lib/ls2';
 import LiveMap from '@/components/ls2/LiveMap';
@@ -421,10 +421,24 @@ function TireLayout({ tires, t, lang }: { tires: Tire[]; t: any; lang: Lang }) {
             <span className="w-16 shrink-0 text-xs font-semibold text-slate-500">{t.axle} {axle}</span>
             <div className="flex flex-wrap gap-2">
               {row.map((tire) => (
-                <div key={`${axle}-${tire.position}`} className={`rounded-lg px-3 py-2 min-w-[92px] text-center border ${tire.fault ? 'bg-slate-50 border-slate-200 text-slate-400' : `${tireTempColor(tire.tempC)} border-transparent`}`}>
-                  <p className="text-[10px] opacity-70">{lang === 'ar' ? 'إطار' : 'Tire'} {tire.position}</p>
-                  <p className="text-sm font-bold">{tire.fault ? (lang === 'ar' ? 'عطل' : 'Fault') : (tire.tempC != null ? `${tire.tempC}°C` : '—')}</p>
-                  <p className="text-[10px] opacity-80">{tire.pressurePsi != null ? `${tire.pressurePsi} psi` : '—'}</p>
+                <div key={`${axle}-${tire.position}`} className="rounded-lg min-w-[96px] overflow-hidden border border-slate-200">
+                  <p className="text-[10px] text-slate-500 bg-slate-50 py-0.5 text-center">{lang === 'ar' ? 'إطار' : 'Tire'} {tire.position}</p>
+                  {tire.fault ? (
+                    <div className="bg-slate-50 py-3 text-center text-slate-400 text-xs font-medium">{lang === 'ar' ? 'عطل حساس' : 'Sensor fault'}</div>
+                  ) : (
+                    <>
+                      {/* Top half — temperature, coloured by its state */}
+                      <div className={`py-1.5 text-center ${tireTempColor(tire.tempC)}`}>
+                        <p className="text-[9px] opacity-70 leading-none">{lang === 'ar' ? 'حرارة' : 'Temp'}</p>
+                        <p className="text-sm font-bold leading-tight">{tire.tempC != null ? `${tire.tempC}°C` : '—'}</p>
+                      </div>
+                      {/* Bottom half — pressure, coloured by its state */}
+                      <div className={`py-1.5 text-center border-t border-white/60 ${tirePressColor(tire.pressurePsi)}`}>
+                        <p className="text-[9px] opacity-70 leading-none">{lang === 'ar' ? 'ضغط' : 'Pressure'}</p>
+                        <p className="text-sm font-bold leading-tight">{tire.pressurePsi != null ? `${tire.pressurePsi}` : '—'}<span className="text-[9px] font-normal"> psi</span></p>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

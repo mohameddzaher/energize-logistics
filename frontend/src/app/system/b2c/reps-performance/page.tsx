@@ -573,7 +573,7 @@ export default function RepsPerformancePage() {
                     : `🧮 Orders stored: ${uploadResult.totalOrdersWritten.toLocaleString()} vs expected: ${uploadResult.expectedTotal.toLocaleString()}`}
                   {Math.abs((uploadResult.totalOrdersWritten || 0) - (uploadResult.expectedTotal || 0)) >= 1 && (
                     <span className="block mt-1">
-                      {lang === 'ar' ? '⚠️ فرق — راجع الـ logs بتاع الباك اند' : '⚠️ Mismatch — check backend logs'}
+                      {lang === 'ar' ? '⚠️ فرق — راجِع سجلات الخادم' : '⚠️ Mismatch — check backend logs'}
                     </span>
                   )}
                 </div>

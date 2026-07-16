@@ -24,7 +24,7 @@ type Row = Record<string, any>;
 // (matches several fields at once), so for the unique numbers we search + filter
 // to the EXACT field client-side to avoid cross-field collisions.
 const SEARCH_FIELDS = [
-  { value: '', en: 'Anything', ar: 'أي حاجة' },
+  { value: '', en: 'Anything', ar: 'الكل' },
   { value: 'graduation', en: 'Graduation statement #', ar: 'رقم كشف التخريج' },
   { value: 'reference', en: 'Reference #', ar: 'رقم المرجع' },
   { value: 'driver_name', en: 'Driver name', ar: 'اسم السائق' },

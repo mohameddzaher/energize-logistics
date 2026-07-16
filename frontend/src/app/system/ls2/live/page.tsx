@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { Satellite, MapPin, RefreshCw, Search, Route } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
-import { ls2Text, isLs2Staff, statusStyle, severityStyle, tireTempColor, coolantColor, fmtKm, fmtNum, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type DateRange } from '@/lib/ls2';
+import { ls2Text, isLs2Staff, statusStyle, tireTempColor, coolantColor, fmtKm, fmtNum, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type DateRange } from '@/lib/ls2';
 
 const STATUSES = ['moving', 'idle', 'stopped', 'offline'];
 
@@ -78,7 +78,7 @@ export default function Ls2LivePage() {
       {/* Status legend — clarifies idle vs stopped (a common question). */}
       <p className="text-xs text-slate-400 -mt-2 px-1">
         {lang === 'ar'
-          ? 'يتحرك = ماشية · خامل = الموتور شغّال وواقفة · متوقف = الموتور مطفي · غير متصل = مفيش إشارة'
+          ? 'يتحرك = أثناء السير · خامل = المحرك يعمل والمركبة متوقفة · متوقف = المحرك متوقف · غير متصل = لا توجد إشارة'
           : 'Moving = driving · Idle = engine on, stationary · Stopped = engine off · Offline = no signal'}
       </p>
 
@@ -96,7 +96,7 @@ export default function Ls2LivePage() {
                 <th className="text-end font-semibold px-4 py-3">{t.coolant}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.odometer}</th>
                 <th className="text-end font-semibold px-4 py-3 text-[#f9a06b]">{t.kmInPeriod}</th>
-                <th className="text-center font-semibold px-4 py-3">{t.alerts}</th>
+                <th className="text-end font-semibold px-4 py-3 text-red-300">{t.maintenance}</th>
                 <th className="text-start font-semibold px-4 py-3">{t.lastSeen}</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -104,7 +104,6 @@ export default function Ls2LivePage() {
             <tbody>
               {filtered.map((v) => {
                 const st = statusStyle(v.status);
-                const sv = severityStyle(v.alertLevel);
                 return (
                   <tr key={v.unitId} onClick={() => router.push(`/system/ls2/${v.unitId}`)} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
                     <td className="px-4 py-3 whitespace-nowrap"><p className="font-medium text-slate-800">{v.plate || v.name}</p>{v.profile?.brand && <p className="text-[10px] text-slate-700">{v.profile.brand}{v.profile.modelYear ? ` · ${v.profile.modelYear}` : ''}</p>}</td>
@@ -126,7 +125,14 @@ export default function Ls2LivePage() {
                     <td className={`px-4 py-3 text-end tabular-nums font-medium ${coolantColor(v.coolantC)}`}>{v.coolantC != null ? `${v.coolantC}°C` : '—'}</td>
                     <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(v.odometerKm)}</td>
                     <td className="px-4 py-3 text-end tabular-nums font-semibold text-slate-800">{v.periodKm != null ? `${fmtNum(Math.round(v.periodKm))}` : '—'}</td>
-                    <td className="px-4 py-3 text-center">{v.activeAlertCount > 0 ? <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${sv.bg} ${sv.text}`}>{v.activeAlertCount}</span> : <span className="text-slate-300">0</span>}</td>
+                    {/* Maintenance: most-overdue service — red if overdue */}
+                    <td className="px-4 py-3 text-end tabular-nums whitespace-nowrap">
+                      {v.kmToService == null ? <span className="text-slate-300">—</span> : (v.kmToService < 0 ? (
+                        <span className="text-red-600 font-bold">−{fmtNum(Math.abs(v.kmToService))}<span className="text-[10px] font-normal"> {lang === 'ar' ? 'كم متأخرة' : 'km over'}</span></span>
+                      ) : (
+                        <span className={`font-medium ${v.maintenanceStatus === 'due' ? 'text-amber-600' : 'text-slate-700'}`}>{fmtNum(v.kmToService)}<span className="text-[10px] font-normal"> {lang === 'ar' ? 'كم' : 'km'}</span></span>
+                      ))}
+                    </td>
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{timeAgo(v.lastMessageAt, lang as Lang)}</td>
                     <td className="px-4 py-3">
                       {v.position && <a href={osmLink(v.position.lat, v.position.lng)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-slate-700 hover:text-[#f37121]" title={t.openInMap}><MapPin className="w-4 h-4" /></a>}

@@ -213,11 +213,11 @@ export function thisMonthToDate(): DateRange {
 export function rangePresets(lang: Lang): { key: string; label: string; range: () => DateRange }[] {
   const ar = lang === 'ar';
   return [
-    { key: 'mtd', label: ar ? 'الشهر ده' : 'This month', range: () => thisMonthToDate() },
-    { key: 'prev', label: ar ? 'الشهر اللي فات' : 'Last month', range: () => monthRange(-1) },
+    { key: 'mtd', label: ar ? 'الشهر الحالي' : 'This month', range: () => thisMonthToDate() },
+    { key: 'prev', label: ar ? 'الشهر السابق' : 'Last month', range: () => monthRange(-1) },
     { key: 'd7', label: ar ? 'آخر ٧ أيام' : 'Last 7 days', range: () => lastNDays(7) },
-    { key: 'd30', label: ar ? 'آخر ٣٠ يوم' : 'Last 30 days', range: () => lastNDays(30) },
-    { key: 'prev2', label: ar ? 'شهرين فاتوا' : '2 months ago', range: () => monthRange(-2) },
+    { key: 'd30', label: ar ? 'آخر ٣٠ يومًا' : 'Last 30 days', range: () => lastNDays(30) },
+    { key: 'prev2', label: ar ? 'قبل شهرين' : '2 months ago', range: () => monthRange(-2) },
   ];
 }
 
@@ -231,6 +231,14 @@ export function tireTempColor(t: number | null, warn = 75, crit = 85): string {
   if (t == null) return 'bg-slate-100 text-slate-400';
   if (t >= crit) return 'bg-red-100 text-red-700';
   if (t >= warn) return 'bg-amber-100 text-amber-700';
+  return 'bg-emerald-50 text-emerald-700';
+}
+// Tire pressure state colour — mirrors the alert thresholds (low <90 psi warn,
+// dangerously flat <60 or over-inflated >150 = critical).
+export function tirePressColor(p: number | null, minWarn = 90, critLow = 60, maxWarn = 150): string {
+  if (p == null || p <= 10) return 'bg-slate-100 text-slate-400';
+  if (p < critLow || p > maxWarn) return 'bg-red-100 text-red-700';
+  if (p < minWarn) return 'bg-amber-100 text-amber-700';
   return 'bg-emerald-50 text-emerald-700';
 }
 export function coolantColor(t: number | null, warn = 100, crit = 110): string {

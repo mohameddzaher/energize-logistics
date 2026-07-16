@@ -490,6 +490,19 @@ exports.markServiced = async (req, res) => {
   }
 };
 
+// ---- Full maintenance view for one vehicle (intervals + our service history) --
+exports.getVehicleMaintenance = async (req, res) => {
+  try {
+    const unitId = Number(req.params.id);
+    const v = await Ls2Vehicle.findOne({ unitId }).lean();
+    if (!v) return res.status(404).json({ message: 'Vehicle not found' });
+    const history = await Ls2ServiceLog.find({ unitId }).sort({ serviceDate: -1, createdAt: -1 }).limit(200).lean();
+    res.json({ vehicle: withMaintenance(v), history });
+  } catch (error) {
+    fail(res, error, 'Failed to load maintenance');
+  }
+};
+
 // ---- Register a completed service on ONE interval → writes to Location -------
 // Solutions (Wialon) AND keeps our own richer record (real date, who, notes).
 exports.registerServiceInterval = async (req, res) => {

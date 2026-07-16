@@ -45,7 +45,12 @@ jobs:
 
       - name: Health check
         run: |
-          sleep 6
-          code=$(curl -s -o /dev/null -w "%{http_code}" https://api.energize-logistics.com/api/ls2/dashboard)
-          echo "API health: HTTP $code"
-          [ "$code" = "401" ] || [ "$code" = "200" ] || (echo "Health check failed" && exit 1)
+          # The app takes a few seconds to bind after pm2 restart — poll for up to
+          # ~40s instead of a single early check (which false-failed on timing).
+          for i in $(seq 1 8); do
+            sleep 5
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://api.energize-logistics.com/api/ls2/dashboard)
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = "401" ] || [ "$code" = "200" ]; then echo "✓ API healthy"; exit 0; fi
+          done
+          echo "Health check failed after retries" && exit 1

@@ -434,7 +434,7 @@ function TireLayout({ tires, t, lang }: { tires: Tire[]; t: any; lang: Lang }) {
                         <p className="text-[9px] opacity-60 leading-none mt-0.5">°C</p>
                       </div>
                       {/* Right half — pressure, coloured by its state */}
-                      <div className={`flex-1 py-3 text-center border-s border-white/60 ${tirePressColor(tire.pressurePsi)}`}>
+                      <div className={`flex-1 py-3 text-center border-s-2 border-slate-300 ${tirePressColor(tire.pressurePsi)}`}>
                         <p className="text-[10px] opacity-70 leading-none mb-1">{lang === 'ar' ? 'ضغط' : 'Pressure'}</p>
                         <p className="text-lg font-bold leading-none">{tire.pressurePsi != null ? `${tire.pressurePsi}` : '—'}</p>
                         <p className="text-[9px] opacity-60 leading-none mt-0.5">psi</p>

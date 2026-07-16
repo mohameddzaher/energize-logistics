@@ -421,23 +421,25 @@ function TireLayout({ tires, t, lang }: { tires: Tire[]; t: any; lang: Lang }) {
             <span className="w-16 shrink-0 text-xs font-semibold text-slate-500">{t.axle} {axle}</span>
             <div className="flex flex-wrap gap-2">
               {row.map((tire) => (
-                <div key={`${axle}-${tire.position}`} className="rounded-lg min-w-[96px] overflow-hidden border border-slate-200">
-                  <p className="text-[10px] text-slate-500 bg-slate-50 py-0.5 text-center">{lang === 'ar' ? 'إطار' : 'Tire'} {tire.position}</p>
+                <div key={`${axle}-${tire.position}`} className="rounded-xl min-w-[168px] overflow-hidden border border-slate-200 shadow-sm">
+                  <p className="text-[11px] text-slate-500 bg-slate-50 py-1 text-center font-medium">{lang === 'ar' ? 'إطار' : 'Tire'} {tire.position}</p>
                   {tire.fault ? (
-                    <div className="bg-slate-50 py-3 text-center text-slate-400 text-xs font-medium">{lang === 'ar' ? 'عطل حساس' : 'Sensor fault'}</div>
+                    <div className="bg-slate-50 py-5 text-center text-slate-400 text-sm font-medium">{lang === 'ar' ? 'عطل حساس' : 'Sensor fault'}</div>
                   ) : (
-                    <>
-                      {/* Top half — temperature, coloured by its state */}
-                      <div className={`py-1.5 text-center ${tireTempColor(tire.tempC)}`}>
-                        <p className="text-[9px] opacity-70 leading-none">{lang === 'ar' ? 'حرارة' : 'Temp'}</p>
-                        <p className="text-sm font-bold leading-tight">{tire.tempC != null ? `${tire.tempC}°C` : '—'}</p>
+                    <div className="flex">
+                      {/* Left half — temperature, coloured by its state */}
+                      <div className={`flex-1 py-3 text-center ${tireTempColor(tire.tempC)}`}>
+                        <p className="text-[10px] opacity-70 leading-none mb-1">{lang === 'ar' ? 'حرارة' : 'Temp'}</p>
+                        <p className="text-lg font-bold leading-none">{tire.tempC != null ? `${tire.tempC}°` : '—'}</p>
+                        <p className="text-[9px] opacity-60 leading-none mt-0.5">°C</p>
                       </div>
-                      {/* Bottom half — pressure, coloured by its state */}
-                      <div className={`py-1.5 text-center border-t border-white/60 ${tirePressColor(tire.pressurePsi)}`}>
-                        <p className="text-[9px] opacity-70 leading-none">{lang === 'ar' ? 'ضغط' : 'Pressure'}</p>
-                        <p className="text-sm font-bold leading-tight">{tire.pressurePsi != null ? `${tire.pressurePsi}` : '—'}<span className="text-[9px] font-normal"> psi</span></p>
+                      {/* Right half — pressure, coloured by its state */}
+                      <div className={`flex-1 py-3 text-center border-s border-white/60 ${tirePressColor(tire.pressurePsi)}`}>
+                        <p className="text-[10px] opacity-70 leading-none mb-1">{lang === 'ar' ? 'ضغط' : 'Pressure'}</p>
+                        <p className="text-lg font-bold leading-none">{tire.pressurePsi != null ? `${tire.pressurePsi}` : '—'}</p>
+                        <p className="text-[9px] opacity-60 leading-none mt-0.5">psi</p>
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
               ))}

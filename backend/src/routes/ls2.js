@@ -30,6 +30,13 @@ router.post('/identity/refresh', ADMIN, ls2.refreshIdentity); // re-pull VIN/bra
 router.get('/drivers', ls2.listDrivers); // ?from&to
 router.get('/drivers/:driver', ls2.getDriver); // ?from&to
 
+// Unscheduled/exceptional repairs (accidents, breakdowns) — ours only, never
+// written to Wialon, which has no concept of non-periodic work.
+router.get('/repairs', ls2.listRepairs); // ?unitId&category&status
+router.post('/repairs', ADMIN, ls2.createRepair);
+router.patch('/repairs/:repairId', ADMIN, ls2.updateRepair);
+router.delete('/repairs/:repairId', ADMIN, ls2.deleteRepair);
+
 router.get('/vehicles', ls2.listVehicles);
 router.get('/vehicles/:id', ls2.getVehicle);
 router.get('/vehicles/:id/mileage', ls2.getVehicleMileage); // ?from&to[&source=report]

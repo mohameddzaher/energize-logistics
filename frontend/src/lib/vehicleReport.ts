@@ -1,10 +1,12 @@
 // Full vehicle report (Location Solutions) → professional multi-page PDF on the
 // company letterhead. Pulls everything we hold for one truck over a date range:
-// identity, live status, distance, maintenance plan + service history, trips &
-// stops, fuel, driver history and alerts. Bilingual (follows the site language).
+// identity, live status, distance, the maintenance plan with the full service
+// history (including each service's checklist and any deferred tasks), the
+// exceptional repairs, fuel, driver history and alerts. Bilingual (follows the
+// site language).
 import api from '@/lib/api';
 import { downloadReport, type Block } from '@/lib/reportPdf';
-import { fmtNum, fmtDuration, type Lang } from '@/lib/ls2';
+import { fmtNum, fmtDuration, repairCategoryLabel, REPAIR_SEVERITIES, REPAIR_STATUSES, type Lang } from '@/lib/ls2';
 
 const dt = (s?: string | null) => (s ? String(s).slice(0, 16).replace('T', ' ') : '—');
 const day = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-GB') : '—');
@@ -14,18 +16,22 @@ export async function downloadVehicleReport(unitId: number, from: string, to: st
   const t = (en: string, a: string) => (ar ? a : en);
 
   // Everything in parallel — each of these endpoints already exists.
-  const [detail, mileage, history, trips, fuel] = await Promise.all([
+  const [detail, mileage, history, maint, fuel] = await Promise.all([
     api.get<any>(`/api/ls2/vehicles/${unitId}`),
     api.get<any>(`/api/ls2/vehicles/${unitId}/mileage?from=${from}&to=${to}`).catch(() => null),
     api.get<any>(`/api/ls2/vehicles/${unitId}/history?from=${from}&to=${to}`).catch(() => ({ series: [] })),
-    api.get<any>(`/api/ls2/vehicles/${unitId}/trips?from=${from}&to=${to}`).catch(() => null),
+    api.get<any>(`/api/ls2/vehicles/${unitId}/maintenance`).catch(() => null),
     api.get<any>(`/api/ls2/vehicles/${unitId}/fuel?from=${from}&to=${to}`).catch(() => null),
   ]);
 
   const v = detail.vehicle || {};
   const p = v.profile || {};
   const alerts: any[] = detail.alerts || [];
-  const serviceLog: any[] = detail.serviceLog || [];
+  // The maintenance endpoint carries the richer history (checklists) — fall back
+  // to the vehicle detail's own log if it is unavailable.
+  const serviceLog: any[] = maint?.history || detail.serviceLog || [];
+  const deferrals: any[] = maint?.deferrals || [];
+  const repairs: any[] = maint?.repairs || [];
   const drivers: any[] = detail.driverHistory || [];
 
   const blocks: Block[] = [];
@@ -112,14 +118,96 @@ export async function downloadVehicleReport(unitId: number, from: string, to: st
     blocks.push({ kind: 'note', text: t('No service intervals configured.', 'لا توجد خدمات صيانة مسجّلة.') });
   }
 
+  // ---- Deferred tasks: inspected, granted extra km, still outstanding -------
+  if (deferrals.length) {
+    blocks.push({ kind: 'section', text: t('Deferred Tasks', 'البنود المؤجّلة') });
+    blocks.push({ kind: 'note', text: t('Inspected during a service and judged serviceable for a further distance — each is alerted on before that distance runs out.', 'تم فحصها أثناء الصيانة واعتُبرت صالحة لمسافة إضافية — ويصدر تنبيه قبل انتهاء تلك المسافة.') });
+    blocks.push({
+      kind: 'table',
+      head: [t('Task', 'البند'), t('Service', 'الخدمة'), t('Deferred On', 'أُجِّل بتاريخ'), t('Extra Km', 'كم إضافية'), t('Due At', 'الاستحقاق عند'), t('Remaining', 'المتبقي')],
+      align: ['start', 'start', 'start', 'end', 'end', 'end'],
+      rows: deferrals.map((d: any) => {
+        const over = d.remainingKm != null && d.remainingKm < 0;
+        return [
+          d.label || '—',
+          d.intervalName || '—',
+          `${day(d.deferredAt)}${d.deferredAtOdometerKm != null ? ` · ${fmtNum(d.deferredAtOdometerKm)}` : ''}`,
+          d.deferKm != null ? fmtNum(d.deferKm) : '—',
+          fmtNum(d.dueAtOdometerKm),
+          { t: d.remainingKm == null ? '—' : over ? `−${fmtNum(Math.abs(d.remainingKm))}` : fmtNum(d.remainingKm), color: over ? '#dc2626' : '#d97706' },
+        ];
+      }),
+    });
+  }
+
+  // ---- Service history, with what was actually done on each visit -----------
   if (serviceLog.length) {
     blocks.push({ kind: 'section', text: t('Service History', 'سجل الصيانة') });
     blocks.push({
       kind: 'table',
-      head: [t('Date', 'التاريخ'), t('Type', 'النوع'), t('Odometer', 'العداد'), t('By', 'بواسطة'), t('Notes', 'ملاحظات')],
-      align: ['start', 'start', 'end', 'start', 'start'],
-      rows: serviceLog.map((s: any) => [day(s.createdAt), s.serviceType || '—', s.odometerKm != null ? fmtNum(s.odometerKm) : '—', s.performedByName || '—', s.notes || '—']),
+      head: [t('Date', 'التاريخ'), t('Service', 'الخدمة'), t('Odometer', 'العداد'), t('Cost', 'التكلفة'), t('By', 'بواسطة'), t('Notes', 'ملاحظات')],
+      align: ['start', 'start', 'end', 'end', 'start', 'start'],
+      rows: serviceLog.map((s: any) => [
+        day(s.serviceDate || s.createdAt),
+        s.intervalName || s.serviceType || '—',
+        s.odometerKm != null ? fmtNum(s.odometerKm) : '—',
+        s.cost != null ? fmtNum(s.cost) : '—',
+        s.performedByName || '—',
+        s.notes || '—',
+      ]),
     });
+
+    // Per-visit checklist detail — only for visits that recorded one.
+    const withChecklist = serviceLog.filter((s: any) => (s.checklist?.length || 0) > 0);
+    if (withChecklist.length) {
+      blocks.push({ kind: 'section', text: t('Service Checklists', 'قوائم فحص الصيانة') });
+      for (const s of withChecklist) {
+        blocks.push({ kind: 'note', text: `${s.intervalName || t('Service', 'صيانة')} · ${day(s.serviceDate || s.createdAt)}${s.odometerKm != null ? ` · ${fmtNum(s.odometerKm)} km` : ''}` });
+        blocks.push({
+          kind: 'table',
+          head: [t('Task', 'البند'), t('Outcome', 'النتيجة'), t('Extra Km', 'كم إضافية'), t('Due At', 'الاستحقاق عند'), t('Note', 'ملاحظة')],
+          align: ['start', 'center', 'end', 'end', 'start'],
+          rows: s.checklist.map((c: any) => [
+            c.label || '—',
+            c.status === 'done'
+              ? { t: t('Done', 'تم'), color: '#059669' }
+              : c.status === 'deferred'
+                ? { t: c.resolved ? t('Deferred · since done', 'مؤجّل · تم لاحقًا') : t('Deferred', 'مؤجّل'), color: c.resolved ? '#059669' : '#d97706' }
+                : { t: t('Not needed', 'غير مطلوب'), color: '#64748b' },
+            c.deferKm != null ? fmtNum(c.deferKm) : '—',
+            c.dueAtOdometerKm != null ? fmtNum(c.dueAtOdometerKm) : '—',
+            c.note || '—',
+          ]),
+        });
+      }
+    }
+  }
+
+  // ---- Exceptional repairs: breakdowns, accidents, faults ------------------
+  if (repairs.length) {
+    blocks.push({ kind: 'section', text: t('Exceptional Repairs', 'الصيانة الاستثنائية') });
+    blocks.push({ kind: 'note', text: t('Unscheduled work — not part of the periodic service plan.', 'أعمال غير مجدولة — ليست ضمن خطة الصيانة الدورية.') });
+    blocks.push({
+      kind: 'table',
+      head: [t('Date', 'التاريخ'), t('What happened', 'ما الذي حدث'), t('Category', 'التصنيف'), t('Severity', 'الأهمية'), t('Odometer', 'العداد'), t('Cost', 'التكلفة'), t('Workshop', 'الورشة'), t('Status', 'الحالة')],
+      align: ['start', 'start', 'start', 'center', 'end', 'end', 'start', 'center'],
+      rows: repairs.map((r: any) => {
+        const sev = REPAIR_SEVERITIES[r.severity];
+        const st = REPAIR_STATUSES[r.status];
+        return [
+          day(r.repairDate),
+          [r.title, r.partsReplaced ? `(${r.partsReplaced})` : ''].filter(Boolean).join(' ').slice(0, 46),
+          repairCategoryLabel(r.category, lang),
+          { t: sev ? (ar ? sev.ar : sev.en) : r.severity, color: r.severity === 'high' ? '#dc2626' : r.severity === 'medium' ? '#d97706' : undefined },
+          r.odometerKm != null ? fmtNum(r.odometerKm) : '—',
+          r.cost != null ? fmtNum(r.cost) : '—',
+          (r.workshop || '—').slice(0, 24),
+          { t: st ? (ar ? st.ar : st.en) : r.status, color: r.status === 'done' ? '#059669' : r.status === 'open' ? '#dc2626' : '#d97706' },
+        ];
+      }),
+    });
+    const totalCost = repairs.reduce((a: number, r: any) => a + (r.cost || 0), 0);
+    if (totalCost) blocks.push({ kind: 'note', text: `${t('Total repair cost', 'إجمالي تكلفة الإصلاحات')}: ${fmtNum(totalCost)}` });
   }
 
   // ---- Driver history ------------------------------------------------------
@@ -131,33 +219,6 @@ export async function downloadVehicleReport(unitId: number, from: string, to: st
       align: ['start', 'start', 'start'],
       rows: drivers.map((d: any) => [d.driver || '—', dt(d.from), d.to ? dt(d.to) : t('Current', 'حالي')]),
     });
-  }
-
-  // ---- Trips & stops -------------------------------------------------------
-  if (trips?.summary) {
-    blocks.push({ kind: 'section', text: t('Trips & Stops', 'الرحلات والوقفات') });
-    blocks.push({
-      kind: 'stats',
-      items: [
-        { label: t('Trips', 'الرحلات'), value: fmtNum(trips.summary.tripCount), accent: true },
-        { label: t('Stops', 'الوقفات'), value: fmtNum(trips.summary.stopCount) },
-        { label: t('Total Distance', 'إجمالي المسافة'), value: `${fmtNum(Math.round(trips.summary.totalKm))} km` },
-        { label: t('Drive Time', 'زمن القيادة'), value: fmtDuration(trips.summary.totalDriveSec, lang) },
-        { label: t('Max Speed', 'أقصى سرعة'), value: `${trips.summary.maxSpeed} km/h` },
-      ],
-    });
-    if (trips.trips?.length) {
-      blocks.push({
-        kind: 'table',
-        head: [t('Start', 'البداية'), t('From', 'من'), t('End', 'النهاية'), t('To', 'إلى'), t('Km', 'كم'), t('Duration', 'المدة')],
-        align: ['start', 'start', 'start', 'start', 'end', 'end'],
-        rows: trips.trips.map((tr: any) => [
-          (tr.beginTime || '').slice(5, 16), (tr.beginLocation || '').slice(0, 34),
-          (tr.endTime || '').slice(5, 16), (tr.endLocation || '').slice(0, 34),
-          fmtNum(Math.round(tr.km)), fmtDuration(tr.durationSec, lang),
-        ]),
-      });
-    }
   }
 
   // ---- Fuel ----------------------------------------------------------------

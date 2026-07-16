@@ -8,6 +8,7 @@ const Ls2Vehicle = require('../models/Ls2Vehicle');
 const Ls2Alert = require('../models/Ls2Alert');
 const Ls2Settings = require('../models/Ls2Settings');
 const Ls2ServiceLog = require('../models/Ls2ServiceLog');
+const Ls2Repair = require('../models/Ls2Repair');
 const Ls2DriverAssignment = require('../models/Ls2DriverAssignment');
 const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
 const reports = require('../services/ls2Reports');
@@ -490,16 +491,122 @@ exports.markServiced = async (req, res) => {
   }
 };
 
-// ---- Full maintenance view for one vehicle (intervals + our service history) --
+// Open deferred checklist tasks for a vehicle ("good for another N km"), with how
+// far they are from their due odometer — the basis for the pre-emptive warning.
+function openDeferrals(history, currentOdo) {
+  const out = [];
+  for (const log of history) {
+    for (const c of log.checklist || []) {
+      if (c.status !== 'deferred' || c.resolved || c.dueAtOdometerKm == null) continue;
+      out.push({
+        label: c.label,
+        note: c.note || '',
+        deferKm: c.deferKm,
+        dueAtOdometerKm: c.dueAtOdometerKm,
+        remainingKm: currentOdo != null ? Math.round(c.dueAtOdometerKm - currentOdo) : null,
+        intervalName: log.intervalName,
+        deferredAt: log.serviceDate || log.createdAt,
+        deferredAtOdometerKm: log.odometerKm,
+        logId: log._id,
+      });
+    }
+  }
+  return out.sort((a, b) => (a.remainingKm ?? 1e9) - (b.remainingKm ?? 1e9));
+}
+
+// ---- Full maintenance view for one vehicle -----------------------------------
+// Intervals (from Wialon) + OUR history (checklists), open deferrals and the
+// unscheduled repairs — everything the vehicle's maintenance profile shows.
 exports.getVehicleMaintenance = async (req, res) => {
   try {
     const unitId = Number(req.params.id);
     const v = await Ls2Vehicle.findOne({ unitId }).lean();
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
-    const history = await Ls2ServiceLog.find({ unitId }).sort({ serviceDate: -1, createdAt: -1 }).limit(200).lean();
-    res.json({ vehicle: withMaintenance(v), history });
+    const [history, repairs, settings] = await Promise.all([
+      Ls2ServiceLog.find({ unitId }).sort({ serviceDate: -1, createdAt: -1 }).limit(200).lean(),
+      Ls2Repair.find({ unitId }).sort({ repairDate: -1 }).limit(200).lean(),
+      Ls2Settings.getOrCreate(),
+    ]);
+    res.json({
+      vehicle: withMaintenance(v),
+      history,
+      repairs,
+      deferrals: openDeferrals(history, v.odometerKm),
+      checklists: settings.checklists || {},
+    });
   } catch (error) {
     fail(res, error, 'Failed to load maintenance');
+  }
+};
+
+// ---- Unscheduled / exceptional repairs --------------------------------------
+exports.listRepairs = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.unitId) filter.unitId = Number(req.query.unitId);
+    if (req.query.category) filter.category = req.query.category;
+    if (req.query.status) filter.status = req.query.status;
+    const items = await Ls2Repair.find(filter).sort({ repairDate: -1 }).limit(500).lean();
+    res.json({ items, total: items.length });
+  } catch (error) {
+    fail(res, error, 'Failed to load repairs');
+  }
+};
+
+exports.createRepair = async (req, res) => {
+  try {
+    const unitId = Number(req.body.unitId);
+    const v = await Ls2Vehicle.findOne({ unitId }).lean();
+    if (!v) return res.status(404).json({ message: 'Vehicle not found' });
+    const b = req.body || {};
+    if (!b.title || !String(b.title).trim()) return res.status(400).json({ message: 'A title is required' });
+    const item = await Ls2Repair.create({
+      unitId, plate: v.plate, driver: v.driver,
+      title: String(b.title).trim(),
+      category: b.category || 'other',
+      severity: b.severity || 'medium',
+      status: b.status || 'done',
+      repairDate: b.repairDate ? new Date(b.repairDate) : new Date(),
+      odometerKm: b.odometerKm != null ? Number(b.odometerKm) : v.odometerKm,
+      cost: b.cost != null ? Number(b.cost) : null,
+      workshop: b.workshop || '',
+      partsReplaced: b.partsReplaced || '',
+      description: b.description || '',
+      performedBy: req.user._id,
+      performedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+    });
+    cache.clear('ls2:');
+    emitToAll('ls2:updated', { at: Date.now(), repair: unitId });
+    res.status(201).json({ item });
+  } catch (error) {
+    fail(res, error, 'Failed to create repair');
+  }
+};
+
+exports.updateRepair = async (req, res) => {
+  try {
+    const allowed = ['title', 'category', 'severity', 'status', 'repairDate', 'odometerKm', 'cost', 'workshop', 'partsReplaced', 'description'];
+    const set = {};
+    for (const k of allowed) if (req.body[k] !== undefined) set[k] = req.body[k];
+    const item = await Ls2Repair.findByIdAndUpdate(req.params.repairId, { $set: set }, { new: true });
+    if (!item) return res.status(404).json({ message: 'Repair not found' });
+    cache.clear('ls2:');
+    emitToAll('ls2:updated', { at: Date.now(), repair: item.unitId });
+    res.json({ item });
+  } catch (error) {
+    fail(res, error, 'Failed to update repair');
+  }
+};
+
+exports.deleteRepair = async (req, res) => {
+  try {
+    const item = await Ls2Repair.findByIdAndDelete(req.params.repairId);
+    if (!item) return res.status(404).json({ message: 'Repair not found' });
+    cache.clear('ls2:');
+    emitToAll('ls2:updated', { at: Date.now(), repair: item.unitId });
+    res.json({ ok: true });
+  } catch (error) {
+    fail(res, error, 'Failed to delete repair');
   }
 };
 
@@ -512,13 +619,38 @@ exports.registerServiceInterval = async (req, res) => {
     const v = await Ls2Vehicle.findOne({ unitId });
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
 
-    const { intervalId, odometerKm, serviceDate, engineHours, cost, notes = '' } = req.body || {};
+    const { intervalId, odometerKm, serviceDate, engineHours, cost, notes = '', checklist } = req.body || {};
     if (intervalId == null) return res.status(400).json({ message: 'intervalId is required' });
     const odo = odometerKm != null ? Number(odometerKm) : v.odometerKm;
     if (odo == null || Number.isNaN(odo)) return res.status(400).json({ message: 'A valid odometer is required' });
 
     const iv = (v.serviceIntervals || []).find((s) => Number(s.id) === Number(intervalId));
     const intervalName = iv ? iv.name : '';
+
+    // Our checklist: a deferred task ("still good for another N km") gets a due
+    // odometer so we can warn before those km are used up.
+    const checklistRows = (Array.isArray(checklist) ? checklist : []).map((c) => {
+      const status = ['done', 'deferred', 'na'].includes(c.status) ? c.status : 'done';
+      const deferKm = status === 'deferred' && c.deferKm != null ? Number(c.deferKm) : null;
+      return {
+        label: String(c.label || '').trim(),
+        status,
+        deferKm,
+        dueAtOdometerKm: deferKm != null ? Math.round(odo + deferKm) : null,
+        resolved: false,
+        note: String(c.note || '').trim(),
+      };
+    }).filter((c) => c.label);
+
+    // A task done now clears any earlier deferral of the same task on this truck.
+    const doneLabels = checklistRows.filter((c) => c.status === 'done').map((c) => c.label);
+    if (doneLabels.length) {
+      await Ls2ServiceLog.updateMany(
+        { unitId, 'checklist.label': { $in: doneLabels }, 'checklist.status': 'deferred', 'checklist.resolved': false },
+        { $set: { 'checklist.$[el].resolved': true } },
+        { arrayFilters: [{ 'el.label': { $in: doneLabels }, 'el.status': 'deferred' }] }
+      );
+    }
 
     // 1) Write it into Location Solutions (sets pm + bumps the executions count).
     let synced = false;
@@ -537,6 +669,7 @@ exports.registerServiceInterval = async (req, res) => {
       serviceDate: serviceDate ? new Date(serviceDate) : new Date(),
       engineHours: engineHours != null ? Number(engineHours) : null,
       cost: cost != null ? Number(cost) : null,
+      checklist: checklistRows,
       notes, serviceType: 'periodic', syncedToWialon: synced,
       performedBy: req.user._id, performedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
     });
@@ -701,7 +834,7 @@ exports.updateVehicleMeta = async (req, res) => {
 exports.getSettings = async (req, res) => {
   try {
     const s = await Ls2Settings.getOrCreate();
-    res.json({ thresholds: s.thresholds, maintenance: s.maintenance, defaults: { thresholds: cfg.DEFAULT_THRESHOLDS, maintenance: cfg.DEFAULT_MAINTENANCE } });
+    res.json({ thresholds: s.thresholds, maintenance: s.maintenance, checklists: s.checklists || {}, defaults: { thresholds: cfg.DEFAULT_THRESHOLDS, maintenance: cfg.DEFAULT_MAINTENANCE } });
   } catch (error) {
     fail(res, error, 'Failed to load settings');
   }
@@ -710,15 +843,18 @@ exports.getSettings = async (req, res) => {
 exports.updateSettings = async (req, res) => {
   try {
     const s = await Ls2Settings.getOrCreate();
-    const { thresholds, maintenance } = req.body || {};
+    const { thresholds, maintenance, checklists } = req.body || {};
     if (thresholds && typeof thresholds === 'object') s.thresholds = { ...s.thresholds, ...thresholds };
     if (maintenance && typeof maintenance === 'object') s.maintenance = { ...s.maintenance, ...maintenance };
+    // Our per-service checklist templates: replace wholesale (the editor sends the
+    // full map), so removing a task actually removes it.
+    if (checklists && typeof checklists === 'object') s.checklists = checklists;
     s.updatedBy = req.user._id;
-    s.markModified('thresholds'); s.markModified('maintenance');
+    s.markModified('thresholds'); s.markModified('maintenance'); s.markModified('checklists');
     await s.save();
     cache.clear('ls2:');
     emitToAll('ls2:updated', { at: Date.now(), settings: true });
-    res.json({ thresholds: s.thresholds, maintenance: s.maintenance });
+    res.json({ thresholds: s.thresholds, maintenance: s.maintenance, checklists: s.checklists || {} });
   } catch (error) {
     fail(res, error, 'Failed to update settings');
   }

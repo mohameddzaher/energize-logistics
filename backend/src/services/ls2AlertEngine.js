@@ -98,7 +98,7 @@ function computeMaintenance(tel, maint) {
  * @param {object} settings { thresholds, maintenance }
  * @returns {{ conditions: Array, status: string, alertLevel: string|null, maintenance: object|null }}
  */
-function evaluate(tel, _vehicle, settings) {
+function evaluate(tel, _vehicle, settings, deferrals = []) {
   const th = { ...cfg.DEFAULT_THRESHOLDS, ...(settings.thresholds || {}) };
   const maint = { ...cfg.DEFAULT_MAINTENANCE, ...(settings.maintenance || {}) };
   const conditions = [];
@@ -230,6 +230,28 @@ function evaluate(tel, _vehicle, settings) {
           message: `${iv.name}: due in ${rem.toLocaleString()} ${unit}${iv.nextServiceKm != null ? ` (at ${iv.nextServiceKm.toLocaleString()} km)` : ''}` });
       }
     }
+  }
+
+  // ---- Deferred checklist tasks (OUR extension, not Wialon) -------------
+  // A task judged "still good for another N km" at a service gets an odometer
+  // deadline. Warn before those km run out, escalate once they're used up.
+  for (const d of deferrals) {
+    if (tel.odometerKm == null || d.dueAtOdometerKm == null) continue;
+    const remaining = Math.round(d.dueAtOdometerKm - tel.odometerKm);
+    if (remaining > maint.alertBeforeKm) continue; // still comfortably within the grant
+    const overdue = remaining < 0;
+    add({
+      type: T.DEFERRED_TASK,
+      key: `def${d.logId}:${d.label}`,
+      severity: overdue ? S.CRITICAL : S.WARNING,
+      unit: 'km',
+      value: Math.abs(remaining),
+      threshold: maint.alertBeforeKm,
+      message: overdue
+        ? `Deferred task "${d.label}" is overdue by ${Math.abs(remaining).toLocaleString()} km`
+        : `Deferred task "${d.label}" is due in ${remaining.toLocaleString()} km (at ${d.dueAtOdometerKm.toLocaleString()} km)`,
+      context: { deferred: true, label: d.label, dueAtOdometerKm: d.dueAtOdometerKm, intervalName: d.intervalName || '' },
+    });
   }
 
   // Highest severity present becomes the vehicle's alert level.

@@ -111,6 +111,9 @@ const ALERT_TYPES = {
   IDLING: 'idling',
   MAINTENANCE_DUE: 'maintenance_due',
   MAINTENANCE_OVERDUE: 'maintenance_overdue',
+  // OUR OWN: a checklist task that was inspected and deferred ("good for another
+  // N km") is now close to — or past — the km it was granted.
+  DEFERRED_TASK: 'deferred_task',
   OFFLINE: 'offline',
 };
 

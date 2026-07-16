@@ -33,6 +33,46 @@ export interface ServiceInterval {
   nextServiceValue?: number | null; remaining?: number | null;
   statusLevel: 'ok' | 'due' | 'overdue';
 }
+// OUR OWN extensions beyond the Location Solutions API ------------------------
+// A task template under a service, editable from the section's Settings page.
+export interface ChecklistItem { _id?: string; label: string; labelAr?: string }
+// The map Settings edits + Register-service reads: { [intervalId]: items }
+export type ChecklistTemplates = Record<string, ChecklistItem[]>;
+// One task's outcome on a registered service.
+export interface ChecklistResult {
+  label: string;
+  status: 'done' | 'deferred' | 'na';
+  deferKm: number | null;
+  dueAtOdometerKm: number | null;
+  resolved: boolean;
+  note: string;
+}
+// An open deferral: inspected, judged good for `deferKm` more, not yet done.
+export interface Deferral {
+  label: string; note: string; deferKm: number | null; dueAtOdometerKm: number;
+  remainingKm: number | null; intervalName: string;
+  deferredAt: string | null; deferredAtOdometerKm: number | null; logId: string;
+}
+export type RepairCategory = 'breakdown' | 'accident' | 'tires' | 'electrical' | 'engine' | 'body' | 'other';
+// An unscheduled repair (accident, breakdown) — periodic services live in Wialon,
+// these live only here.
+export interface Repair {
+  _id: string; unitId: number; plate: string; title: string;
+  category: RepairCategory; severity: 'low' | 'medium' | 'high';
+  status: 'open' | 'in_progress' | 'done';
+  repairDate: string; odometerKm: number | null; cost: number | null;
+  workshop: string; partsReplaced: string; description: string; driver: string;
+  performedByName: string; createdAt: string;
+}
+export interface ServiceLog {
+  _id: string; unitId: number; plate: string; action: string;
+  odometerKm: number | null; serviceType: string;
+  intervalId: number | null; intervalName: string;
+  serviceDate: string | null; engineHours: number | null; cost: number | null;
+  syncedToWialon: boolean; checklist: ChecklistResult[]; notes: string;
+  performedByName: string; createdAt: string;
+}
+
 export interface Maintenance {
   statusLevel: 'ok' | 'due' | 'overdue';
   kmToService: number | null; nextServiceKm: number | null; nextServiceName: string;
@@ -118,7 +158,31 @@ export const ALERT_TYPE_LABELS: Record<string, { en: string; ar: string }> = {
   idling: { en: 'Excessive idling', ar: 'تشغيل خامل طويل' },
   maintenance_due: { en: 'Service due', ar: 'صيانة قريبة' },
   maintenance_overdue: { en: 'Service overdue', ar: 'صيانة متأخرة' },
+  deferred_task: { en: 'Deferred task due', ar: 'بند مؤجّل مستحق' },
   offline: { en: 'Offline', ar: 'غير متصل' },
+};
+
+// Exceptional-repair vocabulary (ours — Wialon has no unscheduled work).
+export const REPAIR_CATEGORIES: Record<string, { en: string; ar: string }> = {
+  breakdown: { en: 'Breakdown', ar: 'عطل' },
+  accident: { en: 'Accident', ar: 'حادث' },
+  tires: { en: 'Tires', ar: 'الإطارات' },
+  electrical: { en: 'Electrical', ar: 'كهرباء' },
+  engine: { en: 'Engine', ar: 'المحرك' },
+  body: { en: 'Body', ar: 'الهيكل' },
+  other: { en: 'Other', ar: 'أخرى' },
+};
+export const repairCategoryLabel = (c: string, lang: Lang) => (REPAIR_CATEGORIES[c] ? REPAIR_CATEGORIES[c][lang] : c);
+
+export const REPAIR_SEVERITIES: Record<string, { en: string; ar: string; bg: string; text: string }> = {
+  low: { en: 'Low', ar: 'منخفضة', bg: 'bg-slate-100', text: 'text-slate-700' },
+  medium: { en: 'Medium', ar: 'متوسطة', bg: 'bg-amber-100', text: 'text-amber-800' },
+  high: { en: 'High', ar: 'عالية', bg: 'bg-red-100', text: 'text-red-700' },
+};
+export const REPAIR_STATUSES: Record<string, { en: string; ar: string; bg: string; text: string }> = {
+  open: { en: 'Open', ar: 'مفتوحة', bg: 'bg-red-100', text: 'text-red-700' },
+  in_progress: { en: 'In progress', ar: 'جارية', bg: 'bg-amber-100', text: 'text-amber-800' },
+  done: { en: 'Completed', ar: 'مكتملة', bg: 'bg-emerald-100', text: 'text-emerald-700' },
 };
 export const alertTypeLabel = (type: string, lang: Lang) => (ALERT_TYPE_LABELS[type] ? ALERT_TYPE_LABELS[type][lang] : type);
 
@@ -397,6 +461,36 @@ export function ls2Text(lang: Lang) {
     tireLayout: t('Tire Layout', 'توزيع الكاوتش'),
     axle: t('Axle', 'محور'),
     noTireData: t('No tire sensor data', 'لا توجد بيانات كاوتش'),
+    delete: t('Delete', 'حذف'),
+    // checklists / deferrals / exceptional repairs (our own, not from Wialon)
+    checklist: t('Checklist', 'قائمة الفحص'),
+    checklists: t('Service Checklists', 'قوائم فحص الصيانة'),
+    checklistHint: t('The tasks that make up each service. Shown when registering it.', 'البنود التي تتكوّن منها كل صيانة. تظهر عند تسجيلها.'),
+    addTask: t('Add task', 'إضافة بند'),
+    taskName: t('Task', 'البند'),
+    taskNameAr: t('Arabic name', 'الاسم بالعربية'),
+    noTasks: t('No tasks yet', 'لا توجد بنود بعد'),
+    done: t('Done', 'تم'),
+    deferred: t('Deferred', 'مؤجّل'),
+    notApplicable: t('Not needed', 'غير مطلوب'),
+    deferFor: t('Good for another', 'صالح لمسافة إضافية'),
+    deferKm: t('Extra km', 'كيلومترات إضافية'),
+    deferHint: t('Inspected and still serviceable — we will alert before these km run out.', 'تم فحصه ولا يزال صالحًا — سيصلك تنبيه قبل انتهاء هذه المسافة.'),
+    dueAt: t('Due at', 'الاستحقاق عند'),
+    openDeferrals: t('Deferred Tasks', 'البنود المؤجّلة'),
+    noDeferrals: t('No deferred tasks', 'لا توجد بنود مؤجّلة'),
+    deferredOn: t('Deferred on', 'أُجِّل بتاريخ'),
+    // exceptional repairs
+    repairs: t('Exceptional Repairs', 'الصيانة الاستثنائية'),
+    repairsHint: t('Unscheduled work: breakdowns, accidents, faults — not periodic services.', 'أعمال غير مجدولة: أعطال أو حوادث أو كسور — وليست صيانة دورية.'),
+    newRepair: t('Register Repair', 'تسجيل صيانة استثنائية'),
+    noRepairs: t('No exceptional repairs recorded', 'لا توجد صيانات استثنائية مسجّلة'),
+    repairTitle: t('What happened', 'ما الذي حدث'),
+    category: t('Category', 'التصنيف'),
+    workshop: t('Workshop', 'الورشة'),
+    partsReplaced: t('Parts replaced', 'القطع المستبدلة'),
+    description: t('Description', 'الوصف'),
+    repairDate: t('Repair date', 'تاريخ الإصلاح'),
     // settings
     alertThresholds: t('Alert Thresholds', 'حدود التنبيهات'),
     maintenancePlan: t('Maintenance Plan', 'خطة الصيانة'),

@@ -21,6 +21,17 @@ const ls2ServiceLogSchema = new mongoose.Schema({
   engineHours: { type: Number, default: null },
   cost: { type: Number, default: null },
   syncedToWialon: { type: Boolean, default: false }, // did the Wialon write succeed?
+  // OUR OWN checklist result for this service (Wialon has no equivalent). Each
+  // task is either done, skipped as not-needed, or DEFERRED — inspected and judged
+  // good for another `deferKm`, which raises an alert before those km run out.
+  checklist: [{
+    label: { type: String, default: '' },
+    status: { type: String, enum: ['done', 'deferred', 'na'], default: 'done' },
+    deferKm: { type: Number, default: null },      // extra km granted when deferred
+    dueAtOdometerKm: { type: Number, default: null }, // odometer when it must be done
+    resolved: { type: Boolean, default: false },   // set when a later service does it
+    note: { type: String, default: '' },
+  }],
   notes: { type: String, default: '' },
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   performedByName: { type: String, default: '' },

@@ -11,6 +11,7 @@
 const client = require('../services/ls2Client');
 const { normalize } = require('../services/ls2Sensors');
 const { evaluate } = require('../services/ls2AlertEngine');
+const Ls2ServiceLog = require('../models/Ls2ServiceLog');
 const { syncIdentity } = require('../services/ls2Identity');
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 const Ls2Alert = require('../models/Ls2Alert');
@@ -52,6 +53,23 @@ async function tick() {
     // Current vehicle docs (for maintenance baseline + so we only $set telemetry).
     const existing = await Ls2Vehicle.find({}).lean();
     const vById = new Map(existing.map((v) => [v.unitId, v]));
+    // Open DEFERRED checklist tasks per unit (our own extension): tasks judged
+    // "good for another N km" at a past service and not yet done. The engine warns
+    // before those km run out. One query per tick, grouped by unit.
+    const deferByUnit = new Map();
+    const logsWithDefer = await Ls2ServiceLog.find({
+      checklist: { $elemMatch: { status: 'deferred', resolved: false } },
+    }).select('unitId intervalName checklist').lean();
+    for (const log of logsWithDefer) {
+      for (const c of log.checklist || []) {
+        if (c.status !== 'deferred' || c.resolved || c.dueAtOdometerKm == null) continue;
+        if (!deferByUnit.has(log.unitId)) deferByUnit.set(log.unitId, []);
+        deferByUnit.get(log.unitId).push({
+          logId: log._id, label: c.label, dueAtOdometerKm: c.dueAtOdometerKm, intervalName: log.intervalName,
+        });
+      }
+    }
+
     // Open alerts grouped by unit for reconciliation.
     const openAlerts = await Ls2Alert.find({ status: 'open' }).lean();
     // Currently-open driver assignments (to: null) — one per unit at most.
@@ -76,7 +94,7 @@ async function tick() {
       const tel = normalize(unit);
       if (!tel) continue;
       const vehicleDoc = vById.get(tel.unitId) || null;
-      const { conditions, status, alertLevel, maintenance } = evaluate(tel, vehicleDoc, settings);
+      const { conditions, status, alertLevel, maintenance } = evaluate(tel, vehicleDoc, settings, deferByUnit.get(tel.unitId) || []);
       totalActive += conditions.length;
 
       // --- Vehicle snapshot upsert ---
@@ -146,14 +164,14 @@ async function tick() {
         if (ex) {
           alertOps.push({ updateOne: { filter: { _id: ex._id }, update: { $set: {
             severity: c.severity, message: c.message, value: c.value, threshold: c.threshold, unit: c.unit,
-            plate: tel.plate, driver: tel.driver, lastSeenAt: now, context: ctx,
+            plate: tel.plate, driver: tel.driver, lastSeenAt: now, context: { ...ctx, ...(c.context || {}) },
           } } } });
         } else {
           if (c.severity === 'critical') newCritical += 1;
           alertOps.push({ insertOne: { document: {
             unitId: tel.unitId, plate: tel.plate, driver: tel.driver,
             type: c.type, key: c.key, severity: c.severity, status: 'open', message: c.message,
-            value: c.value, threshold: c.threshold, unit: c.unit, context: ctx,
+            value: c.value, threshold: c.threshold, unit: c.unit, context: { ...ctx, ...(c.context || {}) },
             firstSeenAt: now, lastSeenAt: now,
           } } });
         }

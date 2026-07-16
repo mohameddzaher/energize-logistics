@@ -22,6 +22,8 @@ import {
   fmtNum, fmtKm, fmtDate, fmtDuration, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type Alert, type Tire, type ServiceInterval, type DateRange, type TripsResult, type VehicleFuel, type TrackPoint,
 } from '@/lib/ls2';
 import LiveMap from '@/components/ls2/LiveMap';
+import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
+import VehicleServiceRecord from '@/components/ls2/VehicleServiceRecord';
 
 interface Detail { vehicle: Vehicle; alerts: Alert[]; serviceLog: any[] }
 
@@ -55,37 +57,9 @@ export default function Ls2VehicleDetailPage() {
   const [brandInput, setBrandInput] = useState('');
   const [brandSaving, setBrandSaving] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
-  // Mark-serviced dialog (writes one interval to Location Solutions)
+  // Mark-serviced — the shared dialog (same one the Maintenance page uses), so the
+  // service checklist appears here too.
   const [svcModal, setSvcModal] = useState<ServiceInterval | null>(null);
-  const [svcOdo, setSvcOdo] = useState('');
-  const [svcDate, setSvcDate] = useState('');
-  const [svcNotes, setSvcNotes] = useState('');
-  const [svcCost, setSvcCost] = useState('');
-  const [svcSaving, setSvcSaving] = useState(false);
-
-  const openService = (iv: ServiceInterval) => {
-    setSvcModal(iv);
-    setSvcOdo(String(d?.vehicle?.odometerKm ?? '')); // default = current odometer, editable
-    setSvcDate(new Date().toISOString().slice(0, 10));
-    setSvcNotes(''); setSvcCost('');
-  };
-  const submitService = async () => {
-    if (!svcModal) return;
-    setSvcSaving(true);
-    try {
-      const res = await api.post<{ syncedToWialon: boolean; message: string }>(`/api/ls2/vehicles/${id}/register-service`, {
-        intervalId: svcModal.id,
-        odometerKm: Number(svcOdo),
-        serviceDate: svcDate || undefined,
-        cost: svcCost ? Number(svcCost) : undefined,
-        notes: svcNotes || undefined,
-      });
-      setSvcModal(null);
-      await load();
-      if (!res.syncedToWialon) alert(lang === 'ar' ? 'اتسجّلت عندنا، بس الكتابة في Location Solutions فشلت — راجع الصلاحيات.' : 'Saved locally, but the Location Solutions write failed — check permissions.');
-    } catch (e: any) { alert(e?.message || 'Failed'); }
-    setSvcSaving(false);
-  };
 
   // Full vehicle report over the period selected above (identity, distance,
   // maintenance, service history, drivers, trips, fuel, alerts) → PDF.
@@ -261,7 +235,7 @@ export default function Ls2VehicleDetailPage() {
                     <span>{t.lastService}: <b className="text-slate-700">{fmtDate(iv.lastServiceAt, lang as Lang)}</b>{iv.lastServiceKm != null && <> · {fmtKm(iv.lastServiceKm)}</>}</span>
                     <span>{lang === 'ar' ? 'القادمة' : 'Next'}: <b className="text-slate-700">{r.next}</b></span>
                     {isLs2Admin(user?.role) && (
-                      <button type="button" onClick={() => openService(iv)} className="ms-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 font-medium">
+                      <button type="button" onClick={() => setSvcModal(iv)} className="ms-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 font-medium">
                         <CheckCircle2 className="w-3 h-3" /> {lang === 'ar' ? 'تم عمل الصيانة' : 'Mark serviced'}
                       </button>
                     )}
@@ -273,6 +247,13 @@ export default function Ls2VehicleDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* The complete maintenance record: deferrals, every service with its
+          checklist, and every exceptional repair. Same component everywhere. */}
+      <VehicleServiceRecord
+        unitId={v.unitId} plate={v.plate} currentOdo={v.odometerKm}
+        lang={lang as Lang} isRTL={isRTL} admin={isLs2Admin(user?.role)}
+      />
 
       {/* Distance travelled over a period */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
@@ -423,42 +404,13 @@ export default function Ls2VehicleDetailPage() {
         </div>
       </div>
 
-      {/* Mark-serviced dialog — writes ONE interval to Location Solutions */}
       {svcModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4" onClick={() => !svcSaving && setSvcModal(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5" dir={isRTL ? 'rtl' : 'ltr'} onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 mb-1"><CheckCircle2 className="w-5 h-5 text-[#f37121]" /> {lang === 'ar' ? 'تسجيل صيانة' : 'Register Service'}</h3>
-            <p className="text-xs text-slate-500 mb-4">{svcModal.name}</p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">{lang === 'ar' ? 'العداد وقت الصيانة (كم)' : 'Odometer at service (km)'}</label>
-                <input type="number" value={svcOdo} onChange={(e) => setSvcOdo(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm tabular-nums" />
-                <p className="text-[10px] text-slate-400 mt-1">{lang === 'ar' ? 'المبدئي = العداد الحالي. عدّله لو الصيانة اتعملت وهو أقل.' : 'Defaults to current odometer. Edit if the service was done earlier.'}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600 mb-1 block">{lang === 'ar' ? 'تاريخ الصيانة' : 'Service date'}</label>
-                  <input type="date" value={svcDate} onChange={(e) => setSvcDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600 mb-1 block">{lang === 'ar' ? 'التكلفة (اختياري)' : 'Cost (optional)'}</label>
-                  <input type="number" value={svcCost} onChange={(e) => setSvcCost(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm tabular-nums" />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">{lang === 'ar' ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</label>
-                <textarea rows={2} value={svcNotes} onChange={(e) => setSvcNotes(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-              </div>
-              <p className="text-[10px] text-slate-400 bg-slate-50 rounded-lg p-2">{lang === 'ar' ? 'هيتكتب في Location Solutions فورًا (العداد + عدد المرات)، ويتحفظ عندنا بالتاريخ الحقيقي ومين سجّله.' : 'Writes to Location Solutions instantly (odometer + count), and is kept here with the real date + who logged it.'}</p>
-            </div>
-            <div className="flex justify-end gap-2 mt-5">
-              <button type="button" onClick={() => setSvcModal(null)} disabled={svcSaving} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
-              <button type="button" onClick={submitService} disabled={svcSaving || !svcOdo} className="px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium flex items-center gap-1.5 disabled:opacity-60">
-                {svcSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} {lang === 'ar' ? 'تسجيل الصيانة' : 'Register'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <RegisterServiceModal
+          unitId={v.unitId} interval={svcModal} currentOdo={v.odometerKm}
+          lang={lang as Lang} isRTL={isRTL}
+          onClose={() => setSvcModal(null)}
+          onSaved={() => { setSvcModal(null); load(); }}
+        />
       )}
     </div>
   );

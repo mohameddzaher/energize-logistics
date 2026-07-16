@@ -3,13 +3,15 @@
 // faults. This is OURS alone: Location Solutions only models periodic services,
 // so nothing on this page is read from or written to it.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Hammer, RefreshCw, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Hammer, RefreshCw, Plus, Pencil, Trash2, Search, ExternalLink } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RepairModal from '@/components/ls2/RepairModal';
+import VehiclePicker from '@/components/ls2/VehiclePicker';
 import {
   ls2Text, isLs2Staff, isLs2Admin, fmtKm, REPAIR_CATEGORIES, REPAIR_SEVERITIES, REPAIR_STATUSES,
   repairCategoryLabel, type Lang, type Repair, type Vehicle,
@@ -18,12 +20,14 @@ import {
 export default function Ls2RepairsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
+  const router = useRouter();
   const ar = lang === 'ar';
   const t = ls2Text(lang as Lang);
   const admin = isLs2Admin(user?.role);
   const [items, setItems] = useState<Repair[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
   const [category, setCategory] = useState('all');
   const [status, setStatus] = useState('all');
   const [editing, setEditing] = useState<Repair | null>(null);
@@ -43,9 +47,16 @@ export default function Ls2RepairsPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
 
-  const rows = useMemo(() => items.filter((r) =>
-    (category === 'all' || r.category === category) && (status === 'all' || r.status === status)
-  ), [items, category, status]);
+  const rows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return items.filter((r) => {
+      if (category !== 'all' && r.category !== category) return false;
+      if (status !== 'all' && r.status !== status) return false;
+      if (!term) return true;
+      return [r.plate, r.title, r.description, r.workshop, r.partsReplaced, r.driver, String(r.unitId)]
+        .some((x) => (x || '').toLowerCase().includes(term));
+    });
+  }, [items, q, category, status]);
 
   const totalCost = rows.reduce((a, r) => a + (r.cost || 0), 0);
 
@@ -80,6 +91,13 @@ export default function Ls2RepairsPage() {
             <p className={`text-xl font-bold tabular-nums ${k.accent}`}>{k.value}</p>
           </div>
         ))}
+      </div>
+
+      <div className="relative">
+        <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-3" />
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder={ar ? 'ابحث برقم اللوحة أو العطل أو الورشة…' : 'Search by plate, fault or workshop…'}
+          className="w-full ps-9 pe-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 shadow-sm" />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -117,7 +135,13 @@ export default function Ls2RepairsPage() {
                 const st = REPAIR_STATUSES[r.status];
                 return (
                   <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{r.plate || `#${r.unitId}`}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <button type="button" onClick={() => router.push(`/system/ls2/${r.unitId}`)}
+                        className="font-medium text-slate-800 hover:text-[#f37121] inline-flex items-center gap-1 group">
+                        {r.plate || `#${r.unitId}`}
+                        <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-slate-800">
                       {r.title}
                       {r.description && <p className="text-[11px] text-slate-500 truncate max-w-[240px]">{r.description}</p>}
@@ -146,22 +170,13 @@ export default function Ls2RepairsPage() {
         </div>
       </div>
 
-      {/* Pick the truck first — a repair always belongs to one */}
+      {/* Pick the truck first — searchable; 57 trucks is too many to scroll */}
       {pickVehicle && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4" onClick={() => setPickVehicle(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm max-h-[80vh] overflow-y-auto p-4" dir={isRTL ? 'rtl' : 'ltr'} onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-slate-900 mb-3">{ar ? 'اختر المركبة' : 'Select vehicle'}</h3>
-            <div className="space-y-1">
-              {vehicles.map((v) => (
-                <button key={v.unitId} type="button" onClick={() => { setPickVehicle(false); setAdding(v); }}
-                  className="w-full text-start px-3 py-2 rounded-lg hover:bg-slate-50 text-sm text-slate-800 flex justify-between">
-                  <span className="font-medium">{v.plate || v.name}</span>
-                  <span className="text-xs text-slate-500">{v.driver || '—'}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <VehiclePicker
+          vehicles={vehicles} lang={lang as Lang} isRTL={isRTL}
+          onPick={(v) => { setPickVehicle(false); setAdding(v); }}
+          onClose={() => setPickVehicle(false)}
+        />
       )}
 
       {(adding || editing) && (

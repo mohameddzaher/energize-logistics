@@ -491,8 +491,23 @@ export function ls2Text(lang: Lang) {
     partsReplaced: t('Parts replaced', 'القطع المستبدلة'),
     description: t('Description', 'الوصف'),
     repairDate: t('Repair date', 'تاريخ الإصلاح'),
+    // What each field on the repair form is for — shown under it, so anyone
+    // filling it in knows what belongs there without asking.
+    hintRepairTitle: t('A one-line summary of the fault — this is what appears in the record and the reports.', 'سطر واحد يلخّص العطل — هو ما يظهر في السجل والتقارير.'),
+    hintCategory: t('Which system failed. Used to filter the page and see what breaks most often.', 'أي جزء تعطّل. يُستخدم لفلترة الصفحة ومعرفة أكثر الأعطال تكرارًا.'),
+    hintSeverity: t('How serious it was — low, medium or high. Colour-coded in the tables.', 'مدى خطورة العطل — منخفضة أو متوسطة أو عالية. تظهر بلون مميّز في الجداول.'),
+    hintStatus: t('Where the work stands: still open, being worked on, or completed.', 'وضع العمل: ما زال مفتوحًا، أو جارٍ تنفيذه، أو اكتمل.'),
+    hintRepairDate: t('The day the work actually happened — not the day you are logging it.', 'اليوم الذي تم فيه الإصلاح فعليًا — وليس يوم تسجيله.'),
+    hintRepairOdo: t('The odometer when it happened. Defaults to the current reading; edit it if the repair was earlier.', 'قراءة العدّاد وقت حدوثه. المبدئي هو القراءة الحالية؛ عدّله إذا كان الإصلاح أقدم.'),
+    hintCost: t('What it cost, if known. Totalled per vehicle and across the fleet.', 'التكلفة إن كانت معروفة. تُجمع لكل مركبة وللأسطول.'),
+    hintWorkshop: t('Who did the work — an internal workshop or an outside garage.', 'من قام بالعمل — ورشة داخلية أو خارجية.'),
+    hintParts: t('Any parts that were changed, so the vehicle history shows what is new on it.', 'القطع التي تم تغييرها، ليُظهر سجل المركبة ما هو جديد فيها.'),
+    hintDescription: t('The full story: what happened, why, and anything the next reader should know.', 'التفاصيل الكاملة: ماذا حدث ولماذا، وأي معلومة يحتاجها من يقرأ السجل لاحقًا.'),
     // settings
     alertThresholds: t('Alert Thresholds', 'حدود التنبيهات'),
+    thresholdsHint: t('The reading at which each alert fires. Applied on the next poll — no restart needed.', 'القيمة التي يصدر عندها كل تنبيه. تُطبَّق عند التحديث التالي دون الحاجة لإعادة تشغيل.'),
+    maintenancePlanHint: t('The fallback plan for vehicles with no service intervals of their own in Location Solutions.', 'الخطة البديلة للمركبات التي ليس لها خدمات صيانة خاصة بها في Location Solutions.'),
+    unsavedChanges: t('You have unsaved changes', 'لديك تغييرات غير محفوظة'),
     maintenancePlan: t('Maintenance Plan', 'خطة الصيانة'),
     save: t('Save', 'حفظ'),
     saved: t('Saved', 'تم الحفظ'),
@@ -529,6 +544,20 @@ export const THRESHOLD_FIELDS: { key: string; en: string; ar: string; unit: stri
   { key: 'batteryCriticalV', en: 'Critical voltage', ar: 'جهد حرِج', unit: 'V' },
   { key: 'offlineMinutes', en: 'Offline after', ar: 'يعتبر غير متصل بعد', unit: 'min' },
 ];
+// The 17 thresholds grouped by the system they guard, so the Settings page can
+// present them as related sets instead of one undifferentiated wall of inputs.
+export const THRESHOLD_GROUPS: { key: string; en: string; ar: string; icon: string; fields: string[] }[] = [
+  { key: 'tires', en: 'Tires', ar: 'الإطارات', icon: 'tire',
+    fields: ['tireTempC', 'tireTempCriticalC', 'tirePressureMinPsi', 'tirePressureCriticalPsi', 'tirePressureMaxPsi', 'tirePressureImbalancePsi'] },
+  { key: 'engine', en: 'Engine', ar: 'المحرك', icon: 'engine',
+    fields: ['coolantTempC', 'coolantTempCriticalC', 'rpmMax'] },
+  { key: 'load', en: 'Fuel, Load & Speed', ar: 'الوقود والحمولة والسرعة', icon: 'load',
+    fields: ['fuelLowPct', 'fuelCriticalPct', 'weightMaxKg', 'speedMaxKmh', 'speedCriticalKmh'] },
+  { key: 'power', en: 'Power & Connectivity', ar: 'الكهرباء والاتصال', icon: 'power',
+    fields: ['batteryLowV', 'batteryCriticalV', 'offlineMinutes'] },
+];
+export const thresholdField = (key: string) => THRESHOLD_FIELDS.find((f) => f.key === key);
+
 export const MAINTENANCE_FIELDS: { key: string; en: string; ar: string; unit: string }[] = [
   { key: 'serviceIntervalKm', en: 'Service every', ar: 'صيانة كل', unit: 'km' },
   { key: 'alertBeforeKm', en: 'Alert before', ar: 'تنبيه قبلها', unit: 'km' },

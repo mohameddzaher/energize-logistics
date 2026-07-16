@@ -56,6 +56,7 @@ export default function RepairModal({
 
   const input = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-800';
   const label = 'text-xs font-medium text-slate-600 mb-1 block';
+  const Hint = ({ children }: { children: string }) => <p className="text-[10px] text-slate-500 mt-1 leading-snug">{children}</p>;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4" onClick={() => !saving && onClose()}>
@@ -68,54 +69,64 @@ export default function RepairModal({
             <label className={label}>{t.repairTitle}</label>
             <input value={f.title} onChange={(e) => set('title', e.target.value)} className={input}
               placeholder={ar ? 'مثال: كسر في ماسورة المياه' : 'e.g. Cracked water hose'} />
+            <Hint>{t.hintRepairTitle}</Hint>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className={label}>{t.category}</label>
               <select value={f.category} onChange={(e) => set('category', e.target.value)} className={input}>
                 {Object.entries(REPAIR_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
               </select>
+              <Hint>{t.hintCategory}</Hint>
             </div>
             <div>
               <label className={label}>{t.severity}</label>
               <select value={f.severity} onChange={(e) => set('severity', e.target.value)} className={input}>
                 {Object.entries(REPAIR_SEVERITIES).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
               </select>
+              <Hint>{t.hintSeverity}</Hint>
             </div>
             <div>
               <label className={label}>{t.status}</label>
               <select value={f.status} onChange={(e) => set('status', e.target.value)} className={input}>
                 {Object.entries(REPAIR_STATUSES).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
               </select>
+              <Hint>{t.hintStatus}</Hint>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className={label}>{t.repairDate}</label>
               <input type="date" value={f.repairDate} onChange={(e) => set('repairDate', e.target.value)} className={input} />
+              <Hint>{t.hintRepairDate}</Hint>
             </div>
             <div>
               <label className={label}>{ar ? 'العداد (كم)' : 'Odometer (km)'}</label>
               <input type="number" value={f.odometerKm} onChange={(e) => set('odometerKm', e.target.value)} className={`${input} tabular-nums`} />
+              <Hint>{t.hintRepairOdo}</Hint>
             </div>
             <div>
               <label className={label}>{ar ? 'التكلفة' : 'Cost'}</label>
               <input type="number" value={f.cost} onChange={(e) => set('cost', e.target.value)} className={`${input} tabular-nums`} />
+              <Hint>{t.hintCost}</Hint>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={label}>{t.workshop}</label>
               <input value={f.workshop} onChange={(e) => set('workshop', e.target.value)} className={input} />
+              <Hint>{t.hintWorkshop}</Hint>
             </div>
             <div>
               <label className={label}>{t.partsReplaced}</label>
               <input value={f.partsReplaced} onChange={(e) => set('partsReplaced', e.target.value)} className={input} />
+              <Hint>{t.hintParts}</Hint>
             </div>
           </div>
           <div>
             <label className={label}>{t.description}</label>
             <textarea rows={3} value={f.description} onChange={(e) => set('description', e.target.value)} className={input} />
+            <Hint>{t.hintDescription}</Hint>
           </div>
           <p className="text-[10px] text-slate-500 bg-slate-50 rounded-lg p-2">{t.repairsHint}</p>
         </div>

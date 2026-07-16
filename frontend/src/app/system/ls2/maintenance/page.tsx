@@ -18,7 +18,7 @@ import { ls2Text, isLs2Staff, maintStyle, fmtNum, fmtKm, type Lang, type Vehicle
 
 const FILTERS = ['all', 'due', 'overdue'];
 
-// Click a vehicle → its full maintenance profile at /maintenance/[id].
+// Click a vehicle → its full profile at /system/ls2/[id] (one profile everywhere).
 export default function Ls2MaintenancePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -88,7 +88,7 @@ export default function Ls2MaintenancePage() {
                 const over = (v.kmToService ?? 0) < 0;
                 return (
                   <Fragment key={v.unitId}>
-                    <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/system/ls2/maintenance/${v.unitId}`)}>
+                    <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/system/ls2/${v.unitId}`)}>
                       <td className="px-3 py-3 text-slate-400"><ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} /></td>
                       <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{v.plate || v.name}</td>
                       <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>

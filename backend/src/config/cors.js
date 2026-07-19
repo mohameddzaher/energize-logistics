@@ -7,10 +7,18 @@
  * the app works whether you open it via localhost:3000, 127.0.0.1:3000, or the
  * machine's network IP (e.g. testing from a phone on the same Wi-Fi).
  */
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// The real production frontend is ALWAYS allowed, regardless of env vars — a
+// deploy that ships a dev .env must never lock the company out of its own app
+// (it happened: an rsync overwrote the VPS .env and every login failed CORS).
+const PROD_ORIGINS = ['https://energize-logistics.com', 'https://www.energize-logistics.com'];
+
+const allowedOrigins = [...new Set([
+  ...PROD_ORIGINS,
+  ...(process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+])];
 
 const isDev = process.env.NODE_ENV !== 'production';
 

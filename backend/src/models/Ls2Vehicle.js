@@ -106,6 +106,14 @@ const ls2VehicleSchema = new mongoose.Schema({
   upcomingServiceKm: { type: Number, default: null },
   upcomingServiceName: { type: String, default: '' },
 
+  // Unrecorded-swap detector: the stable count of tire sensors actually
+  // reporting, plus the open "count changed" notice. A change that persists
+  // means someone mounted/removed sensored tires without recording it in the
+  // asset registry — the poll raises a tire_sensor_change alert from the notice,
+  // and it clears on acknowledge, on a registry update for the truck, or expiry.
+  tireReporting: { type: mongoose.Schema.Types.Mixed, default: null }, // { baseline, baselineSince, candidate, candidateSince }
+  sensorChangeNotice: { type: mongoose.Schema.Types.Mixed, default: null }, // { from, to, at, expiresAt }
+
   lastSyncedAt: { type: Date },
 }, { timestamps: true });
 

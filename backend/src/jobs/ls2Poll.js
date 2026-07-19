@@ -41,6 +41,50 @@ const VEHICLE_FIELDS = [
   'odometerKm', 'engineHours', 'tires', 'tireCount', 'maxTireTempC', 'minTireTempC', 'maxTirePressurePsi', 'minTirePressurePsi', 'tireFaults',
 ];
 
+// How long a changed tire-sensor count must persist (wall clock, but only
+// observed while ignition is on) before we call it a real change, and how long
+// the resulting review notice stays open if nobody acts on it.
+const SENSOR_CHANGE_STABLE_MS = 6 * 60 * 60 * 1000;   // 6 hours
+const SENSOR_CHANGE_NOTICE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Compare how many tire slots report now vs the stable baseline. Returns the
+// fields to $set on the vehicle doc ({} = nothing to change this tick).
+// Only samples while the ignition is on and tire slots exist: parked trucks go
+// radio-silent and would otherwise "change" to 0 every night.
+function detectSensorChange(tel, vehicleDoc, status, now) {
+  const out = {};
+  const slots = tel.tires || [];
+  // Expire a stale notice regardless of ignition state.
+  const notice = vehicleDoc?.sensorChangeNotice || null;
+  if (notice && new Date(notice.expiresAt) <= now) out.sensorChangeNotice = null;
+
+  if (status === 'offline' || !tel.ignition || !slots.length) return out;
+  const reporting = slots.filter((t) => t.tempC != null || (t.pressurePsi != null && t.pressurePsi > 10)).length;
+  const prev = vehicleDoc?.tireReporting || null;
+
+  if (!prev) {
+    out.tireReporting = { baseline: reporting, baselineSince: now, candidate: null, candidateSince: null };
+    return out;
+  }
+  if (reporting === prev.baseline) {
+    if (prev.candidate != null) out.tireReporting = { ...prev, candidate: null, candidateSince: null };
+    return out;
+  }
+  if (prev.candidate === reporting && prev.candidateSince) {
+    if (now - new Date(prev.candidateSince).getTime() >= SENSOR_CHANGE_STABLE_MS) {
+      // The change stuck — new baseline + open a review notice.
+      out.tireReporting = { baseline: reporting, baselineSince: now, candidate: null, candidateSince: null };
+      out.sensorChangeNotice = {
+        from: prev.baseline, to: reporting, at: now,
+        expiresAt: new Date(now.getTime() + SENSOR_CHANGE_NOTICE_MS),
+      };
+    }
+    return out;
+  }
+  out.tireReporting = { ...prev, candidate: reporting, candidateSince: now };
+  return out;
+}
+
 async function tick() {
   if (running) return;
   if (!client.isConfigured()) return;
@@ -96,11 +140,31 @@ async function tick() {
       if (!tel) continue;
       const vehicleDoc = vById.get(tel.unitId) || null;
       const { conditions, status, alertLevel, maintenance } = evaluate(tel, vehicleDoc, settings, deferByUnit.get(tel.unitId) || []);
+
+      // --- Unrecorded tire-swap detector -----------------------------------
+      // TPMS sensors have no serial in our feed, so a physical swap can't be
+      // identified directly. What IS visible: how many tire slots actually
+      // report. If that count changes and STAYS changed (observed only while
+      // the ignition is on, so overnight radio silence doesn't count), the
+      // workshop almost certainly mounted/removed sensored tires — raise a
+      // week-long notice so someone reviews the truck and updates the registry.
+      const trChange = detectSensorChange(tel, vehicleDoc, status, now);
+      const activeNotice = trChange.sensorChangeNotice !== undefined ? trChange.sensorChangeNotice : (vehicleDoc?.sensorChangeNotice || null);
+      if (activeNotice && new Date(activeNotice.expiresAt) > now) {
+        conditions.push({
+          type: 'tire_sensor_change', key: 'sensor-change', severity: 'warning',
+          message: `Tire sensors reporting changed ${activeNotice.from} → ${activeNotice.to} — review the truck's tires and update the asset registry`,
+          value: activeNotice.to, threshold: activeNotice.from, unit: 'tires',
+          context: { from: activeNotice.from, to: activeNotice.to, changedAt: activeNotice.at },
+        });
+      }
       totalActive += conditions.length;
 
       // --- Vehicle snapshot upsert ---
       const set = { status, alertLevel, activeAlertCount: conditions.length, lastSyncedAt: now };
       for (const f of VEHICLE_FIELDS) set[f] = tel[f];
+      if (trChange.tireReporting !== undefined) set.tireReporting = trChange.tireReporting;
+      if (trChange.sensorChangeNotice !== undefined) set.sensorChangeNotice = trChange.sensorChangeNotice;
       // Mirror Wialon's maintenance plan + its rollup for the fleet list.
       if (maintenance) {
         set.serviceIntervals = maintenance.intervals;

@@ -119,6 +119,10 @@ const ALERT_TYPES = {
   // OUR OWN: a checklist task that was inspected and deferred ("good for another
   // N km") is now close to — or past — the km it was granted.
   DEFERRED_TASK: 'deferred_task',
+  // OUR OWN: the number of tire sensors actually reporting changed and stayed
+  // changed — almost always an unrecorded workshop swap. Cleared by acknowledging
+  // the alert or by recording the tire work in the asset registry.
+  TIRE_SENSOR_CHANGE: 'tire_sensor_change',
   OFFLINE: 'offline',
 };
 

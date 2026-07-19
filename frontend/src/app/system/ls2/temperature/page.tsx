@@ -10,6 +10,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Thermometer, Flame, RefreshCw } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ls2Text, isLs2Staff, tireTempColor, coolantColor, type Lang, type Vehicle } from '@/lib/ls2';
 
 export default function Ls2TemperaturePage() {
@@ -38,6 +39,22 @@ export default function Ls2TemperaturePage() {
   const tireRows = useMemo(() => items.filter((v) => v.maxTireTempC != null).sort((a, b) => (b.maxTireTempC || 0) - (a.maxTireTempC || 0)), [items]);
   const engineRows = useMemo(() => items.filter((v) => v.coolantC != null).sort((a, b) => (b.coolantC || 0) - (a.coolantC || 0)), [items]);
 
+  const ar = lang === 'ar';
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', transform: (v, row) => v || row.name || '' },
+    { header: ar ? 'السائق' : 'Driver', key: 'driver', transform: (v) => v ?? '' },
+    { header: ar ? 'حرارة الموتور °م' : 'Coolant °C', key: 'coolantC', transform: (v) => v ?? '' },
+    { header: ar ? 'أقصى حرارة كاوتش' : 'Max Tire Temp °C', key: 'maxTireTempC', transform: (v) => v ?? '' },
+    { header: ar ? 'أقل حرارة كاوتش' : 'Min Tire Temp °C', key: 'minTireTempC', transform: (v) => v ?? '' },
+    { header: ar ? 'أقصى ضغط' : 'Max Pressure psi', key: 'maxTirePressurePsi', transform: (v) => v ?? '' },
+    { header: ar ? 'أقل ضغط' : 'Min Pressure psi', key: 'minTirePressurePsi', transform: (v) => v ?? '' },
+    { header: ar ? 'أعطال حساسات' : 'Sensor Faults', key: 'tireFaults', transform: (v) => v ?? '' },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => v ?? '' },
+  ];
+  const exportOptions = [
+    { key: 'all', label: ar ? 'كل العربيات' : 'All vehicles', sheets: [{ name: ar ? 'الحرارة' : 'Temperature', rows: items, columns: exportColumns }] },
+  ];
+
   if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
@@ -46,6 +63,7 @@ export default function Ls2TemperaturePage() {
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Thermometer className="w-5 h-5" />} title={t.temperature} subtitle={t.live}>
+        <ExportMenu fileName="ls2-temperature" lang={lang as Lang} options={exportOptions} />
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
       </PageHeader>
 

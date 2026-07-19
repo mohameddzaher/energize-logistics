@@ -10,6 +10,7 @@ import api from '@/lib/api';
 import { Satellite, MapPin, RefreshCw, Search, Route } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ls2Text, isLs2Staff, statusStyle, tireTempColor, coolantColor, fmtKm, fmtNum, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type DateRange } from '@/lib/ls2';
 
 const STATUSES = ['moving', 'idle', 'stopped', 'offline'];
@@ -47,6 +48,25 @@ export default function Ls2LivePage() {
     return items.filter((v) => `${v.plate} ${v.driver} ${v.name} ${v.profile?.brand || ''} ${v.profile?.vin || ''}`.toLowerCase().includes(s));
   }, [items, q]);
 
+  // Excel export — "all" = the full server list (before search), "filtered" = what's on screen.
+  const exportColumns = useMemo<ExportColumn[]>(() => {
+    const ar = lang === 'ar';
+    return [
+      { header: ar ? 'اللوحة' : 'Plate', key: 'plate', transform: (v, row) => v || row.name || '', width: 16 },
+      { header: ar ? 'السائق' : 'Driver', key: 'driver', transform: (v) => v ?? '', width: 20 },
+      { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => { const st = statusStyle(v); return ar ? st.ar : st.en; }, width: 12 },
+      { header: ar ? 'السرعة كم/س' : 'Speed km/h', key: 'speed', transform: (v) => v ?? '', width: 12 },
+      { header: ar ? 'العداد كم' : 'Odometer km', key: 'odometerKm', transform: (v) => v ?? '', width: 14 },
+      { header: ar ? 'ساعات الموتور' : 'Engine hours', key: 'engineHours', transform: (v) => v ?? '', width: 14 },
+      { header: ar ? 'الوقود %' : 'Fuel %', key: 'fuelPct', transform: (v) => v ?? '', width: 10 },
+      { header: ar ? 'حرارة الموتور' : 'Coolant °C', key: 'coolantC', transform: (v) => v ?? '', width: 13 },
+      { header: ar ? 'أقصى حرارة كاوتش' : 'Max tire temp °C', key: 'maxTireTempC', transform: (v) => v ?? '', width: 16 },
+      { header: ar ? 'الوزن كجم' : 'Weight kg', key: 'weightKg', transform: (v) => v ?? '', width: 12 },
+      { header: ar ? 'تنبيهات مفتوحة' : 'Open alerts', key: 'activeAlertCount', transform: (v) => v ?? '', width: 14 },
+      { header: ar ? 'آخر إشارة' : 'Last signal', key: 'lastMessageAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 20 },
+    ];
+  }, [lang]);
+
   if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
@@ -54,6 +74,14 @@ export default function Ls2LivePage() {
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Satellite className="w-5 h-5" />} title={t.liveFleet} subtitle={`${filtered.length} ${lang === 'ar' ? 'مركبة' : 'vehicles'} · ${t.live}`}>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
+        <ExportMenu
+          fileName="ls2-live-fleet"
+          lang={lang as Lang}
+          options={[
+            { key: 'all', label: lang === 'ar' ? 'كل العربيات' : 'All vehicles', sheets: [{ name: lang === 'ar' ? 'كل العربيات' : 'All vehicles', rows: items, columns: exportColumns }] },
+            { key: 'filtered', label: lang === 'ar' ? 'النتائج الحالية (بعد الفلتر)' : 'Current filtered results', sheets: [{ name: lang === 'ar' ? 'النتائج الحالية' : 'Filtered results', rows: filtered, columns: exportColumns }] },
+          ]}
+        />
       </PageHeader>
 
       {/* Period picker — drives the "km in period" column (real Wialon odometer). */}

@@ -456,6 +456,11 @@ exports.acknowledgeAlert = async (req, res) => {
     const a = await Ls2Alert.findByIdAndUpdate(req.params.id,
       { $set: { acknowledgedBy: req.user._id, acknowledgedAt: new Date() } }, { new: true });
     if (!a) return res.status(404).json({ message: 'Alert not found' });
+    // A tire-sensor-change notice exists to be REVIEWED; acknowledging it is
+    // that review — clear the notice so the alert resolves on the next poll.
+    if (a.type === 'tire_sensor_change') {
+      await Ls2Vehicle.updateOne({ unitId: a.unitId }, { $set: { sensorChangeNotice: null } });
+    }
     emitToAll('ls2:alert', { at: Date.now(), acknowledged: String(a._id) });
     res.json(a);
   } catch (error) {

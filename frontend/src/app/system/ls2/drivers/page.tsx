@@ -10,6 +10,7 @@ import api from '@/lib/api';
 import { UserSquare, Search, FileDown, Loader2, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ls2Text, isLs2Staff, fmtNum, thisMonthToDate, type Lang, type DateRange } from '@/lib/ls2';
 import { downloadDriverReport } from '@/lib/driverReport';
 
@@ -66,6 +67,16 @@ export default function Ls2DriversPage() {
 
   const totalKm = filtered.reduce((s, d) => s + (d.km || 0), 0);
 
+  const exportColumns: ExportColumn[] = [
+    { header: tx('Driver', 'السائق'), key: 'driver', width: 26 },
+    { header: tx('Distance in period (km)', 'المسافة في الفترة (كم)'), key: 'km', transform: (v) => Math.round(v || 0), width: 20 },
+    { header: tx('Active days', 'أيام نشطة'), key: 'activeDays', transform: (v) => v || 0, width: 12 },
+    { header: tx('Trucks driven', 'عدد المركبات'), key: 'vehicleCount', transform: (v) => v || 0, width: 14 },
+    { header: tx('Current truck', 'المركبة الحالية'), key: 'currentVehicle', transform: (v) => v?.plate || '—', width: 16 },
+    { header: tx('Trucks (km each)', 'المركبات (كم لكل مركبة)'), key: 'vehicles', transform: (v: DriverRow['vehicles']) => (v || []).map((x) => `${x.plate || x.unitId}: ${Math.round(x.km || 0)}`).join(' | ') || '—', width: 50 },
+  ];
+  const exportSheet = (rows: DriverRow[]) => [{ name: `${range.from} → ${range.to}`, rows: rows as unknown as Record<string, any>[], columns: exportColumns }];
+
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
@@ -76,6 +87,14 @@ export default function Ls2DriversPage() {
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <RefreshCw className="w-4 h-4" /> {t.refresh}
         </button>
+        <ExportMenu
+          fileName="ls2-drivers"
+          lang={lang as Lang}
+          options={[
+            { key: 'all', label: tx('All drivers', 'كل السواقين'), sheets: exportSheet(items) },
+            { key: 'filtered', label: tx('Current filtered results', 'النتائج الحالية (بعد الفلتر)'), sheets: exportSheet(filtered) },
+          ]}
+        />
       </PageHeader>
 
       <RangePicker value={range} onChange={setRange} lang={lang as Lang} labelFrom={t.from} labelTo={t.to} />

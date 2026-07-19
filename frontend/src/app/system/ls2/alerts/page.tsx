@@ -9,6 +9,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Bell, RefreshCw, Check } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ls2Text, isLs2Staff, severityStyle, alertTypeLabel, alertMessage, timeAgo, ALERT_TYPE_LABELS, type Lang, type Alert } from '@/lib/ls2';
 
 export default function Ls2AlertsPage() {
@@ -19,8 +20,8 @@ export default function Ls2AlertsPage() {
   const t = ls2Text(lang as Lang);
   const [items, setItems] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
-  const [severity, setSeverity] = useState(params.get('severity') || '');
-  const [type, setType] = useState(params.get('type') || '');
+  const [severity, setSeverity] = useState(params?.get('severity') || '');
+  const [type, setType] = useState(params?.get('type') || '');
   const [status, setStatus] = useState('open');
 
   const load = useCallback(async () => {
@@ -48,10 +49,32 @@ export default function Ls2AlertsPage() {
 
   const selectCls = 'px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm';
 
+  const ar = lang === 'ar';
+  const fmtDate = (v: any) => (v ? new Date(v).toLocaleString('en-GB') : '—');
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 14 },
+    { header: ar ? 'السائق' : 'Driver', key: 'driver', transform: (v) => v || '—', width: 22 },
+    { header: ar ? 'نوع التنبيه' : 'Alert type', key: 'type', transform: (v) => alertTypeLabel(v, lang as Lang), width: 18 },
+    { header: ar ? 'الخطورة' : 'Severity', key: 'severity', transform: (v) => { const s = severityStyle(v); return ar ? s.ar : s.en; }, width: 12 },
+    { header: ar ? 'الرسالة' : 'Message', key: 'message', transform: (_v, row) => alertMessage(row as Alert, lang as Lang), width: 45 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', transform: (v) => v ?? '—', width: 10 },
+    { header: ar ? 'الحد' : 'Threshold', key: 'threshold', transform: (v) => v ?? '—', width: 10 },
+    { header: ar ? 'الوحدة' : 'Unit', key: 'unit', transform: (v) => v || '—', width: 10 },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => (ar ? (v === 'open' ? 'مفتوح' : 'مغلق') : v || '—'), width: 10 },
+    { header: ar ? 'أول ظهور' : 'First seen', key: 'firstSeenAt', transform: fmtDate, width: 18 },
+    { header: ar ? 'آخر ظهور' : 'Last seen', key: 'lastSeenAt', transform: fmtDate, width: 18 },
+    { header: ar ? 'تم الإقرار' : 'Acknowledged', key: 'acknowledgedAt', transform: fmtDate, width: 18 },
+  ];
+
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Bell className="w-5 h-5" />} title={t.alerts} subtitle={`${items.length} · ${t.live}`}>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
+        <ExportMenu
+          fileName="ls2-alerts"
+          lang={lang as Lang}
+          options={[{ key: 'filtered', label: ar ? 'النتائج الحالية (حسب الفلاتر)' : 'Current results (as filtered)', sheets: [{ name: t.alerts, rows: items as unknown as Record<string, any>[], columns: exportColumns }] }]}
+        />
       </PageHeader>
 
       <div className="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-2 shadow-sm">

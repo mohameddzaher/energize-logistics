@@ -163,6 +163,7 @@ export const ALERT_TYPE_LABELS: Record<string, { en: string; ar: string }> = {
   maintenance_due: { en: 'Service due', ar: 'صيانة قريبة' },
   maintenance_overdue: { en: 'Service overdue', ar: 'صيانة متأخرة' },
   deferred_task: { en: 'Deferred task due', ar: 'بند مؤجّل مستحق' },
+  tire_sensor_change: { en: 'Tire sensors changed', ar: 'تغيير في سينسورات الكاوتش' },
   offline: { en: 'Offline', ar: 'غير متصل' },
 };
 
@@ -215,6 +216,12 @@ export function alertMessage(a: { type: string; key?: string; value: number | nu
     case 'maintenance_due': return ar ? `الصيانة بعد ${n(v)} كم` : `Service due in ${n(v)} km`;
     case 'maintenance_overdue': return ar ? `الصيانة متأخرة ${n(v)} كم` : `Service overdue by ${n(v)} km`;
     case 'offline': return ar ? `لا توجد إشارة منذ ${v} دقيقة` : `No signal for ${v} min`;
+    case 'tire_sensor_change': {
+      const from = (a as any).context?.from ?? (a as any).threshold;
+      return ar
+        ? `عدد سينسورات الكاوتش اللي بترسل اتغيّر من ${from ?? '؟'} إلى ${v ?? '؟'} — غالبًا حصل شيل/تركيب في الورشة ومتسجّلش. راجع كاوتشات العربية وحدّث السجل.`
+        : `Tire sensors reporting changed from ${from ?? '?'} to ${v ?? '?'} — likely an unrecorded workshop swap. Review the truck's tires and update the registry.`;
+    }
     default: return a.message || '';
   }
 }

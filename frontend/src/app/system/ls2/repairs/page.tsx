@@ -11,6 +11,7 @@ import api from '@/lib/api';
 import { Hammer, RefreshCw, Plus, Pencil, Trash2, Search, ExternalLink } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RepairModal from '@/components/ls2/RepairModal';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import VehiclePicker from '@/components/ls2/VehiclePicker';
 import {
   ls2Text, isLs2Staff, isLs2Admin, fmtKm, REPAIR_CATEGORIES, REPAIR_SEVERITIES, REPAIR_STATUSES,
@@ -70,9 +71,33 @@ export default function Ls2RepairsPage() {
 
   const chip = (active: boolean) => `px-3 py-1.5 rounded-full text-xs font-medium border ${active ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200'}`;
 
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', transform: (v, r) => v || `#${r.unitId}`, width: 14 },
+    { header: ar ? 'العطل' : 'Fault', key: 'title', width: 28 },
+    { header: ar ? 'التصنيف' : 'Category', key: 'category', transform: (v) => repairCategoryLabel(v, lang as Lang), width: 14 },
+    { header: ar ? 'الخطورة' : 'Severity', key: 'severity', transform: (v) => (REPAIR_SEVERITIES[v as Repair['severity']] || { ar: v, en: v })[ar ? 'ar' : 'en'] || '', width: 12 },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => (REPAIR_STATUSES[v as Repair['status']] || { ar: v, en: v })[ar ? 'ar' : 'en'] || '', width: 12 },
+    { header: ar ? 'تاريخ الإصلاح' : 'Repair date', key: 'repairDate', transform: (v) => (v ? new Date(v).toLocaleDateString('en-GB') : ''), width: 14 },
+    { header: ar ? 'العداد وقتها' : 'Odometer (km)', key: 'odometerKm', transform: (v) => (v != null ? v : ''), width: 14 },
+    { header: ar ? 'التكلفة' : 'Cost', key: 'cost', transform: (v) => (v != null ? v : ''), width: 12 },
+    { header: ar ? 'الورشة' : 'Workshop', key: 'workshop', transform: (v) => v || '', width: 20 },
+    { header: ar ? 'القطع المستبدلة' : 'Parts replaced', key: 'partsReplaced', transform: (v) => v || '', width: 24 },
+    { header: ar ? 'السائق' : 'Driver', key: 'driver', transform: (v) => v || '', width: 18 },
+    { header: ar ? 'سجّلها' : 'Logged by', key: 'performedByName', transform: (v) => v || '', width: 18 },
+    { header: ar ? 'الوصف' : 'Description', key: 'description', transform: (v) => v || '', width: 36 },
+  ];
+  const exportSheet = (name: string, data: Repair[]) => [{ name, rows: data as unknown as Record<string, any>[], columns: exportColumns }];
+
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Hammer className="w-5 h-5" />} title={t.repairs} subtitle={t.repairsHint}>
+        <ExportMenu
+          fileName="ls2-repairs" lang={lang as Lang}
+          options={[
+            { key: 'all', label: ar ? 'كل الصيانات الاستثنائية' : 'All repairs', sheets: exportSheet(ar ? 'الصيانات الاستثنائية' : 'Repairs', items) },
+            { key: 'filtered', label: ar ? 'النتائج الحالية (بعد الفلتر)' : 'Current filtered results', sheets: exportSheet(ar ? 'النتائج الحالية' : 'Filtered', rows) },
+          ]}
+        />
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
         {admin && (
           <button type="button" onClick={() => setPickVehicle(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium"><Plus className="w-4 h-4" /> {t.newRepair}</button>

@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { Activity, RefreshCw, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ls2Text, isLs2Staff, tireTempColor, type Lang, type Vehicle, type Tire } from '@/lib/ls2';
 
 export default function Ls2TiresPage() {
@@ -35,6 +36,34 @@ export default function Ls2TiresPage() {
     return r.sort((a, b) => (b.maxTireTempC || 0) - (a.maxTireTempC || 0));
   }, [items, problemsOnly]);
 
+  const ar = lang === 'ar';
+  const flattenTires = (list: Vehicle[]) => list.flatMap((v) => (v.tires || []).map((tire) => ({ plate: v.plate || v.name, driver: v.driver, axle: tire.axle, position: tire.position, tempC: tire.tempC, pressurePsi: tire.pressurePsi, fault: tire.fault })));
+  const tireColumns: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', transform: (v) => v ?? '' },
+    { header: ar ? 'السائق' : 'Driver', key: 'driver', transform: (v) => v ?? '' },
+    { header: ar ? 'المحور' : 'Axle', key: 'axle', transform: (v) => v ?? '' },
+    { header: ar ? 'الموقع' : 'Position', key: 'position', transform: (v) => v ?? '' },
+    { header: ar ? 'الحرارة °م' : 'Temp °C', key: 'tempC', transform: (v) => v ?? '' },
+    { header: ar ? 'الضغط psi' : 'Pressure psi', key: 'pressurePsi', transform: (v) => v ?? '' },
+    { header: ar ? 'عطل حساس' : 'Sensor Fault', key: 'fault', transform: (v) => (v ? (ar ? 'نعم' : 'Yes') : '') },
+  ];
+  const summaryColumns: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', transform: (v, row) => v || row.name || '' },
+    { header: ar ? 'السائق' : 'Driver', key: 'driver', transform: (v) => v ?? '' },
+    { header: ar ? 'عدد الكاوتش' : 'Tire Count', key: 'tireCount', transform: (v) => v ?? '' },
+    { header: ar ? 'أقصى حرارة' : 'Max Temp °C', key: 'maxTireTempC', transform: (v) => v ?? '' },
+    { header: ar ? 'أقل حرارة' : 'Min Temp °C', key: 'minTireTempC', transform: (v) => v ?? '' },
+    { header: ar ? 'أقصى ضغط' : 'Max Pressure psi', key: 'maxTirePressurePsi', transform: (v) => v ?? '' },
+    { header: ar ? 'أقل ضغط' : 'Min Pressure psi', key: 'minTirePressurePsi', transform: (v) => v ?? '' },
+    { header: ar ? 'أعطال الحساسات' : 'Sensor Faults', key: 'tireFaults', transform: (v) => v ?? '' },
+    { header: ar ? 'ماركة الكاوتش' : 'Tire Brand', key: 'tireBrand', transform: (v) => v ?? '' },
+  ];
+  const exportOptions = [
+    { key: 'all-tires', label: ar ? 'كل الكاوتشات (سطر لكل فردة)' : 'All tires (row per tire)', sheets: [{ name: ar ? 'الكاوتشات' : 'Tires', rows: flattenTires(items), columns: tireColumns }] },
+    { key: 'per-vehicle', label: ar ? 'ملخص لكل عربية' : 'Per-vehicle summary', sheets: [{ name: ar ? 'ملخص المركبات' : 'Vehicles', rows: items, columns: summaryColumns }] },
+    { key: 'filtered', label: ar ? 'العرض الحالي (المصفّى)' : 'Current view (filtered)', sheets: [{ name: ar ? 'العرض الحالي' : 'Filtered', rows: flattenTires(rows), columns: tireColumns }] },
+  ];
+
   if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
@@ -46,6 +75,7 @@ export default function Ls2TiresPage() {
       <PageHeader icon={<Activity className="w-5 h-5" />} title={t.tires} subtitle={lang === 'ar' ? `${rows.length} مركبة · اضغط على مركبة لفتح صفحتها الكاملة` : `${rows.length} vehicles · click a vehicle to open its full page`}>
         <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={problemsOnly} onChange={(e) => setProblemsOnly(e.target.checked)} /> {lang === 'ar' ? 'المشاكل فقط' : 'Problems only'}</label>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
+        <ExportMenu fileName="ls2-tires" lang={lang as Lang} options={exportOptions} />
       </PageHeader>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">

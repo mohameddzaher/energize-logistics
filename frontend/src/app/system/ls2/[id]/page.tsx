@@ -24,6 +24,7 @@ import {
 import LiveMap from '@/components/ls2/LiveMap';
 import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
 import VehicleServiceRecord from '@/components/ls2/VehicleServiceRecord';
+import VehicleAssets from '@/components/ls2/VehicleAssets';
 
 interface Detail { vehicle: Vehicle; alerts: Alert[]; serviceLog: any[] }
 
@@ -254,6 +255,10 @@ export default function Ls2VehicleDetailPage() {
         unitId={v.unitId} plate={v.plate} currentOdo={v.odometerKm}
         lang={lang as Lang} isRTL={isRTL} admin={isLs2Admin(user?.role)}
       />
+
+      {/* Workshop asset registry: which physical tires (by serial) + trailer are
+          on this truck, and their movement history. Hidden until data exists. */}
+      <VehicleAssets plate={v.plate || v.name} lang={lang as Lang} />
 
       {/* Distance travelled over a period */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">

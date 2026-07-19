@@ -1,0 +1,895 @@
+'use client';
+// Fleet Assets — سجل السطحات والتيدرات وفردات الكاوتش.
+//
+// The live Wialon mirror knows sensors, not hardware: it cannot tell you WHICH
+// physical tire (by serial) sits at position 9 of truck 8200, or which trailer
+// is hitched to it. This page is the workshop's source of truth for exactly
+// that: the 61 numbered flatbeds, every trailer, every tire by serial — where
+// each one is NOW, and (via the history tab) everywhere it has ever been.
+// Moving a tire or a trailer here writes an immutable event; nothing is lost.
+//
+// The "sensors" tab cross-checks what the workshop registered (يوجد / لايوجد)
+// against what the live Wialon feed actually reports, per vehicle.
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
+import api from '@/lib/api';
+import {
+  Truck, RefreshCw, Search, Plus, Upload, ArrowLeftRight, ArrowDownToLine, Pencil,
+  Trash2, History, Radio, CircleDot, Container, ChevronDown, ChevronRight, X, ExternalLink,
+} from 'lucide-react';
+import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import { ls2Text, isLs2Staff, isLs2Admin, fmtNum, fmtDateTime, type Lang } from '@/lib/ls2';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+
+// ---- Types mirroring /api/ls2/assets ---------------------------------------
+interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
+interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; status: string; notes: string }
+interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; status: 'mounted' | 'spare' | 'retired'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; notes: string }
+interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
+interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
+
+// The workshop's 14-position scheme (matches the collected JSON exactly).
+const POSITION_DEFS: { n: number; label: string; section: string }[] = [
+  { n: 1, label: 'اطار 1 يسار', section: 'الرأس' },
+  { n: 2, label: 'اطار 2 يمين', section: 'الرأس' },
+  { n: 3, label: 'اطار 3 خارجي يمين', section: 'المحور الخلفي للرأس' },
+  { n: 4, label: 'اطار 4 داخلي يمين', section: 'المحور الخلفي للرأس' },
+  { n: 5, label: 'اطار 5 داخلي يسار', section: 'المحور الخلفي للرأس' },
+  { n: 6, label: 'اطار 6 خارجي يسار', section: 'المحور الخلفي للرأس' },
+  { n: 7, label: 'اطار 7 يسار', section: 'التيدر' },
+  { n: 8, label: 'اطار 8 يسار', section: 'التيدر' },
+  { n: 9, label: 'اطار 9 يسار', section: 'التيدر' },
+  { n: 10, label: 'اطار 10 يمين', section: 'التيدر' },
+  { n: 11, label: 'اطار 11 يمين', section: 'التيدر' },
+  { n: 12, label: 'اطار 12 يمين', section: 'التيدر' },
+  { n: 13, label: 'اطار 13', section: 'الاستبن' },
+  { n: 14, label: 'اطار 14', section: 'الاستبن' },
+];
+
+const ACTION_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
+  registered: { en: 'Registered', ar: 'تسجيل', cls: 'bg-slate-100 text-slate-600' },
+  mounted: { en: 'Mounted', ar: 'تركيب', cls: 'bg-emerald-100 text-emerald-700' },
+  removed: { en: 'Removed', ar: 'إنزال', cls: 'bg-amber-100 text-amber-700' },
+  transferred: { en: 'Transferred', ar: 'نقل', cls: 'bg-blue-100 text-blue-700' },
+  retired: { en: 'Retired', ar: 'إعدام', cls: 'bg-red-100 text-red-700' },
+  updated: { en: 'Edited', ar: 'تعديل', cls: 'bg-slate-100 text-slate-500' },
+};
+const ENTITY_LABELS: Record<string, { en: string; ar: string }> = {
+  tire: { en: 'Tire', ar: 'فردة كاوتش' },
+  trailer: { en: 'Trailer', ar: 'تيدر' },
+  flatbed: { en: 'Flatbed', ar: 'سطحة' },
+};
+const SENSOR_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
+  yes: { en: 'Has sensor', ar: 'يوجد', cls: 'bg-emerald-100 text-emerald-700' },
+  no: { en: 'No sensor', ar: 'لا يوجد', cls: 'bg-slate-100 text-slate-500' },
+  unknown: { en: 'Unknown', ar: 'غير محدد', cls: 'bg-slate-50 text-slate-400' },
+};
+const TIRE_STATUS_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
+  mounted: { en: 'Mounted', ar: 'مركّبة', cls: 'bg-emerald-100 text-emerald-700' },
+  spare: { en: 'In stock', ar: 'في المخزن', cls: 'bg-amber-100 text-amber-700' },
+  retired: { en: 'Retired', ar: 'معدومة', cls: 'bg-red-100 text-red-700' },
+};
+
+const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#f37121] bg-white';
+const labelCls = 'block text-xs font-medium text-slate-500 mb-1';
+
+function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className={`bg-white rounded-xl shadow-xl w-full ${wide ? 'max-w-2xl' : 'max-w-md'} p-5 space-y-4 max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-slate-800">{title}</h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function Ls2FleetAssetsPage() {
+  const { user } = useAuth();
+  const { lang, isRTL } = useLanguage();
+  const router = useRouter();
+  const t = ls2Text(lang as Lang);
+  const ar = lang === 'ar';
+  const admin = isLs2Admin(user?.role);
+
+  // Deep-linkable: /system/ls2/fleet-assets?tab=tires&q=7360 lands filtered on
+  // one truck's tires (the vehicle profile links here that way).
+  const params = useSearchParams();
+  const initialTab = params?.get('tab');
+  const [tab, setTab] = useState<'flatbeds' | 'trailers' | 'tires' | 'history' | 'sensors'>(
+    initialTab === 'trailers' || initialTab === 'tires' || initialTab === 'history' || initialTab === 'sensors' ? initialTab : 'flatbeds'
+  );
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState(params?.get('q') || '');
+  const [flatbeds, setFlatbeds] = useState<Flatbed[]>([]);
+  const [trailers, setTrailers] = useState<Trailer[]>([]);
+  const [tires, setTires] = useState<TireAsset[]>([]);
+  const [counts, setCounts] = useState<any>({});
+  const [events, setEvents] = useState<AssetEvent[]>([]);
+  const [sensorRows, setSensorRows] = useState<SensorRow[]>([]);
+  const [openSensor, setOpenSensor] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+
+  // Modals
+  const [moveTire, setMoveTire] = useState<TireAsset | null>(null);
+  const [editTire, setEditTire] = useState<TireAsset | null>(null);
+  const [addTire, setAddTire] = useState(false);
+  const [moveTrailer, setMoveTrailer] = useState<Trailer | null>(null);
+  const [addTrailer, setAddTrailer] = useState(false);
+  const [editFlatbed, setEditFlatbed] = useState<Flatbed | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.get<any>('/api/ls2/assets/overview');
+      setFlatbeds(res.flatbeds || []); setTrailers(res.trailers || []); setTires(res.tires || []); setCounts(res.counts || {});
+    } catch { /* keep */ }
+    setLoading(false);
+  }, []);
+  const loadEvents = useCallback(async () => {
+    try { const res = await api.get<{ events: AssetEvent[] }>('/api/ls2/assets/events?limit=500'); setEvents(res.events || []); } catch { /* keep */ }
+  }, []);
+  const loadSensors = useCallback(async () => {
+    try { const res = await api.get<{ rows: SensorRow[] }>('/api/ls2/assets/sensor-check'); setSensorRows(res.rows || []); } catch { /* keep */ }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (tab === 'history') loadEvents(); if (tab === 'sensors') loadSensors(); }, [tab, loadEvents, loadSensors]);
+
+  const refreshAll = () => { setLoading(true); load(); if (tab === 'history') loadEvents(); if (tab === 'sensors') loadSensors(); };
+
+  // ---- Filters ---------------------------------------------------------------
+  const norm = (s: any) => String(s ?? '').toLowerCase();
+  const fFlatbeds = useMemo(() => !q ? flatbeds : flatbeds.filter((f) => [f.plate, f.batch, f.brand, f.currentTrailerNumber, f.numbering, f.driver].some((x) => norm(x).includes(norm(q)))), [flatbeds, q]);
+  const fTrailers = useMemo(() => !q ? trailers : trailers.filter((tr) => [tr.trailerNumber, tr.currentPlate, tr.status].some((x) => norm(x).includes(norm(q)))), [trailers, q]);
+  const fTires = useMemo(() => !q ? tires : tires.filter((ti) => [ti.serial, ti.tireNumber, ti.type, ti.plate, ti.section, ti.positionLabel, ti.status].some((x) => norm(x).includes(norm(q)))), [tires, q]);
+  const fEvents = useMemo(() => !q ? events : events.filter((e) => [e.label, e.fromPlate, e.toPlate, e.reason, e.action, e.performedByName].some((x) => norm(x).includes(norm(q)))), [events, q]);
+  const fSensors = useMemo(() => !q ? sensorRows : sensorRows.filter((r) => [r.plate, r.driver].some((x) => norm(x).includes(norm(q)))), [sensorRows, q]);
+
+  // ---- Export columns --------------------------------------------------------
+  const flatbedCols: ExportColumn[] = [
+    { header: ar ? 'الترقيم' : 'No.', key: 'numbering', width: 8 },
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 10 },
+    { header: ar ? 'الدفعة' : 'Batch', key: 'batch', width: 10 },
+    { header: ar ? 'الماركة' : 'Brand', key: 'brand', width: 12 },
+    { header: ar ? 'التيدر الحالي' : 'Trailer', key: 'currentTrailerNumber', transform: (v) => v ?? '', width: 10 },
+    { header: ar ? 'السائق' : 'Driver', key: 'driver', width: 20 },
+    { header: ar ? 'العداد (كم)' : 'Odometer (km)', key: 'odometerKm', transform: (v) => v ?? '', width: 13 },
+    { header: ar ? 'كاوتشات مسجّلة' : 'Registered tires', key: 'tireCount', width: 13 },
+  ];
+  const trailerCols: ExportColumn[] = [
+    { header: ar ? 'رقم التيدر' : 'Trailer no.', key: 'trailerNumber', width: 10 },
+    { header: ar ? 'مركّب على' : 'On flatbed', key: 'currentPlate', transform: (v) => v ?? (ar ? 'غير مركّب' : 'unhitched'), width: 12 },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', width: 10 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 24 },
+  ];
+  const tireCols: ExportColumn[] = [
+    { header: ar ? 'رقم الفردة' : 'Tire no.', key: 'tireNumber', width: 9 },
+    { header: ar ? 'السيريال' : 'Serial', key: 'serial', width: 16 },
+    { header: ar ? 'النوع' : 'Type', key: 'type', width: 12 },
+    { header: ar ? 'سينسور' : 'Sensor', key: 'sensor', transform: (v) => (SENSOR_LABELS[v] ? (ar ? SENSOR_LABELS[v].ar : SENSOR_LABELS[v].en) : v), width: 9 },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => (TIRE_STATUS_LABELS[v] ? (ar ? TIRE_STATUS_LABELS[v].ar : TIRE_STATUS_LABELS[v].en) : v), width: 10 },
+    { header: ar ? 'على السطحة' : 'On flatbed', key: 'plate', transform: (v) => v ?? '', width: 10 },
+    { header: ar ? 'الموقع' : 'Position', key: 'positionLabel', width: 18 },
+    { header: ar ? 'القسم' : 'Section', key: 'section', width: 16 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 20 },
+  ];
+  const eventCols: ExportColumn[] = [
+    { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 16 },
+    { header: ar ? 'النوع' : 'Entity', key: 'entityType', transform: (v) => (ENTITY_LABELS[v] ? (ar ? ENTITY_LABELS[v].ar : ENTITY_LABELS[v].en) : v), width: 11 },
+    { header: ar ? 'الأصل' : 'Asset', key: 'label', width: 14 },
+    { header: ar ? 'الحركة' : 'Action', key: 'action', transform: (v) => (ACTION_LABELS[v] ? (ar ? ACTION_LABELS[v].ar : ACTION_LABELS[v].en) : v), width: 9 },
+    { header: ar ? 'من' : 'From', key: 'fromPlate', transform: (v, r) => [v, r.fromPosition].filter(Boolean).join(' · '), width: 22 },
+    { header: ar ? 'إلى' : 'To', key: 'toPlate', transform: (v, r) => [v, r.toPosition].filter(Boolean).join(' · '), width: 22 },
+    { header: ar ? 'العداد (كم)' : 'Odometer', key: 'odometerKm', transform: (v) => v ?? '', width: 11 },
+    { header: ar ? 'السبب' : 'Reason', key: 'reason', width: 24 },
+    { header: ar ? 'بواسطة' : 'By', key: 'performedByName', width: 16 },
+  ];
+  const sensorCols: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 10 },
+    { header: ar ? 'السائق' : 'Driver', key: 'driver', width: 20 },
+    { header: ar ? 'كاوتشات مسجّلة' : 'Registered tires', key: 'registeredTotal', width: 13 },
+    { header: ar ? 'مسجّل بها سينسور' : 'Registered w/ sensor', key: 'registeredWithSensor', width: 15 },
+    { header: ar ? 'يرسل فعليًا (مباشر)' : 'Actually reporting', key: 'liveReporting', width: 15 },
+    { header: ar ? 'مطابقة؟' : 'Match?', key: 'match', transform: (v) => (v == null ? (ar ? 'لا توجد بيانات حية' : 'no live data') : v ? (ar ? 'متطابق' : 'match') : (ar ? 'غير متطابق' : 'MISMATCH')), width: 14 },
+  ];
+
+  const currentTabExport = () => {
+    switch (tab) {
+      case 'flatbeds': return { name: ar ? 'السطحات' : 'Flatbeds', rows: fFlatbeds, columns: flatbedCols };
+      case 'trailers': return { name: ar ? 'التيدرات' : 'Trailers', rows: fTrailers, columns: trailerCols };
+      case 'tires': return { name: ar ? 'الكاوتشات' : 'Tires', rows: fTires, columns: tireCols };
+      case 'history': return { name: ar ? 'سجل الحركات' : 'History', rows: fEvents, columns: eventCols };
+      case 'sensors': return { name: ar ? 'مطابقة السينسورات' : 'Sensor check', rows: fSensors, columns: sensorCols };
+    }
+  };
+
+  // ---- Mutations -------------------------------------------------------------
+  const doMoveTire = async (tire: TireAsset, body: any) => {
+    setBusy(true);
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/move`, body); await load(); setMoveTire(null); }
+    catch (e: any) { alert(e?.message || 'Failed'); }
+    setBusy(false);
+  };
+  const doRetireTire = async (tire: TireAsset) => {
+    const reason = prompt(ar ? `سبب إعدام الفردة ${tire.serial}؟` : `Reason for retiring ${tire.serial}?`);
+    if (reason == null) return;
+    setBusy(true);
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { reason }); await load(); }
+    catch (e: any) { alert(e?.message || 'Failed'); }
+    setBusy(false);
+  };
+  const doMoveTrailer = async (trailer: Trailer, body: any) => {
+    setBusy(true);
+    try { await api.post(`/api/ls2/assets/trailers/${trailer._id}/move`, body); await load(); setMoveTrailer(null); }
+    catch (e: any) { alert(e?.message || 'Failed'); }
+    setBusy(false);
+  };
+
+  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (loading && !flatbeds.length) return <Spinner />;
+
+  const TABS = [
+    { key: 'flatbeds', label: ar ? 'السطحات' : 'Flatbeds', icon: <Truck className="w-3.5 h-3.5" />, count: counts.flatbeds },
+    { key: 'trailers', label: ar ? 'التيدرات' : 'Trailers', icon: <Container className="w-3.5 h-3.5" />, count: counts.trailers },
+    { key: 'tires', label: ar ? 'الكاوتشات' : 'Tires', icon: <CircleDot className="w-3.5 h-3.5" />, count: counts.tires },
+    { key: 'history', label: ar ? 'سجل الحركات' : 'History', icon: <History className="w-3.5 h-3.5" /> },
+    { key: 'sensors', label: ar ? 'مطابقة السينسورات' : 'Sensor check', icon: <Radio className="w-3.5 h-3.5" /> },
+  ] as const;
+
+  return (
+    <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
+      <PageHeader
+        icon={<Truck className="w-5 h-5" />}
+        title={ar ? 'أصول الأسطول — سطحات وتيدرات وكاوتش' : 'Fleet Assets — Flatbeds, Trailers & Tires'}
+        subtitle={ar
+          ? `${counts.flatbeds ?? 0} سطحة · ${counts.trailers ?? 0} تيدر · ${counts.mounted ?? 0} فردة مركّبة · ${counts.spare ?? 0} في المخزن`
+          : `${counts.flatbeds ?? 0} flatbeds · ${counts.trailers ?? 0} trailers · ${counts.mounted ?? 0} tires mounted · ${counts.spare ?? 0} in stock`}
+      >
+        {admin && (
+          <button type="button" onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium">
+            <Upload className="w-4 h-4" /> {ar ? 'استيراد JSON الورشة' : 'Import workshop JSON'}
+          </button>
+        )}
+        <ExportMenu
+          fileName={`ls2-assets-${tab}`} lang={lang as Lang}
+          options={[
+            { key: 'tab', label: ar ? 'التبويب الحالي (بعد الفلتر)' : 'Current tab (filtered)', sheets: [currentTabExport()!] },
+            {
+              key: 'all', label: ar ? 'كل الأصول (٣ شيتات)' : 'All assets (3 sheets)',
+              sheets: [
+                { name: ar ? 'السطحات' : 'Flatbeds', rows: flatbeds, columns: flatbedCols },
+                { name: ar ? 'التيدرات' : 'Trailers', rows: trailers, columns: trailerCols },
+                { name: ar ? 'الكاوتشات' : 'Tires', rows: tires, columns: tireCols },
+              ],
+            },
+          ]}
+        />
+        <button type="button" onClick={refreshAll} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
+      </PageHeader>
+
+      {/* Tabs + search */}
+      <div className="flex flex-wrap items-center gap-2">
+        {TABS.map((tb) => (
+          <button key={tb.key} type="button" onClick={() => setTab(tb.key)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${tab === tb.key ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+            {tb.icon} {tb.label}{'count' in tb && tb.count != null && <span className={`tabular-nums ${tab === tb.key ? 'text-white/80' : 'text-slate-400'}`}>({tb.count})</span>}
+          </button>
+        ))}
+        <div className="relative ms-auto">
+          <Search className={`w-4 h-4 text-slate-400 absolute top-2.5 ${isRTL ? 'right-3' : 'left-3'}`} />
+          <input
+            value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder={ar ? 'بحث: لوحة / سيريال / تيدر / نوع…' : 'Search: plate / serial / trailer / type…'}
+            className={`w-72 border border-slate-200 rounded-lg py-2 text-sm bg-white focus:outline-none focus:border-[#f37121] ${isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3'}`}
+          />
+        </div>
+      </div>
+
+      {/* ---- Flatbeds -------------------------------------------------------- */}
+      {tab === 'flatbeds' && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-900 text-slate-300 text-xs">
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'الترقيم' : 'No.'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{t.plate}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'الدفعة' : 'Batch'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{t.brand}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'التيدر' : 'Trailer'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{t.driver}</th>
+                  <th className="text-end font-semibold px-4 py-3">{ar ? 'كاوتش مسجّل' : 'Tires'}</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {fFlatbeds.map((f) => (
+                  <tr key={f._id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="px-4 py-3 tabular-nums text-slate-500">{f.numbering ?? '—'}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">{f.plate}</td>
+                    <td className="px-4 py-3 text-slate-600">{f.batch || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">{f.brand || '—'}</td>
+                    <td className="px-4 py-3">
+                      {f.currentTrailerNumber
+                        ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{ar ? `تيدر ${f.currentTrailerNumber}` : `Trailer ${f.currentTrailerNumber}`}</span>
+                        : <span className="text-slate-300 text-xs">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{f.driver || '—'}</td>
+                    <td className="px-4 py-3 text-end tabular-nums text-slate-700">{f.tireCount || 0}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {f.unitId != null && (
+                          <button type="button" title={ar ? 'ملف المركبة' : 'Vehicle profile'} onClick={() => router.push(`/system/ls2/${f.unitId}`)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-[#f37121]"><ExternalLink className="w-4 h-4" /></button>
+                        )}
+                        {admin && (
+                          <button type="button" title={t.edit} onClick={() => setEditFlatbed(f)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {fFlatbeds.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Trailers -------------------------------------------------------- */}
+      {tab === 'trailers' && (
+        <div className="space-y-3">
+          {admin && (
+            <button type="button" onClick={() => setAddTrailer(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-[#f37121] text-slate-700 text-sm">
+              <Plus className="w-4 h-4 text-[#f37121]" /> {ar ? 'إضافة تيدر' : 'Add trailer'}
+            </button>
+          )}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-900 text-slate-300 text-xs">
+                    <th className="text-start font-semibold px-4 py-3">{ar ? 'رقم التيدر' : 'Trailer no.'}</th>
+                    <th className="text-start font-semibold px-4 py-3">{ar ? 'مركّب على السطحة' : 'On flatbed'}</th>
+                    <th className="text-start font-semibold px-4 py-3">{t.status}</th>
+                    <th className="text-start font-semibold px-4 py-3">{t.notes}</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {fTrailers.map((tr) => (
+                    <tr key={tr._id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium text-slate-800">{ar ? `تيدر ${tr.trailerNumber}` : `Trailer ${tr.trailerNumber}`}</td>
+                      <td className="px-4 py-3">{tr.currentPlate ? <span className="font-medium text-slate-700">{tr.currentPlate}</span> : <span className="text-amber-600 text-xs">{ar ? 'غير مركّب' : 'Unhitched'}</span>}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">{tr.status}</td>
+                      <td className="px-4 py-3 text-slate-500 text-xs">{tr.notes || '—'}</td>
+                      <td className="px-4 py-3">
+                        {admin && (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button type="button" title={ar ? 'نقل لسطحة' : 'Move to flatbed'} onClick={() => setMoveTrailer(tr)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
+                            {tr.currentPlate && (
+                              <button
+                                type="button" title={ar ? 'إنزال' : 'Unhitch'} disabled={busy}
+                                onClick={() => { const reason = prompt(ar ? `سبب إنزال التيدر ${tr.trailerNumber}؟` : 'Reason?'); if (reason != null) doMoveTrailer(tr, { toPlate: null, reason }); }}
+                                className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600"
+                              ><ArrowDownToLine className="w-4 h-4" /></button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {fTrailers.length === 0 && <tr><td colSpan={5} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Tires ----------------------------------------------------------- */}
+      {tab === 'tires' && (
+        <div className="space-y-3">
+          {admin && (
+            <button type="button" onClick={() => setAddTire(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-[#f37121] text-slate-700 text-sm">
+              <Plus className="w-4 h-4 text-[#f37121]" /> {ar ? 'تسجيل فردة كاوتش' : 'Register tire'}
+            </button>
+          )}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-900 text-slate-300 text-xs">
+                    <th className="text-start font-semibold px-4 py-3">{ar ? 'رقم' : 'No.'}</th>
+                    <th className="text-start font-semibold px-4 py-3">{ar ? 'السيريال' : 'Serial'}</th>
+                    <th className="text-start font-semibold px-4 py-3">{ar ? 'النوع' : 'Type'}</th>
+                    <th className="text-center font-semibold px-4 py-3">{ar ? 'سينسور' : 'Sensor'}</th>
+                    <th className="text-start font-semibold px-4 py-3">{ar ? 'على السطحة' : 'On flatbed'}</th>
+                    <th className="text-start font-semibold px-4 py-3">{ar ? 'الموقع' : 'Position'}</th>
+                    <th className="text-center font-semibold px-4 py-3">{t.status}</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {fTires.map((ti) => {
+                    const sen = SENSOR_LABELS[ti.sensor] || SENSOR_LABELS.unknown;
+                    const st = TIRE_STATUS_LABELS[ti.status] || TIRE_STATUS_LABELS.spare;
+                    return (
+                      <tr key={ti._id} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="px-4 py-3 tabular-nums text-slate-500">{ti.tireNumber || '—'}</td>
+                        <td className="px-4 py-3 font-mono text-xs font-medium text-slate-800">{ti.serial}</td>
+                        <td className="px-4 py-3 text-slate-600">{ti.type || '—'}</td>
+                        <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${sen.cls}`}>{ar ? sen.ar : sen.en}</span></td>
+                        <td className="px-4 py-3 font-medium text-slate-700">{ti.plate || <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600">{ti.positionLabel ? `${ti.positionLabel}${ti.section ? ` · ${ti.section}` : ''}` : '—'}</td>
+                        <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${st.cls}`}>{ar ? st.ar : st.en}</span></td>
+                        <td className="px-4 py-3">
+                          {admin && ti.status !== 'retired' && (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button type="button" title={ar ? 'نقل / تركيب' : 'Move / mount'} onClick={() => setMoveTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
+                              {ti.status === 'mounted' && (
+                                <button
+                                  type="button" title={ar ? 'إنزال للمخزن' : 'Dismount to stock'} disabled={busy}
+                                  onClick={() => { const reason = prompt(ar ? `سبب إنزال الفردة ${ti.serial}؟` : 'Reason?'); if (reason != null) doMoveTire(ti, { toPlate: null, reason }); }}
+                                  className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600"
+                                ><ArrowDownToLine className="w-4 h-4" /></button>
+                              )}
+                              <button type="button" title={t.edit} onClick={() => setEditTire(ti)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
+                              <button type="button" title={ar ? 'إعدام' : 'Retire'} disabled={busy} onClick={() => doRetireTire(ti)} className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {fTires.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- History --------------------------------------------------------- */}
+      {tab === 'history' && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-900 text-slate-300 text-xs">
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'التاريخ' : 'Date'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'الأصل' : 'Asset'}</th>
+                  <th className="text-center font-semibold px-4 py-3">{ar ? 'الحركة' : 'Action'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'من' : 'From'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'إلى' : 'To'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'السبب' : 'Reason'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'بواسطة' : 'By'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fEvents.map((e) => {
+                  const act = ACTION_LABELS[e.action] || ACTION_LABELS.updated;
+                  const ent = ENTITY_LABELS[e.entityType] || { en: e.entityType, ar: e.entityType };
+                  return (
+                    <tr key={e._id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDateTime(e.date, lang as Lang)}</td>
+                      <td className="px-4 py-3"><span className="text-xs text-slate-400">{ar ? ent.ar : ent.en}</span> <span className="font-mono text-xs font-medium text-slate-800">{e.label}</span></td>
+                      <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${act.cls}`}>{ar ? act.ar : act.en}</span></td>
+                      <td className="px-4 py-3 text-xs text-slate-600">{[e.fromPlate, e.fromPosition].filter(Boolean).join(' · ') || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">{[e.toPlate, e.toPosition].filter(Boolean).join(' · ') || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500 max-w-[260px]">{e.reason || e.notes || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{e.performedByName || '—'}</td>
+                    </tr>
+                  );
+                })}
+                {fEvents.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-10">{ar ? 'لا توجد حركات بعد' : 'No movements yet'}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Sensor check ---------------------------------------------------- */}
+      {tab === 'sensors' && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">
+            {ar
+              ? 'مقارنة بين المسجّل في كشف الورشة (يوجد / لا يوجد سينسور) وبين اللي بيوصل فعليًا من Wialon. ترقيم Wialon (محور/إطار) مختلف عن ترقيم الورشة (1–14)، فالمقارنة بالعدد + عرض الاتنين جنب بعض للمطابقة اليدوية.'
+              : 'Registered sensor flags (workshop sheet) vs what Wialon actually reports. Wialon numbers tires by axle, the workshop by 1–14, so we compare counts and show both layouts.'}
+          </p>
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-900 text-slate-300 text-xs">
+                    <th className="px-3 py-3 w-8" />
+                    <th className="text-start font-semibold px-4 py-3">{t.plate}</th>
+                    <th className="text-start font-semibold px-4 py-3">{t.driver}</th>
+                    <th className="text-end font-semibold px-4 py-3">{ar ? 'مسجّل (كل الفردات)' : 'Registered'}</th>
+                    <th className="text-end font-semibold px-4 py-3">{ar ? 'مسجّل بسينسور' : 'With sensor'}</th>
+                    <th className="text-end font-semibold px-4 py-3">{ar ? 'يرسل فعليًا' : 'Reporting'}</th>
+                    <th className="text-center font-semibold px-4 py-3">{ar ? 'المطابقة' : 'Match'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fSensors.map((r) => {
+                    const isOpen = openSensor.has(r.plate);
+                    return (
+                      <Fragment key={r.plate}>
+                        <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => setOpenSensor((p) => { const n = new Set(p); n.has(r.plate) ? n.delete(r.plate) : n.add(r.plate); return n; })}>
+                          <td className="px-3 py-3 text-slate-400">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
+                          <td className="px-4 py-3 font-medium text-slate-800">{r.plate}</td>
+                          <td className="px-4 py-3 text-slate-600">{r.driver || '—'}</td>
+                          <td className="px-4 py-3 text-end tabular-nums">{r.registeredTotal}</td>
+                          <td className="px-4 py-3 text-end tabular-nums font-medium text-slate-700">{r.registeredWithSensor}</td>
+                          <td className="px-4 py-3 text-end tabular-nums font-medium text-slate-700">{r.hasLive ? r.liveReporting : '—'}</td>
+                          <td className="px-4 py-3 text-center">
+                            {r.match == null
+                              ? <span className="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-500">{ar ? 'لا بيانات حية' : 'No live data'}</span>
+                              : r.match
+                                ? <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-700">{ar ? 'متطابق' : 'Match'}</span>
+                                : <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-700">{ar ? 'غير متطابق' : 'MISMATCH'}</span>}
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="bg-slate-50/60 border-b border-slate-100">
+                            <td colSpan={7} className="px-6 py-3">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                                <div>
+                                  <p className="font-semibold text-slate-600 mb-1.5">{ar ? 'المسجّل بسينسور (كشف الورشة)' : 'Registered with sensor (workshop)'}</p>
+                                  {r.registeredSensorPositions.length === 0 && <p className="text-slate-400">—</p>}
+                                  <ul className="space-y-1">
+                                    {r.registeredSensorPositions.map((p, i) => (
+                                      <li key={i} className="text-slate-600">{p.positionLabel || `اطار ${p.positionNumber}`} · {p.section} — <span className="font-mono">{p.serial}</span></li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-slate-600 mb-1.5">{ar ? 'اللي بيرسل فعليًا (Wialon)' : 'Actually reporting (Wialon)'}</p>
+                                  {!r.hasLive && <p className="text-slate-400">{ar ? 'العربية غير موجودة في Wialon' : 'Vehicle not in Wialon'}</p>}
+                                  {r.hasLive && r.livePositions.length === 0 && <p className="text-slate-400">—</p>}
+                                  <ul className="space-y-1">
+                                    {r.livePositions.map((p, i) => (
+                                      <li key={i} className="text-slate-600">{ar ? `محور ${p.axle} · إطار ${p.position}` : `Axle ${p.axle} · tire ${p.position}`}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                  {fSensors.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Modals ---------------------------------------------------------- */}
+      {moveTire && <MoveTireModal tire={moveTire} flatbeds={flatbeds} tires={tires} ar={ar} busy={busy} onClose={() => setMoveTire(null)} onSubmit={(body) => doMoveTire(moveTire, body)} />}
+      {(addTire || editTire) && (
+        <TireFormModal
+          tire={editTire} flatbeds={flatbeds} ar={ar}
+          onClose={() => { setAddTire(false); setEditTire(null); }}
+          onSaved={() => { setAddTire(false); setEditTire(null); load(); }}
+        />
+      )}
+      {moveTrailer && <MoveTrailerModal trailer={moveTrailer} flatbeds={flatbeds} ar={ar} busy={busy} onClose={() => setMoveTrailer(null)} onSubmit={(body) => doMoveTrailer(moveTrailer, body)} />}
+      {addTrailer && (
+        <Modal title={ar ? 'إضافة تيدر' : 'Add trailer'} onClose={() => setAddTrailer(false)}>
+          <AddTrailerForm flatbeds={flatbeds} ar={ar} onSaved={() => { setAddTrailer(false); load(); }} />
+        </Modal>
+      )}
+      {editFlatbed && (
+        <Modal title={ar ? `تعديل السطحة ${editFlatbed.plate}` : `Edit flatbed ${editFlatbed.plate}`} onClose={() => setEditFlatbed(null)}>
+          <EditFlatbedForm flatbed={editFlatbed} ar={ar} onSaved={() => { setEditFlatbed(null); load(); }} />
+        </Modal>
+      )}
+      {importOpen && <ImportModal ar={ar} onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); load(); }} />}
+    </div>
+  );
+}
+
+// ---- Move tire --------------------------------------------------------------
+function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
+  tire: TireAsset; flatbeds: Flatbed[]; tires: TireAsset[]; ar: boolean; busy: boolean;
+  onClose: () => void; onSubmit: (body: any) => void;
+}) {
+  const [toPlate, setToPlate] = useState(tire.plate || '');
+  const [posN, setPosN] = useState<number>(tire.positionNumber || 1);
+  const [reason, setReason] = useState('');
+  const [notes, setNotes] = useState('');
+  const pos = POSITION_DEFS.find((p) => p.n === posN) || POSITION_DEFS[0];
+  const occupant = tires.find((x) => x._id !== tire._id && x.status === 'mounted' && x.plate === toPlate && x.positionNumber === posN);
+  return (
+    <Modal title={ar ? `نقل / تركيب الفردة ${tire.serial}` : `Move tire ${tire.serial}`} onClose={onClose}>
+      <div className="space-y-3">
+        {tire.plate && <p className="text-xs text-slate-500">{ar ? `حاليًا على ${tire.plate} — ${tire.positionLabel}` : `Currently on ${tire.plate} — ${tire.positionLabel}`}</p>}
+        <div>
+          <label className={labelCls}>{ar ? 'إلى السطحة' : 'To flatbed'}</label>
+          <select value={toPlate} onChange={(e) => setToPlate(e.target.value)} className={inputCls}>
+            <option value="">{ar ? '— اختر السطحة —' : '— choose flatbed —'}</option>
+            {flatbeds.map((f) => <option key={f._id} value={f.plate}>{f.plate}{f.numbering != null ? ` (${ar ? 'ترقيم' : 'no.'} ${f.numbering})` : ''}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>{ar ? 'الموقع (1–14)' : 'Position (1–14)'}</label>
+          <select value={posN} onChange={(e) => setPosN(Number(e.target.value))} className={inputCls}>
+            {POSITION_DEFS.map((p) => <option key={p.n} value={p.n}>{p.label} — {p.section}</option>)}
+          </select>
+        </div>
+        {occupant && (
+          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {ar
+              ? `الموقع ده عليه حاليًا الفردة ${occupant.serial} — هتتنزل للمخزن تلقائيًا ويتسجّل ده في التاريخ.`
+              : `This slot currently holds ${occupant.serial} — it will be dismounted to stock automatically (logged).`}
+          </p>
+        )}
+        <div>
+          <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={ar ? 'مثال: تآكل / لحام / تدوير…' : 'e.g. wear / puncture / rotation…'} className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
+        </div>
+        <button
+          type="button" disabled={busy || !toPlate}
+          onClick={() => onSubmit({ toPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section, reason, notes })}
+          className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40"
+        >
+          {ar ? 'تنفيذ النقل' : 'Move'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---- Add / edit tire --------------------------------------------------------
+function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
+  tire: TireAsset | null; flatbeds: Flatbed[]; ar: boolean; onClose: () => void; onSaved: () => void;
+}) {
+  const isEdit = !!tire;
+  const [serial, setSerial] = useState(tire?.serial || '');
+  const [tireNumber, setTireNumber] = useState(tire?.tireNumber || '');
+  const [type, setType] = useState(tire?.type || '');
+  const [sensor, setSensor] = useState(tire?.sensor || 'unknown');
+  const [notes, setNotes] = useState(tire?.notes || '');
+  const [mountPlate, setMountPlate] = useState('');
+  const [posN, setPosN] = useState<number>(1);
+  const [busy, setBusy] = useState(false);
+  const pos = POSITION_DEFS.find((p) => p.n === posN) || POSITION_DEFS[0];
+
+  const save = async () => {
+    if (!serial.trim()) { alert(ar ? 'السيريال مطلوب' : 'Serial required'); return; }
+    setBusy(true);
+    try {
+      if (isEdit) {
+        await api.patch(`/api/ls2/assets/tires/${tire!._id}`, { serial: serial.trim(), tireNumber, type, sensor, notes });
+      } else {
+        await api.post('/api/ls2/assets/tires', {
+          serial: serial.trim(), tireNumber, type, sensor, notes,
+          ...(mountPlate ? { plate: mountPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section } : {}),
+        });
+      }
+      onSaved();
+    } catch (e: any) { alert(e?.message || 'Failed'); }
+    setBusy(false);
+  };
+
+  return (
+    <Modal title={isEdit ? (ar ? `تعديل الفردة ${tire!.serial}` : `Edit tire ${tire!.serial}`) : (ar ? 'تسجيل فردة كاوتش جديدة' : 'Register new tire')} onClose={onClose}>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>{ar ? 'السيريال' : 'Serial'} *</label>
+            <input value={serial} onChange={(e) => setSerial(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'رقم الفردة' : 'Tire number'}</label>
+            <input value={tireNumber} onChange={(e) => setTireNumber(e.target.value)} className={inputCls} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>{ar ? 'النوع / الماركة' : 'Type / brand'}</label>
+            <input value={type} onChange={(e) => setType(e.target.value)} placeholder="Michelin / Bridgestone / Conti / China" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'سينسور' : 'Sensor'}</label>
+            <select value={sensor} onChange={(e) => setSensor(e.target.value as any)} className={inputCls}>
+              <option value="yes">{ar ? 'يوجد' : 'Yes'}</option>
+              <option value="no">{ar ? 'لا يوجد' : 'No'}</option>
+              <option value="unknown">{ar ? 'غير محدد' : 'Unknown'}</option>
+            </select>
+          </div>
+        </div>
+        {!isEdit && (
+          <div className="border border-slate-200 rounded-lg p-3 space-y-3">
+            <p className="text-xs font-medium text-slate-500">{ar ? 'تركيب فوري (اختياري — سيبها فاضية لو داخلة المخزن)' : 'Mount now (optional — leave empty for stock)'}</p>
+            <select value={mountPlate} onChange={(e) => setMountPlate(e.target.value)} className={inputCls}>
+              <option value="">{ar ? '— المخزن —' : '— stock —'}</option>
+              {flatbeds.map((f) => <option key={f._id} value={f.plate}>{f.plate}</option>)}
+            </select>
+            {mountPlate && (
+              <select value={posN} onChange={(e) => setPosN(Number(e.target.value))} className={inputCls}>
+                {POSITION_DEFS.map((p) => <option key={p.n} value={p.n}>{p.label} — {p.section}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+        <div>
+          <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
+        </div>
+        <button type="button" disabled={busy} onClick={save} className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
+          {isEdit ? (ar ? 'حفظ' : 'Save') : (ar ? 'تسجيل' : 'Register')}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---- Move trailer -----------------------------------------------------------
+function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
+  trailer: Trailer; flatbeds: Flatbed[]; ar: boolean; busy: boolean; onClose: () => void; onSubmit: (body: any) => void;
+}) {
+  const [toPlate, setToPlate] = useState('');
+  const [reason, setReason] = useState('');
+  const target = flatbeds.find((f) => f.plate === toPlate);
+  return (
+    <Modal title={ar ? `نقل التيدر ${trailer.trailerNumber}` : `Move trailer ${trailer.trailerNumber}`} onClose={onClose}>
+      <div className="space-y-3">
+        {trailer.currentPlate && <p className="text-xs text-slate-500">{ar ? `حاليًا على السطحة ${trailer.currentPlate}` : `Currently on ${trailer.currentPlate}`}</p>}
+        <div>
+          <label className={labelCls}>{ar ? 'إلى السطحة' : 'To flatbed'}</label>
+          <select value={toPlate} onChange={(e) => setToPlate(e.target.value)} className={inputCls}>
+            <option value="">{ar ? '— اختر السطحة —' : '— choose flatbed —'}</option>
+            {flatbeds.filter((f) => f.plate !== trailer.currentPlate).map((f) => <option key={f._id} value={f.plate}>{f.plate}{f.numbering != null ? ` (${ar ? 'ترقيم' : 'no.'} ${f.numbering})` : ''}</option>)}
+          </select>
+        </div>
+        {target?.currentTrailerNumber && (
+          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {ar
+              ? `السطحة دي عليها حاليًا تيدر ${target.currentTrailerNumber} — هيتنزل تلقائيًا ويتسجّل في التاريخ.`
+              : `That flatbed currently carries trailer ${target.currentTrailerNumber} — it will be unhitched automatically (logged).`}
+          </p>
+        )}
+        <div>
+          <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
+        </div>
+        <button type="button" disabled={busy || !toPlate} onClick={() => onSubmit({ toPlate, reason })} className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
+          {ar ? 'تنفيذ النقل' : 'Move'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function AddTrailerForm({ flatbeds, ar, onSaved }: { flatbeds: Flatbed[]; ar: boolean; onSaved: () => void }) {
+  const [trailerNumber, setTrailerNumber] = useState('');
+  const [plate, setPlate] = useState('');
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (!trailerNumber.trim()) return;
+    setBusy(true);
+    try { await api.post('/api/ls2/assets/trailers', { trailerNumber: trailerNumber.trim(), plate: plate || null }); onSaved(); }
+    catch (e: any) { alert(e?.message || 'Failed'); }
+    setBusy(false);
+  };
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelCls}>{ar ? 'رقم التيدر' : 'Trailer number'} *</label>
+        <input value={trailerNumber} onChange={(e) => setTrailerNumber(e.target.value)} className={inputCls} />
+      </div>
+      <div>
+        <label className={labelCls}>{ar ? 'مركّب على (اختياري)' : 'On flatbed (optional)'}</label>
+        <select value={plate} onChange={(e) => setPlate(e.target.value)} className={inputCls}>
+          <option value="">{ar ? '— غير مركّب —' : '— unhitched —'}</option>
+          {flatbeds.map((f) => <option key={f._id} value={f.plate}>{f.plate}</option>)}
+        </select>
+      </div>
+      <button type="button" disabled={busy || !trailerNumber.trim()} onClick={save} className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
+        {ar ? 'إضافة' : 'Add'}
+      </button>
+    </div>
+  );
+}
+
+function EditFlatbedForm({ flatbed, ar, onSaved }: { flatbed: Flatbed; ar: boolean; onSaved: () => void }) {
+  const [numbering, setNumbering] = useState<string>(flatbed.numbering != null ? String(flatbed.numbering) : '');
+  const [batch, setBatch] = useState(flatbed.batch || '');
+  const [brand, setBrand] = useState(flatbed.brand || '');
+  const [notes, setNotes] = useState(flatbed.notes || '');
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try { await api.patch(`/api/ls2/assets/flatbeds/${flatbed._id}`, { numbering: numbering === '' ? null : Number(numbering), batch, brand, notes }); onSaved(); }
+    catch (e: any) { alert(e?.message || 'Failed'); }
+    setBusy(false);
+  };
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className={labelCls}>{ar ? 'الترقيم' : 'Numbering'}</label>
+          <input type="number" value={numbering} onChange={(e) => setNumbering(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>{ar ? 'الدفعة' : 'Batch'}</label>
+          <input value={batch} onChange={(e) => setBatch(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>{ar ? 'الماركة' : 'Brand'}</label>
+          <input value={brand} onChange={(e) => setBrand(e.target.value)} className={inputCls} />
+        </div>
+      </div>
+      <div>
+        <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
+      </div>
+      <button type="button" disabled={busy} onClick={save} className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
+        {ar ? 'حفظ' : 'Save'}
+      </button>
+    </div>
+  );
+}
+
+// ---- Import workshop JSON ---------------------------------------------------
+function ImportModal({ ar, onClose, onDone }: { ar: boolean; onClose: () => void; onDone: () => void }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const run = async () => {
+    let payload: any;
+    try { payload = JSON.parse(text); } catch { alert(ar ? 'JSON غير صالح' : 'Invalid JSON'); return; }
+    setBusy(true);
+    try {
+      const res = await api.post<any>('/api/ls2/assets/import', payload);
+      setResult(res.summary);
+    } catch (e: any) { alert(e?.message || 'Failed'); }
+    setBusy(false);
+  };
+  return (
+    <Modal title={ar ? 'استيراد كشف الورشة (JSON)' : 'Import workshop JSON'} onClose={onClose} wide>
+      <div className="space-y-3">
+        <p className="text-xs text-slate-500">
+          {ar
+            ? 'الصق نفس صيغة الـ JSON اللي بتتجمع في الورشة: { "vehicles": [...] } و/أو { "flatbeds": [...] }. الاستيراد آمن للتكرار: الفردة اللي ظهرت على عربية تانية بتتسجل كنقل بتاريخه، مش كتسجيل جديد.'
+            : 'Paste the workshop-collected JSON: { "vehicles": [...] } and/or { "flatbeds": [...] }. Idempotent: a serial appearing on another truck is recorded as a transfer, not a duplicate.'}
+        </p>
+        <textarea
+          value={text} onChange={(e) => setText(e.target.value)} rows={12} dir="ltr"
+          placeholder='{ "vehicles": [ { "vehicle_number": "2708", "trailer_number": "23", "tires": [ ... ] } ] }'
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-[#f37121]"
+        />
+        {result && (
+          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+            {ar
+              ? `تم: ${result.flatbeds} سطحة · ${result.trailers} حركة تيدر · ${result.tiresNew} فردة جديدة · ${result.tiresMoved} نُقلت · ${result.tiresUnchanged} بدون تغيير`
+              : `Done: ${result.flatbeds} flatbeds · ${result.trailers} trailer moves · ${result.tiresNew} new tires · ${result.tiresMoved} moved · ${result.tiresUnchanged} unchanged`}
+          </p>
+        )}
+        <div className="flex gap-2">
+          <button type="button" disabled={busy || !text.trim()} onClick={run} className="flex-1 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
+            {busy ? (ar ? 'جارٍ الاستيراد…' : 'Importing…') : (ar ? 'استيراد' : 'Import')}
+          </button>
+          {result && (
+            <button type="button" onClick={onDone} className="flex-1 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium">
+              {ar ? 'إغلاق وتحديث' : 'Close & refresh'}
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}

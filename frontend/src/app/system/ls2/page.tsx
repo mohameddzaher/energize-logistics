@@ -16,8 +16,9 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
+import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import {
-  ls2Text, isLs2Staff, severityStyle, statusStyle, alertTypeLabel, alertMessage, fmtNum, fmtKm, timeAgo, tireTempColor, coolantColor, thisMonthToDate, type Lang, type DateRange,
+  ls2Text, isLs2Staff, severityStyle, statusStyle, maintStyle, alertTypeLabel, alertMessage, fmtNum, fmtKm, timeAgo, tireTempColor, coolantColor, thisMonthToDate, type Lang, type DateRange,
 } from '@/lib/ls2';
 
 interface Dash {
@@ -78,6 +79,80 @@ export default function Ls2DashboardPage() {
     { key: 'stopped', ...statusStyle('stopped') }, { key: 'offline', ...statusStyle('offline') },
   ];
 
+  // Excel export — one workbook mirroring every panel on this page.
+  const ar = lang === 'ar';
+  const kvColumns: ExportColumn[] = [
+    { header: ar ? 'المؤشر' : 'Metric', key: 'metric', transform: (v) => v ?? '', width: 34 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', transform: (v) => v ?? '', width: 18 },
+  ];
+  const vehicleColumns = (extra: ExportColumn[]): ExportColumn[] => [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', transform: (v, row) => v || row.unitId || '', width: 16 },
+    { header: ar ? 'السائق' : 'Driver', key: 'driver', transform: (v) => v ?? '', width: 20 },
+    ...extra,
+  ];
+  const summaryRows = [
+    { metric: t.totalVehicles, value: d.fleet.total },
+    { metric: ar ? 'متصلة' : 'Online', value: d.fleet.online },
+    ...statusTiles.map((s) => ({ metric: ar ? s.ar : s.en, value: sc[s.key] || 0 })),
+    { metric: t.openAlerts, value: d.alerts.totalOpen },
+    { metric: ar ? 'مركبات عليها تنبيهات' : 'Vehicles with alerts', value: d.alerts.vehiclesWithAlerts },
+    ...(['critical', 'warning', 'info'] as const).map((s) => ({
+      metric: `${ar ? 'تنبيهات' : 'Alerts'} — ${ar ? severityStyle(s).ar : severityStyle(s).en}`, value: d.alerts.bySeverity[s] || 0,
+    })),
+    { metric: t.serviceOverdue, value: d.maintenance.overdueCount },
+    { metric: t.serviceDue, value: d.maintenance.dueCount },
+    { metric: `${t.avgTireTemp} (°C)`, value: d.temperature.avgTireTempC ?? '' },
+    { metric: `${t.maxTireTemp} (°C)`, value: d.temperature.maxTireTempC ?? '' },
+    { metric: `${t.avgEngineTemp} (°C)`, value: d.temperature.avgCoolantC ?? '' },
+    { metric: `${ar ? 'أقصى حرارة موتور' : 'Max Engine Temp'} (°C)`, value: d.temperature.maxCoolantC ?? '' },
+    { metric: t.hotTires, value: d.temperature.hotTires },
+    { metric: t.hotEngines, value: d.temperature.hotEngines },
+    { metric: `${t.totalDistance} (${t.km}) · ${d.distance?.from ?? range.from} → ${d.distance?.to ?? range.to}`, value: d.distance?.totalKm ?? 0 },
+    { metric: t.vehiclesMoved, value: d.distance?.movedVehicles ?? 0 },
+    { metric: `${t.avgPerVehicle} (${t.km})`, value: d.distance?.avgKm ?? 0 },
+  ];
+  const exportSheets: ExportSheet[] = [
+    { name: ar ? 'الملخص' : 'Summary', rows: summaryRows, columns: kvColumns },
+    {
+      name: ar ? 'التنبيهات حسب النوع' : 'Alerts by type',
+      rows: typeChart,
+      columns: [
+        { header: ar ? 'النوع' : 'Type', key: 'type', transform: (v) => v ?? '', width: 24 },
+        { header: ar ? 'العدد' : 'Count', key: 'count', transform: (v) => v ?? '', width: 10 },
+      ],
+    },
+    {
+      name: ar ? 'الأعلى مسافة' : 'Top distance',
+      rows: d.distance?.topMovers || [],
+      columns: vehicleColumns([{ header: `${ar ? 'المسافة' : 'Distance'} (${t.km})`, key: 'km', transform: (v) => v ?? '', width: 14 }]),
+    },
+    {
+      name: ar ? 'الأسخن كواتش' : 'Hottest tires',
+      rows: d.temperature.topHotTires,
+      columns: vehicleColumns([{ header: ar ? 'الحرارة °C' : 'Temp °C', key: 'value', transform: (v) => v ?? '', width: 12 }]),
+    },
+    {
+      name: ar ? 'الأقرب للصيانة' : 'Nearest to service',
+      rows: d.maintenance.nearest,
+      columns: vehicleColumns([
+        { header: ar ? 'العداد كم' : 'Odometer km', key: 'odometerKm', transform: (v) => v ?? '', width: 14 },
+        { header: ar ? 'المتبقي للصيانة كم' : 'Km to service', key: 'kmToService', transform: (v) => v ?? '', width: 16 },
+        { header: ar ? 'الحالة' : 'Status', key: 'statusLevel', transform: (v) => (ar ? maintStyle(v).ar : maintStyle(v).en), width: 14 },
+      ]),
+    },
+    {
+      name: ar ? 'أحدث التنبيهات' : 'Latest alerts',
+      rows: d.alerts.latest,
+      columns: [
+        { header: ar ? 'اللوحة' : 'Plate', key: 'plate', transform: (v, row) => v || row.unitId || '', width: 16 },
+        { header: ar ? 'النوع' : 'Type', key: 'type', transform: (v) => alertTypeLabel(v, lang as Lang), width: 20 },
+        { header: ar ? 'الخطورة' : 'Severity', key: 'severity', transform: (v) => (ar ? severityStyle(v).ar : severityStyle(v).en), width: 12 },
+        { header: ar ? 'الرسالة' : 'Message', key: 'message', transform: (_v, row) => alertMessage(row, lang as Lang) ?? '', width: 36 },
+        { header: ar ? 'آخر رصد' : 'Last seen', key: 'lastSeenAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 20 },
+      ],
+    },
+  ];
+
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Gauge className="w-5 h-5" />} title={t.dashboard} subtitle={`${t.liveSubtitle} · ${t.live}`}>
@@ -85,6 +160,11 @@ export default function Ls2DashboardPage() {
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> {t.live}
         </span>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
+        <ExportMenu
+          fileName="ls2-dashboard"
+          lang={lang as Lang}
+          options={[{ key: 'all', label: ar ? 'تقرير اللوحة (كل الأقسام)' : 'Dashboard report (all panels)', sheets: exportSheets }]}
+        />
       </PageHeader>
 
       {/* KPI cards */}

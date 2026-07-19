@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const ls2 = require('../controllers/ls2Controller');
+const assets = require('../controllers/ls2AssetsController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const { LS2_STAFF_ROLES, LS2_ADMIN_ROLES } = require('../config/constants');
@@ -36,6 +37,22 @@ router.get('/repairs', ls2.listRepairs); // ?unitId&category&status
 router.post('/repairs', ADMIN, ls2.createRepair);
 router.patch('/repairs/:repairId', ADMIN, ls2.updateRepair);
 router.delete('/repairs/:repairId', ADMIN, ls2.deleteRepair);
+
+// Fleet asset registry — سطحات وتيدرات وفردات كاوتش, with movement history.
+// The workshop's source of truth for WHICH physical tire/trailer is on a truck.
+router.get('/assets/overview', assets.getOverview);
+router.get('/assets/events', assets.listEvents);
+router.get('/assets/sensor-check', assets.sensorCheck);
+router.get('/assets/vehicle/:plate', assets.getVehicleAssets);
+router.post('/assets/import', ADMIN, assets.importAssets); // workshop JSON, idempotent
+router.post('/assets/tires', ADMIN, assets.createTire);
+router.patch('/assets/tires/:id', ADMIN, assets.updateTire);
+router.post('/assets/tires/:id/move', ADMIN, assets.moveTire);
+router.post('/assets/tires/:id/retire', ADMIN, assets.retireTire);
+router.post('/assets/trailers', ADMIN, assets.createTrailer);
+router.post('/assets/trailers/:id/move', ADMIN, assets.moveTrailer);
+router.post('/assets/flatbeds', ADMIN, assets.createFlatbed);
+router.patch('/assets/flatbeds/:id', ADMIN, assets.updateFlatbed);
 
 router.get('/vehicles', ls2.listVehicles);
 router.get('/vehicles/:id', ls2.getVehicle);

@@ -13,6 +13,7 @@ import api from '@/lib/api';
 import { ClipboardList, RefreshCw, Search, Droplet, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   ls2Text, isLs2Staff, statusStyle, maintStyle, fmtNum, fmtKm, fmtDate, thisMonthToDate,
   type Lang, type Vehicle, type DateRange, type VehicleFuel,
@@ -71,10 +72,33 @@ export default function Ls2RegistryPage() {
 
   const totalKm = filtered.reduce((s, v) => s + (v.periodKm || 0), 0);
 
+  const exportColumns: ExportColumn[] = [
+    { header: lang === 'ar' ? 'اللوحة' : 'Plate', key: 'plate', transform: (v) => v ?? '', width: 14 },
+    { header: lang === 'ar' ? 'السائق' : 'Driver', key: 'driver', transform: (v) => v ?? '', width: 22 },
+    { header: lang === 'ar' ? 'الماركة' : 'Brand', key: 'profile.brand', transform: (v) => v ?? '', width: 16 },
+    { header: lang === 'ar' ? 'سنة الصنع' : 'Model year', key: 'profile.modelYear', transform: (v) => v ?? '', width: 12 },
+    { header: lang === 'ar' ? 'النوع' : 'Type', key: 'profile.vehicleType', transform: (v) => v ?? '', width: 16 },
+    { header: lang === 'ar' ? 'رقم الشاسيه' : 'VIN', key: 'profile.vin', transform: (v) => v ?? '', width: 22 },
+    { header: lang === 'ar' ? 'شريحة الاتصال' : 'SIM ICCID', key: 'profile.simIccid', transform: (v) => v ?? '', width: 22 },
+    { header: lang === 'ar' ? 'تاريخ التركيب' : 'Install date', key: 'profile.installDate', transform: (v) => v ?? '', width: 14 },
+    { header: lang === 'ar' ? 'العداد (كم)' : 'Odometer (km)', key: 'odometerKm', transform: (v) => v ?? '', width: 14 },
+    { header: lang === 'ar' ? 'ساعات الموتور' : 'Engine hours', key: 'engineHours', transform: (v) => v ?? '', width: 14 },
+    { header: lang === 'ar' ? 'كم في الفترة' : 'Km in period', key: 'periodKm', transform: (v) => v ?? '', width: 14 },
+  ];
+  const sheetName = lang === 'ar' ? 'سجل الأسطول' : 'Fleet Registry';
+
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<ClipboardList className="w-5 h-5" />} title={lang === 'ar' ? 'سجل الأسطول' : 'Fleet Registry'} subtitle={`${filtered.length} ${lang === 'ar' ? 'مركبة' : 'vehicles'} · ${fmtNum(Math.round(totalKm))} ${t.km}`}>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
+        <ExportMenu
+          fileName="ls2-registry"
+          lang={lang as Lang}
+          options={[
+            { key: 'all', label: lang === 'ar' ? 'كل العربيات' : 'All vehicles', sheets: [{ name: sheetName, rows: items, columns: exportColumns }] },
+            { key: 'filtered', label: lang === 'ar' ? 'النتائج الحالية (بعد الفلتر)' : 'Current filtered results', sheets: [{ name: sheetName, rows: filtered, columns: exportColumns }] },
+          ]}
+        />
       </PageHeader>
 
       <RangePicker value={range} onChange={setRange} lang={lang as Lang} labelFrom={t.from} labelTo={t.to} />

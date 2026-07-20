@@ -18,7 +18,7 @@ import { Building2, RefreshCw, ArrowLeft, ArrowRight, Info } from 'lucide-react'
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import { exportToExcel } from '@/utils/exportExcel';
 import {
-  isPerfFull, bandStyle, pct, periodLabel, periodKey, currentPeriod,
+  canConfigurePerf, bandStyle, pct, periodLabel, periodKey, currentPeriod,
   type Lang, type Period, type Settings, type Band,
 } from '@/lib/performance';
 
@@ -62,8 +62,8 @@ export default function PerformanceOverviewPage() {
     setPeriod(p);
   };
 
-  if (!isPerfFull(user?.role)) {
-    return <div className="text-slate-500 p-8">{ar ? 'هذه الصفحة للإدارة العليا فقط' : 'This page is restricted to executives'}</div>;
+  if (!canConfigurePerf(user?.role)) {
+    return <div className="text-slate-500 p-8">{ar ? 'هذه الصفحة للمدير العام فقط' : 'This page is restricted to super admins'}</div>;
   }
   if (loading && !data) return <Spinner />;
   const t = data?.totals;

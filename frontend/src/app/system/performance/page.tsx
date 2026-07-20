@@ -10,15 +10,26 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { Settings as SettingsIcon, Building2 } from 'lucide-react';
 import TeamBoard from '@/components/performance/TeamBoard';
-import { isPerfFull, canConfigurePerf } from '@/lib/performance';
+import { canConfigurePerf } from '@/lib/performance';
 
 export default function PerformancePage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const ar = lang === 'ar';
+  // Super-admin only. Managers evaluate their own people from their section's
+  // /system/<section>/kpis page instead.
+  if (!canConfigurePerf(user?.role)) {
+    return (
+      <div className="p-8 text-slate-500">
+        {ar
+          ? 'صفحة تقييم مديري الأقسام للمدير العام فقط. لتقييم فريقك افتح «تقييم الأداء» من قائمة قسمك.'
+          : 'This page is for super admins. To evaluate your team, open “KPIs” inside your own section.'}
+      </div>
+    );
+  }
   return (
     <TeamBoard showScopeToggle>
-      {isPerfFull(user?.role) && (
+      {canConfigurePerf(user?.role) && (
         <Link href="/system/performance/overview" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <Building2 className="w-4 h-4" /> {ar ? 'كل الأقسام' : 'All departments'}
         </Link>

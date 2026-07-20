@@ -51,15 +51,6 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
   },
   {
-    // Employee KPI evaluation. Every manager reads it; the controller scopes
-    // each one to their own team, and only super_admin may edit the rules.
-    key: 'Performance',
-    apiPrefixes: ['/api/performance'],
-    defaultRoles: ['admin', 'it_manager', 'hr_manager', 'hr_specialist', 'operations_manager',
-      'crm_manager', 'sales_manager', 'finance_manager', 'procurement_manager',
-      'workshop_manager', 'customs_manager', 'marketing_manager', 'bd_manager', 'moderator'],
-  },
-  {
     key: 'Marketing',
     apiPrefixes: ['/api/marketing'],
     defaultRoles: ['admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist'],

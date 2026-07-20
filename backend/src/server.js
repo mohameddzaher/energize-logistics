@@ -178,7 +178,10 @@ app.use('/api/section-work', sectionWorkRoutes);
 app.use('/api/b2c-wallet', authenticate, sectionGate('B2C'), b2cWalletRoutes);
 app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
 app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
-app.use('/api/performance', authenticate, sectionGate('Performance'), performanceRoutes);
+// No sectionGate: every performance handler scopes itself (a manager only ever
+// sees their own team; only super_admin may configure or override), and a
+// section switch here would risk locking managers out of their /kpis page.
+app.use('/api/performance', authenticate, performanceRoutes);
 app.use('/api/marketing', authenticate, sectionGate('Marketing'), marketingRoutes);
 app.use('/api/business-development', authenticate, sectionGate('Business Development'), businessDevelopmentRoutes);
 app.use('/api/it', authenticate, sectionGate('Software & IT'), itRoutes);

@@ -9,7 +9,7 @@ export const MANAGED_SECTIONS: string[] = [
   'Customers & Finance', 'Operations', 'Operations Platform', 'Customs', 'Vehicles',
   'Location Solutions', 'B2C', 'Workshop', 'Remote', 'HR', 'CRM', 'Sales',
   'Accounting', 'Procurement',
-  'Performance', 'Marketing', 'Business Development', 'Software & IT',
+  'Marketing', 'Business Development', 'Software & IT',
 ];
 
 const managed = new Set(MANAGED_SECTIONS);

@@ -16,13 +16,21 @@ import {
   Calculator, Scale, BookOpen, Gauge, Ship, ScrollText,
   Activity, Car, UserSquare, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck,
   Thermometer, Satellite, Crown, Container,
+  Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { homeRouteForRole } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
+import { PERF_STAFF_ROLES } from '@/lib/performance';
+
 import { isManagedSection, canAccessSection } from '@/lib/sections';
+// Sidebar visibility for the new sections. Managed sections are additionally
+// gated by the per-role permission matrix (canAccessSection).
+const MARKETING_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator'];
+const BD_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'];
+const IT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 interface NavItem {
   href: string;
@@ -165,6 +173,32 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/fleet-assets', label: lang === 'ar' ? 'السطحات والكاوتشات' : 'Fleet Assets', icon: <Container className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/repairs', label: lang === 'ar' ? 'الصيانة الاستثنائية' : 'Exceptional Repairs', icon: <Hammer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/alerts', label: lang === 'ar' ? 'التنبيهات' : 'Alerts', icon: <Bell className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
+    // ---- Performance (KPI evaluation) ----
+    { href: '/system/performance', label: lang === 'ar' ? 'تقييم الأداء' : 'Performance Evaluation', icon: <Target className="w-5 h-5" />, roles: PERF_STAFF_ROLES, section: 'Performance' },
+    { href: '/system/performance/overview', label: lang === 'ar' ? 'نظرة كل الأقسام' : 'All Departments', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Performance' },
+    { href: '/system/performance/settings', label: lang === 'ar' ? 'إعداد المؤشرات' : 'Configure KPIs', icon: <Settings className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
+    // ---- Marketing ----
+    { href: '/system/marketing', label: lang === 'ar' ? 'لوحة التسويق' : 'Marketing Dashboard', icon: <Megaphone className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
+    { href: '/system/marketing/campaigns', label: lang === 'ar' ? 'الحملات' : 'Campaigns', icon: <Target className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
+    { href: '/system/marketing/activities', label: lang === 'ar' ? 'سجل الأنشطة' : 'Activity Log', icon: <ClipboardList className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
+    { href: '/system/marketing/reports', label: lang === 'ar' ? 'التقارير الدورية' : 'Periodic Reports', icon: <BarChart3 className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
+    { href: '/system/marketing/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
+    { href: '/system/marketing/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
+    // ---- Business Development ----
+    { href: '/system/bd', label: lang === 'ar' ? 'تطوير الأعمال' : 'Business Development', icon: <BarChart3 className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
+    { href: '/system/bd/opportunities', label: lang === 'ar' ? 'الفرص الاستراتيجية' : 'Opportunities', icon: <Compass className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
+    { href: '/system/bd/partners', label: lang === 'ar' ? 'الشراكات' : 'Partners', icon: <Handshake className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
+    { href: '/system/bd/tenders', label: lang === 'ar' ? 'المناقصات' : 'Tenders', icon: <Gavel className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
+    { href: '/system/bd/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
+    { href: '/system/bd/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
+    // ---- Software & IT ----
+    { href: '/system/it', label: lang === 'ar' ? 'لوحة تقنية المعلومات' : 'IT Dashboard', icon: <MonitorCog className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
+    { href: '/system/it/tickets', label: lang === 'ar' ? 'التذاكر والمشكلات' : 'Tickets', icon: <LifeBuoy className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
+    { href: '/system/it/recurring', label: lang === 'ar' ? 'المشكلات المتكررة' : 'Recurring Problems', icon: <RefreshCw className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
+    { href: '/system/it/custody', label: lang === 'ar' ? 'العهد والأجهزة' : 'IT Custody', icon: <Laptop className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
+    { href: '/system/it/systems', label: lang === 'ar' ? 'الأنظمة والخدمات' : 'Systems & Services', icon: <Server className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
+    { href: '/system/it/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ClipboardList className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
+    { href: '/system/it/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/ls2/settings', label: lang === 'ar' ? 'الإعدادات' : 'Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'workshop_manager'], section: 'Location Solutions' },
     // B2C
     { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_head', 'b2c_project_manager'], section: 'B2C' },

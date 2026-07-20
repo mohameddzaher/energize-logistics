@@ -61,3 +61,6 @@ backend/uploads/
 
 # Local infra/ops reference — sensitive, never commit
 INFRASTRUCTURE.md
+
+# Employee/customs master spreadsheets — contain PII (IBANs, national IDs). Kept local + on the server only.
+backend/src/data/masters/

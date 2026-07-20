@@ -51,6 +51,30 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
   },
   {
+    // Employee KPI evaluation. Every manager reads it; the controller scopes
+    // each one to their own team, and only super_admin may edit the rules.
+    key: 'Performance',
+    apiPrefixes: ['/api/performance'],
+    defaultRoles: ['admin', 'it_manager', 'hr_manager', 'hr_specialist', 'operations_manager',
+      'crm_manager', 'sales_manager', 'finance_manager', 'procurement_manager',
+      'workshop_manager', 'customs_manager', 'marketing_manager', 'bd_manager', 'moderator'],
+  },
+  {
+    key: 'Marketing',
+    apiPrefixes: ['/api/marketing'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist'],
+  },
+  {
+    key: 'Business Development',
+    apiPrefixes: ['/api/business-development'],
+    defaultRoles: ['admin', 'it_manager', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'],
+  },
+  {
+    key: 'Software & IT',
+    apiPrefixes: ['/api/it'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist'],
+  },
+  {
     key: 'B2C',
     apiPrefixes: ['/api/b2c', '/api/b2c-wallet'],
     defaultRoles: ['admin', 'it_manager', 'b2c_head', 'b2c_project_manager'],
@@ -109,6 +133,7 @@ const ALL_ROLES = [
   'finance_manager', 'accountant', 'sales_manager', 'sales_rep',
   'procurement_manager', 'customs_manager', 'customs_officer',
   'it_manager', 'it_specialist',
+  'marketing_manager', 'marketing_specialist', 'bd_manager', 'bd_specialist',
 ];
 
 const getSection = (key) => SECTIONS.find((s) => s.key === key);

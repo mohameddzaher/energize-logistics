@@ -78,10 +78,18 @@ const employeeSchema = new mongoose.Schema(
     iqamaProfession: { type: String, trim: true },   // المهنه في الاقامه
     classification: { type: String, trim: true },    // التصنيف
 
+    // ── Contract columns mirrored from the HR master sheet ───────────────────
+    // Reference text only — the Contract collection stays the source of truth.
+    contractStatusText: { type: String, trim: true, default: '' },  // حاله العقد (ساري ...)
+    contractStartDate: { type: String, default: '' },               // تاريخ الانشاء — YYYY-MM-DD
+    contractEndDate: { type: String, default: '' },                 // تاريخ الانتهاء_2 — YYYY-MM-DD
+
     // Insurance
     insuranceCompany: { type: String, trim: true },  // شركه التامين
     insuranceExpiry: { type: String },               // تاريخ انتهاء التامين — YYYY-MM-DD
     socialInsuranceStatus: { type: String, trim: true }, // حاله التامينات الاجتماعيه (نشط ...)
+    insuranceRequirements: { type: String, trim: true, default: '' },        // متطلبات التامين
+    iqamaProfessionRequirements: { type: String, trim: true, default: '' },  // متطلبات المهنه في الاقامه
 
     // Visa
     visaExpiry: { type: String },                    // انتهاء التأشيرة — YYYY-MM-DD

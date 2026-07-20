@@ -9,6 +9,8 @@ const EDIT_ROLES = ['super_admin', 'admin', 'operations_manager', 'customs_manag
 router.use(authenticate);
 
 router.get('/', ctrl.getClearances);
+// Must stay ABOVE '/:id' or the param route swallows it.
+router.get('/analytics', ctrl.getAnalytics);
 router.get('/:id', ctrl.getClearance);
 
 router.post('/', authorize(...EDIT_ROLES), ctrl.createClearance);

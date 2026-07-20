@@ -26,6 +26,15 @@ const assetSchema = new mongoose.Schema(
 
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+    // ── Additive fields for the Software & IT section ────────────────────────
+    // The IT العهد page writes to THIS collection (never a second one) so an
+    // IT-issued laptop shows up on the employee's HR profile automatically.
+    // All optional — HR keeps working unchanged when they are absent.
+    category: { type: String, default: '', trim: true },        // free text, e.g. 'IT'
+    assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    issuedBySection: { type: String, default: '', trim: true }, // 'it' | 'hr'
+    specs: { type: String, default: '', trim: true },           // e.g. 'i7 / 16GB / 512 SSD'
   },
   { timestamps: true }
 );

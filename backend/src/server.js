@@ -60,6 +60,10 @@ const sectionWorkRoutes = require('./routes/sectionWork');
 const b2cWalletRoutes = require('./routes/b2cWallet');
 const crmVendorRoutes = require('./routes/crmVendors');
 const ls2Routes = require('./routes/ls2');
+const performanceRoutes = require('./routes/performance');
+const marketingRoutes = require('./routes/marketing');
+const businessDevelopmentRoutes = require('./routes/businessDevelopment');
+const itRoutes = require('./routes/it');
 
 // Safety net: never let a single bad request/promise take down the whole
 // process. Before this, an unhandled rejection (e.g. express-rate-limit's
@@ -174,6 +178,10 @@ app.use('/api/section-work', sectionWorkRoutes);
 app.use('/api/b2c-wallet', authenticate, sectionGate('B2C'), b2cWalletRoutes);
 app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
 app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
+app.use('/api/performance', authenticate, sectionGate('Performance'), performanceRoutes);
+app.use('/api/marketing', authenticate, sectionGate('Marketing'), marketingRoutes);
+app.use('/api/business-development', authenticate, sectionGate('Business Development'), businessDevelopmentRoutes);
+app.use('/api/it', authenticate, sectionGate('Software & IT'), itRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -62,6 +62,100 @@ const customsClearanceSchema = new mongoose.Schema(
       companyAuthorization: { type: Boolean, default: false },  // تفويض الشركة لمندوب التخليص
     },
 
+    // ---------------------------------------------------------------------
+    // Master-spreadsheet fields (ماستر التخليص). All additive & optional.
+    // ---------------------------------------------------------------------
+
+    // Identity / period
+    legacySerial: { type: Number },                 // مسلسل (row number in the sheet)
+    periodMonth: { type: Number, min: 1, max: 12 }, // الشهر
+    periodYear: { type: Number },                   // السنة
+    city: { type: String, trim: true },             // المدينة (raw Arabic, as written)
+
+    // Declaration & scheduling
+    declarationNumber: { type: String, trim: true },  // رقم البيان
+    declarationDate: { type: String, trim: true },    // تاريخ البيان (YYYY-MM-DD)
+    papersReceivedDate: { type: String, trim: true }, // تاريخ استلام الورق (YYYY-MM-DD)
+    unloadingAppointment: { type: String, trim: true }, // موعد التفريغ
+    unloadingLocation: { type: String, trim: true },    // مكان التفريغ
+    doNumber: { type: String, trim: true },             // رقم إذن التسليم (اذن التسليم in the sheet)
+    exitPermitNumber: { type: String, trim: true },     // رقم تصريح الخروج
+
+    // Payment / milestone dates (YYYY-MM-DD strings, '' when unknown)
+    stageDates: {
+      doInvoiceEmailed: { type: String, default: '' },   // ميل فاتورة اذن التسليم
+      doInvoicePaid: { type: String, default: '' },      // سداد فاتورة اذن التسليم
+      doLinkEmailed: { type: String, default: '' },      // ميل ربط اذن التسليم
+      dutyPaid: { type: String, default: '' },           // سداد رسوم جمركية
+      portFeesPaid: { type: String, default: '' },       // سداد الموانى
+      unloadingFeesPaid: { type: String, default: '' },  // سداد التفريغ
+      containersReturned: { type: String, default: '' }, // الارجاع
+      returnInvoiceDate: { type: String, default: '' },  // فاتورة الارجاع
+    },
+
+    // The sheet often records these milestones as "تم" with no date — keep the
+    // done/not-done signal alongside stageDates so nothing is lost.
+    stageDone: {
+      doInvoiceEmailed: { type: Boolean, default: false },
+      doInvoicePaid: { type: Boolean, default: false },
+      doLinkEmailed: { type: Boolean, default: false },
+      dutyPaid: { type: Boolean, default: false },
+      portFeesPaid: { type: Boolean, default: false },
+      unloadingFeesPaid: { type: Boolean, default: false },
+      containersReturned: { type: Boolean, default: false },
+      returnInvoiceDate: { type: Boolean, default: false },
+    },
+
+    // Costs (المصروفات) — all SAR
+    costs: {
+      deliveryOrder: { type: Number, default: 0 },      // قيمة اذن التسليم
+      customsDuty: { type: Number, default: 0 },        // الرسوم الجمركية
+      portFees: { type: Number, default: 0 },           // اجور الموانى
+      unloadingFees: { type: Number, default: 0 },      // اجور التفريغ
+      transport: { type: Number, default: 0 },          // اجور النقل (بالضريبة)
+      transportToYard: { type: Number, default: 0 },    // النقل الى الساحة (بالضريبة)
+      appointmentBooking: { type: Number, default: 0 }, // حجز الموعد
+      yardFees: { type: Number, default: 0 },           // اجور الساحه
+      demurrage: { type: Number, default: 0 },          // ارضيات
+      inspection: { type: Number, default: 0 },         // اجور الكشف
+      securityScan: { type: Number, default: 0 },       // فحص امنى
+      extension: { type: Number, default: 0 },          // تمديد
+      consolidator: { type: Number, default: 0 },       // الدامج
+      commissions: { type: Number, default: 0 },        // عمولات
+      storage: { type: Number, default: 0 },            // تخزين
+      labour: { type: Number, default: 0 },             // عمال
+      exitPermit: { type: Number, default: 0 },         // تصريح الخروج
+      total: { type: Number, default: 0 },              // اجمالى المصروفات (computed)
+    },
+
+    // Revenue (الإيرادات) — all SAR
+    revenue: {
+      clearanceFee: { type: Number, default: 0 },        // اجور التخليص
+      transportSelling: { type: Number, default: 0 },    // سعر بيع النقل
+      transportNet: { type: Number, default: 0 },        // صافي النقل
+      transportToYardNet: { type: Number, default: 0 },  // صافى النقل الى الساحة (بالضريبة)
+      yardTransportNet: { type: Number, default: 0 },    // صافي نقل الساحه
+      totalInvoiced: { type: Number, default: 0 },       // اجمالى الفاتورة
+      profit: { type: Number, default: 0 },              // اجمالى الربح (computed)
+    },
+
+    // Our billing (as opposed to the supplier invoice captured above)
+    billing: {
+      invoiceStatus: { type: String, default: '' },  // حالة الفاتورة — free text ('خالص', 'غير مفوتر', ...)
+      ourInvoiceNumber: { type: String, default: '' }, // رقم الفاتورة (ours)
+      invoicedAt: { type: String, default: '' },       // YYYY-MM-DD
+    },
+
+    // Container-level detail (Sheet2 grain)
+    containers: [
+      {
+        containerNumber: { type: String, trim: true }, // الحاوية
+        exitPermit: { type: Number, default: 0 },      // تصريح خروج
+        declaration: { type: String, trim: true },     // البيان
+        notes: { type: String, trim: true },
+      },
+    ],
+
     notes: { type: String },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -72,6 +166,46 @@ const customsClearanceSchema = new mongoose.Schema(
 
 customsClearanceSchema.index({ createdAt: -1 });
 customsClearanceSchema.index({ blNumber: 1 });
+customsClearanceSchema.index({ periodYear: 1, periodMonth: 1 });
+customsClearanceSchema.index({ customerName: 1 });
+customsClearanceSchema.index({ 'billing.invoiceStatus': 1 });
+
+// The individual cost buckets that make up costs.total.
+const COST_KEYS = [
+  'deliveryOrder', 'customsDuty', 'portFees', 'unloadingFees', 'transport',
+  'transportToYard', 'appointmentBooking', 'yardFees', 'demurrage', 'inspection',
+  'securityScan', 'extension', 'consolidator', 'commissions', 'storage',
+  'labour', 'exitPermit',
+];
+
+const n = (v) => {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+};
+
+/**
+ * Recompute costs.total (sum of the individual buckets) and revenue.profit
+ * (totalInvoiced - costs.total) on any plain object or mongoose document.
+ * NaN-guarded: a non-numeric bucket contributes 0 rather than poisoning the sum.
+ * Used by the pre('save') hook, the controller's update path and the importer,
+ * so the derived numbers can never drift from their inputs.
+ */
+function recomputeTotals(doc) {
+  if (!doc) return doc;
+  if (!doc.costs) doc.costs = {};
+  if (!doc.revenue) doc.revenue = {};
+  let total = 0;
+  for (const k of COST_KEYS) total += n(doc.costs[k]);
+  total = Math.round(total * 100) / 100;
+  doc.costs.total = total;
+  doc.revenue.profit = Math.round((n(doc.revenue.totalInvoiced) - total) * 100) / 100;
+  return doc;
+}
+
+customsClearanceSchema.pre('save', function (next) {
+  recomputeTotals(this);
+  next();
+});
 
 // Auto reference number: CC-00001, CC-00002, ...
 customsClearanceSchema.pre('save', async function (next) {
@@ -95,3 +229,5 @@ customsClearanceSchema.statics.STAGES = STAGES;
 
 module.exports = mongoose.model('CustomsClearance', customsClearanceSchema);
 module.exports.STAGES = STAGES;
+module.exports.COST_KEYS = COST_KEYS;
+module.exports.recomputeTotals = recomputeTotals;

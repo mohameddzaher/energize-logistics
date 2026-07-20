@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, Download } from 'lucide-react';
+import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, Download, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { getCustomsTranslations } from '@/lib/translations';
@@ -26,7 +26,20 @@ interface Clearance {
   containerCount?: number;
   assignedTo?: string;
   createdAt: string;
+  periodMonth?: number;
+  periodYear?: number;
+  city?: string;
+  declarationNumber?: string;
+  costs?: { total?: number };
+  revenue?: { totalInvoiced?: number; clearanceFee?: number; profit?: number };
+  billing?: { invoiceStatus?: string; ourInvoiceNumber?: string };
 }
+
+const MONTH_LABELS: [string, string][] = [
+  ['يناير', 'January'], ['فبراير', 'February'], ['مارس', 'March'], ['أبريل', 'April'],
+  ['مايو', 'May'], ['يونيو', 'June'], ['يوليو', 'July'], ['أغسطس', 'August'],
+  ['سبتمبر', 'September'], ['أكتوبر', 'October'], ['نوفمبر', 'November'], ['ديسمبر', 'December'],
+];
 
 const STAGE_ORDER = [
   'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
@@ -62,6 +75,10 @@ export default function CustomsPage() {
   const [form, setForm] = useState<any>({ ...EMPTY });
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
+  const [fYear, setFYear] = useState('');
+  const [fMonth, setFMonth] = useState('');
+  const [fInvoice, setFInvoice] = useState('');
+  const ar = lang === 'ar';
 
   const fetchList = useCallback(async () => {
     try {
@@ -95,11 +112,21 @@ export default function CustomsPage() {
     try { await api.delete(`/api/customs-clearance/${id}`); fetchList(); } catch {}
   };
 
+  const years = Array.from(new Set(list.map((c) => c.periodYear).filter(Boolean) as number[])).sort((a, b) => b - a);
+  const invoiceStatuses = Array.from(new Set(list.map((c) => (c.billing?.invoiceStatus || '').trim()).filter(Boolean))).sort();
+
   const filtered = list.filter((c) => {
     const s = search.toLowerCase();
-    return !s || [c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port]
-      .some((v) => v && String(v).toLowerCase().includes(s));
+    if (s && ![c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port, c.declarationNumber, c.billing?.ourInvoiceNumber]
+      .some((v) => v && String(v).toLowerCase().includes(s))) return false;
+    if (fYear && String(c.periodYear || '') !== fYear) return false;
+    if (fMonth && String(c.periodMonth || '') !== fMonth) return false;
+    if (fInvoice === '__none') { if ((c.billing?.invoiceStatus || '').trim()) return false; }
+    else if (fInvoice && (c.billing?.invoiceStatus || '').trim() !== fInvoice) return false;
+    return true;
   });
+
+  const money = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
   const handleExport = () => {
     exportToExcel(filtered, [
@@ -107,7 +134,18 @@ export default function CustomsPage() {
       { header: T.blNumber, key: 'blNumber', width: 18, transform: (v) => v || '—' },
       { header: T.customerName, key: 'customerName', width: 22, transform: (v) => v || '—' },
       { header: T.branch, key: 'branch', width: 14, transform: (v) => (v === 'dammam' ? T.dammam : T.jeddah) },
+      { header: ar ? 'المدينة' : 'City', key: 'city', width: 14, transform: (v) => v || '—' },
+      { header: ar ? 'الشهر' : 'Month', key: 'periodMonth', width: 12, transform: (v) => (v ? MONTH_LABELS[v - 1][ar ? 0 : 1] : '—') },
+      { header: ar ? 'السنة' : 'Year', key: 'periodYear', width: 10, transform: (v) => v || '—' },
+      { header: ar ? 'وكيل الشحن' : 'Shipping agent', key: 'shippingAgent', width: 20, transform: (v) => v || '—' },
+      { header: ar ? 'رقم البيان' : 'Declaration no.', key: 'declarationNumber', width: 16, transform: (v) => v || '—' },
       { header: T.containerCount, key: 'containerCount', width: 14, transform: (v) => v || 0 },
+      { header: ar ? 'إجمالي المصروفات' : 'Total costs', key: 'costs.total', width: 16, transform: money },
+      { header: ar ? 'أجور التخليص' : 'Clearance fee', key: 'revenue.clearanceFee', width: 16, transform: money },
+      { header: ar ? 'إجمالي الفاتورة' : 'Total invoiced', key: 'revenue.totalInvoiced', width: 16, transform: money },
+      { header: ar ? 'صافي الربح' : 'Net profit', key: 'revenue.profit', width: 14, transform: money },
+      { header: ar ? 'حالة الفاتورة' : 'Invoice status', key: 'billing.invoiceStatus', width: 16, transform: (v) => v || '—' },
+      { header: ar ? 'رقم فاتورتنا' : 'Our invoice no.', key: 'billing.ourInvoiceNumber', width: 16, transform: (v) => v || '—' },
       { header: T.stage, key: 'stage', width: 20, transform: (v, r) => (r.cancelled ? T.cancelled : T.stages[v] || v) },
     ], 'customs-clearances', T.title);
   };
@@ -133,6 +171,9 @@ export default function CustomsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/system/customs/analytics" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
+            <BarChart3 className="w-4 h-4" /> {ar ? 'لوحة المعلومات' : 'Dashboard'}
+          </Link>
           <Link href="/system/customs/guide" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
             <ScrollText className="w-4 h-4" /> {T.openGuide}
           </Link>
@@ -147,29 +188,47 @@ export default function CustomsPage() {
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-        <input type="text" placeholder={T.searchClearance} value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full ps-10 pe-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+      <div className="flex flex-col lg:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+          <input type="text" placeholder={T.searchClearance} value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full ps-10 pe-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+        </div>
+        <select value={fYear} onChange={(e) => setFYear(e.target.value)} className="cc-filter" aria-label={ar ? 'السنة' : 'Year'}>
+          <option value="">{ar ? 'كل السنوات' : 'All years'}</option>
+          {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
+        </select>
+        <select value={fMonth} onChange={(e) => setFMonth(e.target.value)} className="cc-filter" aria-label={ar ? 'الشهر' : 'Month'}>
+          <option value="">{ar ? 'كل الأشهر' : 'All months'}</option>
+          {MONTH_LABELS.map((m, i) => <option key={i} value={String(i + 1)}>{m[ar ? 0 : 1]}</option>)}
+        </select>
+        <select value={fInvoice} onChange={(e) => setFInvoice(e.target.value)} className="cc-filter" aria-label={ar ? 'حالة الفاتورة' : 'Invoice status'}>
+          <option value="">{ar ? 'كل حالات الفاتورة' : 'All invoice statuses'}</option>
+          {invoiceStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
+          <option value="__none">{ar ? 'غير مفوتر' : 'Not invoiced'}</option>
+        </select>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[760px]">
+          <table className="w-full text-sm min-w-[1040px]">
             <thead>
               <tr className="bg-slate-900">
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.refNumber}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.blNumber}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.customerName}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.branch}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الفترة' : 'Period'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.containerCount}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'إجمالي الفاتورة' : 'Invoiced'}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'حالة الفاتورة' : 'Invoice status'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.stage}</th>
                 {canDelete && <th className="text-end text-slate-300 font-semibold px-4 py-3">{T.actions}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filtered.length === 0 ? (
-                <tr><td colSpan={canDelete ? 7 : 6} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
+                <tr><td colSpan={canDelete ? 10 : 9} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
               ) : filtered.map((c) => (
                 <tr key={c._id} onClick={() => router.push(`/system/customs/${c._id}`)}
                   className="bg-white hover:bg-slate-50 transition-colors cursor-pointer">
@@ -177,8 +236,19 @@ export default function CustomsPage() {
                   <td className="px-4 py-3 text-slate-700">{c.blNumber || '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{c.customerName || '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{c.branch === 'dammam' ? T.dammam : T.jeddah}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                    {c.periodMonth ? `${MONTH_LABELS[c.periodMonth - 1][ar ? 0 : 1]} ${c.periodYear || ''}`.trim() : (c.periodYear || '—')}
+                  </td>
                   <td className="px-4 py-3 text-slate-700">
                     <span className="inline-flex items-center gap-1"><Container className="w-3.5 h-3.5 text-slate-700" />{c.containerCount || 0}</span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                    {money(c.revenue?.totalInvoiced) ? money(c.revenue?.totalInvoiced).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {(c.billing?.invoiceStatus || '').trim()
+                      ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-700">{c.billing?.invoiceStatus}</span>
+                      : <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-600">{ar ? 'غير مفوتر' : 'Not invoiced'}</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${stageBadge(c.stage, c.cancelled)}`}>
@@ -256,6 +326,16 @@ export default function CustomsPage() {
           font-size: 0.875rem;
         }
         :global(.cc-input:focus) { outline: none; box-shadow: 0 0 0 2px rgba(243,113,33,0.4); }
+        :global(.cc-filter) {
+          padding: 0.6rem 0.75rem;
+          border-radius: 0.5rem;
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          color: #0f172a;
+          font-size: 0.875rem;
+          min-width: 10rem;
+        }
+        :global(.cc-filter:focus) { outline: none; box-shadow: 0 0 0 2px rgba(243,113,33,0.4); }
       `}</style>
     </div>
   );

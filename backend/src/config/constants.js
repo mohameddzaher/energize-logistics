@@ -30,6 +30,10 @@ module.exports = {
     CUSTOMS_OFFICER: 'customs_officer',
     IT_MANAGER: 'it_manager',
     IT_SPECIALIST: 'it_specialist',
+    MARKETING_MANAGER: 'marketing_manager',
+    MARKETING_SPECIALIST: 'marketing_specialist',
+    BD_MANAGER: 'bd_manager',
+    BD_SPECIALIST: 'bd_specialist',
   },
 
   // Org chart: each role's DEFAULT direct-manager role. Used to auto-suggest a
@@ -65,10 +69,20 @@ module.exports = {
     customs_officer: 'customs_manager',
     it_manager: 'admin',
     it_specialist: 'it_manager',
+    marketing_manager: 'admin',
+    marketing_specialist: 'marketing_manager',
+    bd_manager: 'admin',
+    bd_specialist: 'bd_manager',
     client: null,
   },
 
   // Roles that can access the Accounting section.
+  MARKETING_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator'],
+  MARKETING_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager'],
+  BD_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'],
+  BD_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager'],
+  IT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],
+  IT_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager'],
   FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'finance_manager', 'accountant'],
   // Roles that can access the Sales section (+ the operations team — they need
   // visibility across CRM/Sales for the 3PL workflow).

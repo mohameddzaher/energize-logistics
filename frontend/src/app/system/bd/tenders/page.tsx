@@ -12,7 +12,7 @@ import {
   Modal, Field, TextInput, TextArea, Select,
 } from '@/components/hr/HRKit';
 import {
-  isBdStaff, isBdAdmin, BdTender, BdOpportunity, TENDER_STATUS,
+  canViewBd, canEditBd, BdTender, BdOpportunity, TENDER_STATUS,
   labelOf, optionsOf, bdTitle, bdName, userName, money, fmtDate, toDateInput,
   daysUntil, deadlineBadge, listToText, textToList, exportToExcel,
 } from '@/lib/bd';
@@ -28,7 +28,7 @@ export default function BdTendersPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const canEdit = isBdAdmin(user?.role);
+  const canEdit = canEditBd(user);
 
   const [rows, setRows] = useState<BdTender[]>([]);
   const [opps, setOpps] = useState<BdOpportunity[]>([]);
@@ -141,7 +141,7 @@ export default function BdTendersPage() {
     ], `bd-tenders-${new Date().toISOString().slice(0, 10)}`, 'Tenders');
   };
 
-  if (!isBdStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!canViewBd(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (

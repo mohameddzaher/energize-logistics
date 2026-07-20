@@ -12,7 +12,7 @@ import { Megaphone, Plus, Pencil, Trash2, RefreshCw, Loader2 } from 'lucide-reac
 import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Modal, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
 import { exportToExcel } from '@/utils/exportExcel';
 import {
-  isMarketingStaff, isMarketingAdmin, PLATFORMS, OBJECTIVES, STATUSES,
+  canViewMarketing, canEditMarketing, PLATFORMS, OBJECTIVES, STATUSES,
   platformLabel, objectiveLabel, statusLabel, statusStyle, campaignName, personName,
   num, money, pct, type Lang, type Campaign, type CampaignStatus, type Platform, type Objective,
 } from '@/lib/marketing';
@@ -31,7 +31,7 @@ export default function MarketingCampaignsPage() {
   const router = useRouter();
   const ar = lang === 'ar';
   const L = lang as Lang;
-  const admin = isMarketingAdmin(user?.role);
+  const admin = canEditMarketing(user);
 
   const [items, setItems] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,7 +124,7 @@ export default function MarketingCampaignsPage() {
     );
   };
 
-  if (!isMarketingStaff(user?.role)) {
+  if (!canViewMarketing(user)) {
     return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول إلى قسم التسويق.' : 'You are not authorized to view the Marketing section.'}</div>;
   }
   if (loading && !items.length) return <Spinner />;

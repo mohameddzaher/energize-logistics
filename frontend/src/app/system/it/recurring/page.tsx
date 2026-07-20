@@ -10,7 +10,7 @@ import { RefreshCw, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-reac
 import { exportToExcel } from '@/utils/exportExcel';
 import { Spinner, PageHeader, SearchInput, ExportButton, SmallBadge, Select } from '@/components/hr/HRKit';
 import {
-  isItStaff, RecurringGroup, Ticket, TICKET_CATEGORIES, TICKET_STATUSES,
+  canViewIt, RecurringGroup, Ticket, TICKET_CATEGORIES, TICKET_STATUSES,
   categoryLabel, ticketStatusLabel, optionsOf, fmtDate, fmtDuration, today,
 } from '@/lib/it';
 
@@ -18,7 +18,7 @@ export default function RecurringPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const staff = isItStaff(user?.role);
+  const staff = canViewIt(user);
   const params = useSearchParams();
 
   const [groups, setGroups] = useState<RecurringGroup[]>([]);

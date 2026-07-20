@@ -11,7 +11,7 @@ import api from '@/lib/api';
 import { Megaphone, ArrowRight, Pencil, X, Loader2, Link as LinkIcon } from 'lucide-react';
 import { Spinner, PageHeader, StatCard, PrimaryButton, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
 import {
-  isMarketingStaff, isMarketingAdmin, PLATFORMS, OBJECTIVES, STATUSES,
+  canViewMarketing, canEditMarketing, PLATFORMS, OBJECTIVES, STATUSES,
   platformLabel, objectiveLabel, statusLabel, statusStyle, activityTypeLabel,
   campaignName, personName, num, money, pct,
   type Lang, type Campaign, type Activity, type CampaignStatus, type Platform, type Objective,
@@ -27,7 +27,7 @@ export default function MarketingCampaignPage() {
   const id = params?.id as string;
   const ar = lang === 'ar';
   const L = lang as Lang;
-  const admin = isMarketingAdmin(user?.role);
+  const admin = canEditMarketing(user);
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -72,7 +72,7 @@ export default function MarketingCampaignPage() {
     setSaving(false);
   };
 
-  if (!isMarketingStaff(user?.role)) {
+  if (!canViewMarketing(user)) {
     return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول إلى قسم التسويق.' : 'You are not authorized to view the Marketing section.'}</div>;
   }
   if (loading && !campaign) return <Spinner />;

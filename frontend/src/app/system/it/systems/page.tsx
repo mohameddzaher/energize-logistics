@@ -11,7 +11,7 @@ import {
   Modal, Field, TextInput, TextArea, Select, StatCard, Loader2,
 } from '@/components/hr/HRKit';
 import {
-  isItStaff, ItSystem, SYSTEM_TYPES, SYSTEM_STATUSES, ENVIRONMENTS, COST_PERIODS,
+  canViewIt, ItSystem, SYSTEM_TYPES, SYSTEM_STATUSES, ENVIRONMENTS, COST_PERIODS,
   systemTypeLabel, systemStatusLabel, environmentLabel, costPeriodLabel,
   optionsOf, fmtDate, fmtMoney, today, daysUntil, renewalTone,
 } from '@/lib/it';
@@ -26,7 +26,7 @@ export default function ItSystemsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const staff = isItStaff(user?.role);
+  const staff = canViewIt(user);
 
   const [systems, setSystems] = useState<ItSystem[]>([]);
   const [loading, setLoading] = useState(true);

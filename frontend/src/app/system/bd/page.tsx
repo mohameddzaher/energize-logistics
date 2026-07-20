@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 import { Spinner, PageHeader, StatCard, SmallBadge } from '@/components/hr/HRKit';
 import {
-  isBdStaff, BdDashboard, BdOpportunity, OPP_STAGE, OPP_TYPE, ACTIVITY_TYPE, ENTITY_TYPE,
+  canViewBd, BdDashboard, BdOpportunity, OPP_STAGE, OPP_TYPE, ACTIVITY_TYPE, ENTITY_TYPE,
   STAGE_COLOR, TYPE_COLOR, labelOf, bdName, bdTitle, userName, money, moneyShort,
   fmtDate, fmtDateTime, deadlineBadge, ALL_STAGES,
 } from '@/lib/bd';
@@ -44,7 +44,7 @@ export default function BdDashboardPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('bd:updated', useCallback(() => { load(); }, [load]));
 
-  if (!isBdStaff(user?.role)) {
+  if (!canViewBd(user)) {
     return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   }
   if (loading) return <Spinner />;

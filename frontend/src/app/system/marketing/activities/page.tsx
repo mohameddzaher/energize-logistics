@@ -14,7 +14,7 @@ import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Modal, F
 import { exportToExcel } from '@/utils/exportExcel';
 import RangePicker from '@/components/marketing/RangePicker';
 import {
-  isMarketingStaff, isMarketingAdmin, PLATFORMS, ACTIVITY_TYPES,
+  canViewMarketing, canEditMarketing, PLATFORMS, ACTIVITY_TYPES,
   platformLabel, activityTypeLabel, campaignName, emptyMetrics, engagementOf,
   thisMonthToDate, toIso, num,
   type Lang, type DateRange, type Activity, type ActivityMetrics, type Campaign, type Platform, type ActivityType,
@@ -34,7 +34,7 @@ export default function MarketingActivitiesPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const L = lang as Lang;
-  const admin = isMarketingAdmin(user?.role);
+  const admin = canEditMarketing(user);
 
   const [items, setItems] = useState<Activity[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -128,7 +128,7 @@ export default function MarketingActivitiesPage() {
     );
   };
 
-  if (!isMarketingStaff(user?.role)) {
+  if (!canViewMarketing(user)) {
     return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول إلى قسم التسويق.' : 'You are not authorized to view the Marketing section.'}</div>;
   }
   if (loading && !items.length) return <Spinner />;

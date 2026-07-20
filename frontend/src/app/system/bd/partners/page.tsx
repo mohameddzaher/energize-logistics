@@ -13,7 +13,7 @@ import {
   Modal, Field, TextInput, TextArea, Select,
 } from '@/components/hr/HRKit';
 import {
-  isBdStaff, isBdAdmin, BdPartner, PARTNER_TYPE, PARTNER_STATUS,
+  canViewBd, canEditBd, BdPartner, PARTNER_TYPE, PARTNER_STATUS,
   labelOf, optionsOf, bdName, userName, fmtDate, toDateInput,
   listToText, textToList, exportToExcel,
 } from '@/lib/bd';
@@ -30,7 +30,7 @@ export default function BdPartnersPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const canEdit = isBdAdmin(user?.role);
+  const canEdit = canEditBd(user);
 
   const [rows, setRows] = useState<BdPartner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,7 +115,7 @@ export default function BdPartnersPage() {
     ], `bd-partners-${new Date().toISOString().slice(0, 10)}`, 'Partners');
   };
 
-  if (!isBdStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!canViewBd(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (

@@ -1,3 +1,4 @@
+import { canAccessSection, canEditSection } from '@/lib/sections';
 // Shared types, labels and formatters for the Software & IT section pages.
 
 export type Lang = 'en' | 'ar';
@@ -319,3 +320,10 @@ export const userName = (u: any): string => {
 };
 
 export const idOf = (v: any): string => (!v ? '' : typeof v === 'string' ? v : v._id || '');
+
+// Access is the ROLE list OR whatever the super-admin granted this role in the
+// permissions matrix. Guarding on the role list alone would make a granted role
+// see the sidebar link and be allowed by the API, then be refused by the page.
+type UserLike = { role?: string | null; permissions?: Record<string, 'none' | 'view' | 'edit'> } | null | undefined;
+export const canViewIt = (u: UserLike) => isItStaff(u?.role) || canAccessSection(u?.permissions, 'Software & IT');
+export const canEditIt = (u: UserLike) => isItAdmin(u?.role) || canEditSection(u?.permissions, 'Software & IT');

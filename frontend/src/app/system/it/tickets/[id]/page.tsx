@@ -11,7 +11,7 @@ import {
   Spinner, PageHeader, PrimaryButton, SmallBadge, Field, TextArea, Select, Loader2,
 } from '@/components/hr/HRKit';
 import {
-  isItStaff, Ticket, TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES,
+  canViewIt, Ticket, TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES,
   categoryLabel, priorityLabel, ticketStatusLabel, optionsOf, empName, userName,
   fmtDate, fmtDateTime, fmtDuration,
 } from '@/lib/it';
@@ -38,7 +38,7 @@ export default function TicketDetailPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const staff = isItStaff(user?.role);
+  const staff = canViewIt(user);
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [siblings, setSiblings] = useState<Sibling[]>([]);

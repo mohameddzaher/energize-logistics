@@ -11,7 +11,7 @@ import {
   Modal, Field, TextInput, TextArea, Select, StatCard, Loader2,
 } from '@/components/hr/HRKit';
 import {
-  isItStaff, StockItem, EmployeeRef, CUSTODY_TYPES, CONDITIONS,
+  canViewIt, StockItem, EmployeeRef, CUSTODY_TYPES, CONDITIONS,
   IT_CUSTODY_TYPE_KEYS, custodyTypeLabel, conditionLabel,
   optionsOf, empName, fmtDate, fmtMoney, today, unitsOf,
 } from '@/lib/it';
@@ -25,7 +25,7 @@ export default function ItStockPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const staff = isItStaff(user?.role);
+  const staff = canViewIt(user);
 
   const [items, setItems] = useState<StockItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);

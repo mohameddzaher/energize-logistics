@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { Spinner, PageHeader, StatCard, SmallBadge } from '@/components/hr/HRKit';
 import {
-  isItStaff, Dashboard, categoryLabel, priorityLabel, ticketStatusLabel,
+  canViewIt, Dashboard, categoryLabel, priorityLabel, ticketStatusLabel,
   systemStatusLabel, TICKET_STATUSES, fmtDate, fmtDuration, daysAgo, today,
   daysUntil, renewalTone,
 } from '@/lib/it';
@@ -23,7 +23,7 @@ export default function ItDashboardPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const staff = isItStaff(user?.role);
+  const staff = canViewIt(user);
 
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);

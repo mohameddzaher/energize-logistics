@@ -11,7 +11,7 @@ import {
   Modal, Field, TextInput, TextArea, Select, StatCard, Loader2,
 } from '@/components/hr/HRKit';
 import {
-  isItStaff, CustodyItem, StockItem, EmployeeRef, CUSTODY_TYPES, CUSTODY_STATUSES, CONDITIONS,
+  canViewIt, CustodyItem, StockItem, EmployeeRef, CUSTODY_TYPES, CUSTODY_STATUSES, CONDITIONS,
   IT_CUSTODY_TYPE_KEYS, CUSTODY_STATUS_KEYS, custodyTypeLabel, custodyStatusLabel, conditionLabel,
   optionsOf, empName, fmtDate, fmtMoney, today, idOf,
 } from '@/lib/it';
@@ -25,7 +25,7 @@ export default function ItCustodyPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const staff = isItStaff(user?.role);
+  const staff = canViewIt(user);
 
   const [items, setItems] = useState<CustodyItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);

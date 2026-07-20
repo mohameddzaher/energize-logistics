@@ -12,7 +12,7 @@ import {
   Spinner, PageHeader, PrimaryButton, SmallBadge, Modal, Field, TextInput, TextArea, Select, StatCard,
 } from '@/components/hr/HRKit';
 import {
-  isBdStaff, isBdAdmin, BdOpportunity, BdActivity, OPP_STAGE, OPP_TYPE, PRIORITY, ACTIVITY_TYPE,
+  canViewBd, canEditBd, BdOpportunity, BdActivity, OPP_STAGE, OPP_TYPE, PRIORITY, ACTIVITY_TYPE,
   OPEN_STAGES, labelOf, optionsOf, bdName, userName, companyName, money, fmtDate, fmtDateTime,
   toDateInput, today,
 } from '@/lib/bd';
@@ -28,7 +28,7 @@ export default function BdOpportunityDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = String(params?.id || '');
-  const canEdit = isBdAdmin(user?.role);
+  const canEdit = canEditBd(user);
 
   const [opp, setOpp] = useState<BdOpportunity | null>(null);
   const [activities, setActivities] = useState<BdActivity[]>([]);
@@ -109,7 +109,7 @@ export default function BdOpportunityDetailPage() {
     catch (e: any) { alert(e.message); }
   };
 
-  if (!isBdStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!canViewBd(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
   if (!opp) return <div className="text-slate-500 p-8">{ar ? 'الفرصة غير موجودة' : 'Opportunity not found'}</div>;
 

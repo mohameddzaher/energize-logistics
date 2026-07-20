@@ -12,7 +12,7 @@ import {
   Modal, Field, TextInput, TextArea, Select, Loader2,
 } from '@/components/hr/HRKit';
 import {
-  isItStaff, Ticket, EmployeeRef, TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES,
+  canViewIt, Ticket, EmployeeRef, TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES,
   categoryLabel, priorityLabel, ticketStatusLabel, optionsOf, empName, fmtDate,
   fmtDuration, today, idOf,
 } from '@/lib/it';
@@ -28,7 +28,7 @@ export default function ItTicketsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const staff = isItStaff(user?.role);
+  const staff = canViewIt(user);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);

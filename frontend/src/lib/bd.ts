@@ -1,3 +1,4 @@
+import { canAccessSection, canEditSection } from '@/lib/sections';
 // Shared types, bilingual labels and formatters for the Business Development
 // section. BD is the upstream, strategic layer above the CRM/Sales pipeline:
 // market entries, partnerships, tenders and new service lines — not individual
@@ -265,3 +266,10 @@ export const deadlineBadge = (v?: string | null, lang: Lang = 'en'): { bg: strin
 export const listToText = (v?: string[] | null) => (v || []).join(', ');
 export const textToList = (v?: string | null) =>
   (v || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+
+// Access is the ROLE list OR whatever the super-admin granted this role in the
+// permissions matrix. Guarding on the role list alone would make a granted role
+// see the sidebar link and be allowed by the API, then be refused by the page.
+type UserLike = { role?: string | null; permissions?: Record<string, 'none' | 'view' | 'edit'> } | null | undefined;
+export const canViewBd = (u: UserLike) => isBdStaff(u?.role) || canAccessSection(u?.permissions, 'Business Development');
+export const canEditBd = (u: UserLike) => isBdAdmin(u?.role) || canEditSection(u?.permissions, 'Business Development');

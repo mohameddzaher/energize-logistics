@@ -17,7 +17,7 @@ import {
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import RangePicker from '@/components/marketing/RangePicker';
 import {
-  isMarketingStaff, thisMonthToDate, platformLabel, platformColor, activityTypeLabel, activityTypeColor,
+  canViewMarketing, thisMonthToDate, platformLabel, platformColor, activityTypeLabel, activityTypeColor,
   statusStyle, statusLabel, campaignName, num, money, pct,
   type Lang, type DateRange, type Dashboard,
 } from '@/lib/marketing';
@@ -43,7 +43,7 @@ export default function MarketingDashboardPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('marketing:updated', useCallback(() => load(), [load]));
 
-  if (!isMarketingStaff(user?.role)) {
+  if (!canViewMarketing(user)) {
     return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول إلى قسم التسويق.' : 'You are not authorized to view the Marketing section.'}</div>;
   }
   if (loading && !d) return <Spinner />;

@@ -1,3 +1,4 @@
+import { canAccessSection, canEditSection } from '@/lib/sections';
 // Marketing (قسم التسويق) — shared config, types and helpers.
 //
 // The section tracks two things: campaigns (a budgeted, dated push on one
@@ -236,3 +237,10 @@ export const emptyMetrics = (): ActivityMetrics =>
 // The engagement figure the report shows: likes + comments + shares.
 export const engagementOf = (m?: Partial<ActivityMetrics> | null) =>
   (m?.likes || 0) + (m?.comments || 0) + (m?.shares || 0);
+
+// Access is the ROLE list OR whatever the super-admin granted this role in the
+// permissions matrix. Guarding on the role list alone would make a granted role
+// see the sidebar link and be allowed by the API, then be refused by the page.
+type UserLike = { role?: string | null; permissions?: Record<string, 'none' | 'view' | 'edit'> } | null | undefined;
+export const canViewMarketing = (u: UserLike) => isMarketingStaff(u?.role) || canAccessSection(u?.permissions, 'Marketing');
+export const canEditMarketing = (u: UserLike) => isMarketingAdmin(u?.role) || canEditSection(u?.permissions, 'Marketing');

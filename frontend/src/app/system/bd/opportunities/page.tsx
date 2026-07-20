@@ -13,7 +13,7 @@ import {
   Modal, Field, TextInput, TextArea, Select,
 } from '@/components/hr/HRKit';
 import {
-  isBdStaff, isBdAdmin, BdOpportunity, OPP_STAGE, OPP_TYPE, PRIORITY, ALL_STAGES,
+  canViewBd, canEditBd, BdOpportunity, OPP_STAGE, OPP_TYPE, PRIORITY, ALL_STAGES,
   labelOf, optionsOf, bdName, userName, companyName, money, fmtDate, toDateInput,
   listToText, textToList, exportToExcel,
 } from '@/lib/bd';
@@ -31,7 +31,7 @@ export default function BdOpportunitiesPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const router = useRouter();
-  const canEdit = isBdAdmin(user?.role);
+  const canEdit = canEditBd(user);
 
   const [rows, setRows] = useState<BdOpportunity[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
@@ -133,7 +133,7 @@ export default function BdOpportunitiesPage() {
     ], `bd-opportunities-${new Date().toISOString().slice(0, 10)}`, 'Opportunities');
   };
 
-  if (!isBdStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!canViewBd(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   const totalValue = rows.filter((r) => r.status === 'open').reduce((s, r) => s + (r.estimatedValue || 0), 0);

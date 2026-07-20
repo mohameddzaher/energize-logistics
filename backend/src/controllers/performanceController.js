@@ -11,19 +11,24 @@
  * so the live preview, the saved record and the PDF can never disagree.
  */
 const Employee = require('../models/Employee');
+const User = require('../models/User');
 const PerfTemplate = require('../models/PerfTemplate');
 const PerfEvaluation = require('../models/PerfEvaluation');
 const PerfSettings = require('../models/PerfSettings');
 const { computeScore } = require('../config/performanceConfig');
 const { emitToAll } = require('../websocket/socketManager');
 
+// Who may SEE everything (read-only oversight).
 const FULL_ACCESS = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
-// Only these may edit templates/weights/tiers. Deliberately narrower than
-// FULL_ACCESS: the grading rules are the company's compensation policy.
+// Who may EDIT the grading rules AND override a locked evaluation AND decide
+// edit requests. Deliberately just super_admin: these are compensation
+// decisions, and a submitted grade the employee has been told must not be
+// quietly rewritten by anyone else.
 const CONFIG_ROLES = ['super_admin'];
 
 const isFull = (role) => FULL_ACCESS.includes(role);
 const canConfigure = (role) => CONFIG_ROLES.includes(role);
+const canOverride = (role) => CONFIG_ROLES.includes(role);
 // Anyone whose role names them a manager/head/lead can grade their department.
 const isManagerRole = (role = '') =>
   isFull(role) || /(_manager|_head|_lead|^moderator$|^operations_manager$)/.test(role);
@@ -70,20 +75,68 @@ function parsePeriod(q) {
 }
 
 // ---- Who can this user grade? ---------------------------------------------
-async function visibleEmployees(user) {
-  const base = { employmentStatus: { $ne: 'terminated' } };
-  if (isFull(user.role)) return Employee.find(base).lean();
+// The people who run a department: anyone who is somebody's directManager, or
+// whose linked user holds a manager/head/lead role. This is super-admin's own
+// evaluation list — they grade the managers, the managers grade their teams.
+async function departmentManagers() {
+  const [managerIds, managerUsers] = await Promise.all([
+    Employee.distinct('directManager', { directManager: { $ne: null } }),
+    User.find({ isActive: { $ne: false } }, { _id: 1, role: 1 }).lean(),
+  ]);
+  const managerUserIds = managerUsers
+    .filter((u) => u.role !== 'super_admin' && isManagerRole(u.role))
+    .map((u) => u._id);
+  return Employee.find({
+    employmentStatus: { $ne: 'terminated' },
+    $or: [{ _id: { $in: managerIds } }, { user: { $in: managerUserIds } }],
+  }).lean();
+}
 
-  const ors = [{ directManager: user._id }];
-  // A manager also covers their own department — most departments here don't
-  // maintain directManager on every row.
-  if (isManagerRole(user.role)) {
-    const me = await Employee.findOne({ user: user._id }).lean();
-    if (me?.department) ors.push({ department: me.department });
+/**
+ * scope: 'team' (default for managers) | 'managers' (default for super-admin)
+ *        | 'all' (full-access only — the whole company)
+ * department: optional narrowing, for the per-section KPI pages.
+ */
+async function visibleEmployees(user, { scope, department } = {}) {
+  const base = { employmentStatus: { $ne: 'terminated' } };
+  let list;
+
+  if (isFull(user.role)) {
+    const effective = scope || (canOverride(user.role) ? 'managers' : 'all');
+    list = effective === 'managers' ? await departmentManagers() : await Employee.find(base).lean();
+  } else {
+    const ors = [{ directManager: user._id }];
+    // A manager also covers their own department — most departments here don't
+    // maintain directManager on every row.
+    if (isManagerRole(user.role)) {
+      const me = await Employee.findOne({ user: user._id }).lean();
+      if (me?.department) ors.push({ department: me.department });
+    }
+    list = await Employee.find({ ...base, $or: ors }).lean();
   }
-  const list = await Employee.find({ ...base, $or: ors }).lean();
-  // Never let someone grade themselves.
+
+  if (department) list = list.filter((e) => e.department === department);
+  // Never let anyone grade themselves.
   return list.filter((e) => String(e.user || '') !== String(user._id));
+}
+
+// May this user write to this evaluation right now?
+// Super-admin always can. The evaluator can while it is a draft, and again once
+// an edit request has been approved (that approval is consumed on save).
+function writeGuard(existing, user) {
+  if (!existing) return { ok: true };
+  if (canOverride(user.role)) return { ok: true, override: true };
+  const mine = String(existing.evaluator) === String(user._id);
+  if (!mine) return { ok: false, message: 'Only the original evaluator or a super admin can change this evaluation' };
+  if (existing.status !== 'submitted') return { ok: true };
+  if (existing.editRequest?.status === 'approved') return { ok: true, consumesApproval: true };
+  return {
+    ok: false,
+    locked: true,
+    message: existing.editRequest?.status === 'pending'
+      ? 'This evaluation is locked — your edit request is awaiting super-admin approval'
+      : 'This evaluation is submitted and locked. Request an edit and a super admin will decide.',
+  };
 }
 
 // Pick the form that applies to an employee: an exact job-title match wins over
@@ -222,7 +275,7 @@ exports.getTeam = async (req, res) => {
     const period = parsePeriod(req.query.period);
     const periodKey = periodKeyOf(period);
     const [employees, templates, settings] = await Promise.all([
-      visibleEmployees(req.user),
+      visibleEmployees(req.user, { scope: req.query.scope, department: req.query.department }),
       PerfTemplate.find({ active: true }).lean(),
       PerfSettings.getOrCreate(),
     ]);
@@ -243,6 +296,12 @@ exports.getTeam = async (req, res) => {
           _id: ev._id, status: ev.status, percentage: ev.percentage,
           weightedScore: ev.weightedScore, band: ev.band, bonusMultiplier: ev.bonusMultiplier,
           updatedAt: ev.updatedAt,
+          // So the card can show a padlock / "awaiting approval" chip without a
+          // second request.
+          editRequestStatus: ev.editRequest?.status || 'none',
+          locked: ev.status === 'submitted'
+            && !canOverride(req.user.role)
+            && ev.editRequest?.status !== 'approved',
         } : null,
       };
     }).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
@@ -321,6 +380,23 @@ exports.getEvaluationForm = async (req, res) => {
       evaluation,
       period, periodKey, periodLabel: periodLabel(period),
       settings,
+      // Can this user write to it right now, and if not, why?
+      permissions: (() => {
+        const g = writeGuard(evaluation, req.user);
+        return {
+          canEdit: g.ok,
+          locked: !!g.locked,
+          reason: g.ok ? '' : g.message,
+          canOverride: canOverride(req.user.role),
+          canRequestEdit: !!evaluation
+            && evaluation.status === 'submitted'
+            && !canOverride(req.user.role)
+            && String(evaluation.evaluator) === String(req.user._id)
+            && evaluation.editRequest?.status !== 'pending'
+            && evaluation.editRequest?.status !== 'approved',
+          editRequest: evaluation?.editRequest || null,
+        };
+      })(),
       // Other forms in this department, so the evaluator can switch if the
       // employee's job maps to more than one.
       alternatives: templates
@@ -368,6 +444,14 @@ exports.saveEvaluation = async (req, res) => {
       { bands: settings.bands, tier, totalWeight: 100 }
     );
 
+    // A submitted evaluation is locked to its evaluator until super-admin says
+    // otherwise — check BEFORE writing anything.
+    const existing = await PerfEvaluation.findOne({
+      employee: employee._id, periodKey, template: template._id,
+    }).lean();
+    const guard = writeGuard(existing, req.user);
+    if (!guard.ok) return res.status(403).json({ message: guard.message, locked: !!guard.locked });
+
     const submitting = body.status === 'submitted';
     if (submitting && !totals.complete) {
       return res.status(400).json({ message: 'All criteria must be answered before submitting' });
@@ -393,14 +477,108 @@ exports.saveEvaluation = async (req, res) => {
       submittedAt: submitting ? new Date() : null,
     };
 
+    // Correcting an already-submitted evaluation: keep the trail, and consume
+    // the approval so one approval buys exactly one correction.
+    const push = {};
+    if (existing && existing.status === 'submitted') {
+      // An evaluation never travels backwards to draft — otherwise an approved
+      // correction could be saved as a draft and stay editable forever.
+      doc.status = 'submitted';
+      doc.submittedAt = existing.submittedAt || new Date();
+      push.editHistory = {
+        at: new Date(),
+        byName: doc.evaluatorName || '',
+        previousPercentage: existing.percentage ?? null,
+        newPercentage: totals.percentage ?? null,
+        reason: body.editReason || existing.editRequest?.reason || '',
+      };
+      doc.editRequest = {
+        ...(existing.editRequest || {}),
+        status: 'none', reason: '', requestedBy: null, requestedByName: '',
+        requestedAt: null, decisionNote: guard.override ? 'Edited directly by super admin' : '',
+      };
+      // Super-admin corrections keep the original evaluator's name on the
+      // record; the history line says who actually changed it.
+      doc.evaluator = existing.evaluator;
+      doc.evaluatorName = existing.evaluatorName;
+    }
+
     const evaluation = await PerfEvaluation.findOneAndUpdate(
       { employee: employee._id, periodKey, template: template._id },
-      { $set: doc },
+      { $set: doc, ...(push.editHistory ? { $push: { editHistory: push.editHistory } } : {}) },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
     try { emitToAll('performance:updated', { at: Date.now(), employee: String(employee._id) }); } catch { /* non-fatal */ }
     res.json({ evaluation, totals });
   } catch (e) { fail(res, e, 'Failed to save evaluation'); }
+};
+
+// ---- Edit requests ---------------------------------------------------------
+// A manager who has submitted an evaluation cannot change it. They ask here;
+// super-admin decides. Approval unlocks exactly one save.
+exports.requestEdit = async (req, res) => {
+  try {
+    const ev = await PerfEvaluation.findById(req.params.id);
+    if (!ev) return res.status(404).json({ message: 'Evaluation not found' });
+    if (ev.status !== 'submitted') return res.status(400).json({ message: 'Only a submitted evaluation needs an edit request' });
+    if (String(ev.evaluator) !== String(req.user._id) && !canOverride(req.user.role)) {
+      return res.status(403).json({ message: 'Only the original evaluator can request an edit' });
+    }
+    if (ev.editRequest?.status === 'pending') return res.status(400).json({ message: 'A request is already pending' });
+    const reason = String(req.body?.reason || '').trim();
+    if (!reason) return res.status(400).json({ message: 'Please say why the evaluation needs changing' });
+
+    ev.editRequest = {
+      status: 'pending', reason,
+      requestedBy: req.user._id,
+      requestedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+      requestedAt: new Date(),
+      decidedBy: null, decidedByName: '', decidedAt: null, decisionNote: '',
+    };
+    await ev.save();
+    try {
+      emitToAll('performance:editRequest', { at: Date.now(), evaluation: String(ev._id) });
+      emitToAll('performance:updated', { at: Date.now() });
+    } catch { /* non-fatal */ }
+    res.json({ evaluation: ev });
+  } catch (e) { fail(res, e, 'Failed to submit the request'); }
+};
+
+// Super-admin only: approve (unlock one edit) or reject (stays locked).
+exports.decideEditRequest = async (req, res) => {
+  try {
+    if (!canOverride(req.user.role)) return res.status(403).json({ message: 'Super admin only' });
+    const ev = await PerfEvaluation.findById(req.params.id);
+    if (!ev) return res.status(404).json({ message: 'Evaluation not found' });
+    if (ev.editRequest?.status !== 'pending') return res.status(400).json({ message: 'No pending request on this evaluation' });
+
+    const approve = req.body?.decision === 'approve';
+    ev.editRequest.status = approve ? 'approved' : 'rejected';
+    ev.editRequest.decidedBy = req.user._id;
+    ev.editRequest.decidedByName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+    ev.editRequest.decidedAt = new Date();
+    ev.editRequest.decisionNote = String(req.body?.note || '').trim();
+    await ev.save();
+    try {
+      emitToAll('performance:editRequest', { at: Date.now(), evaluation: String(ev._id), decision: ev.editRequest.status });
+      emitToAll('performance:updated', { at: Date.now() });
+    } catch { /* non-fatal */ }
+    res.json({ evaluation: ev });
+  } catch (e) { fail(res, e, 'Failed to record the decision'); }
+};
+
+// The super-admin inbox: every request awaiting a decision (plus recently
+// decided ones, so the outcome is visible for a while).
+exports.listEditRequests = async (req, res) => {
+  try {
+    if (!canOverride(req.user.role)) return res.status(403).json({ message: 'Super admin only' });
+    const [pending, recent] = await Promise.all([
+      PerfEvaluation.find({ 'editRequest.status': 'pending' }).sort({ 'editRequest.requestedAt': -1 }).lean(),
+      PerfEvaluation.find({ 'editRequest.status': { $in: ['approved', 'rejected'] } })
+        .sort({ 'editRequest.decidedAt': -1 }).limit(50).lean(),
+    ]);
+    res.json({ pending, recent });
+  } catch (e) { fail(res, e, 'Failed to load requests'); }
 };
 
 exports.getEvaluation = async (req, res) => {

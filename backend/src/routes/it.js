@@ -28,6 +28,14 @@ router.put('/custody/:id', authorize(...EDIT_ROLES), it.updateCustody);
 router.post('/custody/:id/return', authorize(...EDIT_ROLES), it.returnCustody);
 router.delete('/custody/:id', authorize(...EDIT_ROLES), it.deleteCustody);
 
+// ── Stock (المستودع) — unassigned items waiting on the shelf ────────────────
+// Same Asset collection: a stock item is one that simply has no holder yet.
+router.get('/stock', it.listStock);
+router.post('/stock', authorize(...EDIT_ROLES), it.createStock);
+router.put('/stock/:id', authorize(...EDIT_ROLES), it.updateStock);
+router.delete('/stock/:id', authorize(...EDIT_ROLES), it.deleteStock);
+router.post('/stock/:id/assign', authorize(...EDIT_ROLES), it.assignFromStock);
+
 // Employee picker for the custody modal (/api/hr/employees is HR-roles only).
 router.get('/employees', it.listEmployees);
 

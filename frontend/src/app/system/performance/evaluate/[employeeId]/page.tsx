@@ -15,7 +15,7 @@ import {
   RadialBarChart, RadialBar, PolarAngleAxis, ResponsiveContainer,
   RadarChart, Radar, PolarGrid, PolarRadiusAxis, Tooltip,
 } from 'recharts';
-import { ArrowLeft, ArrowRight, Save, Send, FileDown, Trash2, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, Send, FileDown, Trash2, Loader2, AlertTriangle, CheckCircle2, Lock, Unlock } from 'lucide-react';
 import { Spinner } from '@/components/hr/HRKit';
 import { downloadReport, type Block } from '@/lib/reportPdf';
 import {
@@ -24,6 +24,11 @@ import {
   type Evaluation, type Tier,
 } from '@/lib/performance';
 
+interface EditRequest {
+  status: 'none' | 'pending' | 'approved' | 'rejected';
+  reason: string; requestedByName: string; requestedAt: string | null;
+  decidedByName: string; decidedAt: string | null; decisionNote: string;
+}
 interface FormResponse {
   employee: { _id: string; name: string; jobTitle: string; department: string; employeeNumber: string };
   template: Template | null;
@@ -31,6 +36,12 @@ interface FormResponse {
   evaluation: Evaluation | null;
   period: Period; periodKey: string; periodLabel: string;
   settings: Settings;
+  // Whether this user may write to this evaluation right now, and why not.
+  permissions: {
+    canEdit: boolean; locked: boolean; reason: string;
+    canOverride: boolean; canRequestEdit: boolean;
+    editRequest: EditRequest | null;
+  };
   alternatives: { _id: string; nameAr: string }[];
 }
 
@@ -53,6 +64,9 @@ export default function EvaluatePage() {
   const [saving, setSaving] = useState<'draft' | 'submit' | null>(null);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [templateId, setTemplateId] = useState<string>('');
+  const [reqOpen, setReqOpen] = useState(false);
+  const [reqReason, setReqReason] = useState('');
+  const [reqBusy, setReqBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -123,6 +137,20 @@ export default function EvaluatePage() {
     setAnswers(a);
   };
 
+  const sendEditRequest = async () => {
+    if (!data?.evaluation || !reqReason.trim()) return;
+    setReqBusy(true);
+    try {
+      await api.post(`/api/performance/evaluations/${data.evaluation._id}/request-edit`, { reason: reqReason.trim() });
+      setMsg({ kind: 'ok', text: ar ? 'تم إرسال طلب التعديل للمدير العام' : 'Edit request sent to the super admin' });
+      setReqOpen(false); setReqReason('');
+      await load();
+    } catch (e: any) {
+      setMsg({ kind: 'err', text: e?.message || (ar ? 'فشل إرسال الطلب' : 'Could not send the request') });
+    }
+    setReqBusy(false);
+  };
+
   const exportPdf = async () => {
     if (!data) return;
     const blocks: Block[] = [
@@ -170,6 +198,10 @@ export default function EvaluatePage() {
 
   const Back = isRTL ? ArrowRight : ArrowLeft;
   const submitted = data.evaluation?.status === 'submitted';
+  // A locked evaluation is shown in full, but read-only.
+  const perms = data.permissions || { canEdit: true, locked: false, reason: '', canOverride: false, canRequestEdit: false, editRequest: null };
+  const readOnly = !perms.canEdit;
+  const req = perms.editRequest;
 
   if (!data.template) {
     return (
@@ -217,7 +249,7 @@ export default function EvaluatePage() {
             </select>
           )}
           <input
-            type="date" value={evalDate} onChange={(e) => setEvalDate(e.target.value)}
+            type="date" value={evalDate} onChange={(e) => setEvalDate(e.target.value)} disabled={readOnly}
             className="border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-[#f37121]"
             title={ar ? 'تاريخ التقييم' : 'Evaluation date'}
           />
@@ -233,9 +265,78 @@ export default function EvaluatePage() {
           {msg.text}
         </div>
       )}
-      {submitted && (
+      {/* Lock / edit-request state */}
+      {submitted && perms.locked && (
+        <div className="rounded-lg px-4 py-3 bg-slate-100 border border-slate-200 flex flex-wrap items-center gap-3">
+          <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+          <div className="text-sm text-slate-700 min-w-0 flex-1">
+            <p className="font-medium">
+              {req?.status === 'pending'
+                ? (ar ? 'طلب التعديل قيد مراجعة المدير العام' : 'Your edit request is awaiting super-admin approval')
+                : req?.status === 'rejected'
+                  ? (ar ? 'تم رفض طلب التعديل — التقييم مقفول' : 'Edit request rejected — the evaluation stays locked')
+                  : (ar ? 'هذا التقييم مُرسل ومقفول — لا يمكن تعديله' : 'This evaluation is submitted and locked')}
+            </p>
+            {req?.status === 'rejected' && req.decisionNote && (
+              <p className="text-xs text-slate-500 mt-0.5">{ar ? 'سبب الرفض: ' : 'Reason: '}{req.decisionNote}</p>
+            )}
+            {req?.status === 'pending' && req.reason && (
+              <p className="text-xs text-slate-500 mt-0.5">{ar ? 'سببك: ' : 'Your reason: '}{req.reason}</p>
+            )}
+          </div>
+          {perms.canRequestEdit && (
+            <button
+              type="button" onClick={() => setReqOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-xs font-semibold shrink-0"
+            >
+              {ar ? 'طلب تعديل' : 'Request edit'}
+            </button>
+          )}
+        </div>
+      )}
+      {submitted && !perms.locked && req?.status === 'approved' && (
+        <div className="rounded-lg px-4 py-2.5 text-sm bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-2">
+          <Unlock className="w-4 h-4" />
+          {ar
+            ? 'تمت الموافقة على التعديل — يمكنك التعديل وإعادة الإرسال مرة واحدة.'
+            : 'Edit approved — you may correct and resubmit once.'}
+        </div>
+      )}
+      {submitted && !perms.locked && req?.status !== 'approved' && perms.canOverride && (
         <div className="rounded-lg px-4 py-2.5 text-sm bg-blue-50 text-blue-700 border border-blue-200">
-          {ar ? 'هذا التقييم مُرسل بالفعل — أي تعديل سيحدّثه.' : 'This evaluation is already submitted — editing will update it.'}
+          {ar
+            ? 'تقييم مُرسل — بصفتك المدير العام يمكنك تعديله مباشرة، وسيُسجَّل التعديل في السجل.'
+            : 'Submitted evaluation — as super admin you can edit it directly; the change is recorded in its history.'}
+        </div>
+      )}
+
+      {/* Request-edit dialog */}
+      {reqOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setReqOpen(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-slate-800">{ar ? 'طلب تعديل التقييم' : 'Request an edit'}</h3>
+            <p className="text-xs text-slate-500">
+              {ar
+                ? 'اكتب سبب التعديل. المدير العام هو من يوافق أو يرفض، ولو وافق هتقدر تعدّل مرة واحدة.'
+                : 'Explain why. The super admin approves or rejects; an approval lets you correct it once.'}
+            </p>
+            <textarea
+              value={reqReason} onChange={(e) => setReqReason(e.target.value)} rows={4}
+              placeholder={ar ? 'مثال: تم إدخال درجة خاطئة في المؤشر الثالث' : 'e.g. wrong score entered on criterion 3'}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#f37121]"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button" disabled={reqBusy || !reqReason.trim()} onClick={sendEditRequest}
+                className="flex-1 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-semibold disabled:opacity-40"
+              >
+                {reqBusy ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : (ar ? 'إرسال الطلب' : 'Send request')}
+              </button>
+              <button type="button" onClick={() => setReqOpen(false)} className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
+                {ar ? 'إلغاء' : 'Cancel'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -246,9 +347,11 @@ export default function EvaluatePage() {
             <p className="text-sm text-slate-500">
               {criteria.length} {ar ? 'مؤشرات · المجموع' : 'criteria · total'} {criteria.reduce((s, c) => s + c.weight, 0)}%
             </p>
-            <button type="button" onClick={clearAll} className="text-xs text-slate-400 hover:text-red-600 flex items-center gap-1">
-              <Trash2 className="w-3.5 h-3.5" /> {ar ? 'تفريغ التقييم' : 'Clear'}
-            </button>
+            {!readOnly && (
+              <button type="button" onClick={clearAll} className="text-xs text-slate-400 hover:text-red-600 flex items-center gap-1">
+                <Trash2 className="w-3.5 h-3.5" /> {ar ? 'تفريغ التقييم' : 'Clear'}
+              </button>
+            )}
           </div>
 
           {criteria.map((c, i) => {
@@ -279,9 +382,9 @@ export default function EvaluatePage() {
                     const active = chosen === s.score;
                     return (
                       <button
-                        key={s.score} type="button"
+                        key={s.score} type="button" disabled={readOnly}
                         onClick={() => setAnswers((p) => ({ ...p, [c.key]: active ? null : s.score }))}
-                        className={`rounded-lg border-2 py-2 px-1 text-center transition ${active ? 'text-white shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
+                        className={`rounded-lg border-2 py-2 px-1 text-center transition disabled:cursor-not-allowed ${active ? 'text-white shadow-sm' : `bg-white text-slate-600 border-slate-200 ${readOnly ? 'opacity-60' : 'hover:border-slate-300'}`}`}
                         style={active ? { backgroundColor: SCORE_COLORS[s.score], borderColor: SCORE_COLORS[s.score] } : undefined}
                       >
                         <span className="block text-lg font-bold tabular-nums leading-none">{s.score}</span>
@@ -300,7 +403,7 @@ export default function EvaluatePage() {
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
             <label className="block text-sm font-semibold text-slate-800 mb-2">{ar ? 'ملاحظات المُقيِّم' : 'Evaluator notes'}</label>
             <textarea
-              value={notes} onChange={(e) => setNotes(e.target.value)} rows={4}
+              value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} readOnly={readOnly}
               placeholder={ar ? 'ملاحظات داعمة للتقييم (اختياري)' : 'Supporting notes (optional)'}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#f37121]"
             />
@@ -368,7 +471,7 @@ export default function EvaluatePage() {
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'الراتب الشهري (ريال) — اختياري' : 'Monthly salary (SAR) — optional'}</label>
                 <input
-                  type="number" min={0} value={salary} onChange={(e) => setSalary(e.target.value)}
+                  type="number" min={0} value={salary} onChange={(e) => setSalary(e.target.value)} readOnly={readOnly}
                   placeholder={ar ? 'مثال: ٨٠٠٠' : 'e.g. 8000'}
                   className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm tabular-nums focus:outline-none focus:border-[#f37121]"
                 />
@@ -409,6 +512,18 @@ export default function EvaluatePage() {
 
           {/* Actions */}
           <div className="flex flex-col gap-2">
+            {readOnly ? (
+              <div className="rounded-lg bg-slate-100 border border-slate-200 px-3 py-3 text-center">
+                <Lock className="w-4 h-4 text-slate-400 mx-auto mb-1" />
+                <p className="text-xs text-slate-500">{perms.reason || (ar ? 'التقييم مقفول' : 'This evaluation is locked')}</p>
+                {perms.canRequestEdit && (
+                  <button type="button" onClick={() => setReqOpen(true)} className="mt-2 px-3 py-1.5 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-xs font-semibold">
+                    {ar ? 'طلب تعديل' : 'Request edit'}
+                  </button>
+                )}
+              </div>
+            ) : (
+            <>
             <button
               type="button" disabled={!!saving} onClick={() => save('submitted')}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-semibold disabled:opacity-50"
@@ -427,6 +542,8 @@ export default function EvaluatePage() {
               <p className="text-[11px] text-slate-400 text-center">
                 {ar ? 'لا يمكن الإرسال قبل الإجابة على كل المؤشرات' : 'All criteria must be answered before submitting'}
               </p>
+            )}
+            </>
             )}
           </div>
         </div>

@@ -29,10 +29,16 @@ router.delete('/templates/:id', perf.deleteTemplate);    // super_admin only
 router.get('/team', perf.getTeam);
 router.get('/overview', perf.getOverview);
 
+// Edit requests: a submitted evaluation is locked to its evaluator; changing it
+// needs super-admin approval. Literal path declared before /evaluations/:id.
+router.get('/edit-requests', perf.listEditRequests);     // super_admin only
+
 router.get('/evaluations', perf.listEvaluations);
 router.post('/evaluations', perf.saveEvaluation);        // upsert (employee × period × template)
 router.get('/evaluations/form/:employeeId', perf.getEvaluationForm);
 router.get('/evaluations/:id', perf.getEvaluation);
+router.post('/evaluations/:id/request-edit', perf.requestEdit);
+router.post('/evaluations/:id/edit-decision', perf.decideEditRequest); // super_admin only
 router.delete('/evaluations/:id', perf.deleteEvaluation);
 
 module.exports = router;

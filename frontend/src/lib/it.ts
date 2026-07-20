@@ -68,7 +68,15 @@ export interface CustodyItem {
   assignedBy?: UserRef | string | null;
   issuedBySection?: string;
   notes?: string;
+  quantity?: number;
+  location?: string;
+  returnedTo?: UserRef | string | null;
+  createdBy?: UserRef | string | null;
 }
+
+// A stock item is the same Asset document as a custody item — it just has no
+// holder yet — so it reuses the shape rather than inventing a parallel type.
+export type StockItem = CustodyItem;
 
 export interface ItSystem {
   _id: string;
@@ -114,6 +122,9 @@ export interface Dashboard {
     timeline: { date: string; opened: number; resolved: number }[];
     assetsAssigned: number;
     assetsInStock: number;
+    stockCount?: number;
+    stockByType?: CountRow[];
+    lowStock?: CountRow[];
     systemsByStatus: CountRow[];
     renewalsDueSoon: ItSystem[];
   };
@@ -168,6 +179,13 @@ export const CUSTODY_TYPES: Record<string, Style> = {
 // create-modal dropdown and the filter bar.
 export const IT_CUSTODY_TYPE_KEYS = ['laptop', 'phone', 'sim', 'access_card', 'tool', 'other'];
 
+// The custody page never lists warehouse stock (that has its own page), so its
+// status filter must not offer `in_stock`.
+export const CUSTODY_STATUS_KEYS = ['assigned', 'returned'];
+
+// A consumable row can stand for many identical units; serial-tracked gear is 1.
+export const unitsOf = (a: { quantity?: number }) => Math.max(1, Number(a?.quantity) || 1);
+
 export const CONDITIONS: Record<string, Style> = {
   new: { en: 'New', ar: 'جديد', bg: 'bg-green-500/15', text: 'text-green-700' },
   good: { en: 'Good', ar: 'جيد', bg: 'bg-blue-500/15', text: 'text-blue-700' },
@@ -177,7 +195,8 @@ export const CONDITIONS: Record<string, Style> = {
 
 export const CUSTODY_STATUSES: Record<string, Style> = {
   assigned: { en: 'Assigned', ar: 'بعهدة الموظف', bg: 'bg-amber-500/20', text: 'text-amber-700' },
-  returned: { en: 'Returned', ar: 'تم الاسترجاع', bg: 'bg-green-500/20', text: 'text-green-700' },
+  in_stock: { en: 'In Stock', ar: 'في المستودع', bg: 'bg-blue-500/20', text: 'text-blue-700' },
+  returned: { en: 'Out of Service', ar: 'خارج الخدمة', bg: 'bg-slate-500/20', text: 'text-slate-700' },
 };
 
 export const SYSTEM_TYPES: Record<string, Style> = {

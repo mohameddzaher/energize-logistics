@@ -74,6 +74,9 @@ export interface TeamMember {
     _id: string; status: 'draft' | 'submitted';
     percentage: number | null; weightedScore: number | null;
     band: string | null; bonusMultiplier: number | null; updatedAt: string;
+    // A submitted evaluation is frozen; reopening it needs an approved request.
+    locked?: boolean;
+    editRequestStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   } | null;
 }
 

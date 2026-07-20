@@ -65,6 +65,13 @@ const CUSTODY_EDITABLE = [
   'value', 'assignedDate', 'notes', 'category', 'specs',
 ];
 
+// Stock items have no employee and no assignedDate — they gain both the moment
+// they are handed out via assignFromStock.
+const STOCK_EDITABLE = [
+  'name', 'type', 'serialNumber', 'brand', 'model', 'condition', 'value',
+  'notes', 'category', 'specs', 'quantity', 'location',
+];
+
 const SYSTEM_EDITABLE = [
   'name', 'nameAr', 'type', 'status', 'owner', 'vendor', 'url', 'environment',
   'renewalDate', 'cost', 'costPeriod', 'credentialsNote', 'description', 'notes',
@@ -86,7 +93,7 @@ exports.getDashboard = async (req, res) => {
     const [tickets, periodTickets, assets, systems] = await Promise.all([
       ItTicket.find({}).select('status category priority signature title reportedAt resolutionMinutes requesterDepartment ticketNumber createdAt isRecurring').sort({ createdAt: -1 }).limit(5000).lean(),
       ItTicket.find(inPeriod).select('status reportedAt resolvedAt resolutionMinutes').lean(),
-      Asset.find({ type: { $ne: 'vehicle' } }).select('status').lean(),
+      Asset.find({ type: { $ne: 'vehicle' } }).select('status type quantity').lean(),
       ItSystem.find({}).select('name nameAr status renewalDate cost costPeriod type').lean(),
     ]);
 
@@ -116,6 +123,29 @@ exports.getDashboard = async (req, res) => {
       .sort((a, b) => a.renewalDate.localeCompare(b.renewalDate))
       .slice(0, 15);
 
+    // Warehouse view. A consumable row can stand for many units, so stock is
+    // counted in units (quantity) rather than documents — 1 row of 20 cables is
+    // 20 cables, and the low-stock warning has to know that.
+    const stockItems = assets.filter((a) => a.status === 'in_stock');
+    const units = (a) => Math.max(1, Number(a.quantity) || 1);
+    const stockCount = stockItems.reduce((s, a) => s + units(a), 0);
+
+    const stockMap = new Map();
+    stockItems.forEach((a) => {
+      const k = a.type || 'other';
+      stockMap.set(k, (stockMap.get(k) || 0) + units(a));
+    });
+    const stockByType = Array.from(stockMap, ([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // "We're about to run out" — any IT type with fewer than 3 units on the
+    // shelf, including the types that have hit zero and so never appear above.
+    const LOW_STOCK_THRESHOLD = 3;
+    const lowStock = IT_CUSTODY_TYPES
+      .map((key) => ({ key, count: stockMap.get(key) || 0 }))
+      .filter((r) => r.count < LOW_STOCK_THRESHOLD)
+      .sort((a, b) => a.count - b.count);
+
     const totals = {
       openTickets: tickets.filter((t) => t.status === 'open' || t.status === 'reopened').length,
       inProgress: tickets.filter((t) => t.status === 'in_progress').length,
@@ -128,7 +158,11 @@ exports.getDashboard = async (req, res) => {
       ticketsByStatus: countBy(tickets, 'status'),
       timeline,
       assetsAssigned: assets.filter((a) => a.status === 'assigned').length,
+      // Kept for the existing dashboard card: retired / out-of-circulation gear.
       assetsInStock: assets.filter((a) => a.status === 'returned').length,
+      stockCount,
+      stockByType,
+      lowStock,
       systemsByStatus: countBy(systems, 'status'),
       renewalsDueSoon,
     };
@@ -358,7 +392,9 @@ exports.getRecurring = async (req, res) => {
 exports.listCustody = async (req, res) => {
   try {
     const { status, type, employee, q } = req.query;
-    const filter = {};
+    // The custody page is about items that have been (or were) handed out —
+    // warehouse stock has its own page, so it is excluded unless asked for.
+    const filter = { status: { $ne: 'in_stock' } };
     if (status) filter.status = status;
     if (employee) filter.employee = employee;
     // Vehicles are out of IT's scope unless explicitly asked for.
@@ -417,17 +453,39 @@ exports.updateCustody = async (req, res) => {
 
 // Mirrors hrController.returnAsset — returning custody is the gate that unlocks
 // contract termination, so HR screens must see it immediately.
+//
+// A returned device normally goes back on the shelf and gets handed to the next
+// person, so the default lands it in stock rather than retiring it. Pass
+// `{ retire: true }` for gear that is genuinely out of circulation (dead,
+// written off, sold) — that keeps the old `status: 'returned'` terminal state.
 exports.returnCustody = async (req, res) => {
   try {
     const item = await Asset.findById(req.params.id);
     if (!item) return res.status(404).json({ message: 'Custody item not found' });
-    item.status = 'returned';
+
+    // Captured before we clear it — HR's employee screen needs the refresh.
+    const previousEmployee = item.employee ? String(item.employee) : null;
+
     item.returnedDate = req.body.returnedDate || today();
-    if (req.body.returnedCondition) item.returnedCondition = req.body.returnedCondition;
+    if (req.body.returnedCondition) {
+      item.returnedCondition = req.body.returnedCondition;
+      // The condition it came back in is the condition it now sits in.
+      item.condition = req.body.returnedCondition;
+    }
     item.returnedTo = req.user._id;
+
+    if (req.body.retire) {
+      item.status = 'returned';
+    } else {
+      item.status = 'in_stock';
+      item.employee = null;
+      item.assignedDate = undefined;
+      if (req.body.location !== undefined) item.location = req.body.location;
+    }
+
     await item.save();
     emitCustody({ type: 'custody', id: String(item._id) });
-    emit('hr:employee', { id: String(item.employee) });
+    if (previousEmployee) emit('hr:employee', { id: previousEmployee });
     res.json({ item });
   } catch (error) {
     res.status(500).json({ message: 'Failed to return custody item' });
@@ -441,6 +499,127 @@ exports.deleteCustody = async (req, res) => {
     res.json({ message: 'Custody item deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete custody item' });
+  }
+};
+
+// ── Stock (المستودع) — same Asset collection, held by nobody ────────────────
+// One document per physical device for its whole life: it moves between
+// `in_stock` and `assigned` so its serial and history never fragment across two
+// collections. HR only ever sees the `assigned`/`returned` half.
+
+exports.listStock = async (req, res) => {
+  try {
+    const { type, q, condition } = req.query;
+    const filter = { status: 'in_stock' };
+    if (type) filter.type = type;
+    if (condition) filter.condition = condition;
+    if (q && q.trim()) {
+      const r = rx(q);
+      filter.$or = [{ name: r }, { serialNumber: r }, { brand: r }, { model: r }, { specs: r }, { location: r }];
+    }
+
+    const items = await Asset.find(filter)
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 })
+      .limit(2000)
+      .lean();
+
+    res.json({ items });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load stock items' });
+  }
+};
+
+exports.createStock = async (req, res) => {
+  try {
+    if (!req.body.name || !String(req.body.name).trim()) {
+      return res.status(400).json({ message: 'Item name is required' });
+    }
+    const data = pick(req.body, STOCK_EDITABLE);
+    if (!data.category) data.category = 'IT';
+    if (data.quantity === undefined || Number(data.quantity) < 1) data.quantity = 1;
+    data.status = 'in_stock';
+    data.employee = null;
+    data.issuedBySection = 'it';
+    data.createdBy = req.user._id;
+
+    const item = await Asset.create(data);
+    emitCustody({ type: 'stock', id: String(item._id) });
+    res.status(201).json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to create stock item' });
+  }
+};
+
+exports.updateStock = async (req, res) => {
+  try {
+    const item = await Asset.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Stock item not found' });
+    if (item.status !== 'in_stock') {
+      return res.status(400).json({ message: 'This item is no longer in stock — edit it from the custody page instead' });
+    }
+    Object.assign(item, pick(req.body, STOCK_EDITABLE));
+    await item.save();
+    emitCustody({ type: 'stock', id: String(item._id) });
+    res.json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update stock item' });
+  }
+};
+
+exports.deleteStock = async (req, res) => {
+  try {
+    const item = await Asset.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Stock item not found' });
+    // Deleting an assigned item here would silently wipe an employee's custody
+    // record, so this endpoint only ever touches shelf stock.
+    if (item.status !== 'in_stock') {
+      return res.status(400).json({ message: 'Only in-stock items can be deleted here' });
+    }
+    await Asset.findByIdAndDelete(req.params.id);
+    emitCustody({ type: 'stock', id: String(req.params.id) });
+    res.json({ message: 'Stock item deleted' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete stock item' });
+  }
+};
+
+// The handover: in_stock → assigned. Same document, so the device keeps its
+// serial and its history, and it appears on the employee's HR profile at once.
+exports.assignFromStock = async (req, res) => {
+  try {
+    if (!req.body.employee) return res.status(400).json({ message: 'Employee is required' });
+
+    const item = await Asset.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Stock item not found' });
+    if (item.status !== 'in_stock') {
+      return res.status(400).json({
+        message: item.status === 'assigned'
+          ? 'This item is already assigned to an employee'
+          : 'This item is not in stock and cannot be assigned',
+      });
+    }
+
+    const employee = await Employee.findById(req.body.employee).select('_id').lean();
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+
+    item.employee = employee._id;
+    item.status = 'assigned';
+    item.assignedDate = req.body.assignedDate || today();
+    item.assignedBy = req.user._id;
+    if (req.body.condition) item.condition = req.body.condition;
+    if (req.body.notes) item.notes = req.body.notes;
+    // The item has left the shelf — clear the leftovers from its last return.
+    item.returnedDate = undefined;
+    item.returnedCondition = undefined;
+    item.returnedTo = undefined;
+
+    await item.save();
+    emitCustody({ type: 'custody', id: String(item._id) });
+    emit('hr:employee', { id: String(item.employee) });
+    res.json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to assign stock item' });
   }
 };
 

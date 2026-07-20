@@ -5,7 +5,10 @@ const mongoose = require('mongoose');
 // still holds any `assigned` asset (enforced in the controller).
 const assetSchema = new mongoose.Schema(
   {
-    employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    // Optional: an `in_stock` item sits in the IT store and belongs to nobody.
+    // Every other flow still sets it, and `status` defaults to 'assigned', so
+    // existing documents and all HR code behave exactly as before.
+    employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: false, default: null },
     name: { type: String, required: true, trim: true },
     type: {
       type: String,
@@ -19,7 +22,9 @@ const assetSchema = new mongoose.Schema(
     value: { type: Number, default: 0 },
     assignedDate: { type: String }, // YYYY-MM-DD
 
-    status: { type: String, enum: ['assigned', 'returned'], default: 'assigned' },
+    // 'in_stock' = sitting in the IT store, held by nobody. 'assigned' stays the
+    // default so nothing that omits `status` changes meaning.
+    status: { type: String, enum: ['assigned', 'returned', 'in_stock'], default: 'assigned' },
     returnedDate: { type: String },
     returnedCondition: { type: String, enum: ['new', 'good', 'fair', 'damaged'] },
     returnedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -35,6 +40,12 @@ const assetSchema = new mongoose.Schema(
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     issuedBySection: { type: String, default: '', trim: true }, // 'it' | 'hr'
     specs: { type: String, default: '', trim: true },           // e.g. 'i7 / 16GB / 512 SSD'
+
+    // ── Stock (المستودع) fields ──────────────────────────────────────────────
+    // Consumables (cables, adapters) are not serial-tracked, so one document can
+    // stand for N identical units. Serial-tracked gear just keeps quantity 1.
+    quantity: { type: Number, default: 1 },
+    location: { type: String, default: '', trim: true },        // shelf / room in the store
   },
   { timestamps: true }
 );

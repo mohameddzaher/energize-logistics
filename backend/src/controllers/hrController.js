@@ -154,7 +154,9 @@ exports.getEmployee = async (req, res) => {
     const [contracts, leaves, assets, requests, documents, renewals, balanceData] = await Promise.all([
       Contract.find({ employee: id }).sort({ createdAt: -1 }).lean(),
       LeaveRequest.find({ employee: id }).populate('leaveType', 'nameEn nameAr code color').sort({ createdAt: -1 }).limit(200).lean(),
-      Asset.find({ employee: id }).sort({ createdAt: -1 }).lean(),
+      // `status: { $ne: 'in_stock' }` is belt-and-braces — a store item has
+      // employee: null so it cannot match this query anyway.
+      Asset.find({ employee: id, status: { $ne: 'in_stock' } }).sort({ createdAt: -1 }).lean(),
       HRRequest.find({ employee: id }).sort({ createdAt: -1 }).limit(100).lean(),
       EmployeeDocument.find({ employee: id }).populate('uploadedBy', 'firstName lastName').sort({ createdAt: -1 }).lean(),
       EmployeeRenewal.find({ employee: id }).populate('renewedBy', 'firstName lastName').sort({ renewedAt: -1 }).limit(200).lean(),
@@ -906,9 +908,12 @@ exports.updateRequestStatus = async (req, res) => {
 exports.listAssets = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
-    const filter = {};
+    // HR custody is strictly employee-held property. Items sitting in the IT
+    // store (`status: 'in_stock'`, `employee: null`) live in the SAME collection
+    // but are not custody yet, so they must never surface on HR screens.
+    const filter = { employee: { $ne: null }, status: { $ne: 'in_stock' } };
     if (req.query.employee) filter.employee = req.query.employee;
-    if (req.query.status) filter.status = req.query.status;
+    if (req.query.status && req.query.status !== 'in_stock') filter.status = req.query.status;
     const assets = await Asset.find(filter)
       .populate('employee', 'firstName lastName arabicName iqamaNumber employeeNumber')
       .sort({ createdAt: -1 })
@@ -939,6 +944,9 @@ exports.updateAsset = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const asset = await Asset.findById(req.params.id);
     if (!asset) return res.status(404).json({ message: 'Asset not found' });
+    // IT store stock lives in this collection but is not custody — HR never
+    // lists it, so reaching one by id means something went wrong upstream.
+    if (asset.status === 'in_stock') return res.status(404).json({ message: 'Asset not found' });
     ['name', 'type', 'serialNumber', 'brand', 'model', 'condition', 'value', 'assignedDate', 'notes'].forEach((f) => {
       if (req.body[f] !== undefined) asset[f] = req.body[f];
     });
@@ -957,6 +965,9 @@ exports.returnAsset = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const asset = await Asset.findById(req.params.id);
     if (!asset) return res.status(404).json({ message: 'Asset not found' });
+    // IT store stock lives in this collection but is not custody — HR never
+    // lists it, so reaching one by id means something went wrong upstream.
+    if (asset.status === 'in_stock') return res.status(404).json({ message: 'Asset not found' });
     asset.status = 'returned';
     asset.returnedDate = req.body.returnedDate || new Date().toISOString().slice(0, 10);
     if (req.body.returnedCondition) asset.returnedCondition = req.body.returnedCondition;
@@ -973,7 +984,8 @@ exports.returnAsset = async (req, res) => {
 exports.deleteAsset = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
-    await Asset.findByIdAndDelete(req.params.id);
+    // Scoped so an HR delete can never reach an IT store item (see updateAsset).
+    await Asset.findOneAndDelete({ _id: req.params.id, status: { $ne: 'in_stock' } });
     res.json({ message: 'Asset deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete asset' });
@@ -1083,7 +1095,8 @@ exports.getDashboard = async (req, res) => {
       Employee.countDocuments({ employmentStatus: 'terminated' }),
       LeaveRequest.countDocuments({ status: { $in: ['pending_manager', 'pending_hr'] } }),
       HRRequest.countDocuments({ status: { $in: ['open', 'in_progress'] } }),
-      Asset.countDocuments({ status: 'assigned' }),
+      // Employee-held custody only — IT store items are `in_stock`/employee null.
+      Asset.countDocuments({ status: 'assigned', employee: { $ne: null } }),
       Contract.find({ status: 'active', endDate: { $gte: today, $lte: in90 } }).populate('employee', 'firstName lastName arabicName').sort({ endDate: 1 }).limit(50).lean(),
       Employee.aggregate([{ $group: { _id: '$employmentStatus', count: { $sum: 1 } } }]),
       Employee.aggregate([{ $match: { department: { $nin: [null, ''] } } }, { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
@@ -1156,7 +1169,9 @@ exports.getMyProfile = async (req, res) => {
       Employee.findById(id).populate('directManager', 'firstName lastName email').populate('branch', 'name').lean(),
       Contract.find({ employee: id }).sort({ createdAt: -1 }).lean(),
       LeaveRequest.find({ employee: id }).populate('leaveType', 'nameEn nameAr code color').sort({ createdAt: -1 }).limit(100).lean(),
-      Asset.find({ employee: id }).sort({ createdAt: -1 }).lean(),
+      // `status: { $ne: 'in_stock' }` is belt-and-braces — a store item has
+      // employee: null so it cannot match this query anyway.
+      Asset.find({ employee: id, status: { $ne: 'in_stock' } }).sort({ createdAt: -1 }).lean(),
       computeEmployeeBalance(id),
     ]);
     res.json({ employee, contracts, activeContract: balanceData.contract || null, balance: balanceData.balance, leaves, assets });

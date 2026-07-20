@@ -62,6 +62,30 @@ const perfEvaluationSchema = new mongoose.Schema({
   notes: { type: String, default: '' },            // ملاحظات المُقيِّم
   status: { type: String, enum: ['draft', 'submitted'], default: 'draft', index: true },
   submittedAt: { type: Date, default: null },
+
+  // Once submitted an evaluation is LOCKED to its evaluator — a manager cannot
+  // quietly restate a grade the employee has already been told. To change it
+  // they raise an edit request; only super-admin decides. An approved request
+  // is consumed by the next save, so one approval buys one correction.
+  editRequest: {
+    status: { type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none', index: true },
+    reason: { type: String, default: '' },          // why the manager wants to change it
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    requestedByName: { type: String, default: '' },
+    requestedAt: { type: Date, default: null },
+    decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    decidedByName: { type: String, default: '' },
+    decidedAt: { type: Date, default: null },
+    decisionNote: { type: String, default: '' },
+  },
+  // Every correction after the first submit, so the trail survives the edit.
+  editHistory: [{
+    at: { type: Date, default: Date.now },
+    byName: { type: String, default: '' },
+    previousPercentage: { type: Number, default: null },
+    newPercentage: { type: Number, default: null },
+    reason: { type: String, default: '' },
+  }],
 }, { timestamps: true });
 
 // One evaluation per employee per period per template — re-grading edits the

@@ -189,6 +189,8 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
                 [lang === 'ar' ? 'الدفع' : 'Payment', detail.payment_method],
                 [lang === 'ar' ? 'الفرع' : 'Branch', locName(detail.branch?.name, lang)],
                 [lang === 'ar' ? 'الإنشاء' : 'Created', fmtDateTime(detail.created_at, lang)],
+                // Creator name comes off the timeline's "requesting" step (the creation).
+                [lang === 'ar' ? 'أنشأها' : 'Created by', (Array.isArray(timeline) ? (timeline.find((e: any) => e?.status === 'requesting')?.admin?.name || '') : '') || (timeline === null ? '…' : '')],
               ].map(([k, v]) => (
                 <div key={k as string} className="border-b border-slate-100 pb-1.5">
                   <p className="text-slate-400 text-[11px] uppercase tracking-wide">{k}</p>

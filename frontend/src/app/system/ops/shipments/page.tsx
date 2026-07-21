@@ -287,6 +287,12 @@ export default function OpsShipmentsPage() {
               <Info label={lang === 'ar' ? 'رقم المرجع' : 'Reference #'}>{detail.reference_num ?? '—'}</Info>
               <Info label={lang === 'ar' ? 'الحالة' : 'Status'}>{(() => { const st = statusStyle(detail.status); return st ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}>{lang === 'ar' ? st.ar : st.en}</span> : detail.status; })()}</Info>
               <Info label={lang === 'ar' ? 'نوع المُنشئ' : 'Creator type'}>{detail.creator_type || '—'}</Info>
+              <Info label={lang === 'ar' ? 'أنشأها' : 'Created by'}>{(() => {
+                // The creator's name is resolved on the timeline's "requesting" step
+                // (that step IS the creation) — reuse it so no extra call is needed.
+                const c = Array.isArray(timeline) ? (timeline.find((e: any) => e?.status === 'requesting')?.admin?.name || '') : '';
+                return c || (timeline === null ? '…' : '—');
+              })()}</Info>
               <Info label={lang === 'ar' ? 'الكمية' : 'Qty'}>{fmtNum(detail.qty)}</Info>
               <Info label={lang === 'ar' ? 'قيمة البضائع' : 'Goods value'}>{fmtMoney(detail.goods_value_price)}</Info>
             </Section>

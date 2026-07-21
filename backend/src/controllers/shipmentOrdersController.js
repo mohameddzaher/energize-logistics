@@ -1,6 +1,8 @@
 const ShipmentOrder = require('../models/ShipmentOrder');
 const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
 const ShipmentOrderField = require('../models/ShipmentOrderField');
+const ShipmentOrderSupplier = require('../models/ShipmentOrderSupplier');
+const ShipmentOrderVehicle = require('../models/ShipmentOrderVehicle');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 
@@ -23,7 +25,7 @@ const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() :
 const ORDER_EDITABLE = [
   'fromCity', 'toCity', 'addressFrom', 'addressTo',
   'truckType', 'cargoType', 'truckLength', 'quantity',
-  'customer', 'driverName', 'driverPhone', 'vehicleName',
+  'customer', 'driverName', 'driverPhone', 'vehicleName', 'vehicle',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
   'driverRentType', 'paymentMethod', 'driverRentPrice', 'branch',
   'status', 'notes', 'customFields',
@@ -120,6 +122,45 @@ exports.createOrder = async (req, res) => {
           c.routes.push({ fromCity: data.fromCity, toCity: data.toCity, price: data.sellPrice });
           await c.save();
         }
+      }
+    }
+
+    // The truck: one of ours, a known supplier's, or typed in fresh. A fresh
+    // plate registers the vehicle (and its supplier when that is new too) as a
+    // side effect — the fleet register learns from the work, like the customer
+    // price list does.
+    if (!data.vehicle && req.body.newVehicle && String(req.body.newVehicle.plate || '').trim()) {
+      const nv = req.body.newVehicle;
+      let supplierId = nv.supplierId || null;
+      if (!supplierId && nv.newSupplier && String(nv.newSupplier.name || '').trim()) {
+        const sup = await ShipmentOrderSupplier.create({
+          name: String(nv.newSupplier.name).trim(),
+          type: nv.newSupplier.type === 'freelancer' ? 'freelancer' : 'company',
+          phone: String(nv.newSupplier.phone || '').trim(),
+          createdBy: req.user._id,
+        });
+        supplierId = sup._id;
+      }
+      const veh = await ShipmentOrderVehicle.create({
+        plate: String(nv.plate).trim(),
+        name: String(nv.name || '').trim(),
+        truckType: data.truckType || '',
+        supplier: supplierId,
+        defaultDriverName: data.driverName || '',
+        defaultDriverPhone: data.driverPhone || '',
+        createdBy: req.user._id,
+      });
+      data.vehicle = veh._id;
+      emit('shipmentOrders:fleet', {});
+    }
+    if (data.vehicle) {
+      const veh = await ShipmentOrderVehicle.findById(data.vehicle).lean();
+      if (veh) {
+        data.vehicleName = [veh.plate, veh.name].filter(Boolean).join(' — ');
+        data.supplier = veh.supplier || null;
+        // The truck's regular driver fills the gap when none was typed.
+        if (!data.driverName && veh.defaultDriverName) data.driverName = veh.defaultDriverName;
+        if (!data.driverPhone && veh.defaultDriverPhone) data.driverPhone = veh.defaultDriverPhone;
       }
     }
 
@@ -249,6 +290,106 @@ exports.deleteCustomer = async (req, res) => {
     res.json({ message: 'Customer removed' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to remove the customer' });
+  }
+};
+
+// ── Suppliers & vehicles (الموردون والمركبات) ───────────────────────────────
+
+const SUPPLIER_EDITABLE = ['name', 'type', 'phone', 'email', 'notes', 'isActive'];
+const VEHICLE_EDITABLE = ['plate', 'name', 'truckType', 'supplier', 'defaultDriverName', 'defaultDriverPhone', 'notes', 'isActive'];
+
+exports.listSuppliers = async (req, res) => {
+  try {
+    const suppliers = await ShipmentOrderSupplier.find({ isActive: { $ne: false } }).sort({ name: 1 }).limit(500).lean();
+    // How many trucks each one runs — the number the team actually asks for.
+    const counts = await ShipmentOrderVehicle.aggregate([
+      { $match: { isActive: { $ne: false }, supplier: { $ne: null } } },
+      { $group: { _id: '$supplier', n: { $sum: 1 } } },
+    ]);
+    const byId = {};
+    counts.forEach((c) => { byId[String(c._id)] = c.n; });
+    res.json({ suppliers: suppliers.map((s) => ({ ...s, vehicleCount: byId[String(s._id)] || 0 })) });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load suppliers' });
+  }
+};
+
+exports.createSupplier = async (req, res) => {
+  try {
+    if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ message: 'Supplier name is required' });
+    const supplier = await ShipmentOrderSupplier.create({ ...pick(req.body, SUPPLIER_EDITABLE), createdBy: req.user._id });
+    emit('shipmentOrders:fleet', {});
+    res.status(201).json({ supplier });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to create the supplier' });
+  }
+};
+
+exports.updateSupplier = async (req, res) => {
+  try {
+    const supplier = await ShipmentOrderSupplier.findByIdAndUpdate(req.params.id, pick(req.body, SUPPLIER_EDITABLE), { new: true });
+    if (!supplier) return res.status(404).json({ message: 'Supplier not found' });
+    emit('shipmentOrders:fleet', {});
+    res.json({ supplier });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update the supplier' });
+  }
+};
+
+exports.deleteSupplier = async (req, res) => {
+  try {
+    const supplier = await ShipmentOrderSupplier.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+    if (!supplier) return res.status(404).json({ message: 'Supplier not found' });
+    emit('shipmentOrders:fleet', {});
+    res.json({ message: 'Supplier removed' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to remove the supplier' });
+  }
+};
+
+exports.listVehicles = async (req, res) => {
+  try {
+    const vehicles = await ShipmentOrderVehicle.find({ isActive: { $ne: false } })
+      .populate('supplier', 'name type')
+      .sort({ plate: 1 })
+      .limit(1000)
+      .lean();
+    res.json({ vehicles });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load vehicles' });
+  }
+};
+
+exports.createVehicle = async (req, res) => {
+  try {
+    if (!req.body.plate || !String(req.body.plate).trim()) return res.status(400).json({ message: 'Plate is required' });
+    const vehicle = await ShipmentOrderVehicle.create({ ...pick(req.body, VEHICLE_EDITABLE), createdBy: req.user._id });
+    emit('shipmentOrders:fleet', {});
+    res.status(201).json({ vehicle });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to create the vehicle' });
+  }
+};
+
+exports.updateVehicle = async (req, res) => {
+  try {
+    const vehicle = await ShipmentOrderVehicle.findByIdAndUpdate(req.params.id, pick(req.body, VEHICLE_EDITABLE), { new: true });
+    if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
+    emit('shipmentOrders:fleet', {});
+    res.json({ vehicle });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update the vehicle' });
+  }
+};
+
+exports.deleteVehicle = async (req, res) => {
+  try {
+    const vehicle = await ShipmentOrderVehicle.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+    if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
+    emit('shipmentOrders:fleet', {});
+    res.json({ message: 'Vehicle removed' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to remove the vehicle' });
   }
 };
 

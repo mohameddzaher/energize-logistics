@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Users, Plus, Pencil, Trash2, Check, Loader2, X, Route } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select, ErrorNotice,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select, SearchableSelect, ErrorNotice,
 } from '@/components/hr/HRKit';
 import { OrderCustomer, FormField, optionLabel, canEditOrders, canAdminOrders, Lang, money } from '@/lib/shipmentOrders';
 
@@ -188,14 +188,16 @@ export default function ShipmentOrderCustomersPage() {
           <div className="space-y-2">
             {form.routes.map((r: any, i: number) => (
               <div key={i} className="flex items-center gap-2">
-                <Select value={r.fromCity} onChange={(e) => setRoute(i, 'fromCity', e.target.value)}>
-                  <option value="">{ar ? 'من…' : 'From…'}</option>
-                  {cities.map((o) => <option key={o.key} value={o.key}>{optionLabel(o, lang as Lang)}</option>)}
-                </Select>
-                <Select value={r.toCity} onChange={(e) => setRoute(i, 'toCity', e.target.value)}>
-                  <option value="">{ar ? 'إلى…' : 'To…'}</option>
-                  {cities.map((o) => <option key={o.key} value={o.key}>{optionLabel(o, lang as Lang)}</option>)}
-                </Select>
+                <div className="flex-1 min-w-[130px]">
+                  <SearchableSelect value={r.fromCity} onChange={(x) => setRoute(i, 'fromCity', x)} searchAfter={0}
+                    placeholder={ar ? 'من…' : 'From…'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'}
+                    options={cities.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
+                </div>
+                <div className="flex-1 min-w-[130px]">
+                  <SearchableSelect value={r.toCity} onChange={(x) => setRoute(i, 'toCity', x)} searchAfter={0}
+                    placeholder={ar ? 'إلى…' : 'To…'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'}
+                    options={cities.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
+                </div>
                 <TextInput type="number" value={r.price ?? ''} onChange={(e) => setRoute(i, 'price', e.target.value)} placeholder={ar ? 'السعر' : 'Price'} />
                 <button type="button" onClick={() => setForm((f: any) => ({ ...f, routes: f.routes.filter((_: any, x: number) => x !== i) }))}
                   className="p-2 text-slate-400 hover:text-red-600 shrink-0" aria-label="remove"><X className="w-4 h-4" /></button>

@@ -177,12 +177,17 @@ export function SearchableSelect({
   const showSearch = options.length > searchAfter;
 
   const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
+    // Arabic folding: hamza forms, ta marbuta and alif maqsura collapse so that
+    // typing "احمد" finds "أحمد" — nobody hunts for the right hamza mid-search.
+    const fold = (x: string) => x.toLowerCase()
+      .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+      .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/[ًٌٍَُِّْ]/g, '');
+    const s = fold(q.trim());
     if (!s) return options;
     // Every space-separated word must appear somewhere, so "ahmed 2570" works.
     const words = s.split(/\s+/);
     return options.filter((o) => {
-      const hay = `${o.label} ${o.hint || ''}`.toLowerCase();
+      const hay = fold(`${o.label} ${o.hint || ''}`);
       return words.every((w) => hay.includes(w));
     });
   }, [options, q]);

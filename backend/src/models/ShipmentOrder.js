@@ -36,7 +36,10 @@ const shipmentOrderSchema = new mongoose.Schema(
 
     driverName: { type: String, trim: true, default: '' },
     driverPhone: { type: String, trim: true, default: '' },
-    vehicleName: { type: String, trim: true, default: '' }, // السيارة / رقم اللوحة
+    vehicleName: { type: String, trim: true, default: '' }, // snapshot: السيارة / رقم اللوحة
+    // Refs behind the snapshots — ours when supplier is null, a 3PL's otherwise.
+    vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderVehicle', default: null },
+    supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderSupplier', default: null, index: true },
 
     // المندوب — whoever created the order, stamped from their account, never
     // typed by hand.

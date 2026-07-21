@@ -1,28 +1,33 @@
 'use client';
 // إنشاء شحنة — ONE page instead of the external system's four-step wizard.
-// The four groups render as sections you can see at once; nothing is hidden
-// behind a "next" button.
 //
-// The inputs come from the field config (form-settings page): each renders as
-// whatever it was configured to be — dropdown, tappable cards, or typed. The
-// few inputs wired to logic (customer, waybill, status, agent) are fixed here.
+// Reading order mirrors how the team actually books a load: who is it for →
+// which truck carries it → where it goes → when and for how much → how it is
+// paid. Picking the customer autofills their defaults and route price; picking
+// the truck autofills its regular driver; a truck we have never seen registers
+// itself (and its 3PL supplier) as a side effect.
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { PackagePlus, ArrowRight, Check, Loader2, Plus, X, UserPlus } from 'lucide-react';
+import {
+  PackagePlus, ArrowRight, Check, Loader2, X, UserPlus, Truck,
+  MapPin, Package, Clock3, Wallet, User as UserIcon, Building2,
+} from 'lucide-react';
 import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton } from '@/components/hr/HRKit';
 import {
-  FormField, OrderCustomer, GROUP_LABELS, fieldLabel, optionLabel,
+  FormField, OrderCustomer, OrderVehicle, OrderSupplier, GROUP_LABELS, fieldLabel, optionLabel,
   ORDER_STATUSES, FIXED_KEYS, Lang, canEditOrders,
 } from '@/lib/shipmentOrders';
 
+// Labels are the form's wayfinding — near-black and readable, not a whisper.
+const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
+const labelMissCls = 'block text-sm font-semibold text-red-600 mb-1.5';
 const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50';
+const inputMissCls = 'w-full px-3 py-2.5 rounded-lg bg-red-50 border border-red-400 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-red-400/50';
 
-// Keys that live on the order document itself; anything else the user invents
-// in form-settings goes into customFields.
 const SYSTEM_KEYS = new Set([
   'fromCity', 'toCity', 'addressFrom', 'addressTo', 'truckType', 'cargoType',
   'truckLength', 'quantity', 'driverName', 'driverPhone', 'vehicleName',
@@ -30,7 +35,10 @@ const SYSTEM_KEYS = new Set([
   'driverRentType', 'paymentMethod', 'driverRentPrice', 'branch', 'notes',
 ]);
 
-// datetime-local wants "YYYY-MM-DDTHH:mm" in local time.
+const GROUP_ICONS: Record<FormField['group'], any> = {
+  pickup_delivery: MapPin, shipment: Package, pricing_time: Clock3, payment: Wallet,
+};
+
 const toLocalInput = (v?: string | null) => {
   if (!v) return '';
   const d = new Date(v);
@@ -50,26 +58,40 @@ function CreateShipmentInner() {
 
   const [fields, setFields] = useState<FormField[]>([]);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
+  const [vehicles, setVehicles] = useState<OrderVehicle[]>([]);
+  const [suppliers, setSuppliers] = useState<OrderSupplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Turned on by a failed save: from then on every missing required input is
+  // red until it is filled — the user asked to SEE which fields block them.
+  const [showErrors, setShowErrors] = useState(false);
 
   const [form, setForm] = useState<Record<string, any>>({ status: 'requesting' });
   const [customerId, setCustomerId] = useState('');
-  // Inline "first time we work with them" — no detour through the customers page.
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
+
+  // The truck: an existing one (ours or a supplier's), or a brand-new plate
+  // whose owner we name on the spot.
+  const [vehicleId, setVehicleId] = useState('');
+  const [newVehicleOpen, setNewVehicleOpen] = useState(false);
+  const [newVehicle, setNewVehicle] = useState({ plate: '', name: '', owner: 'ours' as 'ours' | 'supplier' | 'newSupplier', supplierId: '', supplierName: '', supplierType: 'company' as 'company' | 'freelancer' });
 
   useEffect(() => {
     (async () => {
       try {
-        const [f, c] = await Promise.all([
+        const [f, c, v, sp] = await Promise.all([
           api.get<{ fields: FormField[] }>('/api/shipment-orders/fields'),
           api.get<{ customers: OrderCustomer[] }>('/api/shipment-orders/customers'),
+          api.get<{ vehicles: OrderVehicle[] }>('/api/shipment-orders/vehicles'),
+          api.get<{ suppliers: OrderSupplier[] }>('/api/shipment-orders/suppliers'),
         ]);
         setFields(f.fields || []);
         setCustomers(c.customers || []);
+        setVehicles(v.vehicles || []);
+        setSuppliers(sp.suppliers || []);
         if (editId) {
-          const d = await api.get<{ orders: any[] }>(`/api/shipment-orders/orders?q=&limit=1000`);
+          const d = await api.get<{ orders: any[] }>('/api/shipment-orders/orders?limit=1000');
           const o = (d.orders || []).find((x) => x._id === editId);
           if (o) {
             setForm({
@@ -80,6 +102,7 @@ function CreateShipmentInner() {
               ...(o.customFields || {}),
             });
             setCustomerId(typeof o.customer === 'object' ? o.customer?._id : (o.customer || ''));
+            setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id : (o.vehicle || ''));
           }
         }
       } catch {}
@@ -88,12 +111,8 @@ function CreateShipmentInner() {
   }, [editId]);
 
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
-
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Picking the customer fills their usual choices; picking a route they have a
-  // price for fills the sell price. Everything stays editable — the autofill is
-  // a head start, not a lock.
   const applyCustomer = (id: string) => {
     setCustomerId(id);
     const c = customers.find((x) => x._id === id);
@@ -109,6 +128,21 @@ function CreateShipmentInner() {
     });
   };
 
+  // Picking the truck plants its regular driver and its type — one tap, three
+  // answers. All still editable per shipment.
+  const applyVehicle = (id: string) => {
+    setVehicleId(id);
+    setNewVehicleOpen(false);
+    const v = vehicles.find((x) => x._id === id);
+    if (!v) return;
+    setForm((f) => ({
+      ...f,
+      driverName: f.driverName || v.defaultDriverName || '',
+      driverPhone: f.driverPhone || v.defaultDriverPhone || '',
+      truckType: f.truckType || v.truckType || '',
+    }));
+  };
+
   useEffect(() => {
     if (!customer) return;
     const route = (customer.routes || []).find((r) => r.fromCity === form.fromCity && r.toCity === form.toCity);
@@ -116,15 +150,21 @@ function CreateShipmentInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.fromCity, form.toCity, customerId]);
 
-  const missingRequired = fields.filter((f) => f.required && !FIXED_KEYS.has(f.key) && !String(form[f.key] ?? '').trim());
+  const missingKeys = useMemo(() => {
+    const missing = new Set<string>();
+    fields.forEach((f) => {
+      if (f.required && !FIXED_KEYS.has(f.key) && !String(form[f.key] ?? '').trim()) missing.add(f.key);
+    });
+    if (!customerId && !newCustomer.name.trim()) missing.add('customer');
+    return missing;
+  }, [fields, form, customerId, newCustomer.name]);
 
   const save = async () => {
-    if (!customerId && !newCustomer.name.trim()) {
-      notify(ar ? 'اختر العميل أو سجّل عميلاً جديداً.' : 'Pick a customer or register a new one.', 'error');
-      return;
-    }
-    if (missingRequired.length) {
-      notify((ar ? 'أكمل الحقول المطلوبة: ' : 'Missing required: ') + missingRequired.map((f) => fieldLabel(f, lang as Lang)).join('، '), 'error');
+    if (missingKeys.size) {
+      setShowErrors(true);
+      notify(ar
+        ? 'أكمل الحقول المحددة باللون الأحمر.'
+        : 'Fill the fields highlighted in red.', 'error');
       return;
     }
     setSaving(true);
@@ -138,8 +178,23 @@ function CreateShipmentInner() {
       });
       payload.notes = form.notes || '';
       payload.status = form.status || 'requesting';
+      payload.driverName = form.driverName || '';
+      payload.driverPhone = form.driverPhone || '';
       if (customerId) payload.customer = customerId;
       else payload.newCustomer = { name: newCustomer.name.trim(), phone: newCustomer.phone.trim() };
+
+      if (vehicleId) payload.vehicle = vehicleId;
+      else if (newVehicle.plate.trim()) {
+        payload.newVehicle = {
+          plate: newVehicle.plate.trim(),
+          name: newVehicle.name.trim(),
+          supplierId: newVehicle.owner === 'supplier' ? newVehicle.supplierId : null,
+          newSupplier: newVehicle.owner === 'newSupplier'
+            ? { name: newVehicle.supplierName.trim(), type: newVehicle.supplierType }
+            : null,
+        };
+      }
+
       ['pickupTime', 'startTime', 'arrivalTime'].forEach((k) => {
         payload[k] = form[k] ? new Date(form[k]).toISOString() : null;
       });
@@ -161,21 +216,24 @@ function CreateShipmentInner() {
   if (!canEditOrders(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
   if (loading) return <Spinner />;
 
+  const miss = (k: string) => showErrors && missingKeys.has(k);
+
   const renderField = (f: FormField) => {
     const label = fieldLabel(f, lang as Lang);
     const v = form[f.key] ?? '';
+    const bad = miss(f.key);
+    const lab = <label className={bad ? labelMissCls : labelCls}>{label}{f.required && <span className="text-red-500"> *</span>}</label>;
     switch (f.inputType) {
       case 'cards':
-        // Tappable tiles — the phone-friendly answer for short option lists.
         return (
-          <div key={f._id}>
-            <p className="text-xs text-slate-500 mb-1.5">{label}{f.required && ' *'}</p>
-            <div className="flex flex-wrap gap-2">
+          <div key={f._id} className="sm:col-span-2">
+            {lab}
+            <div className={`flex flex-wrap gap-2 ${bad ? 'p-2 rounded-xl border border-red-300 bg-red-50/50' : ''}`}>
               {f.options.map((o) => (
                 <button key={o.key} type="button" onClick={() => set(f.key, o.key)}
-                  className={`px-3.5 py-2 rounded-xl border text-sm font-medium transition-colors ${v === o.key
-                    ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121]'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+                  className={`px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${v === o.key
+                    ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121] shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>
                   {optionLabel(o, lang as Lang)}
                 </button>
               ))}
@@ -185,151 +243,257 @@ function CreateShipmentInner() {
       case 'select':
         return (
           <div key={f._id}>
-            <p className="text-xs text-slate-500 mb-1.5">{label}{f.required && ' *'}</p>
-            {f.options.length > 8 ? (
-              <SearchableSelect value={v} onChange={(x) => set(f.key, x)}
+            {lab}
+            {/* searchAfter=0: every dropdown in this section searches, always. */}
+            <div className={bad ? 'rounded-lg ring-2 ring-red-400/60' : ''}>
+              <SearchableSelect value={v} onChange={(x) => set(f.key, x)} searchAfter={0}
                 placeholder={ar ? `اختر ${label}` : `Choose ${label}`}
-                searchPlaceholder={ar ? 'ابحث…' : 'Search…'}
+                searchPlaceholder={ar ? 'اكتب للبحث…' : 'Type to search…'}
+                emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
                 options={f.options.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
-            ) : (
-              <Select value={v} onChange={(e) => set(f.key, e.target.value)}>
-                <option value="">—</option>
-                {f.options.map((o) => <option key={o.key} value={o.key}>{optionLabel(o, lang as Lang)}</option>)}
-              </Select>
-            )}
+            </div>
           </div>
         );
       case 'number':
-        return (
-          <div key={f._id}>
-            <p className="text-xs text-slate-500 mb-1.5">{label}{f.required && ' *'}</p>
-            <input type="number" value={v} onChange={(e) => set(f.key, e.target.value)} className={inputCls} />
-          </div>
-        );
+        return <div key={f._id}>{lab}<input type="number" value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
       case 'datetime':
-        return (
-          <div key={f._id}>
-            <p className="text-xs text-slate-500 mb-1.5">{label}{f.required && ' *'}</p>
-            <input type="datetime-local" value={v} onChange={(e) => set(f.key, e.target.value)} className={inputCls} />
-          </div>
-        );
+        return <div key={f._id}>{lab}<input type="datetime-local" value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
       case 'textarea':
-        return (
-          <div key={f._id} className="sm:col-span-2">
-            <p className="text-xs text-slate-500 mb-1.5">{label}{f.required && ' *'}</p>
-            <textarea rows={2} value={v} onChange={(e) => set(f.key, e.target.value)} className={inputCls} />
-          </div>
-        );
+        return <div key={f._id} className="sm:col-span-2">{lab}<textarea rows={2} value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
       default:
-        return (
-          <div key={f._id}>
-            <p className="text-xs text-slate-500 mb-1.5">{label}{f.required && ' *'}</p>
-            <input value={v} onChange={(e) => set(f.key, e.target.value)} className={inputCls} />
-          </div>
-        );
+        return <div key={f._id}>{lab}<input value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
     }
   };
 
   const groups: FormField['group'][] = ['pickup_delivery', 'shipment', 'pricing_time', 'payment'];
 
+  const sectionCard = (icon: any, no: number, title: string, children: React.ReactNode) => {
+    const Icon = icon;
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-5 py-3.5 bg-slate-50/70 border-b border-slate-100 flex items-center gap-3">
+          <span className="w-8 h-8 rounded-lg bg-[#f37121]/15 text-[#f37121] flex items-center justify-center font-bold text-sm">{no}</span>
+          <Icon className="w-4 h-4 text-slate-400" />
+          <p className="text-base font-bold text-slate-900">{title}</p>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    );
+  };
+
+  const supplierOf = (v: OrderVehicle) =>
+    (typeof v.supplier === 'object' && v.supplier ? v.supplier.name : '') || (ar ? 'أسطولنا' : 'Our fleet');
+
   return (
-    <div className="space-y-6 max-w-5xl" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="space-y-5 max-w-5xl pb-28" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<PackagePlus className="w-5 h-5" />}
         title={editId ? (ar ? 'تعديل شحنة' : 'Edit shipment') : (ar ? 'إنشاء شحنة' : 'Create shipment')}
-        subtitle={ar ? 'كل التفاصيل في صفحة واحدة — من غير خطوات' : 'Everything on one page — no wizard'}>
+        subtitle={ar ? 'كل التفاصيل في صفحة واحدة' : 'Everything on one page'}>
         <button type="button" onClick={() => router.push('/system/shipment-orders')}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <ArrowRight className="w-4 h-4" /> {ar ? 'رجوع للقائمة' : 'Back to list'}
         </button>
       </PageHeader>
 
-      {/* العميل — fixed on top: picking them is what autofills the rest. */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5 space-y-3">
-        <p className="text-sm font-bold text-slate-900">{ar ? 'العميل' : 'Customer'}</p>
-        {!newCustomerOpen ? (
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
-              <SearchableSelect value={customerId} onChange={applyCustomer}
-                placeholder={ar ? 'اختر العميل…' : 'Pick the customer…'}
-                searchPlaceholder={ar ? 'ابحث بالاسم أو الجوال…' : 'Search name or phone…'}
-                emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
-                options={customers.map((c) => ({ value: c._id, label: c.name, hint: c.phone || '' }))} />
-            </div>
-            <button type="button" onClick={() => { setNewCustomerOpen(true); setCustomerId(''); }}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-semibold">
-              <UserPlus className="w-4 h-4" /> {ar ? 'عميل جديد' : 'New customer'}
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col sm:flex-row gap-3 items-start">
-            <input value={newCustomer.name} onChange={(e) => setNewCustomer((c) => ({ ...c, name: e.target.value }))}
-              placeholder={ar ? 'اسم العميل الجديد *' : 'New customer name *'} className={inputCls + ' flex-1'} />
-            <input value={newCustomer.phone} onChange={(e) => setNewCustomer((c) => ({ ...c, phone: e.target.value }))}
-              placeholder={ar ? 'الجوال' : 'Phone'} className={inputCls + ' sm:w-44'} />
-            <button type="button" onClick={() => { setNewCustomerOpen(false); setNewCustomer({ name: '', phone: '' }); }}
-              className="p-2.5 text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-4 h-4" /></button>
-          </div>
-        )}
-        {newCustomerOpen && (
-          <p className="text-xs text-slate-500">
-            {ar
-              ? 'هيتسجّل تلقائياً في صفحة العملاء، والمسار والسعر اللي هتدخلهم دلوقتي هيتحفظوا في ملفه.'
-              : 'They are saved to the customers page automatically, and the route + price you enter now lands on their profile.'}
-          </p>
-        )}
-        {customer && (customer.routes || []).length > 0 && (
-          <div className="flex flex-wrap gap-2 pt-1">
-            {customer.routes.map((r, i) => (
-              // One tap plants the whole route AND its agreed price.
-              <button key={i} type="button"
-                onClick={() => setForm((f) => ({ ...f, fromCity: r.fromCity, toCity: r.toCity, sellPrice: r.price ?? f.sellPrice }))}
-                className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-xs text-slate-600 transition-colors">
-                {r.fromCity} ← {r.toCity} · {r.price ?? '—'}
+      {/* 1 ── العميل */}
+      {sectionCard(UserIcon, 1, ar ? 'العميل' : 'Customer', (
+        <div className="space-y-3">
+          {!newCustomerOpen ? (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className={`flex-1 ${miss('customer') ? 'rounded-lg ring-2 ring-red-400/60' : ''}`}>
+                <SearchableSelect value={customerId} onChange={applyCustomer} searchAfter={0}
+                  placeholder={ar ? 'اختر العميل — اكتب اسمه للبحث…' : 'Pick the customer — type to search…'}
+                  searchPlaceholder={ar ? 'اكتب اسم العميل أو جواله…' : 'Type name or phone…'}
+                  emptyLabel={ar ? 'لا توجد نتائج — سجّله كعميل جديد' : 'No matches — register them as new'}
+                  options={customers.map((c) => ({ value: c._id, label: c.name, hint: c.phone || '' }))} />
+              </div>
+              <button type="button" onClick={() => { setNewCustomerOpen(true); setCustomerId(''); }}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-semibold">
+                <UserPlus className="w-4 h-4" /> {ar ? 'عميل جديد' : 'New customer'}
               </button>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-3 items-start">
+              <input value={newCustomer.name} onChange={(e) => setNewCustomer((c) => ({ ...c, name: e.target.value }))}
+                placeholder={ar ? 'اسم العميل الجديد *' : 'New customer name *'}
+                className={(miss('customer') ? inputMissCls : inputCls) + ' flex-1'} />
+              <input value={newCustomer.phone} onChange={(e) => setNewCustomer((c) => ({ ...c, phone: e.target.value }))}
+                placeholder={ar ? 'الجوال' : 'Phone'} className={inputCls + ' sm:w-44'} />
+              <button type="button" onClick={() => { setNewCustomerOpen(false); setNewCustomer({ name: '', phone: '' }); }}
+                className="p-2.5 text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-4 h-4" /></button>
+            </div>
+          )}
+          {newCustomerOpen && (
+            <p className="text-xs text-slate-500">
+              {ar ? 'هيتسجّل تلقائياً في صفحة العملاء، والمسار والسعر هيتحفظوا في ملفه.' : 'Saved to the customers page automatically; the route + price land on their profile.'}
+            </p>
+          )}
+          {customer && (customer.routes || []).length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-500 mb-1.5">{ar ? 'مساراته المعتادة — ضغطة واحدة تملأ المسار والسعر:' : 'Known routes — one tap fills route and price:'}</p>
+              <div className="flex flex-wrap gap-2">
+                {customer.routes.map((r, i) => (
+                  <button key={i} type="button"
+                    onClick={() => setForm((f) => ({ ...f, fromCity: r.fromCity, toCity: r.toCity, sellPrice: r.price ?? f.sellPrice }))}
+                    className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-sm text-slate-700 font-medium transition-colors">
+                    {r.fromCity} ← {r.toCity} · <span className="font-bold">{r.price ?? '—'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
 
-      {groups.map((g) => {
+      {/* 2 ── السيارة والسائق — first thing in the shipment partition */}
+      {sectionCard(Truck, 2, ar ? 'السيارة والسائق' : 'Truck & driver', (
+        <div className="space-y-4">
+          {!newVehicleOpen ? (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1">
+                <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
+                <SearchableSelect value={vehicleId} onChange={applyVehicle} searchAfter={0}
+                  placeholder={ar ? 'اختر من سياراتنا أو سيارات الموردين…' : 'Ours or a supplier’s…'}
+                  searchPlaceholder={ar ? 'اكتب رقم اللوحة أو اسم المورد…' : 'Type plate or supplier…'}
+                  emptyLabel={ar ? 'مش موجودة؟ سجّلها كسيارة جديدة' : 'Not found? Register it'}
+                  options={vehicles.map((v) => ({
+                    value: v._id,
+                    label: [v.plate, v.name].filter(Boolean).join(' — '),
+                    hint: supplierOf(v),
+                  }))} />
+              </div>
+              <div className="sm:pt-7">
+                <button type="button" onClick={() => { setNewVehicleOpen(true); setVehicleId(''); }}
+                  className="w-full sm:w-auto flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-semibold">
+                  <Truck className="w-4 h-4" /> {ar ? 'سيارة جديدة' : 'New vehicle'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-slate-900">{ar ? 'تسجيل سيارة جديدة' : 'Register a new vehicle'}</p>
+                <button type="button" onClick={() => setNewVehicleOpen(false)} className="text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>{ar ? 'رقم اللوحة *' : 'Plate *'}</label>
+                  <input value={newVehicle.plate} onChange={(e) => setNewVehicle((v) => ({ ...v, plate: e.target.value }))} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>{ar ? 'وصف السيارة' : 'Description'}</label>
+                  <input value={newVehicle.name} onChange={(e) => setNewVehicle((v) => ({ ...v, name: e.target.value }))}
+                    placeholder={ar ? 'مثال: مرسيدس أكتروس أبيض' : 'e.g. white Actros'} className={inputCls} />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>{ar ? 'مالك السيارة' : 'Owner'}</label>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { k: 'ours', label: ar ? 'أسطولنا' : 'Our fleet' },
+                    { k: 'supplier', label: ar ? 'مورد موجود' : 'Existing supplier' },
+                    { k: 'newSupplier', label: ar ? 'مورد جديد' : 'New supplier' },
+                  ] as const).map((o) => (
+                    <button key={o.k} type="button" onClick={() => setNewVehicle((v) => ({ ...v, owner: o.k }))}
+                      className={`px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${newVehicle.owner === o.k
+                        ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121]' : 'border-slate-200 bg-white text-slate-700'}`}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {newVehicle.owner === 'supplier' && (
+                <SearchableSelect value={newVehicle.supplierId} onChange={(x) => setNewVehicle((v) => ({ ...v, supplierId: x }))} searchAfter={0}
+                  placeholder={ar ? 'اختر المورد…' : 'Pick the supplier…'}
+                  searchPlaceholder={ar ? 'اكتب اسم المورد…' : 'Type supplier name…'}
+                  options={suppliers.map((sp) => ({ value: sp._id, label: sp.name, hint: sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company') }))} />
+              )}
+              {newVehicle.owner === 'newSupplier' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input value={newVehicle.supplierName} onChange={(e) => setNewVehicle((v) => ({ ...v, supplierName: e.target.value }))}
+                    placeholder={ar ? 'اسم المورد الجديد *' : 'New supplier name *'} className={inputCls} />
+                  <div className="flex gap-2">
+                    {([['company', ar ? 'شركة' : 'Company', Building2], ['freelancer', ar ? 'فريلانسر' : 'Freelancer', UserIcon]] as const).map(([k, label, Ic]) => (
+                      <button key={k} type="button" onClick={() => setNewVehicle((v) => ({ ...v, supplierType: k }))}
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border-2 text-sm font-semibold ${newVehicle.supplierType === k
+                          ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121]' : 'border-slate-200 bg-white text-slate-700'}`}>
+                        <Ic className="w-4 h-4" /> {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-slate-500">
+                {ar ? 'السيارة (والمورد الجديد) هيتسجلوا تلقائياً في صفحة الموردين والمركبات.' : 'The vehicle (and any new supplier) auto-register on the fleet page.'}
+              </p>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
+              <input value={form.driverName || ''} onChange={(e) => set('driverName', e.target.value)}
+                placeholder={ar ? 'يتملى تلقائياً عند اختيار السيارة' : 'Autofills from the vehicle'} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
+              <input value={form.driverPhone || ''} onChange={(e) => set('driverPhone', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {/* 3..6 ── the config-driven groups */}
+      {groups.map((g, i) => {
         const gf = fields.filter((f) => f.group === g && !FIXED_KEYS.has(f.key));
         if (!gf.length) return null;
         return (
-          <div key={g} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
-            <p className="text-sm font-bold text-slate-900 mb-4">{ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en}</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {gf.map(renderField)}
-            </div>
+          <div key={g}>
+            {sectionCard(GROUP_ICONS[g], i + 3, ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en, (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{gf.map(renderField)}</div>
+            ))}
           </div>
         );
       })}
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <p className="text-xs text-slate-500 mb-1.5">{ar ? 'الحالة' : 'Status'}</p>
-          <Select value={form.status || 'requesting'} onChange={(e) => set('status', e.target.value)}>
-            {ORDER_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
-          </Select>
+      {sectionCard(Check, groups.length + 3, ar ? 'الحالة والملاحظات' : 'Status & notes', (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label className={labelCls}>{ar ? 'الحالة' : 'Status'}</label>
+            <Select value={form.status || 'requesting'} onChange={(e) => set('status', e.target.value)}>
+              {ORDER_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
+            </Select>
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'المندوب' : 'Agent'}</label>
+            <input value={`${user?.firstName || ''} ${user?.lastName || ''}`.trim()} readOnly disabled className={inputCls + ' opacity-70'} />
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>
+            <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} className={inputCls} />
+          </div>
         </div>
-        <div>
-          <p className="text-xs text-slate-500 mb-1.5">{ar ? 'المندوب' : 'Agent'}</p>
-          {/* Stamped from the signed-in account — displayed so it is no mystery,
-              read-only so it is no lie. */}
-          <input value={`${user?.firstName || ''} ${user?.lastName || ''}`.trim()} readOnly disabled className={inputCls + ' opacity-70'} />
-        </div>
-        <div className="sm:col-span-1">
-          <p className="text-xs text-slate-500 mb-1.5">{ar ? 'ملاحظات' : 'Notes'}</p>
-          <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} className={inputCls} />
-        </div>
-      </div>
+      ))}
 
-      <div className="flex items-center justify-end gap-3 pb-8">
-        <button type="button" onClick={() => router.push('/system/shipment-orders')}
-          className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-        <PrimaryButton onClick={save} disabled={saving}>
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-          {editId ? (ar ? 'حفظ التعديلات' : 'Save changes') : (ar ? 'إنشاء الشحنة' : 'Create shipment')}
-        </PrimaryButton>
+      {/* Sticky save bar: the button is always in reach, and it says how many
+          required answers are still missing instead of a silent dead click. */}
+      <div className="fixed bottom-0 inset-x-0 lg:ms-64 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-6 py-3">
+        <div className="max-w-5xl flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            {missingKeys.size > 0
+              ? (showErrors
+                ? <span className="text-red-600 font-semibold">{ar ? `${missingKeys.size} حقول مطلوبة ناقصة — معلّمة بالأحمر` : `${missingKeys.size} required fields missing — marked red`}</span>
+                : (ar ? `${missingKeys.size} حقول مطلوبة متبقية` : `${missingKeys.size} required fields left`))
+              : <span className="text-emerald-600 font-semibold">{ar ? 'كل المطلوب مكتمل ✓' : 'All required complete ✓'}</span>}
+          </p>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => router.push('/system/shipment-orders')}
+              className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+            <PrimaryButton onClick={save} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {editId ? (ar ? 'حفظ التعديلات' : 'Save changes') : (ar ? 'إنشاء الشحنة' : 'Create shipment')}
+            </PrimaryButton>
+          </div>
+        </div>
       </div>
     </div>
   );

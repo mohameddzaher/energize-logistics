@@ -86,9 +86,34 @@ export const GROUP_LABELS: Record<FormField['group'], { ar: string; en: string }
 export const fieldLabel = (f: FormField, lang: Lang) => (lang === 'ar' ? f.labelAr : (f.labelEn || f.labelAr));
 export const optionLabel = (o: FormFieldOption, lang: Lang) => (lang === 'ar' ? (o.ar || o.key) : (o.en || o.key));
 
+export interface OrderSupplier {
+  _id: string;
+  name: string;
+  type: 'company' | 'freelancer';
+  phone?: string;
+  email?: string;
+  notes?: string;
+  vehicleCount?: number;
+}
+
+export interface OrderVehicle {
+  _id: string;
+  plate: string;
+  name?: string;
+  truckType?: string;
+  supplier?: OrderSupplier | string | null; // null = our own fleet
+  defaultDriverName?: string;
+  defaultDriverPhone?: string;
+  notes?: string;
+}
+
 // Sections the form always renders itself, regardless of field config: they
-// carry logic (customer autofill, waybill, status) rather than plain answers.
-export const FIXED_KEYS = new Set(['customer', 'waybillNumber', 'status', 'agentName']);
+// carry logic (customer autofill, vehicle registry, waybill, status) rather
+// than plain answers.
+export const FIXED_KEYS = new Set([
+  'customer', 'waybillNumber', 'status', 'agentName',
+  'vehicleName', 'driverName', 'driverPhone',
+]);
 
 export const fmtDT = (v?: string | null, lang: Lang = 'ar') => {
   if (!v) return '—';

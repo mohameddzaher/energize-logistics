@@ -24,6 +24,16 @@ router.post('/customers', authorize(...EDIT_ROLES), so.createCustomer);
 router.put('/customers/:id', authorize(...EDIT_ROLES), so.updateCustomer);
 router.delete('/customers/:id', authorize(...ADMIN_ROLES), so.deleteCustomer);
 
+// Suppliers & vehicles — the fleet register the create form reads and feeds.
+router.get('/suppliers', so.listSuppliers);
+router.post('/suppliers', authorize(...EDIT_ROLES), so.createSupplier);
+router.put('/suppliers/:id', authorize(...EDIT_ROLES), so.updateSupplier);
+router.delete('/suppliers/:id', authorize(...ADMIN_ROLES), so.deleteSupplier);
+router.get('/vehicles', so.listVehicles);
+router.post('/vehicles', authorize(...EDIT_ROLES), so.createVehicle);
+router.put('/vehicles/:id', authorize(...EDIT_ROLES), so.updateVehicle);
+router.delete('/vehicles/:id', authorize(...ADMIN_ROLES), so.deleteVehicle);
+
 // Form fields (the settings page). Changing the form is an admin act.
 router.get('/fields', so.listFields);
 router.post('/fields', authorize(...ADMIN_ROLES), so.createField);

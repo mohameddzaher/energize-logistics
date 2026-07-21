@@ -2,6 +2,7 @@ const MaintenanceRequest = require('../models/MaintenanceRequest');
 const WorkshopPurchaseRequest = require('../models/WorkshopPurchaseRequest');
 const WorkshopTask = require('../models/WorkshopTask');
 const InventoryItem = require('../models/InventoryItem');
+const InventoryIssue = require('../models/InventoryIssue');
 // The workshop is the shop floor for the Location Solutions fleet — the tires,
 // flatbeds and trailers it fits and removes are the SAME registry the ls2
 // section tracks. Reading those models here (never writing them: mount/move
@@ -1367,6 +1368,116 @@ const getWorkshopUsers = async (req, res) => {
 
 
 // ═══════════════════════════════════════════════════════════
+// ISSUES (الصرف) — parts leaving the shelf onto a vehicle
+// ═══════════════════════════════════════════════════════════
+
+// Take N units of a part off the shelf and record where they went. This is what
+// makes the installed-vs-stock question answerable for consumables: the line
+// keeps the on-shelf count, the issue rows keep the "gone onto vehicle X" side.
+const issueInventoryItem = async (req, res) => {
+  try {
+    const { quantity, vehicleNumber, notes, date } = req.body || {};
+    const qty = Math.max(1, Number(quantity) || 1);
+
+    const item = await InventoryItem.findById(req.params.id);
+    if (!item || item.isActive === false) {
+      return res.status(404).json({ message: 'Inventory item not found' });
+    }
+    // Refusing beats clamping: issuing 5 of 3 means the register is already
+    // wrong, and papering over it here would hide that.
+    if ((Number(item.quantity) || 0) < qty) {
+      return res.status(400).json({ message: `Only ${item.quantity} in stock` });
+    }
+
+    item.quantity = (Number(item.quantity) || 0) - qty;
+    await item.save();
+
+    const issue = await InventoryIssue.create({
+      item: item._id,
+      itemName: item.name,
+      itemCode: item.code,
+      quantity: qty,
+      vehicleNumber: String(vehicleNumber || '').trim(),
+      notes: String(notes || '').trim(),
+      date: date || new Date().toISOString().slice(0, 10),
+      issuedBy: req.user._id,
+    });
+
+    emitToAll('inventory:updated', item);
+
+    await logAudit({
+      user: req.user,
+      action: 'issue',
+      entity: 'InventoryItem',
+      entityId: item._id,
+      changes: { name: item.name, quantity: qty, vehicleNumber: issue.vehicleNumber, remaining: item.quantity },
+      ipAddress: req.ip,
+    });
+
+    res.status(201).json({ issue, item });
+  } catch (error) {
+    console.error('Error issuing inventory item:', error);
+    res.status(500).json({ message: 'Failed to issue inventory item' });
+  }
+};
+
+const listInventoryIssues = async (req, res) => {
+  try {
+    const { item, vehicleNumber, search, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (item) filter.item = item;
+    if (vehicleNumber) filter.vehicleNumber = new RegExp(String(vehicleNumber).trim(), 'i');
+    if (search) {
+      const rx = new RegExp(String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ itemName: rx }, { itemCode: rx }, { vehicleNumber: rx }, { notes: rx }];
+    }
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [issues, total] = await Promise.all([
+      InventoryIssue.find(filter)
+        .populate('issuedBy', 'firstName lastName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      InventoryIssue.countDocuments(filter),
+    ]);
+    res.json({ issues, total });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load issues' });
+  }
+};
+
+// Undo a mistaken issue: the units go back on the shelf and the row disappears.
+// Manager-only, because it moves stock.
+const deleteInventoryIssue = async (req, res) => {
+  try {
+    const issue = await InventoryIssue.findById(req.params.id);
+    if (!issue) return res.status(404).json({ message: 'Issue record not found' });
+
+    const item = await InventoryItem.findById(issue.item);
+    if (item) {
+      item.quantity = (Number(item.quantity) || 0) + issue.quantity;
+      await item.save();
+      emitToAll('inventory:updated', item);
+    }
+    await issue.deleteOne();
+
+    await logAudit({
+      user: req.user,
+      action: 'unissue',
+      entity: 'InventoryItem',
+      entityId: issue.item,
+      changes: { name: issue.itemName, quantity: issue.quantity, vehicleNumber: issue.vehicleNumber },
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: 'Issue reversed', item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to reverse the issue' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
 // STORE (المستودع) — everything the workshop holds, and where it is
 // ═══════════════════════════════════════════════════════════
 
@@ -1495,6 +1606,9 @@ module.exports = {
   // Inventory
   getWorkshopStore,
   getInventory,
+  issueInventoryItem,
+  listInventoryIssues,
+  deleteInventoryIssue,
   createInventoryItem,
   updateInventoryItem,
   deleteInventoryItem,

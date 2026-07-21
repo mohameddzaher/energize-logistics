@@ -8,10 +8,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Loader2, X, Plus, Pencil, Trash2, AlertCircle,
   ChevronLeft, ChevronRight, Download, Search, AlertTriangle,
-  Check, XCircle,
+  Check, XCircle, ArrowUpRight, History, Undo2,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { getWorkshopInventoryTranslations } from '@/lib/translations';
+import { useDialog } from '@/components/system/DialogProvider';
+
+interface IssueRow {
+  _id: string;
+  itemName: string;
+  itemCode?: string;
+  quantity: number;
+  vehicleNumber?: string;
+  notes?: string;
+  date?: string;
+  issuedBy?: { firstName?: string; lastName?: string } | null;
+  createdAt: string;
+}
 
 interface InventoryItem {
   _id: string;
@@ -52,6 +65,7 @@ const EMPTY_FORM = {
 //
 // `embedded` only hides the title, which the hosting page already shows.
 export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang } = useLanguage();
   const tx = getWorkshopInventoryTranslations(lang);
@@ -81,9 +95,64 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
   const [rejectNote, setRejectNote] = useState('');
   const [approving, setApproving] = useState<string | null>(null);
 
+  // Issue (صرف): units leaving the shelf onto a vehicle. The log view is what
+  // answers "this part went where" for consumables — the counted half of the
+  // same installed-vs-stock picture the serial-tracked assets already have.
+  const [view, setView] = useState<'stock' | 'issues'>('stock');
+  const [issuing, setIssuing] = useState<InventoryItem | null>(null);
+  const [issueForm, setIssueForm] = useState({ quantity: '1', vehicleNumber: '', notes: '', date: new Date().toISOString().slice(0, 10) });
+  const [issueSaving, setIssueSaving] = useState(false);
+  const [issues, setIssues] = useState<IssueRow[]>([]);
+  const [issuesTotal, setIssuesTotal] = useState(0);
+  const [issuesPage, setIssuesPage] = useState(1);
+  const [issuesSearch, setIssuesSearch] = useState('');
+  const [issuesLoading, setIssuesLoading] = useState(false);
+
   const canEdit = user && ['super_admin', 'workshop_manager', 'purchasing'].includes(user.role);
   const canDelete = user && ['super_admin', 'workshop_manager'].includes(user.role);
   const canApprove = user && ['super_admin', 'workshop_manager'].includes(user.role);
+
+  const fetchIssues = useCallback(async () => {
+    setIssuesLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(issuesPage), limit: '20' });
+      if (issuesSearch.trim()) params.append('search', issuesSearch.trim());
+      const d = await api.get<{ issues: IssueRow[]; total: number }>(`/api/workshop/inventory/issues?${params}`);
+      setIssues(d.issues || []);
+      setIssuesTotal(d.total || 0);
+    } catch (e: any) { setError(e.message); }
+    setIssuesLoading(false);
+  }, [issuesPage, issuesSearch]);
+
+  useEffect(() => { if (view === 'issues') fetchIssues(); }, [view, fetchIssues]);
+
+  const submitIssue = async () => {
+    if (!issuing) return;
+    setIssueSaving(true);
+    try {
+      await api.post(`/api/workshop/inventory/${issuing._id}/issue`, {
+        quantity: Math.max(1, Number(issueForm.quantity) || 1),
+        vehicleNumber: issueForm.vehicleNumber.trim(),
+        notes: issueForm.notes.trim(),
+        date: issueForm.date,
+      });
+      notify(lang === 'ar' ? 'تم الصرف وخصم الكمية من المخزون.' : 'Issued and deducted from stock.', 'success');
+      setIssuing(null);
+      fetchItems();
+      if (view === 'issues') fetchIssues();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setIssueSaving(false);
+  };
+
+  const undoIssue = async (row: IssueRow) => {
+    if (!(await confirm(lang === 'ar'
+      ? `إلغاء صرف ${row.quantity} × «${row.itemName}»؟ سترجع الكمية إلى المخزون.`
+      : `Undo issuing ${row.quantity} × “${row.itemName}”? The units go back to stock.`))) return;
+    try {
+      await api.delete(`/api/workshop/inventory/issues/${row._id}`);
+      fetchIssues(); fetchItems();
+    } catch (e: any) { notify(e.message, 'error'); }
+  };
 
   const fetchItems = useCallback(async () => {
     try {
@@ -262,6 +331,20 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
         </div>
       )}
 
+      {/* Stock vs the issue log — two halves of one register. */}
+      <div className="flex items-center gap-2 border-b border-slate-200">
+        {([
+          { key: 'stock' as const, label: lang === 'ar' ? 'المخزون' : 'Stock', icon: Package },
+          { key: 'issues' as const, label: lang === 'ar' ? 'سجل الصرف' : 'Issue log', icon: History },
+        ]).map((t) => (
+          <button key={t.key} type="button" onClick={() => setView(t.key)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2 ${view === t.key ? 'border-[#f37121] text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            <t.icon className="w-4 h-4" /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'stock' && (<>
       {/* Filters */}
       <div className="flex flex-col sm:flex-row flex-wrap gap-3">
         <div className="relative flex-1 min-w-[240px]">
@@ -400,6 +483,15 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                   </td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setIssuing(item); setIssueForm({ quantity: '1', vehicleNumber: '', notes: '', date: new Date().toISOString().slice(0, 10) }); }}
+                        disabled={(item.quantity || 0) < 1}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-xs font-semibold transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={lang === 'ar' ? 'صرف لمركبة' : 'Issue to a vehicle'}
+                      >
+                        <ArrowUpRight className="w-3.5 h-3.5" /> {lang === 'ar' ? 'صرف' : 'Issue'}
+                      </button>
                       {canEdit && (
                         <button
                           onClick={() => openEditModal(item)}
@@ -442,6 +534,79 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
+        </div>
+      )}
+
+      </>)}
+
+      {view === 'issues' && (
+        <div className="space-y-4">
+          <div className="relative max-w-md">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input value={issuesSearch} onChange={(e) => { setIssuesSearch(e.target.value); setIssuesPage(1); }}
+              placeholder={lang === 'ar' ? 'بحث بالصنف أو رقم المركبة…' : 'Search item or vehicle…'}
+              className="w-full ps-10 pe-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:border-[#f37121]" />
+          </div>
+
+          {issuesLoading ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="w-7 h-7 text-[#f37121] animate-spin" /></div>
+          ) : issues.length === 0 ? (
+            <div className="text-center py-16 text-slate-500">
+              <History className="w-12 h-12 mx-auto mb-3 opacity-40" />
+              <p>{lang === 'ar' ? 'لا يوجد صرف مسجّل بعد. استخدم زر «صرف» على أي صنف في المخزون.' : 'Nothing issued yet. Use the “Issue” button on any stock line.'}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="bg-slate-900 border-b border-slate-200">
+                  {[
+                    lang === 'ar' ? 'الصنف' : 'Item',
+                    lang === 'ar' ? 'الكمية' : 'Qty',
+                    lang === 'ar' ? 'إلى المركبة' : 'To vehicle',
+                    lang === 'ar' ? 'التاريخ' : 'Date',
+                    lang === 'ar' ? 'صرفه' : 'Issued by',
+                    lang === 'ar' ? 'ملاحظات' : 'Notes',
+                    lang === 'ar' ? 'إجراءات' : 'Actions',
+                  ].map((h, i) => <th key={i} className="text-start text-slate-300 font-semibold py-3 px-3 whitespace-nowrap">{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {issues.map((row) => (
+                    <tr key={row._id} className="border-b border-slate-200/70 hover:bg-slate-50">
+                      <td className="py-3 px-3 text-slate-900 font-medium">{row.itemName}{row.itemCode ? <span className="text-xs text-slate-400 font-mono block">{row.itemCode}</span> : null}</td>
+                      <td className="py-3 px-3 text-slate-900 font-semibold">{row.quantity}</td>
+                      <td className="py-3 px-3">
+                        {row.vehicleNumber
+                          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/15 text-blue-700 text-xs font-medium">{row.vehicleNumber}</span>
+                          : <span className="text-slate-400">—</span>}
+                      </td>
+                      <td className="py-3 px-3 text-slate-700">{row.date || fmt.date(row.createdAt)}</td>
+                      <td className="py-3 px-3 text-slate-700">{row.issuedBy ? `${row.issuedBy.firstName || ''} ${row.issuedBy.lastName || ''}`.trim() : '—'}</td>
+                      <td className="py-3 px-3 text-slate-500 text-xs max-w-[220px] truncate" title={row.notes || ''}>{row.notes || '—'}</td>
+                      <td className="py-3 px-3">
+                        {canDelete && (
+                          <button type="button" onClick={() => undoIssue(row)}
+                            title={lang === 'ar' ? 'إلغاء الصرف وإرجاع الكمية' : 'Undo and return to stock'}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                            <Undo2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {issuesTotal > 20 && (
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setIssuesPage((x) => Math.max(1, x - 1))} disabled={issuesPage === 1}
+                className="p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
+              <span className="text-slate-500 text-sm">{issuesPage} / {Math.ceil(issuesTotal / 20)}</span>
+              <button onClick={() => setIssuesPage((x) => Math.min(Math.ceil(issuesTotal / 20), x + 1))} disabled={issuesPage >= Math.ceil(issuesTotal / 20)}
+                className="p-2 rounded-lg bg-white text-slate-500 hover:text-slate-900 disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          )}
         </div>
       )}
 
@@ -609,6 +774,59 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
           </>
         )}
       </AnimatePresence>
+      {/* Issue (صرف): units leave the shelf onto a vehicle. Quantity is checked
+          server-side too — issuing more than the shelf holds is refused, not
+          clamped, because it means the register is already wrong. */}
+      <AnimatePresence>
+        {issuing && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setIssuing(null)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-slate-900">{lang === 'ar' ? 'صرف من المخزون' : 'Issue from stock'}</h2>
+                <button type="button" onClick={() => setIssuing(null)} className="text-slate-500 hover:text-slate-900" aria-label="Close"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="p-6 space-y-3">
+                <p className="text-sm text-slate-600">
+                  {issuing.name} — {lang === 'ar' ? 'المتاح' : 'available'}: <span className="font-bold text-slate-900">{issuing.quantity}</span> {issuing.unit || ''}
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelClass}>{lang === 'ar' ? 'الكمية *' : 'Quantity *'}</label>
+                    <input type="number" min={1} max={issuing.quantity} value={issueForm.quantity}
+                      onChange={(e) => setIssueForm((f) => ({ ...f, quantity: e.target.value }))} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>{lang === 'ar' ? 'التاريخ' : 'Date'}</label>
+                    <input type="date" value={issueForm.date} onChange={(e) => setIssueForm((f) => ({ ...f, date: e.target.value }))} className={inputClass} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={labelClass}>{lang === 'ar' ? 'إلى المركبة (رقمها)' : 'To vehicle (number)'}</label>
+                    <input value={issueForm.vehicleNumber} onChange={(e) => setIssueForm((f) => ({ ...f, vehicleNumber: e.target.value }))}
+                      placeholder={lang === 'ar' ? 'مثال: 5030 — اتركه فارغاً لو صرف عام' : 'e.g. 5030 — leave empty for general use'} className={inputClass} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={labelClass}>{lang === 'ar' ? 'ملاحظات' : 'Notes'}</label>
+                    <textarea rows={2} value={issueForm.notes} onChange={(e) => setIssueForm((f) => ({ ...f, notes: e.target.value }))} className={inputClass} />
+                  </div>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+                <button type="button" onClick={() => setIssuing(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
+                <button type="button" onClick={submitIssue}
+                  disabled={issueSaving || !(Number(issueForm.quantity) >= 1) || Number(issueForm.quantity) > (issuing.quantity || 0)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e06010] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                  {issueSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpRight className="w-4 h-4" />}
+                  {lang === 'ar' ? 'تأكيد الصرف' : 'Confirm issue'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

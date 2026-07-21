@@ -18,6 +18,12 @@ router.get('/dashboard', authorize(...allWorkshopRoles), workshopController.getW
 router.get('/store', authorize(...allWorkshopRoles), workshopController.getWorkshopStore);
 
 // ─── Inventory ─────────────────────────────────────────
+// Issues (الصرف) — parts leaving the shelf onto a vehicle. Declared before
+// /inventory/:id so "issues" is never swallowed as an id.
+router.get('/inventory/issues', authorize(...allWorkshopRoles), workshopController.listInventoryIssues);
+router.post('/inventory/:id/issue', authorize(...allWorkshopRoles), workshopController.issueInventoryItem);
+router.delete('/inventory/issues/:id', authorize(...managerRoles), workshopController.deleteInventoryIssue);
+
 router.get('/inventory/search', authorize(...allWorkshopRoles), workshopController.searchInventory);
 router.get('/inventory', authorize(...allWorkshopRoles), workshopController.getInventory);
 router.post('/inventory', authorize(...purchasingRoles), workshopController.createInventoryItem);

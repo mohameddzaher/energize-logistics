@@ -5,6 +5,7 @@
 // detail view, and — for the admin tier — create / edit / delete. It refetches
 // automatically whenever the backend broadcasts `ops:<key>:changed`.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -22,6 +23,7 @@ import {
 const LIMIT = 25;
 
 export default function OpsResourceTable({ cfg }: { cfg: ResourceCfg }) {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const router = useRouter();
   const { lang, isRTL } = useLanguage();
@@ -178,9 +180,9 @@ export default function OpsResourceTable({ cfg }: { cfg: ResourceCfg }) {
   };
 
   const remove = async (row: Record<string, unknown>) => {
-    if (!confirm(tx.confirmDelete)) return;
+    if (!(await confirm(tx.confirmDelete))) return;
     try { await api.delete(`/api/ops/${cfg.key}/${row.id}`); load(); }
-    catch (e: any) { alert(e?.message || 'Delete failed'); }
+    catch (e: any) { notify(e?.message || 'Delete failed', 'error'); }
   };
 
   const totalPages = meta?.totalPages || 1;

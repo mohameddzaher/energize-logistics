@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -40,6 +41,7 @@ interface Profile {
 }
 
 export default function EmployeeProfilePage() {
+  const { confirm, notify } = useDialog();
   const { id } = useParams() as { id: string };
   const router = useRouter();
   const { user } = useAuth();
@@ -88,8 +90,8 @@ export default function EmployeeProfilePage() {
   useSocket('vehicle:accident', useCallback(() => loadVehicles(), [loadVehicles]));
 
   const reactivate = async () => {
-    if (!confirm(ar ? 'إعادة تفعيل هذا الموظف؟' : 'Reactivate this employee?')) return;
-    try { await api.post(`/api/hr/employees/${id}/reactivate`, {}); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(ar ? 'إعادة تفعيل هذا الموظف؟' : 'Reactivate this employee?'))) return;
+    try { await api.post(`/api/hr/employees/${id}/reactivate`, {}); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   if (loading) return <Spinner />;
@@ -407,15 +409,17 @@ function ActionBtn({ onClick, icon, label, primary, danger }: { onClick: () => v
 }
 
 function DeleteDocBtn({ doc, ar, onDone }: { doc: EmployeeDocument; ar: boolean; onDone: () => void }) {
+  const { confirm, notify } = useDialog();
   const del = async () => {
-    if (!confirm(ar ? `حذف الملف "${doc.title}"؟` : `Delete "${doc.title}"?`)) return;
-    try { await api.delete(`/api/hr/documents/${doc._id}`); onDone(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(ar ? `حذف الملف "${doc.title}"؟` : `Delete "${doc.title}"?`))) return;
+    try { await api.delete(`/api/hr/documents/${doc._id}`); onDone(); } catch (e: any) { notify(e.message, 'error'); }
   };
   return <button type="button" onClick={del} className="flex items-center gap-1 px-2 py-1 rounded-lg text-slate-600 hover:text-red-600 hover:bg-slate-100 text-xs"><Trash2 className="w-3.5 h-3.5" /> {ar ? 'حذف' : 'Delete'}</button>;
 }
 
 // Renew a dated document (iqama / license / insurance ...).
 function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; employeeId: string; ar: boolean; onClose: () => void; onDone: () => void }) {
+  const { notify } = useDialog();
   const { lang } = useLanguage();
   const [docType, setDocType] = useState('iqama');
   const [newExpiry, setNewExpiry] = useState('');
@@ -427,7 +431,7 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
     if (!newExpiry) return;
     setSaving(true);
     try { await api.post(`/api/hr/employees/${employeeId}/renew`, { docType, newExpiry, documentNumber, notes }); onDone(); onClose(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
   return (
@@ -450,6 +454,7 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
 
 // End of service.
 function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; employeeId: string; ar: boolean; onClose: () => void; onDone: () => void }) {
+  const { notify } = useDialog();
   const [reason, setReason] = useState('');
   const [date, setDate] = useState('');
   const [saving, setSaving] = useState(false);
@@ -457,7 +462,7 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
   const save = async () => {
     setSaving(true);
     try { await api.post(`/api/hr/employees/${employeeId}/terminate`, { reason, date: date || undefined }); onDone(); onClose(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
   return (
@@ -475,6 +480,7 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
 
 // Add / edit a document. When `doc` is set we edit metadata only (no re-upload).
 function DocModal({ open, doc, employeeId, ar, onClose, onDone }: { open: boolean; doc: EmployeeDocument | null; employeeId: string; ar: boolean; onClose: () => void; onDone: () => void }) {
+  const { notify } = useDialog();
   const { lang } = useLanguage();
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('other');
@@ -504,13 +510,13 @@ function DocModal({ open, doc, employeeId, ar, onClose, onDone }: { open: boolea
 
   const save = async () => {
     if (!title.trim()) return;
-    if (!doc && !dataUrl) { alert(ar ? 'اختر ملفاً أولاً' : 'Pick a file first'); return; }
+    if (!doc && !dataUrl) { notify(ar ? 'اختر ملفاً أولاً' : 'Pick a file first'); return; }
     setSaving(true);
     try {
       if (doc) await api.put(`/api/hr/documents/${doc._id}`, { title, category, expiryDate, notes });
       else await api.post(`/api/hr/employees/${employeeId}/documents`, { title, category, expiryDate, notes, dataUrl, fileName });
       onDone(); onClose();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 

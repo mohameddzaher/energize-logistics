@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -35,6 +36,7 @@ const ACTION_LABEL: Record<string, { en: string; ar: string }> = {
 };
 
 export default function ItCustodyPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -164,7 +166,7 @@ export default function ItCustodyPage() {
         await api.post('/api/it/custody', form);
       }
       setShowModal(false); refresh();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
@@ -177,13 +179,13 @@ export default function ItCustodyPage() {
     if (!returning) return;
     setSaving(true);
     try { await api.post(`/api/it/custody/${returning._id}/return`, returnForm); setReturning(null); refresh(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const remove = async (a: CustodyItem) => {
-    if (!confirm(ar ? 'حذف هذه العهدة؟' : 'Delete this custody item?')) return;
-    try { await api.delete(`/api/it/custody/${a._id}`); refresh(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(ar ? 'حذف هذه العهدة؟' : 'Delete this custody item?'))) return;
+    try { await api.delete(`/api/it/custody/${a._id}`); refresh(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const openTransfer = (a: CustodyItem) => {
@@ -194,7 +196,7 @@ export default function ItCustodyPage() {
     if (!transferring || !transferForm.toEmployee) return;
     setSaving(true);
     try { await api.post(`/api/it/custody/${transferring._id}/transfer`, transferForm); setTransferring(null); refresh(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
@@ -206,16 +208,16 @@ export default function ItCustodyPage() {
     if (!reporting) return;
     setSaving(true);
     try { await api.post(`/api/it/custody/${reporting._id}/report`, reportForm); setReporting(null); refresh(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const doRetire = async (a: CustodyItem) => {
-    if (!confirm(ar
+    if (!(await confirm(ar
       ? 'إخراج هذا الصنف من الخدمة نهائياً؟ لن يعود إلى المستودع.'
-      : 'Take this item out of service for good? It will not go back to the store.')) return;
+      : 'Take this item out of service for good? It will not go back to the store.'))) return;
     try { await api.post(`/api/it/custody/${a._id}/retire`, { date: today() }); refresh(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
   };
 
   const openHistory = async (a: CustodyItem) => {
@@ -249,11 +251,11 @@ export default function ItCustodyPage() {
         employee: handoverEmployee, items: handoverPicked, ...handoverForm,
       });
       // Say plainly what is still on them — that is the whole point of the screen.
-      alert(ar
+      notify(ar
         ? `تم تسجيل استلام ${d.returned} صنف. المتبقي بعهدة الموظف: ${d.outstanding.length} صنف.`
         : `Recorded ${d.returned} item(s) as handed back. Still outstanding: ${d.outstanding.length}.`);
       setHandoverOpen(false); refresh();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 

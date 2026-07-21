@@ -3,6 +3,7 @@
 // activity log filed under it. Admins edit the details in place — the same
 // fields the list modal exposes, without leaving the page.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -20,6 +21,7 @@ import {
 type Draft = Partial<Campaign>;
 
 export default function MarketingCampaignPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
@@ -58,7 +60,7 @@ export default function MarketingCampaignPage() {
   };
 
   const save = async () => {
-    if (!draft.name || !draft.name.trim()) { alert(ar ? 'اسم الحملة مطلوب' : 'Campaign name is required'); return; }
+    if (!draft.name || !draft.name.trim()) { notify(ar ? 'اسم الحملة مطلوب' : 'Campaign name is required'); return; }
     setSaving(true);
     try {
       const body = { ...draft };
@@ -67,7 +69,7 @@ export default function MarketingCampaignPage() {
       setEditing(false);
       load();
     } catch (e: unknown) {
-      alert((e as Error)?.message || (ar ? 'فشل الحفظ' : 'Failed to save'));
+      notify((e as Error)?.message || (ar ? 'فشل الحفظ' : 'Failed to save'), 'error');
     }
     setSaving(false);
   };

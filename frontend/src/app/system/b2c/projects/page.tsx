@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import { getB2CTranslations, getB2cProjectsTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
@@ -31,6 +32,7 @@ const DEFAULT_FORM = {
 };
 
 export default function B2CProjectsPage() {
+  const { confirm, notify } = useDialog();
   const { lang } = useLanguage();
   const T = getB2CTranslations(lang);
   const tx = getB2cProjectsTranslations(lang);
@@ -90,12 +92,12 @@ export default function B2CProjectsPage() {
   };
 
   const handleDelete = async (p: Project) => {
-    if (!confirm(`${T.confirmDelete} ${p.name}`)) return;
+    if (!(await confirm(`${T.confirmDelete} ${p.name}`))) return;
     try {
       await api.delete(`/api/b2c/projects/${p._id}`);
       fetchProjects();
     } catch (err: any) {
-      alert(err.message || tx.failed);
+      notify(err.message || tx.failed, 'error');
     }
   };
 

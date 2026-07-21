@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -17,6 +18,7 @@ import {
 const EMPTY = { company: '', firstName: '', lastName: '', arabicName: '', title: '', department: '', email: '', phone: '', mobile: '', whatsapp: '', linkedinUrl: '', isPrimary: false, rating: 0, notes: '' };
 
 export default function CrmContactsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -59,19 +61,19 @@ export default function CrmContactsPage() {
   };
 
   const save = async () => {
-    if (!form.firstName.trim()) { alert(ar ? 'الاسم مطلوب' : 'First name required'); return; }
+    if (!form.firstName.trim()) { notify(ar ? 'الاسم مطلوب' : 'First name required'); return; }
     setSaving(true);
     try {
       const payload = { ...form, rating: Number(form.rating) || 0, company: form.company || undefined };
       if (editing) await api.put(`/api/crm/contacts/${editing._id}`, payload);
       else await api.post('/api/crm/contacts', payload);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSaving(false); }
   };
   const remove = async (c: CrmContact) => {
-    if (!confirm(T.confirmDelete)) return;
-    try { await api.delete(`/api/crm/contacts/${c._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(T.confirmDelete))) return;
+    try { await api.delete(`/api/crm/contacts/${c._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;

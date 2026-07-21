@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
@@ -20,6 +21,7 @@ interface Branch {
 }
 
 export default function BranchesPage() {
+  const { confirm } = useDialog();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
   const { lang } = useLanguage();
@@ -76,7 +78,7 @@ export default function BranchesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(T.deleteBranch)) return;
+    if (!(await confirm(T.deleteBranch))) return;
     try {
       await api.delete(`/api/branches/${id}`);
       fetchBranches();

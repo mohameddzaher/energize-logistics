@@ -5,6 +5,7 @@
 // a dropdown. Each option carries its own sheets, so an option can also be a
 // multi-sheet workbook. File names get the export date appended.
 import { useEffect, useRef, useState } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { exportMultiSheet } from '@/utils/exportExcel';
 
@@ -18,6 +19,7 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
   lang?: 'en' | 'ar';
   className?: string;
 }) {
+  const { notify } = useDialog();
   const [openMenu, setOpenMenu] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const ar = lang === 'ar';
@@ -32,7 +34,7 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
   const run = (opt: ExportOption) => {
     setOpenMenu(false);
     const total = opt.sheets.reduce((n, s) => n + (s.rows?.length || 0), 0);
-    if (!total) { alert(ar ? 'لا توجد بيانات للتصدير' : 'No data to export'); return; }
+    if (!total) { notify(ar ? 'لا توجد بيانات للتصدير' : 'No data to export'); return; }
     const date = new Date().toISOString().slice(0, 10);
     exportMultiSheet(opt.sheets.map((s) => ({ name: s.name, data: s.rows, columns: s.columns })), `${fileName}-${date}`);
   };

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -16,6 +17,7 @@ const TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
 const EMPTY = { code: '', nameEn: '', nameAr: '', type: 'asset', description: '' };
 
 export default function ChartOfAccountsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -48,20 +50,20 @@ export default function ChartOfAccountsPage() {
   const openCreate = () => { setEditing(null); setForm(EMPTY); setShowModal(true); };
   const openEdit = (a: ChartAccount) => { setEditing(a); setForm({ ...EMPTY, ...a }); setShowModal(true); };
   const save = async () => {
-    if (!form.code.trim() || !form.nameEn.trim()) { alert(tx.codeAndNameRequired); return; }
+    if (!form.code.trim() || !form.nameEn.trim()) { notify(tx.codeAndNameRequired); return; }
     setSaving(true);
     try {
       if (editing) await api.put(`/api/accounting/accounts/${editing._id}`, form);
       else await api.post('/api/accounting/accounts', form);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); } finally { setSaving(false); }
+    } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
   };
   const remove = async (a: ChartAccount) => {
-    if (!confirm(`${tx.deletePrefix}${a.nameEn}${tx.deleteSuffix}`)) return;
-    try { await api.delete(`/api/accounting/accounts/${a._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(`${tx.deletePrefix}${a.nameEn}${tx.deleteSuffix}`))) return;
+    try { await api.delete(`/api/accounting/accounts/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
   const openLedger = async (a: ChartAccount) => {
-    try { setLedger(await api.get(`/api/accounting/ledger/${a._id}`)); } catch (e: any) { alert(e.message); }
+    try { setLedger(await api.get(`/api/accounting/ledger/${a._id}`)); } catch (e: any) { notify(e.message, 'error'); }
   };
   const exportXlsx = () => {
     exportToExcel(items, [

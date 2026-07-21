@@ -1,7 +1,8 @@
 'use client';
-// Alerts — every telemetry alert (open or resolved) with severity/type/status
+// Alerts — every telemetry notify(open or resolved) with severity/type/status
 // filters. Operators can acknowledge an alert; clicking a row opens the vehicle.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -13,6 +14,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ls2Text, isLs2Staff, severityStyle, alertTypeLabel, alertMessage, timeAgo, ALERT_TYPE_LABELS, type Lang, type Alert } from '@/lib/ls2';
 
 export default function Ls2AlertsPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -17,6 +18,7 @@ import { exportToExcel } from '@/utils/exportExcel';
 const emptyItem = () => ({ description: '', quantity: 1, unitPrice: 0 });
 
 export default function PurchaseOrdersPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -53,21 +55,21 @@ export default function PurchaseOrdersPage() {
 
   const openCreate = () => { setForm({ vendor: '', vatRate: opts?.KSA_VAT_RATE ?? 15, expectedDate: '', notes: '', items: [emptyItem()] }); setShowModal(true); };
   const save = async () => {
-    if (!form.vendor) { alert(tx.pickVendor); return; }
+    if (!form.vendor) { notify(tx.pickVendor); return; }
     setSaving(true);
     try {
       await api.post('/api/procurement/orders', { ...form, expectedDate: form.expectedDate || undefined, items: form.items.filter((l: any) => l.description?.trim()) });
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); } finally { setSaving(false); }
+    } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
   };
-  const receive = async (po: PurchaseOrder) => { try { await api.post(`/api/procurement/orders/${po._id}/receive`); load(); } catch (e: any) { alert(e.message); } };
-  const remove = async (po: PurchaseOrder) => { if (!confirm(tx.deleteOrderConfirm)) return; try { await api.delete(`/api/procurement/orders/${po._id}`); load(); } catch (e: any) { alert(e.message); } };
+  const receive = async (po: PurchaseOrder) => { try { await api.post(`/api/procurement/orders/${po._id}/receive`); load(); } catch (e: any) { notify(e.message, 'error'); } };
+  const remove = async (po: PurchaseOrder) => { if (!(await confirm(tx.deleteOrderConfirm))) return; try { await api.delete(`/api/procurement/orders/${po._id}`); load(); } catch (e: any) { notify(e.message, 'error'); } };
   const createBill = async () => {
     if (!billFor) return;
     try {
       await api.post('/api/procurement/bills', { vendor: typeof billFor.vendor === 'object' ? billFor.vendor._id : billFor.vendor, purchaseOrder: billFor._id, subtotal: billFor.subtotal, vatAmount: billFor.vatAmount, dueDate: undefined });
-      setBillFor(null); load(); alert(tx.billCreatedPosted);
-    } catch (e: any) { alert(e.message); }
+      setBillFor(null); load(); notify(tx.billCreatedPosted);
+    } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const statusLabel = (key: string) => {

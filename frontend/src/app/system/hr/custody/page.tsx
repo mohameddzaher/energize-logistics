@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -23,6 +24,7 @@ const isLocked = (a: Asset) => isItOwned(a) && a.type !== 'sim';
 const userName = (u: any) => (u && typeof u === 'object' ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 
 export default function CustodyPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -67,15 +69,15 @@ export default function CustodyPage() {
       if (editing) await api.put(`/api/hr/assets/${editing._id}`, form);
       else await api.post('/api/hr/assets', form);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const returnAsset = async (a: Asset) => {
     const cond = prompt(tx.returnConditionPrompt, a.condition || 'good') || a.condition;
-    try { await api.post(`/api/hr/assets/${a._id}/return`, { returnedCondition: cond }); load(); } catch (e: any) { alert(e.message); }
+    try { await api.post(`/api/hr/assets/${a._id}/return`, { returnedCondition: cond }); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
-  const remove = async (a: Asset) => { if (!confirm(tx.deleteConfirm)) return; try { await api.delete(`/api/hr/assets/${a._id}`); load(); } catch (e: any) { alert(e.message); } };
+  const remove = async (a: Asset) => { if (!(await confirm(tx.deleteConfirm))) return; try { await api.delete(`/api/hr/assets/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); } };
 
   const filtered = assets
     .filter((a) => !sourceFilter || (sourceFilter === 'it' ? isItOwned(a) : !isItOwned(a)))

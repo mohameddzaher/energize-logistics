@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -22,6 +23,7 @@ const EMPTY = {
 };
 
 export default function ItStockPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -79,13 +81,13 @@ export default function ItStockPage() {
       if (editing) await api.put(`/api/it/stock/${editing._id}`, form);
       else await api.post('/api/it/stock', form);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const remove = async (a: StockItem) => {
-    if (!confirm(ar ? 'حذف هذا الصنف من المستودع؟' : 'Delete this item from stock?')) return;
-    try { await api.delete(`/api/it/stock/${a._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(ar ? 'حذف هذا الصنف من المستودع؟' : 'Delete this item from stock?'))) return;
+    try { await api.delete(`/api/it/stock/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const openAssign = (a: StockItem) => {
@@ -99,7 +101,7 @@ export default function ItStockPage() {
     try {
       await api.post(`/api/it/stock/${assigning._id}/assign`, assignForm);
       setAssigning(null); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 

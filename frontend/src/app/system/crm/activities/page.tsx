@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -17,6 +18,7 @@ const EMPTY = { type: 'call', subject: '', body: '', company: '', direction: 'ou
 const ICONS: Record<string, any> = { call: Phone, meeting: Users, email: Mail, whatsapp: MessageCircle, visit: MapPin, note: StickyNote };
 
 export default function CrmActivitiesPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -61,19 +63,19 @@ export default function CrmActivitiesPage() {
     setShowModal(true);
   };
   const save = async () => {
-    if (!form.subject.trim()) { alert(ar ? 'الموضوع مطلوب' : 'Subject required'); return; }
+    if (!form.subject.trim()) { notify(ar ? 'الموضوع مطلوب' : 'Subject required'); return; }
     setSaving(true);
     try {
       const payload = { ...form, durationMinutes: Number(form.durationMinutes) || 0, company: form.company || undefined, date: form.date ? new Date(form.date) : undefined };
       if (editing) await api.put(`/api/crm/activities/${editing._id}`, payload);
       else await api.post('/api/crm/activities', payload);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSaving(false); }
   };
   const remove = async (a: CrmActivity) => {
-    if (!confirm(T.confirmDelete)) return;
-    try { await api.delete(`/api/crm/activities/${a._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(T.confirmDelete))) return;
+    try { await api.delete(`/api/crm/activities/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;

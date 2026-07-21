@@ -3,6 +3,7 @@
 // agents, technology vendors, government bodies and associations — from first
 // contact through to a signed agreement.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -27,6 +28,7 @@ const EMPTY = {
 };
 
 export default function BdPartnersPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -80,7 +82,7 @@ export default function BdPartnersPage() {
   };
 
   const save = async () => {
-    if (!String(form.name || '').trim()) { alert(ar ? 'الاسم مطلوب' : 'Name is required'); return; }
+    if (!String(form.name || '').trim()) { notify(ar ? 'الاسم مطلوب' : 'Name is required'); return; }
     setSaving(true);
     try {
       const payload = { ...form, services: textToList(form.services) };
@@ -88,14 +90,14 @@ export default function BdPartnersPage() {
       else await api.post('/api/business-development/partners', payload);
       setShowModal(false);
       load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSaving(false); }
   };
 
   const remove = async (r: BdPartner) => {
-    if (!confirm(ar ? 'تأكيد الحذف؟' : 'Delete this partner?')) return;
+    if (!(await confirm(ar ? 'تأكيد الحذف؟' : 'Delete this partner?'))) return;
     try { await api.delete(`/api/business-development/partners/${r._id}`); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
   };
 
   const doExport = () => {

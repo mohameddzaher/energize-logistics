@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -40,6 +41,7 @@ const LOCATION_SUGGESTIONS = ['جدة', 'عقلة الصقور'];
 const EMPTY = { category: '', name: '', duration: '', expiryDate: '', location: '', notes: '' };
 
 export default function LicensesPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -78,11 +80,11 @@ export default function LicensesPage() {
       if (editing) await api.put(`/api/hr/licenses/${editing._id}`, form);
       else await api.post('/api/hr/licenses', form);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
-  const remove = async (l: License) => { if (!confirm(tx.deleteConfirm)) return; try { await api.delete(`/api/hr/licenses/${l._id}`); load(); } catch (e: any) { alert(e.message); } };
+  const remove = async (l: License) => { if (!(await confirm(tx.deleteConfirm))) return; try { await api.delete(`/api/hr/licenses/${l._id}`); load(); } catch (e: any) { notify(e.message, 'error'); } };
 
   // Distinct values for the filter dropdowns.
   const categories = useMemo(() => Array.from(new Set(licenses.map((l) => l.category).filter(Boolean))).sort(), [licenses]);

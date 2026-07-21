@@ -7,6 +7,7 @@
 //   2. الشرائح — the performance bands (0-70 / 70-80 / 80-90 / 90-100).
 //   3. الطبقات — the bonus table per tier, and which tier each department sits in.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
@@ -37,6 +38,7 @@ const blankCriterion = (i: number): Criterion => ({
 });
 
 export default function PerformanceSettingsPage() {
+  const { confirm } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -103,7 +105,7 @@ export default function PerformanceSettingsPage() {
   };
 
   const removeTemplate = async (t: Template) => {
-    if (!confirm(ar ? `حذف نموذج "${t.nameAr}"؟` : `Delete template "${t.nameAr}"?`)) return;
+    if (!(await confirm(ar ? `حذف نموذج "${t.nameAr}"؟` : `Delete template "${t.nameAr}"?`))) return;
     try {
       const r = await api.delete<{ deactivated?: boolean; message?: string }>(`/api/performance/templates/${t._id}`);
       flash('ok', r?.deactivated ? (r.message || (ar ? 'تم تعطيل النموذج' : 'Template deactivated')) : (ar ? 'تم الحذف' : 'Deleted'));

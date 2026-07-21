@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import { getB2CTranslations, getB2cRepsPerformanceTranslations } from '@/lib/translations';
 import api from '@/lib/api';
@@ -28,6 +29,7 @@ interface Upload {
 }
 
 export default function RepsPerformancePage() {
+  const { confirm, notify } = useDialog();
   const { lang } = useLanguage();
   const { user } = useAuth();
   const T = getB2CTranslations(lang);
@@ -176,7 +178,7 @@ export default function RepsPerformancePage() {
   };
 
   const handleDeleteConfig = async (id: string) => {
-    if (!confirm(lang === 'ar' ? 'تأكيد حذف هذا الـ Sheet config؟' : 'Delete this sheet config?')) return;
+    if (!(await confirm(lang === 'ar' ? 'تأكيد حذف هذا الـ Sheet config؟' : 'Delete this sheet config?'))) return;
     setBusyConfigId(id); setBusyAction('deleting'); setSheetError('');
     try {
       await api.delete<any>(`/api/b2c/google-sheet/configs/${id}`);
@@ -348,17 +350,17 @@ export default function RepsPerformancePage() {
 
   const [reconciling, setReconciling] = useState(false);
   const handleReconcileReps = async () => {
-    if (!confirm(lang === 'ar'
+    if (!(await confirm(lang === 'ar'
       ? 'هيدمج المناديب المكررين (نفس الاسم في نفس المشروع/الفرع) ويحوّل الأيام للمندوب الأصلي. تأكيد؟'
       : 'This merges duplicate reps (same name in same project/branch) and moves their daily orders into the canonical rep. Continue?'
-    )) return;
+    ))) return;
     setReconciling(true); setError('');
     try {
       const result = await api.post<{ ok: boolean; mergedGroups: number; repsRemoved: number; ordersRepointed: number }>('/api/b2c/reps/reconcile', {}, { timeoutMs: 300000 });
       const msg = lang === 'ar'
         ? `تم: ${result.mergedGroups} مجموعة متكررة · ${result.repsRemoved} مندوب اتشال · ${result.ordersRepointed} يوم اترحل`
         : `Done: ${result.mergedGroups} groups merged · ${result.repsRemoved} reps removed · ${result.ordersRepointed} orders repointed`;
-      alert(msg);
+      notify(msg);
       await fetchAll();
     } catch (err: any) {
       setError(err.message || tx.failedToReconcile);

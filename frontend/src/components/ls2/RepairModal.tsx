@@ -3,6 +3,7 @@
 // accident, a fault). Nothing here goes to Location Solutions: its service
 // intervals are strictly periodic, so this record lives only in our system.
 import { useState } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { Hammer, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { ls2Text, REPAIR_CATEGORIES, REPAIR_SEVERITIES, REPAIR_STATUSES, type Lang, type Repair } from '@/lib/ls2';
@@ -19,6 +20,7 @@ export default function RepairModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { notify } = useDialog();
   const ar = lang === 'ar';
   const t = ls2Text(lang);
   const [f, setF] = useState({
@@ -50,7 +52,7 @@ export default function RepairModal({
       if (existing) await api.patch(`/api/ls2/repairs/${existing._id}`, body);
       else await api.post('/api/ls2/repairs', body);
       onSaved();
-    } catch (e: any) { alert(e?.message || 'Failed'); }
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setSaving(false);
   };
 

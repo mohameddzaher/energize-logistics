@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -12,6 +13,7 @@ import { getHrContractsTranslations } from '@/lib/translations';
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '' };
 
 export default function ContractsPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -56,7 +58,7 @@ export default function ContractsPage() {
       if (editing) await api.put(`/api/hr/contracts/${editing._id}`, form);
       else await api.post('/api/hr/contracts', form);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
@@ -67,7 +69,7 @@ export default function ContractsPage() {
       load();
     } catch (e: any) {
       // The backend blocks termination while custody is outstanding.
-      alert(e.message);
+      notify(e.message, 'error');
     }
   };
 

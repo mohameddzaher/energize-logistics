@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import vehicleDB, { STORES } from '@/lib/vehicleAnalyticsDB';
 import type { UploadSession } from '@/lib/vehicleAnalyticsDB';
 import * as XLSX from 'xlsx';
@@ -262,6 +263,7 @@ const SECTIONS: { key: SourceKey; titleKey: 'petroAppTitle' | 'locationSolutionT
 ];
 
 export default function VehicleAnalyticsUploadPage() {
+  const { confirm } = useDialog();
   const { lang } = useLanguage();
   const tx = getVehicleAnalyticsUploadTranslations(lang);
   const [sections, setSections] = useState<Record<SourceKey, SectionState>>({ petro_app: { ...initialSection }, location_solution: { ...initialSection }, ht_trips: { ...initialSection } });
@@ -339,7 +341,7 @@ export default function VehicleAnalyticsUploadPage() {
   };
 
   const handleClear = async (key: SourceKey) => {
-    if (!confirm(tx.confirmClear)) return;
+    if (!(await confirm(tx.confirmClear))) return;
     await vehicleDB.clearSource(key);
     updateSection(key, { file: null, success: '', error: '', sessions: [], recordCount: 0 });
     await loadStats();

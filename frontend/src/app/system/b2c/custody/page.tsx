@@ -4,6 +4,7 @@
 // (head / admin / super_admin) grant custody to any PM and audit every wallet,
 // with dynamic date-range + search filters and period totals.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -30,6 +31,7 @@ const addDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n
 const firstOfMonth = () => { const d = new Date(); return ymd(new Date(d.getFullYear(), d.getMonth(), 1)); };
 
 export default function B2CCustodyPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -104,8 +106,8 @@ export default function B2CCustodyPage() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm(t('Delete this entry?', 'حذف هذه الحركة؟'))) return;
-    try { await api.delete(`/api/b2c-wallet/${id}`); reload(); } catch (e: any) { alert(e?.message || 'Failed'); }
+    if (!(await confirm(t('Delete this entry?', 'حذف هذه الحركة؟')))) return;
+    try { await api.delete(`/api/b2c-wallet/${id}`); reload(); } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   };
 
   const mine = (e: Entry) => isManager || String(e.createdBy?._id || '') === String(user?._id || '');

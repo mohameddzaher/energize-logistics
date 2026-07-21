@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -16,6 +17,7 @@ import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import { getHrEmployeesTranslations } from '@/lib/translations';
 
 export default function HREmployeesPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -57,8 +59,8 @@ export default function HREmployeesPage() {
   const openEdit = (e: Employee) => { setEditing(e); setShowModal(true); };
 
   const remove = async (e: Employee) => {
-    if (!confirm(`${tx.confirmDeletePrefix}${empName(e, lang)}${tx.confirmDeleteSuffix}`)) return;
-    try { await api.delete(`/api/hr/employees/${e._id}`); load(); } catch (err: any) { alert(err.message); }
+    if (!(await confirm(`${tx.confirmDeletePrefix}${empName(e, lang)}${tx.confirmDeleteSuffix}`))) return;
+    try { await api.delete(`/api/hr/employees/${e._id}`); load(); } catch (err: any) { notify(err.message, 'error'); }
   };
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;

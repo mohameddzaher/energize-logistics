@@ -3,6 +3,7 @@
 // profile so the annual-leave entitlement (and the rest of the contract) can be
 // edited in place without going to the Contracts page.
 import { useState, useEffect } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { Check } from 'lucide-react';
@@ -11,6 +12,7 @@ import { Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2 } fro
 const EMPTY = { type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, probationMonths: 3, jobTitle: '', basicSalary: 0, allowances: 0, notes: '' };
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  const { notify } = useDialog();
   return (
     <div className="border-t border-slate-200 pt-4 mt-4 first:border-t-0 first:pt-0 first:mt-0">
       <h3 className="text-[#f37121] text-sm font-semibold mb-3 flex items-center gap-2"><span className="w-1 h-4 rounded-full bg-[#f37121]" />{title}</h3>
@@ -26,6 +28,7 @@ export default function ContractFormModal({ open, contract, employeeId, onClose,
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { notify } = useDialog();
   const { lang } = useLanguage();
   const ar = lang === 'ar';
   const t = (en: string, a: string) => (ar ? a : en);
@@ -47,7 +50,7 @@ export default function ContractFormModal({ open, contract, employeeId, onClose,
       if (contract) await api.put(`/api/hr/contracts/${contract._id}`, body);
       else await api.post('/api/hr/contracts', body);
       onSaved(); onClose();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 

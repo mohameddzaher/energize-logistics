@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -23,6 +24,7 @@ const EMPTY = {
 };
 
 export default function ItSystemsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -63,13 +65,13 @@ export default function ItSystemsPage() {
       if (editing) await api.put(`/api/it/systems/${editing._id}`, form);
       else await api.post('/api/it/systems', form);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const remove = async (s: ItSystem) => {
-    if (!confirm(ar ? 'حذف هذا النظام؟' : 'Delete this system?')) return;
-    try { await api.delete(`/api/it/systems/${s._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(ar ? 'حذف هذا النظام؟' : 'Delete this system?'))) return;
+    try { await api.delete(`/api/it/systems/${s._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const filtered = systems.filter((s) => {

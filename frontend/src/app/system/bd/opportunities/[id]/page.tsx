@@ -2,6 +2,7 @@
 // A single strategic initiative: its facts, a clickable stage pipeline and the
 // full activity timeline logged against it.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -22,6 +23,7 @@ const EMPTY_ACTIVITY = {
 };
 
 export default function BdOpportunityDetailPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -63,7 +65,7 @@ export default function BdOpportunityDetailPage() {
     try {
       const d = await api.put<{ opportunity: BdOpportunity }>(`/api/business-development/opportunities/${id}`, payload);
       setOpp(d.opportunity);
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setBusy(false); }
   };
 
@@ -87,7 +89,7 @@ export default function BdOpportunityDetailPage() {
   };
 
   const saveActivity = async () => {
-    if (!String(actForm.title || '').trim()) { alert(ar ? 'العنوان مطلوب' : 'Title is required'); return; }
+    if (!String(actForm.title || '').trim()) { notify(ar ? 'العنوان مطلوب' : 'Title is required'); return; }
     setSavingAct(true);
     try {
       await api.post('/api/business-development/activities', {
@@ -99,14 +101,14 @@ export default function BdOpportunityDetailPage() {
       setShowActivity(false);
       setActForm(EMPTY_ACTIVITY);
       load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSavingAct(false); }
   };
 
   const removeActivity = async (a: BdActivity) => {
-    if (!confirm(ar ? 'تأكيد الحذف؟' : 'Delete this activity?')) return;
+    if (!(await confirm(ar ? 'تأكيد الحذف؟' : 'Delete this activity?'))) return;
     try { await api.delete(`/api/business-development/activities/${a._id}`); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
   };
 
   if (!canViewBd(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;

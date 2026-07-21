@@ -4,6 +4,7 @@
 // (only assignee + creator + super_admin), so anything the API returns is
 // something the current user is allowed to open and edit.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -41,6 +42,7 @@ const personName = (p?: Assignee | null) => p ? `${p.firstName || ''} ${p.lastNa
 const fmtDate = (v?: string, lang: 'en' | 'ar' = 'en') => v ? new Date(v).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit' }) : '';
 
 export default function SectionWork({ section, kind }: { section: string; kind: Kind }) {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -101,8 +103,8 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
   };
 
   const remove = async (row: Row) => {
-    if (!confirm(t('Delete this record?', 'حذف هذا السجل؟'))) return;
-    try { await api.delete(`/api/section-work/${cfg.ep}/${row._id}`); load(); } catch (e: any) { alert(e?.message || 'Failed'); }
+    if (!(await confirm(t('Delete this record?', 'حذف هذا السجل؟')))) return;
+    try { await api.delete(`/api/section-work/${cfg.ep}/${row._id}`); load(); } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   };
 
   if (user?.role === 'client') return <div className="text-slate-500 p-8">{t('Not authorized', 'لا تملك صلاحية')}</div>;

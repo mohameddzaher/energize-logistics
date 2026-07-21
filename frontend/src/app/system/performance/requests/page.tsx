@@ -5,6 +5,7 @@
 // super admin decides. Approving unlocks exactly ONE correction — the approval
 // is consumed by the next save, so it can't become a standing permission.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -34,6 +35,7 @@ const fmtDate = (iso?: string | null, lang: Lang = 'ar') =>
     { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 export default function PerformanceRequestsPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
@@ -63,7 +65,7 @@ export default function PerformanceRequestsPage() {
       setNoteFor(null); setNote('');
       await load();
     } catch (e: any) {
-      alert(e?.message || (ar ? 'فشل حفظ القرار' : 'Could not record the decision'));
+      notify(e?.message || (ar ? 'فشل حفظ القرار' : 'Could not record the decision'), 'error');
     }
     setBusy(null);
   };

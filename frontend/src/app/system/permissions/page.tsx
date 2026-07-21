@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
@@ -22,6 +23,7 @@ const LEVELS: { key: Access; icon: any; en: string; ar: string; active: string }
 ];
 
 export default function PermissionsPage() {
+  const { notify } = useDialog();
   const { user, refreshUser } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -70,7 +72,7 @@ export default function PermissionsPage() {
       setSavedFlash(true);
       // If the super admin changed their OWN effective view indirectly, refresh.
       if (user?.role === selectedRole) refreshUser();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 

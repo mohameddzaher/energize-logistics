@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -24,6 +25,7 @@ const EMPTY = {
 };
 
 export default function CrmCompaniesPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -99,7 +101,7 @@ export default function CrmCompaniesPage() {
   };
 
   const save = async () => {
-    if (!form.name.trim()) { alert(ar ? 'الاسم مطلوب' : 'Name is required'); return; }
+    if (!form.name.trim()) { notify(ar ? 'الاسم مطلوب' : 'Name is required'); return; }
     setSaving(true);
     try {
       const payload = {
@@ -114,17 +116,17 @@ export default function CrmCompaniesPage() {
       else await api.post('/api/crm/companies', payload);
       setShowModal(false);
       load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSaving(false); }
   };
 
   const remove = async (c: CrmCompany) => {
-    if (!confirm(ar ? `حذف ${companyName(c, lang)}؟ سيتم حذف كل جهات الاتصال والصفقات المرتبطة.` : `Delete ${companyName(c, lang)}? This also removes its contacts, deals, tasks and activities.`)) return;
-    try { await api.delete(`/api/crm/companies/${c._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(ar ? `حذف ${companyName(c, lang)}؟ سيتم حذف كل جهات الاتصال والصفقات المرتبطة.` : `Delete ${companyName(c, lang)}? This also removes its contacts, deals, tasks and activities.`))) return;
+    try { await api.delete(`/api/crm/companies/${c._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const rate = async (c: CrmCompany, rating: number) => {
-    try { await api.patch(`/api/crm/companies/${c._id}/rate`, { rating }); load(); } catch (e: any) { alert(e.message); }
+    try { await api.patch(`/api/crm/companies/${c._id}/rate`, { rating }); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;

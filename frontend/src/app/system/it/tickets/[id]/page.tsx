@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -32,6 +33,7 @@ interface Sibling {
 }
 
 export default function TicketDetailPage() {
+  const { notify } = useDialog();
   const routeParams = useParams<{ id: string }>();
   const id = String(routeParams?.id || '');
   const router = useRouter();
@@ -68,7 +70,7 @@ export default function TicketDetailPage() {
   const save = async () => {
     setSaving(true);
     try { await api.put(`/api/it/tickets/${id}`, draft); await load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 

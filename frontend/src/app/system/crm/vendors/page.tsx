@@ -2,6 +2,7 @@
 // CRM Vendors (الموردين) — carriers/transporters Energize subcontracts in 3PL.
 // Self-contained; independent of the rest of CRM.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -31,6 +32,7 @@ const statusStyle = (s?: string) => {
 const triState = (v: any, ar: boolean) => v === true ? (ar ? 'نعم' : 'Yes') : v === false ? (ar ? 'لا' : 'No') : '—';
 
 export default function CrmVendorsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -105,8 +107,8 @@ export default function CrmVendorsPage() {
     setSaving(false);
   };
   const remove = async (v: Vendor) => {
-    if (!confirm(t('Delete this vendor?', 'حذف هذا المورد؟'))) return;
-    try { await api.delete(`/api/crm-vendors/${v._id}`); load(); } catch (e: any) { alert(e?.message || 'Failed'); }
+    if (!(await confirm(t('Delete this vendor?', 'حذف هذا المورد؟')))) return;
+    try { await api.delete(`/api/crm-vendors/${v._id}`); load(); } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   };
 
   const anyFilter = !!(debounced || fStatus || fRep || fType || fNew);

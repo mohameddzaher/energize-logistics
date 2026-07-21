@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
@@ -26,6 +27,7 @@ interface Vendor {
 }
 
 export default function VendorsPage() {
+  const { confirm } = useDialog();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(user?.role || '');
@@ -83,7 +85,7 @@ export default function VendorsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(T.deleteVendor)) return;
+    if (!(await confirm(T.deleteVendor))) return;
     try {
       await api.delete(`/api/vendors/${id}`);
       fetchVendors();

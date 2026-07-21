@@ -5,6 +5,7 @@
 // /marketing/reports is nothing more than these rows bucketed by date, so this
 // is where the reportable truth is entered.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -30,6 +31,7 @@ const blankDraft = (): Draft => ({
 const campaignId = (c: Activity['campaign']) => (c && typeof c === 'object' ? c._id : (c as string) || null);
 
 export default function MarketingActivitiesPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -82,7 +84,7 @@ export default function MarketingActivitiesPage() {
   };
 
   const save = async () => {
-    if (!draft.date) { alert(ar ? 'التاريخ مطلوب' : 'Date is required'); return; }
+    if (!draft.date) { notify(ar ? 'التاريخ مطلوب' : 'Date is required'); return; }
     setSaving(true);
     try {
       const body = { ...draft };
@@ -92,15 +94,15 @@ export default function MarketingActivitiesPage() {
       setOpen(false);
       load();
     } catch (e: unknown) {
-      alert((e as Error)?.message || (ar ? 'فشل الحفظ' : 'Failed to save'));
+      notify((e as Error)?.message || (ar ? 'فشل الحفظ' : 'Failed to save'), 'error');
     }
     setSaving(false);
   };
 
   const remove = async (a: Activity) => {
-    if (!confirm(ar ? `حذف النشاط "${a.title || a.date}"؟` : `Delete activity "${a.title || a.date}"?`)) return;
+    if (!(await confirm(ar ? `حذف النشاط "${a.title || a.date}"؟` : `Delete activity "${a.title || a.date}"?`))) return;
     try { await api.delete(`/api/marketing/activities/${a._id}`); load(); }
-    catch (e: unknown) { alert((e as Error)?.message || 'Failed'); }
+    catch (e: unknown) { notify((e as Error)?.message || 'Failed', 'error'); }
   };
 
   const doExport = () => {

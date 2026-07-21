@@ -3,6 +3,7 @@
 // and the employee profile page so the two never drift. Self-contained: it loads
 // the manager/branch options itself and owns its form state.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { Check } from 'lucide-react';
@@ -26,6 +27,7 @@ export const EMPTY_EMPLOYEE = {
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const { notify } = useDialog();
   return (
     <div className="border-t border-slate-200 pt-5 mt-5 first:border-t-0 first:pt-0 first:mt-0">
       <h3 className="text-[#f37121] text-sm font-semibold mb-3 flex items-center gap-2">
@@ -42,6 +44,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
   onClose: () => void;
   onSaved: (e?: Employee) => void;
 }) {
+  const { notify } = useDialog();
   const { lang } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrEmployeesTranslations(lang);
@@ -83,7 +86,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       else saved = await api.post('/api/hr/employees', form);
       onSaved(saved?.employee);
       onClose();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   }, [form, employee, onSaved, onClose]);
 

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -13,6 +14,7 @@ import { exportToExcel } from '@/utils/exportExcel';
 const EMPTY = { rep: '', period: thisPeriod(), amountTarget: 0, dealsTarget: 0, notes: '' };
 
 export default function SalesTargetsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -45,11 +47,11 @@ export default function SalesTargetsPage() {
       if (editing) await api.put(`/api/sales/targets/${editing._id}`, payload);
       else await api.post('/api/sales/targets', payload);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); } finally { setSaving(false); }
+    } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
   };
   const remove = async (t: SalesTarget) => {
-    if (!confirm(tx.confirmDelete)) return;
-    try { await api.delete(`/api/sales/targets/${t._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(tx.confirmDelete))) return;
+    try { await api.delete(`/api/sales/targets/${t._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const handleExport = () => {

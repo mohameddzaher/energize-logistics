@@ -2,6 +2,7 @@
 // Tenders & RFQs. Sorted by submission deadline — the days-remaining column is
 // colour-coded so anything closing inside a week is impossible to miss.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -25,6 +26,7 @@ const EMPTY = {
 };
 
 export default function BdTendersPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -102,7 +104,7 @@ export default function BdTendersPage() {
   };
 
   const save = async () => {
-    if (!String(form.title || '').trim()) { alert(ar ? 'العنوان مطلوب' : 'Title is required'); return; }
+    if (!String(form.title || '').trim()) { notify(ar ? 'العنوان مطلوب' : 'Title is required'); return; }
     setSaving(true);
     try {
       const payload = {
@@ -116,14 +118,14 @@ export default function BdTendersPage() {
       else await api.post('/api/business-development/tenders', payload);
       setShowModal(false);
       load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSaving(false); }
   };
 
   const remove = async (r: BdTender) => {
-    if (!confirm(ar ? 'تأكيد الحذف؟' : 'Delete this tender?')) return;
+    if (!(await confirm(ar ? 'تأكيد الحذف؟' : 'Delete this tender?'))) return;
     try { await api.delete(`/api/business-development/tenders/${r._id}`); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
   };
 
   const doExport = () => {

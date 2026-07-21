@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -22,6 +23,7 @@ const EMPTY = {
 const unitsOf = (a: Asset & { quantity?: number }) => (a.quantity && a.quantity > 0 ? a.quantity : 1);
 
 export default function HRStockPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -73,13 +75,13 @@ export default function HRStockPage() {
       if (editing) await api.put(`/api/hr/stock/${editing._id}`, form);
       else await api.post('/api/hr/stock', form);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const remove = async (a: Asset) => {
-    if (!confirm(tx.deleteConfirm)) return;
-    try { await api.delete(`/api/hr/stock/${a._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(tx.deleteConfirm))) return;
+    try { await api.delete(`/api/hr/stock/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const openAssign = (a: Asset) => {
@@ -93,7 +95,7 @@ export default function HRStockPage() {
     try {
       await api.post(`/api/hr/stock/${assigning._id}/assign`, assignForm);
       setAssigning(null); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 

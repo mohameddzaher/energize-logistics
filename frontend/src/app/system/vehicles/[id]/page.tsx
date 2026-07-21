@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -18,6 +19,7 @@ interface Detail { vehicle: Vehicle | null; authorizations: VehicleAuthorization
 type Action = 'authorize' | 'transfer' | 'revoke' | 'accident' | null;
 
 export default function VehicleDetailPage() {
+  const { notify } = useDialog();
   const { id } = useParams() as { id: string };
   const router = useRouter();
   const { user } = useAuth();
@@ -68,7 +70,7 @@ export default function VehicleDetailPage() {
       else if (action === 'accident') await api.post(`/api/vehicles/${id}/accidents`, { ...form, estimatedCost: Number(form.estimatedCost) || 0, actualCost: Number(form.actualCost) || 0 });
       setAction(null);
       load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 

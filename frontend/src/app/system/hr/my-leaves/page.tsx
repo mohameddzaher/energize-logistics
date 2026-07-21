@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -12,6 +13,7 @@ import { exportToExcel } from '@/utils/exportExcel';
 import { Download } from 'lucide-react';
 
 export default function MyLeavesPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -56,20 +58,20 @@ export default function MyLeavesPage() {
     if (!form.leaveType || !form.startDate || !form.endDate) return;
     setSaving(true);
     try { await api.post('/api/hr/me/leaves', form); setShowForm(false); setForm({ leaveType: '', startDate: '', endDate: '', reason: '' }); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const cancel = async (l: LeaveRequest) => {
-    if (!confirm(tx.cancelRequestConfirm)) return;
-    try { await api.patch(`/api/hr/me/leaves/${l._id}/cancel`, {}); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(tx.cancelRequestConfirm))) return;
+    try { await api.patch(`/api/hr/me/leaves/${l._id}/cancel`, {}); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const decide = async (decision: 'approved' | 'rejected') => {
     if (!review) return;
     setBusy(true);
     try { await api.patch(`/api/hr/leaves/${review._id}/decision`, { decision, note }); setReview(null); setNote(''); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setBusy(false);
   };
 

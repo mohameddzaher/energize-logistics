@@ -3,6 +3,7 @@
 // system. Types are grouped by module on the left; the selected type's rows are
 // listed on the right with add / edit / activate / delete. Backed by /api/lookups.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -26,6 +27,7 @@ const MODULE_LABELS: Record<string, { en: string; ar: string }> = {
 const EMPTY = { nameEn: '', nameAr: '', color: '#f37121', isActive: true };
 
 export default function ReferenceDataPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -79,17 +81,17 @@ export default function ReferenceDataPage() {
       else await api.post('/api/lookups', { type: activeType, ...form });
       setShowModal(false);
       loadItems(activeType);
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const remove = async (it: LookupItem) => {
-    if (it.isSystem) { alert(tx.cannotDeleteDefault); return; }
-    if (!confirm(tx.confirmDelete)) return;
-    try { await api.delete(`/api/lookups/${it._id}`); loadItems(activeType); } catch (e: any) { alert(e.message); }
+    if (it.isSystem) { notify(tx.cannotDeleteDefault); return; }
+    if (!(await confirm(tx.confirmDelete))) return;
+    try { await api.delete(`/api/lookups/${it._id}`); loadItems(activeType); } catch (e: any) { notify(e.message, 'error'); }
   };
 
-  const toggleActive = async (it: LookupItem) => { try { await api.put(`/api/lookups/${it._id}`, { isActive: !it.isActive }); loadItems(activeType); } catch (e: any) { alert(e.message); } };
+  const toggleActive = async (it: LookupItem) => { try { await api.put(`/api/lookups/${it._id}`, { isActive: !it.isActive }); loadItems(activeType); } catch (e: any) { notify(e.message, 'error'); } };
 
   const exportItems = () => {
     exportToExcel(items, [

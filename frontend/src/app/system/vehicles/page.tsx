@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -21,6 +22,7 @@ const EMPTY = {
 };
 
 export default function VehiclesPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -76,13 +78,13 @@ export default function VehiclesPage() {
       else await api.post('/api/vehicles', body);
       setShowModal(false);
       load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const remove = async (v: Vehicle) => {
-    if (!confirm(`${tx.delete} ${v.plateNumber}؟`)) return;
-    try { await api.delete(`/api/vehicles/${v._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(`${tx.delete} ${v.plateNumber}؟`))) return;
+    try { await api.delete(`/api/vehicles/${v._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;

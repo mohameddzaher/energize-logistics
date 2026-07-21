@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
@@ -28,6 +29,7 @@ interface Driver {
 }
 
 export default function DriversPage() {
+  const { confirm } = useDialog();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(user?.role || '');
@@ -93,7 +95,7 @@ export default function DriversPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(T.deleteDriver)) return;
+    if (!(await confirm(T.deleteDriver))) return;
     try {
       await api.delete(`/api/drivers/${id}`);
       fetchDrivers();

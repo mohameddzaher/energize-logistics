@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
@@ -85,6 +86,7 @@ const getTodayStr = () => {
 };
 
 export default function WalletPage() {
+  const { confirm } = useDialog();
   const { user } = useAuth();
   const isManager = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(user?.role || '');
   const isReadOnly = user?.role === 'moderator';
@@ -154,7 +156,7 @@ export default function WalletPage() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
 
-  // Confirm modal (replaces browser confirm())
+  // Confirm modal (replaces browser (await confirm()))
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   // General error banner
@@ -1298,7 +1300,7 @@ export default function WalletPage() {
         )}
       </AnimatePresence>
 
-      {/* Confirm Modal (replaces browser confirm()) */}
+      {/* Confirm Modal (replaces browser (await confirm())) */}
       <AnimatePresence>
         {confirmModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">

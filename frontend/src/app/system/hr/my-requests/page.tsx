@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -11,6 +12,7 @@ import { getHrMyRequestsTranslations } from '@/lib/translations';
 import { exportToExcel } from '@/utils/exportExcel';
 
 export default function MyRequestsPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -36,7 +38,7 @@ export default function MyRequestsPage() {
     if (!form.subject.trim()) return;
     setSaving(true);
     try { await api.post('/api/hr/me/requests', form); setShowForm(false); setForm({ category: 'salary_certificate', subject: '', body: '' }); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
@@ -44,7 +46,7 @@ export default function MyRequestsPage() {
     if (!open || !reply.trim()) return;
     setBusy(true);
     try { const d = await api.post<{ request: HRRequest }>(`/api/hr/requests/${open._id}/reply`, { body: reply }); setOpen(d.request); setReply(''); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
     setBusy(false);
   };
 

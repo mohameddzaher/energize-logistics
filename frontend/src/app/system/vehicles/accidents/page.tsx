@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -15,6 +16,7 @@ import {
 } from '@/components/hr/HRKit';
 
 export default function VehicleAccidentsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -61,13 +63,13 @@ export default function VehicleAccidentsPage() {
     try {
       await api.put(`/api/vehicles/accidents/${editing._id}`, { ...form, estimatedCost: Number(form.estimatedCost) || 0, actualCost: Number(form.actualCost) || 0 });
       setEditing(null); setForm(null); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const remove = async (a: VehicleAccident) => {
-    if (!confirm(tx.deleteConfirm)) return;
-    try { await api.delete(`/api/vehicles/accidents/${a._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(tx.deleteConfirm))) return;
+    try { await api.delete(`/api/vehicles/accidents/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;

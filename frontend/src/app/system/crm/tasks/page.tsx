@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -18,6 +19,7 @@ import {
 const EMPTY = { title: '', description: '', company: '', assignedTo: '', dueDate: '', dueTime: '', priority: 'medium', status: 'todo' };
 
 export default function CrmTasksPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -64,24 +66,24 @@ export default function CrmTasksPage() {
     setShowModal(true);
   };
   const save = async () => {
-    if (!form.title.trim()) { alert(ar ? 'العنوان مطلوب' : 'Title required'); return; }
+    if (!form.title.trim()) { notify(ar ? 'العنوان مطلوب' : 'Title required'); return; }
     setSaving(true);
     try {
       const payload = { ...form, company: form.company || undefined, assignedTo: form.assignedTo || undefined, dueDate: form.dueDate || undefined };
       if (editing) await api.put(`/api/crm/tasks/${editing._id}`, payload);
       else await api.post('/api/crm/tasks', payload);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSaving(false); }
   };
   const remove = async (t: CrmTask) => {
-    if (!confirm(T.confirmDelete)) return;
-    try { await api.delete(`/api/crm/tasks/${t._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(T.confirmDelete))) return;
+    try { await api.delete(`/api/crm/tasks/${t._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
   const toggle = async (t: CrmTask) => {
     const status = t.status === 'done' ? 'todo' : 'done';
     setItems((prev) => prev.map((x) => x._id === t._id ? { ...x, status } : x));
-    try { await api.put(`/api/crm/tasks/${t._id}`, { status }); load(); } catch (e: any) { alert(e.message); load(); }
+    try { await api.put(`/api/crm/tasks/${t._id}`, { status }); load(); } catch (e: any) { notify(e.message, 'error'); load(); }
   };
 
   if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;

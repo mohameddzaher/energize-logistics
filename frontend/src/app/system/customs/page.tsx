@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -62,6 +63,7 @@ const EMPTY = {
 };
 
 export default function CustomsPage() {
+  const { confirm } = useDialog();
   const { user } = useAuth();
   const router = useRouter();
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '');
@@ -108,7 +110,7 @@ export default function CustomsPage() {
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!confirm(T.deleteClearance)) return;
+    if (!(await confirm(T.deleteClearance))) return;
     try { await api.delete(`/api/customs-clearance/${id}`); fetchList(); } catch {}
   };
 

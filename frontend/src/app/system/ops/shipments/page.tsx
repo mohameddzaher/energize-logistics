@@ -5,6 +5,7 @@
 // view that surfaces ALL the nested data UPL returns (driver, vehicle, owner,
 // customer, delegate, pricing, timeline). Live via `ops:shipments:changed`.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -43,6 +44,7 @@ const driverPhone = (s: Row) => s?.driver?.admin?.phone || s?.driver?.phone || '
 const carOwnerName = (s: Row, lang: 'en' | 'ar') => s?.car?.owner?.owner_name || locName(s?.car?.owner?.owner?.name, lang) || '—';
 
 export default function OpsShipmentsPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const tx = opsText(lang);
@@ -150,7 +152,7 @@ export default function OpsShipmentsPage() {
       await api.patch('/api/ops/shipments/status', { status: newStatus, ids: [detail.id] });
       setDetail((d) => d ? { ...d, status: newStatus } : d);
       load();
-    } catch (e: any) { alert(e?.message || 'Failed'); }
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setSavingStatus(false);
   };
 

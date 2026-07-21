@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -26,6 +27,7 @@ interface Dash {
 }
 
 export default function AccountingDashboardPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -45,8 +47,8 @@ export default function AccountingDashboardPage() {
 
   const sync = async () => {
     setSyncing(true);
-    try { const r = await api.post<{ message: string }>('/api/accounting/sync'); alert(r.message); load(); }
-    catch (e: any) { alert(e.message); }
+    try { const r = await api.post<{ message: string }>('/api/accounting/sync'); notify(r.message); load(); }
+    catch (e: any) { notify(e.message, 'error'); }
     finally { setSyncing(false); }
   };
 

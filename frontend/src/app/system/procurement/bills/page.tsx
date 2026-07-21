@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -16,6 +17,7 @@ import { getProcurementBillsTranslations } from '@/lib/translations';
 import { exportToExcel } from '@/utils/exportExcel';
 
 export default function VendorBillsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -48,19 +50,19 @@ export default function VendorBillsPage() {
   const total = (Number(form.subtotal) || 0) + (Number(form.vatAmount) || 0);
   const openCreate = () => { setForm({ vendor: '', vendorInvoiceNumber: '', subtotal: 0, vatAmount: 0, billDate: today(), dueDate: '', category: '', notes: '' }); setShowModal(true); };
   const save = async () => {
-    if (!form.vendor) { alert(tx.pickVendor); return; }
-    if (total <= 0) { alert(tx.totalGtZero); return; }
+    if (!form.vendor) { notify(tx.pickVendor); return; }
+    if (total <= 0) { notify(tx.totalGtZero); return; }
     setSaving(true);
     try {
       await api.post('/api/procurement/bills', { ...form, subtotal: Number(form.subtotal) || 0, vatAmount: Number(form.vatAmount) || 0, dueDate: form.dueDate || undefined });
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); } finally { setSaving(false); }
+    } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
   };
-  const remove = async (b: VendorBill) => { if (!confirm(tx.confirmDelete)) return; try { await api.delete(`/api/procurement/bills/${b._id}`); load(); } catch (e: any) { alert(e.message); } };
+  const remove = async (b: VendorBill) => { if (!(await confirm(tx.confirmDelete))) return; try { await api.delete(`/api/procurement/bills/${b._id}`); load(); } catch (e: any) { notify(e.message, 'error'); } };
   const openPay = (b: VendorBill) => { setPayFor(b); setPayAmount(String(b.balance)); };
   const pay = async () => {
     try { await api.post(`/api/procurement/bills/${payFor!._id}/pay`, { amount: Number(payAmount) || undefined }); setPayFor(null); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
   };
 
   const statusLabel = (s: string) => {

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -25,6 +26,7 @@ const EMPTY = {
 };
 
 export default function ItTicketsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -82,13 +84,13 @@ export default function ItTicketsPage() {
       if (editing) await api.put(`/api/it/tickets/${editing._id}`, body);
       else await api.post('/api/it/tickets', body);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
   const remove = async (t: Ticket) => {
-    if (!confirm(ar ? 'حذف هذا البلاغ؟' : 'Delete this ticket?')) return;
-    try { await api.delete(`/api/it/tickets/${t._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(ar ? 'حذف هذا البلاغ؟' : 'Delete this ticket?'))) return;
+    try { await api.delete(`/api/it/tickets/${t._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const filtered = tickets.filter((t) => {

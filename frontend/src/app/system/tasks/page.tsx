@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getTasksTranslations, getTasksExtraTranslations } from '@/lib/translations';
@@ -103,6 +104,7 @@ const getTodayDate = () => {
 };
 
 export default function TasksPage() {
+  const { confirm } = useDialog();
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getTasksTranslations(lang);
@@ -350,7 +352,7 @@ export default function TasksPage() {
 
   // ─── DELETE TASK ───────────────────────────────────────────
   const handleDeleteTask = async (taskId: string) => {
-    if (!confirm(txx.confirmDeleteTask)) return;
+    if (!(await confirm(txx.confirmDeleteTask))) return;
     try {
       await api.delete(`/api/tasks/${taskId}`);
       fetchTasks();
@@ -360,7 +362,7 @@ export default function TasksPage() {
 
   // ─── CLEAR FOLLOW-UP (remove follow-up date only, keep task) ──
   const handleClearFollowUp = async (taskId: string) => {
-    if (!confirm(txx.confirmRemoveFollowUp)) return;
+    if (!(await confirm(txx.confirmRemoveFollowUp))) return;
     try {
       await api.put(`/api/tasks/${taskId}`, { nextFollowUpDate: null });
       fetchTasks();

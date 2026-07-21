@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -12,6 +13,7 @@ import { downloadLeaveSheet } from '@/lib/leavePdf';
 import type { Signature } from '@/components/SignatureManager';
 
 export default function HRLeavesPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -51,7 +53,7 @@ export default function HRLeavesPage() {
     try {
       await api.patch(`/api/hr/leaves/${review._id}/decision`, { decision, note, signatureId: signWith || undefined });
       setReview(null); setNote(''); setSignWith(''); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setBusy(false);
   };
 
@@ -61,7 +63,7 @@ export default function HRLeavesPage() {
     try {
       const { leave } = await api.get<{ leave: any }>(`/api/hr/leaves/${id}`);
       await downloadLeaveSheet(leave, lang as 'ar' | 'en');
-    } catch (e: any) { alert(e.message || 'PDF failed'); }
+    } catch (e: any) { notify(e.message || 'PDF failed', 'error'); }
     setPdfBusy('');
   };
 

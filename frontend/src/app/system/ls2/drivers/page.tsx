@@ -3,6 +3,7 @@
 // credited to whoever was assigned to it that day, so a driver's km stays honest
 // even when they switch trucks. Each row downloads a full PDF driver report.
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -24,6 +25,7 @@ interface DriverRow {
 }
 
 export default function Ls2DriversPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
@@ -58,7 +60,7 @@ export default function Ls2DriversPage() {
   const downloadPdf = async (name: string) => {
     setPdfBusy(name);
     try { await downloadDriverReport(name, range.from, range.to, lang as Lang); }
-    catch (e: any) { alert(e?.message || 'PDF failed'); }
+    catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setPdfBusy('');
   };
 

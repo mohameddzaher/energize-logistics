@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -11,6 +12,7 @@ import { getHrRequestsTranslations } from '@/lib/translations';
 import { exportToExcel } from '@/utils/exportExcel';
 
 export default function HRRequestsPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -45,13 +47,13 @@ export default function HRRequestsPage() {
     try {
       const d = await api.post<{ request: HRRequest }>(`/api/hr/requests/${open._id}/reply`, { body: reply, link });
       setOpen(d.request); setReply(''); setLink(''); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setBusy(false);
   };
 
   const setStatus = async (status: string) => {
     if (!open) return;
-    try { const d = await api.patch<{ request: HRRequest }>(`/api/hr/requests/${open._id}/status`, { status }); setOpen(d.request); load(); } catch (e: any) { alert(e.message); }
+    try { const d = await api.patch<{ request: HRRequest }>(`/api/hr/requests/${open._id}/status`, { status }); setOpen(d.request); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const filtered = requests.filter((r) => !search.trim() || r.subject.toLowerCase().includes(search.toLowerCase()) || userName(r.requester).toLowerCase().includes(search.toLowerCase()));

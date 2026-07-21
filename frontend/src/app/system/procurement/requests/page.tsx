@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -19,6 +20,7 @@ const emptyItem = () => ({ description: '', quantity: 1, unitPrice: 0 });
 const EMPTY = { title: '', category: '', department: '', priority: 'medium', justification: '', neededBy: '', notes: '', items: [emptyItem()] };
 
 export default function PurchaseRequestsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -61,7 +63,7 @@ export default function PurchaseRequestsPage() {
     setShowModal(true);
   };
   const save = async (submit = false) => {
-    if (!form.title.trim()) { alert(tx.titleRequired); return; }
+    if (!form.title.trim()) { notify(tx.titleRequired); return; }
     setSaving(true);
     try {
       const payload = { ...form, neededBy: form.neededBy || undefined, status: submit ? 'pending_approval' : undefined,
@@ -69,18 +71,18 @@ export default function PurchaseRequestsPage() {
       if (editing) await api.put(`/api/procurement/requests/${editing._id}`, payload);
       else await api.post('/api/procurement/requests', payload);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); } finally { setSaving(false); }
+    } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
   };
-  const submitPR = async (pr: PurchaseRequest) => { try { await api.post(`/api/procurement/requests/${pr._id}/submit`); load(); } catch (e: any) { alert(e.message); } };
+  const submitPR = async (pr: PurchaseRequest) => { try { await api.post(`/api/procurement/requests/${pr._id}/submit`); load(); } catch (e: any) { notify(e.message, 'error'); } };
   const decide = async (pr: PurchaseRequest, decision: string) => {
-    if (decision === 'rejected' && !confirm(tx.confirmReject)) return;
-    try { await api.patch(`/api/procurement/requests/${pr._id}/decision`, { decision }); load(); } catch (e: any) { alert(e.message); }
+    if (decision === 'rejected' && !(await confirm(tx.confirmReject))) return;
+    try { await api.patch(`/api/procurement/requests/${pr._id}/decision`, { decision }); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
-  const remove = async (pr: PurchaseRequest) => { if (!confirm(tx.confirmDelete)) return; try { await api.delete(`/api/procurement/requests/${pr._id}`); load(); } catch (e: any) { alert(e.message); } };
+  const remove = async (pr: PurchaseRequest) => { if (!(await confirm(tx.confirmDelete))) return; try { await api.delete(`/api/procurement/requests/${pr._id}`); load(); } catch (e: any) { notify(e.message, 'error'); } };
   const convert = async () => {
-    if (!convVendor) { alert(tx.pickVendor); return; }
+    if (!convVendor) { notify(tx.pickVendor); return; }
     try { await api.post(`/api/procurement/requests/${convertFor!._id}/convert`, { vendor: convVendor, vatRate: opts?.KSA_VAT_RATE ?? 15 }); setConvertFor(null); setConvVendor(''); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
   };
 
   const statusLabel = (key: string) => { const s = (opts?.PR_STATUSES || []).find((x) => x.key === key); return s ? (ar ? s.nameAr : s.nameEn) : key; };

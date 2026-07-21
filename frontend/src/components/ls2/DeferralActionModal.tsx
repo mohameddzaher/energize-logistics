@@ -6,6 +6,7 @@
 //   skip  → decided not to do it at all (clears the alert, logged as won't-do)
 // Shared by the vehicle profile and the Maintenance page's fleet list.
 import { useState } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { CheckCircle2, Clock, XCircle, Loader2, X } from 'lucide-react';
 import api from '@/lib/api';
 import { ls2Text, fmtKm, fmtNum, type Lang, type Deferral } from '@/lib/ls2';
@@ -26,6 +27,7 @@ export default function DeferralActionModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const { notify } = useDialog();
   const ar = lang === 'ar';
   const t = ls2Text(lang);
   const [action, setAction] = useState<Action>('done');
@@ -37,7 +39,7 @@ export default function DeferralActionModal({
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (action === 'defer' && !(Number(addKm) > 0)) { alert(ar ? 'اكتب المسافة الإضافية' : 'Enter the extra km'); return; }
+    if (action === 'defer' && !(Number(addKm) > 0)) { notify(ar ? 'اكتب المسافة الإضافية' : 'Enter the extra km'); return; }
     setBusy(true);
     try {
       await api.post(`/api/ls2/vehicles/${unitId}/resolve-deferral`, {
@@ -47,7 +49,7 @@ export default function DeferralActionModal({
         note: note.trim() || undefined,
       });
       onDone();
-    } catch (e: any) { alert(e?.message || 'Failed'); }
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
 

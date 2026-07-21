@@ -7,6 +7,7 @@
 // needed, or DEFERRED — inspected and judged good for another N km, which we
 // turn into an odometer deadline and alert on before it runs out.
 import { useState, useEffect } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { CheckCircle2, Loader2, Clock, MinusCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { ls2Text, type Lang, type ServiceInterval, type ChecklistItem, type ChecklistTemplates } from '@/lib/ls2';
@@ -25,6 +26,7 @@ export default function RegisterServiceModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { notify } = useDialog();
   const ar = lang === 'ar';
   const t = ls2Text(lang);
   const [odo, setOdo] = useState(String(currentOdo ?? ''));
@@ -71,8 +73,8 @@ export default function RegisterServiceModal({
         })),
       });
       onSaved();
-      if (!res.syncedToWialon) alert(ar ? 'اتسجّلت عندنا، بس الكتابة في Location Solutions فشلت — راجع الصلاحيات.' : 'Saved locally, but the Location Solutions write failed — check permissions.');
-    } catch (e: any) { alert(e?.message || 'Failed'); }
+      if (!res.syncedToWialon) notify(ar ? 'اتسجّلت عندنا، بس الكتابة في Location Solutions فشلت — راجع الصلاحيات.' : 'Saved locally, but the Location Solutions write failed — check permissions.');
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setSaving(false);
   };
 

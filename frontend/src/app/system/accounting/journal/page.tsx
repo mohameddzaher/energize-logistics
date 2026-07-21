@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -15,6 +16,7 @@ import { exportToExcel } from '@/utils/exportExcel';
 const emptyLine = () => ({ account: '', debit: '', credit: '', description: '' });
 
 export default function JournalPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -52,23 +54,23 @@ export default function JournalPage() {
 
   const openCreate = () => { setForm({ date: today(), memo: '', lines: [emptyLine(), emptyLine()] }); setShowModal(true); };
   const save = async () => {
-    if (!balanced) { alert(tx.entryNotBalanced); return; }
+    if (!balanced) { notify(tx.entryNotBalanced); return; }
     setSaving(true);
     try {
       const lines = form.lines.filter((l) => l.account && (Number(l.debit) > 0 || Number(l.credit) > 0))
         .map((l) => ({ account: l.account, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description }));
       await api.post('/api/accounting/journal', { date: form.date, memo: form.memo, lines });
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); } finally { setSaving(false); }
+    } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
   };
   const remove = async (e: JournalEntry) => {
-    if (!confirm(tx.deleteEntryConfirm)) return;
-    try { await api.delete(`/api/accounting/journal/${e._id}`); load(); } catch (er: any) { alert(er.message); }
+    if (!(await confirm(tx.deleteEntryConfirm))) return;
+    try { await api.delete(`/api/accounting/journal/${e._id}`); load(); } catch (er: any) { notify(er.message, 'error'); }
   };
   const sync = async () => {
     setSyncing(true);
-    try { const r = await api.post<{ message: string }>('/api/accounting/sync'); alert(r.message); load(); }
-    catch (e: any) { alert(e.message); } finally { setSyncing(false); }
+    try { const r = await api.post<{ message: string }>('/api/accounting/sync'); notify(r.message); load(); }
+    catch (e: any) { notify(e.message, 'error'); } finally { setSyncing(false); }
   };
 
   const handleExport = () => {

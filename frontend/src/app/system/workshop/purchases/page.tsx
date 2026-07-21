@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
@@ -45,6 +46,7 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
 };
 
 export default function WorkshopPurchasesPage() {
+  const { confirm } = useDialog();
   const { user } = useAuth();
   const { lang } = useLanguage();
   const isAr = lang === 'ar';
@@ -134,7 +136,7 @@ export default function WorkshopPurchasesPage() {
       : p.status === 'fulfilled'
         ? (isAr ? 'تم صرف هذه القطع بالفعل، فلن يتأثر رصيد المستودع.' : 'These parts were already issued, so stock is unaffected.')
         : (isAr ? 'لم يصل هذا الطلب بعد، فلن يتأثر رصيد المستودع.' : 'This request never arrived, so stock is unaffected.');
-    if (!confirm(`${isAr ? 'حذف طلب' : 'Delete'} «${p.itemName}»؟\n\n${warn}`)) return;
+    if (!(await confirm(`${isAr ? 'حذف طلب' : 'Delete'} «${p.itemName}»؟\n\n${warn}`))) return;
     setDeletingId(p._id);
     try {
       await api.delete(`/api/workshop/purchases/${p._id}`);

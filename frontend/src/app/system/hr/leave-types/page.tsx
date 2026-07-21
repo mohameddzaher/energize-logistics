@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
@@ -12,6 +13,7 @@ import { exportToExcel } from '@/utils/exportExcel';
 const EMPTY = { code: '', nameEn: '', nameAr: '', paid: true, affectsBalance: true, color: '#f37121', active: true };
 
 export default function LeaveTypesPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -42,10 +44,10 @@ export default function LeaveTypesPage() {
       if (editing) await api.put(`/api/hr/leave-types/${editing._id}`, form);
       else await api.post('/api/hr/leave-types', form);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
-  const remove = async (t: LeaveType) => { if (!confirm(tx.deleteConfirm)) return; try { await api.delete(`/api/hr/leave-types/${t._id}`); load(); } catch (e: any) { alert(e.message); } };
+  const remove = async (t: LeaveType) => { if (!(await confirm(tx.deleteConfirm))) return; try { await api.delete(`/api/hr/leave-types/${t._id}`); load(); } catch (e: any) { notify(e.message, 'error'); } };
 
   const exportXlsx = () => {
     exportToExcel(types, [

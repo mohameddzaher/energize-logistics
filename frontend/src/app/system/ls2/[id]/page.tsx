@@ -5,6 +5,7 @@
 // distance travelled over any period (with the exact Wialon report on demand),
 // and open alerts. Read-only mirror — servicing is registered inside Wialon.
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -35,6 +36,7 @@ function remainOf(iv: ServiceInterval): { value: number; unit: string; next: str
 }
 
 export default function Ls2VehicleDetailPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
@@ -67,7 +69,7 @@ export default function Ls2VehicleDetailPage() {
   const downloadPdf = async () => {
     setPdfBusy(true);
     try { await downloadVehicleReport(Number(id), range.from, range.to, lang as Lang); }
-    catch (e: any) { alert(e?.message || 'PDF failed'); }
+    catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setPdfBusy(false);
   };
 
@@ -79,7 +81,7 @@ export default function Ls2VehicleDetailPage() {
   const saveBrand = async () => {
     setBrandSaving(true);
     try { await api.patch(`/api/ls2/vehicles/${id}/meta`, { tireBrand: brandInput.trim() }); setBrandEdit(false); await load(); }
-    catch (e: any) { alert(e?.message || 'Failed'); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBrandSaving(false);
   };
   useEffect(() => { load(); }, [load]);

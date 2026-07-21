@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -16,6 +17,7 @@ import {
 const EMPTY = { title: '', company: '', stage: 'new', value: 0, currency: 'SAR', probability: 0, expectedCloseDate: '', owner: '', source: '', notes: '' };
 
 export default function CrmDealsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -64,7 +66,7 @@ export default function CrmDealsPage() {
   };
 
   const save = async () => {
-    if (!form.title.trim()) { alert(ar ? 'العنوان مطلوب' : 'Title required'); return; }
+    if (!form.title.trim()) { notify(ar ? 'العنوان مطلوب' : 'Title required'); return; }
     setSaving(true);
     try {
       const payload = { ...form, value: Number(form.value) || 0, probability: Number(form.probability) || 0,
@@ -72,17 +74,17 @@ export default function CrmDealsPage() {
       if (editing) await api.put(`/api/crm/deals/${editing._id}`, payload);
       else await api.post('/api/crm/deals', payload);
       setShowModal(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSaving(false); }
   };
   const remove = async (d: CrmDeal) => {
-    if (!confirm(T.confirmDelete)) return;
-    try { await api.delete(`/api/crm/deals/${d._id}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(T.confirmDelete))) return;
+    try { await api.delete(`/api/crm/deals/${d._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
   const moveTo = async (dealId: string, stage: string) => {
     // optimistic
     setDeals((prev) => prev.map((d) => d._id === dealId ? { ...d, stage } : d));
-    try { await api.patch(`/api/crm/deals/${dealId}/move`, { stage }); load(); } catch (e: any) { alert(e.message); load(); }
+    try { await api.patch(`/api/crm/deals/${dealId}/move`, { stage }); load(); } catch (e: any) { notify(e.message, 'error'); load(); }
   };
 
   if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;

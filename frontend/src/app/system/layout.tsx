@@ -25,6 +25,7 @@ import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
 
 import { isManagedSection, canAccessSection } from '@/lib/sections';
+import { DialogProvider } from '@/components/system/DialogProvider';
 // Sidebar visibility for the new sections. Managed sections are additionally
 // gated by the per-role permission matrix (canAccessSection).
 const MARKETING_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator'];
@@ -447,6 +448,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   };
 
   return (
+    <DialogProvider>
     <div className="min-h-screen bg-slate-100 flex" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} bg-slate-900 ${isRTL ? 'border-l' : 'border-r'} border-slate-800 transition-all duration-300 fixed h-full z-40 ${isRTL ? 'right-0' : 'left-0'}`}>
@@ -617,5 +619,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         )}
       </AnimatePresence>
     </div>
+    </DialogProvider>
   );
 }

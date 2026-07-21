@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
 import { getB2CTranslations, getB2cRepsTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
@@ -35,6 +36,7 @@ const DEFAULT_FORM = {
 };
 
 export default function B2CRepsPage() {
+  const { confirm, notify } = useDialog();
   const { lang } = useLanguage();
   const T = getB2CTranslations(lang);
   const tx = getB2cRepsTranslations(lang);
@@ -120,12 +122,12 @@ export default function B2CRepsPage() {
   };
 
   const handleDelete = async (r: Rep) => {
-    if (!confirm(`${T.confirmDelete} ${r.englishName}`)) return;
+    if (!(await confirm(`${T.confirmDelete} ${r.englishName}`))) return;
     try {
       await api.delete(`/api/b2c/reps/${r._id}`);
       fetchReps();
     } catch (err: any) {
-      alert(err.message || tx.failed);
+      notify(err.message || tx.failed, 'error');
     }
   };
 

@@ -3,6 +3,7 @@
 // faults. This is OURS alone: Location Solutions only models periodic services,
 // so nothing on this page is read from or written to it.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -19,6 +20,7 @@ import {
 } from '@/lib/ls2';
 
 export default function Ls2RepairsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
@@ -62,8 +64,8 @@ export default function Ls2RepairsPage() {
   const totalCost = rows.reduce((a, r) => a + (r.cost || 0), 0);
 
   const remove = async (r: Repair) => {
-    if (!confirm(ar ? `حذف "${r.title}"؟` : `Delete "${r.title}"?`)) return;
-    try { await api.delete(`/api/ls2/repairs/${r._id}`); load(); } catch (e: any) { alert(e?.message || 'Failed'); }
+    if (!(await confirm(ar ? `حذف "${r.title}"؟` : `Delete "${r.title}"?`))) return;
+    try { await api.delete(`/api/ls2/repairs/${r._id}`); load(); } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   };
 
   if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;

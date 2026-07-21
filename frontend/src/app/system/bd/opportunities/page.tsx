@@ -2,6 +2,7 @@
 // Business Development opportunities — market entries, new service lines,
 // partnerships and expansion plays. Rows open the full initiative page.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -27,6 +28,7 @@ const EMPTY = {
 };
 
 export default function BdOpportunitiesPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -93,7 +95,7 @@ export default function BdOpportunitiesPage() {
   };
 
   const save = async () => {
-    if (!String(form.name || '').trim()) { alert(ar ? 'الاسم مطلوب' : 'Name is required'); return; }
+    if (!String(form.name || '').trim()) { notify(ar ? 'الاسم مطلوب' : 'Name is required'); return; }
     setSaving(true);
     try {
       const payload = {
@@ -107,14 +109,14 @@ export default function BdOpportunitiesPage() {
       else await api.post('/api/business-development/opportunities', payload);
       setShowModal(false);
       load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSaving(false); }
   };
 
   const remove = async (r: BdOpportunity) => {
-    if (!confirm(ar ? 'تأكيد الحذف؟' : 'Delete this opportunity?')) return;
+    if (!(await confirm(ar ? 'تأكيد الحذف؟' : 'Delete this opportunity?'))) return;
     try { await api.delete(`/api/business-development/opportunities/${r._id}`); load(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { notify(e.message, 'error'); }
   };
 
   const doExport = () => {

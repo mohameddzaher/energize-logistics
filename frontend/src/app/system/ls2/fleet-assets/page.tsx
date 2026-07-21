@@ -11,6 +11,7 @@
 // The "sensors" tab cross-checks what the workshop registered (يوجد / لايوجد)
 // against what the live Wialon feed actually reports, per vehicle.
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -101,6 +102,7 @@ function Modal({ title, onClose, children, wide = false }: { title: string; onCl
 }
 
 export default function Ls2FleetAssetsPage() {
+  const { notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
@@ -223,7 +225,7 @@ export default function Ls2FleetAssetsPage() {
   const doMoveTire = async (tire: TireAsset, body: any) => {
     setBusy(true);
     try { await api.post(`/api/ls2/assets/tires/${tire._id}/move`, body); await load(); setMoveTire(null); }
-    catch (e: any) { alert(e?.message || 'Failed'); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
   const doRetireTire = async (tire: TireAsset) => {
@@ -231,13 +233,13 @@ export default function Ls2FleetAssetsPage() {
     if (reason == null) return;
     setBusy(true);
     try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { reason }); await load(); }
-    catch (e: any) { alert(e?.message || 'Failed'); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
   const doMoveTrailer = async (trailer: Trailer, body: any) => {
     setBusy(true);
     try { await api.post(`/api/ls2/assets/trailers/${trailer._id}/move`, body); await load(); setMoveTrailer(null); }
-    catch (e: any) { alert(e?.message || 'Failed'); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
 
@@ -664,6 +666,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
 function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
   tire: TireAsset | null; flatbeds: Flatbed[]; ar: boolean; onClose: () => void; onSaved: () => void;
 }) {
+  const { notify } = useDialog();
   const isEdit = !!tire;
   const [serial, setSerial] = useState(tire?.serial || '');
   const [tireNumber, setTireNumber] = useState(tire?.tireNumber || '');
@@ -676,7 +679,7 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
   const pos = POSITION_DEFS.find((p) => p.n === posN) || POSITION_DEFS[0];
 
   const save = async () => {
-    if (!serial.trim()) { alert(ar ? 'السيريال مطلوب' : 'Serial required'); return; }
+    if (!serial.trim()) { notify(ar ? 'السيريال مطلوب' : 'Serial required'); return; }
     setBusy(true);
     try {
       if (isEdit) {
@@ -688,7 +691,7 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
         });
       }
       onSaved();
-    } catch (e: any) { alert(e?.message || 'Failed'); }
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
 
@@ -780,6 +783,7 @@ function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
 }
 
 function AddTrailerForm({ flatbeds, ar, onSaved }: { flatbeds: Flatbed[]; ar: boolean; onSaved: () => void }) {
+  const { notify } = useDialog();
   const [trailerNumber, setTrailerNumber] = useState('');
   const [plate, setPlate] = useState('');
   const [busy, setBusy] = useState(false);
@@ -787,7 +791,7 @@ function AddTrailerForm({ flatbeds, ar, onSaved }: { flatbeds: Flatbed[]; ar: bo
     if (!trailerNumber.trim()) return;
     setBusy(true);
     try { await api.post('/api/ls2/assets/trailers', { trailerNumber: trailerNumber.trim(), plate: plate || null }); onSaved(); }
-    catch (e: any) { alert(e?.message || 'Failed'); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
   return (
@@ -810,6 +814,7 @@ function AddTrailerForm({ flatbeds, ar, onSaved }: { flatbeds: Flatbed[]; ar: bo
 }
 
 function EditFlatbedForm({ flatbed, ar, onSaved }: { flatbed: Flatbed; ar: boolean; onSaved: () => void }) {
+  const { notify } = useDialog();
   const [numbering, setNumbering] = useState<string>(flatbed.numbering != null ? String(flatbed.numbering) : '');
   const [batch, setBatch] = useState(flatbed.batch || '');
   const [brand, setBrand] = useState(flatbed.brand || '');
@@ -818,7 +823,7 @@ function EditFlatbedForm({ flatbed, ar, onSaved }: { flatbed: Flatbed; ar: boole
   const save = async () => {
     setBusy(true);
     try { await api.patch(`/api/ls2/assets/flatbeds/${flatbed._id}`, { numbering: numbering === '' ? null : Number(numbering), batch, brand, notes }); onSaved(); }
-    catch (e: any) { alert(e?.message || 'Failed'); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
   return (
@@ -850,17 +855,18 @@ function EditFlatbedForm({ flatbed, ar, onSaved }: { flatbed: Flatbed; ar: boole
 
 // ---- Import workshop JSON ---------------------------------------------------
 function ImportModal({ ar, onClose, onDone }: { ar: boolean; onClose: () => void; onDone: () => void }) {
+  const { notify } = useDialog();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<any>(null);
   const run = async () => {
     let payload: any;
-    try { payload = JSON.parse(text); } catch { alert(ar ? 'JSON غير صالح' : 'Invalid JSON'); return; }
+    try { payload = JSON.parse(text); } catch { notify(ar ? 'JSON غير صالح' : 'Invalid JSON'); return; }
     setBusy(true);
     try {
       const res = await api.post<any>('/api/ls2/assets/import', payload);
       setResult(res.summary);
-    } catch (e: any) { alert(e?.message || 'Failed'); }
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
   return (

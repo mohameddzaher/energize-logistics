@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -19,6 +20,7 @@ import {
 import ManagedSelect from '@/components/system/ManagedSelect';
 
 export default function CrmCompanyDetailPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -89,15 +91,15 @@ export default function CrmCompanyDetailPage() {
         await api.post('/api/crm/deals', { ...form, company: id, value: Number(form.value) || 0, expectedCloseDate: form.expectedCloseDate || undefined });
       }
       setModal(null); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSaving(false); }
   };
 
   const delItem = async (kind: string, itemId: string) => {
-    if (!confirm(T.confirmDelete)) return;
-    try { await api.delete(`/api/crm/${kind}/${itemId}`); load(); } catch (e: any) { alert(e.message); }
+    if (!(await confirm(T.confirmDelete))) return;
+    try { await api.delete(`/api/crm/${kind}/${itemId}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
-  const rate = async (v: number) => { try { await api.patch(`/api/crm/companies/${id}/rate`, { rating: v }); load(); } catch (e: any) { alert(e.message); } };
+  const rate = async (v: number) => { try { await api.patch(`/api/crm/companies/${id}/rate`, { rating: v }); load(); } catch (e: any) { notify(e.message, 'error'); } };
 
   const openEditCompany = () => {
     setCForm({
@@ -110,7 +112,7 @@ export default function CrmCompanyDetailPage() {
     setEditingCompany(true);
   };
   const saveCompany = async () => {
-    if (!cForm.name?.trim()) { alert(ar ? 'الاسم مطلوب' : 'Name is required'); return; }
+    if (!cForm.name?.trim()) { notify(ar ? 'الاسم مطلوب' : 'Name is required'); return; }
     setSavingCompany(true);
     try {
       const payload = {
@@ -121,7 +123,7 @@ export default function CrmCompanyDetailPage() {
       };
       await api.put(`/api/crm/companies/${id}`, payload);
       setEditingCompany(false); load();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { notify(e.message, 'error'); }
     finally { setSavingCompany(false); }
   };
 

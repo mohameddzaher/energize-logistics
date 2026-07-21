@@ -3,6 +3,7 @@
 // search, status/platform filters, create/edit/delete and an Excel export.
 // Clicking a row opens the campaign's own page with its activities.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -26,6 +27,7 @@ const blankDraft = (): Draft => ({
 });
 
 export default function MarketingCampaignsPage() {
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
@@ -77,7 +79,7 @@ export default function MarketingCampaignsPage() {
   };
 
   const save = async () => {
-    if (!draft.name || !draft.name.trim()) { alert(ar ? 'اسم الحملة مطلوب' : 'Campaign name is required'); return; }
+    if (!draft.name || !draft.name.trim()) { notify(ar ? 'اسم الحملة مطلوب' : 'Campaign name is required'); return; }
     setSaving(true);
     try {
       const body = { ...draft };
@@ -87,15 +89,15 @@ export default function MarketingCampaignsPage() {
       setOpen(false);
       load();
     } catch (e: unknown) {
-      alert((e as Error)?.message || (ar ? 'فشل الحفظ' : 'Failed to save'));
+      notify((e as Error)?.message || (ar ? 'فشل الحفظ' : 'Failed to save'), 'error');
     }
     setSaving(false);
   };
 
   const remove = async (c: Campaign) => {
-    if (!confirm(ar ? `حذف الحملة "${campaignName(c, L)}"؟` : `Delete campaign "${campaignName(c, L)}"?`)) return;
+    if (!(await confirm(ar ? `حذف الحملة "${campaignName(c, L)}"؟` : `Delete campaign "${campaignName(c, L)}"?`))) return;
     try { await api.delete(`/api/marketing/campaigns/${c._id}`); load(); }
-    catch (e: unknown) { alert((e as Error)?.message || 'Failed'); }
+    catch (e: unknown) { notify((e as Error)?.message || 'Failed', 'error'); }
   };
 
   const doExport = () => {

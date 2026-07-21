@@ -17,7 +17,7 @@ import {
   FileBarChart, RefreshCw, Search, Droplet, Loader2, Truck, ChevronUp, ChevronDown,
   ExternalLink, AlertTriangle, Wrench, Route, Gauge,
 } from 'lucide-react';
-import { Spinner, PageHeader, StatCard, Tabs } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, StatCard, Tabs, ErrorNotice } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
 import VehiclePicker from '@/components/ls2/VehiclePicker';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
@@ -55,13 +55,19 @@ export default function Ls2ReportsPage() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'km', dir: 'desc' });
   const [fuel, setFuel] = useState<FuelMap>({});
   const [fuelProgress, setFuelProgress] = useState<{ done: number; total: number } | null>(null);
+  // A failed load must say so. Rendering the previous (or an empty) report
+  // silently is how an expired session reads as "there is no data".
+  const [error, setError] = useState('');
 
   const loadFleet = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get<FleetReport>(`/api/ls2/reports/fleet?from=${range.from}&to=${range.to}`);
       setReport(res);
-    } catch { /* keep the previous report on screen */ }
+      setError('');
+    } catch (e: any) {
+      setError(e?.message || 'Request failed');
+    }
     setLoading(false);
   }, [range.from, range.to]);
   useEffect(() => { loadFleet(); }, [loadFleet]);
@@ -126,7 +132,7 @@ export default function Ls2ReportsPage() {
     try {
       const res = await api.get<VehicleReport>(`/api/ls2/reports/vehicle/${id}?from=${range.from}&to=${range.to}`);
       setVr(res);
-    } catch { setVr(null); }
+    } catch (e: any) { setVr(null); setError(e?.message || 'Request failed'); }
     setVrLoading(false);
   }, [range.from, range.to]);
   useEffect(() => { if (unitId != null) loadVehicle(unitId); }, [unitId, loadVehicle]);
@@ -148,6 +154,8 @@ export default function Ls2ReportsPage() {
           <RefreshCw className="w-4 h-4" /> {t.refresh}
         </button>
       </PageHeader>
+
+      {error && <ErrorNotice error={error} lang={lang} onRetry={loadFleet} />}
 
       <RangePicker value={range} onChange={setRange} lang={lang as Lang} labelFrom={t.from} labelTo={t.to} />
 

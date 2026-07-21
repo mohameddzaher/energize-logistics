@@ -14,11 +14,16 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import Link from 'next/link';
 import { Boxes, CircleDot, Container, Truck, Wrench, AlertTriangle, ExternalLink } from 'lucide-react';
-import { exportMultiSheet, exportToExcel } from '@/utils/exportExcel';
+import { exportMultiSheet } from '@/utils/exportExcel';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, StatCard, SmallBadge, Select, Tabs,
+  Spinner, PageHeader, SearchInput, ExportButton, StatCard, SmallBadge, Select, Tabs, ErrorNotice,
 } from '@/components/hr/HRKit';
 import { getWorkshopStoreTranslations } from '@/lib/translations';
+// The spare-parts tab renders the existing parts page verbatim. It is a plain
+// React component, so embedding it keeps ONE implementation of that CRUD (add,
+// edit, approve, delete) instead of a second half-copy that would drift. Its own
+// route stays reachable for old bookmarks.
+import InventoryPage from '../inventory/page';
 
 const STAFF = ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'purchasing'];
 
@@ -62,6 +67,10 @@ export default function WorkshopStorePage() {
 
   const [data, setData] = useState<StoreData | null>(null);
   const [loading, setLoading] = useState(true);
+  // Never swallow a load failure: an expired session and an empty store look
+  // identical once the tables render blank, and the user goes looking for lost
+  // records instead of signing back in.
+  const [error, setError] = useState('');
   const [tab, setTab] = useState('overview');
   const [search, setSearch] = useState('');
   // The question this screen exists to answer, so it gets a first-class filter
@@ -72,7 +81,10 @@ export default function WorkshopStorePage() {
     try {
       const d = await api.get<StoreData>('/api/workshop/store');
       setData(d);
-    } catch {}
+      setError('');
+    } catch (e: any) {
+      setError(e?.message || 'Request failed');
+    }
     setLoading(false);
   }, []);
 
@@ -199,6 +211,8 @@ export default function WorkshopStorePage() {
         <ExportButton label={tx.exportExcel} onClick={exportAll} />
       </PageHeader>
 
+      {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
+
       {/* Serial-tracked assets and counted consumables are different kinds of
           thing; saying so up front stops people reading "140" as stock on hand. */}
       <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 flex items-start gap-3">
@@ -237,7 +251,7 @@ export default function WorkshopStorePage() {
         ]}
       />
 
-      {tab !== 'overview' && (
+      {tab !== 'overview' && tab !== 'parts' && (
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
           {(tab === 'tires' || tab === 'trailers') && (
@@ -400,46 +414,8 @@ export default function WorkshopStorePage() {
       )}
 
       {tab === 'parts' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
-          <div className="flex items-center justify-end px-4 pt-3">
-            <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(parts, [
-              { header: 'Code', key: 'code', width: 14 },
-              { header: 'Name', key: 'name', width: 28 },
-              { header: 'Category', key: 'category', width: 18 },
-              { header: 'Quantity', key: 'quantity', width: 10 },
-              { header: 'Minimum', key: 'minQuantity', width: 10 },
-              { header: 'Unit cost', key: 'costPrice', width: 12 },
-              { header: 'Total value', key: 'totalValue', width: 14 },
-              { header: 'Location', key: 'location', width: 18 },
-              { header: 'Supplier', key: 'supplier', width: 20 },
-            ], `workshop-parts-${new Date().toISOString().slice(0, 10)}`, 'Parts')} />
-          </div>
-          <table className="w-full text-sm">
-            <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <th className={th}>{tx.colCode}</th>
-              <th className={th}>{tx.colName}</th>
-              <th className={th}>{tx.colCategory}</th>
-              <th className={th}>{tx.colQty}</th>
-              <th className={th}>{tx.colLocation}</th>
-              <th className={th}>{tx.colValue}</th>
-            </tr></thead>
-            <tbody>
-              {parts.length === 0 ? emptyRow(6) : parts.map((p) => (
-                <tr key={p._id} className="border-b border-slate-200/70 hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-700 font-mono text-xs">{p.code}</td>
-                  <td className="px-4 py-3 text-slate-900 font-medium">{p.name}</td>
-                  <td className="px-4 py-3 text-slate-700">{p.category || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`font-semibold ${p.isLow ? 'text-red-600' : 'text-slate-900'}`}>{p.quantity}</span>
-                    <span className="text-slate-400 text-xs"> {p.unit || ''}</span>
-                    {p.isLow && <SmallBadge bg="bg-red-500/15" text="text-red-700" label={tx.belowMinimum} />}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">{p.location || '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{money(p.totalValue)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="-mt-2">
+          <InventoryPage />
         </div>
       )}
 

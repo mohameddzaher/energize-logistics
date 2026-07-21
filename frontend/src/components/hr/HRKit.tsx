@@ -3,7 +3,7 @@
 // short. Pure presentation — all data/logic lives in the pages themselves.
 import { ReactNode, useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, X, Download, Loader2, ChevronDown, Check as CheckIcon } from 'lucide-react';
+import { Search, X, Download, Loader2, ChevronDown, Check as CheckIcon, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export function Spinner() {
   return (
@@ -104,6 +104,46 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={inputCls} />;
+}
+
+
+// A failed fetch must never render as an empty table. "No data" and "we could
+// not reach the server" look identical to a user, and they send them hunting
+// for missing records instead of signing back in — which is exactly what
+// `catch {}` on a page-level load causes.
+//
+// `error` is the message thrown by lib/api. It throws the literal string
+// 'Authentication required' once a refresh has already failed, which is the
+// common case: a tab left open past the token's life.
+export function ErrorNotice({ error, onRetry, lang = 'en' }: { error: string; onRetry?: () => void; lang?: 'en' | 'ar' }) {
+  const ar = lang === 'ar';
+  const expired = /auth/i.test(error);
+  return (
+    <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex items-start gap-3">
+      <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-red-900">
+          {expired
+            ? (ar ? 'انتهت الجلسة' : 'Your session has expired')
+            : (ar ? 'تعذّر تحميل البيانات' : 'Could not load the data')}
+        </p>
+        <p className="text-xs text-red-800 mt-0.5">
+          {expired
+            ? (ar ? 'سجّل الدخول مرة أخرى لعرض البيانات — البيانات نفسها لم تتأثر.' : 'Sign in again to see the data — the data itself is unaffected.')
+            : error}
+        </p>
+      </div>
+      {expired ? (
+        <a href="/login" className="shrink-0 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold">
+          {ar ? 'تسجيل الدخول' : 'Sign in'}
+        </a>
+      ) : onRetry ? (
+        <button type="button" onClick={onRetry} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold">
+          <RefreshCw className="w-3.5 h-3.5" /> {ar ? 'إعادة المحاولة' : 'Retry'}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 export interface SearchOption { value: string; label: string; hint?: string }

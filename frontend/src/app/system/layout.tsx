@@ -193,12 +193,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // shop floor that services that fleet, and its store holds the very tires and
     // trailers the ls2 asset registry tracks. Keeping the two sections apart made
     // people hunt across the sidebar for one truck's story.
-    { href: '/system/workshop/store', label: lang === 'ar' ? 'مستودع الورشة' : 'Workshop Store', icon: <Boxes className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'purchasing'], section: 'Workshop' },
+    { href: '/system/workshop/store', label: lang === 'ar' ? 'المستودع' : 'Store', icon: <Boxes className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'purchasing'], section: 'Workshop' },
     { href: '/system/workshop', label: L.workshop, icon: <Wrench className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
     { href: '/system/workshop/purchases', label: L.workshopPurchases, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'purchasing'], section: 'Workshop' },
     { href: '/system/workshop/dashboard', label: L.workshopDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'purchasing'], section: 'Workshop' },
     { href: '/system/workshop/tasks', label: L.workshopTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee'], section: 'Workshop' },
-    { href: '/system/workshop/inventory', label: L.inventory, icon: <Package className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'purchasing'], section: 'Workshop' },
     { href: '/system/workshop/maintenance-types', label: L.maintenanceTypes, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager'], section: 'Workshop' },
     // ---- Performance (KPI evaluation) ----
     { href: '/system/performance', label: lang === 'ar' ? 'تقييم مديري الأقسام' : 'Evaluate Managers', icon: <Target className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },

@@ -10,7 +10,8 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Spinner, PageHeader, StatCard, SmallBadge } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, StatCard, SmallBadge, ExportButton } from '@/components/hr/HRKit';
+import { exportMultiSheet } from '@/utils/exportExcel';
 import {
   canViewIt, Dashboard, categoryLabel, priorityLabel, ticketStatusLabel,
   systemStatusLabel, TICKET_STATUSES, fmtDate, fmtDuration, daysAgo, today,
@@ -51,6 +52,69 @@ export default function ItDashboardPage() {
   const priorityData = (t?.ticketsByPriority || []).map((r) => ({ name: priorityLabel(r.key, lang), value: r.count }));
   const timelineData = (t?.timeline || []).map((r) => ({ ...r, label: r.date.slice(5) }));
 
+  // One workbook, one sheet per block of the dashboard — a flat dump of a chart
+  // is useless, so each breakdown keeps its own sheet with readable labels.
+  const exportDashboard = () => exportMultiSheet([
+    {
+      name: 'Summary',
+      columns: [{ header: 'Metric', key: 'metric', width: 30 }, { header: 'Value', key: 'value', width: 16 }],
+      data: [
+        { metric: 'Period', value: `${from} → ${to}` },
+        { metric: 'Open tickets', value: t?.openTickets ?? 0 },
+        { metric: 'In progress', value: t?.inProgress ?? 0 },
+        { metric: 'Resolved in period', value: t?.resolvedThisPeriod ?? 0 },
+        { metric: 'Avg resolution (minutes)', value: t?.avgResolutionMinutes ?? 0 },
+        { metric: 'Systems down or degraded', value: systemsDown },
+        { metric: 'Custody items assigned', value: t?.assetsAssigned ?? 0 },
+        { metric: 'Units in store', value: t?.stockCount ?? t?.assetsInStock ?? 0 },
+      ],
+    },
+    {
+      name: 'By category',
+      columns: [{ header: 'Category', key: 'name', width: 24 }, { header: 'Tickets', key: 'count', width: 12 }],
+      data: categoryData,
+    },
+    {
+      name: 'By priority',
+      columns: [{ header: 'Priority', key: 'name', width: 24 }, { header: 'Tickets', key: 'value', width: 12 }],
+      data: priorityData,
+    },
+    {
+      name: 'By status',
+      columns: [{ header: 'Status', key: 'name', width: 24 }, { header: 'Tickets', key: 'count', width: 12 }],
+      data: (t?.ticketsByStatus || []).map((r) => ({ name: ticketStatusLabel(r.key, 'en'), count: r.count })),
+    },
+    {
+      name: 'Opened vs resolved',
+      columns: [
+        { header: 'Date', key: 'date', width: 14 },
+        { header: 'Opened', key: 'opened', width: 10 },
+        { header: 'Resolved', key: 'resolved', width: 10 },
+      ],
+      data: t?.timeline || [],
+    },
+    {
+      name: 'Store by type',
+      columns: [{ header: 'Type', key: 'name', width: 24 }, { header: 'Units', key: 'count', width: 10 }],
+      data: (t?.stockByType || []).map((r) => ({ name: r.key, count: r.count })),
+    },
+    {
+      name: 'Low stock',
+      columns: [{ header: 'Type', key: 'name', width: 24 }, { header: 'Units left', key: 'count', width: 12 }],
+      data: (t?.lowStock || []).map((r) => ({ name: r.key, count: r.count })),
+    },
+    {
+      name: 'Renewals due',
+      columns: [
+        { header: 'System', key: 'name', width: 28 },
+        { header: 'Renewal date', key: 'renewalDate', width: 14 },
+        { header: 'Cost', key: 'cost', width: 12 },
+        { header: 'Period', key: 'costPeriod', width: 12 },
+      ],
+      data: t?.renewalsDueSoon || [],
+    },
+  ], `it-dashboard-${to}`);
+
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
@@ -62,6 +126,7 @@ export default function ItDashboardPage() {
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
           <span className="text-slate-400 text-sm">→</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
+          <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={exportDashboard} />
         </div>
       </PageHeader>
 

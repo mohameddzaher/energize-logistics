@@ -28,6 +28,16 @@ router.put('/custody/:id', authorize(...EDIT_ROLES), it.updateCustody);
 router.post('/custody/:id/return', authorize(...EDIT_ROLES), it.returnCustody);
 router.delete('/custody/:id', authorize(...EDIT_ROLES), it.deleteCustody);
 
+// Movements. Each one moves the Asset and appends to its AssetEvent trail.
+// The two GETs must sit above nothing else — they are distinct paths, but
+// /custody/:id/history has to be declared before any broader /custody/:id use.
+router.get('/custody/:id/history', it.custodyHistory);
+router.get('/custody/by-employee/:employeeId', it.custodyByEmployee);
+router.post('/custody/:id/transfer', authorize(...EDIT_ROLES), it.transferCustody);
+router.post('/custody/:id/report', authorize(...EDIT_ROLES), it.reportCustody);
+router.post('/custody/:id/retire', authorize(...EDIT_ROLES), it.retireCustody);
+router.post('/custody/handover', authorize(...EDIT_ROLES), it.handoverCustody);
+
 // ── Stock (المستودع) — unassigned items waiting on the shelf ────────────────
 // Same Asset collection: a stock item is one that simply has no holder yet.
 router.get('/stock', it.listStock);

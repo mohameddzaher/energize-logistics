@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Laptop, Plus, Edit, Undo2, Trash2, Check, Info, Boxes } from 'lucide-react';
+import { Laptop, Plus, Edit, Undo2, Trash2, Check, Info, Boxes, ArrowLeftRight, AlertTriangle, Archive, History, ClipboardCheck } from 'lucide-react';
 import { exportToExcel } from '@/utils/exportExcel';
 import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
@@ -20,6 +20,18 @@ import {
 const EMPTY = {
   employee: '', name: '', type: 'laptop', serialNumber: '', brand: '', model: '',
   specs: '', condition: 'good', value: 0, assignedDate: '', notes: '',
+};
+
+// Bilingual names for the AssetEvent actions, used by the history timeline.
+const ACTION_LABEL: Record<string, { en: string; ar: string }> = {
+  added_to_store: { en: 'Added to store', ar: 'أُضيف إلى المستودع' },
+  assigned: { en: 'Handed to employee', ar: 'سُلّم إلى موظف' },
+  transferred: { en: 'Transferred', ar: 'نُقل إلى موظف آخر' },
+  returned: { en: 'Returned to store', ar: 'أُعيد إلى المستودع' },
+  damaged: { en: 'Reported damaged', ar: 'أُبلغ عن تلفه' },
+  lost: { en: 'Reported lost', ar: 'أُبلغ عن فقده' },
+  retired: { en: 'Taken out of service', ar: 'أُخرج من الخدمة' },
+  updated: { en: 'Details updated', ar: 'عُدّلت بياناته' },
 };
 
 export default function ItCustodyPage() {
@@ -52,6 +64,27 @@ export default function ItCustodyPage() {
   // prompt() — the condition is what HR later disputes.
   const [returning, setReturning] = useState<CustodyItem | null>(null);
   const [returnForm, setReturnForm] = useState({ returnedCondition: 'good', returnedDate: '', retire: false });
+
+  // Transfer A → B without the device passing through the store.
+  const [transferring, setTransferring] = useState<CustodyItem | null>(null);
+  const [transferForm, setTransferForm] = useState({ toEmployee: '', date: '', condition: 'good', notes: '' });
+
+  // Damaged / lost while in someone's hands.
+  const [reporting, setReporting] = useState<CustodyItem | null>(null);
+  const [reportForm, setReportForm] = useState<{ kind: 'damaged' | 'lost'; notes: string; cost: number; date: string }>({ kind: 'damaged', notes: '', cost: 0, date: '' });
+
+  // One item's movement trail.
+  const [historyOf, setHistoryOf] = useState<CustodyItem | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
+
+  // The handover desk: an employee brings gear back, we tick off what arrived
+  // and the rest stays on them.
+  const [handoverOpen, setHandoverOpen] = useState(false);
+  const [handoverEmployee, setHandoverEmployee] = useState('');
+  const [handoverHeld, setHandoverHeld] = useState<CustodyItem[]>([]);
+  const [handoverPicked, setHandoverPicked] = useState<string[]>([]);
+  const [handoverForm, setHandoverForm] = useState({ date: '', condition: 'good', notes: '', retire: false });
+  const [handoverLoading, setHandoverLoading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -153,6 +186,77 @@ export default function ItCustodyPage() {
     try { await api.delete(`/api/it/custody/${a._id}`); refresh(); } catch (e: any) { alert(e.message); }
   };
 
+  const openTransfer = (a: CustodyItem) => {
+    setTransferring(a);
+    setTransferForm({ toEmployee: '', date: today(), condition: a.condition || 'good', notes: '' });
+  };
+  const doTransfer = async () => {
+    if (!transferring || !transferForm.toEmployee) return;
+    setSaving(true);
+    try { await api.post(`/api/it/custody/${transferring._id}/transfer`, transferForm); setTransferring(null); refresh(); }
+    catch (e: any) { alert(e.message); }
+    setSaving(false);
+  };
+
+  const openReport = (a: CustodyItem) => {
+    setReporting(a);
+    setReportForm({ kind: 'damaged', notes: '', cost: 0, date: today() });
+  };
+  const doReport = async () => {
+    if (!reporting) return;
+    setSaving(true);
+    try { await api.post(`/api/it/custody/${reporting._id}/report`, reportForm); setReporting(null); refresh(); }
+    catch (e: any) { alert(e.message); }
+    setSaving(false);
+  };
+
+  const doRetire = async (a: CustodyItem) => {
+    if (!confirm(ar
+      ? 'إخراج هذا الصنف من الخدمة نهائياً؟ لن يعود إلى المستودع.'
+      : 'Take this item out of service for good? It will not go back to the store.')) return;
+    try { await api.post(`/api/it/custody/${a._id}/retire`, { date: today() }); refresh(); }
+    catch (e: any) { alert(e.message); }
+  };
+
+  const openHistory = async (a: CustodyItem) => {
+    setHistoryOf(a); setHistory([]);
+    try { const d = await api.get<{ events: any[] }>(`/api/it/custody/${a._id}/history`); setHistory(d.events || []); }
+    catch {}
+  };
+
+  // Handover desk — picking the employee loads exactly what they still hold.
+  const openHandover = () => {
+    setHandoverOpen(true); setHandoverEmployee(''); setHandoverHeld([]); setHandoverPicked([]);
+    setHandoverForm({ date: today(), condition: 'good', notes: '', retire: false });
+  };
+  const pickHandoverEmployee = async (id: string) => {
+    setHandoverEmployee(id); setHandoverPicked([]); setHandoverHeld([]);
+    if (!id) return;
+    setHandoverLoading(true);
+    try {
+      const d = await api.get<{ assigned: CustodyItem[] }>(`/api/it/custody/by-employee/${id}`);
+      setHandoverHeld(d.assigned || []);
+    } catch {}
+    setHandoverLoading(false);
+  };
+  const toggleHandover = (id: string) =>
+    setHandoverPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const doHandover = async () => {
+    if (!handoverEmployee || !handoverPicked.length) return;
+    setSaving(true);
+    try {
+      const d = await api.post<{ returned: number; outstanding: any[] }>('/api/it/custody/handover', {
+        employee: handoverEmployee, items: handoverPicked, ...handoverForm,
+      });
+      // Say plainly what is still on them — that is the whole point of the screen.
+      alert(ar
+        ? `تم تسجيل استلام ${d.returned} صنف. المتبقي بعهدة الموظف: ${d.outstanding.length} صنف.`
+        : `Recorded ${d.returned} item(s) as handed back. Still outstanding: ${d.outstanding.length}.`);
+      setHandoverOpen(false); refresh();
+    } catch (e: any) { alert(e.message); }
+    setSaving(false);
+  };
+
   const filtered = items.filter((a) => {
     const s = search.trim().toLowerCase();
     if (!s) return true;
@@ -188,6 +292,9 @@ export default function ItCustodyPage() {
           { header: 'Status', key: 'status', transform: (v: any) => custodyStatusLabel(v, 'en'), width: 12 },
           { header: 'Returned', key: 'returnedDate', width: 14 },
         ], `it-custody-${today()}`, 'Custody')} />
+        <button type="button" onClick={openHandover} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
+          <ClipboardCheck className="w-4 h-4" /> {ar ? 'استلام عهدة موظف' : 'Receive from employee'}
+        </button>
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'تسليم عهدة' : 'Assign item'}</PrimaryButton>
       </PageHeader>
 
@@ -266,9 +373,13 @@ export default function ItCustodyPage() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
-                    {a.status === 'assigned' && (
+                    {a.status === 'assigned' && (<>
                       <button type="button" onClick={() => openReturn(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-green-600 hover:bg-slate-100" title={ar ? 'استرجاع' : 'Return'}><Undo2 className="w-4 h-4" /></button>
-                    )}
+                      <button type="button" onClick={() => openTransfer(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-blue-600 hover:bg-slate-100" title={ar ? 'نقل لموظف آخر' : 'Transfer to another employee'}><ArrowLeftRight className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => openReport(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-amber-600 hover:bg-slate-100" title={ar ? 'إبلاغ عن تلف أو فقد' : 'Report damaged or lost'}><AlertTriangle className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => doRetire(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-slate-900 hover:bg-slate-100" title={ar ? 'إخراج من الخدمة' : 'Take out of service'}><Archive className="w-4 h-4" /></button>
+                    </>)}
+                    <button type="button" onClick={() => openHistory(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'سجل الحركة' : 'Movement history'}><History className="w-4 h-4" /></button>
                     <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button>
                     <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
                   </div>
@@ -452,6 +563,207 @@ export default function ItCustodyPage() {
           </p>
         </div>
       </Modal>
+      {/* Transfer — the device goes straight to the next person, so both sides
+          of the handover are recorded on one event. */}
+      <Modal open={!!transferring} onClose={() => setTransferring(null)} title={ar ? 'نقل العهدة لموظف آخر' : 'Transfer to another employee'}
+        footer={<>
+          <button type="button" onClick={() => setTransferring(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={doTransfer} disabled={saving || !transferForm.toEmployee}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'تأكيد النقل' : 'Confirm transfer'}
+          </PrimaryButton>
+        </>}>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            {ar ? 'الحائز الحالي:' : 'Currently held by:'} <span className="font-semibold text-slate-900">{empName(transferring?.employee, lang)}</span>
+            {transferring?.serialNumber ? <span className="text-slate-400 font-mono text-xs"> · {transferring.serialNumber}</span> : null}
+          </p>
+          <Field label={ar ? 'الموظف الجديد' : 'New holder'}>
+            <SearchableSelect
+              value={transferForm.toEmployee}
+              onChange={(v) => setTransferForm({ ...transferForm, toEmployee: v })}
+              placeholder={ar ? 'اختر الموظف' : 'Select an employee'}
+              searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم الوظيفي أو الإقامة…' : 'Search by name, number or iqama…'}
+              emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+              options={employees.map((e) => ({
+                value: e._id,
+                label: empName(e, lang),
+                hint: [e.employeeNumber, e.department, e.iqamaNumber].filter(Boolean).join(' · '),
+              }))}
+            />
+          </Field>
+          <Field label={ar ? 'تاريخ النقل' : 'Transfer date'}>
+            <TextInput type="date" value={transferForm.date} onChange={(e) => setTransferForm({ ...transferForm, date: e.target.value })} />
+          </Field>
+          <Field label={ar ? 'الحالة عند النقل' : 'Condition at transfer'}>
+            <Select value={transferForm.condition} onChange={(e) => setTransferForm({ ...transferForm, condition: e.target.value })}>
+              {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+            </Select>
+          </Field>
+          <Field label={ar ? 'ملاحظات' : 'Notes'}>
+            <TextArea rows={2} value={transferForm.notes} onChange={(e) => setTransferForm({ ...transferForm, notes: e.target.value })} />
+          </Field>
+        </div>
+      </Modal>
+
+      {/* Damaged / lost. A damaged device stays on its holder; a lost one leaves
+          circulation, because it cannot be handed to anyone else. */}
+      <Modal open={!!reporting} onClose={() => setReporting(null)} title={ar ? 'إبلاغ عن تلف أو فقد' : 'Report damaged or lost'}
+        footer={<>
+          <button type="button" onClick={() => setReporting(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={doReport} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'تسجيل البلاغ' : 'Record report'}
+          </PrimaryButton>
+        </>}>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            {reporting?.name} — {empName(reporting?.employee, lang)}
+          </p>
+          <Field label={ar ? 'نوع البلاغ' : 'Report type'}>
+            <Select value={reportForm.kind} onChange={(e) => setReportForm({ ...reportForm, kind: e.target.value as 'damaged' | 'lost' })}>
+              <option value="damaged">{ar ? 'تالف' : 'Damaged'}</option>
+              <option value="lost">{ar ? 'مفقود' : 'Lost'}</option>
+            </Select>
+          </Field>
+          <p className="text-xs text-slate-500">
+            {reportForm.kind === 'damaged'
+              ? (ar ? 'الصنف يظل بعهدة الموظف وتتغير حالته إلى "تالف".' : 'The item stays with the employee and its condition becomes "damaged".')
+              : (ar ? 'الصنف يخرج من التداول لأنه لم يعد موجوداً، ويظل البلاغ مسجلاً على الموظف.' : 'The item leaves circulation because it no longer exists; the report stays on the employee\u2019s record.')}
+          </p>
+          <Field label={ar ? 'تاريخ البلاغ' : 'Report date'}>
+            <TextInput type="date" value={reportForm.date} onChange={(e) => setReportForm({ ...reportForm, date: e.target.value })} />
+          </Field>
+          <Field label={ar ? 'قيمة الخصم (إن وُجد)' : 'Amount charged (if any)'}>
+            <TextInput type="number" min={0} value={reportForm.cost} onChange={(e) => setReportForm({ ...reportForm, cost: Number(e.target.value) })} />
+          </Field>
+          <Field label={ar ? 'ملاحظات' : 'Notes'}>
+            <TextArea rows={2} value={reportForm.notes} onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })} />
+          </Field>
+        </div>
+      </Modal>
+
+      {/* Movement trail for one device. */}
+      <Modal open={!!historyOf} onClose={() => setHistoryOf(null)} wide title={ar ? 'سجل حركة الصنف' : 'Item movement history'}
+        footer={<button type="button" onClick={() => setHistoryOf(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إغلاق' : 'Close'}</button>}>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            {historyOf?.name}
+            {historyOf?.serialNumber ? <span className="text-slate-400 font-mono text-xs"> · {historyOf.serialNumber}</span> : null}
+          </p>
+          {history.length === 0 ? (
+            <p className="text-sm text-slate-400 py-6 text-center">{ar ? 'لا توجد حركات مسجلة لهذا الصنف.' : 'No movements recorded for this item yet.'}</p>
+          ) : (
+            <ol className="relative border-s border-slate-200 ms-2">
+              {history.map((ev) => (
+                <li key={ev._id} className="ms-4 pb-4 last:pb-0">
+                  <span className="absolute -start-1.5 mt-1.5 w-3 h-3 rounded-full bg-[#f37121]" />
+                  <p className="text-sm font-semibold text-slate-900">{ACTION_LABEL[ev.action]?.[ar ? 'ar' : 'en'] || ev.action}</p>
+                  <p className="text-xs text-slate-500">
+                    {fmtDate(ev.date)}
+                    {ev.fromEmployee ? ` · ${ar ? 'من' : 'from'} ${empName(ev.fromEmployee, lang)}` : ''}
+                    {ev.toEmployee ? ` · ${ar ? 'إلى' : 'to'} ${empName(ev.toEmployee, lang)}` : ''}
+                  </p>
+                  {(ev.notes || ev.cost > 0) && (
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {ev.notes}
+                      {ev.cost > 0 ? ` · ${ar ? 'خصم' : 'charged'} ${fmtMoney(ev.cost)}` : ''}
+                    </p>
+                  )}
+                  <p className="text-[11px] text-slate-400 mt-0.5">{ar ? 'سجّلها' : 'recorded by'} {ev.byName || '—'}</p>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </Modal>
+
+      {/* The handover desk. Pick the employee, tick what physically came back;
+          anything left unticked stays on them and the result says how much. */}
+      <Modal open={handoverOpen} onClose={() => setHandoverOpen(false)} wide title={ar ? 'استلام عهدة من موظف' : 'Receive custody from an employee'}
+        footer={<>
+          <button type="button" onClick={() => setHandoverOpen(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={doHandover} disabled={saving || !handoverPicked.length}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {ar ? `تأكيد استلام ${handoverPicked.length}` : `Confirm ${handoverPicked.length} item(s)`}
+          </PrimaryButton>
+        </>}>
+        <div className="space-y-4">
+          <Field label={ar ? 'الموظف' : 'Employee'}>
+            <SearchableSelect
+              value={handoverEmployee}
+              onChange={pickHandoverEmployee}
+              placeholder={ar ? 'اختر الموظف' : 'Select an employee'}
+              searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم الوظيفي أو الإقامة…' : 'Search by name, number or iqama…'}
+              emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+              options={employees.map((e) => ({
+                value: e._id,
+                label: empName(e, lang),
+                hint: [e.employeeNumber, e.department, e.iqamaNumber].filter(Boolean).join(' · '),
+              }))}
+            />
+          </Field>
+
+          {handoverLoading ? (
+            <p className="text-sm text-slate-400 py-4 text-center">{ar ? 'جارٍ التحميل…' : 'Loading…'}</p>
+          ) : handoverEmployee && handoverHeld.length === 0 ? (
+            <p className="text-sm text-slate-500 py-4 text-center">{ar ? 'لا توجد عهد على هذا الموظف.' : 'This employee holds no custody items.'}</p>
+          ) : handoverHeld.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-slate-500">
+                  {ar ? `بعهدته ${handoverHeld.length} صنف — علّم على اللي استلمته` : `Holds ${handoverHeld.length} item(s) — tick what was handed back`}
+                </p>
+                <button type="button" onClick={() => setHandoverPicked(handoverPicked.length === handoverHeld.length ? [] : handoverHeld.map((i) => i._id))}
+                  className="text-xs text-[#f37121] hover:underline">
+                  {handoverPicked.length === handoverHeld.length ? (ar ? 'إلغاء التحديد' : 'Clear all') : (ar ? 'تحديد الكل' : 'Select all')}
+                </button>
+              </div>
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+                {handoverHeld.map((it) => (
+                  <label key={it._id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 cursor-pointer">
+                    <input type="checkbox" checked={handoverPicked.includes(it._id)} onChange={() => toggleHandover(it._id)}
+                      className="w-4 h-4 accent-[#f37121] shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm text-slate-900 truncate">{it.name}</span>
+                      <span className="block text-xs text-slate-400 truncate">
+                        {custodyTypeLabel(it.type, lang)}
+                        {it.serialNumber ? ` · ${it.serialNumber}` : ''}
+                        {it.assignedDate ? ` · ${ar ? 'منذ' : 'since'} ${fmtDate(it.assignedDate)}` : ''}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                {ar
+                  ? `سيتبقى ${handoverHeld.length - handoverPicked.length} صنف بعهدة الموظف بعد هذا الاستلام.`
+                  : `${handoverHeld.length - handoverPicked.length} item(s) will remain with the employee after this.`}
+              </p>
+            </div>
+          )}
+
+          {handoverPicked.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+              <Field label={ar ? 'تاريخ الاستلام' : 'Handover date'}>
+                <TextInput type="date" value={handoverForm.date} onChange={(e) => setHandoverForm({ ...handoverForm, date: e.target.value })} />
+              </Field>
+              <Field label={ar ? 'الحالة عند الاستلام' : 'Condition on return'}>
+                <Select value={handoverForm.condition} onChange={(e) => setHandoverForm({ ...handoverForm, condition: e.target.value })}>
+                  {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+                </Select>
+              </Field>
+              <Field label={ar ? 'ملاحظات' : 'Notes'} span2>
+                <TextArea rows={2} value={handoverForm.notes} onChange={(e) => setHandoverForm({ ...handoverForm, notes: e.target.value })} />
+              </Field>
+              <label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={handoverForm.retire} onChange={(e) => setHandoverForm({ ...handoverForm, retire: e.target.checked })}
+                  className="w-4 h-4 accent-[#f37121]" />
+                {ar ? 'إخراج من الخدمة بدل إعادتها للمستودع' : 'Take out of service instead of returning to the store'}
+              </label>
+            </div>
+          )}
+        </div>
+      </Modal>
+
     </div>
   );
 }

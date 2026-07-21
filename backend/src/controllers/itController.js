@@ -6,6 +6,7 @@ const ItSystem = require('../models/ItSystem');
 // only reason these IT-facing endpoints exist at all.
 const Asset = require('../models/Asset');
 const Employee = require('../models/Employee');
+const AssetEvent = require('../models/AssetEvent');
 const { emitToAll } = require('../websocket/socketManager');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -59,6 +60,26 @@ const TICKET_EDITABLE = [
   'description', 'resolution', 'rootCause', 'preventiveAction',
   'relatedAsset', 'device', 'notes',
 ];
+
+
+// Append to an item's movement log. Never throws into the caller: a failed log
+// line must not roll back a handover that physically already happened — but it
+// is logged loudly, because a gap in the trail is a real problem.
+const logEvent = async (req, asset, action, extra = {}) => {
+  try {
+    await AssetEvent.create({
+      asset: asset._id,
+      action,
+      date: extra.date || today(),
+      by: req.user._id,
+      byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+      section: 'it',
+      ...extra,
+    });
+  } catch (e) {
+    console.error('[custody] failed to log', action, 'for', String(asset._id), e.message);
+  }
+};
 
 const CUSTODY_EDITABLE = [
   'employee', 'name', 'type', 'serialNumber', 'brand', 'model', 'condition',
@@ -436,6 +457,7 @@ exports.createCustody = async (req, res) => {
     data.createdBy = req.user._id;
 
     const item = await Asset.create(data);
+    await logEvent(req, item, 'assigned', { toEmployee: item.employee, date: item.assignedDate, condition: item.condition });
     emitCustody({ type: 'custody', id: String(item._id) });
     res.status(201).json({ item });
   } catch (error) {
@@ -489,11 +511,211 @@ exports.returnCustody = async (req, res) => {
     }
 
     await item.save();
+    await logEvent(req, item, req.body.retire ? 'retired' : 'returned', {
+      fromEmployee: previousEmployee,
+      date: item.returnedDate,
+      condition: item.returnedCondition || item.condition,
+      notes: req.body.notes,
+    });
     emitCustody({ type: 'custody', id: String(item._id) });
     if (previousEmployee) emit('hr:employee', { id: previousEmployee });
     res.json({ item });
   } catch (error) {
     res.status(500).json({ message: 'Failed to return custody item' });
+  }
+};
+
+// ── Custody movements: transfer, report, retire, batch handover ─────────────
+// A device's life is one Asset document plus an AssetEvent trail. Each endpoint
+// below moves the document and appends the matching event, so "who had this and
+// when" is always answerable.
+
+// Employee → employee, without a trip through the store. The receiving side is
+// validated first: half a transfer is worse than none.
+exports.transferCustody = async (req, res) => {
+  try {
+    const { toEmployee, date, condition, notes } = req.body;
+    if (!toEmployee) return res.status(400).json({ message: 'Receiving employee is required' });
+
+    const item = await Asset.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Custody item not found' });
+    if (item.status !== 'assigned') {
+      return res.status(400).json({ message: 'Only an item currently held by an employee can be transferred' });
+    }
+    if (String(item.employee) === String(toEmployee)) {
+      return res.status(400).json({ message: 'The item is already held by that employee' });
+    }
+
+    const receiver = await Employee.findById(toEmployee).select('_id user').lean();
+    if (!receiver) return res.status(404).json({ message: 'Receiving employee not found' });
+
+    const fromEmployee = item.employee;
+    item.employee = receiver._id;
+    item.assignedDate = date || today();
+    item.assignedBy = req.user._id;
+    if (condition) item.condition = condition;
+    await item.save();
+
+    await logEvent(req, item, 'transferred', { fromEmployee, toEmployee: receiver._id, date, condition, notes });
+
+    emitCustody({ type: 'custody', id: String(item._id) });
+    // Both profiles changed — the giver lost an item, the receiver gained one.
+    if (fromEmployee) emit('hr:employee', { id: String(fromEmployee) });
+    emit('hr:employee', { id: String(receiver._id) });
+    res.json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to transfer custody item' });
+  }
+};
+
+// Broken or missing while in someone's hands. The item stays on the holder —
+// they are still accountable for it — but its condition and the trail say what
+// happened, and `cost` records anything the company decided to charge.
+exports.reportCustody = async (req, res) => {
+  try {
+    const { kind, notes, cost, date } = req.body;
+    if (!['damaged', 'lost'].includes(kind)) {
+      return res.status(400).json({ message: 'kind must be "damaged" or "lost"' });
+    }
+
+    const item = await Asset.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Custody item not found' });
+    if (item.status === 'returned') {
+      return res.status(400).json({ message: 'This item is already out of service' });
+    }
+
+    if (kind === 'damaged') {
+      item.condition = 'damaged';
+    } else {
+      // A lost device cannot sit on a shelf or in a drawer — it is out of
+      // circulation, and the trail records who lost it.
+      item.status = 'returned';
+      item.returnedDate = date || today();
+      item.returnedTo = req.user._id;
+    }
+    await item.save();
+
+    await logEvent(req, item, kind, {
+      fromEmployee: item.employee || null,
+      date,
+      condition: item.condition,
+      cost: Number(cost) || 0,
+      notes,
+    });
+
+    emitCustody({ type: 'custody', id: String(item._id) });
+    if (item.employee) emit('hr:employee', { id: String(item.employee) });
+    res.json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to report on custody item' });
+  }
+};
+
+// Out of circulation for good — dead, written off, sold. Distinct from a normal
+// return, which puts the device back on the shelf for the next person.
+exports.retireCustody = async (req, res) => {
+  try {
+    const item = await Asset.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Custody item not found' });
+
+    const holder = item.employee ? String(item.employee) : null;
+    item.status = 'returned';
+    item.returnedDate = req.body.date || today();
+    item.returnedTo = req.user._id;
+    item.employee = null;
+    item.assignedDate = undefined;
+    await item.save();
+
+    await logEvent(req, item, 'retired', { fromEmployee: holder, date: req.body.date, notes: req.body.notes });
+
+    emitCustody({ type: 'custody', id: String(item._id) });
+    if (holder) emit('hr:employee', { id: holder });
+    res.json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to retire custody item' });
+  }
+};
+
+// The handover desk: an employee walks in with some of their gear. Pick what
+// they actually handed back; whatever is not ticked stays on them, and the
+// response says exactly what is still outstanding.
+exports.handoverCustody = async (req, res) => {
+  try {
+    const { employee, items, date, condition, notes, retire } = req.body;
+    if (!employee) return res.status(400).json({ message: 'Employee is required' });
+    if (!Array.isArray(items) || !items.length) {
+      return res.status(400).json({ message: 'Select at least one item that was handed back' });
+    }
+
+    // Scoped to this employee's own assigned items, so a stray id in the list
+    // can never return someone else's device.
+    const held = await Asset.find({ _id: { $in: items }, employee, status: 'assigned' });
+    if (!held.length) return res.status(404).json({ message: 'None of those items are currently held by this employee' });
+
+    for (const item of held) {
+      item.returnedDate = date || today();
+      item.returnedTo = req.user._id;
+      if (condition) {
+        item.returnedCondition = condition;
+        item.condition = condition;
+      }
+      if (retire) {
+        item.status = 'returned';
+      } else {
+        item.status = 'in_stock';
+        item.employee = null;
+        item.assignedDate = undefined;
+      }
+      await item.save();
+      await logEvent(req, item, retire ? 'retired' : 'returned', {
+        fromEmployee: employee, date, condition, notes,
+      });
+      emitCustody({ type: 'custody', id: String(item._id) });
+    }
+
+    const outstanding = await Asset.find({ employee, status: 'assigned' })
+      .select('name type serialNumber brand model assignedDate')
+      .lean();
+
+    emit('hr:employee', { id: String(employee) });
+    res.json({ returned: held.length, outstanding });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to record the handover' });
+  }
+};
+
+// Everything an employee holds right now plus what they have already handed
+// back — the two halves of the handover screen.
+exports.custodyByEmployee = async (req, res) => {
+  try {
+    const employee = req.params.employeeId;
+    const [assigned, history] = await Promise.all([
+      Asset.find({ employee, status: 'assigned' }).sort({ assignedDate: -1 }).lean(),
+      AssetEvent.find({ $or: [{ fromEmployee: employee }, { toEmployee: employee }] })
+        .populate('asset', 'name type serialNumber brand model')
+        .populate('fromEmployee toEmployee', EMP_FIELDS)
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .lean(),
+    ]);
+    res.json({ assigned, history });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load the employee custody record' });
+  }
+};
+
+// One item's full timeline.
+exports.custodyHistory = async (req, res) => {
+  try {
+    const events = await AssetEvent.find({ asset: req.params.id })
+      .populate('fromEmployee toEmployee', EMP_FIELDS)
+      .populate('by', 'firstName lastName')
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+    res.json({ events });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load the item history' });
   }
 };
 
@@ -552,6 +774,7 @@ exports.createStock = async (req, res) => {
     data.createdBy = req.user._id;
 
     const item = await Asset.create(data);
+    await logEvent(req, item, 'added_to_store', { condition: item.condition });
     emitCustody({ type: 'stock', id: String(item._id) });
     res.status(201).json({ item });
   } catch (error) {
@@ -623,6 +846,9 @@ exports.assignFromStock = async (req, res) => {
     item.returnedTo = undefined;
 
     await item.save();
+    await logEvent(req, item, 'assigned', {
+      toEmployee: item.employee, date: item.assignedDate, condition: item.condition, notes: req.body.notes,
+    });
     emitCustody({ type: 'custody', id: String(item._id) });
     emit('hr:employee', { id: String(item.employee) });
     res.json({ item });

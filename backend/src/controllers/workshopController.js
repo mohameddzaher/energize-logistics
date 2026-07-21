@@ -323,13 +323,19 @@ const getPurchaseRequests = async (req, res) => {
   }
 };
 
+// Whitelisted rather than spread — otherwise a caller can set its own status,
+// requestedBy or inventoryItem and walk straight past the receive flow.
+const PURCHASE_EDITABLE = [
+  'itemName', 'quantity', 'description', 'vehicleNumber',
+  'maintenanceRequest', 'partIndex', 'supplier', 'cost', 'invoiceNumber',
+];
+
 const createPurchaseRequest = async (req, res) => {
   try {
-    const data = {
-      ...req.body,
-      status: 'pending',
-      requestedBy: req.user._id,
-    };
+    const data = {};
+    PURCHASE_EDITABLE.forEach((f) => { if (req.body[f] !== undefined && req.body[f] !== '') data[f] = req.body[f]; });
+    data.status = 'pending';
+    data.requestedBy = req.user._id;
     if (req.user.branch) data.branch = req.user.branch;
 
     // If linked to maintenance, auto-fill vehicleNumber if not provided

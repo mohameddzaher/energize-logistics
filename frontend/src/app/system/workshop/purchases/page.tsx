@@ -8,7 +8,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart, Loader2, X, Check, Package, AlertCircle,
-  ChevronLeft, ChevronRight, Download, Search, Trash2, ExternalLink, Boxes,
+  ChevronLeft, ChevronRight, Download, Search, Trash2, ExternalLink, Boxes, Plus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
@@ -46,7 +46,7 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
 };
 
 export default function WorkshopPurchasesPage() {
-  const { confirm } = useDialog();
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang } = useLanguage();
   const isAr = lang === 'ar';
@@ -70,6 +70,14 @@ export default function WorkshopPurchasesPage() {
   // a request and a slow early one can land after a later one.
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Creating a purchase used to be possible only from a maintenance job, so a
+  // part bought off the shelf had nowhere to be recorded. `arrived` covers the
+  // common case — it already came in — by receiving it in the same step, which
+  // is what puts it in the store.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ itemName: '', quantity: '1', vehicleNumber: '', supplier: '', cost: '', invoiceNumber: '', description: '', arrived: true });
+  const [creating, setCreating] = useState(false);
 
   // Per-item loading state for Mark Received
   const [receivingIds, setReceivingIds] = useState<Set<string>>(new Set());
@@ -124,6 +132,34 @@ export default function WorkshopPurchasesPage() {
   useSocket('purchase:fulfilled', handleSocketRefresh);
   useSocket('purchase:deleted', handleSocketRefresh);
   useSocket('inventory:updated', handleSocketRefresh);
+
+  const canCreate = user && ['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'].includes(user.role);
+  const submitCreate = async () => {
+    if (!createForm.itemName.trim()) return;
+    setCreating(true);
+    try {
+      const created = await api.post<any>('/api/workshop/purchases', {
+        itemName: createForm.itemName.trim(),
+        quantity: Math.max(1, Number(createForm.quantity) || 1),
+        vehicleNumber: createForm.vehicleNumber.trim(),
+        supplier: createForm.supplier.trim(),
+        cost: createForm.cost ? Number(createForm.cost) : undefined,
+        invoiceNumber: createForm.invoiceNumber.trim(),
+        description: createForm.description.trim(),
+      });
+      // Already in hand → receive it now, which is the step that adds it to stock.
+      if (createForm.arrived && created?._id) {
+        await api.put(`/api/workshop/purchases/${created._id}/receive`, {});
+        notify(isAr ? 'تم التسجيل وإضافته إلى المستودع.' : 'Recorded and added to the store.', 'success');
+      } else {
+        notify(isAr ? 'تم تسجيل الطلب.' : 'Request recorded.', 'success');
+      }
+      setCreateOpen(false);
+      setCreateForm({ itemName: '', quantity: '1', vehicleNumber: '', supplier: '', cost: '', invoiceNumber: '', description: '', arrived: true });
+      fetchPurchases();
+    } catch (e: any) { setError(e.message); }
+    setCreating(false);
+  };
 
   // Deleting undoes what the request did to stock, so spell that out before
   // asking — "delete" reads as harmless until it silently moves the shelf count.
@@ -243,11 +279,12 @@ export default function WorkshopPurchasesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <ShoppingCart className="w-7 h-7 text-[#f37121]" />
           <h1 className="text-2xl font-bold text-slate-900">{tx.pageTitle}</h1>
         </div>
+        <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={handleExport}
@@ -257,6 +294,17 @@ export default function WorkshopPurchasesPage() {
           <Download className="w-4 h-4" />
           {tx.export}
         </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e06010] text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {isAr ? 'تسجيل شراء' : 'Record a purchase'}
+          </button>
+        )}
+        </div>
       </div>
 
       {/* Error */}
@@ -593,6 +641,92 @@ export default function WorkshopPurchasesPage() {
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+      {/* Record a purchase. Two things happen here depending on "already
+          arrived": either a request is logged for later receipt, or it is
+          received on the spot and lands in the store immediately. */}
+      <AnimatePresence>
+        {createOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setCreateOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+                <h2 className="text-lg font-bold text-slate-900">{isAr ? 'تسجيل شراء' : 'Record a purchase'}</h2>
+                <button type="button" onClick={() => setCreateOpen(false)} className="text-slate-500 hover:text-slate-900" aria-label="Close"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="p-6 space-y-3 overflow-y-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'الصنف *' : 'Item *'}</label>
+                    <input value={createForm.itemName} onChange={(e) => setCreateForm((f) => ({ ...f, itemName: e.target.value }))}
+                      placeholder={isAr ? 'مثال: فلتر زيت' : 'e.g. Oil filter'}
+                      className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                  </div>
+                  <div>
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'الكمية' : 'Quantity'}</label>
+                    <input type="number" min={1} value={createForm.quantity} onChange={(e) => setCreateForm((f) => ({ ...f, quantity: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                  </div>
+                  <div>
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'رقم المركبة (اختياري)' : 'Vehicle number (optional)'}</label>
+                    <input value={createForm.vehicleNumber} onChange={(e) => setCreateForm((f) => ({ ...f, vehicleNumber: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                  </div>
+                  <div>
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'المورّد' : 'Supplier'}</label>
+                    <input value={createForm.supplier} onChange={(e) => setCreateForm((f) => ({ ...f, supplier: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                  </div>
+                  <div>
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'التكلفة الإجمالية' : 'Total cost'}</label>
+                    <input type="number" min={0} value={createForm.cost} onChange={(e) => setCreateForm((f) => ({ ...f, cost: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'رقم الفاتورة' : 'Invoice number'}</label>
+                    <input value={createForm.invoiceNumber} onChange={(e) => setCreateForm((f) => ({ ...f, invoiceNumber: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-slate-500 text-sm block mb-1">{isAr ? 'ملاحظات' : 'Notes'}</label>
+                    <textarea rows={2} value={createForm.description} onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
+                      className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-50 border border-emerald-200 cursor-pointer">
+                  <input type="checkbox" checked={createForm.arrived} onChange={(e) => setCreateForm((f) => ({ ...f, arrived: e.target.checked }))}
+                    className="w-4 h-4 accent-emerald-600 mt-0.5" />
+                  <span className="text-sm">
+                    <span className="font-semibold text-emerald-900 block">{isAr ? 'الصنف وصل بالفعل' : 'The item has already arrived'}</span>
+                    <span className="text-xs text-emerald-800">
+                      {isAr
+                        ? 'هيتسجّل كمستلَم ويتضاف إلى المستودع فوراً. لو شِلت العلامة هيتسجّل كطلب جديد وتستلمه لما يوصل.'
+                        : 'It is recorded as received and added to the store right away. Untick it to log a request and receive it when it arrives.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 shrink-0">
+                <button type="button" onClick={() => setCreateOpen(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{isAr ? 'إلغاء' : 'Cancel'}</button>
+                <button type="button" onClick={submitCreate} disabled={creating || !createForm.itemName.trim()}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e06010] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                  {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {createForm.arrived ? (isAr ? 'تسجيل وإضافة للمستودع' : 'Record and add to store') : (isAr ? 'تسجيل الطلب' : 'Log the request')}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

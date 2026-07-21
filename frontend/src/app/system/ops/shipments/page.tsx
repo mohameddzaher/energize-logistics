@@ -361,9 +361,7 @@ export default function OpsShipmentsPage() {
                             <p className="text-xs text-slate-500">
                               {fmtDateTime(when, lang)}
                               {note ? <> · {note}</> : null}
-                              {who
-                                ? <> · <span className="text-slate-700 font-medium">{who}</span></>
-                                : <> · <span className="text-slate-400 italic">{lang === 'ar' ? 'المنفّذ غير مُسجَّل' : 'performer not recorded'}</span></>}
+                              {who ? <> · <span className="text-slate-700 font-medium">{who}</span></> : null}
                             </p>
                           ) : (
                             <p className="text-xs text-slate-300">{lang === 'ar' ? 'لم تتم بعد' : 'not yet'}</p>

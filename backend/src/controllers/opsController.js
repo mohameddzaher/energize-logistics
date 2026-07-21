@@ -204,10 +204,46 @@ exports.webhook = async (req, res) => {
   res.json({ ok: true });
 };
 
+// Resolve an admin/user UUID → display name, cached (many timelines share the
+// same creators). Tries the admins table first, then users; never throws.
+const resolveAdminName = async (id) => {
+  if (!id) return '';
+  const key = `ops:adminName:${id}`;
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  let name = '';
+  for (const ep of [`/admins/${encodeURIComponent(id)}`, `/admin/users/${encodeURIComponent(id)}`]) {
+    try {
+      const r = await upl.get(ep, {});
+      const d = r.data ?? r;
+      if (d && d.name) { name = d.name; break; }
+    } catch (e) { /* try next / give up */ }
+  }
+  cache.set(key, name, 60 * 60 * 1000); // names are stable — cache an hour
+  return name;
+};
+
 exports.shipmentTimeline = async (req, res) => {
   try {
-    const out = await upl.get(`/admin/shipments/timeline/${encodeURIComponent(req.params.id)}`, { lang: langOf(req) });
-    res.json(out.data ?? out);
+    const id = req.params.id;
+    const out = await upl.get(`/admin/shipments/timeline/${encodeURIComponent(id)}`, { lang: langOf(req) });
+    const data = out.data ?? out;
+    const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : null);
+
+    // The "requesting" step is the shipment's creation — UPL leaves its `admin`
+    // null there, but the creator IS on the shipment as `created_by`. Resolve it
+    // so the person who created the shipment shows, just like the later steps.
+    const requesting = items && items.find((e) => e && e.status === 'requesting' && e.created_at && !(e.admin && e.admin.name));
+    if (requesting) {
+      try {
+        const shipRes = await upl.get(`/admin/shipments/${encodeURIComponent(id)}`, {});
+        const ship = shipRes.data ?? shipRes;
+        const name = await resolveAdminName(ship && ship.created_by);
+        if (name) requesting.admin = { id: ship.created_by, name, source: 'created_by', creator_type: ship.creator_type };
+      } catch (e) { /* leave requesting as-is */ }
+    }
+
+    res.json(data);
   } catch (error) {
     fail(res, error, 'Failed to load shipment timeline');
   }

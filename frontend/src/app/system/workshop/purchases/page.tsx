@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -30,13 +30,6 @@ interface PurchaseRequest {
   createdAt: string;
   // The stock line this delivery landed in — present once it has been received.
   inventoryItem?: { _id: string; code: string; name: string; quantity: number; unit?: string } | null;
-}
-
-interface InventorySearchItem {
-  _id: string;
-  name: string;
-  code: string;
-  quantity: number;
 }
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
@@ -76,26 +69,13 @@ export default function WorkshopPurchasesPage() {
   // common case — it already came in — by receiving it in the same step, which
   // is what puts it in the store.
   const [createOpen, setCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ itemName: '', quantity: '1', vehicleNumber: '', supplier: '', cost: '', invoiceNumber: '', description: '', arrived: true });
+  const [createForm, setCreateForm] = useState({ itemName: '', quantity: '1', vehicleNumber: '', supplier: '', cost: '', invoiceNumber: '', description: '' });
   const [creating, setCreating] = useState(false);
 
   // Per-item loading state for Mark Received
   const [receivingIds, setReceivingIds] = useState<Set<string>>(new Set());
 
-  // Acknowledge modal
-  const [acknowledgeModal, setAcknowledgeModal] = useState<string | null>(null);
-  const [inStock, setInStock] = useState(false);
-  const [inventorySearch, setInventorySearch] = useState('');
-  const [inventoryResults, setInventoryResults] = useState<InventorySearchItem[]>([]);
-  const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventorySearchItem | null>(null);
-  const [searchingInventory, setSearchingInventory] = useState(false);
-  const [acknowledging, setAcknowledging] = useState(false);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fulfill modal
-  const [fulfillModal, setFulfillModal] = useState<string | null>(null);
-  const [fulfillForm, setFulfillForm] = useState({ cost: '', supplier: '', invoiceNumber: '' });
-  const [fulfilling, setFulfilling] = useState(false);
 
   const fetchPurchases = useCallback(async () => {
     try {
@@ -133,6 +113,18 @@ export default function WorkshopPurchasesPage() {
   useSocket('purchase:deleted', handleSocketRefresh);
   useSocket('inventory:updated', handleSocketRefresh);
 
+  // One click: the goods are here, put them in the store. The receive endpoint
+  // is what adds the quantity (creating the stock line when the part is new).
+  const receiveDirect = async (id: string) => {
+    setReceivingIds((prev) => new Set(prev).add(id));
+    try {
+      await api.put(`/api/workshop/purchases/${id}/receive`, {});
+      notify(isAr ? 'تم الاستلام وإضافته إلى المستودع.' : 'Received and added to the store.', 'success');
+      fetchPurchases();
+    } catch (e: any) { setError(e.message); }
+    setReceivingIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+  };
+
   const canCreate = user && ['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'].includes(user.role);
   const submitCreate = async () => {
     if (!createForm.itemName.trim()) return;
@@ -147,15 +139,12 @@ export default function WorkshopPurchasesPage() {
         invoiceNumber: createForm.invoiceNumber.trim(),
         description: createForm.description.trim(),
       });
-      // Already in hand → receive it now, which is the step that adds it to stock.
-      if (createForm.arrived && created?._id) {
-        await api.put(`/api/workshop/purchases/${created._id}/receive`, {});
-        notify(isAr ? 'تم التسجيل وإضافته إلى المستودع.' : 'Recorded and added to the store.', 'success');
-      } else {
-        notify(isAr ? 'تم تسجيل الطلب.' : 'Request recorded.', 'success');
-      }
+      // Recording IS receiving — a purchase is only entered once the goods are
+      // in hand, so it goes straight into the store. No staging steps.
+      if (created?._id) await api.put(`/api/workshop/purchases/${created._id}/receive`, {});
+      notify(isAr ? 'تم التسجيل وإضافته إلى المستودع.' : 'Recorded and added to the store.', 'success');
       setCreateOpen(false);
-      setCreateForm({ itemName: '', quantity: '1', vehicleNumber: '', supplier: '', cost: '', invoiceNumber: '', description: '', arrived: true });
+      setCreateForm({ itemName: '', quantity: '1', vehicleNumber: '', supplier: '', cost: '', invoiceNumber: '', description: '' });
       fetchPurchases();
     } catch (e: any) { setError(e.message); }
     setCreating(false);
@@ -181,84 +170,10 @@ export default function WorkshopPurchasesPage() {
     setDeletingId(null);
   };
 
-  const searchInventoryItems = async (term: string) => {
-    if (!term || term.length < 2) {
-      setInventoryResults([]);
-      return;
-    }
-    try {
-      setSearchingInventory(true);
-      const results = await api.get<InventorySearchItem[]>(`/api/workshop/inventory/search?q=${encodeURIComponent(term)}`);
-      setInventoryResults(results || []);
-    } catch {
-      setInventoryResults([]);
-    } finally {
-      setSearchingInventory(false);
-    }
-  };
 
-  const handleInventorySearchChange = (term: string) => {
-    setInventorySearch(term);
-    setSelectedInventoryItem(null);
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    searchTimeoutRef.current = setTimeout(() => searchInventoryItems(term), 300);
-  };
 
-  const openAcknowledgeModal = (id: string) => {
-    setAcknowledgeModal(id);
-    setInStock(false);
-    setInventorySearch('');
-    setInventoryResults([]);
-    setSelectedInventoryItem(null);
-  };
 
-  const handleAcknowledge = async () => {
-    if (!acknowledgeModal) return;
-    const id = acknowledgeModal;
-    try {
-      setAcknowledging(true);
-      setReceivingIds(prev => new Set(prev).add(id));
 
-      if (inStock && selectedInventoryItem) {
-        // Mark received with inventory deduction
-        await api.put(`/api/workshop/purchases/${id}/received`, { inventoryItemId: selectedInventoryItem._id });
-        // Immediately fulfill since it's from stock
-        await api.put(`/api/workshop/purchases/${id}/fulfilled`, { cost: 0, supplier: tx.fromInventory });
-      } else {
-        // Just mark as received (under preparation)
-        await api.put(`/api/workshop/purchases/${id}/received`);
-      }
-
-      setAcknowledgeModal(null);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setAcknowledging(false);
-      setReceivingIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
-
-  const handleFulfill = async () => {
-    if (!fulfillModal) return;
-    try {
-      setFulfilling(true);
-      await api.put(`/api/workshop/purchases/${fulfillModal}/fulfilled`, {
-        cost: parseFloat(fulfillForm.cost) || 0,
-        supplier: fulfillForm.supplier,
-        invoiceNumber: fulfillForm.invoiceNumber,
-      });
-      setFulfillModal(null);
-      setFulfillForm({ cost: '', supplier: '', invoiceNumber: '' });
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setFulfilling(false);
-    }
-  };
 
   const handleExport = () => {
     exportToExcel(purchases, [
@@ -406,30 +321,19 @@ export default function WorkshopPurchasesPage() {
                     </td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-2">
+                        {/* The staged pending → preparing → ready-for-pickup desk is
+                            gone: a purchase is recorded once the goods are in hand.
+                            Pending rows still arrive from maintenance jobs, so they
+                            keep ONE action — into the store, one click. */}
                         {p.status === 'pending' && (
                           <button
-                            onClick={() => openAcknowledgeModal(p._id)}
+                            onClick={() => receiveDirect(p._id)}
                             disabled={receivingIds.has(p._id)}
-                            className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-600 hover:bg-blue-500/30 text-xs font-medium transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-700 hover:bg-emerald-500/30 text-xs font-medium transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            {receivingIds.has(p._id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Package className="w-3 h-3" />}
-                            {tx.acknowledge}
+                            {receivingIds.has(p._id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Boxes className="w-3 h-3" />}
+                            {isAr ? 'استلام للمستودع' : 'Receive into store'}
                           </button>
-                        )}
-                        {p.status === 'received' && (
-                          <button
-                            onClick={() => {
-                              setFulfillModal(p._id);
-                              setFulfillForm({ cost: '', supplier: '', invoiceNumber: '' });
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-green-500/20 text-green-600 hover:bg-green-500/30 text-xs font-medium transition-colors flex items-center gap-1"
-                          >
-                            <Check className="w-3 h-3" />
-                            {tx.markReady}
-                          </button>
-                        )}
-                        {p.status === 'fulfilled' && (
-                          <span className="text-green-500 text-xs flex items-center gap-1"><Check className="w-3 h-3" />{tx.ready}</span>
                         )}
                         {canDelete && (
                           <button
@@ -470,179 +374,7 @@ export default function WorkshopPurchasesPage() {
         </div>
       )}
 
-      {/* Acknowledge Modal */}
-      <AnimatePresence>
-        {acknowledgeModal && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-50" onClick={() => setAcknowledgeModal(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            >
-              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 space-y-4 shadow-sm" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between">
-                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{tx.acknowledgeModalTitle}</h2>
-                  <button onClick={() => setAcknowledgeModal(null)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
-                </div>
 
-                {/* In Stock Checkbox */}
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={inStock}
-                    onChange={e => {
-                      setInStock(e.target.checked);
-                      if (!e.target.checked) {
-                        setInventorySearch('');
-                        setInventoryResults([]);
-                        setSelectedInventoryItem(null);
-                      }
-                    }}
-                    className="w-4 h-4 rounded border-slate-300 bg-slate-50 text-[#f37121] focus:ring-[#f37121]"
-                  />
-                  <span className="text-slate-900 text-sm">{tx.availableInStock}</span>
-                </label>
-
-                {/* Inventory Search (shown when inStock is checked) */}
-                {inStock && (
-                  <div className="space-y-2">
-                    <div className="relative">
-                      <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                      <input
-                        type="text"
-                        value={inventorySearch}
-                        onChange={e => handleInventorySearchChange(e.target.value)}
-                        placeholder={tx.searchInventoryPlaceholder}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 ps-10 pe-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]"
-                      />
-                      {searchingInventory && <Loader2 className="absolute end-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" />}
-                    </div>
-
-                    {/* Search Results */}
-                    {inventoryResults.length > 0 && !selectedInventoryItem && (
-                      <div className="max-h-48 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg">
-                        {inventoryResults.map(item => (
-                          <button
-                            key={item._id}
-                            onClick={() => {
-                              setSelectedInventoryItem(item);
-                              setInventorySearch(item.name);
-                              setInventoryResults([]);
-                            }}
-                            className="w-full text-start px-3 py-2.5 hover:bg-slate-50 transition-colors border-b border-slate-200 last:border-0"
-                          >
-                            <p className="text-slate-900 text-sm font-medium">{item.name}</p>
-                            <p className="text-slate-500 text-xs">
-                              {tx.code}: {item.code} | {tx.available}: {item.quantity}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Selected Item */}
-                    {selectedInventoryItem && (
-                      <div className="flex items-center justify-between bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2.5">
-                        <div>
-                          <p className="text-green-600 text-sm font-medium">{selectedInventoryItem.name}</p>
-                          <p className="text-slate-500 text-xs">{tx.available}: {selectedInventoryItem.quantity}</p>
-                        </div>
-                        <button type="button" title={tx.remove} onClick={() => {
-                          setSelectedInventoryItem(null);
-                          setInventorySearch('');
-                        }} className="text-slate-500 hover:text-slate-900">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-
-                    {inStock && selectedInventoryItem && (
-                      <p className="text-blue-600 text-xs">
-                        {tx.deductInventoryNote}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {!inStock && (
-                  <p className="text-slate-500 text-xs">
-                    {tx.underPreparationNote}
-                  </p>
-                )}
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <button onClick={() => setAcknowledgeModal(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {tx.cancel}
-                  </button>
-                  <button
-                    onClick={handleAcknowledge}
-                    disabled={acknowledging || (inStock && !selectedInventoryItem)}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {acknowledging && <Loader2 className="w-4 h-4 animate-spin" />}
-                    <Check className="w-4 h-4" />
-                    {tx.confirm}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Fulfill Modal */}
-      <AnimatePresence>
-        {fulfillModal && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-50" onClick={() => setFulfillModal(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            >
-              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 space-y-4 shadow-sm" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between">
-                  <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-lg font-bold text-white mb-3">{tx.fulfillModalTitle}</h2>
-                  <button onClick={() => setFulfillModal(null)} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-slate-500 text-sm block mb-1">{tx.colCost}</label>
-                    <input type="number" value={fulfillForm.cost} onChange={e => setFulfillForm(p => ({ ...p, cost: e.target.value }))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
-                  </div>
-                  <div>
-                    <label className="text-slate-500 text-sm block mb-1">{tx.colSupplier}</label>
-                    <input type="text" value={fulfillForm.supplier} onChange={e => setFulfillForm(p => ({ ...p, supplier: e.target.value }))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
-                  </div>
-                  <div>
-                    <label className="text-slate-500 text-sm block mb-1">{tx.invoiceNumber}</label>
-                    <input type="text" value={fulfillForm.invoiceNumber} onChange={e => setFulfillForm(p => ({ ...p, invoiceNumber: e.target.value }))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-3 pt-2">
-                  <button onClick={() => setFulfillModal(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-sm font-medium">
-                    {tx.cancel}
-                  </button>
-                  <button onClick={handleFulfill} disabled={fulfilling}
-                    className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2">
-                    {fulfilling && <Loader2 className="w-4 h-4 animate-spin" />}
-                    <Check className="w-4 h-4" />
-                    {tx.confirm}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
       {/* Record a purchase. Two things happen here depending on "already
           arrived": either a request is logged for later receipt, or it is
           received on the spot and lands in the store immediately. */}
@@ -702,19 +434,6 @@ export default function WorkshopPurchasesPage() {
                       className="w-full bg-white border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]" />
                   </div>
                 </div>
-
-                <label className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-50 border border-emerald-200 cursor-pointer">
-                  <input type="checkbox" checked={createForm.arrived} onChange={(e) => setCreateForm((f) => ({ ...f, arrived: e.target.checked }))}
-                    className="w-4 h-4 accent-emerald-600 mt-0.5" />
-                  <span className="text-sm">
-                    <span className="font-semibold text-emerald-900 block">{isAr ? 'الصنف وصل بالفعل' : 'The item has already arrived'}</span>
-                    <span className="text-xs text-emerald-800">
-                      {isAr
-                        ? 'هيتسجّل كمستلَم ويتضاف إلى المستودع فوراً. لو شِلت العلامة هيتسجّل كطلب جديد وتستلمه لما يوصل.'
-                        : 'It is recorded as received and added to the store right away. Untick it to log a request and receive it when it arrives.'}
-                    </span>
-                  </span>
-                </label>
               </div>
 
               <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3 shrink-0">
@@ -722,7 +441,7 @@ export default function WorkshopPurchasesPage() {
                 <button type="button" onClick={submitCreate} disabled={creating || !createForm.itemName.trim()}
                   className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e06010] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
                   {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {createForm.arrived ? (isAr ? 'تسجيل وإضافة للمستودع' : 'Record and add to store') : (isAr ? 'تسجيل الطلب' : 'Log the request')}
+                  {isAr ? 'تسجيل وإضافة للمستودع' : 'Record and add to store'}
                 </button>
               </div>
             </motion.div>

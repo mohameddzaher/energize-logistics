@@ -14,7 +14,7 @@ import {
   Store, Truck, Tags, Languages, Wrench, Hammer, ShoppingCart, MessageSquare, Package,
   Target, Award, CalendarDays, Clock, Megaphone, CalendarCheck,
   Calculator, Scale, BookOpen, Gauge, Ship, ScrollText,
-  Activity, Car, UserSquare, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck,
+  Activity, Car, UserSquare, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck, PackageSearch, SlidersHorizontal,
   Thermometer, Satellite, Crown, Container, FileBarChart,
   Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox,
 } from 'lucide-react';
@@ -22,6 +22,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { homeRouteForRole } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
+import { SO_EDIT_ROLES as SO_ROLES } from '@/lib/shipmentOrders';
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
 
 import { isManagedSection, canAccessSection } from '@/lib/sections';
@@ -169,6 +170,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ops/load-types', label: lang === 'ar' ? 'أنواع الحمولة' : 'Load Types', icon: <Package className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
     { href: '/system/ops/car-brands', label: lang === 'ar' ? 'ماركات المركبات' : 'Car Brands', icon: <Tags className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
     { href: '/system/ops/car-colors', label: lang === 'ar' ? 'ألوان المركبات' : 'Car Colors', icon: <Palette className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
+
+    // ---- Shipment Orders (طلبات الشحنات) — standalone trial ----
+    // Creating shipments natively instead of on the external UPL system. Kept
+    // fully independent from Operations Platform: if the trial works, the team
+    // moves HERE and the integration is what gets retired.
+    { href: '/system/shipment-orders', label: lang === 'ar' ? 'الشحنات' : 'Shipments', icon: <PackageSearch className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
+    { href: '/system/shipment-orders/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
+    { href: '/system/shipment-orders/form-settings', label: lang === 'ar' ? 'إعدادات النموذج' : 'Form Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager'], section: 'Shipment Orders' },
 
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/guide', label: L.customsGuide, icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },

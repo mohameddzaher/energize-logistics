@@ -204,6 +204,18 @@ export async function generateDispatchSheetsZip(opts: GenerateOptions): Promise<
   return { blob, fileName: `كشوف-التخريج-${todayStamp()}.zip` };
 }
 
+// One shipment → one PDF, for the shipment-orders section where every order
+// carries its own بوليصة and is downloaded alone — no ZIP ceremony for one file.
+export async function generateSingleDispatchPdf(row: DispatchSheetRow): Promise<{ blob: Blob; fileName: string }> {
+  const html2canvas = await loadHtml2Canvas();
+  const letterheadBytes = await getLetterheadBytes();
+  const pdfBytes = await renderRowToPdfBytes(row, html2canvas, letterheadBytes);
+  return {
+    blob: new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' }),
+    fileName: pdfFileName(row).replace('كشف-تخريج-', 'بوليصة-'),
+  };
+}
+
 export function triggerDownload(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

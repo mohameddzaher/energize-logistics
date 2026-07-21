@@ -36,6 +36,13 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations', 'moderator', 'employee'],
   },
   {
+    // Trial: shipments created natively instead of on the external UPL system.
+    // Independent from Operations Platform on purpose.
+    key: 'Shipment Orders',
+    apiPrefixes: ['/api/shipment-orders'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'],
+  },
+  {
     key: 'Customs',
     apiPrefixes: ['/api/customs-clearance'],
     defaultRoles: ['admin', 'it_manager', 'operations_manager', 'customs_manager', 'customs_officer'],

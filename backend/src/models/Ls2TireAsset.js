@@ -15,7 +15,9 @@ const ls2TireAssetSchema = new mongoose.Schema({
   serial: { type: String, required: true, unique: true, trim: true },
   type: { type: String, default: '' },                // Michelin / Bridgestone / Conti / China
   sensor: { type: String, enum: ['yes', 'no', 'unknown'], default: 'unknown' },
-  status: { type: String, enum: ['mounted', 'spare', 'retired'], default: 'mounted', index: true },
+  // 'in_repair' = off the truck at the repair shop — NOT available stock;
+  // counting it as spare is how a shelf ends up promising tires it cannot hand out.
+  status: { type: String, enum: ['mounted', 'spare', 'in_repair', 'retired'], default: 'mounted', index: true },
   // Current mount (null while spare/retired)
   plate: { type: String, default: null },
   plateKey: { type: String, default: null, index: true },

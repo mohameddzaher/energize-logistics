@@ -19,7 +19,9 @@ import api from '@/lib/api';
 import {
   Truck, RefreshCw, Search, Plus, Upload, ArrowLeftRight, ArrowDownToLine, Pencil,
   Trash2, History, Radio, CircleDot, Container, ChevronDown, ChevronRight, X, ExternalLink,
+  Wrench,
 } from 'lucide-react';
+
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ls2Text, isLs2Staff, isLs2Admin, fmtNum, fmtDateTime, type Lang } from '@/lib/ls2';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -28,7 +30,7 @@ import SearchSelect from '@/components/ls2/SearchSelect';
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
 interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; status: string; notes: string }
-interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; status: 'mounted' | 'spare' | 'retired'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; notes: string }
+interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; status: 'mounted' | 'spare' | 'in_repair' | 'retired'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; notes: string }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
 interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
 
@@ -57,6 +59,8 @@ const ACTION_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
   transferred: { en: 'Transferred', ar: 'نقل', cls: 'bg-blue-100 text-blue-700' },
   retired: { en: 'Retired', ar: 'إعدام', cls: 'bg-red-100 text-red-700' },
   updated: { en: 'Edited', ar: 'تعديل', cls: 'bg-slate-100 text-slate-500' },
+  to_repair: { en: 'Sent to repair', ar: 'إنزال للصيانة', cls: 'bg-violet-100 text-violet-700' },
+  from_repair: { en: 'Back from repair', ar: 'رجعت من الصيانة', cls: 'bg-emerald-100 text-emerald-700' },
 };
 const ENTITY_LABELS: Record<string, { en: string; ar: string }> = {
   tire: { en: 'Tire', ar: 'فردة كاوتش' },
@@ -71,6 +75,7 @@ const SENSOR_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
 const TIRE_STATUS_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
   mounted: { en: 'Mounted', ar: 'مركّبة', cls: 'bg-emerald-100 text-emerald-700' },
   spare: { en: 'In stock', ar: 'في المخزن', cls: 'bg-amber-100 text-amber-700' },
+  in_repair: { en: 'In repair', ar: 'في الصيانة', cls: 'bg-violet-100 text-violet-700' },
   retired: { en: 'Retired', ar: 'معدومة', cls: 'bg-red-100 text-red-700' },
 };
 
@@ -260,8 +265,8 @@ export default function Ls2FleetAssetsPage() {
         icon={<Truck className="w-5 h-5" />}
         title={ar ? 'أصول الأسطول — سطحات وتيدرات وكاوتش' : 'Fleet Assets — Flatbeds, Trailers & Tires'}
         subtitle={ar
-          ? `${counts.flatbeds ?? 0} سطحة · ${counts.trailers ?? 0} تيدر · ${counts.mounted ?? 0} فردة مركّبة · ${counts.spare ?? 0} في المخزن`
-          : `${counts.flatbeds ?? 0} flatbeds · ${counts.trailers ?? 0} trailers · ${counts.mounted ?? 0} tires mounted · ${counts.spare ?? 0} in stock`}
+          ? `${counts.flatbeds ?? 0} سطحة · ${counts.trailers ?? 0} تيدر · ${counts.mounted ?? 0} فردة مركّبة · ${counts.spare ?? 0} في المخزن · ${counts.inRepair ?? 0} في الصيانة`
+          : `${counts.flatbeds ?? 0} flatbeds · ${counts.trailers ?? 0} trailers · ${counts.mounted ?? 0} tires mounted · ${counts.spare ?? 0} in stock · ${counts.inRepair ?? 0} in repair`}
       >
         {admin && (
           <button type="button" onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium">
@@ -443,11 +448,25 @@ export default function Ls2FleetAssetsPage() {
                           {admin && ti.status !== 'retired' && (
                             <div className="flex items-center justify-end gap-1.5">
                               <button type="button" title={ar ? 'نقل / تركيب' : 'Move / mount'} onClick={() => setMoveTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
-                              {ti.status === 'mounted' && (
+                              {ti.status === 'mounted' && (<>
                                 <button
                                   type="button" title={ar ? 'إنزال للمخزن' : 'Dismount to stock'} disabled={busy}
                                   onClick={() => { const reason = prompt(ar ? `سبب إنزال الفردة ${ti.serial}؟` : 'Reason?'); if (reason != null) doMoveTire(ti, { toPlate: null, reason }); }}
                                   className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600"
+                                ><ArrowDownToLine className="w-4 h-4" /></button>
+                                {/* Off for repair — NOT a swap and NOT stock. The tire stays
+                                    tracked, its slot stays empty, and the store won't offer it. */}
+                                <button
+                                  type="button" title={ar ? 'إنزال للصيانة' : 'Send to repair'} disabled={busy}
+                                  onClick={() => { const reason = prompt(ar ? `سبب إرسال الفردة ${ti.serial} للصيانة؟` : 'Reason for repair?'); if (reason != null) doMoveTire(ti, { toPlate: null, destination: 'repair', reason }); }}
+                                  className="p-1.5 rounded-md hover:bg-violet-50 text-slate-400 hover:text-violet-600"
+                                ><Wrench className="w-4 h-4" /></button>
+                              </>)}
+                              {ti.status === 'in_repair' && (
+                                <button
+                                  type="button" title={ar ? 'رجعت من الصيانة → المخزن' : 'Back from repair → stock'} disabled={busy}
+                                  onClick={() => { const notes = prompt(ar ? 'ملاحظات الإصلاح (اختياري)؟' : 'Repair notes (optional)?') || ''; doMoveTire(ti, { toPlate: null, destination: 'store', notes }); }}
+                                  className="p-1.5 rounded-md hover:bg-emerald-50 text-slate-400 hover:text-emerald-600"
                                 ><ArrowDownToLine className="w-4 h-4" /></button>
                               )}
                               <button type="button" title={t.edit} onClick={() => setEditTire(ti)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>

@@ -88,6 +88,7 @@ exports.getOverview = async (req, res) => {
         tires: tires.length,
         mounted: tires.filter((t) => t.status === 'mounted').length,
         spare: tires.filter((t) => t.status === 'spare').length,
+        inRepair: tires.filter((t) => t.status === 'in_repair').length,
         retired: tires.filter((t) => t.status === 'retired').length,
         withSensor: tires.filter((t) => t.sensor === 'yes').length,
       },
@@ -168,7 +169,7 @@ exports.moveTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date } = req.body;
+    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store' } = req.body;
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
     const when = date ? new Date(date) : new Date();
 
@@ -205,11 +206,18 @@ exports.moveTire = async (req, res) => {
         date: when, odometerKm: live?.odometerKm ?? null, reason, notes,
       });
     } else {
-      // Unmount → spare stock.
-      tire.set({ status: 'spare', plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '' });
+      // Off the truck — but "where to" matters: the repair shop is not the
+      // shelf, and a tire out for repair must never read as available stock.
+      const wasInRepair = tire.status === 'in_repair';
+      const toRepair = destination === 'repair';
+      tire.set({
+        status: toRepair ? 'in_repair' : 'spare',
+        plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '',
+      });
       await tire.save();
       await logEvent(req, {
-        entityType: 'tire', refId: tire._id, label: tire.serial, action: 'removed',
+        entityType: 'tire', refId: tire._id, label: tire.serial,
+        action: toRepair ? 'to_repair' : (wasInRepair ? 'from_repair' : 'removed'),
         fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
         date: when, reason, notes,
       });

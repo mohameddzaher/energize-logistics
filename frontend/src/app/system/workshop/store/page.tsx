@@ -46,7 +46,7 @@ interface StorePart {
 }
 interface StoreData {
   summary: {
-    tires: { total: number; mounted: number; spare: number; retired: number; withSensor: number };
+    tires: { total: number; mounted: number; spare: number; inRepair?: number; retired: number; withSensor: number };
     flatbeds: { total: number; hitched: number };
     trailers: { total: number; fitted: number; spare: number; retired: number };
     parts: { lines: number; units: number; low: number; outOfStock: number; value: number };
@@ -73,7 +73,7 @@ export default function WorkshopStorePage() {
   const [search, setSearch] = useState('');
   // The question this screen exists to answer, so it gets a first-class filter
   // rather than being buried in a column.
-  const [placement, setPlacement] = useState<'' | 'fitted' | 'store'>('');
+  const [placement, setPlacement] = useState<'' | 'fitted' | 'store' | 'repair'>('');
 
   const load = useCallback(async () => {
     try {
@@ -99,7 +99,12 @@ export default function WorkshopStorePage() {
   }, [search]);
 
   const tires = useMemo(() => (data?.tires || [])
-    .filter((t) => !placement || (placement === 'fitted' ? t.fitted : !t.fitted))
+    .filter((t) => {
+      if (!placement) return true;
+      if (placement === 'fitted') return t.fitted;
+      if (placement === 'repair') return t.status === 'in_repair';
+      return !t.fitted && t.status !== 'in_repair'; // the shelf, strictly
+    })
     .filter((t) => hit(t.serial, t.tireNumber, t.type, t.vehicleName, t.plate, t.positionLabel, t.section)),
   [data, placement, hit]);
 
@@ -128,6 +133,7 @@ export default function WorkshopStorePage() {
         { k: 'Tires — total', v: s?.tires.total ?? 0 },
         { k: 'Tires — fitted to a vehicle', v: s?.tires.mounted ?? 0 },
         { k: 'Tires — in store (spare)', v: s?.tires.spare ?? 0 },
+        { k: 'Tires — in repair', v: s?.tires.inRepair ?? 0 },
         { k: 'Tires — retired', v: s?.tires.retired ?? 0 },
         { k: 'Tires — with a sensor', v: s?.tires.withSensor ?? 0 },
         { k: 'Flatbeds — total', v: s?.flatbeds.total ?? 0 },
@@ -194,9 +200,11 @@ export default function WorkshopStorePage() {
     },
   ], `workshop-store-${new Date().toISOString().slice(0, 10)}`);
 
-  const placementBadge = (fitted: boolean, vehicleName?: string) => (fitted
+  const placementBadge = (fitted: boolean, vehicleName?: string, status?: string) => (fitted
     ? <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={`${tx.fitted}${vehicleName ? ` · ${vehicleName}` : ''}`} />
-    : <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={tx.inStore} />);
+    : status === 'in_repair'
+      ? <SmallBadge bg="bg-violet-500/15" text="text-violet-700" label={tx.inRepair} />
+      : <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={tx.inStore} />);
 
   const th = 'text-start font-semibold px-4 py-3';
   const emptyRow = (cols: number) => (
@@ -264,6 +272,7 @@ export default function WorkshopStorePage() {
                 <option value="">{tx.filterAllPlacements}</option>
                 <option value="fitted">{tx.fitted}</option>
                 <option value="store">{tx.inStore}</option>
+                {tab === 'tires' && <option value="repair">{tx.inRepair}</option>}
               </Select>
             </div>
           )}
@@ -279,6 +288,7 @@ export default function WorkshopStorePage() {
                 [tx.rowTotal, s?.tires.total],
                 [tx.rowFitted, s?.tires.mounted],
                 [tx.rowInStore, s?.tires.spare],
+                [tx.inRepair, s?.tires.inRepair],
                 [tx.rowRetired, s?.tires.retired],
                 [tx.rowWithSensor, s?.tires.withSensor],
               ].map(([k, v]) => (
@@ -352,7 +362,7 @@ export default function WorkshopStorePage() {
                         ? <SmallBadge bg="bg-slate-500/15" text="text-slate-700" label={tx.sensorNo} />
                         : <SmallBadge bg="bg-amber-500/15" text="text-amber-700" label={tx.sensorUnknown} />}
                   </td>
-                  <td className="px-4 py-3">{placementBadge(t.fitted, t.vehicleName)}</td>
+                  <td className="px-4 py-3">{placementBadge(t.fitted, t.vehicleName, t.status)}</td>
                   <td className="px-4 py-3 text-slate-700 text-xs">
                     {t.fitted ? [t.positionLabel, t.section].filter(Boolean).join(' — ') || '—' : '—'}
                   </td>

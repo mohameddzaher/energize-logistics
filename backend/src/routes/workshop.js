@@ -14,6 +14,9 @@ router.use(authenticate);
 // ─── Dashboard ──────────────────────────────────────────
 router.get('/dashboard', authorize(...allWorkshopRoles), workshopController.getWorkshopDashboard);
 
+// ─── Store (المستودع) — fleet assets + spare parts in one view ─────────
+router.get('/store', authorize(...allWorkshopRoles), workshopController.getWorkshopStore);
+
 // ─── Inventory ─────────────────────────────────────────
 router.get('/inventory/search', authorize(...allWorkshopRoles), workshopController.searchInventory);
 router.get('/inventory', authorize(...allWorkshopRoles), workshopController.getInventory);

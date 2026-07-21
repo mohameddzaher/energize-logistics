@@ -14,13 +14,8 @@ const Ls2TireAsset = require('../models/Ls2TireAsset');
 const Ls2AssetEvent = require('../models/Ls2AssetEvent');
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 
-// "ق ن ر 2708" / "2708" / "٢٧٠٨" → "2708"; "TR1" (no digits) → "TR1".
-const plateKey = (p) => {
-  if (p == null) return null;
-  const west = String(p).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
-  const digits = (west.match(/\d+/g) || []).join('');
-  return digits || west.trim().toUpperCase() || null;
-};
+// Shared with the workshop store — see utils/plateKey.js for why.
+const { plateKey, vehiclePlateKey } = require('../utils/plateKey');
 
 const posLabel = (t) => [t.positionLabel || (t.positionNumber != null ? `اطار ${t.positionNumber}` : ''), t.section].filter(Boolean).join(' — ');
 
@@ -30,7 +25,7 @@ async function vehicleByKey(key) {
     const vs = await Ls2Vehicle.find({}, { plate: 1, name: 1, unitId: 1, odometerKm: 1, driver: 1 }).lean();
     const map = new Map();
     for (const v of vs) {
-      const k = plateKey(v.plate) || plateKey(v.name);
+      const k = vehiclePlateKey(v);
       if (k) map.set(k, v);
     }
     vehicleKeyCache = { at: Date.now(), map };

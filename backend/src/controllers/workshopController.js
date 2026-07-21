@@ -2,6 +2,16 @@ const MaintenanceRequest = require('../models/MaintenanceRequest');
 const WorkshopPurchaseRequest = require('../models/WorkshopPurchaseRequest');
 const WorkshopTask = require('../models/WorkshopTask');
 const InventoryItem = require('../models/InventoryItem');
+// The workshop is the shop floor for the Location Solutions fleet — the tires,
+// flatbeds and trailers it fits and removes are the SAME registry the ls2
+// section tracks. Reading those models here (never writing them: mount/move
+// stays in ls2AssetsController, which owns the event trail) is what lets the
+// store screen answer "where is this piece right now" in one place.
+const Ls2TireAsset = require('../models/Ls2TireAsset');
+const Ls2Flatbed = require('../models/Ls2Flatbed');
+const Ls2Trailer = require('../models/Ls2Trailer');
+const Ls2Vehicle = require('../models/Ls2Vehicle');
+const { vehiclePlateKey } = require('../utils/plateKey');
 const Technician = require('../models/Technician');
 const MaintenanceType = require('../models/MaintenanceType');
 const User = require('../models/User');
@@ -1254,6 +1264,111 @@ const getWorkshopUsers = async (req, res) => {
   }
 };
 
+
+// ═══════════════════════════════════════════════════════════
+// STORE (المستودع) — everything the workshop holds, and where it is
+// ═══════════════════════════════════════════════════════════
+
+// One screen answering: what do we have, how many, and for each piece — is it
+// fitted to a vehicle (which one, which position) or sitting on the shelf.
+//
+// Two very different things live side by side here on purpose:
+//   · serial-tracked fleet assets (tires, flatbeds, trailers) — each is ONE
+//     physical object with a location, so "3 tires" means three serials;
+//   · consumable spare parts (InventoryItem) — counted in units, not tracked
+//     individually, so "3 filters" is one line with quantity 3.
+// Reporting them as one number would be meaningless, so the summary keeps them
+// apart and the UI shows them on separate tabs.
+const getWorkshopStore = async (req, res) => {
+  try {
+    const [tires, flatbeds, trailers, parts, vehicles] = await Promise.all([
+      Ls2TireAsset.find({}).sort({ status: 1, plateKey: 1, positionNumber: 1 }).lean(),
+      Ls2Flatbed.find({}).sort({ numbering: 1 }).lean(),
+      Ls2Trailer.find({}).sort({ trailerNumber: 1 }).lean(),
+      InventoryItem.find({ isActive: { $ne: false } }).sort({ category: 1, name: 1 }).lean(),
+      Ls2Vehicle.find({}).select('name plate profile.brand').lean(),
+    ]);
+
+    // Fitted assets store a plate string; the readable vehicle name lives on the
+    // live mirror, so join them here rather than making the client do it.
+    // Ls2Vehicle does NOT store plateKey — it is derived from the plate/name on
+    // read, which is why this goes through the shared helper.
+    const vehicleByKey = new Map();
+    vehicles.forEach((v) => {
+      const k = vehiclePlateKey(v);
+      if (k) vehicleByKey.set(k, v);
+    });
+    const vehicleName = (key) => {
+      const v = vehicleByKey.get(key);
+      return v ? (v.name || v.plate || '') : '';
+    };
+
+    const count = (rows, key) => rows.reduce((m, r) => {
+      const k = r[key] || 'unknown';
+      m[k] = (m[k] || 0) + 1;
+      return m;
+    }, {});
+
+    const tireStatus = count(tires, 'status');
+    const trailerStatus = count(trailers, 'status');
+
+    // A part is "low" when it has a floor set and has fallen to or below it —
+    // a floor of 0 means nobody set one, so it never triggers.
+    const lowParts = parts.filter((p) => (p.minQuantity || 0) > 0 && (p.quantity || 0) <= p.minQuantity);
+    const outOfStock = parts.filter((p) => (p.quantity || 0) <= 0);
+
+    res.json({
+      summary: {
+        tires: {
+          total: tires.length,
+          mounted: tireStatus.mounted || 0,
+          spare: tireStatus.spare || 0,
+          retired: tireStatus.retired || 0,
+          withSensor: tires.filter((t) => t.sensor === 'yes').length,
+        },
+        flatbeds: {
+          total: flatbeds.length,
+          hitched: flatbeds.filter((f) => f.currentTrailerNumber).length,
+        },
+        trailers: {
+          total: trailers.length,
+          fitted: trailers.filter((t) => t.currentPlateKey).length,
+          spare: trailerStatus.spare || 0,
+          retired: trailerStatus.retired || 0,
+        },
+        parts: {
+          lines: parts.length,
+          units: parts.reduce((s, p) => s + (p.quantity || 0), 0),
+          low: lowParts.length,
+          outOfStock: outOfStock.length,
+          value: parts.reduce((s, p) => s + (p.quantity || 0) * (p.costPrice || 0), 0),
+        },
+      },
+      tires: tires.map((t) => ({
+        ...t,
+        // `fitted` is the one field the screen actually sorts and filters on:
+        // it is the difference between "on the road" and "on the shelf".
+        fitted: t.status === 'mounted' && !!t.plateKey,
+        vehicleName: t.plateKey ? vehicleName(t.plateKey) : '',
+      })),
+      flatbeds: flatbeds.map((f) => ({ ...f, vehicleName: vehicleName(f.plateKey) })),
+      trailers: trailers.map((t) => ({
+        ...t,
+        fitted: !!t.currentPlateKey,
+        vehicleName: t.currentPlateKey ? vehicleName(t.currentPlateKey) : '',
+      })),
+      parts: parts.map((p) => ({
+        ...p,
+        isLow: (p.minQuantity || 0) > 0 && (p.quantity || 0) <= p.minQuantity,
+        totalValue: (p.quantity || 0) * (p.costPrice || 0),
+      })),
+    });
+  } catch (error) {
+    console.error('[workshop] store failed:', error);
+    res.status(500).json({ message: 'Failed to load the workshop store' });
+  }
+};
+
 module.exports = {
   // Maintenance
   getMaintenanceRequests,
@@ -1276,6 +1391,7 @@ module.exports = {
   // Dashboard
   getWorkshopDashboard,
   // Inventory
+  getWorkshopStore,
   getInventory,
   createInventoryItem,
   updateInventoryItem,

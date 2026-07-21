@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const ls2 = require('../controllers/ls2Controller');
 const assets = require('../controllers/ls2AssetsController');
+const ls2reports = require('../controllers/ls2ReportsController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const { LS2_STAFF_ROLES, LS2_ADMIN_ROLES } = require('../config/constants');
@@ -26,6 +27,10 @@ router.patch('/alerts/:id/ack', ls2.acknowledgeAlert);
 
 router.get('/mileage', ls2.getMileage); // fleet distance over a period
 router.post('/identity/refresh', ADMIN, ls2.refreshIdentity); // re-pull VIN/brand/SIM…
+
+// Reports — the whole fleet, or one truck in full, over any period.
+router.get('/reports/fleet', ls2reports.getFleetReport); // ?from&to
+router.get('/reports/vehicle/:id', ls2reports.getVehicleReport); // ?from&to[&heavy=0]
 
 // Drivers — km attributed per day to whoever was on the truck that day
 router.get('/drivers', ls2.listDrivers); // ?from&to

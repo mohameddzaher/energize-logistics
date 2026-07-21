@@ -104,6 +104,59 @@ export interface Vehicle {
 // Fleet distance over a period (from /api/ls2/mileage).
 export interface MileageRow { unitId: number; plate: string; driver: string; name: string; odometerKm: number | null; km: number; odoStart: number | null; odoEnd: number | null; activeDays: number; clipped: boolean }
 
+// ---- Reports (/api/ls2/reports/*) -----------------------------------------
+// One row per truck for a period. `fuelL`/`kmPerL` start null: CAN fuel is a
+// ~2s-per-unit Wialon report, so the page fills it in on demand — a null means
+// "not loaded / no CAN data", never zero.
+export interface FleetReportRow {
+  unitId: number; plate: string; name: string; driver: string;
+  brand: string; vehicleType: string; modelYear: string; vin: string; simIccid: string;
+  status: string; lastMessageAt: string | null;
+  km: number; odoStart: number | null; odoEnd: number | null; activeDays: number; clipped: boolean;
+  avgKmPerDay: number; engineHoursPeriod: number | null; odometerKm: number | null; engineHoursTotal: number | null;
+  fuelL: number | null; kmPerL: number | null;
+  maintenanceStatus: 'ok' | 'due' | 'overdue';
+  kmToService: number | null; nextServiceKm: number | null; nextServiceName: string;
+  maintenanceOverdueCount: number; maintenanceDueCount: number;
+  alertsCritical: number; alertsWarning: number; alertsInfo: number; alertsTotal: number;
+  servicesInPeriod: number; serviceCost: number | null;
+  repairsInPeriod: number; repairCost: number | null; openRepairs: number;
+}
+export interface FleetReportSummary {
+  vehicles: number; totalKm: number; movedVehicles: number; idleVehicles: number;
+  avgKm: number; maxKm: number; totalEngineHours: number | null;
+  overdueVehicles: number; dueVehicles: number;
+  openAlerts: number; criticalAlerts: number; warningAlerts: number;
+  services: number; repairs: number; repairCost: number | null; partialVehicles: number;
+}
+export interface FleetReport {
+  generatedAt: number; from: string; to: string; days: number;
+  summary: FleetReportSummary; items: FleetReportRow[];
+  alerts: Alert[]; services: ServiceLog[]; repairs: Repair[];
+}
+export interface VehicleReport {
+  generatedAt: number; from: string; to: string; days: number;
+  vehicle: {
+    unitId: number; name: string; plate: string; driver: string; status: string;
+    lastMessageAt: string | null; odometerKm: number | null; engineHoursTotal: number | null;
+    tireBrand: string; tireCount: number; profile: VehicleProfile | null;
+  };
+  distance: {
+    km: number; odoStart: number | null; odoEnd: number | null; activeDays: number;
+    clipped: boolean; avgKmPerDay: number; engineHours: number | null;
+    daily: { date: string; km: number; spanDays: number }[];
+  };
+  trips: { trips: Trip[]; stops: Stop[]; summary: TripsResult['summary'] } | null;
+  fuel: VehicleFuel | null;
+  maintenance: Maintenance & { upcomingServiceKm?: number | null };
+  services: ServiceLog[]; repairs: Repair[]; alerts: Alert[];
+  drivers: { driver: string; from: string; to: string | null }[];
+  totals: {
+    services: number; serviceCost: number | null; repairs: number; repairCost: number | null;
+    openAlerts: number; criticalAlerts: number;
+  };
+}
+
 // Vehicle identity (mirrored from Wialon profile + custom fields).
 export interface VehicleProfile {
   vin: string; brand: string; modelYear: string; vehicleType: string; registrationPlate: string;
@@ -543,6 +596,33 @@ export function ls2Text(lang: Lang) {
     saved: t('Saved', 'تم الحفظ'),
     saveFailed: t('Save failed', 'فشل الحفظ'),
     reset: t('Reset to defaults', 'استرجاع الافتراضي'),
+    // reports (the CEO-facing fleet / single-vehicle reports)
+    reports: t('Reports', 'التقارير'),
+    reportsSubtitle: t('Complete fleet and per-vehicle reports for any period', 'تقارير كاملة للأسطول ولكل مركبة عن أي فترة'),
+    fleetReport: t('All Vehicles', 'كل المركبات'),
+    vehicleReport: t('Single Vehicle', 'مركبة واحدة'),
+    pickVehicle: t('Choose a vehicle', 'اختر مركبة'),
+    changeVehicle: t('Change vehicle', 'تغيير المركبة'),
+    pickVehicleHint: t('Pick a truck to see everything recorded about it in this period.', 'اختر عربية لعرض كل ما سُجِّل عنها في هذه الفترة.'),
+    generatedAt: t('Generated', 'أُنشئ في'),
+    reportPeriod: t('Report period', 'فترة التقرير'),
+    perDay: t('Avg / day', 'المتوسط / يوم'),
+    activeDays: t('Active days', 'أيام النشاط'),
+    idleVehicles: t('Did not move', 'لم تتحرك'),
+    partialNote: t('vehicles have no reading before the start date — their first day is partial.', 'مركبة ليس لها قراءة قبل تاريخ البداية — يومها الأول جزئي.'),
+    loadFuel: t('Load fuel data', 'تحميل بيانات الوقود'),
+    loadingFuel: t('Loading fuel…', 'جارٍ تحميل الوقود…'),
+    fuelHeavyHint: t('CAN fuel is one Location Solutions report per truck (~2s each) — loaded on demand.', 'بيانات الوقود تقرير منفصل لكل عربية من لوكيشن سوليوشن (~٢ ثانية لكل واحدة) — تُحمّل عند الطلب.'),
+    notLoaded: t('n/a', 'غير متاح'),
+    litres: t('L', 'لتر'),
+    kmPerL: t('km/L', 'كم/لتر'),
+    buildingReport: t('Building the report…', 'جارٍ تجهيز التقرير…'),
+    heavyVehicleHint: t('Trips and fuel come live from Location Solutions — this takes a few seconds.', 'الرحلات والوقود تأتي مباشرة من لوكيشن سوليوشن — يستغرق ذلك بضع ثوانٍ.'),
+    workInPeriod: t('Work in period', 'الأعمال خلال الفترة'),
+    servicesDone: t('Services', 'الصيانات'),
+    repairsDone: t('Repairs', 'الإصلاحات'),
+    cost: t('Cost', 'التكلفة'),
+    dataGap: t('covers several days (no readings in between)', 'تغطي عدة أيام (لا توجد قراءات بينها)'),
     // misc
     faults: t('Sensor Faults', 'أعطال حساسات'),
     value: t('Value', 'القيمة'),

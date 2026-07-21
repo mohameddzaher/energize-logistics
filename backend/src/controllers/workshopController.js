@@ -22,6 +22,9 @@ const emitToAll = (event, payload) => { try { socket.emitToAll(event, payload); 
 const WS_DASH_TTL = 30 * 1000;
 const logAudit = require('../utils/auditLogger');
 
+// Item names are user text and go into a RegExp when matching an existing line.
+const escapeRx = (str) => String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // ═══════════════════════════════════════════════════════════
 // MAINTENANCE REQUESTS
 // ═══════════════════════════════════════════════════════════
@@ -385,16 +388,42 @@ const receivePurchaseRequest = async (req, res) => {
     request.receivedBy = req.user._id;
     await request.save();
 
-    // If an inventory item is specified, decrease its quantity
+    // Goods have ARRIVED, so the store gains them. This used to subtract, which
+    // is the wrong end of the flow: a purchase adds to stock when it is received
+    // and only leaves stock when it is issued to a job (see fulfil below). With
+    // the old direction nothing in the section ever increased stock at all, so
+    // the store could only ever go to zero.
     const { inventoryItemId } = req.body || {};
-    if (inventoryItemId) {
-      const invItem = await InventoryItem.findById(inventoryItemId);
-      if (invItem) {
-        const deductQty = request.quantity || 1;
-        invItem.quantity = Math.max(0, invItem.quantity - deductQty);
-        await invItem.save();
-        emitToAll('inventory:updated', invItem);
+    const qty = Math.max(1, Number(request.quantity) || 1);
+    let invItem = inventoryItemId ? await InventoryItem.findById(inventoryItemId) : null;
+
+    // No existing line to add to — a first-time purchase is exactly how a part
+    // enters the catalogue, so create it rather than losing the receipt.
+    if (!invItem && !inventoryItemId && request.itemName) {
+      invItem = await InventoryItem.findOne({ name: new RegExp(`^${escapeRx(request.itemName)}$`, 'i') });
+      if (!invItem) {
+        invItem = await InventoryItem.create({
+          code: `WS-${Date.now().toString(36).toUpperCase()}`,
+          name: request.itemName,
+          category: '',
+          quantity: 0,
+          unit: 'piece',
+          costPrice: request.cost && qty ? Number(request.cost) / qty : 0,
+          supplier: request.supplier || '',
+          notes: 'أُنشئ تلقائياً عند استلام طلب شراء',
+          createdBy: req.user._id,
+          approvalStatus: 'approved',
+        });
       }
+    }
+
+    if (invItem) {
+      invItem.quantity = (Number(invItem.quantity) || 0) + qty;
+      if (request.supplier && !invItem.supplier) invItem.supplier = request.supplier;
+      await invItem.save();
+      request.inventoryItem = invItem._id;
+      await request.save();
+      emitToAll('inventory:updated', invItem);
     }
 
     const populated = await WorkshopPurchaseRequest.findById(request._id)
@@ -429,6 +458,17 @@ const fulfillPurchaseRequest = async (req, res) => {
 
     if (request.status !== 'received') {
       return res.status(400).json({ message: 'Purchase request must be received before fulfillment' });
+    }
+
+    // Issued to the job — this is where stock actually leaves the shelf.
+    if (request.inventoryItem) {
+      const invItem = await InventoryItem.findById(request.inventoryItem);
+      if (invItem) {
+        const qty = Math.max(1, Number(request.quantity) || 1);
+        invItem.quantity = Math.max(0, (Number(invItem.quantity) || 0) - qty);
+        await invItem.save();
+        emitToAll('inventory:updated', invItem);
+      }
     }
 
     request.status = 'fulfilled';

@@ -23,6 +23,10 @@ const workshopPurchaseRequestSchema = new mongoose.Schema({
   fulfilledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   fulfillmentNotes: { type: String, trim: true },
 
+  // The stock line this purchase added to on receipt — so fulfilling it deducts
+  // from the same line instead of guessing by name a second time.
+  inventoryItem: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', default: null },
+
   // Tracking
   requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },

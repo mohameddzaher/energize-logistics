@@ -84,7 +84,11 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
 
   const openDetail = async (s: Row) => {
     setDetail(s); setTimeline(null);
-    try { const t = await api.get<any>(`/api/ops/shipments/timeline/${s.id}`); setTimeline(Array.isArray(t) ? t : (t?.items || [])); }
+    // Hand the backend the creator we already have → no extra shipment fetch.
+    const qs = new URLSearchParams();
+    if (s.created_by) qs.set('created_by', String(s.created_by));
+    if (s.creator_type) qs.set('creator_type', String(s.creator_type));
+    try { const t = await api.get<any>(`/api/ops/shipments/timeline/${s.id}${qs.toString() ? `?${qs}` : ''}`); setTimeline(Array.isArray(t) ? t : (t?.items || [])); }
     catch { setTimeline([]); }
   };
 

@@ -133,7 +133,12 @@ export default function OpsShipmentsPage() {
 
   const openDetail = async (row: Row) => {
     setDetail(row); setTimeline(null); setNewStatus(row.status || '');
-    try { const t = await api.get<any>(`/api/ops/shipments/timeline/${row.id}`); setTimeline(Array.isArray(t) ? t : (t?.items || t?.timeline || [])); }
+    // Pass the creator we already have, so the backend needn't re-fetch the
+    // shipment just to attribute the "requesting" step.
+    const qs = new URLSearchParams();
+    if (row.created_by) qs.set('created_by', String(row.created_by));
+    if (row.creator_type) qs.set('creator_type', String(row.creator_type));
+    try { const t = await api.get<any>(`/api/ops/shipments/timeline/${row.id}${qs.toString() ? `?${qs}` : ''}`); setTimeline(Array.isArray(t) ? t : (t?.items || t?.timeline || [])); }
     catch { setTimeline([]); }
   };
 

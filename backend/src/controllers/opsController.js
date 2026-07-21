@@ -233,13 +233,21 @@ exports.shipmentTimeline = async (req, res) => {
     // The "requesting" step is the shipment's creation — UPL leaves its `admin`
     // null there, but the creator IS on the shipment as `created_by`. Resolve it
     // so the person who created the shipment shows, just like the later steps.
+    // The caller (which already has the shipment open) passes created_by, so we
+    // skip a whole upstream round-trip; we only fetch the shipment as a fallback.
     const requesting = items && items.find((e) => e && e.status === 'requesting' && e.created_at && !(e.admin && e.admin.name));
     if (requesting) {
       try {
-        const shipRes = await upl.get(`/admin/shipments/${encodeURIComponent(id)}`, {});
-        const ship = shipRes.data ?? shipRes;
-        const name = await resolveAdminName(ship && ship.created_by);
-        if (name) requesting.admin = { id: ship.created_by, name, source: 'created_by', creator_type: ship.creator_type };
+        let createdBy = req.query.created_by;
+        let creatorType = req.query.creator_type;
+        if (!createdBy) {
+          const shipRes = await upl.get(`/admin/shipments/${encodeURIComponent(id)}`, {});
+          const ship = shipRes.data ?? shipRes;
+          createdBy = ship && ship.created_by;
+          creatorType = ship && ship.creator_type;
+        }
+        const name = await resolveAdminName(createdBy);
+        if (name) requesting.admin = { id: createdBy, name, source: 'created_by', creator_type: creatorType };
       } catch (e) { /* leave requesting as-is */ }
     }
 

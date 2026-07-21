@@ -70,6 +70,31 @@ export function locName(v: unknown, lang: Lang): string {
   return '';
 }
 
+// One timeline event → { who did it, an optional note }. Tolerant of the UPL
+// shapes we actually get back: `admin` is null for some statuses (the platform
+// simply doesn't record who), and `details` is often `{}` or an object (so a
+// naive `${ev.details}` printed "[object Object]"). The person occasionally
+// lives inside `details` instead of `admin`.
+export function timelineMeta(ev: Record<string, unknown> | null | undefined, lang: Lang = 'en'): { who: string; note: string } {
+  if (!ev) return { who: '', note: '' };
+  const details = ev.details;
+  const who =
+    locName((ev.admin as Record<string, unknown>)?.name, lang) ||
+    locName(ev.admin, lang) ||
+    (details && typeof details === 'object' ? locName((details as Record<string, unknown>).admin, lang) : '') ||
+    '';
+  let note = '';
+  if (typeof details === 'string') {
+    note = details.trim();
+  } else if (details && typeof details === 'object') {
+    const d = details as Record<string, unknown>;
+    const cand = d.reason ?? d.note ?? d.message ?? d.text ?? d.description ?? d.comment;
+    if (typeof cand === 'string' || typeof cand === 'number') note = String(cand).trim();
+    else if (cand && typeof cand === 'object') note = locName(cand, lang);
+  }
+  return { who, note };
+}
+
 export function fmtDateTime(v?: string | null, lang: Lang = 'en'): string {
   if (!v) return '—';
   const d = new Date(v);

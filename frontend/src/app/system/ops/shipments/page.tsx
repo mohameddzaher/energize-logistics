@@ -14,7 +14,7 @@ import { Truck, MapPin, RefreshCw, ChevronLeft, ChevronRight, Check, Loader2, Cl
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, Select, TextInput } from '@/components/hr/HRKit';
 import {
   SHIPMENT_STATUSES, PAYMENT_METHODS, statusStyle, locName, fmtDateTime, fmtMoney, fmtNum,
-  isOpsStaff, isOpsAdmin, opsText, type Paginated,
+  timelineMeta, isOpsStaff, isOpsAdmin, opsText, type Paginated,
 } from '@/lib/ops';
 
 const LIMIT = 25;
@@ -350,11 +350,24 @@ export default function OpsShipmentsPage() {
                   <ol className="relative border-s-2 border-slate-200 ms-2 space-y-3">
                     {timeline.map((ev, i) => {
                       const st = statusStyle(ev.status);
+                      const when = ev.created_at || ev.date || ev.time;
+                      const done = !!when;
+                      const { who, note } = timelineMeta(ev, lang);
                       return (
                         <li key={i} className="ms-4">
-                          <span className={`absolute -start-[7px] w-3 h-3 rounded-full ${st?.dot || 'bg-slate-400'}`} />
-                          <p className="text-sm text-slate-800">{st ? (lang === 'ar' ? st.ar : st.en) : (ev.label || ev.status)}</p>
-                          <p className="text-xs text-slate-400">{fmtDateTime(ev.created_at || ev.date || ev.time, lang)}{ev.details ? ` · ${ev.details}` : ''}{ev.admin?.name ? ` · ${ev.admin.name}` : ''}</p>
+                          <span className={`absolute -start-[7px] w-3 h-3 rounded-full ${done ? (st?.dot || 'bg-slate-400') : 'bg-slate-200'}`} />
+                          <p className={`text-sm ${done ? 'text-slate-800 font-medium' : 'text-slate-400'}`}>{st ? (lang === 'ar' ? st.ar : st.en) : (ev.label || ev.status)}</p>
+                          {done ? (
+                            <p className="text-xs text-slate-500">
+                              {fmtDateTime(when, lang)}
+                              {note ? <> · {note}</> : null}
+                              {who
+                                ? <> · <span className="text-slate-700 font-medium">{who}</span></>
+                                : <> · <span className="text-slate-400 italic">{lang === 'ar' ? 'المنفّذ غير مُسجَّل' : 'performer not recorded'}</span></>}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-slate-300">{lang === 'ar' ? 'لم تتم بعد' : 'not yet'}</p>
+                          )}
                         </li>
                       );
                     })}

@@ -7,8 +7,9 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart, Loader2, X, Check, Package, AlertCircle,
-  ChevronLeft, ChevronRight, Download, Search,
+  ChevronLeft, ChevronRight, Download, Search, Trash2, ExternalLink, Boxes,
 } from 'lucide-react';
+import Link from 'next/link';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { getWorkshopPurchasesTranslations } from '@/lib/translations';
 
@@ -26,6 +27,8 @@ interface PurchaseRequest {
   invoiceNumber?: string;
   maintenanceId?: string;
   createdAt: string;
+  // The stock line this delivery landed in — present once it has been received.
+  inventoryItem?: { _id: string; code: string; name: string; quantity: number; unit?: string } | null;
 }
 
 interface InventorySearchItem {
@@ -60,6 +63,11 @@ export default function WorkshopPurchasesPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
   const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
+  // Server-side search, so the box is debounced — otherwise every keystroke is
+  // a request and a slow early one can land after a later one.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Per-item loading state for Mark Received
   const [receivingIds, setReceivingIds] = useState<Set<string>>(new Set());
@@ -84,6 +92,7 @@ export default function WorkshopPurchasesPage() {
       setLoading(true);
       const params = new URLSearchParams();
       if (statusFilter) params.append('status', statusFilter);
+      if (debouncedSearch.trim()) params.append('search', debouncedSearch.trim());
       params.append('page', String(page));
       params.append('limit', String(limit));
       const data = await api.get<any>(`/api/workshop/purchases?${params.toString()}`) || {};
@@ -94,7 +103,12 @@ export default function WorkshopPurchasesPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, page]);
+  }, [statusFilter, debouncedSearch, page]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => { fetchPurchases(); }, [fetchPurchases]);
 
@@ -106,6 +120,28 @@ export default function WorkshopPurchasesPage() {
   useSocket('purchase:created', handleSocketRefresh);
   useSocket('purchase:received', handleSocketRefresh);
   useSocket('purchase:fulfilled', handleSocketRefresh);
+  useSocket('purchase:deleted', handleSocketRefresh);
+  useSocket('inventory:updated', handleSocketRefresh);
+
+  // Deleting undoes what the request did to stock, so spell that out before
+  // asking — "delete" reads as harmless until it silently moves the shelf count.
+  const canDelete = user && ['super_admin', 'workshop_manager'].includes(user.role);
+  const deletePurchase = async (p: PurchaseRequest) => {
+    const warn = p.status === 'received'
+      ? (isAr
+        ? `سيتم أيضاً خصم ${p.quantity} من رصيد «${p.inventoryItem?.name || p.itemName}» في المستودع، لأن هذا الطلب هو الذي أضافها.`
+        : `This will also remove ${p.quantity} from “${p.inventoryItem?.name || p.itemName}” in the store, because this request is what added them.`)
+      : p.status === 'fulfilled'
+        ? (isAr ? 'تم صرف هذه القطع بالفعل، فلن يتأثر رصيد المستودع.' : 'These parts were already issued, so stock is unaffected.')
+        : (isAr ? 'لم يصل هذا الطلب بعد، فلن يتأثر رصيد المستودع.' : 'This request never arrived, so stock is unaffected.');
+    if (!confirm(`${isAr ? 'حذف طلب' : 'Delete'} «${p.itemName}»؟\n\n${warn}`)) return;
+    setDeletingId(p._id);
+    try {
+      await api.delete(`/api/workshop/purchases/${p._id}`);
+      fetchPurchases();
+    } catch (e: any) { setError(e.message); }
+    setDeletingId(null);
+  };
 
   const searchInventoryItems = async (term: string) => {
     if (!term || term.length < 2) {
@@ -230,8 +266,18 @@ export default function WorkshopPurchasesPage() {
         </div>
       )}
 
-      {/* Filter */}
-      <div className="flex gap-3">
+      {/* Search + filter */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 min-w-[240px]">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={isAr ? 'بحث بالصنف أو المركبة أو المورّد أو رقم الفاتورة…' : 'Search item, vehicle, supplier or invoice…'}
+            className="w-full ps-10 pe-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:border-[#f37121]"
+          />
+        </div>
         <select
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
@@ -268,6 +314,7 @@ export default function WorkshopPurchasesPage() {
                   tx.colStatus,
                   tx.colCost,
                   tx.colSupplier,
+                  isAr ? 'في المستودع' : 'In store',
                   tx.colActions,
                 ].map((h, i) => (
                   <th key={i} className="text-start text-slate-300 font-semibold py-3 px-3 whitespace-nowrap">{h}</th>
@@ -293,6 +340,20 @@ export default function WorkshopPurchasesPage() {
                     </td>
                     <td className="py-3 px-3 text-slate-700">{p.cost ? `${p.cost.toLocaleString()}` : '-'}</td>
                     <td className="py-3 px-3 text-slate-700">{p.supplier || '-'}</td>
+                    {/* Closes the loop: did this delivery actually reach the shelf? */}
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      {p.inventoryItem ? (
+                        <Link href="/system/workshop/store"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 text-xs font-medium">
+                          <Boxes className="w-3 h-3" />
+                          {p.inventoryItem.name} · {p.inventoryItem.quantity}
+                        </Link>
+                      ) : p.status === 'pending' ? (
+                        <span className="text-slate-400 text-xs">{isAr ? 'لم يصل بعد' : 'Not arrived'}</span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
+                    </td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-2">
                         {p.status === 'pending' && (
@@ -319,6 +380,17 @@ export default function WorkshopPurchasesPage() {
                         )}
                         {p.status === 'fulfilled' && (
                           <span className="text-green-500 text-xs flex items-center gap-1"><Check className="w-3 h-3" />{tx.ready}</span>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => deletePurchase(p)}
+                            disabled={deletingId === p._id}
+                            title={isAr ? 'حذف الطلب' : 'Delete request'}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                          >
+                            {deletingId === p._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </button>
                         )}
                       </div>
                     </td>

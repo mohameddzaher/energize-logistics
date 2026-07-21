@@ -40,6 +40,8 @@ router.put('/purchases/:id/receive', authorize(...purchasingRoles), workshopCont
 router.put('/purchases/:id/received', authorize(...purchasingRoles), workshopController.receivePurchaseRequest);
 router.put('/purchases/:id/fulfill', authorize(...purchasingRoles), workshopController.fulfillPurchaseRequest);
 router.put('/purchases/:id/fulfilled', authorize(...purchasingRoles), workshopController.fulfillPurchaseRequest);
+// Deleting reverses the stock this request added, so it is manager-only.
+router.delete('/purchases/:id', authorize(...managerRoles), workshopController.deletePurchaseRequest);
 
 // ─── Technicians ────────────────────────────────────────
 router.get('/technicians', authorize(...allWorkshopRoles), workshopController.getTechnicians);

@@ -290,6 +290,9 @@ const getPurchaseRequests = async (req, res) => {
         .populate('receivedBy', 'firstName lastName')
         .populate('fulfilledBy', 'firstName lastName')
         .populate('maintenanceRequest', 'vehicleNumber status')
+        // The stock line this delivery landed in, so the list can link straight
+        // to it instead of leaving people to guess whether it ever arrived.
+        .populate('inventoryItem', 'code name quantity unit')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
@@ -503,6 +506,49 @@ const fulfillPurchaseRequest = async (req, res) => {
   } catch (error) {
     console.error('Error fulfilling purchase request:', error);
     res.status(500).json({ message: 'Failed to fulfill purchase request' });
+  }
+};
+
+// Deleting a purchase has to undo whatever it did to stock, or the shelf count
+// drifts from reality the moment someone removes a mistaken entry:
+//   pending    nothing happened yet          → just remove the record
+//   received   the goods were added to stock → take them back out
+//   fulfilled  added then issued (net zero)  → stock is already correct
+// The last case is the one worth being careful about: subtracting there would
+// remove the same units twice.
+const deletePurchaseRequest = async (req, res) => {
+  try {
+    const request = await WorkshopPurchaseRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ message: 'Purchase request not found' });
+
+    let stockAdjusted = null;
+    if (request.status === 'received' && request.inventoryItem) {
+      const invItem = await InventoryItem.findById(request.inventoryItem);
+      if (invItem) {
+        const qty = Math.max(1, Number(request.quantity) || 1);
+        invItem.quantity = Math.max(0, (Number(invItem.quantity) || 0) - qty);
+        await invItem.save();
+        emitToAll('inventory:updated', invItem);
+        stockAdjusted = { item: invItem.name, removed: qty, remaining: invItem.quantity };
+      }
+    }
+
+    await request.deleteOne();
+    emitToAll('purchase:deleted', { _id: req.params.id });
+
+    await logAudit({
+      user: req.user,
+      action: 'delete',
+      entity: 'WorkshopPurchaseRequest',
+      entityId: req.params.id,
+      changes: { itemName: request.itemName, quantity: request.quantity, status: request.status, stockAdjusted },
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: 'Purchase request deleted', stockAdjusted });
+  } catch (error) {
+    console.error('Error deleting purchase request:', error);
+    res.status(500).json({ message: 'Failed to delete purchase request' });
   }
 };
 
@@ -1431,6 +1477,7 @@ module.exports = {
   createPurchaseRequest,
   receivePurchaseRequest,
   fulfillPurchaseRequest,
+  deletePurchaseRequest,
   // Tasks
   getWorkshopTasks,
   getMyWorkshopTasks,

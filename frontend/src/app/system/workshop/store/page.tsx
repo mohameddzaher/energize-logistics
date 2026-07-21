@@ -19,11 +19,9 @@ import {
   Spinner, PageHeader, SearchInput, ExportButton, StatCard, SmallBadge, Select, Tabs, ErrorNotice,
 } from '@/components/hr/HRKit';
 import { getWorkshopStoreTranslations } from '@/lib/translations';
-// The spare-parts tab renders the existing parts page verbatim. It is a plain
-// React component, so embedding it keeps ONE implementation of that CRUD (add,
-// edit, approve, delete) instead of a second half-copy that would drift. Its own
-// route stays reachable for old bookmarks.
-import InventoryPage from '../inventory/page';
+// The spare-parts tab mounts the same panel that /workshop/inventory serves, so
+// the add/edit/approve/delete CRUD has exactly ONE implementation.
+import { InventoryPanel } from '@/components/workshop/InventoryPanel';
 
 const STAFF = ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'purchasing'];
 
@@ -415,7 +413,7 @@ export default function WorkshopStorePage() {
 
       {tab === 'parts' && (
         <div className="-mt-2">
-          <InventoryPage />
+          <InventoryPanel embedded />
         </div>
       )}
 

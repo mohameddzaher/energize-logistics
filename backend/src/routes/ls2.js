@@ -29,6 +29,7 @@ router.get('/mileage', ls2.getMileage); // fleet distance over a period
 router.post('/identity/refresh', ADMIN, ls2.refreshIdentity); // re-pull VIN/brand/SIM…
 
 // Reports — the whole fleet, or one truck in full, over any period.
+router.get('/service-types', ls2.getServiceTypes); // the real 4 service types, for the workshop
 router.get('/reports/fleet', ls2reports.getFleetReport); // ?from&to
 router.get('/reports/vehicle/:id', ls2reports.getVehicleReport); // ?from&to[&heavy=0]
 

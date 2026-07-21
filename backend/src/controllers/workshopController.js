@@ -582,12 +582,19 @@ const getMyWorkshopTasks = async (req, res) => {
   }
 };
 
+// Whitelisted rather than spread from req.body — the section's own convention,
+// and the only thing stopping a caller from setting createdBy or branch itself.
+const WORKSHOP_TASK_EDITABLE = [
+  'title', 'description', 'assignedTo', 'technicianName', 'maintenanceType',
+  'serviceTypeKey', 'serviceTypeName', 'vehicleNumber', 'priority', 'dueDate',
+  'status', 'notes',
+];
+
 const createWorkshopTask = async (req, res) => {
   try {
-    const data = {
-      ...req.body,
-      createdBy: req.user._id,
-    };
+    const data = {};
+    WORKSHOP_TASK_EDITABLE.forEach((f) => { if (req.body[f] !== undefined && req.body[f] !== '') data[f] = req.body[f]; });
+    data.createdBy = req.user._id;
     if (req.user.branch) data.branch = req.user.branch;
 
     const task = await WorkshopTask.create(data);

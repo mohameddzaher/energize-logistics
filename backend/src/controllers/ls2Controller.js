@@ -521,6 +521,55 @@ function openDeferrals(history, currentOdo) {
 }
 
 // ---- Full maintenance view for one vehicle -----------------------------------
+// The fleet's real service plan reduced to the FOUR types that actually exist —
+// Group A/B/C and TR Wheels. Wialon gives each truck its own interval ids (the
+// same "Group B" is id 2 on 56 trucks and id 5 or 17 on one each), so the id is
+// per-vehicle noise; the leading number in the NAME is the stable key, and it is
+// the same key the checklists in Settings are stored under.
+//
+// Exposed so the workshop can tag a work order with a real service type instead
+// of keeping its own parallel list of the same four things.
+exports.getServiceTypes = async (req, res) => {
+  try {
+    const [vehicles, settings] = await Promise.all([
+      Ls2Vehicle.find({}).select('serviceIntervals').lean(),
+      Ls2Settings.getOrCreate(),
+    ]);
+
+    // Group on the name WITHOUT its leading number: one truck carries the TR
+    // Wheels service numbered "5-" while the other 56 call it "4-". Same service,
+    // a typo in the plan — grouping on the number alone would report five types
+    // where the workshop knows four. Lowest number wins as the canonical key.
+    const bare = (n) => String(n).replace(/^\s*\d+\s*-\s*/, '').trim().toLowerCase();
+    const byName = new Map();
+    vehicles.forEach((v) => (v.serviceIntervals || []).forEach((si) => {
+      const name = si.name || si.n;
+      if (!name) return;
+      const k = bare(name);
+      const num = (String(name).match(/^\s*(\d+)/) || [])[1] || name;
+      if (!byName.has(k)) {
+        byName.set(k, { key: num, name, intervalKm: si.intervalKm ?? si.im ?? null, vehicles: 0 });
+      }
+      const row = byName.get(k);
+      // Keep the numbering the fleet actually agrees on.
+      if (String(num).localeCompare(String(row.key), undefined, { numeric: true }) < 0) {
+        row.key = num;
+        row.name = name;
+      }
+      row.vehicles += 1;
+    }));
+
+    const checklists = settings.checklists || {};
+    const types = Array.from(byName.values())
+      .sort((a, b) => String(a.key).localeCompare(String(b.key), undefined, { numeric: true }))
+      .map((t) => ({ ...t, checklist: checklists[t.key] || [] }));
+
+    res.json({ types });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load service types' });
+  }
+};
+
 // Intervals (from Wialon) + OUR history (checklists), open deferrals and the
 // unscheduled repairs — everything the vehicle's maintenance profile shows.
 exports.getVehicleMaintenance = async (req, res) => {

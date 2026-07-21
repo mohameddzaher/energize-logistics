@@ -20,6 +20,8 @@ interface WorkshopTask {
   technicianName?: string;
   vehicleNumber?: string;
   maintenanceType?: { _id: string; name: string; estimatedDuration?: number } | string;
+  serviceTypeKey?: string;
+  serviceTypeName?: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   dueDate?: string;
@@ -64,7 +66,10 @@ export default function WorkshopTasksPage() {
   // Workshop users + technicians + maintenance types for dropdowns
   const [workshopUsers, setWorkshopUsers] = useState<{ _id: string; firstName: string; lastName: string; role: string }[]>([]);
   const [technicians, setTechnicians] = useState<{ _id: string; name: string }[]>([]);
-  const [maintenanceTypes, setMaintenanceTypes] = useState<{ _id: string; name: string }[]>([]);
+  // The four real service types come from Location Solutions (mirrored from
+  // Wialon), so the workshop tags a work order with the SAME plan the fleet is
+  // actually serviced against instead of a parallel list of the same four.
+  const [serviceTypes, setServiceTypes] = useState<{ key: string; name: string; intervalKm: number | null; checklist: { label?: string; labelAr?: string }[] }[]>([]);
 
   // Confirm modal
   const [confirmModal, setConfirmModal] = useState<{message: string; onConfirm: () => void} | null>(null);
@@ -72,7 +77,7 @@ export default function WorkshopTasksPage() {
   // Create modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState({
-    title: '', description: '', assignedTo: '', technicianName: '', maintenanceType: '', vehicleNumber: '', priority: 'medium', dueDate: '',
+    title: '', description: '', assignedTo: '', technicianName: '', serviceTypeKey: '', vehicleNumber: '', priority: 'medium', dueDate: '',
   });
   const [creating, setCreating] = useState(false);
 
@@ -104,11 +109,11 @@ export default function WorkshopTasksPage() {
         const [users, techs, types] = await Promise.all([
           api.get<any>('/api/workshop/users').catch(() => []),
           api.get<any>('/api/workshop/technicians').catch(() => []),
-          api.get<any>('/api/workshop/maintenance-types').catch(() => []),
+          api.get<any>('/api/ls2/service-types').catch(() => ({ types: [] })),
         ]);
         setWorkshopUsers(Array.isArray(users) ? users : []);
         setTechnicians(Array.isArray(techs) ? techs : []);
-        setMaintenanceTypes(Array.isArray(types) ? types : []);
+        setServiceTypes(types?.types || []);
       } catch {}
     };
     loadDropdowns();
@@ -141,29 +146,34 @@ export default function WorkshopTasksPage() {
     try {
       const [techs, types] = await Promise.all([
         api.get<any>('/api/workshop/technicians').catch(() => []),
-        api.get<any>('/api/workshop/maintenance-types').catch(() => []),
+        api.get<any>('/api/ls2/service-types').catch(() => ({ types: [] })),
       ]);
       setTechnicians(Array.isArray(techs) ? techs : []);
-      setMaintenanceTypes(Array.isArray(types) ? types : []);
+      setServiceTypes(types?.types || []);
     } catch {}
   }, []);
   useSocket('technician:created', refetchDropdowns);
   useSocket('technician:deleted', refetchDropdowns);
-  useSocket('maintenanceType:created', refetchDropdowns);
-  useSocket('maintenanceType:updated', refetchDropdowns);
-  useSocket('maintenanceType:deleted', refetchDropdowns);
+  // The service plan changes in Location Solutions, not here.
+  useSocket('ls2:updated', refetchDropdowns);
 
   const handleCreate = async () => {
     try {
       setCreating(true);
       const payload: any = { ...createForm };
-      if (!payload.maintenanceType) delete payload.maintenanceType;
+      // Send the name alongside the key so a work order still reads correctly
+      // if the plan is renamed upstream later.
+      if (payload.serviceTypeKey) {
+        payload.serviceTypeName = serviceTypes.find((t) => t.key === payload.serviceTypeKey)?.name || '';
+      } else {
+        delete payload.serviceTypeKey;
+      }
       if (!payload.technicianName) delete payload.technicianName;
       if (!payload.vehicleNumber) delete payload.vehicleNumber;
       if (!payload.dueDate) delete payload.dueDate;
       await api.post('/api/workshop/tasks', payload);
       setShowCreateModal(false);
-      setCreateForm({ title: '', description: '', assignedTo: '', technicianName: '', maintenanceType: '', vehicleNumber: '', priority: 'medium', dueDate: '' });
+      setCreateForm({ title: '', description: '', assignedTo: '', technicianName: '', serviceTypeKey: '', vehicleNumber: '', priority: 'medium', dueDate: '' });
       fetchTasks();
     } catch (err: any) {
       setError(err.message);
@@ -288,9 +298,10 @@ export default function WorkshopTasksPage() {
                           <User className="w-3 h-3" /> {tx.techLabel} {task.technicianName}
                         </span>
                       )}
-                      {task.maintenanceType && typeof task.maintenanceType === 'object' && (
+                      {(task.serviceTypeName || (task.maintenanceType && typeof task.maintenanceType === 'object' && task.maintenanceType.name)) && (
                         <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-orange-500/10 text-orange-600">
-                          <Flag className="w-3 h-3" /> {task.maintenanceType.name}
+                          <Flag className="w-3 h-3" />
+                          {task.serviceTypeName || (typeof task.maintenanceType === 'object' ? task.maintenanceType?.name : '')}
                         </span>
                       )}
                       {task.vehicleNumber && (
@@ -396,11 +407,11 @@ export default function WorkshopTasksPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-slate-500 text-sm block mb-1">{tx.fieldMaintenanceType}</label>
-                      <select title={tx.fieldMaintenanceType} value={createForm.maintenanceType} onChange={e => setCreateForm(p => ({ ...p, maintenanceType: e.target.value }))}
+                      <select title={tx.fieldMaintenanceType} value={createForm.serviceTypeKey} onChange={e => setCreateForm(p => ({ ...p, serviceTypeKey: e.target.value }))}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg text-slate-900 px-3 py-2.5 text-sm focus:outline-none focus:border-[#f37121]">
                         <option value="">{tx.optional}</option>
-                        {maintenanceTypes.map(t => (
-                          <option key={t._id} value={t._id}>{t.name}</option>
+                        {serviceTypes.map(t => (
+                          <option key={t.key} value={t.key}>{t.name}</option>
                         ))}
                       </select>
                     </div>

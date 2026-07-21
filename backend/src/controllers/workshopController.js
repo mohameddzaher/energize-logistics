@@ -400,7 +400,9 @@ const receivePurchaseRequest = async (req, res) => {
     // No existing line to add to — a first-time purchase is exactly how a part
     // enters the catalogue, so create it rather than losing the receipt.
     if (!invItem && !inventoryItemId && request.itemName) {
-      invItem = await InventoryItem.findOne({ name: new RegExp(`^${escapeRx(request.itemName)}$`, 'i') });
+      // Only ACTIVE lines: a deleted one is invisible on every screen, so adding
+      // stock to it would silently swallow the delivery.
+      invItem = await InventoryItem.findOne({ name: new RegExp(`^${escapeRx(request.itemName)}$`, 'i'), isActive: true });
       if (!invItem) {
         invItem = await InventoryItem.create({
           code: `WS-${Date.now().toString(36).toUpperCase()}`,

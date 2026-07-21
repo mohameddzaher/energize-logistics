@@ -252,6 +252,12 @@ export default function WorkshopStorePage() {
       {tab !== 'overview' && tab !== 'parts' && (
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
+          {/* These tabs are read-only here on purpose, so give the edit path a
+              visible door instead of leaving people looking for a button. */}
+          <Link href="/system/ls2/fleet-assets"
+            className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-medium transition-colors">
+            <ExternalLink className="w-4 h-4" /> {tx.manageAssets}
+          </Link>
           {(tab === 'tires' || tab === 'trailers') && (
             <div className="w-full sm:w-52 shrink-0">
               <Select value={placement} onChange={(e) => setPlacement(e.target.value as any)}>

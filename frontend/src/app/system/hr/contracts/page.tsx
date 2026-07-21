@@ -6,7 +6,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { FileText, Plus, Edit, Ban, Check } from 'lucide-react';
 import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, fmtDate, exportToExcel, today } from '@/lib/hr';
-import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Badge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrContractsTranslations } from '@/lib/translations';
 
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '' };
@@ -151,10 +151,19 @@ export default function ContractsPage() {
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label={tx.fieldEmployee} span2>
-            <Select value={form.employee} onChange={(e) => set('employee', e.target.value)} disabled={!!editing}>
-              <option value="">—</option>
-              {employees.map((e) => <option key={e._id} value={e._id}>{empName(e)} {e.iqamaNumber ? `(${e.iqamaNumber})` : ''}</option>)}
-            </Select>
+            <SearchableSelect
+              value={form.employee}
+              onChange={(v) => set('employee', v)}
+              disabled={!!editing}
+              placeholder={ar ? 'اختر الموظف' : 'Select an employee'}
+              searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم الوظيفي أو الإقامة…' : 'Search by name, number or iqama…'}
+              emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+              options={employees.map((e) => ({
+                value: e._id,
+                label: empName(e, lang),
+                hint: [e.employeeNumber, e.jobTitle, e.iqamaNumber].filter(Boolean).join(' · '),
+              }))}
+            />
           </Field>
           <Field label={tx.fieldType}><Select value={form.type} onChange={(e) => set('type', e.target.value)}><option value="fixed">{tx.optFixedTerm}</option><option value="unlimited">{tx.typeUnlimited}</option></Select></Field>
           <Field label={tx.fieldDuration}><TextInput type="number" value={form.durationMonths} onChange={(e) => set('durationMonths', Number(e.target.value))} /></Field>

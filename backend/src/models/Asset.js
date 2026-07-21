@@ -10,15 +10,18 @@ const assetSchema = new mongoose.Schema(
     // existing documents and all HR code behave exactly as before.
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: false, default: null },
     name: { type: String, required: true, trim: true },
-    type: {
-      type: String,
-      enum: ['laptop', 'phone', 'sim', 'vehicle', 'tool', 'access_card', 'other'],
-      default: 'other',
-    },
+    // Every kind of item is named for what it actually is — a keyboard is a
+    // keyboard, not a "tool". The vocabulary is NOT an enum: it lives in the
+    // `Lookup` collection (type `asset_type`, seeded from config/assetDefaults)
+    // so the section can add or rename types from Settings → Reference Data.
+    // Controllers validate new values against the active lookup rows.
+    type: { type: String, default: 'other', trim: true },
     serialNumber: { type: String, trim: true },
     brand: { type: String, trim: true },
     model: { type: String, trim: true },
-    condition: { type: String, enum: ['new', 'good', 'fair', 'damaged'], default: 'good' },
+    // Also lookup-backed (`asset_condition`) rather than an enum — same reason
+    // as `type` above.
+    condition: { type: String, default: 'good', trim: true },
     value: { type: Number, default: 0 },
     assignedDate: { type: String }, // YYYY-MM-DD
 
@@ -26,7 +29,7 @@ const assetSchema = new mongoose.Schema(
     // default so nothing that omits `status` changes meaning.
     status: { type: String, enum: ['assigned', 'returned', 'in_stock'], default: 'assigned' },
     returnedDate: { type: String },
-    returnedCondition: { type: String, enum: ['new', 'good', 'fair', 'damaged'] },
+    returnedCondition: { type: String, trim: true },
     returnedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
     notes: { type: String, trim: true },
@@ -46,6 +49,11 @@ const assetSchema = new mongoose.Schema(
     // stand for N identical units. Serial-tracked gear just keeps quantity 1.
     quantity: { type: Number, default: 1 },
     location: { type: String, default: '', trim: true },        // shelf / room in the store
+
+    // Row identity from an imported register (see scripts/importItCustody.js).
+    // Only set by importers — it is what makes a re-run update instead of
+    // duplicate. Sparse, so the hundreds of hand-entered assets stay unaffected.
+    importKey: { type: String, trim: true },
   },
   { timestamps: true }
 );
@@ -53,5 +61,6 @@ const assetSchema = new mongoose.Schema(
 assetSchema.index({ employee: 1, status: 1 });
 assetSchema.index({ status: 1 });
 assetSchema.index({ serialNumber: 1 });
+assetSchema.index({ importKey: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Asset', assetSchema);

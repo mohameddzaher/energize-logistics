@@ -1,9 +1,9 @@
 'use client';
 // Small shared UI kit for the HR section so every page stays consistent and
 // short. Pure presentation — all data/logic lives in the pages themselves.
-import { ReactNode } from 'react';
+import { ReactNode, useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, X, Download, Loader2 } from 'lucide-react';
+import { Search, X, Download, Loader2, ChevronDown, Check as CheckIcon } from 'lucide-react';
 
 export function Spinner() {
   return (
@@ -104,6 +104,129 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={inputCls} />;
+}
+
+export interface SearchOption { value: string; label: string; hint?: string }
+
+// A <select> replacement for lists nobody can reasonably scroll — employees,
+// customers, vendors. Filters on both the label and the hint (employee number,
+// iqama…), so typing a number finds the person as fast as typing their name.
+//
+// Below `searchAfter` options it renders without the search box, so it can be
+// dropped in everywhere without adding noise to short lists.
+export function SearchableSelect({
+  value, onChange, options, placeholder = '—', searchPlaceholder, disabled, searchAfter = 8, emptyLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: SearchOption[];
+  placeholder?: string;
+  searchPlaceholder?: string;
+  disabled?: boolean;
+  searchAfter?: number;
+  emptyLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [active, setActive] = useState(0);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const selected = options.find((o) => o.value === value) || null;
+  const showSearch = options.length > searchAfter;
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return options;
+    // Every space-separated word must appear somewhere, so "ahmed 2570" works.
+    const words = s.split(/\s+/);
+    return options.filter((o) => {
+      const hay = `${o.label} ${o.hint || ''}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [options, q]);
+
+  useEffect(() => {
+    if (!open) return;
+    setQ('');
+    setActive(0);
+    const t = setTimeout(() => searchRef.current?.focus(), 10);
+    return () => clearTimeout(t);
+  }, [open]);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  // Keep the keyboard-highlighted row in view while arrowing through a long list.
+  useEffect(() => {
+    listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
+
+  const pick = (v: string) => { onChange(v); setOpen(false); };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { setOpen(false); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => Math.min(i + 1, filtered.length - 1)); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => Math.max(i - 1, 0)); return; }
+    if (e.key === 'Enter') { e.preventDefault(); if (filtered[active]) pick(filtered[active].value); }
+  };
+
+  return (
+    <div className="relative" ref={boxRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        className={`${inputCls} flex items-center justify-between gap-2 text-start ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+      >
+        <span className={`truncate ${selected ? 'text-slate-900' : 'text-slate-400'}`}>{selected ? selected.label : placeholder}</span>
+        <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden">
+          {showSearch && (
+            <div className="relative border-b border-slate-100">
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={q}
+                onChange={(e) => { setQ(e.target.value); setActive(0); }}
+                onKeyDown={onKeyDown}
+                placeholder={searchPlaceholder || 'Search…'}
+                className="w-full ps-10 pe-3 py-2.5 text-sm text-slate-900 focus:outline-none"
+              />
+            </div>
+          )}
+          <div ref={listRef} className="max-h-60 overflow-y-auto" onKeyDown={onKeyDown}>
+            {filtered.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-slate-400">{emptyLabel || 'No matches'}</p>
+            ) : filtered.map((o, i) => (
+              <button
+                key={o.value}
+                type="button"
+                data-active={i === active}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => pick(o.value)}
+                className={`w-full text-start px-3 py-2 border-b border-slate-100 last:border-0 flex items-center gap-2 ${i === active ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm text-slate-900 truncate">{o.label}</span>
+                  {o.hint && <span className="block text-xs text-slate-400 truncate">{o.hint}</span>}
+                </span>
+                {o.value === value && <CheckIcon className="w-4 h-4 shrink-0 text-[#f37121]" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Tabs({ tabs, active, onChange }: { tabs: { key: string; label: string; badge?: number }[]; active: string; onChange: (k: string) => void }) {

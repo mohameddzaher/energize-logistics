@@ -8,6 +8,7 @@
 // No new model / controller / route is required.
 const crmDefaults = require('./crmDefaults');
 const procurementDefaults = require('./procurementDefaults');
+const assetDefaults = require('./assetDefaults');
 
 // Roles that can manage every lookup regardless of module.
 const BASE_WRITE_ROLES = ['super_admin', 'admin'];
@@ -66,6 +67,22 @@ const REGISTRY = [
     nameAr: 'أحجام الشركات',
     roles: ['crm_manager', 'crm_specialist', 'sales_manager'],
     seed: crmDefaults.COMPANY_SIZES,
+  },
+  {
+    type: 'asset_type',
+    module: 'it',
+    nameEn: 'Custody & Store Item Types',
+    nameAr: 'أنواع أصناف العهد والمستودع',
+    roles: ['it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'],
+    seed: assetDefaults.TYPE_SEED,
+  },
+  {
+    type: 'asset_condition',
+    module: 'it',
+    nameEn: 'Item Conditions',
+    nameAr: 'حالات الأصناف',
+    roles: ['it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'],
+    seed: assetDefaults.CONDITION_SEED,
   },
 ];
 

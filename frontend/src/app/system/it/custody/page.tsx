@@ -8,11 +8,12 @@ import { Laptop, Plus, Edit, Undo2, Trash2, Check, Info, Boxes } from 'lucide-re
 import { exportToExcel } from '@/utils/exportExcel';
 import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
-  Modal, Field, TextInput, TextArea, Select, StatCard, Loader2,
+  Modal, Field, TextInput, TextArea, Select, SearchableSelect, StatCard, Loader2,
 } from '@/components/hr/HRKit';
+import { useAssetVocab } from '@/hooks/useAssetVocab';
 import {
-  canViewIt, CustodyItem, StockItem, EmployeeRef, CUSTODY_TYPES, CUSTODY_STATUSES, CONDITIONS,
-  IT_CUSTODY_TYPE_KEYS, CUSTODY_STATUS_KEYS, custodyTypeLabel, custodyStatusLabel, conditionLabel,
+  canViewIt, CustodyItem, StockItem, EmployeeRef, CUSTODY_TYPES, CUSTODY_STATUSES,
+  CUSTODY_STATUS_KEYS, custodyStatusLabel,
   optionsOf, empName, fmtDate, fmtMoney, today, idOf,
 } from '@/lib/it';
 
@@ -26,6 +27,8 @@ export default function ItCustodyPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const staff = canViewIt(user);
+  // Types/conditions are editable from Settings → Reference Data.
+  const { itTypes, conditions, typeLabel: custodyTypeLabel, conditionLabel } = useAssetVocab();
 
   const [items, setItems] = useState<CustodyItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);
@@ -213,7 +216,7 @@ export default function ItCustodyPage() {
         <div className="w-full sm:w-44 shrink-0">
           <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
             <option value="">{ar ? 'كل الأنواع' : 'All types'}</option>
-            {optionsOf(CUSTODY_TYPES, IT_CUSTODY_TYPE_KEYS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+            {itTypes.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
           </Select>
         </div>
         <div className="w-full sm:w-44 shrink-0">
@@ -310,14 +313,19 @@ export default function ItCustodyPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label={ar ? 'الموظف' : 'Employee'} span2>
-            <Select value={form.employee} onChange={(e) => set('employee', e.target.value)} disabled={!!editing}>
-              <option value="">—</option>
-              {employees.map((emp) => (
-                <option key={emp._id} value={emp._id}>
-                  {empName(emp, lang)}{emp.employeeNumber ? ` (${emp.employeeNumber})` : ''}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={form.employee}
+              onChange={(v) => set('employee', v)}
+              disabled={!!editing}
+              placeholder={ar ? 'اختر الموظف' : 'Select an employee'}
+              searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم الوظيفي أو الإقامة…' : 'Search by name, number or iqama…'}
+              emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+              options={employees.map((emp) => ({
+                value: emp._id,
+                label: empName(emp, lang),
+                hint: [emp.employeeNumber, emp.department, emp.iqamaNumber].filter(Boolean).join(' · '),
+              }))}
+            />
           </Field>
           {/* Stock mode identifies the device by picking it; every other detail
               already lives on the record, so re-typing it would only invite
@@ -349,7 +357,7 @@ export default function ItCustodyPage() {
               </Field>
               <Field label={ar ? 'النوع' : 'Type'}>
                 <Select value={form.type} onChange={(e) => set('type', e.target.value)}>
-                  {optionsOf(CUSTODY_TYPES, IT_CUSTODY_TYPE_KEYS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+                  {itTypes.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
                 </Select>
               </Field>
               <Field label={ar ? 'الرقم التسلسلي' : 'Serial number'}>
@@ -365,7 +373,7 @@ export default function ItCustodyPage() {
           )}
           <Field label={ar ? 'الحالة الفنية' : 'Condition'}>
             <Select value={form.condition} onChange={(e) => set('condition', e.target.value)}>
-              {optionsOf(CONDITIONS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+              {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
             </Select>
           </Field>
           {(editing || createMode === 'new') && (
@@ -401,7 +409,7 @@ export default function ItCustodyPage() {
           </p>
           <Field label={ar ? 'الحالة عند الاسترجاع' : 'Condition on return'}>
             <Select value={returnForm.returnedCondition} onChange={(e) => setReturnForm({ ...returnForm, returnedCondition: e.target.value })}>
-              {optionsOf(CONDITIONS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+              {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
             </Select>
           </Field>
           <Field label={ar ? 'تاريخ الاسترجاع' : 'Return date'}>

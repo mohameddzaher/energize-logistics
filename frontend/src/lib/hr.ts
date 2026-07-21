@@ -97,6 +97,9 @@ export interface Asset {
   serialNumber?: string; brand?: string; model?: string; condition?: string; value?: number; assignedDate?: string;
   status: 'assigned' | 'returned'; returnedDate?: string; returnedCondition?: string;
   notes?: string; createdAt?: string;
+  // Set by the Software & IT section when it hands an item out. HR reads these
+  // but never writes them — IT custody is view-only on HR screens.
+  issuedBySection?: string; assignedBy?: any; category?: string; specs?: string;
 }
 
 export interface EmployeeDocument {
@@ -200,13 +203,28 @@ export const REQUEST_CATEGORIES: { key: string; en: string; ar: string }[] = [
   { key: 'other', en: 'Other', ar: 'أخرى' },
 ];
 
+// Mirrors the Asset `type` enum. Kept in the same order as lib/it.ts
+// CUSTODY_TYPES so a device reads the same on both sections' screens.
 export const ASSET_TYPES: { key: string; en: string; ar: string }[] = [
-  { key: 'laptop', en: 'Laptop', ar: 'لابتوب' },
+  { key: 'laptop', en: 'Laptop', ar: 'حاسب محمول' },
+  { key: 'desktop', en: 'Desktop', ar: 'حاسب مكتبي' },
   { key: 'phone', en: 'Phone', ar: 'هاتف' },
-  { key: 'sim', en: 'SIM Card', ar: 'شريحة' },
+  { key: 'tablet', en: 'Tablet', ar: 'جهاز لوحي' },
+  { key: 'sim', en: 'SIM Card', ar: 'شريحة اتصال' },
+  { key: 'monitor', en: 'Monitor', ar: 'شاشة' },
+  { key: 'keyboard', en: 'Keyboard', ar: 'لوحة مفاتيح' },
+  { key: 'mouse', en: 'Mouse', ar: 'فأرة' },
+  { key: 'keyboard_mouse', en: 'Keyboard & Mouse', ar: 'لوحة مفاتيح وفأرة' },
+  { key: 'headset', en: 'Headset', ar: 'سماعة رأس' },
+  { key: 'printer', en: 'Printer', ar: 'طابعة' },
+  { key: 'router', en: 'Router', ar: 'موجّه شبكة' },
+  { key: 'charger', en: 'Charger', ar: 'شاحن' },
+  { key: 'cable', en: 'Cable', ar: 'كبل' },
+  { key: 'laptop_bag', en: 'Laptop Bag', ar: 'حقيبة حاسب' },
+  { key: 'accessory', en: 'Accessory', ar: 'ملحق' },
+  { key: 'access_card', en: 'Access Card', ar: 'بطاقة دخول' },
   { key: 'vehicle', en: 'Vehicle', ar: 'مركبة' },
   { key: 'tool', en: 'Tool', ar: 'أداة' },
-  { key: 'access_card', en: 'Access Card', ar: 'بطاقة دخول' },
   { key: 'other', en: 'Other', ar: 'أخرى' },
 ];
 

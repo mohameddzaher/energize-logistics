@@ -77,8 +77,13 @@ const SYSTEM_EDITABLE = [
   'renewalDate', 'cost', 'costPeriod', 'credentialsNote', 'description', 'notes',
 ];
 
-// IT hands out everything except vehicles — those belong to the fleet/HR flow.
-const IT_CUSTODY_TYPES = ['laptop', 'phone', 'sim', 'access_card', 'tool', 'other'];
+// IT hands out everything except vehicles (fleet section) and generic `tool`
+// (HR's own gear). Keep in sync with lib/it.ts IT_CUSTODY_TYPE_KEYS.
+const IT_CUSTODY_TYPES = [
+  'laptop', 'desktop', 'phone', 'tablet', 'sim', 'monitor',
+  'keyboard', 'mouse', 'keyboard_mouse', 'headset', 'printer', 'router',
+  'charger', 'cable', 'laptop_bag', 'accessory', 'access_card', 'other',
+];
 
 const EMP_FIELDS = 'firstName lastName arabicName iqamaNumber employeeNumber department';
 
@@ -510,7 +515,10 @@ exports.deleteCustody = async (req, res) => {
 exports.listStock = async (req, res) => {
   try {
     const { type, q, condition } = req.query;
-    const filter = { status: 'in_stock' };
+    // HR keeps its own shelf in this collection (`issuedBySection: 'hr'`) — it
+    // is a different store and must not show up here. Legacy stock with no flag
+    // set stays with IT, which is where it has always been.
+    const filter = { status: 'in_stock', issuedBySection: { $ne: 'hr' } };
     if (type) filter.type = type;
     if (condition) filter.condition = condition;
     if (q && q.trim()) {

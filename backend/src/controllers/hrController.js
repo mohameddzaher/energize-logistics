@@ -905,6 +905,23 @@ exports.updateRequestStatus = async (req, res) => {
 };
 
 // ── Assets / custody ─────────────────────────────────────────────────────────
+
+// SIM cards sit on IT's register for convenience, but the line itself is an HR
+// matter (it follows the employee, not the device), so HR keeps full control of
+// them regardless of who issued them.
+const HR_MANAGED_TYPES = new Set(['sim']);
+
+// Everything else handed out by the Software & IT section stays IT's to manage.
+// HR sees every detail of it (who holds what, since when, serial, notes) but the
+// edit / return / delete actions belong to /system/it/custody, so they are
+// refused here. super_admin is exempt — it owns every section anyway.
+const denyItOwned = (req, res, asset) => {
+  if (asset.issuedBySection !== 'it' || req.user.role === 'super_admin') return false;
+  if (HR_MANAGED_TYPES.has(asset.type)) return false;
+  res.status(403).json({ message: 'This is IT custody — view only. It is managed from the Software & IT section.' });
+  return true;
+};
+
 exports.listAssets = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
@@ -916,6 +933,7 @@ exports.listAssets = async (req, res) => {
     if (req.query.status && req.query.status !== 'in_stock') filter.status = req.query.status;
     const assets = await Asset.find(filter)
       .populate('employee', 'firstName lastName arabicName iqamaNumber employeeNumber')
+      .populate('assignedBy', 'firstName lastName')
       .sort({ createdAt: -1 })
       .limit(2000)
       .lean();
@@ -947,6 +965,7 @@ exports.updateAsset = async (req, res) => {
     // IT store stock lives in this collection but is not custody — HR never
     // lists it, so reaching one by id means something went wrong upstream.
     if (asset.status === 'in_stock') return res.status(404).json({ message: 'Asset not found' });
+    if (denyItOwned(req, res, asset)) return;
     ['name', 'type', 'serialNumber', 'brand', 'model', 'condition', 'value', 'assignedDate', 'notes'].forEach((f) => {
       if (req.body[f] !== undefined) asset[f] = req.body[f];
     });
@@ -968,13 +987,25 @@ exports.returnAsset = async (req, res) => {
     // IT store stock lives in this collection but is not custody — HR never
     // lists it, so reaching one by id means something went wrong upstream.
     if (asset.status === 'in_stock') return res.status(404).json({ message: 'Asset not found' });
+    if (denyItOwned(req, res, asset)) return;
+    // Captured before the shelf branch below can clear it — the profile screen
+    // still has to be told whose custody changed.
+    const holderId = String(asset.employee || '');
     asset.status = 'returned';
     asset.returnedDate = req.body.returnedDate || new Date().toISOString().slice(0, 10);
     if (req.body.returnedCondition) asset.returnedCondition = req.body.returnedCondition;
     asset.returnedTo = req.user._id;
+    // Opt-in: gear that goes back on the HR shelf to be handed to the next
+    // person, rather than being retired. Default stays the old terminal
+    // 'returned' so every existing caller behaves exactly as before.
+    if (req.body.toStock && asset.issuedBySection === 'hr') {
+      asset.status = 'in_stock';
+      asset.employee = null;
+      asset.assignedDate = undefined;
+    }
     await asset.save();
     await notifyHR({ title: 'Custody returned', message: `${asset.name} returned`, relatedEntity: 'Asset', relatedEntityId: asset._id, event: 'hr:asset' });
-    try { emitToUser(String(req.user._id), 'hr:employee', { id: String(asset.employee) }); } catch (e) {}
+    try { emitToUser(String(req.user._id), 'hr:employee', { id: holderId }); } catch (e) {}
     res.json({ asset });
   } catch (error) {
     res.status(500).json({ message: 'Failed to return asset' });
@@ -985,10 +1016,128 @@ exports.deleteAsset = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     // Scoped so an HR delete can never reach an IT store item (see updateAsset).
-    await Asset.findOneAndDelete({ _id: req.params.id, status: { $ne: 'in_stock' } });
+    const asset = await Asset.findOne({ _id: req.params.id, status: { $ne: 'in_stock' } });
+    if (!asset) return res.json({ message: 'Asset deleted' });
+    if (denyItOwned(req, res, asset)) return;
+    await asset.deleteOne();
     res.json({ message: 'Asset deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete asset' });
+  }
+};
+
+// ── HR store (مستودع الموارد البشرية) ────────────────────────────────────────
+// HR keeps its own shelf — uniforms, safety gear, access cards, office kit —
+// which has nothing to do with the IT store. Both live in the one Asset
+// collection (so a handed-out item is custody without changing collections) and
+// are kept apart by `issuedBySection`. Everything below is scoped to 'hr'; the
+// IT endpoints are scoped away from it.
+const HR_STOCK_EDITABLE = [
+  'name', 'type', 'serialNumber', 'brand', 'model', 'condition', 'value',
+  'notes', 'quantity', 'location', 'specs',
+];
+const HR_STORE = { status: 'in_stock', issuedBySection: 'hr' };
+
+const pickFields = (body, fields) => {
+  const out = {};
+  fields.forEach((f) => { if (body[f] !== undefined) out[f] = body[f]; });
+  return out;
+};
+
+exports.listStock = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const filter = { ...HR_STORE };
+    if (req.query.type) filter.type = req.query.type;
+    if (req.query.condition) filter.condition = req.query.condition;
+    const items = await Asset.find(filter)
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 })
+      .limit(2000)
+      .lean();
+    res.json({ items });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load stock items' });
+  }
+};
+
+exports.createStock = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    if (!req.body.name || !String(req.body.name).trim()) {
+      return res.status(400).json({ message: 'Item name is required' });
+    }
+    const data = pickFields(req.body, HR_STOCK_EDITABLE);
+    if (data.quantity === undefined || Number(data.quantity) < 1) data.quantity = 1;
+    data.status = 'in_stock';
+    data.employee = null;
+    data.issuedBySection = 'hr';
+    data.category = 'HR';
+    data.createdBy = req.user._id;
+    const item = await Asset.create(data);
+    res.status(201).json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to create stock item' });
+  }
+};
+
+exports.updateStock = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    // Scoped to the HR shelf, so this can never reach an IT store item.
+    const item = await Asset.findOne({ _id: req.params.id, ...HR_STORE });
+    if (!item) return res.status(404).json({ message: 'Stock item not found' });
+    Object.assign(item, pickFields(req.body, HR_STOCK_EDITABLE));
+    await item.save();
+    res.json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update stock item' });
+  }
+};
+
+exports.deleteStock = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    // Only shelf stock — deleting an assigned item here would wipe someone's
+    // custody record.
+    const item = await Asset.findOneAndDelete({ _id: req.params.id, ...HR_STORE });
+    if (!item) return res.status(404).json({ message: 'Stock item not found' });
+    res.json({ message: 'Stock item deleted' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete stock item' });
+  }
+};
+
+// The handover: in_stock → assigned, same document, so the item keeps its
+// serial and its history and lands on the employee's HR profile at once.
+exports.assignFromStock = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    if (!req.body.employee) return res.status(400).json({ message: 'Employee is required' });
+
+    const item = await Asset.findOne({ _id: req.params.id, ...HR_STORE });
+    if (!item) return res.status(404).json({ message: 'Stock item not found or already handed out' });
+
+    const employee = await Employee.findById(req.body.employee).select('_id user').lean();
+    if (!employee) return res.status(404).json({ message: 'Employee not found' });
+
+    item.employee = employee._id;
+    item.status = 'assigned';
+    item.assignedDate = req.body.assignedDate || new Date().toISOString().slice(0, 10);
+    item.assignedBy = req.user._id;
+    if (req.body.condition) item.condition = req.body.condition;
+    if (req.body.notes) item.notes = req.body.notes;
+    // The item has left the shelf — clear the leftovers from its last return.
+    item.returnedDate = undefined;
+    item.returnedCondition = undefined;
+    item.returnedTo = undefined;
+    await item.save();
+
+    await notifyHR({ title: 'Custody assigned', message: `${item.name}`, relatedEntity: 'Asset', relatedEntityId: item._id, event: 'hr:asset' });
+    if (employee.user) await notifyUser(employee.user, { title: 'New custody item', message: `${item.name} was assigned to you.`, relatedEntity: 'Asset', relatedEntityId: item._id, event: 'hr:asset' });
+    res.json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to assign stock item' });
   }
 };
 

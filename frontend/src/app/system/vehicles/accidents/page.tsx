@@ -89,11 +89,14 @@ export default function VehicleAccidentsPage() {
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder={tx.search} /></div>
-        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">{tx.allAccidentStatuses}</option>
-          {Object.entries(ACCIDENT_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
-        </Select>
+        <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.search} /></div>
+        {/* Fixed, shrink-0 box — a bare `w-full` Select would eat the row. */}
+        <div className="w-full sm:w-48 shrink-0">
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">{tx.allAccidentStatuses}</option>
+            {Object.entries(ACCIDENT_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
+          </Select>
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">

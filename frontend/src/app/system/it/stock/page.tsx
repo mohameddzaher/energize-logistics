@@ -8,11 +8,11 @@ import { Boxes, Plus, Edit, Trash2, Check, Info, UserPlus } from 'lucide-react';
 import { exportToExcel } from '@/utils/exportExcel';
 import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
-  Modal, Field, TextInput, TextArea, Select, StatCard, Loader2,
+  Modal, Field, TextInput, TextArea, Select, SearchableSelect, StatCard, Loader2,
 } from '@/components/hr/HRKit';
+import { useAssetVocab } from '@/hooks/useAssetVocab';
 import {
-  canViewIt, StockItem, EmployeeRef, CUSTODY_TYPES, CONDITIONS,
-  IT_CUSTODY_TYPE_KEYS, custodyTypeLabel, conditionLabel,
+  canViewIt, StockItem, EmployeeRef, CUSTODY_TYPES,
   optionsOf, empName, fmtDate, fmtMoney, today, unitsOf,
 } from '@/lib/it';
 
@@ -26,6 +26,8 @@ export default function ItStockPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const staff = canViewIt(user);
+  // Types/conditions are editable from Settings → Reference Data.
+  const { itTypes, conditions, typeLabel: custodyTypeLabel, conditionLabel } = useAssetVocab();
 
   const [items, setItems] = useState<StockItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);
@@ -117,7 +119,7 @@ export default function ItStockPage() {
   // Per-type unit counts drive both the stat row and the low-stock warning.
   const byType = new Map<string, number>();
   items.forEach((a) => byType.set(a.type, (byType.get(a.type) || 0) + unitsOf(a)));
-  const lowTypes = IT_CUSTODY_TYPE_KEYS.filter((k) => (byType.get(k) || 0) < 3);
+  const lowTypes = itTypes.filter((t) => (byType.get(t.key) || 0) < 3);
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -163,7 +165,7 @@ export default function ItStockPage() {
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
         <p className="text-xs font-semibold text-slate-500 mb-3">{ar ? 'المتاح حسب النوع' : 'Available by type'}</p>
         <div className="flex flex-wrap gap-2">
-          {IT_CUSTODY_TYPE_KEYS.map((k) => {
+          {itTypes.map(({ key: k }) => {
             const n = byType.get(k) || 0;
             return (
               <div key={k} className={`rounded-lg border px-3 py-2 ${n < 3 ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'}`}>
@@ -182,13 +184,13 @@ export default function ItStockPage() {
         <div className="w-full sm:w-44 shrink-0">
           <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
             <option value="">{ar ? 'كل الأنواع' : 'All types'}</option>
-            {optionsOf(CUSTODY_TYPES, IT_CUSTODY_TYPE_KEYS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+            {itTypes.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
           </Select>
         </div>
         <div className="w-full sm:w-44 shrink-0">
           <Select value={conditionFilter} onChange={(e) => setConditionFilter(e.target.value)}>
             <option value="">{ar ? 'كل الحالات الفنية' : 'All conditions'}</option>
-            {optionsOf(CONDITIONS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+            {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
           </Select>
         </div>
       </div>
@@ -251,7 +253,7 @@ export default function ItStockPage() {
           </Field>
           <Field label={ar ? 'النوع' : 'Type'}>
             <Select value={form.type} onChange={(e) => set('type', e.target.value)}>
-              {optionsOf(CUSTODY_TYPES, IT_CUSTODY_TYPE_KEYS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+              {itTypes.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
             </Select>
           </Field>
           <Field label={ar ? 'الرقم التسلسلي' : 'Serial number'}>
@@ -259,7 +261,7 @@ export default function ItStockPage() {
           </Field>
           <Field label={ar ? 'الحالة الفنية' : 'Condition'}>
             <Select value={form.condition} onChange={(e) => set('condition', e.target.value)}>
-              {optionsOf(CONDITIONS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+              {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
             </Select>
           </Field>
           <Field label={ar ? 'الماركة' : 'Brand'}>
@@ -301,21 +303,25 @@ export default function ItStockPage() {
               : `Handing over "${assigning?.name}"${assigning?.serialNumber ? ` (${assigning.serialNumber})` : ''} from stock`}
           </p>
           <Field label={ar ? 'الموظف' : 'Employee'}>
-            <Select value={assignForm.employee} onChange={(e) => setAssignForm({ ...assignForm, employee: e.target.value })}>
-              <option value="">—</option>
-              {employees.map((emp) => (
-                <option key={emp._id} value={emp._id}>
-                  {empName(emp, lang)}{emp.employeeNumber ? ` (${emp.employeeNumber})` : ''}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              value={assignForm.employee}
+              onChange={(v) => setAssignForm({ ...assignForm, employee: v })}
+              placeholder={ar ? 'اختر الموظف' : 'Select an employee'}
+              searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم الوظيفي أو الإقامة…' : 'Search by name, number or iqama…'}
+              emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+              options={employees.map((emp) => ({
+                value: emp._id,
+                label: empName(emp, lang),
+                hint: [emp.employeeNumber, emp.department, emp.iqamaNumber].filter(Boolean).join(' · '),
+              }))}
+            />
           </Field>
           <Field label={ar ? 'تاريخ التسليم' : 'Handover date'}>
             <TextInput type="date" value={assignForm.assignedDate} onChange={(e) => setAssignForm({ ...assignForm, assignedDate: e.target.value })} />
           </Field>
           <Field label={ar ? 'الحالة عند التسليم' : 'Condition at handover'}>
             <Select value={assignForm.condition} onChange={(e) => setAssignForm({ ...assignForm, condition: e.target.value })}>
-              {optionsOf(CONDITIONS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+              {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
             </Select>
           </Field>
           <Field label={ar ? 'ملاحظات' : 'Notes'}>

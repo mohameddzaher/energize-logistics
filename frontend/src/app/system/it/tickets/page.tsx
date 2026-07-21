@@ -9,7 +9,7 @@ import { LifeBuoy, Plus, Edit, Trash2, Check, RefreshCw, ExternalLink } from 'lu
 import { exportToExcel } from '@/utils/exportExcel';
 import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
-  Modal, Field, TextInput, TextArea, Select, Loader2,
+  Modal, Field, TextInput, TextArea, Select, SearchableSelect, Loader2,
 } from '@/components/hr/HRKit';
 import {
   canViewIt, Ticket, EmployeeRef, TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES,
@@ -230,10 +230,18 @@ export default function ItTicketsPage() {
             <TextInput type="date" value={form.reportedAt || ''} onChange={(e) => set('reportedAt', e.target.value)} />
           </Field>
           <Field label={ar ? 'الموظف (اختياري)' : 'Employee (optional)'}>
-            <Select value={form.requester || ''} onChange={(e) => set('requester', e.target.value)}>
-              <option value="">—</option>
-              {employees.map((emp) => <option key={emp._id} value={emp._id}>{empName(emp, lang)}</option>)}
-            </Select>
+            <SearchableSelect
+              value={form.requester || ''}
+              onChange={(v) => set('requester', v)}
+              placeholder={ar ? 'اختر الموظف' : 'Select an employee'}
+              searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم الوظيفي…' : 'Search by name or number…'}
+              emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+              options={employees.map((emp) => ({
+                value: emp._id,
+                label: empName(emp, lang),
+                hint: [emp.employeeNumber, emp.department, emp.iqamaNumber].filter(Boolean).join(' · '),
+              }))}
+            />
           </Field>
           <Field label={ar ? 'اسم مقدم البلاغ' : 'Requester name'}>
             <TextInput value={form.requesterName || ''} onChange={(e) => set('requesterName', e.target.value)} />

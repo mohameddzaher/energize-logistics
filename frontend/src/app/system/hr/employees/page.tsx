@@ -27,6 +27,9 @@ export default function HREmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Search is server-side, so the raw box value is debounced — otherwise every
+  // keystroke fires a request and a slow early one can land after a later one.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(searchParams?.get('status') || '');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
@@ -34,13 +37,18 @@ export default function HREmployeesPage() {
   const load = useCallback(async () => {
     try {
       const qs = new URLSearchParams();
-      if (search.trim()) qs.set('q', search.trim());
+      if (debouncedSearch.trim()) qs.set('q', debouncedSearch.trim());
       if (statusFilter) qs.set('status', statusFilter);
       const d = await api.get<{ employees: Employee[] }>(`/api/hr/employees?${qs}`);
       setEmployees(d.employees || []);
     } catch {}
     setLoading(false);
-  }, [search, statusFilter]);
+  }, [debouncedSearch, statusFilter]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('hr:employee', useCallback(() => load(), [load]));
@@ -76,12 +84,17 @@ export default function HREmployeesPage() {
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addEmployee}</PrimaryButton>
       </PageHeader>
 
+      {/* HRKit's Select is `w-full`, so as a bare flex child it claims the whole
+          row and squeezes the search box. Every filter gets a fixed, shrink-0
+          box and the search keeps the rest. */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
-        <Select aria-label={ar ? 'تصفية الحالة' : 'Filter by status'} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">{tx.allStatuses}</option>
-          {Object.entries(EMPLOYMENT_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
-        </Select>
+        <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
+        <div className="w-full sm:w-48 shrink-0">
+          <Select aria-label={ar ? 'تصفية الحالة' : 'Filter by status'} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">{tx.allStatuses}</option>
+            {Object.entries(EMPLOYMENT_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
+          </Select>
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">

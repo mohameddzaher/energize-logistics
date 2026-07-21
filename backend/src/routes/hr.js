@@ -80,4 +80,12 @@ router.put('/assets/:id', authorize(...STAFF), hr.updateAsset);
 router.post('/assets/:id/return', authorize(...STAFF), hr.returnAsset);
 router.delete('/assets/:id', authorize(...STAFF), hr.deleteAsset);
 
+// HR's own store (المستودع) — separate shelf from the IT store, same Asset
+// collection. Handing an item out turns the very same document into custody.
+router.get('/stock', authorize(...STAFF), hr.listStock);
+router.post('/stock', authorize(...STAFF), hr.createStock);
+router.put('/stock/:id', authorize(...STAFF), hr.updateStock);
+router.delete('/stock/:id', authorize(...STAFF), hr.deleteStock);
+router.post('/stock/:id/assign', authorize(...STAFF), hr.assignFromStock);
+
 module.exports = router;

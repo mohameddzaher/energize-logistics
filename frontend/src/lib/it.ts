@@ -166,19 +166,39 @@ export const TICKET_STATUSES: Record<string, Style> = {
   reopened: { en: 'Reopened', ar: 'أعيد فتحها', bg: 'bg-red-500/20', text: 'text-red-700' },
 };
 
+// Each item is labelled for what it is — nobody looking at a register wants to
+// read "Tool" and guess whether it's a keyboard or a mouse.
 export const CUSTODY_TYPES: Record<string, Style> = {
-  laptop: { en: 'Laptop', ar: 'لابتوب', bg: 'bg-indigo-500/15', text: 'text-indigo-700' },
+  laptop: { en: 'Laptop', ar: 'حاسب محمول', bg: 'bg-indigo-500/15', text: 'text-indigo-700' },
+  desktop: { en: 'Desktop', ar: 'حاسب مكتبي', bg: 'bg-indigo-500/15', text: 'text-indigo-700' },
   phone: { en: 'Phone', ar: 'هاتف', bg: 'bg-teal-500/15', text: 'text-teal-700' },
+  tablet: { en: 'Tablet', ar: 'جهاز لوحي', bg: 'bg-teal-500/15', text: 'text-teal-700' },
   sim: { en: 'SIM Card', ar: 'شريحة اتصال', bg: 'bg-cyan-500/15', text: 'text-cyan-700' },
+  monitor: { en: 'Monitor', ar: 'شاشة', bg: 'bg-sky-500/15', text: 'text-sky-700' },
+  keyboard: { en: 'Keyboard', ar: 'لوحة مفاتيح', bg: 'bg-emerald-500/15', text: 'text-emerald-700' },
+  mouse: { en: 'Mouse', ar: 'فأرة', bg: 'bg-emerald-500/15', text: 'text-emerald-700' },
+  keyboard_mouse: { en: 'Keyboard & Mouse', ar: 'لوحة مفاتيح وفأرة', bg: 'bg-emerald-500/15', text: 'text-emerald-700' },
+  headset: { en: 'Headset', ar: 'سماعة رأس', bg: 'bg-emerald-500/15', text: 'text-emerald-700' },
+  printer: { en: 'Printer', ar: 'طابعة', bg: 'bg-orange-500/15', text: 'text-orange-700' },
+  router: { en: 'Router', ar: 'موجّه شبكة', bg: 'bg-orange-500/15', text: 'text-orange-700' },
+  charger: { en: 'Charger', ar: 'شاحن', bg: 'bg-amber-500/15', text: 'text-amber-700' },
+  cable: { en: 'Cable', ar: 'كبل', bg: 'bg-amber-500/15', text: 'text-amber-700' },
+  laptop_bag: { en: 'Laptop Bag', ar: 'حقيبة حاسب', bg: 'bg-stone-500/15', text: 'text-stone-700' },
+  accessory: { en: 'Accessory', ar: 'ملحق', bg: 'bg-stone-500/15', text: 'text-stone-700' },
   access_card: { en: 'Access Card', ar: 'بطاقة دخول', bg: 'bg-violet-500/15', text: 'text-violet-700' },
-  tool: { en: 'Tool', ar: 'أداة', bg: 'bg-amber-500/15', text: 'text-amber-700' },
   vehicle: { en: 'Vehicle', ar: 'مركبة', bg: 'bg-slate-500/15', text: 'text-slate-700' },
+  tool: { en: 'Tool', ar: 'أداة', bg: 'bg-slate-500/15', text: 'text-slate-700' },
   other: { en: 'Other', ar: 'أخرى', bg: 'bg-slate-500/15', text: 'text-slate-700' },
 };
 
-// The types IT actually hands out (everything but vehicles) — used for the
-// create-modal dropdown and the filter bar.
-export const IT_CUSTODY_TYPE_KEYS = ['laptop', 'phone', 'sim', 'access_card', 'tool', 'other'];
+// The types IT actually hands out — used for the create-modal dropdown and the
+// filter bar. Vehicles belong to the fleet section, and `tool` is HR's (عدة,
+// safety kit), so neither is offered here.
+export const IT_CUSTODY_TYPE_KEYS = [
+  'laptop', 'desktop', 'phone', 'tablet', 'sim', 'monitor',
+  'keyboard', 'mouse', 'keyboard_mouse', 'headset', 'printer', 'router',
+  'charger', 'cable', 'laptop_bag', 'accessory', 'access_card', 'other',
+];
 
 // The custody page never lists warehouse stock (that has its own page), so its
 // status filter must not offer `in_stock`.

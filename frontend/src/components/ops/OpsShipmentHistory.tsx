@@ -88,6 +88,7 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
     const qs = new URLSearchParams();
     if (s.created_by) qs.set('created_by', String(s.created_by));
     if (s.creator_type) qs.set('creator_type', String(s.creator_type));
+    if (s.created_at) qs.set('created_at', String(s.created_at));
     try { const t = await api.get<any>(`/api/ops/shipments/timeline/${s.id}${qs.toString() ? `?${qs}` : ''}`); setTimeline(Array.isArray(t) ? t : (t?.items || [])); }
     catch { setTimeline([]); }
   };

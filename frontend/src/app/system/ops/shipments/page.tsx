@@ -138,6 +138,7 @@ export default function OpsShipmentsPage() {
     const qs = new URLSearchParams();
     if (row.created_by) qs.set('created_by', String(row.created_by));
     if (row.creator_type) qs.set('creator_type', String(row.creator_type));
+    if (row.created_at) qs.set('created_at', String(row.created_at));
     try { const t = await api.get<any>(`/api/ops/shipments/timeline/${row.id}${qs.toString() ? `?${qs}` : ''}`); setTimeline(Array.isArray(t) ? t : (t?.items || t?.timeline || [])); }
     catch { setTimeline([]); }
   };

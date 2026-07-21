@@ -22,6 +22,7 @@ import {
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ls2Text, isLs2Staff, isLs2Admin, fmtNum, fmtDateTime, type Lang } from '@/lib/ls2';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import SearchSelect from '@/components/ls2/SearchSelect';
 
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
@@ -74,6 +75,16 @@ const TIRE_STATUS_LABELS: Record<string, { en: string; ar: string; cls: string }
 
 const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#f37121] bg-white';
 const labelCls = 'block text-xs font-medium text-slate-500 mb-1';
+
+// Options for the searchable pickers (61 flatbeds is far too many to scroll).
+const flatbedOptions = (flatbeds: Flatbed[], ar: boolean) =>
+  flatbeds.map((f) => ({
+    value: f.plate,
+    label: `${f.plate}${f.numbering != null ? ` (${ar ? 'ترقيم' : 'no.'} ${f.numbering})` : ''}`,
+    hint: [f.brand, f.currentTrailerNumber ? `${ar ? 'تيدر' : 'trailer'} ${f.currentTrailerNumber}` : '', f.driver].filter(Boolean).join(' · '),
+  }));
+const positionOptions = () =>
+  POSITION_DEFS.map((p) => ({ value: String(p.n), label: `${p.label} — ${p.section}` }));
 
 function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
@@ -614,16 +625,13 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
         {tire.plate && <p className="text-xs text-slate-500">{ar ? `حاليًا على ${tire.plate} — ${tire.positionLabel}` : `Currently on ${tire.plate} — ${tire.positionLabel}`}</p>}
         <div>
           <label className={labelCls}>{ar ? 'إلى السطحة' : 'To flatbed'}</label>
-          <select value={toPlate} onChange={(e) => setToPlate(e.target.value)} className={inputCls}>
-            <option value="">{ar ? '— اختر السطحة —' : '— choose flatbed —'}</option>
-            {flatbeds.map((f) => <option key={f._id} value={f.plate}>{f.plate}{f.numbering != null ? ` (${ar ? 'ترقيم' : 'no.'} ${f.numbering})` : ''}</option>)}
-          </select>
+          <SearchSelect value={toPlate} onChange={setToPlate} options={flatbedOptions(flatbeds, ar)} ar={ar}
+            placeholder={ar ? '— اختر السطحة —' : '— choose flatbed —'} searchPlaceholder={ar ? 'ابحث برقم السطحة…' : 'Search flatbed…'} />
         </div>
         <div>
           <label className={labelCls}>{ar ? 'الموقع (1–14)' : 'Position (1–14)'}</label>
-          <select value={posN} onChange={(e) => setPosN(Number(e.target.value))} className={inputCls}>
-            {POSITION_DEFS.map((p) => <option key={p.n} value={p.n}>{p.label} — {p.section}</option>)}
-          </select>
+          <SearchSelect value={String(posN)} onChange={(v) => setPosN(Number(v))} options={positionOptions()} ar={ar}
+            searchPlaceholder={ar ? 'ابحث عن الموقع…' : 'Search position…'} />
         </div>
         {occupant && (
           <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -714,14 +722,12 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
         {!isEdit && (
           <div className="border border-slate-200 rounded-lg p-3 space-y-3">
             <p className="text-xs font-medium text-slate-500">{ar ? 'تركيب فوري (اختياري — سيبها فاضية لو داخلة المخزن)' : 'Mount now (optional — leave empty for stock)'}</p>
-            <select value={mountPlate} onChange={(e) => setMountPlate(e.target.value)} className={inputCls}>
-              <option value="">{ar ? '— المخزن —' : '— stock —'}</option>
-              {flatbeds.map((f) => <option key={f._id} value={f.plate}>{f.plate}</option>)}
-            </select>
+            <SearchSelect value={mountPlate} onChange={setMountPlate} options={flatbedOptions(flatbeds, ar)} ar={ar}
+              placeholder={ar ? '— المخزن —' : '— stock —'} emptyLabel={ar ? '— المخزن —' : '— stock —'}
+              searchPlaceholder={ar ? 'ابحث برقم السطحة…' : 'Search flatbed…'} />
             {mountPlate && (
-              <select value={posN} onChange={(e) => setPosN(Number(e.target.value))} className={inputCls}>
-                {POSITION_DEFS.map((p) => <option key={p.n} value={p.n}>{p.label} — {p.section}</option>)}
-              </select>
+              <SearchSelect value={String(posN)} onChange={(v) => setPosN(Number(v))} options={positionOptions()} ar={ar}
+                searchPlaceholder={ar ? 'ابحث عن الموقع…' : 'Search position…'} />
             )}
           </div>
         )}
@@ -750,10 +756,9 @@ function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
         {trailer.currentPlate && <p className="text-xs text-slate-500">{ar ? `حاليًا على السطحة ${trailer.currentPlate}` : `Currently on ${trailer.currentPlate}`}</p>}
         <div>
           <label className={labelCls}>{ar ? 'إلى السطحة' : 'To flatbed'}</label>
-          <select value={toPlate} onChange={(e) => setToPlate(e.target.value)} className={inputCls}>
-            <option value="">{ar ? '— اختر السطحة —' : '— choose flatbed —'}</option>
-            {flatbeds.filter((f) => f.plate !== trailer.currentPlate).map((f) => <option key={f._id} value={f.plate}>{f.plate}{f.numbering != null ? ` (${ar ? 'ترقيم' : 'no.'} ${f.numbering})` : ''}</option>)}
-          </select>
+          <SearchSelect value={toPlate} onChange={setToPlate}
+            options={flatbedOptions(flatbeds.filter((f) => f.plate !== trailer.currentPlate), ar)} ar={ar}
+            placeholder={ar ? '— اختر السطحة —' : '— choose flatbed —'} searchPlaceholder={ar ? 'ابحث برقم السطحة…' : 'Search flatbed…'} />
         </div>
         {target?.currentTrailerNumber && (
           <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -793,10 +798,9 @@ function AddTrailerForm({ flatbeds, ar, onSaved }: { flatbeds: Flatbed[]; ar: bo
       </div>
       <div>
         <label className={labelCls}>{ar ? 'مركّب على (اختياري)' : 'On flatbed (optional)'}</label>
-        <select value={plate} onChange={(e) => setPlate(e.target.value)} className={inputCls}>
-          <option value="">{ar ? '— غير مركّب —' : '— unhitched —'}</option>
-          {flatbeds.map((f) => <option key={f._id} value={f.plate}>{f.plate}</option>)}
-        </select>
+        <SearchSelect value={plate} onChange={setPlate} options={flatbedOptions(flatbeds, ar)} ar={ar}
+          placeholder={ar ? '— غير مركّب —' : '— unhitched —'} emptyLabel={ar ? '— غير مركّب —' : '— unhitched —'}
+          searchPlaceholder={ar ? 'ابحث برقم السطحة…' : 'Search flatbed…'} />
       </div>
       <button type="button" disabled={busy || !trailerNumber.trim()} onClick={save} className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
         {ar ? 'إضافة' : 'Add'}

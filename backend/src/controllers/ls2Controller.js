@@ -658,10 +658,14 @@ exports.registerServiceInterval = async (req, res) => {
       );
     }
 
+    // The real service date, as entered — used both for our record and for the
+    // Wialon write, so "last service" reads back as the date the user picked.
+    const performedAt = serviceDate ? new Date(serviceDate) : new Date();
+
     // 1) Write it into Location Solutions (sets pm + bumps the executions count).
     let synced = false;
     try {
-      await client.registerService(unitId, Number(intervalId), odo, engineHours);
+      await client.registerService(unitId, Number(intervalId), odo, engineHours, performedAt);
       synced = true;
     } catch (e) {
       // Surface the upstream reason but still keep our own record below.
@@ -672,7 +676,7 @@ exports.registerServiceInterval = async (req, res) => {
     const log = await Ls2ServiceLog.create({
       unitId, plate: v.plate, action: 'serviced',
       odometerKm: odo, intervalId: Number(intervalId), intervalName,
-      serviceDate: serviceDate ? new Date(serviceDate) : new Date(),
+      serviceDate: performedAt,
       engineHours: engineHours != null ? Number(engineHours) : null,
       cost: cost != null ? Number(cost) : null,
       checklist: checklistRows,
@@ -693,6 +697,107 @@ exports.registerServiceInterval = async (req, res) => {
     });
   } catch (error) {
     fail(res, error, 'Failed to register service');
+  }
+};
+
+// ---- Act on ONE deferred checklist task -------------------------------------
+// A task deferred at a service ("AC filter good for another 2,000 km") can later
+// be settled on its own — WITHOUT registering a new full service (the interval
+// itself isn't due). Three actions:
+//   done  → it was actually done now; close it, its alert clears.
+//   skip  → we've decided not to do it at all; close it (won't-do), alert clears.
+//   defer → still fine, grant it another `addKm`; push its due odometer forward.
+// The periodic interval in Wialon is never touched by any of these.
+exports.resolveDeferral = async (req, res) => {
+  try {
+    const unitId = Number(req.params.id);
+    const { logId, label, action = 'done', odometerKm, addKm, note } = req.body || {};
+    if (!logId || !label) return res.status(400).json({ message: 'logId and label are required' });
+    if (!['done', 'skip', 'defer'].includes(action)) return res.status(400).json({ message: 'Invalid action' });
+
+    const log = await Ls2ServiceLog.findOne({ _id: logId, unitId });
+    if (!log) return res.status(404).json({ message: 'Deferral not found' });
+
+    const item = (log.checklist || []).find(
+      (c) => c.label === label && c.status === 'deferred' && !c.resolved
+    );
+    if (!item) return res.status(404).json({ message: 'Open deferral not found on this log' });
+
+    const who = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+    const today = new Date().toISOString().slice(0, 10);
+    const at = odometerKm != null && odometerKm !== '' ? Number(odometerKm) : null;
+
+    if (action === 'defer') {
+      // Re-grant more km from where the truck is NOW (fall back to its odometer).
+      const extra = Number(addKm);
+      if (!(extra > 0)) return res.status(400).json({ message: 'A positive addKm is required to defer again' });
+      const v0 = await Ls2Vehicle.findOne({ unitId }).lean();
+      const fromOdo = at != null ? at : (v0 ? v0.odometerKm : null);
+      if (fromOdo == null) return res.status(400).json({ message: 'Current odometer unknown — enter it to defer' });
+      item.deferKm = extra;
+      item.dueAtOdometerKm = Math.round(fromOdo + extra);
+      const stamp = [today, `+${extra} km`, `@ ${Math.round(fromOdo)} km`, who || null, note || null].filter(Boolean).join(' · ');
+      item.note = [item.note, `↻ ${stamp}`].filter(Boolean).join(' — ');
+    } else {
+      // done / skip both close the task; the mark records which.
+      item.resolved = true;
+      const mark = action === 'skip' ? '✗ won\'t do' : '✔ done';
+      const stamp = [today, at != null ? `${at} km` : null, who || null, note || null].filter(Boolean).join(' · ');
+      item.note = [item.note, `${mark} ${stamp}`].filter(Boolean).join(' — ');
+    }
+    await log.save();
+
+    cache.clear('ls2:');
+    emitToAll('ls2:updated', { at: Date.now(), resolvedDeferral: unitId });
+
+    const v = await Ls2Vehicle.findOne({ unitId }).lean();
+    const history = await Ls2ServiceLog.find({ unitId }).sort({ serviceDate: -1, createdAt: -1 }).limit(200).lean();
+    res.json({ ok: true, deferrals: openDeferrals(history, v ? v.odometerKm : null) });
+  } catch (error) {
+    fail(res, error, 'Failed to resolve deferral');
+  }
+};
+
+// ---- Fleet-wide open deferrals ----------------------------------------------
+// Every outstanding deferred task across ALL trucks, so the Maintenance page can
+// act on them in one place without opening each vehicle profile.
+exports.listDeferrals = async (req, res) => {
+  try {
+    const [logs, vehicles] = await Promise.all([
+      Ls2ServiceLog.find({ checklist: { $elemMatch: { status: 'deferred', resolved: false } } })
+        .select('unitId plate intervalId intervalName checklist serviceDate createdAt odometerKm').lean(),
+      Ls2Vehicle.find({}).select('unitId plate driver odometerKm').lean(),
+    ]);
+    const vById = new Map(vehicles.map((v) => [v.unitId, v]));
+    const out = [];
+    for (const log of logs) {
+      const v = vById.get(log.unitId);
+      const currentOdo = v ? v.odometerKm : null;
+      for (const c of log.checklist || []) {
+        if (c.status !== 'deferred' || c.resolved || c.dueAtOdometerKm == null) continue;
+        out.push({
+          unitId: log.unitId,
+          plate: (v && v.plate) || log.plate || String(log.unitId),
+          driver: (v && v.driver) || '',
+          label: c.label,
+          note: c.note || '',
+          deferKm: c.deferKm,
+          dueAtOdometerKm: c.dueAtOdometerKm,
+          remainingKm: currentOdo != null ? Math.round(c.dueAtOdometerKm - currentOdo) : null,
+          currentOdometerKm: currentOdo,
+          intervalId: log.intervalId,
+          intervalName: log.intervalName,
+          deferredAt: log.serviceDate || log.createdAt,
+          deferredAtOdometerKm: log.odometerKm,
+          logId: log._id,
+        });
+      }
+    }
+    // Most urgent first (most overdue → soonest due).
+    out.sort((a, b) => (a.remainingKm ?? 1e9) - (b.remainingKm ?? 1e9));
+    res.json({ deferrals: out });
+  } catch (error) {
+    fail(res, error, 'Failed to list deferrals');
   }
 };
 

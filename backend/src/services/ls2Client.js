@@ -146,7 +146,53 @@ async function getServiceIntervals(unitId) {
  * @param atOdoKm  odometer AT the service (what the user entered)
  * @param atEngineHrs optional engine-hours at the service
  */
-async function registerService(unitId, id, atOdoKm, atEngineHrs) {
+async function registerService(unitId, id, atOdoKm, atEngineHrs, atDate) {
+  const intervals = await getServiceIntervals(unitId);
+  const iv = intervals.find((s) => Number(s.id) === Number(id));
+  if (!iv) { const e = new Error('Service interval not found'); e.status = 404; throw e; }
+  // The date the service was ACTUALLY performed, as entered by the user. Without
+  // it Wialon would stamp the write moment, so a service logged today for last
+  // week's work would read back as "last service: today".
+  const at = atDate ? new Date(atDate) : null;
+  const atSec = at && !Number.isNaN(at.getTime())
+    ? Math.floor(at.getTime() / 1000)
+    : Math.floor(Date.now() / 1000);
+  await call('unit/update_service_interval', {
+    itemId: Number(unitId),
+    id: Number(id),
+    callMode: 'update',
+    n: iv.n,
+    t: iv.t || '',
+    im: iv.im || 0,
+    it: iv.it || 0,
+    ie: iv.ie || 0,
+    pm: iv.im ? Math.round(Number(atOdoKm)) : (iv.pm || 0), // mileage-based → set last-service mileage
+    // Last-service time. Always stamped with the real service date — for time-based
+    // intervals Wialon uses it to compute the next due date; for the others it is
+    // inert but is what we read back as "last service", instead of falling back to
+    // `mt` (Wialon's row-modified time), which is just when we wrote the record.
+    pt: atSec,
+    pe: iv.ie ? Math.round(Number(atEngineHrs ?? iv.pe ?? 0)) : (iv.pe || 0), // engine-hours based
+    c: Number(iv.c || 0) + 1, // one more execution
+  });
+  // Return the fresh interval so the caller can confirm.
+  const after = await getServiceIntervals(unitId);
+  return after.find((s) => Number(s.id) === Number(id)) || null;
+}
+
+/**
+ * Correct ONLY the last-service date (`pt`) on an existing interval, leaving the
+ * executions count and the mileage/engine-hours readings untouched. This repairs
+ * rows written before `registerService` accepted a date (it stamped the write
+ * moment), so it must NOT bump `c` — that would invent extra services.
+ *
+ * @param unitId  Wialon unit id
+ * @param id      interval id
+ * @param atDate  the real service date
+ */
+async function setServiceDate(unitId, id, atDate) {
+  const at = new Date(atDate);
+  if (Number.isNaN(at.getTime())) { const e = new Error('Invalid service date'); e.status = 400; throw e; }
   const intervals = await getServiceIntervals(unitId);
   const iv = intervals.find((s) => Number(s.id) === Number(id));
   if (!iv) { const e = new Error('Service interval not found'); e.status = 404; throw e; }
@@ -159,12 +205,11 @@ async function registerService(unitId, id, atOdoKm, atEngineHrs) {
     im: iv.im || 0,
     it: iv.it || 0,
     ie: iv.ie || 0,
-    pm: iv.im ? Math.round(Number(atOdoKm)) : (iv.pm || 0), // mileage-based → set last-service mileage
-    pt: iv.it ? Math.floor(Date.now() / 1000) : (iv.pt || 0), // time-based → set last-service time
-    pe: iv.ie ? Math.round(Number(atEngineHrs ?? iv.pe ?? 0)) : (iv.pe || 0), // engine-hours based
-    c: Number(iv.c || 0) + 1, // one more execution
+    pm: iv.pm || 0,           // preserved
+    pt: Math.floor(at.getTime() / 1000), // the only field we change
+    pe: iv.pe || 0,           // preserved
+    c: Number(iv.c || 0),     // preserved — no new execution
   });
-  // Return the fresh interval so the caller can confirm.
   const after = await getServiceIntervals(unitId);
   return after.find((s) => Number(s.id) === Number(id)) || null;
 }
@@ -258,6 +303,7 @@ module.exports = {
   searchIdentity,
   getServiceIntervals,
   registerService,
+  setServiceDate,
   loadMessages,
   execReport,
   runReport,

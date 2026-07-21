@@ -91,8 +91,13 @@ exports.login = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ message: 'Failed to process login' });
+    // Log the real reason — a bare "Failed to process login" leaves nothing to go
+    // on when this fires (a Mongo timeout and a bad JWT secret look identical).
+    console.error('Login error:', error.name, '-', error.message, '\n', error.stack);
+    res.status(500).json({
+      message: 'Failed to process login',
+      ...(process.env.NODE_ENV !== 'production' && { reason: `${error.name}: ${error.message}` }),
+    });
   }
 };
 

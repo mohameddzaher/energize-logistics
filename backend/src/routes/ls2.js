@@ -54,6 +54,7 @@ router.post('/assets/trailers/:id/move', ADMIN, assets.moveTrailer);
 router.post('/assets/flatbeds', ADMIN, assets.createFlatbed);
 router.patch('/assets/flatbeds/:id', ADMIN, assets.updateFlatbed);
 
+router.get('/deferrals', ls2.listDeferrals); // fleet-wide open deferred tasks (Maintenance page)
 router.get('/vehicles', ls2.listVehicles);
 router.get('/vehicles/:id', ls2.getVehicle);
 router.get('/vehicles/:id/mileage', ls2.getVehicleMileage); // ?from&to[&source=report]
@@ -64,6 +65,7 @@ router.get('/vehicles/:id/track', ls2.getVehicleTrack); // ?from&to — GPS poly
 router.post('/vehicles/:id/service', ADMIN, ls2.markServiced);
 router.get('/vehicles/:id/maintenance', ls2.getVehicleMaintenance); // intervals + full local service history
 router.post('/vehicles/:id/register-service', ADMIN, ls2.registerServiceInterval); // writes ONE interval to Location Solutions
+router.post('/vehicles/:id/resolve-deferral', ADMIN, ls2.resolveDeferral); // close ONE deferred task (done on its own, no full service)
 router.patch('/vehicles/:id/meta', ADMIN, ls2.updateVehicleMeta); // manual metadata (tire brand/type)
 
 module.exports = router;

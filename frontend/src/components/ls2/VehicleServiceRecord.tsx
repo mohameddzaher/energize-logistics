@@ -6,10 +6,11 @@
 // This is what any manager opening a vehicle profile needs to see, so it lives in
 // a component and is dropped into the vehicle page — there is only one profile.
 import { useState, useEffect, useCallback } from 'react';
-import { Clock, History, Hammer, Plus, CheckCircle2, MinusCircle } from 'lucide-react';
+import { Clock, History, Hammer, Plus, CheckCircle2, MinusCircle, SlidersHorizontal } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import RepairModal from '@/components/ls2/RepairModal';
+import DeferralActionModal from '@/components/ls2/DeferralActionModal';
 import {
   ls2Text, fmtNum, fmtKm, fmtDate, REPAIR_SEVERITIES, REPAIR_STATUSES, repairCategoryLabel,
   type Lang, type ServiceLog, type Deferral, type Repair,
@@ -32,6 +33,7 @@ export default function VehicleServiceRecord({
   const [repairs, setRepairs] = useState<Repair[]>([]);
   const [addRepair, setAddRepair] = useState(false);
   const [editRepair, setEditRepair] = useState<Repair | null>(null);
+  const [settle, setSettle] = useState<Deferral | null>(null); // deferral being settled
 
   const load = useCallback(async () => {
     try {
@@ -64,11 +66,22 @@ export default function VehicleServiceRecord({
                       {d.note && <> · {d.note}</>}
                     </p>
                   </div>
-                  <div className="text-end shrink-0">
-                    <p className={`text-sm font-bold tabular-nums ${over ? 'text-red-600' : 'text-amber-700'}`}>
-                      {d.remainingKm == null ? '—' : over ? `−${fmtNum(Math.abs(d.remainingKm))} ${t.kmOverdue}` : `${fmtNum(d.remainingKm)} ${t.kmLeft}`}
-                    </p>
-                    <p className="text-[11px] text-slate-600">{t.dueAt} {fmtKm(d.dueAtOdometerKm)}</p>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-end">
+                      <p className={`text-sm font-bold tabular-nums ${over ? 'text-red-600' : 'text-amber-700'}`}>
+                        {d.remainingKm == null ? '—' : over ? `−${fmtNum(Math.abs(d.remainingKm))} ${t.kmOverdue}` : `${fmtNum(d.remainingKm)} ${t.kmLeft}`}
+                      </p>
+                      <p className="text-[11px] text-slate-600">{t.dueAt} {fmtKm(d.dueAtOdometerKm)}</p>
+                    </div>
+                    {admin && (
+                      <button
+                        type="button"
+                        onClick={() => setSettle(d)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-xs font-medium"
+                      >
+                        <SlidersHorizontal className="w-3.5 h-3.5" /> {t.deferralSettle}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -194,6 +207,15 @@ export default function VehicleServiceRecord({
           lang={lang} isRTL={isRTL}
           onClose={() => { setAddRepair(false); setEditRepair(null); }}
           onSaved={() => { setAddRepair(false); setEditRepair(null); load(); }}
+        />
+      )}
+
+      {settle && (
+        <DeferralActionModal
+          deferral={settle} unitId={unitId} currentOdo={currentOdo}
+          lang={lang} isRTL={isRTL}
+          onClose={() => setSettle(null)}
+          onDone={() => { setSettle(null); load(); }}
         />
       )}
     </>

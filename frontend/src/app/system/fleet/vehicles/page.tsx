@@ -11,8 +11,7 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Truck, Plus, Pencil, Trash2, Check, Loader2 } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea,
-  Select, SmallBadge, StatCard, ErrorNotice,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select, SmallBadge, StatCard, ErrorNotice,
 } from '@/components/hr/HRKit';
 import { FleetVehicle, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
 
@@ -30,6 +29,8 @@ export default function FleetVehiclesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [gpsFilter, setGpsFilter] = useState('');
+  const [seatsFilter, setSeatsFilter] = useState('');
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<FleetVehicle | null>(null);
@@ -77,6 +78,11 @@ export default function FleetVehiclesPage() {
   };
 
   const filtered = vehicles.filter((v) => {
+    if (gpsFilter && (v.gpsType || '') !== gpsFilter) return false;
+    const seats = (v.drivers || []).length;
+    if (seatsFilter === '0' && seats !== 0) return false;
+    if (seatsFilter === '1' && seats !== 1) return false;
+    if (seatsFilter === '2' && seats < 2) return false;
     const s = foldAr(search.trim());
     if (!s) return true;
     const names = (v.drivers || []).map((d) => d.name).join(' ');
@@ -110,9 +116,25 @@ export default function FleetVehiclesPage() {
         <StatCard label={ar ? 'بسائقين' : 'Two drivers'} value={withTwo} accent="text-emerald-600" />
       </div>
 
-      <div className="max-w-md">
-        <SearchInput value={search} onChange={setSearch}
-          placeholder={ar ? 'بحث باللوحة أو السائق أو نوع التيدر…' : 'Search plate, driver or trailer…'} />
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex-1 min-w-[240px] basis-72">
+          <SearchInput value={search} onChange={setSearch}
+            placeholder={ar ? 'بحث باللوحة أو السائق أو نوع التيدر…' : 'Search plate, driver or trailer…'} />
+        </div>
+        <div className="w-36 grow sm:grow-0">
+          <Select value={gpsFilter} onChange={(e) => setGpsFilter(e.target.value)}>
+            <option value="">{ar ? 'كل أنواع GPS' : 'All GPS'}</option>
+            {GPS_TYPES.map((g) => <option key={g} value={g}>{g}</option>)}
+          </Select>
+        </div>
+        <div className="w-44 grow sm:grow-0">
+          <Select value={seatsFilter} onChange={(e) => setSeatsFilter(e.target.value)}>
+            <option value="">{ar ? 'كل السيارات' : 'All vehicles'}</option>
+            <option value="0">{ar ? 'بدون سائق' : 'No driver'}</option>
+            <option value="1">{ar ? 'بسائق واحد' : 'One driver'}</option>
+            <option value="2">{ar ? 'بسائقين' : 'Two drivers'}</option>
+          </Select>
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">

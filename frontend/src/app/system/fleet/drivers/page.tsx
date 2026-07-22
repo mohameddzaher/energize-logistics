@@ -151,6 +151,8 @@ export default function FleetDriversPage() {
   const filtered = drivers.filter((d) => {
     if (statusFilter === 'working' && !d.working) return false;
     if (statusFilter === 'off' && d.working) return false;
+    if (statusFilter === 'sick' && d.offReason !== 'sick') return false;
+    if (statusFilter === 'leave' && d.offReason !== 'leave') return false;
     if (assignFilter === 'assigned' && !vehId(d)) return false;
     if (assignFilter === 'unassigned' && vehId(d)) return false;
     const s = foldAr(search.trim());
@@ -175,17 +177,24 @@ export default function FleetDriversPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 max-w-md">
+      {/* Wrapping row + fixed-width filter boxes: HRKit's Select is w-full, and
+          bare in a flex row it eats the search; a forced single row is what
+          makes whole pages scroll sideways. */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex-1 min-w-[240px] basis-72">
           <SearchInput value={search} onChange={setSearch}
             placeholder={ar ? 'بحث بالاسم أو الجوال أو الإقامة أو اللوحة…' : 'Search name, phone, iqama or plate…'} />
         </div>
-        <div className="flex gap-3">
+        <div className="w-44 grow sm:grow-0">
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
             <option value="working">{ar ? 'يعمل' : 'Working'}</option>
             <option value="off">{ar ? 'لا يعمل' : 'Not working'}</option>
+            <option value="sick">{ar ? 'إجازة مرضية' : 'Sick leave'}</option>
+            <option value="leave">{ar ? 'إجازة' : 'On leave'}</option>
           </Select>
+        </div>
+        <div className="w-44 grow sm:grow-0">
           <Select value={assignFilter} onChange={(e) => setAssignFilter(e.target.value)}>
             <option value="">{ar ? 'الجميع' : 'All'}</option>
             <option value="assigned">{ar ? 'على سيارة' : 'Assigned'}</option>

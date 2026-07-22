@@ -17,7 +17,7 @@ import {
   ChevronUp, ChevronDown, Eye, EyeOff, Lock,
 } from 'lucide-react';
 import {
-  Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, SmallBadge, ErrorNotice,
+  Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, SmallBadge, ErrorNotice, SearchInput,
 } from '@/components/hr/HRKit';
 import { FormField, GROUP_LABELS, fieldLabel, canAdminOrders, CORE_FIELD_KEYS, Lang } from '@/lib/shipmentOrders';
 
@@ -45,6 +45,7 @@ export default function FormSettingsPage() {
   const admin = canAdminOrders(user?.role);
 
   const [fields, setFields] = useState<FormField[]>([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -133,8 +134,16 @@ export default function FormSettingsPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
+      <div className="max-w-md">
+        <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث باسم الحقل…' : 'Search fields…'} />
+      </div>
+
       {groups.map((g) => {
-        const gf = fields.filter((f) => f.group === g).sort((a, b) => a.order - b.order);
+        const fold = (x: string) => x.toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
+        const gf = fields
+          .filter((f) => f.group === g)
+          .filter((f) => !search.trim() || fold(`${f.labelAr} ${f.labelEn || ''}`).includes(fold(search)))
+          .sort((a, b) => a.order - b.order);
         if (!gf.length) return null;
         return (
           <div key={g} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">

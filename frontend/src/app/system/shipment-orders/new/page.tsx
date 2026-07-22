@@ -226,7 +226,7 @@ function CreateShipmentInner() {
     switch (f.inputType) {
       case 'cards':
         return (
-          <div key={f._id} className="sm:col-span-2">
+          <div key={f._id} className="col-span-full">
             {lab}
             <div className={`flex flex-wrap gap-2 ${bad ? 'p-2 rounded-xl border border-red-300 bg-red-50/50' : ''}`}>
               {f.options.map((o) => (
@@ -259,7 +259,7 @@ function CreateShipmentInner() {
       case 'datetime':
         return <div key={f._id}>{lab}<input type="datetime-local" value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
       case 'textarea':
-        return <div key={f._id} className="sm:col-span-2">{lab}<textarea rows={2} value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
+        return <div key={f._id} className="col-span-full">{lab}<textarea rows={2} value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
       default:
         return <div key={f._id}>{lab}<input value={v} onChange={(e) => set(f.key, e.target.value)} className={bad ? inputMissCls : inputCls} /></div>;
     }
@@ -270,13 +270,16 @@ function CreateShipmentInner() {
   const sectionCard = (icon: any, no: number, title: string, children: React.ReactNode) => {
     const Icon = icon;
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-5 py-3.5 bg-slate-50/70 border-b border-slate-100 flex items-center gap-3">
+      // NO overflow-hidden here: SearchableSelect renders its panel absolutely
+      // inside the card, and clipping it is exactly the "الدروب ليست مستخبية"
+      // bug. The header rounds its own top corners instead.
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="px-4 sm:px-5 py-3.5 bg-slate-50/70 border-b border-slate-100 flex items-center gap-3 rounded-t-2xl">
           <span className="w-8 h-8 rounded-lg bg-[#f37121]/15 text-[#f37121] flex items-center justify-center font-bold text-sm">{no}</span>
           <Icon className="w-4 h-4 text-slate-400" />
           <p className="text-base font-bold text-slate-900">{title}</p>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-4 sm:p-5">{children}</div>
       </div>
     );
   };
@@ -285,7 +288,7 @@ function CreateShipmentInner() {
     (typeof v.supplier === 'object' && v.supplier ? v.supplier.name : '') || (ar ? 'أسطولنا' : 'Our fleet');
 
   return (
-    <div className="space-y-5 max-w-5xl pb-28" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="space-y-5 max-w-7xl pb-28" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<PackagePlus className="w-5 h-5" />}
         title={editId ? (ar ? 'تعديل شحنة' : 'Edit shipment') : (ar ? 'إنشاء شحنة' : 'Create shipment')}
         subtitle={ar ? 'كل التفاصيل في صفحة واحدة' : 'Everything on one page'}>
@@ -295,6 +298,7 @@ function CreateShipmentInner() {
         </button>
       </PageHeader>
 
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
       {/* 1 ── العميل */}
       {sectionCard(UserIcon, 1, ar ? 'العميل' : 'Customer', (
         <div className="space-y-3">
@@ -441,15 +445,19 @@ function CreateShipmentInner() {
           </div>
         </div>
       ))}
+      </div>
 
       {/* 3..6 ── the config-driven groups */}
       {groups.map((g, i) => {
         const gf = fields.filter((f) => f.group === g && !FIXED_KEYS.has(f.key));
         if (!gf.length) return null;
+        const cols = g === 'pickup_delivery'
+          ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4'
+          : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4';
         return (
           <div key={g}>
             {sectionCard(GROUP_ICONS[g], i + 3, ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en, (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{gf.map(renderField)}</div>
+              <div className={cols}>{gf.map(renderField)}</div>
             ))}
           </div>
         );
@@ -477,7 +485,7 @@ function CreateShipmentInner() {
       {/* Sticky save bar: the button is always in reach, and it says how many
           required answers are still missing instead of a silent dead click. */}
       <div className="fixed bottom-0 inset-x-0 lg:ms-64 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-6 py-3">
-        <div className="max-w-5xl flex items-center justify-between gap-3">
+        <div className="max-w-7xl flex items-center justify-between gap-3">
           <p className="text-xs text-slate-500">
             {missingKeys.size > 0
               ? (showErrors

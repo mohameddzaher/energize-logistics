@@ -506,6 +506,36 @@ exports.ensureShipmentOrderDefaults = async () => {
     const exists = await ShipmentOrderField.exists({ key: f.key });
     if (!exists) await ShipmentOrderField.create({ ...f, isSystem: true });
   }
+  // Our own fleet: the Location Solutions trucks ARE our trucks, so they show
+  // in the vehicle picker as أسطولنا from day one instead of being retyped.
+  // Read-only from Ls2Vehicle; idempotent by plate; never overwrites an edit —
+  // the trial section stays independent of ops, but our own fleet is ours.
+  try {
+    const Ls2Vehicle = require('../models/Ls2Vehicle');
+    const live = await Ls2Vehicle.find({}).select('plate name driver').lean();
+    for (const v of live) {
+      const plate = String(v.plate || '').trim() || String(v.name || '').trim();
+      if (!plate) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const exists = await ShipmentOrderVehicle.findOne({ plate });
+      if (!exists) {
+        // eslint-disable-next-line no-await-in-loop
+        await ShipmentOrderVehicle.create({
+          plate,
+          name: '',
+          truckType: 'سطحة', // the LS2 fleet is flatbed heavy trucks
+          supplier: null,     // ours
+          defaultDriverName: String(v.driver || '').trim(),
+          notes: 'من لوكيشن سوليوشن',
+        });
+      }
+    }
+  } catch (e) {
+    // The trucks are convenience, not a dependency — a missing ls2 model or a
+    // slow read must never block boot.
+    console.error('[shipment-orders] LS2 fleet seed skipped:', e.message);
+  }
+
   // Two trial customers, so the section demos end-to-end on first open.
   if (await ShipmentOrderCustomer.countDocuments({}) === 0) {
     await ShipmentOrderCustomer.create([

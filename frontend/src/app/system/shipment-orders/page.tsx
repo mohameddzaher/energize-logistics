@@ -50,6 +50,12 @@ const toSheetRow = (o: ShipmentOrder): DispatchSheetRow => ({
   missingRequired: [],
 });
 
+// بوليصة-501-اسم العميل-22-7-2026
+const waybillFileName = (o: ShipmentOrder) => {
+  const d = new Date(o.pickupTime || o.createdAt || Date.now());
+  return `بوليصة-${o.waybillNumber}-${o.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
+};
+
 export default function ShipmentOrdersPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -75,6 +81,10 @@ export default function ShipmentOrdersPage() {
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  // Tick rows → one ZIP of their بوليصات, named number-customer-date.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState('');
 
   useEffect(() => {
     const t = setTimeout(() => { setDebounced(search); setPage(1); }, 300);
@@ -129,11 +139,33 @@ export default function ShipmentOrdersPage() {
     setDownloadingId(o._id);
     try {
       const gen = await import('@/lib/dispatchSheetGenerator');
-      const { blob, fileName } = await gen.generateSingleDispatchPdf(toSheetRow(o));
-      gen.triggerDownload(blob, fileName);
+      const { blob } = await gen.generateSingleDispatchPdf(toSheetRow(o));
+      gen.triggerDownload(blob, `${waybillFileName(o)}.pdf`);
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setDownloadingId(null);
   };
+
+  const downloadPicked = async () => {
+    const rows = orders.filter((o) => picked.has(o._id));
+    if (!rows.length) return;
+    setBulkBusy(true);
+    try {
+      const gen = await import('@/lib/dispatchSheetGenerator');
+      const nameOf = new Map(rows.map((o) => [String(o.waybillNumber), waybillFileName(o)]));
+      const { blob, fileName } = await gen.generateDispatchSheetsZip({
+        rows: rows.map(toSheetRow),
+        fileNameOf: (r) => nameOf.get(r.dispatchNumber) || `بوليصة-${r.dispatchNumber}`,
+        onProgress: (p) => setBulkProgress(`${p.current}/${p.total}`),
+      });
+      gen.triggerDownload(blob, fileName.replace('كشوف-التخريج', 'بوليصات-الشحن'));
+      setPicked(new Set());
+    } catch (e: any) { notify(e?.message || 'ZIP failed', 'error'); }
+    setBulkBusy(false);
+    setBulkProgress('');
+  };
+
+  const togglePick = (id: string) =>
+    setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   if (loading) return <Spinner />;
 
@@ -146,8 +178,17 @@ export default function ShipmentOrdersPage() {
       <PageHeader
         icon={<PackageSearch className="w-5 h-5" />}
         title={ar ? 'طلبات الشحنات' : 'Shipment Orders'}
-        subtitle={ar ? 'إنشاء الشحنات ومتابعتها من عندنا — قسم تجريبي مستقل' : 'Create and track shipments natively — standalone trial'}
+        subtitle={ar ? 'إنشاء الشحنات ومتابعتها داخل نظامنا — قسم تجريبي مستقل' : 'Create and track shipments natively — standalone trial'}
       >
+        {picked.size > 0 && (
+          <button type="button" onClick={downloadPicked} disabled={bulkBusy}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60">
+            {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+            {bulkBusy
+              ? (ar ? `جارٍ التجهيز ${bulkProgress}…` : `Generating ${bulkProgress}…`)
+              : (ar ? `تحميل ${picked.size} بوليصة` : `Download ${picked.size} waybills`)}
+          </button>
+        )}
         <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(orders, [
           { header: 'Waybill', key: 'waybillNumber', width: 10 },
           { header: 'Customer', key: 'customerName', width: 26 },
@@ -207,6 +248,12 @@ export default function ShipmentOrdersPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+            <th className="px-3 py-3">
+              <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
+                checked={picked.size > 0 && orders.every((o) => picked.has(o._id))}
+                onChange={(e) => setPicked(e.target.checked ? new Set(orders.map((o) => o._id)) : new Set())}
+                aria-label={ar ? 'تحديد الكل' : 'Select all'} />
+            </th>
             {[
               ar ? 'رقم البوليصة' : 'Waybill',
               ar ? 'العميل' : 'Customer',
@@ -221,13 +268,18 @@ export default function ShipmentOrdersPage() {
           </tr></thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={9} className="text-center text-slate-500 py-14">
-                {ar ? 'لا توجد شحنات بعد — ابدأ بزر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.'}
+              <tr><td colSpan={10} className="text-center text-slate-500 py-14">
+                {ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.'}
               </td></tr>
             ) : orders.map((o) => {
               const st = orderStatus(o.status);
               return (
                 <tr key={o._id} className="border-b border-slate-200/70 hover:bg-slate-50">
+                  <td className="px-3 py-3">
+                    <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
+                      checked={picked.has(o._id)} onChange={() => togglePick(o._id)}
+                      aria-label={String(o.waybillNumber)} />
+                  </td>
                   <td className="px-4 py-3 text-slate-900 font-bold font-mono">{o.waybillNumber}</td>
                   <td className="px-4 py-3 text-slate-900 font-medium max-w-[220px] truncate" title={o.customerName}>{o.customerName || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.fromCity || '—'} ← {o.toCity || '—'}</td>

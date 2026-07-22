@@ -13,6 +13,9 @@ export interface GenerateOptions {
   rows: DispatchSheetRow[];
   onProgress?: (progress: GenerateProgress) => void;
   signal?: AbortSignal;
+  // Per-row file naming. The bulk-download flows name each بوليصة with the
+  // waybill number + customer + date; the dispatch page keeps the default.
+  fileNameOf?: (row: DispatchSheetRow) => string;
 }
 
 const LETTERHEAD_URL = '/images/energize%20LH.pdf';
@@ -166,7 +169,7 @@ async function renderRowToPdfBytes(row: DispatchSheetRow, html2canvas: any, lett
 }
 
 export async function generateDispatchSheetsZip(opts: GenerateOptions): Promise<{ blob: Blob; fileName: string }> {
-  const { rows, onProgress, signal } = opts;
+  const { rows, onProgress, signal, fileNameOf } = opts;
   const html2canvas = await loadHtml2Canvas();
   const letterheadBytes = await getLetterheadBytes();
   const zip = new JSZip();
@@ -179,7 +182,8 @@ export async function generateDispatchSheetsZip(opts: GenerateOptions): Promise<
     if (signal?.aborted) throw new Error('Aborted');
 
     const row = rows[i];
-    let name = pdfFileName(row);
+    let name = (fileNameOf ? fileNameOf(row) : pdfFileName(row)).replace(/[\/\\?%*:|"<>]/g, '-');
+    if (!name.endsWith('.pdf')) name += '.pdf';
     if (usedNames.has(name)) {
       const count = (usedNames.get(name) || 1) + 1;
       usedNames.set(name, count);

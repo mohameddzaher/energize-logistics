@@ -23,7 +23,7 @@ import { FormField, GROUP_LABELS, fieldLabel, canAdminOrders, CORE_FIELD_KEYS, L
 
 const TYPE_LABELS: Record<FormField['inputType'], { ar: string; en: string }> = {
   select: { ar: 'قائمة منسدلة', en: 'Dropdown' },
-  cards: { ar: 'كروت اختيار', en: 'Cards' },
+  cards: { ar: 'بطاقات اختيار', en: 'Cards' },
   text: { ar: 'خانة كتابة', en: 'Text' },
   number: { ar: 'رقم', en: 'Number' },
   datetime: { ar: 'تاريخ ووقت', en: 'Date & time' },
@@ -127,7 +127,7 @@ export default function FormSettingsPage() {
   return (
     <div className="space-y-6 w-full" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<SlidersHorizontal className="w-5 h-5" />} title={ar ? 'إعدادات نموذج الشحنة' : 'Shipment form settings'}
-        subtitle={ar ? 'قرر شكل كل خانة: قائمة، كروت، أو كتابة — وأضف أسئلة جديدة' : 'Decide each input: dropdown, cards or typed — and add new questions'}>
+        subtitle={ar ? 'حدِّد شكل كل حقل: قائمة أو بطاقات أو كتابة — وأضف أسئلة جديدة' : 'Decide each input: dropdown, cards or typed — and add new questions'}>
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة حقل جديد' : 'Add a field'}</PrimaryButton>
       </PageHeader>
 

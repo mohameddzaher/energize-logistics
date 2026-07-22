@@ -1,0 +1,208 @@
+'use client';
+// سياراتنا — the 57 trucks of our own fleet. Every row arrives with its seated
+// drivers embedded (max two, server-enforced), so the "who is on what" picture
+// is one glance. Assignment itself happens on the drivers page — here the
+// vehicle's own facts (plate, trailer, GPS) get corrected.
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
+import { useSocket } from '@/hooks/useSocket';
+import api from '@/lib/api';
+import { useDialog } from '@/components/system/DialogProvider';
+import { Truck, Plus, Pencil, Trash2, Check, Loader2 } from 'lucide-react';
+import {
+  Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea,
+  Select, SmallBadge, StatCard, ErrorNotice,
+} from '@/components/hr/HRKit';
+import { FleetVehicle, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
+
+const EMPTY = { plate: '', name: '', trailerType: '', gpsType: '', notes: '' };
+
+export default function FleetVehiclesPage() {
+  const { user } = useAuth();
+  const { lang, isRTL } = useLanguage();
+  const ar = lang === 'ar';
+  const { confirm, notify } = useDialog();
+  const editor = canEditFleet(user?.role);
+  const admin = canAdminFleet(user?.role);
+
+  const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<FleetVehicle | null>(null);
+  const [form, setForm] = useState<any>(EMPTY);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const d = await api.get<{ vehicles: FleetVehicle[] }>('/api/fleet/vehicles');
+      setVehicles(d.vehicles || []);
+      setError('');
+    } catch (e: any) { setError(e?.message || 'Request failed'); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useSocket('fleet:vehicles', useCallback(() => load(), [load]));
+  // Driver moves change the chips on this page too.
+  useSocket('fleet:drivers', useCallback(() => load(), [load]));
+
+  const openCreate = () => { setEditing(null); setForm({ ...EMPTY }); setShowModal(true); };
+  const openEdit = (v: FleetVehicle) => {
+    setEditing(v);
+    setForm({ plate: v.plate, name: v.name || '', trailerType: v.trailerType || '', gpsType: v.gpsType || '', notes: v.notes || '' });
+    setShowModal(true);
+  };
+
+  const save = async () => {
+    if (!form.plate.trim()) return;
+    setSaving(true);
+    try {
+      if (editing) await api.put(`/api/fleet/vehicles/${editing._id}`, form);
+      else await api.post('/api/fleet/vehicles', form);
+      setShowModal(false); load();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setSaving(false);
+  };
+
+  const remove = async (v: FleetVehicle) => {
+    if (!(await confirm(ar
+      ? `إزالة السيارة «${v.plate}»؟ يُنزَل سائقوها منها وتبقى شحناتها السابقة كما هي.`
+      : `Remove “${v.plate}”? Its drivers are unseated; past shipments keep their snapshot.`))) return;
+    try { await api.delete(`/api/fleet/vehicles/${v._id}`); load(); }
+    catch (e: any) { notify(e.message, 'error'); }
+  };
+
+  const filtered = vehicles.filter((v) => {
+    const s = foldAr(search.trim());
+    if (!s) return true;
+    const names = (v.drivers || []).map((d) => d.name).join(' ');
+    return [v.plate, v.name, v.trailerType, names].some((x) => foldAr(String(x || '')).includes(s));
+  });
+
+  if (loading) return <Spinner />;
+
+  const seatCount = (v: FleetVehicle) => (v.drivers || []).length;
+  const withNone = vehicles.filter((v) => seatCount(v) === 0).length;
+  const withOne = vehicles.filter((v) => seatCount(v) === 1).length;
+  const withTwo = vehicles.filter((v) => seatCount(v) >= 2).length;
+
+  const th = 'text-start font-semibold px-4 py-3 whitespace-nowrap';
+
+  return (
+    <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
+      <PageHeader icon={<Truck className="w-5 h-5" />} title={ar ? 'سياراتنا' : 'Our vehicles'}
+        subtitle={ar
+          ? `${vehicles.length} سيارة — تُدار مقاعد السائقين من صفحة السائقين، وتُصحَّح بيانات السيارة هنا`
+          : `${vehicles.length} vehicles — driver seats are managed on the drivers page; vehicle facts are corrected here`}>
+        {admin && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة سيارة' : 'Add vehicle'}</PrimaryButton>}
+      </PageHeader>
+
+      {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label={ar ? 'إجمالي السيارات' : 'Total vehicles'} value={vehicles.length} />
+        <StatCard label={ar ? 'بدون سائق' : 'No driver'} value={withNone} accent={withNone > 0 ? 'text-red-600' : 'text-slate-900'} />
+        <StatCard label={ar ? 'بسائق واحد' : 'One driver'} value={withOne} />
+        <StatCard label={ar ? 'بسائقين' : 'Two drivers'} value={withTwo} accent="text-emerald-600" />
+      </div>
+
+      <div className="max-w-md">
+        <SearchInput value={search} onChange={setSearch}
+          placeholder={ar ? 'بحث باللوحة أو السائق أو نوع التيدر…' : 'Search plate, driver or trailer…'} />
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+        <table className="w-full text-sm">
+          <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+            <th className={th}>{ar ? 'اللوحة' : 'Plate'}</th>
+            <th className={th}>{ar ? 'نوع التيدر' : 'Trailer type'}</th>
+            <th className={th}>GPS</th>
+            <th className={th}>{ar ? 'السائقون عليها' : 'Drivers'}</th>
+            <th className={th}>{ar ? 'ملاحظات' : 'Notes'}</th>
+            <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
+          </tr></thead>
+          <tbody>
+            {filtered.map((v) => (
+              <tr key={v._id} className="border-b border-slate-200/70 hover:bg-slate-50">
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <span className="text-slate-900 font-bold font-mono">{v.plate}</span>
+                  {v.name && <span className="block text-xs text-slate-500">{v.name}</span>}
+                </td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{v.trailerType || '—'}</td>
+                <td className="px-4 py-3">
+                  {v.gpsType
+                    ? <SmallBadge bg={v.gpsType === 'LS' ? 'bg-emerald-500/15' : 'bg-blue-500/15'}
+                        text={v.gpsType === 'LS' ? 'text-emerald-700' : 'text-blue-700'} label={v.gpsType} />
+                    : <span className="text-slate-400">—</span>}
+                </td>
+                <td className="px-4 py-3">
+                  {seatCount(v) === 0 ? (
+                    <SmallBadge bg="bg-red-500/15" text="text-red-700" label={ar ? 'بدون سائق' : 'No driver'} />
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(v.drivers || []).map((d) => (
+                        // A seated-but-off driver is a truck that will not move — tint him amber.
+                        <span key={d._id}
+                          className={`px-2 py-1 rounded-lg text-xs whitespace-nowrap ${d.working === false ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}
+                          title={d.phone || undefined}>
+                          {d.name}{d.working === false ? (ar ? ' · لا يعمل' : ' · off') : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-slate-500 text-xs max-w-[220px] truncate" title={v.notes || undefined}>{v.notes || '—'}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1">
+                    {editor && <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
+                    {admin && <button type="button" onClick={() => remove(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={6} className="text-center text-slate-500 py-12">
+                {vehicles.length === 0
+                  ? (ar ? 'لا توجد سيارات بعد.' : 'No vehicles yet.')
+                  : (ar ? 'لا نتائج مطابقة للبحث.' : 'No matches.')}
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal open={showModal} onClose={() => setShowModal(false)}
+        title={editing ? (ar ? 'تعديل سيارة' : 'Edit vehicle') : (ar ? 'إضافة سيارة' : 'Add vehicle')}
+        footer={<>
+          <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={save} disabled={saving || !form.plate.trim()}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'حفظ' : 'Save'}
+          </PrimaryButton>
+        </>}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label={ar ? 'رقم اللوحة *' : 'Plate *'}><TextInput value={form.plate} onChange={(e) => setForm((f: any) => ({ ...f, plate: e.target.value }))} /></Field>
+          <Field label={ar ? 'الوصف' : 'Description'}><TextInput value={form.name} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
+          <Field label={ar ? 'نوع التيدر' : 'Trailer type'}>
+            <Select value={form.trailerType} onChange={(e) => setForm((f: any) => ({ ...f, trailerType: e.target.value }))}>
+              <option value="">—</option>
+              {TRAILER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </Select>
+          </Field>
+          <Field label={ar ? 'نوع التتبع (GPS)' : 'GPS type'}>
+            <Select value={form.gpsType} onChange={(e) => setForm((f: any) => ({ ...f, gpsType: e.target.value }))}>
+              <option value="">—</option>
+              {GPS_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </Select>
+          </Field>
+          <Field label={ar ? 'ملاحظات' : 'Notes'} span2>
+            <TextArea rows={2} value={form.notes} onChange={(e) => setForm((f: any) => ({ ...f, notes: e.target.value }))} />
+          </Field>
+        </div>
+      </Modal>
+    </div>
+  );
+}

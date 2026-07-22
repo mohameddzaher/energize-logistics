@@ -1,0 +1,147 @@
+const mongoose = require('mongoose');
+
+// إدارة الأسطول — the section that runs OUR OWN trucks, as opposed to the
+// shipment-orders trial which books supplier trucks. One file for the four
+// models because they only ever change together: a shipment snapshots the
+// vehicle and drivers it was booked with, and the drivers' assignment moves
+// between vehicles as part of booking.
+
+// ── Vehicles: the 57 trucks (seeded from Location Solutions) ────────────────
+const fleetVehicleSchema = new mongoose.Schema({
+  plate: { type: String, required: true, unique: true, trim: true },
+  name: { type: String, trim: true, default: '' },
+  trailerType: { type: String, trim: true, default: 'سطحة' }, // سطحة / ستارة / …
+  gpsType: { type: String, trim: true, default: 'LS' },       // LS / EX
+  notes: { type: String, trim: true, default: '' },
+  isActive: { type: Boolean, default: true },
+}, { timestamps: true });
+
+// ── Drivers: ~70 people across the 57 trucks — one or two per vehicle ───────
+const fleetDriverSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  phone: { type: String, trim: true, default: '' },
+  iqama: { type: String, trim: true, default: '' },
+  // حالة السائق: does he work at the moment (sick / on leave ⇒ false)?
+  working: { type: Boolean, default: true },
+  // على الكفالة أم لا
+  onSponsorship: { type: Boolean, default: true },
+  // The truck he is currently on. Reassigning him — including implicitly, by
+  // picking him on a shipment for another truck — just moves this pointer;
+  // the shipment events keep the story.
+  vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetVehicle', default: null, index: true },
+  notes: { type: String, trim: true, default: '' },
+  isActive: { type: Boolean, default: true },
+}, { timestamps: true });
+fleetDriverSchema.index({ name: 1 });
+
+// ── Customers of the fleet section (separate register from the trial's) ─────
+const fleetCustomerSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  phone: { type: String, trim: true, default: '' },
+  email: { type: String, trim: true, default: '' },
+  routes: [{
+    fromCity: { type: String, trim: true, default: '' },
+    toCity: { type: String, trim: true, default: '' },
+    price: { type: Number, default: null },
+  }],
+  notes: { type: String, trim: true, default: '' },
+  isActive: { type: Boolean, default: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}, { timestamps: true });
+fleetCustomerSchema.index({ name: 1 });
+
+// ── Shipments (الحمولات) ────────────────────────────────────────────────────
+const fleetShipmentSchema = new mongoose.Schema({
+  // بوليصة الشحن. Its OWN series, starting at 100001, six digits — visibly a
+  // different scheme from the shipment-orders 500-series, so the two can never
+  // be mistaken for each other or collide.
+  waybillNumber: { type: Number, unique: true, index: true },
+
+  customer: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetCustomer', default: null, index: true },
+  customerName: { type: String, trim: true, default: '', index: true },
+
+  vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetVehicle', default: null },
+  // Snapshots: the بوليصة must read the same forever, whatever later happens
+  // to the vehicle row.
+  vehiclePlate: { type: String, trim: true, default: '' },
+  trailerType: { type: String, trim: true, default: '' },
+  gpsType: { type: String, trim: true, default: '' },
+
+  driver: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetDriver', default: null },
+  driverName: { type: String, trim: true, default: '' },
+  driverPhone: { type: String, trim: true, default: '' },
+  // سائق ثانٍ — for loads that must arrive fast, two drivers share the wheel.
+  secondDriver: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetDriver', default: null },
+  secondDriverName: { type: String, trim: true, default: '' },
+
+  // المشرف — stamped from the creating account, and a first-class filter.
+  supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+  supervisorName: { type: String, trim: true, default: '' },
+
+  loadDate: { type: Date, default: null }, // تاريخ التحميل
+  fromCity: { type: String, trim: true, default: '' },
+  toCity: { type: String, trim: true, default: '' },
+
+  status: {
+    type: String,
+    enum: [
+      'requesting', 'loading', 'uploaded', 'on_way', 'arrived',
+      'bond_sent', 'bond_received', 'late', 'invoiced', 'cancelled',
+    ],
+    default: 'requesting',
+    index: true,
+  },
+
+  // Follow-up state, denormalized for the list: the details live in the events.
+  lastContactAt: { type: Date, default: null },   // آخر تواصل مع السائق
+  expectedArrival: { type: Date, default: null }, // متوقع الوصول — optional
+
+  notes: { type: String, trim: true, default: '' },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}, { timestamps: true });
+fleetShipmentSchema.index({ createdAt: -1 });
+
+const counterSchema = new mongoose.Schema({ _id: String, seq: Number });
+const FleetCounter = mongoose.models.FleetCounter || mongoose.model('FleetCounter', counterSchema);
+
+fleetShipmentSchema.pre('save', async function (next) {
+  if (this.isNew && this.waybillNumber == null) {
+    try {
+      const c = await FleetCounter.findOneAndUpdate(
+        { _id: 'waybill' }, { $inc: { seq: 1 } },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      );
+      if (c.seq < 100001) { c.seq = 100001; await c.save(); }
+      this.waybillNumber = c.seq;
+    } catch (e) { return next(e); }
+  }
+  next();
+});
+
+// ── Events: the append-only story of each shipment ──────────────────────────
+// Everything that ever happened — creation, edits, status flips, driver moves,
+// and every follow-up call — with who and when. Nothing here is updated or
+// deleted; corrections are new events. This is what "افتح تفاصيلها تلاقي كل
+// حاجة حصلت" reads from.
+const fleetEventSchema = new mongoose.Schema({
+  shipment: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetShipment', required: true, index: true },
+  type: {
+    type: String,
+    required: true,
+    enum: ['created', 'updated', 'status', 'driver_change', 'followup'],
+  },
+  // followup: { contactTime, currentLocation, note, expectedArrival }
+  // status:   { from, to } · updated: { fields } · driver_change: { text }
+  data: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  byName: { type: String, trim: true, default: '' },
+}, { timestamps: true });
+fleetEventSchema.index({ shipment: 1, createdAt: -1 });
+
+module.exports = {
+  FleetVehicle: mongoose.models.FleetVehicle || mongoose.model('FleetVehicle', fleetVehicleSchema),
+  FleetDriver: mongoose.models.FleetDriver || mongoose.model('FleetDriver', fleetDriverSchema),
+  FleetCustomer: mongoose.models.FleetCustomer || mongoose.model('FleetCustomer', fleetCustomerSchema),
+  FleetShipment: mongoose.models.FleetShipment || mongoose.model('FleetShipment', fleetShipmentSchema),
+  FleetEvent: mongoose.models.FleetEvent || mongoose.model('FleetEvent', fleetEventSchema),
+};

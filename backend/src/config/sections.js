@@ -43,6 +43,13 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'],
   },
   {
+    // Our own trucks — booking, drivers, follow-up calls. Sibling of the
+    // Shipment Orders trial (that one books supplier trucks).
+    key: 'Fleet Management',
+    apiPrefixes: ['/api/fleet'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'],
+  },
+  {
     key: 'Customs',
     apiPrefixes: ['/api/customs-clearance'],
     defaultRoles: ['admin', 'it_manager', 'operations_manager', 'customs_manager', 'customs_officer'],

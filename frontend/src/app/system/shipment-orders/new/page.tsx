@@ -173,7 +173,7 @@ function CreateShipmentInner() {
     if (missingKeys.size) {
       setShowErrors(true);
       notify(ar
-        ? 'أكمل الحقول المحددة باللون الأحمر.'
+        ? 'أكمِل الحقول المحدَّدة باللون الأحمر.'
         : 'Fill the fields highlighted in red.', 'error');
       return;
     }
@@ -304,7 +304,7 @@ function CreateShipmentInner() {
     <div className="space-y-5 w-full pb-28" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<PackagePlus className="w-5 h-5" />}
         title={editId ? (ar ? 'تعديل شحنة' : 'Edit shipment') : (ar ? 'إنشاء شحنة' : 'Create shipment')}
-        subtitle={ar ? 'كل التفاصيل في صفحة واحدة' : 'Everything on one page'}>
+        subtitle={ar ? 'جميع التفاصيل في صفحة واحدة' : 'Everything on one page'}>
         <button type="button" onClick={() => router.push('/system/shipment-orders')}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <ArrowRight className="w-4 h-4" /> {ar ? 'رجوع للقائمة' : 'Back to list'}
@@ -319,7 +319,7 @@ function CreateShipmentInner() {
             <div className="flex flex-col sm:flex-row gap-3">
               <div className={`flex-1 ${miss('customer') ? 'rounded-lg ring-2 ring-red-400/60' : ''}`}>
                 <SearchableSelect value={customerId} onChange={applyCustomer} searchAfter={0}
-                  placeholder={ar ? 'اختر العميل — اكتب اسمه للبحث…' : 'Pick the customer — type to search…'}
+                  placeholder={ar ? 'اختر العميل — اكتب الاسم للبحث…' : 'Pick the customer — type to search…'}
                   searchPlaceholder={ar ? 'اكتب اسم العميل أو جواله…' : 'Type name or phone…'}
                   emptyLabel={ar ? 'لا توجد نتائج — سجّله كعميل جديد' : 'No matches — register them as new'}
                   options={customers.map((c) => ({ value: c._id, label: c.name, hint: c.phone || '' }))} />
@@ -342,12 +342,12 @@ function CreateShipmentInner() {
           )}
           {newCustomerOpen && (
             <p className="text-xs text-slate-500">
-              {ar ? 'هيتسجّل تلقائياً في صفحة العملاء، والمسار والسعر هيتحفظوا في ملفه.' : 'Saved to the customers page automatically; the route + price land on their profile.'}
+              {ar ? 'يُسجَّل تلقائياً في صفحة العملاء، ويُحفَظ المسار والسعر في ملفه.' : 'Saved to the customers page automatically; the route + price land on their profile.'}
             </p>
           )}
           {customer && (customer.routes || []).length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-slate-500 mb-1.5">{ar ? 'مساراته المعتادة — ضغطة واحدة تملأ المسار والسعر:' : 'Known routes — one tap fills route and price:'}</p>
+              <p className="text-xs font-semibold text-slate-500 mb-1.5">{ar ? 'مساراته المعتمدة — بضغطة واحدة يُملأ المسار والسعر:' : 'Known routes — one tap fills route and price:'}</p>
               <div className="flex flex-wrap gap-2">
                 {customer.routes.map((r, i) => (
                   <button key={i} type="button"
@@ -369,9 +369,9 @@ function CreateShipmentInner() {
             <div>
               <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
               <SearchableSelect value={vehicleId} onChange={applyVehicle} searchAfter={0}
-                placeholder={ar ? 'اكتب اللوحة أو اسم السائق…' : 'Type plate or driver…'}
+                placeholder={ar ? 'اكتب رقم اللوحة أو اسم السائق…' : 'Type plate or driver…'}
                 searchPlaceholder={ar ? 'ابحث باللوحة أو السائق أو المورد…' : 'Search plate, driver or supplier…'}
-                emptyLabel={ar ? 'مش لاقيها؟ سجّلها من اللينك تحت' : 'Not found? Register it below'}
+                emptyLabel={ar ? 'غير موجودة؟ سجّلها من الرابط أدناه' : 'Not found? Register it below'}
                 options={vehicles.filter((v) => v.supplier).map((v) => ({
                   // Our own fleet is deliberately absent here — it gets its own
                   // section later; shipment trucks are the suppliers' for now.
@@ -381,13 +381,13 @@ function CreateShipmentInner() {
                 }))} />
               <button type="button" onClick={() => { setNewVehicleOpen((o) => !o); setVehicleId(''); }}
                 className="mt-1.5 text-xs font-semibold text-[#f37121] hover:underline">
-                {newVehicleOpen ? (ar ? 'إلغاء السيارة الجديدة' : 'Cancel new vehicle') : (ar ? '+ سيارة جديدة (لو مش في القائمة)' : '+ New vehicle (if not listed)')}
+                {newVehicleOpen ? (ar ? 'إلغاء تسجيل السيارة الجديدة' : 'Cancel new vehicle') : (ar ? '+ سيارة جديدة (إن لم تكن في القائمة)' : '+ New vehicle (if not listed)')}
               </button>
             </div>
             <div>
               <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
               <input value={form.driverName || ''} onChange={(e) => set('driverName', e.target.value)}
-                placeholder={ar ? 'يتملى تلقائياً من السيارة' : 'Autofills from the vehicle'} className={inputCls} />
+                placeholder={ar ? 'يُملأ تلقائياً عند اختيار السيارة' : 'Autofills from the vehicle'} className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
@@ -409,7 +409,7 @@ function CreateShipmentInner() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-slate-800">{ar ? 'مالكها:' : 'Owner:'}</span>
+                <span className="text-sm font-semibold text-slate-800">{ar ? 'مالك السيارة:' : 'Owner:'}</span>
                 {([
                   { k: 'supplier', label: ar ? 'مورد موجود' : 'Existing supplier' },
                   { k: 'newSupplier', label: ar ? 'مورد جديد' : 'New supplier' },
@@ -440,7 +440,7 @@ function CreateShipmentInner() {
                   ))}
                 </div>
               )}
-              <p className="text-xs text-slate-500">{ar ? 'هتتسجل تلقائياً في صفحة الموردين والمركبات مع حفظ الشحنة.' : 'Registers automatically on the fleet page when the shipment saves.'}</p>
+              <p className="text-xs text-slate-500">{ar ? 'تُسجَّل تلقائياً في صفحة المورّدين والمركبات عند حفظ الشحنة.' : 'Registers automatically on the fleet page when the shipment saves.'}</p>
             </div>
           )}
         </div>
@@ -489,9 +489,9 @@ function CreateShipmentInner() {
           <p className="text-xs text-slate-500">
             {missingKeys.size > 0
               ? (showErrors
-                ? <span className="text-red-600 font-semibold">{ar ? `${missingKeys.size} حقول مطلوبة ناقصة — معلّمة بالأحمر` : `${missingKeys.size} required fields missing — marked red`}</span>
+                ? <span className="text-red-600 font-semibold">{ar ? `${missingKeys.size} حقول مطلوبة ناقصة — محدَّدة باللون الأحمر` : `${missingKeys.size} required fields missing — marked red`}</span>
                 : (ar ? `${missingKeys.size} حقول مطلوبة متبقية` : `${missingKeys.size} required fields left`))
-              : <span className="text-emerald-600 font-semibold">{ar ? 'كل المطلوب مكتمل ✓' : 'All required complete ✓'}</span>}
+              : <span className="text-emerald-600 font-semibold">{ar ? 'اكتملت جميع الحقول المطلوبة ✓' : 'All required complete ✓'}</span>}
           </p>
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => router.push('/system/shipment-orders')}

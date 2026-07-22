@@ -117,7 +117,7 @@ export default function FleetPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Truck className="w-5 h-5" />} title={ar ? 'الموردون والمركبات' : 'Suppliers & vehicles'}
         subtitle={ar
-          ? `${vehicles.length} سيارة (${vehicles.filter((v) => !v.supplier).length} من أسطولنا) · ${suppliers.length} مورد — يتسجلوا تلقائياً من نموذج الشحنة`
+          ? `${vehicles.length} سيارة (${vehicles.filter((v) => !v.supplier).length} من أسطولنا) · ${suppliers.length} مورد — تُسجَّل تلقائياً من نموذج الشحنة`
           : `${vehicles.length} vehicles (${vehicles.filter((v) => !v.supplier).length} ours) · ${suppliers.length} suppliers — auto-registered from the create form`}>
         {editor && (tab === 'vehicles'
           ? <PrimaryButton onClick={() => { setEditingVeh(null); setVehForm({ ...EMPTY_VEHICLE }); setVehModal(true); }}><Plus className="w-4 h-4" /> {ar ? 'إضافة سيارة' : 'Add vehicle'}</PrimaryButton>
@@ -167,7 +167,7 @@ export default function FleetPage() {
                   </td>
                 </tr>
               ))}
-              {vehicles.length === 0 && <tr><td colSpan={6} className="text-center text-slate-500 py-12">{ar ? 'لا توجد سيارات بعد — أول شحنة بسيارة جديدة تسجلها هنا تلقائياً.' : 'No vehicles yet — the first shipment with a new truck registers it here.'}</td></tr>}
+              {vehicles.length === 0 && <tr><td colSpan={6} className="text-center text-slate-500 py-12">{ar ? 'لا توجد سيارات بعد — أول شحنة بسيارة جديدة تُسجّلها هنا تلقائياً.' : 'No vehicles yet — the first shipment with a new truck registers it here.'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -199,7 +199,7 @@ export default function FleetPage() {
               {s.notes && <p className="mt-2 text-xs text-slate-500">{s.notes}</p>}
             </div>
           ))}
-          {suppliers.length === 0 && <p className="text-slate-500 py-10 text-center lg:col-span-2">{ar ? 'لا يوجد موردون بعد — أول سيارة مورد في شحنة تسجل صاحبها هنا.' : 'No suppliers yet — the first supplier truck on a shipment registers them.'}</p>}
+          {suppliers.length === 0 && <p className="text-slate-500 py-10 text-center lg:col-span-2">{ar ? 'لا يوجد مورّدون بعد — أول سيارة مورّد في شحنة تُسجّل صاحبها هنا.' : 'No suppliers yet — the first supplier truck on a shipment registers them.'}</p>}
         </div>
       )}
 
@@ -251,7 +251,7 @@ export default function FleetPage() {
               options={truckTypes.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
           </div>
           <div className="sm:col-span-2">
-            <label className={labelCls}>{ar ? 'المالك — سيبها فاضية لو من أسطولنا' : 'Owner — empty means our fleet'}</label>
+            <label className={labelCls}>{ar ? 'المالك — اتركه فارغاً إن كانت من أسطولنا' : 'Owner — empty means our fleet'}</label>
             <SearchableSelect value={vehForm.supplier} onChange={(x) => setVehForm((f: any) => ({ ...f, supplier: x }))} searchAfter={0}
               placeholder={ar ? 'أسطولنا' : 'Our fleet'} searchPlaceholder={ar ? 'اكتب اسم المورد…' : 'Search supplier…'}
               options={[{ value: '', label: ar ? 'أسطولنا' : 'Our fleet' }, ...suppliers.map((sp) => ({ value: sp._id, label: sp.name, hint: sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company') }))]} />

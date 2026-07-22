@@ -95,13 +95,13 @@ export default function ChatCreatePage() {
 
   const botAsk = useCallback((s: Step | undefined): string => {
     if (!s) return '';
-    if (s.kind === 'customer') return ar ? 'أهلاً! 👋 نبدأ — الشحنة دي لمين؟ اكتب اسم العميل أو اختاره:' : 'Hi! 👋 Who is this shipment for?';
-    if (s.kind === 'vehicle') return ar ? 'تمام. أنهي سيارة هتشيلها؟ اكتب اللوحة أو اسم السائق:' : 'Which truck carries it? Type a plate or driver:';
-    if (s.kind === 'summary') return ar ? 'كده خلصنا ✅ — راجع الملخص وأكّد:' : 'All set ✅ — review and confirm:';
+    if (s.kind === 'customer') return ar ? 'أهلاً بك 👋 — لمن هذه الشحنة؟ اكتب اسم العميل أو اختره:' : 'Hi! 👋 Who is this shipment for?';
+    if (s.kind === 'vehicle') return ar ? 'حسناً — أي سيارة ستحمل الشحنة؟ اكتب رقم اللوحة أو اسم السائق:' : 'Which truck carries it? Type a plate or driver:';
+    if (s.kind === 'summary') return ar ? 'اكتملت البيانات ✅ — راجع الملخص ثم أكّد:' : 'All set ✅ — review and confirm:';
     const f = s.field;
     const label = fieldLabel(f, lang as Lang);
-    if (f.inputType === 'cards' || f.inputType === 'select') return ar ? `اختار ${label}:` : `Pick ${label}:`;
-    if (f.inputType === 'datetime') return ar ? `${label} — إمتى؟` : `${label} — when?`;
+    if (f.inputType === 'cards' || f.inputType === 'select') return ar ? `اختر ${label}:` : `Pick ${label}:`;
+    if (f.inputType === 'datetime') return ar ? `${label} — متى؟` : `${label} — when?`;
     return ar ? `${label}؟` : `${label}?`;
   }, [ar, lang]);
 
@@ -133,7 +133,7 @@ export default function ChatCreatePage() {
     });
     if ((c.routes || []).length) {
       say('bot', ar
-        ? `ده ليه ${c.routes.length} مسار متسعّر — لو اخترت واحد منهم هحط السعر تلقائياً.`
+        ? `لدى هذا العميل ${c.routes.length} مسارات مسعّرة — عند اختيار أحدها يُضاف السعر تلقائياً.`
         : `They have ${c.routes.length} priced routes — matching ones auto-price.`);
     }
     next();
@@ -145,14 +145,14 @@ export default function ChatCreatePage() {
     setAnswers((a) => ({ ...a, newCustomerName: name, customerName: name }));
     setCustomerId('');
     say('user', name);
-    say('bot', ar ? `هسجّل «${name}» كعميل جديد مع الشحنة ✅` : `“${name}” will be registered as a new customer ✅`);
+    say('bot', ar ? `سيُسجَّل «${name}» كعميل جديد مع الشحنة ✅` : `“${name}” will be registered as a new customer ✅`);
     setNewCustMode(false);
     next();
   };
 
   const pickVehicle = (v: OrderVehicle | null) => {
     if (!v) {
-      say('user', ar ? 'من غير سيارة دلوقتي' : 'No truck yet');
+      say('user', ar ? 'بدون سيارة حالياً' : 'No truck yet');
       next();
       return;
     }
@@ -182,7 +182,7 @@ export default function ChatCreatePage() {
         const route = (c.routes || []).find((r) => r.fromCity === from && r.toCity === to);
         if (route?.price != null && nextA.sellPrice == null) {
           nextA.sellPrice = route.price;
-          setTimeout(() => say('bot', ar ? `سعر المسار ده متسجل عندي: ${money(route.price)} — حطيته كسعر بيع ✓` : `Known route price ${money(route.price)} applied ✓`), 0);
+          setTimeout(() => say('bot', ar ? `سعر هذا المسار مسجَّل: ${money(route.price)} — أُضيف كسعر بيع ✓` : `Known route price ${money(route.price)} applied ✓`), 0);
         }
       }
       return nextA;
@@ -190,7 +190,7 @@ export default function ChatCreatePage() {
     next();
   };
 
-  const skip = (f: FormField) => { say('user', ar ? 'تخطّي' : 'skip'); next(); };
+  const skip = (f: FormField) => { say('user', ar ? 'تخطٍّ' : 'skip'); next(); };
 
   const submit = async () => {
     setSaving(true);
@@ -217,7 +217,7 @@ export default function ChatCreatePage() {
       });
       const d = await api.post<{ order: any }>('/api/shipment-orders/orders', payload);
       setDone({ waybill: d.order.waybillNumber });
-      say('bot', ar ? `تمت! 🎉 الشحنة اتسجلت برقم بوليصة ${d.order.waybillNumber}` : `Done! 🎉 Waybill ${d.order.waybillNumber}`);
+      say('bot', ar ? `تم إنشاء الشحنة 🎉 برقم بوليصة ${d.order.waybillNumber}` : `Done! 🎉 Waybill ${d.order.waybillNumber}`);
     } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
@@ -285,7 +285,7 @@ export default function ChatCreatePage() {
       return (
         <div className="space-y-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder={ar ? 'اكتب اللوحة أو السائق…' : 'Type plate or driver…'}
+            placeholder={ar ? 'اكتب رقم اللوحة أو اسم السائق…' : 'Type plate or driver…'}
             className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-[#f37121]" />
           <div className="flex flex-wrap gap-2">
             {list.map((v) => (
@@ -294,7 +294,7 @@ export default function ChatCreatePage() {
               </button>
             ))}
             <button type="button" onClick={() => pickVehicle(null)} className={chip + ' border-dashed text-slate-500'}>
-              <SkipForward className="w-4 h-4 inline me-1" /> {ar ? 'أحددها بعدين' : 'Decide later'}
+              <SkipForward className="w-4 h-4 inline me-1" /> {ar ? 'أحددها لاحقاً' : 'Decide later'}
             </button>
           </div>
         </div>
@@ -327,7 +327,7 @@ export default function ChatCreatePage() {
             ))}
           </div>
           <div className="flex gap-2 justify-end">
-            <button type="button" onClick={restart} className={chip}><RotateCcw className="w-4 h-4 inline me-1" /> {ar ? 'من الأول' : 'Start over'}</button>
+            <button type="button" onClick={restart} className={chip}><RotateCcw className="w-4 h-4 inline me-1" /> {ar ? 'البدء من جديد' : 'Start over'}</button>
             <button type="button" onClick={submit} disabled={saving}
               className="px-5 py-2.5 rounded-xl bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-bold flex items-center gap-2 disabled:opacity-50">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
@@ -357,7 +357,7 @@ export default function ChatCreatePage() {
             ))}
             {!f.required && (
               <button type="button" onClick={() => skip(f)} className={chip + ' border-dashed text-slate-500'}>
-                <SkipForward className="w-4 h-4 inline me-1" /> {ar ? 'تخطّي' : 'Skip'}
+                <SkipForward className="w-4 h-4 inline me-1" /> {ar ? 'تخطٍّ' : 'Skip'}
               </button>
             )}
           </div>
@@ -379,7 +379,7 @@ export default function ChatCreatePage() {
           placeholder={fieldLabel(f, lang as Lang)}
           className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-[#f37121]" />
         {!f.required && (
-          <button type="button" onClick={() => skip(f)} className="px-3 py-2.5 rounded-xl border border-dashed border-slate-300 text-slate-500 text-sm" title={ar ? 'تخطّي' : 'Skip'}>
+          <button type="button" onClick={() => skip(f)} className="px-3 py-2.5 rounded-xl border border-dashed border-slate-300 text-slate-500 text-sm" title={ar ? 'تخطٍّ' : 'Skip'}>
             <SkipForward className="w-4 h-4" />
           </button>
         )}
@@ -393,7 +393,7 @@ export default function ChatCreatePage() {
   return (
     <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-8rem)]" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Bot className="w-5 h-5" />} title={ar ? 'مساعد إنشاء الشحنة' : 'Shipment assistant'}
-        subtitle={ar ? 'سؤال بسؤال — وبينشئ نفس الشحنة اللي بتطلع من النموذج بالظبط' : 'One question at a time — creates the same shipment as the form'} />
+        subtitle={ar ? 'سؤال تلو الآخر — ويُنشئ الشحنة ذاتها التي يُنتجها النموذج' : 'One question at a time — creates the same shipment as the form'} />
 
       {/* progress */}
       <div className="mt-3 h-1.5 rounded-full bg-slate-200 overflow-hidden">

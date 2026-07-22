@@ -57,6 +57,7 @@ const customsClearanceRoutes = require('./routes/customsClearance');
 const vehicleRoutes = require('./routes/vehicles');
 const opsRoutes = require('./routes/ops');
 const shipmentOrderRoutes = require('./routes/shipmentOrders');
+const fleetRoutes = require('./routes/fleet');
 const sectionWorkRoutes = require('./routes/sectionWork');
 const b2cWalletRoutes = require('./routes/b2cWallet');
 const crmVendorRoutes = require('./routes/crmVendors');
@@ -180,6 +181,7 @@ app.use('/api/b2c-wallet', authenticate, sectionGate('B2C'), b2cWalletRoutes);
 app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
 app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
 app.use('/api/shipment-orders', authenticate, sectionGate('Shipment Orders'), shipmentOrderRoutes);
+app.use('/api/fleet', authenticate, sectionGate('Fleet Management'), fleetRoutes);
 // No sectionGate: every performance handler scopes itself (a manager only ever
 // sees their own team; only super_admin may configure or override), and a
 // section switch here would risk locking managers out of their /kpis page.
@@ -243,6 +245,8 @@ connectDB().then(async () => {
   await ensureDefaultLookups();
   const { ensureShipmentOrderDefaults } = require('./controllers/shipmentOrdersController');
   await ensureShipmentOrderDefaults();
+  const { ensureFleetDefaults } = require('./controllers/fleetController');
+  await ensureFleetDefaults();
   // Drop the legacy singleton_1 index on the B2C sheet sync collection so the new
   // (project, branch) compound unique index can take over. No-op on fresh installs.
   await migrateB2CSheetIndex();

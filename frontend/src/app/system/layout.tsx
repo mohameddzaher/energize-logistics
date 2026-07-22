@@ -181,6 +181,13 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/shipment-orders/fleet', label: lang === 'ar' ? 'الموردون والمركبات' : 'Suppliers & Vehicles', icon: <Truck className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/form-settings', label: lang === 'ar' ? 'إعدادات النموذج' : 'Form Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager'], section: 'Shipment Orders' },
 
+    // ---- Fleet Management (إدارة الأسطول) — our own trucks ----
+    { href: '/system/fleet', label: lang === 'ar' ? 'الحمولات' : 'Shipments', icon: <Truck className="w-5 h-5" />, roles: SO_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'لوحة التحليلات' : 'Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: SO_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <UserSquare className="w-5 h-5" />, roles: SO_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/vehicles', label: lang === 'ar' ? 'سياراتنا' : 'Our Vehicles', icon: <Car className="w-5 h-5" />, roles: SO_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: SO_ROLES, section: 'Fleet Management' },
+
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/guide', label: L.customsGuide, icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     // Vehicles & Authorizations (المركبات والتفاويض) — super admin + HR + Accounting

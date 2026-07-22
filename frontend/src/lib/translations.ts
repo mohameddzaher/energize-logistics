@@ -121,6 +121,7 @@ const layout = {
     sectionBusinessDevelopment: 'Business Development',
     sectionSoftwareIt: 'Software & IT',
     sectionShipmentOrders: 'Shipment Orders',
+    sectionFleetManagement: 'Fleet Management',
     vehiclesDashboard: 'Vehicles Dashboard',
     vehiclesFleet: 'Fleet & Authorizations',
     vehiclesAccidents: 'Accidents',
@@ -288,6 +289,7 @@ const layout = {
     sectionBusinessDevelopment: 'تطوير الأعمال',
     sectionSoftwareIt: 'البرمجيات وتقنية المعلومات',
     sectionShipmentOrders: 'طلبات الشحنات',
+    sectionFleetManagement: 'إدارة الأسطول',
     vehiclesDashboard: 'لوحة المركبات',
     vehiclesFleet: 'الأسطول والتفاويض',
     vehiclesAccidents: 'الحوادث',
@@ -7207,6 +7209,7 @@ export const SECTION_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   'Business Development': 'sectionBusinessDevelopment',
   'Software & IT': 'sectionSoftwareIt',
   'Shipment Orders': 'sectionShipmentOrders',
+  'Fleet Management': 'sectionFleetManagement',
 };
 
 // User role → layout translation key. Use with getLayoutTranslations(lang)[key].

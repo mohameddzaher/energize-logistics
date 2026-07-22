@@ -219,18 +219,18 @@ export default function ShipmentOrdersPage() {
         <StatCard label={ar ? 'هامش الربح' : 'Margin'} value={money(margin)} accent={margin >= 0 ? 'text-emerald-600' : 'text-red-600'} />
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-3">
+      <div className="flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[240px]">
           <SearchInput value={search} onChange={setSearch}
             placeholder={ar ? 'بحث برقم البوليصة أو العميل أو السائق أو المدينة…' : 'Search waybill, customer, driver, city…'} />
         </div>
-        <div className="w-full lg:w-44 shrink-0">
+        <div className="w-44 grow sm:grow-0">
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
             <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
             {ORDER_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
           </Select>
         </div>
-        <div className="w-full lg:w-56 shrink-0">
+        <div className="w-56 grow sm:grow-0">
           <Select value={customerFilter} onChange={(e) => { setCustomerFilter(e.target.value); setPage(1); }}>
             <option value="">{ar ? 'كل العملاء' : 'All customers'}</option>
             {customers.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}

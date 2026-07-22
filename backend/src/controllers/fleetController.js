@@ -303,7 +303,7 @@ exports.addFollowUp = async (req, res) => {
 
 // ── Drivers ─────────────────────────────────────────────────────────────────
 
-const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'working', 'onSponsorship', 'vehicle', 'notes', 'isActive'];
+const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'working', 'onSponsorship', 'vehicle', 'notes', 'isActive', 'offReason', 'offNote'];
 
 exports.listDrivers = async (req, res) => {
   try {
@@ -344,6 +344,10 @@ exports.updateDriver = async (req, res) => {
       await seatDriver(driver._id, data.vehicle || null);
       delete data.vehicle;
     }
+    // Reason and availability move together: naming a reason means he is off;
+    // marking him working again clears the reason.
+    if (data.offReason) data.working = false;
+    if (data.working === true) { data.offReason = ''; data.offNote = ''; }
     Object.assign(driver, data);
     await driver.save();
     emit('fleet:drivers', {});
@@ -492,7 +496,7 @@ exports.getDashboard = async (req, res) => {
         { $group: { _id: '$supervisorName', n: { $sum: 1 } } },
         { $sort: { n: -1 } },
       ]),
-      FleetDriver.find({ isActive: { $ne: false } }).select('working vehicle').lean(),
+      FleetDriver.find({ isActive: { $ne: false } }).select('working vehicle offReason').lean(),
       FleetVehicle.countDocuments({ isActive: { $ne: false } }),
       FleetEvent.countDocuments({ type: 'followup', createdAt: { $gte: dayStart } }),
       FleetShipment.find({
@@ -516,6 +520,8 @@ exports.getDashboard = async (req, res) => {
         total: drivers.length,
         working: drivers.filter((d) => d.working).length,
         off: drivers.filter((d) => !d.working).length,
+        sick: drivers.filter((d) => d.offReason === 'sick').length,
+        onLeave: drivers.filter((d) => d.offReason === 'leave').length,
         unassigned: drivers.filter((d) => !d.vehicle).length,
       },
       vehicles: {

@@ -216,18 +216,18 @@ export default function FleetShipmentsPage() {
         <StatCard label={ar ? 'ملغاة' : 'Cancelled'} value={stats?.byStatus.cancelled || 0} accent="text-red-600" />
       </div>
 
-      <div className="flex flex-col xl:flex-row gap-3">
-        <div className="flex-1 min-w-[240px]">
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex-1 min-w-[240px] basis-72">
           <SearchInput value={search} onChange={setSearch}
             placeholder={ar ? 'بحث برقم البوليصة أو العميل أو السائق أو اللوحة…' : 'Search waybill, customer, driver, plate…'} />
         </div>
-        <div className="w-full xl:w-40 shrink-0">
+        <div className="w-40 grow sm:grow-0">
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
             <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
             {FLEET_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
           </Select>
         </div>
-        <div className="w-full xl:w-48 shrink-0">
+        <div className="w-48 grow sm:grow-0">
           <Select value={supervisorFilter} onChange={(e) => { setSupervisorFilter(e.target.value); setPage(1); }}>
             <option value="">{ar ? 'كل المشرفين' : 'All supervisors'}</option>
             {supervisors.map((pair) => {
@@ -236,7 +236,7 @@ export default function FleetShipmentsPage() {
             })}
           </Select>
         </div>
-        <div className="w-full xl:w-52 shrink-0">
+        <div className="w-52 grow sm:grow-0">
           <Select value={customerFilter} onChange={(e) => { setCustomerFilter(e.target.value); setPage(1); }}>
             <option value="">{ar ? 'كل العملاء' : 'All customers'}</option>
             {customers.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}

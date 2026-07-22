@@ -16,7 +16,7 @@ interface DashboardData {
   shipmentsToday: number;
   shipmentsWeek: number;
   bySupervisor: { name: string; count: number }[];
-  drivers: { total: number; working: number; off: number; unassigned: number };
+  drivers: { total: number; working: number; off: number; sick: number; onLeave: number; unassigned: number };
   vehicles: { total: number; withTwoDrivers: number; withOneDriver: number; withNoDriver: number };
   followupsToday: number;
   needFollowUp: FleetShipment[];
@@ -125,6 +125,10 @@ export default function FleetDashboardPage() {
             <StatCard label={ar ? 'شحنات الأسبوع' : 'Shipments this week'} value={data.shipmentsWeek} />
             <StatCard label={ar ? 'متابعات اليوم' : 'Follow-ups today'} value={data.followupsToday} accent="text-emerald-600" />
             <StatCard label={ar ? 'السائقون العاملون' : 'Working drivers'} value={`${data.drivers.working} / ${data.drivers.total}`} />
+            <StatCard label={ar ? 'في إجازة مرضية' : 'On sick leave'} value={data.drivers.sick}
+              accent={data.drivers.sick > 0 ? 'text-red-600' : 'text-slate-900'} />
+            <StatCard label={ar ? 'في إجازة' : 'On leave'} value={data.drivers.onLeave}
+              accent={data.drivers.onLeave > 0 ? 'text-amber-600' : 'text-slate-900'} />
             <StatCard label={ar ? 'سيارات بدون سائق' : 'Vehicles without a driver'} value={data.vehicles.withNoDriver}
               accent={data.vehicles.withNoDriver > 0 ? 'text-red-600' : 'text-emerald-600'} />
           </div>

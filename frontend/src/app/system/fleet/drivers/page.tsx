@@ -85,14 +85,27 @@ export default function FleetDriversPage() {
     setRowBusy('');
   };
 
-  const benchDriver = async (d: FleetDriver) => {
-    setRowBusy(d._id);
+  // Benching now ASKS WHY — an accidental one-click bench already happened, and
+  // the reason (مرضية/إجازة) is what the dashboard reports.
+  const [benching, setBenching] = useState<FleetDriver | null>(null);
+  const [benchReason, setBenchReason] = useState<'sick' | 'leave' | 'other' | ''>('');
+  const [benchNote, setBenchNote] = useState('');
+  const [benchSaving, setBenchSaving] = useState(false);
+
+  const openBench = (d: FleetDriver) => { setBenching(d); setBenchReason(''); setBenchNote(''); };
+
+  const confirmBench = async () => {
+    if (!benching) return;
+    setBenchSaving(true);
     try {
-      await api.put(`/api/fleet/drivers/${d._id}`, { vehicle: null });
-      notify(ar ? `أُنزل السائق «${d.name}» من السيارة.` : `“${d.name}” was taken off the vehicle.`, 'success');
+      const payload: any = { vehicle: null };
+      if (benchReason) { payload.offReason = benchReason; payload.offNote = benchNote.trim(); }
+      await api.put(`/api/fleet/drivers/${benching._id}`, payload);
+      notify(ar ? `أُنزل السائق «${benching.name}» من السيارة.` : `“${benching.name}” was benched.`, 'success');
+      setBenching(null);
       await load();
     } catch (e: any) { notify(e.message, 'error'); }
-    setRowBusy('');
+    setBenchSaving(false);
   };
 
   const toggle = async (d: FleetDriver, key: 'working' | 'onSponsorship') => {
@@ -208,6 +221,12 @@ export default function FleetDriversPage() {
                       ? <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'يعمل' : 'Working'} />
                       : <SmallBadge bg="bg-slate-500/15" text="text-slate-600" label={ar ? 'لا يعمل' : 'Not working'} />}
                   </button>
+                
+                  {!d.working && d.offReason && (
+                    <span className="ms-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-500/15 text-orange-700">
+                      {d.offReason === 'sick' ? (ar ? 'مرضية' : 'Sick') : d.offReason === 'leave' ? (ar ? 'إجازة' : 'On leave') : (ar ? 'سبب آخر' : 'Other')}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <button type="button" disabled={!editor || rowBusy === d._id}
@@ -236,7 +255,7 @@ export default function FleetDriversPage() {
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
                     {editor && vehId(d) && (
-                      <button type="button" onClick={() => benchDriver(d)} disabled={rowBusy === d._id}
+                      <button type="button" onClick={() => openBench(d)} disabled={rowBusy === d._id}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-slate-100"
                         title={ar ? 'إنزال من السيارة' : 'Take off vehicle'}>
                         <UserMinus className="w-4 h-4" />
@@ -293,6 +312,45 @@ export default function FleetDriversPage() {
           </Field>
         </div>
       </Modal>
+      {/* لماذا يُنزَل؟ — the reason feeds the dashboard's sick/leave counts. */}
+      <Modal open={!!benching} onClose={() => setBenching(null)}
+        title={benching ? (ar ? `إنزال «${benching.name}» من السيارة` : `Bench “${benching.name}”`) : ''}
+        footer={<>
+          <button type="button" onClick={() => setBenching(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={confirmBench} disabled={benchSaving}>
+            {benchSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {ar ? 'تأكيد الإنزال' : 'Confirm'}
+          </PrimaryButton>
+        </>}>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">{ar ? 'ما سبب الإنزال؟' : 'Why is he coming off?'}</p>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { k: 'sick' as const, label: ar ? 'مرضية' : 'Sick' },
+              { k: 'leave' as const, label: ar ? 'إجازة' : 'On leave' },
+              { k: 'other' as const, label: ar ? 'سبب آخر' : 'Other' },
+              { k: '' as const, label: ar ? 'نقل فقط — ما زال يعمل' : 'Just a move — still working' },
+            ]).map((o) => (
+              <button key={o.k || 'none'} type="button" onClick={() => setBenchReason(o.k)}
+                className={`px-3.5 py-2 rounded-full border text-sm font-semibold transition-all ${benchReason === o.k
+                  ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+          {benchReason !== '' && (
+            <input value={benchNote} onChange={(e) => setBenchNote(e.target.value)}
+              placeholder={ar ? 'ملاحظة (اختياري) — مثل مدة الإجازة' : 'Note (optional)'}
+              className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+          )}
+          <p className="text-xs text-slate-500">
+            {ar
+              ? 'اختيار مرضية أو إجازة يجعل حالته «لا يعمل» ويظهر في لوحة التحليلات؛ «نقل فقط» يُبقيه عاملاً بلا سيارة.'
+              : 'Sick/leave marks him off-duty and shows on the dashboard; “just a move” keeps him working, unassigned.'}
+          </p>
+        </div>
+      </Modal>
+
     </div>
   );
 }

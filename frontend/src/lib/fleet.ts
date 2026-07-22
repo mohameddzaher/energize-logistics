@@ -20,6 +20,8 @@ export interface FleetDriver {
   phone?: string;
   iqama?: string;
   working: boolean;       // حالة السائق: يعمل أم لا
+  offReason?: '' | 'sick' | 'leave' | 'other'; // سبب التوقف — مرضية/إجازة/أخرى
+  offNote?: string;
   onSponsorship: boolean; // على الكفالة أم لا
   vehicle?: FleetVehicle | string | null;
   notes?: string;

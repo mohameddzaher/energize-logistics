@@ -23,6 +23,10 @@ const fleetDriverSchema = new mongoose.Schema({
   iqama: { type: String, trim: true, default: '' },
   // حالة السائق: does he work at the moment (sick / on leave ⇒ false)?
   working: { type: Boolean, default: true },
+  // WHY he is off — مرضية / إجازة / أخرى — so the dashboard can answer "who is
+  // sick and who is on leave" instead of one flat "off" count.
+  offReason: { type: String, enum: ['', 'sick', 'leave', 'other'], default: '' },
+  offNote: { type: String, trim: true, default: '' },
   // على الكفالة أم لا
   onSponsorship: { type: Boolean, default: true },
   // The truck he is currently on. Reassigning him — including implicitly, by

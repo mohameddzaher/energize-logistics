@@ -19,7 +19,7 @@ import {
 import {
   Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, SmallBadge, ErrorNotice,
 } from '@/components/hr/HRKit';
-import { FormField, GROUP_LABELS, fieldLabel, canAdminOrders, Lang } from '@/lib/shipmentOrders';
+import { FormField, GROUP_LABELS, fieldLabel, canAdminOrders, CORE_FIELD_KEYS, Lang } from '@/lib/shipmentOrders';
 
 const TYPE_LABELS: Record<FormField['inputType'], { ar: string; en: string }> = {
   select: { ar: 'قائمة منسدلة', en: 'Dropdown' },
@@ -143,16 +143,16 @@ export default function FormSettingsPage() {
             </p>
             <div className="divide-y divide-slate-100">
               {gf.map((f) => (
-                <div key={f._id} className={`px-5 py-3 flex items-center gap-3 ${!f.active ? 'opacity-50' : ''}`}>
+                <div key={f._id} className={`px-4 sm:px-5 py-3 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 ${!f.active ? 'opacity-50' : ''}`}>
                   <div className="flex flex-col gap-0.5 shrink-0">
                     <button type="button" onClick={() => nudge(f, -1)} className="text-slate-300 hover:text-slate-600" aria-label="up"><ChevronUp className="w-4 h-4" /></button>
                     <button type="button" onClick={() => nudge(f, 1)} className="text-slate-300 hover:text-slate-600" aria-label="down"><ChevronDown className="w-4 h-4" /></button>
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-[55%] sm:min-w-0">
                     <p className="text-sm font-medium text-slate-900 flex items-center gap-2">
                       {fieldLabel(f, lang as Lang)}
                       {f.required && <span className="text-red-500">*</span>}
-                      {f.isSystem && <Lock className="w-3 h-3 text-slate-300" aria-label="system" />}
+                      {CORE_FIELD_KEYS.has(f.key) && <Lock className="w-3 h-3 text-slate-300" aria-label="core" />}
                     </p>
                     <p className="text-xs text-slate-400">
                       {ar ? TYPE_LABELS[f.inputType].ar : TYPE_LABELS[f.inputType].en}
@@ -160,7 +160,7 @@ export default function FormSettingsPage() {
                     </p>
                   </div>
                   {!f.active && <SmallBadge bg="bg-slate-500/15" text="text-slate-600" label={ar ? 'مخفي' : 'Hidden'} />}
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0 ms-auto">
                     <button type="button" onClick={() => toggleActive(f)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
                       title={f.active ? (ar ? 'إخفاء من النموذج' : 'Hide from the form') : (ar ? 'إظهار' : 'Show')}>
                       {f.active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -168,7 +168,7 @@ export default function FormSettingsPage() {
                     <button type="button" onClick={() => openEdit(f)} className="p-1.5 rounded-lg text-slate-400 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}>
                       <Pencil className="w-4 h-4" />
                     </button>
-                    {!f.isSystem && (
+                    {!CORE_FIELD_KEYS.has(f.key) && (
                       <button type="button" onClick={() => remove(f)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-slate-100" title={ar ? 'حذف' : 'Delete'}>
                         <Trash2 className="w-4 h-4" />
                       </button>

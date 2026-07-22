@@ -43,6 +43,10 @@ const shipmentOrderFieldSchema = new mongoose.Schema(
     order: { type: Number, default: 0 },
     active: { type: Boolean, default: true },
     isSystem: { type: Boolean, default: false },
+    // Soft-delete FOR SYSTEM FIELDS ONLY. The boot seed re-creates any missing
+    // system key, so hard-deleting one would resurrect it on the next restart;
+    // a tombstoned row keeps the key "existing" and therefore stays gone.
+    deleted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

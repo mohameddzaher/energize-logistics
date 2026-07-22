@@ -231,9 +231,12 @@ function CreateShipmentInner() {
             <div className={`flex flex-wrap gap-2 ${bad ? 'p-2 rounded-xl border border-red-300 bg-red-50/50' : ''}`}>
               {f.options.map((o) => (
                 <button key={o.key} type="button" onClick={() => set(f.key, o.key)}
-                  className={`px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${v === o.key
-                    ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121] shadow-sm'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>
+                  className={`group flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all ${v === o.key
+                    ? 'border-[#f37121] bg-[#f37121] text-white shadow-md shadow-[#f37121]/25'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-[#f37121]/40 hover:bg-[#f37121]/[0.04] hover:-translate-y-0.5'}`}>
+                  <span className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${v === o.key ? 'border-white bg-white/20' : 'border-slate-300 group-hover:border-[#f37121]/50'}`}>
+                    {v === o.key && <Check className="w-3 h-3" />}
+                  </span>
                   {optionLabel(o, lang as Lang)}
                 </button>
               ))}
@@ -349,62 +352,63 @@ function CreateShipmentInner() {
         </div>
       ))}
 
-      {/* 2 ── السيارة والسائق — first thing in the shipment partition */}
+      {/* 2 ── السيارة والسائق — one row: pick the truck, driver fills itself */}
       {sectionCard(Truck, 2, ar ? 'السيارة والسائق' : 'Truck & driver', (
         <div className="space-y-4">
-          {!newVehicleOpen ? (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1">
-                <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
-                <SearchableSelect value={vehicleId} onChange={applyVehicle} searchAfter={0}
-                  placeholder={ar ? 'اختر من سياراتنا أو سيارات الموردين…' : 'Ours or a supplier’s…'}
-                  searchPlaceholder={ar ? 'اكتب رقم اللوحة أو اسم المورد…' : 'Type plate or supplier…'}
-                  emptyLabel={ar ? 'مش موجودة؟ سجّلها كسيارة جديدة' : 'Not found? Register it'}
-                  options={vehicles.map((v) => ({
-                    value: v._id,
-                    label: [v.plate, v.name].filter(Boolean).join(' — '),
-                    hint: supplierOf(v),
-                  }))} />
-              </div>
-              <div className="sm:pt-7">
-                <button type="button" onClick={() => { setNewVehicleOpen(true); setVehicleId(''); }}
-                  className="w-full sm:w-auto flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-semibold">
-                  <Truck className="w-4 h-4" /> {ar ? 'سيارة جديدة' : 'New vehicle'}
-                </button>
-              </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div>
+              <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
+              <SearchableSelect value={vehicleId} onChange={applyVehicle} searchAfter={0}
+                placeholder={ar ? 'اكتب اللوحة أو اسم السائق…' : 'Type plate or driver…'}
+                searchPlaceholder={ar ? 'ابحث باللوحة أو السائق أو المورد…' : 'Search plate, driver or supplier…'}
+                emptyLabel={ar ? 'مش لاقيها؟ سجّلها من اللينك تحت' : 'Not found? Register it below'}
+                options={vehicles.map((v) => ({
+                  value: v._id,
+                  label: [v.plate, v.name].filter(Boolean).join(' — '),
+                  hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · '),
+                }))} />
+              <button type="button" onClick={() => { setNewVehicleOpen((o) => !o); setVehicleId(''); }}
+                className="mt-1.5 text-xs font-semibold text-[#f37121] hover:underline">
+                {newVehicleOpen ? (ar ? 'إلغاء السيارة الجديدة' : 'Cancel new vehicle') : (ar ? '+ سيارة جديدة (لو مش في القائمة)' : '+ New vehicle (if not listed)')}
+              </button>
             </div>
-          ) : (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-slate-900">{ar ? 'تسجيل سيارة جديدة' : 'Register a new vehicle'}</p>
-                <button type="button" onClick={() => setNewVehicleOpen(false)} className="text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-4 h-4" /></button>
-              </div>
+            <div>
+              <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
+              <input value={form.driverName || ''} onChange={(e) => set('driverName', e.target.value)}
+                placeholder={ar ? 'يتملى تلقائياً من السيارة' : 'Autofills from the vehicle'} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
+              <input value={form.driverPhone || ''} onChange={(e) => set('driverPhone', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+
+          {newVehicleOpen && (
+            <div className="rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] p-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>{ar ? 'رقم اللوحة *' : 'Plate *'}</label>
                   <input value={newVehicle.plate} onChange={(e) => setNewVehicle((v) => ({ ...v, plate: e.target.value }))} className={inputCls} />
                 </div>
                 <div>
-                  <label className={labelCls}>{ar ? 'وصف السيارة' : 'Description'}</label>
+                  <label className={labelCls}>{ar ? 'وصف السيارة (اختياري)' : 'Description (optional)'}</label>
                   <input value={newVehicle.name} onChange={(e) => setNewVehicle((v) => ({ ...v, name: e.target.value }))}
-                    placeholder={ar ? 'مثال: مرسيدس أكتروس أبيض' : 'e.g. white Actros'} className={inputCls} />
+                    placeholder={ar ? 'مثال: مرسيدس بيضاء' : 'e.g. white Actros'} className={inputCls} />
                 </div>
               </div>
-              <div>
-                <label className={labelCls}>{ar ? 'مالك السيارة' : 'Owner'}</label>
-                <div className="flex flex-wrap gap-2">
-                  {([
-                    { k: 'ours', label: ar ? 'أسطولنا' : 'Our fleet' },
-                    { k: 'supplier', label: ar ? 'مورد موجود' : 'Existing supplier' },
-                    { k: 'newSupplier', label: ar ? 'مورد جديد' : 'New supplier' },
-                  ] as const).map((o) => (
-                    <button key={o.k} type="button" onClick={() => setNewVehicle((v) => ({ ...v, owner: o.k }))}
-                      className={`px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${newVehicle.owner === o.k
-                        ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121]' : 'border-slate-200 bg-white text-slate-700'}`}>
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-slate-800">{ar ? 'مالكها:' : 'Owner:'}</span>
+                {([
+                  { k: 'ours', label: ar ? 'أسطولنا' : 'Ours' },
+                  { k: 'supplier', label: ar ? 'مورد موجود' : 'Existing supplier' },
+                  { k: 'newSupplier', label: ar ? 'مورد جديد' : 'New supplier' },
+                ] as const).map((o) => (
+                  <button key={o.k} type="button" onClick={() => setNewVehicle((v) => ({ ...v, owner: o.k }))}
+                    className={`px-3.5 py-2 rounded-full border text-sm font-semibold transition-all ${newVehicle.owner === o.k
+                      ? 'border-[#f37121] bg-[#f37121] text-white shadow-sm' : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'}`}>
+                    {o.label}
+                  </button>
+                ))}
               </div>
               {newVehicle.owner === 'supplier' && (
                 <SearchableSelect value={newVehicle.supplierId} onChange={(x) => setNewVehicle((v) => ({ ...v, supplierId: x }))} searchAfter={0}
@@ -413,36 +417,21 @@ function CreateShipmentInner() {
                   options={suppliers.map((sp) => ({ value: sp._id, label: sp.name, hint: sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company') }))} />
               )}
               {newVehicle.owner === 'newSupplier' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input value={newVehicle.supplierName} onChange={(e) => setNewVehicle((v) => ({ ...v, supplierName: e.target.value }))}
-                    placeholder={ar ? 'اسم المورد الجديد *' : 'New supplier name *'} className={inputCls} />
-                  <div className="flex gap-2">
-                    {([['company', ar ? 'شركة' : 'Company', Building2], ['freelancer', ar ? 'فريلانسر' : 'Freelancer', UserIcon]] as const).map(([k, label, Ic]) => (
-                      <button key={k} type="button" onClick={() => setNewVehicle((v) => ({ ...v, supplierType: k }))}
-                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border-2 text-sm font-semibold ${newVehicle.supplierType === k
-                          ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121]' : 'border-slate-200 bg-white text-slate-700'}`}>
-                        <Ic className="w-4 h-4" /> {label}
-                      </button>
-                    ))}
-                  </div>
+                    placeholder={ar ? 'اسم المورد الجديد *' : 'New supplier name *'} className={inputCls + ' flex-1'} />
+                  {([['company', ar ? 'شركة' : 'Company'], ['freelancer', ar ? 'فريلانسر' : 'Freelancer']] as const).map(([k, label]) => (
+                    <button key={k} type="button" onClick={() => setNewVehicle((v) => ({ ...v, supplierType: k }))}
+                      className={`px-4 py-2 rounded-full border text-sm font-semibold ${newVehicle.supplierType === k
+                        ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white text-slate-600'}`}>
+                      {label}
+                    </button>
+                  ))}
                 </div>
               )}
-              <p className="text-xs text-slate-500">
-                {ar ? 'السيارة (والمورد الجديد) هيتسجلوا تلقائياً في صفحة الموردين والمركبات.' : 'The vehicle (and any new supplier) auto-register on the fleet page.'}
-              </p>
+              <p className="text-xs text-slate-500">{ar ? 'هتتسجل تلقائياً في صفحة الموردين والمركبات مع حفظ الشحنة.' : 'Registers automatically on the fleet page when the shipment saves.'}</p>
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
-              <input value={form.driverName || ''} onChange={(e) => set('driverName', e.target.value)}
-                placeholder={ar ? 'يتملى تلقائياً عند اختيار السيارة' : 'Autofills from the vehicle'} className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
-              <input value={form.driverPhone || ''} onChange={(e) => set('driverPhone', e.target.value)} className={inputCls} />
-            </div>
-          </div>
         </div>
       ))}
       </div>

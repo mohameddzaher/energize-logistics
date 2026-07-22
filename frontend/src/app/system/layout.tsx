@@ -176,6 +176,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // fully independent from Operations Platform: if the trial works, the team
     // moves HERE and the integration is what gets retired.
     { href: '/system/shipment-orders', label: lang === 'ar' ? 'الشحنات' : 'Shipments', icon: <PackageSearch className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
+    { href: '/system/shipment-orders/chat', label: lang === 'ar' ? 'مساعد الإنشاء' : 'Create Assistant', icon: <Bot className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/fleet', label: lang === 'ar' ? 'الموردون والمركبات' : 'Suppliers & Vehicles', icon: <Truck className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/form-settings', label: lang === 'ar' ? 'إعدادات النموذج' : 'Form Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager'], section: 'Shipment Orders' },

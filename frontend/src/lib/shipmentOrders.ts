@@ -127,6 +127,10 @@ export const fmtDT = (v?: string | null, lang: Lang = 'ar') => {
 export const money = (n?: number | null) =>
   (n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
+// The four questions other logic reads — mirror of the backend's
+// CORE_FIELD_KEYS. Everything else is deletable from form-settings.
+export const CORE_FIELD_KEYS = new Set(['fromCity', 'toCity', 'sellPrice', 'pickupTime']);
+
 // Roles mirroring backend/src/routes/shipmentOrders.js.
 export const SO_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'];
 export const SO_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];

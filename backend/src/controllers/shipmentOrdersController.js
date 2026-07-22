@@ -398,7 +398,8 @@ exports.deleteVehicle = async (req, res) => {
 exports.listFields = async (req, res) => {
   try {
     // ?all=1 → the settings page (inactive rows included); default → the form.
-    const filter = req.query.all ? {} : { active: true };
+    // Tombstoned system fields are gone from BOTH views — see the model.
+    const filter = req.query.all ? { deleted: { $ne: true } } : { active: true, deleted: { $ne: true } };
     const fields = await ShipmentOrderField.find(filter).sort({ group: 1, order: 1 }).lean();
     res.json({ fields });
   } catch (error) {
@@ -446,16 +447,28 @@ exports.updateField = async (req, res) => {
   }
 };
 
+// The only questions that CANNOT be deleted: other logic reads their answers.
+// fromCity/toCity/sellPrice drive the per-customer route pricing and the
+// بوليصة sheet; pickupTime dates the بوليصة. Everything else — system-seeded or
+// user-added — is the section owner's to remove.
+const CORE_FIELD_KEYS = new Set(['fromCity', 'toCity', 'sellPrice', 'pickupTime']);
+
 exports.deleteField = async (req, res) => {
   try {
     const field = await ShipmentOrderField.findById(req.params.id);
     if (!field) return res.status(404).json({ message: 'Field not found' });
-    if (field.isSystem) {
-      // Deleting sellPrice would not remove a question — it would break the
-      // pricing logic. Hide it instead.
-      return res.status(400).json({ message: 'System fields can be hidden (active=off) but not deleted' });
+    if (CORE_FIELD_KEYS.has(field.key)) {
+      return res.status(400).json({ message: 'This field feeds pricing/waybill logic — hide it instead of deleting it' });
     }
-    await field.deleteOne();
+    if (field.isSystem) {
+      // Tombstone, not delete: the boot seed re-creates missing system keys, so
+      // a hard delete would come back on the next restart.
+      field.deleted = true;
+      field.active = false;
+      await field.save();
+    } else {
+      await field.deleteOne();
+    }
     emit('shipmentOrders:fields', {});
     res.json({ message: 'Field deleted' });
   } catch (error) {
@@ -477,8 +490,6 @@ const SYSTEM_FIELDS = [
   // الاستلام والتسليم
   { key: 'fromCity', labelAr: 'من المدينة', labelEn: 'From city', group: 'pickup_delivery', inputType: 'select', options: opts(CITIES), required: true, order: 1 },
   { key: 'toCity', labelAr: 'إلى المدينة', labelEn: 'To city', group: 'pickup_delivery', inputType: 'select', options: opts(CITIES), required: true, order: 2 },
-  { key: 'addressFrom', labelAr: 'العنوان من', labelEn: 'Address from', group: 'pickup_delivery', inputType: 'text', order: 3 },
-  { key: 'addressTo', labelAr: 'العنوان إلى', labelEn: 'Address to', group: 'pickup_delivery', inputType: 'text', order: 4 },
   // تفاصيل الشحنة
   { key: 'truckType', labelAr: 'نوع الشاحنة', labelEn: 'Truck type', group: 'shipment', inputType: 'cards', options: opts(['سطحة', 'تريلا جوانب', 'تريلا ستارة', 'براد', 'دينا', 'لوبد', 'صهريج']), required: true, order: 1 },
   { key: 'cargoType', labelAr: 'نوع الحمولة', labelEn: 'Cargo type', group: 'shipment', inputType: 'select', options: opts(['بضائع عامة', 'مواد بناء', 'حديد', 'أسمنت', 'مواد غذائية', 'أجهزة ومعدات', 'أثاث', 'كيماويات', 'أخرى']), order: 2 },
@@ -501,6 +512,11 @@ const SYSTEM_FIELDS = [
 ];
 
 exports.ensureShipmentOrderDefaults = async () => {
+  // Dropped by request — the addresses added typing, not information. Removing
+  // them from the seed alone would leave the old rows; removing the rows alone
+  // would let the seed resurrect them. Both, idempotently.
+  await ShipmentOrderField.deleteMany({ key: { $in: ['addressFrom', 'addressTo'] } });
+
   for (const f of SYSTEM_FIELDS) {
     // eslint-disable-next-line no-await-in-loop
     const exists = await ShipmentOrderField.exists({ key: f.key });

@@ -75,7 +75,7 @@ function CreateShipmentInner() {
   // whose owner we name on the spot.
   const [vehicleId, setVehicleId] = useState('');
   const [newVehicleOpen, setNewVehicleOpen] = useState(false);
-  const [newVehicle, setNewVehicle] = useState({ plate: '', name: '', owner: 'ours' as 'ours' | 'supplier' | 'newSupplier', supplierId: '', supplierName: '', supplierType: 'company' as 'company' | 'freelancer' });
+  const [newVehicle, setNewVehicle] = useState({ plate: '', name: '', owner: 'supplier' as 'supplier' | 'newSupplier', supplierId: '', supplierName: '', supplierType: 'company' as 'company' | 'freelancer' });
 
   useEffect(() => {
     (async () => {
@@ -160,6 +160,16 @@ function CreateShipmentInner() {
   }, [fields, form, customerId, newCustomer.name]);
 
   const save = async () => {
+    if (!vehicleId && newVehicle.plate.trim()) {
+      if (newVehicle.owner === 'supplier' && !newVehicle.supplierId) {
+        notify(ar ? 'اختر المورد صاحب السيارة الجديدة.' : 'Pick the new vehicle’s supplier.', 'error');
+        return;
+      }
+      if (newVehicle.owner === 'newSupplier' && !newVehicle.supplierName.trim()) {
+        notify(ar ? 'اكتب اسم المورد الجديد.' : 'Name the new supplier.', 'error');
+        return;
+      }
+    }
     if (missingKeys.size) {
       setShowErrors(true);
       notify(ar
@@ -291,7 +301,7 @@ function CreateShipmentInner() {
     (typeof v.supplier === 'object' && v.supplier ? v.supplier.name : '') || (ar ? 'أسطولنا' : 'Our fleet');
 
   return (
-    <div className="space-y-5 max-w-7xl pb-28" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="space-y-5 w-full pb-28" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<PackagePlus className="w-5 h-5" />}
         title={editId ? (ar ? 'تعديل شحنة' : 'Edit shipment') : (ar ? 'إنشاء شحنة' : 'Create shipment')}
         subtitle={ar ? 'كل التفاصيل في صفحة واحدة' : 'Everything on one page'}>
@@ -362,7 +372,9 @@ function CreateShipmentInner() {
                 placeholder={ar ? 'اكتب اللوحة أو اسم السائق…' : 'Type plate or driver…'}
                 searchPlaceholder={ar ? 'ابحث باللوحة أو السائق أو المورد…' : 'Search plate, driver or supplier…'}
                 emptyLabel={ar ? 'مش لاقيها؟ سجّلها من اللينك تحت' : 'Not found? Register it below'}
-                options={vehicles.map((v) => ({
+                options={vehicles.filter((v) => v.supplier).map((v) => ({
+                  // Our own fleet is deliberately absent here — it gets its own
+                  // section later; shipment trucks are the suppliers' for now.
                   value: v._id,
                   label: [v.plate, v.name].filter(Boolean).join(' — '),
                   hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · '),
@@ -399,7 +411,6 @@ function CreateShipmentInner() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold text-slate-800">{ar ? 'مالكها:' : 'Owner:'}</span>
                 {([
-                  { k: 'ours', label: ar ? 'أسطولنا' : 'Ours' },
                   { k: 'supplier', label: ar ? 'مورد موجود' : 'Existing supplier' },
                   { k: 'newSupplier', label: ar ? 'مورد جديد' : 'New supplier' },
                 ] as const).map((o) => (
@@ -474,7 +485,7 @@ function CreateShipmentInner() {
       {/* Sticky save bar: the button is always in reach, and it says how many
           required answers are still missing instead of a silent dead click. */}
       <div className="fixed bottom-0 inset-x-0 lg:ms-64 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-6 py-3">
-        <div className="max-w-7xl flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-slate-500">
             {missingKeys.size > 0
               ? (showErrors

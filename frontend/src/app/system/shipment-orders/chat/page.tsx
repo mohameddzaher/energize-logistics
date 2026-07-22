@@ -276,7 +276,8 @@ export default function ChatCreatePage() {
     }
 
     if (step.kind === 'vehicle') {
-      const list = vehicles.filter((v) => {
+      // Supplier trucks only — our fleet is out of the create flow for now.
+      const list = vehicles.filter((v) => v.supplier).filter((v) => {
         if (!search.trim()) return true;
         const hay = fold([v.plate, v.name, v.defaultDriverName, typeof v.supplier === 'object' ? v.supplier?.name : ''].filter(Boolean).join(' '));
         return hay.includes(fold(search));
@@ -390,7 +391,7 @@ export default function ChatCreatePage() {
   const progress = Math.round((Math.min(stepIdx, steps.length - 1) / Math.max(steps.length - 1, 1)) * 100);
 
   return (
-    <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-8rem)]" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-8rem)]" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Bot className="w-5 h-5" />} title={ar ? 'مساعد إنشاء الشحنة' : 'Shipment assistant'}
         subtitle={ar ? 'سؤال بسؤال — وبينشئ نفس الشحنة اللي بتطلع من النموذج بالظبط' : 'One question at a time — creates the same shipment as the form'} />
 

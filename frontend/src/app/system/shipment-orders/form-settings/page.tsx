@@ -125,7 +125,7 @@ export default function FormSettingsPage() {
   const groups: FormField['group'][] = ['pickup_delivery', 'shipment', 'pricing_time', 'payment'];
 
   return (
-    <div className="space-y-6 max-w-4xl" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="space-y-6 w-full" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<SlidersHorizontal className="w-5 h-5" />} title={ar ? 'إعدادات نموذج الشحنة' : 'Shipment form settings'}
         subtitle={ar ? 'قرر شكل كل خانة: قائمة، كروت، أو كتابة — وأضف أسئلة جديدة' : 'Decide each input: dropdown, cards or typed — and add new questions'}>
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة حقل جديد' : 'Add a field'}</PrimaryButton>

@@ -184,10 +184,12 @@ export default function ItStockPage() {
           <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث بالجهاز أو الرقم التسلسلي أو الموقع...' : 'Search item, serial or location...'} />
         </div>
         <div className="w-full sm:w-44 shrink-0">
-          <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-            <option value="">{ar ? 'كل الأنواع' : 'All types'}</option>
-            {itTypes.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-          </Select>
+          {/* The type list grows from Reference Data — searchable, not scrollable */}
+          <SearchableSelect
+            value={typeFilter} onChange={setTypeFilter}
+            placeholder={ar ? 'كل الأنواع' : 'All types'} emptyLabel={ar ? 'كل الأنواع' : 'All types'}
+            options={[{ value: '', label: ar ? 'كل الأنواع' : 'All types' }, ...itTypes.map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
+          />
         </div>
         <div className="w-full sm:w-44 shrink-0">
           <Select value={conditionFilter} onChange={(e) => setConditionFilter(e.target.value)}>
@@ -254,9 +256,10 @@ export default function ItStockPage() {
             <TextInput value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={ar ? 'مثال: لابتوب Dell' : 'e.g. Dell laptop'} />
           </Field>
           <Field label={ar ? 'النوع' : 'Type'}>
-            <Select value={form.type} onChange={(e) => set('type', e.target.value)}>
-              {itTypes.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-            </Select>
+            <SearchableSelect
+              value={form.type} onChange={(v) => set('type', v)}
+              options={itTypes.map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))}
+            />
           </Field>
           <Field label={ar ? 'الرقم التسلسلي' : 'Serial number'}>
             <TextInput value={form.serialNumber || ''} onChange={(e) => set('serialNumber', e.target.value)} />

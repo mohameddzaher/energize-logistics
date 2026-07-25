@@ -9,7 +9,7 @@ import { Server, Plus, Edit, Trash2, Check, ExternalLink } from 'lucide-react';
 import { exportToExcel } from '@/utils/exportExcel';
 import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
-  Modal, Field, TextInput, TextArea, Select, StatCard, Loader2,
+  Modal, Field, TextInput, TextArea, Select, SearchableSelect, StatCard, Loader2,
 } from '@/components/hr/HRKit';
 import {
   canViewIt, ItSystem, SYSTEM_TYPES, SYSTEM_STATUSES, ENVIRONMENTS, COST_PERIODS,
@@ -128,10 +128,11 @@ export default function ItSystemsPage() {
           <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث بالاسم أو المورد...' : 'Search name or vendor...'} />
         </div>
         <div className="w-full sm:w-48 shrink-0">
-          <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-            <option value="">{ar ? 'كل الأنواع' : 'All types'}</option>
-            {optionsOf(SYSTEM_TYPES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-          </Select>
+          <SearchableSelect
+            value={typeFilter} onChange={setTypeFilter}
+            placeholder={ar ? 'كل الأنواع' : 'All types'} emptyLabel={ar ? 'كل الأنواع' : 'All types'}
+            options={[{ value: '', label: ar ? 'كل الأنواع' : 'All types' }, ...optionsOf(SYSTEM_TYPES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
+          />
         </div>
         <div className="w-full sm:w-48 shrink-0">
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -220,9 +221,10 @@ export default function ItSystemsPage() {
             <TextInput value={form.nameAr || ''} onChange={(e) => set('nameAr', e.target.value)} />
           </Field>
           <Field label={ar ? 'النوع' : 'Type'}>
-            <Select value={form.type} onChange={(e) => set('type', e.target.value)}>
-              {optionsOf(SYSTEM_TYPES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-            </Select>
+            <SearchableSelect
+              value={form.type} onChange={(v) => set('type', v)}
+              options={optionsOf(SYSTEM_TYPES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))}
+            />
           </Field>
           <Field label={ar ? 'الحالة' : 'Status'}>
             <Select value={form.status} onChange={(e) => set('status', e.target.value)}>

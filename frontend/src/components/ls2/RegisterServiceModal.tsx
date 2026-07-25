@@ -121,16 +121,20 @@ export default function RegisterServiceModal({
               <div className="space-y-2">
                 {rows.map((r, i) => (
                   <div key={i} className="rounded-lg bg-slate-50 p-2.5">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-slate-800">{ar && r.labelAr ? r.labelAr : r.label}</span>
-                      <div className="flex gap-1">
+                    {/* Label and the 3 choices are two blocks that never intermix:
+                        the label takes the space it needs (up to 2 lines), the
+                        choices stay ONE group. Side by side (choices centered on
+                        the label) once there's room; stacked on narrow screens. */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <span className="flex-1 min-w-0 text-sm font-medium text-slate-800 break-words">{ar && r.labelAr ? r.labelAr : r.label}</span>
+                      <div className="grid grid-cols-3 sm:flex gap-1 shrink-0">
                         {STATES.map((st) => {
                           const Icon = st.icon;
                           const active = r.status === st.key;
                           return (
                             <button key={st.key} type="button" onClick={() => setRow(i, { status: st.key })}
-                              className={`px-2 py-1 rounded-md text-[11px] font-medium border flex items-center gap-1 ${active ? st.on : 'bg-white text-slate-600 border-slate-200'}`}>
-                              <Icon className="w-3 h-3" /> {st.label}
+                              className={`px-2 py-1.5 rounded-md text-[11px] font-medium border flex items-center justify-center gap-1 ${active ? st.on : 'bg-white text-slate-600 border-slate-200'}`}>
+                              <Icon className="w-3 h-3 shrink-0" /> {st.label}
                             </button>
                           );
                         })}

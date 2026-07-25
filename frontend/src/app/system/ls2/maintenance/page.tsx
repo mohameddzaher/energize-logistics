@@ -44,6 +44,7 @@ function intervalRows(items: Vehicle[], pick: (iv: ServiceInterval) => boolean) 
         plate: v.plate || v.name,
         driver: v.driver || '',
         odometerKm: v.odometerKm ?? '',
+        odometerAt: v.lastMessageAt || '', // WHEN that odometer was read (live telemetry)
         service: iv.name,
         intervalKm: iv.intervalKm || '',
         lastServiceAt: iv.lastServiceAt,
@@ -112,6 +113,7 @@ function vehicleRows(items: Vehicle[], ar: boolean, pick: (iv: ServiceInterval) 
       plate: v.plate || v.name,
       driver: v.driver || '',
       odometerKm: v.odometerKm ?? '',
+      odometerAt: v.lastMessageAt || '', // WHEN that odometer was read (live telemetry)
       status: statusText(v.maintenanceStatus, ar),
     };
 
@@ -150,6 +152,7 @@ function vehicleColumns(ar: boolean, items: Vehicle[]): ExportColumn[] {
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 12 },
     { header: ar ? 'السائق' : 'Driver', key: 'driver', width: 22 },
     { header: ar ? 'العداد الحالي (كم)' : 'Odometer (km)', key: 'odometerKm', width: 16 },
+    { header: ar ? 'وقت قراءة العداد' : 'Odometer read at', key: 'odometerAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 20 },
     { header: ar ? 'الحالة العامة' : 'Overall status', key: 'status', width: 12 },
     { header: ar ? 'عدد الصيانات المطلوبة' : 'Services needed', key: 'neededCount', width: 12 },
     { header: ar ? 'الصيانات المطلوبة' : 'Which services are needed', key: 'needed', width: 52 },
@@ -171,6 +174,7 @@ function reportColumns(ar: boolean): ExportColumn[] {
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 12 },
     { header: ar ? 'السائق' : 'Driver', key: 'driver', width: 22 },
     { header: ar ? 'العداد الحالي (كم)' : 'Odometer (km)', key: 'odometerKm', width: 16 },
+    { header: ar ? 'وقت قراءة العداد' : 'Odometer read at', key: 'odometerAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 20 },
     { header: ar ? 'الخدمة' : 'Service', key: 'service', width: 24 },
     { header: ar ? 'كل (كم)' : 'Interval (km)', key: 'intervalKm', width: 12 },
     { header: ar ? 'آخر صيانة (تاريخ)' : 'Last service (date)', key: 'lastServiceAt', transform: (v) => (v ? new Date(v).toLocaleDateString('en-GB') : ''), width: 16 },
@@ -323,7 +327,7 @@ export default function Ls2MaintenancePage() {
               sheets: [{
                 name: lang === 'ar' ? 'الصيانة' : 'Maintenance',
                 rows: rows.map((v) => ({
-                  plate: v.plate || v.name, driver: v.driver || '', odometerKm: v.odometerKm ?? '',
+                  plate: v.plate || v.name, driver: v.driver || '', odometerKm: v.odometerKm ?? '', odometerAt: v.lastMessageAt || '',
                   status: v.maintenanceStatus, mostOverdue: v.nextServiceName || '', mostOverdueKm: v.kmToService ?? '',
                   upcoming: v.upcomingServiceName || '', upcomingKm: v.upcomingKm ?? '',
                 })),
@@ -331,6 +335,7 @@ export default function Ls2MaintenancePage() {
                   { header: lang === 'ar' ? 'اللوحة' : 'Plate', key: 'plate', width: 12 },
                   { header: lang === 'ar' ? 'السائق' : 'Driver', key: 'driver', width: 22 },
                   { header: lang === 'ar' ? 'العداد (كم)' : 'Odometer (km)', key: 'odometerKm', width: 14 },
+                  { header: lang === 'ar' ? 'وقت قراءة العداد' : 'Odometer read at', key: 'odometerAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 20 },
                   { header: lang === 'ar' ? 'الحالة' : 'Status', key: 'status', transform: (v) => (lang === 'ar' ? (v === 'overdue' ? 'متأخرة' : v === 'due' ? 'قريبة' : 'سليمة') : v), width: 10 },
                   { header: lang === 'ar' ? 'الأكثر تأخرًا' : 'Most overdue', key: 'mostOverdue', width: 22 },
                   { header: lang === 'ar' ? 'متبقّي/متأخرة (كم)' : 'Remaining (km)', key: 'mostOverdueKm', width: 16 },

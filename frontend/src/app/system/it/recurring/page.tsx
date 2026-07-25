@@ -8,7 +8,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { RefreshCw, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportToExcel } from '@/utils/exportExcel';
-import { Spinner, PageHeader, SearchInput, ExportButton, SmallBadge, Select } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, ExportButton, SmallBadge, SearchableSelect } from '@/components/hr/HRKit';
 import {
   canViewIt, RecurringGroup, Ticket, TICKET_CATEGORIES, TICKET_STATUSES,
   categoryLabel, ticketStatusLabel, optionsOf, fmtDate, fmtDuration, today,
@@ -91,10 +91,11 @@ export default function RecurringPage() {
           <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث في المشكلات...' : 'Search problems...'} />
         </div>
         <div className="w-full sm:w-56 shrink-0">
-          <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-            <option value="">{ar ? 'كل التصنيفات' : 'All categories'}</option>
-            {optionsOf(TICKET_CATEGORIES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-          </Select>
+          <SearchableSelect
+            value={categoryFilter} onChange={setCategoryFilter}
+            placeholder={ar ? 'كل التصنيفات' : 'All categories'} emptyLabel={ar ? 'كل التصنيفات' : 'All categories'}
+            options={[{ value: '', label: ar ? 'كل التصنيفات' : 'All categories' }, ...optionsOf(TICKET_CATEGORIES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
+          />
         </div>
       </div>
 

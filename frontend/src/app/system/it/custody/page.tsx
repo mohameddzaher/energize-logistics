@@ -323,10 +323,12 @@ export default function ItCustodyPage() {
           <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث بالجهاز أو الرقم التسلسلي أو الموظف...' : 'Search item, serial or employee...'} />
         </div>
         <div className="w-full sm:w-44 shrink-0">
-          <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-            <option value="">{ar ? 'كل الأنواع' : 'All types'}</option>
-            {itTypes.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-          </Select>
+          {/* The type list grows from Reference Data — searchable, not scrollable */}
+          <SearchableSelect
+            value={typeFilter} onChange={setTypeFilter}
+            placeholder={ar ? 'كل الأنواع' : 'All types'} emptyLabel={ar ? 'كل الأنواع' : 'All types'}
+            options={[{ value: '', label: ar ? 'كل الأنواع' : 'All types' }, ...itTypes.map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
+          />
         </div>
         <div className="w-full sm:w-44 shrink-0">
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -453,14 +455,16 @@ export default function ItCustodyPage() {
                     : 'Stock is empty — use "Brand new", or add items on the Stock page.'}
                 </div>
               ) : (
-                <Select value={pickedStockId} onChange={(e) => setPickedStockId(e.target.value)}>
-                  <option value="">—</option>
-                  {stock.map((s) => (
-                    <option key={s._id} value={s._id}>
-                      {`${s.name}${s.serialNumber ? ` — ${s.serialNumber}` : ''} (${custodyTypeLabel(s.type, lang)})`}
-                    </option>
-                  ))}
-                </Select>
+                <SearchableSelect
+                  value={pickedStockId} onChange={setPickedStockId}
+                  placeholder="—"
+                  searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم التسلسلي…' : 'Search name or serial…'}
+                  options={stock.map((s) => ({
+                    value: s._id,
+                    label: `${s.name}${s.serialNumber ? ` — ${s.serialNumber}` : ''}`,
+                    hint: custodyTypeLabel(s.type, lang),
+                  }))}
+                />
               )}
             </Field>
           ) : (
@@ -469,9 +473,10 @@ export default function ItCustodyPage() {
                 <TextInput value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={ar ? 'مثال: لابتوب Dell' : 'e.g. Dell laptop'} />
               </Field>
               <Field label={ar ? 'النوع' : 'Type'}>
-                <Select value={form.type} onChange={(e) => set('type', e.target.value)}>
-                  {itTypes.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-                </Select>
+                <SearchableSelect
+                  value={form.type} onChange={(v) => set('type', v)}
+                  options={itTypes.map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))}
+                />
               </Field>
               <Field label={ar ? 'الرقم التسلسلي' : 'Serial number'}>
                 <TextInput value={form.serialNumber || ''} onChange={(e) => set('serialNumber', e.target.value)} />

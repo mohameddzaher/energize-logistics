@@ -135,10 +135,13 @@ export default function ItTicketsPage() {
           <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
           {optionsOf(TICKET_STATUSES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
         </Select>
-        <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-          <option value="">{ar ? 'كل التصنيفات' : 'All categories'}</option>
-          {optionsOf(TICKET_CATEGORIES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-        </Select>
+        <div className="w-full lg:w-56 shrink-0">
+          <SearchableSelect
+            value={categoryFilter} onChange={setCategoryFilter}
+            placeholder={ar ? 'كل التصنيفات' : 'All categories'} emptyLabel={ar ? 'كل التصنيفات' : 'All categories'}
+            options={[{ value: '', label: ar ? 'كل التصنيفات' : 'All categories' }, ...optionsOf(TICKET_CATEGORIES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
+          />
+        </div>
         <Select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}>
           <option value="">{ar ? 'كل الأولويات' : 'All priorities'}</option>
           {optionsOf(TICKET_PRIORITIES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
@@ -214,9 +217,10 @@ export default function ItTicketsPage() {
             <TextInput value={form.title} onChange={(e) => set('title', e.target.value)} placeholder={ar ? 'مثال: الطابعة لا تستجيب' : 'e.g. Printer not responding'} />
           </Field>
           <Field label={ar ? 'التصنيف' : 'Category'}>
-            <Select value={form.category} onChange={(e) => set('category', e.target.value)}>
-              {optionsOf(TICKET_CATEGORIES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-            </Select>
+            <SearchableSelect
+              value={form.category} onChange={(v) => set('category', v)}
+              options={optionsOf(TICKET_CATEGORIES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))}
+            />
           </Field>
           <Field label={ar ? 'الأولوية' : 'Priority'}>
             <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>

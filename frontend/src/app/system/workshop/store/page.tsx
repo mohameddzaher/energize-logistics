@@ -90,7 +90,9 @@ export default function WorkshopStorePage() {
   // The ls2 section owns the mounting actions, so listen to its events too —
   // fitting a tire there must not leave this screen stale.
   useSocket('ls2:updated', useCallback(() => load(), [load]));
-  useSocket('workshop:updated', useCallback(() => load(), [load]));
+  // Stock moves on these two — 'workshop:updated' never existed as an event.
+  useSocket('inventory:updated', useCallback(() => load(), [load]));
+  useSocket('purchase:received', useCallback(() => load(), [load]));
 
   const hit = useCallback((...fields: (string | number | null | undefined)[]) => {
     const s = search.trim().toLowerCase();

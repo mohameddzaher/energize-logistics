@@ -45,7 +45,7 @@ function FleetShipmentDetailsInner() {
   const params = useParams();
   const id = (params as any)?.id as string;
   const { notify } = useDialog();
-  const editor = canEditFleet(user?.role);
+  const editor = canEditFleet(user);
 
   const [shipment, setShipment] = useState<FleetShipment | null>(null);
   const [events, setEvents] = useState<FleetEvent[]>([]);

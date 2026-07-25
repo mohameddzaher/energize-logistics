@@ -18,7 +18,7 @@ export default function HRLeavesPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrLeavesTranslations(lang);
-  const staff = isHRStaff(user?.role);
+  const staff = isHRStaff(user);
 
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);

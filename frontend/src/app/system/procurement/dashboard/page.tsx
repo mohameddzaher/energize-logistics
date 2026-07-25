@@ -29,7 +29,7 @@ export default function ProcurementDashboardPage() {
   useSocket('procurement:po', useCallback(() => load(), [load]));
   useSocket('procurement:bill', useCallback(() => load(), [load]));
 
-  if (!isProcStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isProcStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading || !data) return <Spinner />;
 
   const cards = [

@@ -37,7 +37,7 @@ export default function PurchaseRequestsPage() {
   const [convertFor, setConvertFor] = useState<PurchaseRequest | null>(null);
   const [convVendor, setConvVendor] = useState('');
 
-  const canApprove = isProcManager(user?.role);
+  const canApprove = isProcManager(user);
 
   const load = useCallback(async () => {
     try {
@@ -99,7 +99,7 @@ export default function PurchaseRequestsPage() {
     ], 'purchase-requests', ar ? 'طلبات الشراء' : 'Purchase Requests');
   };
 
-  if (!isProcStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isProcStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (

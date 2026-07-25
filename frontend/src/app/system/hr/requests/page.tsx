@@ -17,7 +17,7 @@ export default function HRRequestsPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrRequestsTranslations(lang);
-  const staff = isHRStaff(user?.role);
+  const staff = isHRStaff(user);
 
   const [requests, setRequests] = useState<HRRequest[]>([]);
   const [loading, setLoading] = useState(true);

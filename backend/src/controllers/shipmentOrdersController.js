@@ -35,6 +35,61 @@ const CUSTOMER_EDITABLE = ['name', 'phone', 'email', 'notes', 'routes', 'default
 
 // ── Orders ──────────────────────────────────────────────────────────────────
 
+// Inline "new customer" typed straight into the order form — register them and
+// point the order at the new id. Shared by create AND update (an edit can switch
+// an order to a first-time customer too).
+async function resolveInlineCustomer(req, data) {
+  if (data.customer || !req.body.newCustomer || !String(req.body.newCustomer.name || '').trim()) return;
+  const c = await ShipmentOrderCustomer.create({
+    name: String(req.body.newCustomer.name).trim(),
+    phone: String(req.body.newCustomer.phone || '').trim(),
+    createdBy: req.user._id,
+  });
+  data.customer = c._id;
+  emit('shipmentOrders:customers', {});
+}
+
+// Inline fresh truck (and its supplier when that is new too) — the fleet
+// register learns from the work. Shared by create AND update.
+async function resolveInlineVehicle(req, data) {
+  if (data.vehicle || !req.body.newVehicle || !String(req.body.newVehicle.plate || '').trim()) return;
+  const nv = req.body.newVehicle;
+  let supplierId = nv.supplierId || null;
+  if (!supplierId && nv.newSupplier && String(nv.newSupplier.name || '').trim()) {
+    const sup = await ShipmentOrderSupplier.create({
+      name: String(nv.newSupplier.name).trim(),
+      type: nv.newSupplier.type === 'freelancer' ? 'freelancer' : 'company',
+      phone: String(nv.newSupplier.phone || '').trim(),
+      createdBy: req.user._id,
+    });
+    supplierId = sup._id;
+  }
+  const veh = await ShipmentOrderVehicle.create({
+    plate: String(nv.plate).trim(),
+    name: String(nv.name || '').trim(),
+    truckType: data.truckType || '',
+    supplier: supplierId,
+    defaultDriverName: data.driverName || '',
+    defaultDriverPhone: data.driverPhone || '',
+    createdBy: req.user._id,
+  });
+  data.vehicle = veh._id;
+  emit('shipmentOrders:fleet', {});
+}
+
+// The denormalized snapshot an order carries of its truck: display label,
+// supplier, and the truck's regular driver as a fallback. Must be refreshed
+// whenever `vehicle` changes or the list/PDF keep printing the OLD plate.
+async function applyVehicleSnapshot(data) {
+  if (!data.vehicle) return;
+  const veh = await ShipmentOrderVehicle.findById(data.vehicle).lean();
+  if (!veh) return;
+  data.vehicleName = [veh.plate, veh.name].filter(Boolean).join(' — ');
+  data.supplier = veh.supplier || null;
+  if (!data.driverName && veh.defaultDriverName) data.driverName = veh.defaultDriverName;
+  if (!data.driverPhone && veh.defaultDriverPhone) data.driverPhone = veh.defaultDriverPhone;
+}
+
 exports.listOrders = async (req, res) => {
   try {
     const { q, status, customer, from, to, page = 1, limit = 25 } = req.query;
@@ -101,16 +156,7 @@ exports.createOrder = async (req, res) => {
   try {
     const data = pick(req.body, ORDER_EDITABLE);
 
-    // Inline new customer: { newCustomer: { name, phone } }.
-    if (!data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim()) {
-      const c = await ShipmentOrderCustomer.create({
-        name: String(req.body.newCustomer.name).trim(),
-        phone: String(req.body.newCustomer.phone || '').trim(),
-        createdBy: req.user._id,
-      });
-      data.customer = c._id;
-      emit('shipmentOrders:customers', {});
-    }
+    await resolveInlineCustomer(req, data);
 
     if (data.customer) {
       const c = await ShipmentOrderCustomer.findById(data.customer);
@@ -129,40 +175,8 @@ exports.createOrder = async (req, res) => {
     // plate registers the vehicle (and its supplier when that is new too) as a
     // side effect — the fleet register learns from the work, like the customer
     // price list does.
-    if (!data.vehicle && req.body.newVehicle && String(req.body.newVehicle.plate || '').trim()) {
-      const nv = req.body.newVehicle;
-      let supplierId = nv.supplierId || null;
-      if (!supplierId && nv.newSupplier && String(nv.newSupplier.name || '').trim()) {
-        const sup = await ShipmentOrderSupplier.create({
-          name: String(nv.newSupplier.name).trim(),
-          type: nv.newSupplier.type === 'freelancer' ? 'freelancer' : 'company',
-          phone: String(nv.newSupplier.phone || '').trim(),
-          createdBy: req.user._id,
-        });
-        supplierId = sup._id;
-      }
-      const veh = await ShipmentOrderVehicle.create({
-        plate: String(nv.plate).trim(),
-        name: String(nv.name || '').trim(),
-        truckType: data.truckType || '',
-        supplier: supplierId,
-        defaultDriverName: data.driverName || '',
-        defaultDriverPhone: data.driverPhone || '',
-        createdBy: req.user._id,
-      });
-      data.vehicle = veh._id;
-      emit('shipmentOrders:fleet', {});
-    }
-    if (data.vehicle) {
-      const veh = await ShipmentOrderVehicle.findById(data.vehicle).lean();
-      if (veh) {
-        data.vehicleName = [veh.plate, veh.name].filter(Boolean).join(' — ');
-        data.supplier = veh.supplier || null;
-        // The truck's regular driver fills the gap when none was typed.
-        if (!data.driverName && veh.defaultDriverName) data.driverName = veh.defaultDriverName;
-        if (!data.driverPhone && veh.defaultDriverPhone) data.driverPhone = veh.defaultDriverPhone;
-      }
-    }
+    await resolveInlineVehicle(req, data);
+    await applyVehicleSnapshot(data);
 
     data.agentName = fullName(req.user); // المندوب — stamped, never typed
     data.createdBy = req.user._id;
@@ -183,16 +197,46 @@ exports.createOrder = async (req, res) => {
   }
 };
 
+// One order by id — the edit form's loader. Finding it by paging through the
+// list capped at 1000 silently blanked the form for older orders.
+exports.getOrder = async (req, res) => {
+  try {
+    const order = await ShipmentOrder.findById(req.params.id)
+      .populate('customer', 'name phone')
+      .lean();
+    if (!order) return res.status(404).json({ message: 'Shipment order not found' });
+    res.json({ order });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load the shipment order' });
+  }
+};
+
 exports.updateOrder = async (req, res) => {
   try {
     const order = await ShipmentOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
 
     const data = pick(req.body, ORDER_EDITABLE);
+
+    // An edit can introduce a first-time customer or a fresh truck exactly like
+    // the create form — the same inline registration applies.
+    await resolveInlineCustomer(req, data);
     if (data.customer && String(data.customer) !== String(order.customer)) {
       const c = await ShipmentOrderCustomer.findById(data.customer).select('name').lean();
       if (c) data.customerName = c.name;
     }
+
+    await resolveInlineVehicle(req, data);
+    // Truck swapped → refresh the denormalized plate/supplier snapshot, or the
+    // list, the Excel export and the بوليصة keep printing the OLD truck.
+    if (data.vehicle && String(data.vehicle) !== String(order.vehicle)) {
+      await applyVehicleSnapshot(data);
+    }
+
+    // Answers of since-deleted custom fields must survive an unrelated edit —
+    // the form only sends the currently-configured fields, so merge, don't replace.
+    if (data.customFields) data.customFields = { ...(order.customFields || {}), ...data.customFields };
+
     Object.assign(order, data);
     await order.save();
     emit('shipmentOrders:updated', { id: String(order._id) });
@@ -418,6 +462,15 @@ exports.createField = async (req, res) => {
       return res.status(400).json({ message: 'Arabic label is required' });
     }
     const data = pick(req.body, FIELD_EDITABLE);
+    // A new field goes to the END of its group with a REAL order number. Letting
+    // it default to 0 puts it above the system fields AND breaks the settings
+    // page's reorder arrows, which work by swapping neighbours' order values —
+    // swapping 0 with 0 moves nothing.
+    if (data.order == null) {
+      const last = await ShipmentOrderField.findOne({ group: data.group || 'general', deleted: { $ne: true } })
+        .sort({ order: -1 }).select('order').lean();
+      data.order = ((last && last.order) || 0) + 1;
+    }
     // Unique key derived from the label — the value's address in customFields.
     let key = slugify(req.body.labelEn || req.body.labelAr);
     let n = 1;

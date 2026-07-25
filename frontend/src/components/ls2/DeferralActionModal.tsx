@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { CheckCircle2, Clock, XCircle, Loader2, X } from 'lucide-react';
 import api from '@/lib/api';
-import { ls2Text, fmtKm, fmtNum, type Lang, type Deferral } from '@/lib/ls2';
+import { ls2Text, fmtKm, fmtNum, checklistLabel, type Lang, type Deferral } from '@/lib/ls2';
 
 type Action = 'done' | 'defer' | 'skip';
 
@@ -67,7 +67,7 @@ export default function DeferralActionModal({
           <button type="button" onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
         </div>
         <p className="text-xs text-slate-500 mb-1">
-          <b className="text-slate-700">{deferral.label}</b>
+          <b className="text-slate-700">{checklistLabel(deferral, lang)}</b>
           {deferral.plate ? <> · {deferral.plate}</> : null}
           {deferral.intervalName ? <> · {deferral.intervalName}</> : null}
         </p>

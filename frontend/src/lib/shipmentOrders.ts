@@ -131,8 +131,12 @@ export const money = (n?: number | null) =>
 // CORE_FIELD_KEYS. Everything else is deletable from form-settings.
 export const CORE_FIELD_KEYS = new Set(['fromCity', 'toCity', 'sellPrice', 'pickupTime']);
 
-// Roles mirroring backend/src/routes/shipmentOrders.js.
+// Roles mirroring backend/src/routes/shipmentOrders.js — OR a dynamic grant
+// from the permissions matrix (the backend's rbac honours an 'edit' grant even
+// on its admin-listed routes, so the UI must too or granted roles see dead
+// screens). Pass the USER, not the role string: only the user carries grants.
+import { canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 export const SO_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'];
 export const SO_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
-export const canEditOrders = (role?: string | null) => !!role && SO_EDIT_ROLES.includes(role);
-export const canAdminOrders = (role?: string | null) => !!role && SO_ADMIN_ROLES.includes(role);
+export const canEditOrders = (u: RoleOrUser) => SO_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
+export const canAdminOrders = (u: RoleOrUser) => SO_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');

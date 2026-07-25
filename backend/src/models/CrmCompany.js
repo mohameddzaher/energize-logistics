@@ -13,19 +13,18 @@ const crmCompanySchema = new mongoose.Schema(
       enum: ['lead', 'prospect', 'active', 'inactive', 'churned'],
       default: 'lead',
     },
-    // Relationship nature.
-    type: {
-      type: String,
-      enum: ['customer', 'partner', 'vendor', 'reseller', 'other'],
-      default: 'customer',
-    },
+    // Relationship nature. No enum: the keys come from the editable
+    // crm_company_type lookup — an enum here would reject every option the
+    // admin adds through Reference Data / the inline "+ Add".
+    type: { type: String, trim: true, default: 'customer' },
     // 0–5 star rating of the relationship/value.
     rating: { type: Number, default: 0, min: 0, max: 5 },
     // 0–100 health/priority score (manual or computed).
     score: { type: Number, default: 0, min: 0, max: 100 },
 
     industry: { type: String, trim: true },
-    size: { type: String, enum: ['small', 'medium', 'large', 'enterprise', ''], default: '' },
+    // Keys from the editable crm_company_size lookup — no enum (see `type`).
+    size: { type: String, trim: true, default: '' },
     website: { type: String, trim: true },
 
     // Contact channels (drive the WhatsApp / call / email quick-action icons).
@@ -37,11 +36,8 @@ const crmCompanySchema = new mongoose.Schema(
     city: { type: String, trim: true },
     country: { type: String, trim: true },
 
-    source: {
-      type: String,
-      enum: ['referral', 'website', 'cold_call', 'social', 'event', 'campaign', 'other', ''],
-      default: '',
-    },
+    // Keys from the editable crm_source lookup — no enum (see `type`).
+    source: { type: String, trim: true, default: '' },
     tags: { type: [String], default: [] },
 
     // Account manager / owner.

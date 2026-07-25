@@ -46,7 +46,7 @@ export default function LicensesPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrLicensesTranslations(lang);
-  const staff = isHRStaff(user?.role);
+  const staff = isHRStaff(user);
 
   const [licenses, setLicenses] = useState<License[]>([]);
   const [loading, setLoading] = useState(true);

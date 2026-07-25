@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { CircleDot, Container, History, ExternalLink } from 'lucide-react';
 import api from '@/lib/api';
-import { fmtDateTime, type Lang } from '@/lib/ls2';
+import { fmtDateTime, plateDigitsKey, type Lang } from '@/lib/ls2';
 
 interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; positionNumber: number | null; positionLabel: string; section: string }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; reason: string; notes: string; performedByName: string }
@@ -38,8 +38,10 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
           <CircleDot className="w-4 h-4 text-[#f37121]" />
           {ar ? 'الكاوتشات والتيدر (سجل الورشة)' : 'Tires & Trailer (workshop registry)'}
         </h3>
+        {/* The registry stores bare plate digits — searching the raw Wialon
+            string ("ق ن ر 2708") there finds nothing. Link by the shared key. */}
         <Link
-          href={`/system/ls2/fleet-assets?tab=tires&q=${encodeURIComponent(plate || '')}`}
+          href={`/system/ls2/fleet-assets?tab=tires&q=${encodeURIComponent(plateDigitsKey(plate))}`}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-xs font-medium"
         >
           <ExternalLink className="w-3.5 h-3.5" /> {ar ? 'استبدال / نقل كاوتش أو تيدر' : 'Replace / move tire or trailer'}

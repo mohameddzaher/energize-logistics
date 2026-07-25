@@ -33,7 +33,7 @@ export default function PurchaseOrdersPage() {
   const [saving, setSaving] = useState(false);
   const [billFor, setBillFor] = useState<PurchaseOrder | null>(null);
 
-  const canManage = isProcManager(user?.role);
+  const canManage = isProcManager(user);
 
   const load = useCallback(async () => {
     try {
@@ -87,7 +87,7 @@ export default function PurchaseOrdersPage() {
     ], 'purchase-orders', tx.purchaseOrders);
   };
 
-  if (!isProcStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isProcStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (

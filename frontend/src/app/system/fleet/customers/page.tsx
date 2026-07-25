@@ -26,8 +26,8 @@ export default function FleetCustomersPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { confirm, notify } = useDialog();
-  const editor = canEditFleet(user?.role);
-  const admin = canAdminFleet(user?.role);
+  const editor = canEditFleet(user);
+  const admin = canAdminFleet(user);
 
   const [customers, setCustomers] = useState<FleetCustomer[]>([]);
   const [loading, setLoading] = useState(true);

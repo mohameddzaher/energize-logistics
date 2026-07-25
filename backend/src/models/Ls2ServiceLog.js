@@ -25,7 +25,11 @@ const ls2ServiceLogSchema = new mongoose.Schema({
   // task is either done, skipped as not-needed, or DEFERRED — inspected and judged
   // good for another `deferKm`, which raises an alert before those km run out.
   checklist: [{
+    // `label` is the CANONICAL (English) template label — deferral auto-resolution
+    // matches on it, so it must not depend on the UI language of whoever registered
+    // the service. `labelAr` rides along purely for display.
     label: { type: String, default: '' },
+    labelAr: { type: String, default: '' },
     status: { type: String, enum: ['done', 'deferred', 'na'], default: 'done' },
     deferKm: { type: Number, default: null },      // extra km granted when deferred
     dueAtOdometerKm: { type: Number, default: null }, // odometer when it must be done

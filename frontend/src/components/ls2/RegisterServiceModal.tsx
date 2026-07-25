@@ -13,7 +13,10 @@ import api from '@/lib/api';
 import { ls2Text, serviceTemplateKey, type Lang, type ServiceInterval, type ChecklistItem, type ChecklistTemplates } from '@/lib/ls2';
 
 type Status = 'done' | 'deferred' | 'na';
-type Row = { label: string; status: Status; deferKm: string; note: string };
+// `label` stays the CANONICAL (English) template label — the backend matches
+// deferrals against it, so it must not vary with the registrar's UI language.
+// `labelAr` is carried for display here and in the history/deferral lists.
+type Row = { label: string; labelAr: string; status: Status; deferKm: string; note: string };
 
 export default function RegisterServiceModal({
   unitId, interval, currentOdo, lang, isRTL, onClose, onSaved,
@@ -47,7 +50,7 @@ export default function RegisterServiceModal({
         const items: ChecklistItem[] =
           res.checklists?.[serviceTemplateKey(interval.name)] || res.checklists?.[String(interval.id)] || [];
         setRows(items.map((i) => ({
-          label: ar && i.labelAr ? i.labelAr : i.label,
+          label: i.label, labelAr: i.labelAr || '',
           status: 'done' as Status, deferKm: '', note: '',
         })));
       } catch { /* no template → plain service, no checklist */ }
@@ -71,6 +74,7 @@ export default function RegisterServiceModal({
         notes: notes || undefined,
         checklist: rows.map((r) => ({
           label: r.label,
+          labelAr: r.labelAr,
           status: r.status,
           deferKm: r.status === 'deferred' ? Number(r.deferKm) : null,
           note: r.note || '',
@@ -118,7 +122,7 @@ export default function RegisterServiceModal({
                 {rows.map((r, i) => (
                   <div key={i} className="rounded-lg bg-slate-50 p-2.5">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-slate-800">{r.label}</span>
+                      <span className="text-sm font-medium text-slate-800">{ar && r.labelAr ? r.labelAr : r.label}</span>
                       <div className="flex gap-1">
                         {STATES.map((st) => {
                           const Icon = st.icon;

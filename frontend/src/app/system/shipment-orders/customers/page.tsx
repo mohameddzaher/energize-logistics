@@ -25,7 +25,7 @@ export default function ShipmentOrderCustomersPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { confirm, notify } = useDialog();
-  const editor = canEditOrders(user?.role);
+  const editor = canEditOrders(user);
 
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
   const [fields, setFields] = useState<FormField[]>([]);
@@ -134,7 +134,7 @@ export default function ShipmentOrderCustomersPage() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {editor && <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
-                {canAdminOrders(user?.role) && <button type="button" onClick={() => remove(c)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
+                {canAdminOrders(user) && <button type="button" onClick={() => remove(c)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
               </div>
             </div>
 

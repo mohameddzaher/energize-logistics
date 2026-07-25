@@ -28,7 +28,7 @@ export default function HRStockPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrStockTranslations(lang);
-  const staff = isHRStaff(user?.role);
+  const staff = isHRStaff(user);
   // Types/conditions are editable from Settings → Reference Data.
   const { types, conditions, typeLabel, conditionLabel } = useAssetVocab();
 

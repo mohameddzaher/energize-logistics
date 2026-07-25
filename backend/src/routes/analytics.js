@@ -32,7 +32,9 @@ router.get('/dashboard', authorize('super_admin', 'admin', 'operations_manager',
     const now = new Date();
     const hasDateFilter = dateFrom && dateTo;
     const periodStart = hasDateFilter ? new Date(dateFrom) : new Date(now.getFullYear(), now.getMonth(), 1);
-    const periodEnd = hasDateFilter ? new Date(dateTo) : now;
+    // dateTo is a bare YYYY-MM-DD = midnight — push it to end-of-day so the
+    // selected last day's payments/invoices are INCLUDED, not silently dropped.
+    const periodEnd = hasDateFilter ? new Date(new Date(dateTo).getTime() + 86400000 - 1) : now;
     const yearStart = new Date(now.getFullYear(), 0, 1);
 
     // Total Outstanding — when date-filtered, scope to invoices created in that period

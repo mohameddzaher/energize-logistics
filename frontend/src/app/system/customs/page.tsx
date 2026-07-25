@@ -63,7 +63,7 @@ const EMPTY = {
 };
 
 export default function CustomsPage() {
-  const { confirm } = useDialog();
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const router = useRouter();
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '');
@@ -104,14 +104,15 @@ export default function CustomsPage() {
       setShowModal(false);
       fetchList();
       if (data?.clearance?._id) router.push(`/system/customs/${data.clearance._id}`);
-    } catch {}
+    } catch (e: any) { notify(e?.message || 'Failed to save', 'error'); }
     setSaving(false);
   };
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (!(await confirm(T.deleteClearance))) return;
-    try { await api.delete(`/api/customs-clearance/${id}`); fetchList(); } catch {}
+    try { await api.delete(`/api/customs-clearance/${id}`); fetchList(); }
+    catch (err: any) { notify(err?.message || 'Failed to delete', 'error'); }
   };
 
   const years = Array.from(new Set(list.map((c) => c.periodYear).filter(Boolean) as number[])).sort((a, b) => b - a);

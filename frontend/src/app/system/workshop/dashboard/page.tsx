@@ -72,8 +72,8 @@ export default function WorkshopDashboardPage() {
   useSocket('purchase:created', refresh);
   useSocket('purchase:received', refresh);
   useSocket('purchase:fulfilled', refresh);
-  useSocket('workshop-task:created', refresh);
-  useSocket('workshop-task:updated', refresh);
+  useSocket('workshopTask:created', refresh);
+  useSocket('workshopTask:updated', refresh);
 
   const formatDuration = (minutes?: number) => {
     if (!minutes) return '0m';

@@ -198,19 +198,24 @@ export default function WorkshopPage() {
         partsNeeded: filledParts,
       });
 
-      // Auto-send all filled parts to purchasing (in parallel)
+      // Auto-send all filled parts to purchasing (in parallel). partIndex ties
+      // each purchase back to its row in partsNeeded so the per-part status
+      // chips (sentToPurchasing) actually light up.
       if (filledParts.length > 0) {
         const vehicleNumber = requests.find(r => r._id === showCompleteModal)?.vehicleNumber || '';
-        await Promise.all(
-          filledParts.map(part =>
+        const results = await Promise.allSettled(
+          filledParts.map((part, partIndex) =>
             api.post('/api/workshop/purchases', {
               maintenanceRequest: showCompleteModal,
               itemName: part.name,
               quantity: part.quantity,
               vehicleNumber,
-            }).catch(() => {})
+              partIndex,
+            })
           )
         );
+        const failed = results.filter(r => r.status === 'rejected').length;
+        if (failed) setError(`${failed} purchase request(s) failed to send — open the request and resend them`);
       }
 
       setShowCompleteModal(null);

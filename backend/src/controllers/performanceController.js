@@ -88,7 +88,10 @@ async function departmentManagers() {
     .map((u) => u._id);
   return Employee.find({
     employmentStatus: { $ne: 'terminated' },
-    $or: [{ _id: { $in: managerIds } }, { user: { $in: managerUserIds } }],
+    // directManager stores USER ids (Employee.directManager ref: 'User'), so a
+    // manager is the employee whose linked `user` is referenced — matching
+    // Employee._id against user ids could never hit.
+    $or: [{ user: { $in: managerIds } }, { user: { $in: managerUserIds } }],
   }).lean();
 }
 

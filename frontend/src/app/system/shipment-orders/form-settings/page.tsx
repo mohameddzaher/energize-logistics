@@ -42,7 +42,7 @@ export default function FormSettingsPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { confirm, notify } = useDialog();
-  const admin = canAdminOrders(user?.role);
+  const admin = canAdminOrders(user);
 
   const [fields, setFields] = useState<FormField[]>([]);
   const [search, setSearch] = useState('');
@@ -96,17 +96,22 @@ export default function FormSettingsPage() {
     catch (e: any) { notify(e.message, 'error'); }
   };
 
-  // Reorder within the group by swapping `order` with the neighbour.
+  // Reorder within the group. Old rows may share the same `order` (user-added
+  // fields used to be created with 0), so swapping two values can swap 0 with 0
+  // and move nothing — instead move the row in the array and renumber the whole
+  // group sequentially, writing only the rows whose number actually changed.
   const nudge = async (f: FormField, dir: -1 | 1) => {
-    const siblings = fields.filter((x) => x.group === f.group).sort((a, b) => a.order - b.order);
+    const siblings = fields.filter((x) => x.group === f.group)
+      .sort((a, b) => a.order - b.order || a._id.localeCompare(b._id));
     const i = siblings.findIndex((x) => x._id === f._id);
-    const other = siblings[i + dir];
-    if (!other) return;
+    const j = i + dir;
+    if (j < 0 || j >= siblings.length) return;
+    [siblings[i], siblings[j]] = [siblings[j], siblings[i]];
     try {
-      await Promise.all([
-        api.put(`/api/shipment-orders/fields/${f._id}`, { order: other.order }),
-        api.put(`/api/shipment-orders/fields/${other._id}`, { order: f.order }),
-      ]);
+      await Promise.all(siblings
+        .map((x, idx) => ({ x, order: idx + 1 }))
+        .filter(({ x, order }) => x.order !== order)
+        .map(({ x, order }) => api.put(`/api/shipment-orders/fields/${x._id}`, { order })));
       load();
     } catch (e: any) { notify(e.message, 'error'); }
   };

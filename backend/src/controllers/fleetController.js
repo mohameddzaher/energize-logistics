@@ -181,6 +181,17 @@ exports.updateShipment = async (req, res) => {
     if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
 
     const data = pick(req.body, SHIPMENT_EDITABLE);
+
+    // An edit can switch the حمولة to a first-time customer, exactly like create.
+    if (!data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim()) {
+      const c = await FleetCustomer.create({
+        name: String(req.body.newCustomer.name).trim(),
+        phone: String(req.body.newCustomer.phone || '').trim(),
+        createdBy: req.user._id,
+      });
+      data.customer = c._id;
+      emit('fleet:customers', {});
+    }
     if (data.customer && String(data.customer) !== String(shipment.customer)) {
       const c = await FleetCustomer.findById(data.customer).select('name').lean();
       if (c) data.customerName = c.name;

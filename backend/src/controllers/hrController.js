@@ -33,8 +33,12 @@ const denyNonStaff = (req, res) => {
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 
 // All active HR back-office users — the reviewers/recipients for HR events.
+// The FULL_ACCESS roles (IT) see the same pages, so they get the same realtime
+// refreshes; leaving them out kept their screens stale until manual reload.
+const { FULL_ACCESS_ROLES } = require('../config/constants');
 const hrStaffIds = async () => {
-  const staff = await User.find({ role: { $in: HR_STAFF_ROLES }, isActive: true }).select('_id').lean();
+  const roles = [...new Set([...HR_STAFF_ROLES, ...FULL_ACCESS_ROLES])];
+  const staff = await User.find({ role: { $in: roles }, isActive: true }).select('_id').lean();
   return staff.map((s) => s._id);
 };
 

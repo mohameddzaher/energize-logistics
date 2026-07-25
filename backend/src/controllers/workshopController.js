@@ -213,6 +213,14 @@ const completeMaintenanceRequest = async (req, res) => {
     if (req.body.workDescription) request.workDescription = req.body.workDescription;
     if (req.body.technicianName) request.technicianName = req.body.technicianName;
     if (req.body.notes) request.notes = req.body.notes;
+    // The parts the completion form lists — dropped before, so the per-part
+    // purchasing linkage (sentToPurchasing / purchaseRequestId) had nothing to
+    // attach to and the details view lost the parts entirely.
+    if (Array.isArray(req.body.partsNeeded)) {
+      request.partsNeeded = req.body.partsNeeded
+        .filter((p) => p && String(p.name || '').trim())
+        .map((p) => ({ name: String(p.name).trim(), quantity: Number(p.quantity) > 0 ? Number(p.quantity) : 1 }));
+    }
 
     await request.save();
 

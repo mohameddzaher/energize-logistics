@@ -30,3 +30,15 @@ export const canAccessSection = (perms: Perms, section: string): boolean => {
 // Can the user create/update/delete in this section (edit).
 export const canEditSection = (perms: Perms, section: string): boolean =>
   sectionAccess(perms, section) === 'edit';
+
+// ── Role-or-user gate helpers ────────────────────────────────────────────────
+// Section libs gate pages on a static role list OR a dynamic grant from the
+// permissions matrix (mirroring backend/src/middleware/rbac.js, where a section
+// grant passes authorize() too). Helpers accept either the raw role string
+// (legacy call sites) or the whole user object — only the object carries the
+// grants, so pages should pass the user.
+export type UserLike = { role?: string | null; permissions?: Record<string, Access> | null } | null | undefined;
+export type RoleOrUser = string | UserLike;
+export const roleOf = (u: RoleOrUser): string => (typeof u === 'string' ? u : u?.role) || '';
+export const permsOf = (u: RoleOrUser): Record<string, Access> | undefined =>
+  typeof u === 'string' ? undefined : (u?.permissions ?? undefined);

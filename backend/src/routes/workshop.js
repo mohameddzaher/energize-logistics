@@ -40,12 +40,16 @@ router.put('/maintenance/:id/complete', authorize(...workshopRoles), workshopCon
 router.delete('/maintenance/:id', authorize(...managerRoles), workshopController.deleteMaintenanceRequest);
 
 // ─── Purchase Requests ──────────────────────────────────
+// Record + receive is ONE flow in the UI ("سجّل وأضف للمخزون"): every role that
+// may record a purchase must also be able to receive it, or the row records and
+// then sticks at pending with a 403 the user never asked for. So all four verbs
+// take the same union list — the purchasing officer AND the workshop floor.
 router.get('/purchases', authorize(...allWorkshopRoles), workshopController.getPurchaseRequests);
-router.post('/purchases', authorize(...workshopRoles), workshopController.createPurchaseRequest);
-router.put('/purchases/:id/receive', authorize(...purchasingRoles), workshopController.receivePurchaseRequest);
-router.put('/purchases/:id/received', authorize(...purchasingRoles), workshopController.receivePurchaseRequest);
-router.put('/purchases/:id/fulfill', authorize(...purchasingRoles), workshopController.fulfillPurchaseRequest);
-router.put('/purchases/:id/fulfilled', authorize(...purchasingRoles), workshopController.fulfillPurchaseRequest);
+router.post('/purchases', authorize(...allWorkshopRoles), workshopController.createPurchaseRequest);
+router.put('/purchases/:id/receive', authorize(...allWorkshopRoles), workshopController.receivePurchaseRequest);
+router.put('/purchases/:id/received', authorize(...allWorkshopRoles), workshopController.receivePurchaseRequest);
+router.put('/purchases/:id/fulfill', authorize(...allWorkshopRoles), workshopController.fulfillPurchaseRequest);
+router.put('/purchases/:id/fulfilled', authorize(...allWorkshopRoles), workshopController.fulfillPurchaseRequest);
 // Deleting reverses the stock this request added, so it is manager-only.
 router.delete('/purchases/:id', authorize(...managerRoles), workshopController.deletePurchaseRequest);
 

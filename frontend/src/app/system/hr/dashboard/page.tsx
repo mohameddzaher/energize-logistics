@@ -35,7 +35,7 @@ export default function HRDashboardPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrDashboardTranslations(lang);
-  const staff = isHRStaff(user?.role);
+  const staff = isHRStaff(user);
 
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(true);

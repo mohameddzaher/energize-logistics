@@ -505,6 +505,7 @@ function openDeferrals(history, currentOdo) {
       if (c.status !== 'deferred' || c.resolved || c.dueAtOdometerKm == null) continue;
       out.push({
         label: c.label,
+        labelAr: c.labelAr || '',
         note: c.note || '',
         deferKm: c.deferKm,
         dueAtOdometerKm: c.dueAtOdometerKm,
@@ -691,6 +692,7 @@ exports.registerServiceInterval = async (req, res) => {
       const deferKm = status === 'deferred' && c.deferKm != null ? Number(c.deferKm) : null;
       return {
         label: String(c.label || '').trim(),
+        labelAr: String(c.labelAr || '').trim(),
         status,
         deferKm,
         dueAtOdometerKm: deferKm != null ? Math.round(odo + deferKm) : null,
@@ -700,7 +702,12 @@ exports.registerServiceInterval = async (req, res) => {
     }).filter((c) => c.label);
 
     // A task done now clears any earlier deferral of the same task on this truck.
-    const doneLabels = checklistRows.filter((c) => c.status === 'done').map((c) => c.label);
+    // Match on BOTH language variants: logs written before labels were canonical
+    // carry whichever language the registrar's UI was in at the time.
+    const doneLabels = checklistRows
+      .filter((c) => c.status === 'done')
+      .flatMap((c) => [c.label, c.labelAr])
+      .filter(Boolean);
     if (doneLabels.length) {
       await Ls2ServiceLog.updateMany(
         { unitId, 'checklist.label': { $in: doneLabels }, 'checklist.status': 'deferred', 'checklist.resolved': false },
@@ -831,6 +838,7 @@ exports.listDeferrals = async (req, res) => {
           plate: (v && v.plate) || log.plate || String(log.unitId),
           driver: (v && v.driver) || '',
           label: c.label,
+          labelAr: c.labelAr || '',
           note: c.note || '',
           deferKm: c.deferKm,
           dueAtOdometerKm: c.dueAtOdometerKm,

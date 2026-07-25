@@ -3,8 +3,14 @@ import { exportToExcel, fmt } from '@/utils/exportExcel';
 
 export { exportToExcel, fmt };
 
+import { canAccessSection, roleOf, permsOf, type RoleOrUser } from './sections';
+
 export const HR_STAFF_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'];
-export const isHRStaff = (role?: string | null) => !!role && HR_STAFF_ROLES.includes(role);
+// Staff by role OR by a grant from the permissions matrix — the backend and the
+// sidebar both honour the grant, so a page gating on the role list alone shows
+// a granted user the nav link and then a dead "not authorized" screen. Pass the
+// USER (not the role string): only the user object carries the grants.
+export const isHRStaff = (u: RoleOrUser) => HR_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'HR');
 
 // Roles that get the HR self-service pages (their own profile/requests/leaves,
 // and approving their team's leave when they manage others). Everyone with a

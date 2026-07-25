@@ -50,9 +50,11 @@ export type ChecklistTemplates = Record<string, ChecklistItem[]>;
 // fleet-wide number cannot fit them — 3,000 km is 15% of a 20K service but 3.7%
 // of an 80K.
 export type AlertBeforeMap = Record<string, number>;
-// One task's outcome on a registered service.
+// One task's outcome on a registered service. `label` is the canonical (English)
+// template label the backend matches deferrals on; `labelAr` is display-only.
 export interface ChecklistResult {
   label: string;
+  labelAr?: string;
   status: 'done' | 'deferred' | 'na';
   deferKm: number | null;
   dueAtOdometerKm: number | null;
@@ -61,10 +63,24 @@ export interface ChecklistResult {
 }
 // An open deferral: inspected, judged good for `deferKm` more, not yet done.
 export interface Deferral {
-  label: string; note: string; deferKm: number | null; dueAtOdometerKm: number;
+  label: string; labelAr?: string; note: string; deferKm: number | null; dueAtOdometerKm: number;
   remainingKm: number | null; intervalName: string;
   deferredAt: string | null; deferredAtOdometerKm: number | null; logId: string;
 }
+// The label to SHOW for a checklist task / deferral — Arabic when the UI is
+// Arabic and a translation exists, else the canonical label.
+export const checklistLabel = (x: { label: string; labelAr?: string }, lang: Lang) =>
+  (lang === 'ar' && x.labelAr ? x.labelAr : x.label);
+
+// Frontend mirror of backend/src/utils/plateKey.js: the workshop registry keys
+// vehicles by bare plate digits ("2708") while Wialon strings vary ("ق ن ر 2708",
+// "3449 JTA محمد عباس"). Reduce to digits before comparing or linking across.
+export const plateDigitsKey = (p?: string | null): string => {
+  if (p == null) return '';
+  const west = String(p).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  const digits = (west.match(/\d+/g) || []).join('');
+  return digits || west.trim().toUpperCase();
+};
 export type RepairCategory = 'breakdown' | 'accident' | 'tires' | 'electrical' | 'engine' | 'body' | 'other';
 // An unscheduled repair (accident, breakdown) — periodic services live in Wialon,
 // these live only here.

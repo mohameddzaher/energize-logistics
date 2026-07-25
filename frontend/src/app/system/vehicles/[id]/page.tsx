@@ -27,7 +27,7 @@ export default function VehicleDetailPage() {
   const tx = getVehiclesText(lang);
   const ar = lang === 'ar';
   const Back = isRTL ? ArrowRight : ArrowLeft;
-  const staff = isVehicleStaff(user?.role);
+  const staff = isVehicleStaff(user);
 
   const [data, setData] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);

@@ -24,7 +24,7 @@ export default function HREmployeesPage() {
   const tx = getHrEmployeesTranslations(lang);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const staff = isHRStaff(user?.role);
+  const staff = isHRStaff(user);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);

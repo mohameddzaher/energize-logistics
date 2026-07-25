@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { ArrowLeft, ArrowRight, Check, Loader2, Ship, Copy, Mail, Ban, RotateCcw, ChevronRight, Plus, Trash2 } from 'lucide-react';
@@ -19,6 +20,7 @@ const STAGE_ORDER = [
 export default function CustomsDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { notify } = useDialog();
   const { user } = useAuth();
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '');
   const { lang, isRTL } = useLanguage();
@@ -61,7 +63,12 @@ export default function CustomsDetailPage() {
     try {
       const data = await api.put<any>(`/api/customs-clearance/${c._id}`, optimistic);
       if (data?.clearance) setC(data.clearance);
-    } catch { fetchOne(); }
+    } catch (e: any) {
+      // The page saves silently as you type — a silent revert here means the
+      // user walks away believing a value stuck when it didn't. Say it loudly.
+      notify(e?.message || (lang === 'ar' ? 'لم يتم الحفظ — رجعنا القيمة السابقة' : 'Not saved — the previous value was restored'), 'error');
+      fetchOne();
+    }
     setSaving(false);
   };
 

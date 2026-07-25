@@ -80,9 +80,12 @@ function CreateFleetShipmentInner() {
             setSecondDriverId(typeof o.secondDriver === 'object' ? o.secondDriver?._id || '' : (o.secondDriver || ''));
           }
         }
-      } catch {}
+      } catch (e: any) {
+        notify(e?.message || 'Failed to load the form', 'error');
+      }
       setLoading(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -164,7 +167,7 @@ function CreateFleetShipmentInner() {
     setSaving(false);
   };
 
-  if (!canEditFleet(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
+  if (!canEditFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
   if (loading) return <Spinner />;
 
   const card = (title: string, icon: any, children: React.ReactNode) => {

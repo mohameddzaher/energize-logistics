@@ -15,7 +15,10 @@ const VEH_DASH_TTL = 30 * 1000;
 const STAFF = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
 const ADMIN = ['super_admin', 'admin', 'hr_manager', 'finance_manager'];
 const isStaff = (user) => STAFF.includes(user.role);
-const isAdmin = (user) => ADMIN.includes(user.role);
+// Deletes take the role list OR an 'edit' grant from the permissions matrix —
+// sectionGate stamps req.sectionAccess, and the rest of this router already
+// honours grants via rbac; the in-handler checks must not be stricter.
+const isAdmin = (user, req) => ADMIN.includes(user.role) || (req && req.sectionAccess === 'edit');
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -152,7 +155,7 @@ exports.updateVehicle = async (req, res) => {
 
 exports.deleteVehicle = async (req, res) => {
   try {
-    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!isAdmin(req.user, req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const vehicle = await Vehicle.findById(req.params.id);
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
     await VehicleAuthorization.deleteMany({ vehicle: vehicle._id });
@@ -309,7 +312,7 @@ exports.updateAuthorization = async (req, res) => {
 
 exports.deleteAuthorization = async (req, res) => {
   try {
-    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!isAdmin(req.user, req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const auth = await VehicleAuthorization.findById(req.params.authId);
     if (!auth) return res.status(404).json({ message: 'Authorization not found' });
     const vehicleId = auth.vehicle;
@@ -397,7 +400,7 @@ exports.updateAccident = async (req, res) => {
 
 exports.deleteAccident = async (req, res) => {
   try {
-    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!isAdmin(req.user, req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const accident = await VehicleAccident.findById(req.params.accId);
     if (!accident) return res.status(404).json({ message: 'Accident not found' });
     const vehicleId = accident.vehicle;

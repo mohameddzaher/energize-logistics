@@ -146,7 +146,9 @@ export default function ExecutiveOverviewPage() {
           <Kpi label={t('Last Month', 'الشهر الماضي')} value={n(ops.lastMonth)} accent="text-slate-500" />
           <Kpi label={t('Drivers', 'السائقون')} value={n(roster.drivers)} accent="text-blue-600" onClick={() => go('/system/ops/drivers')} />
           <Kpi label={t('Branches', 'الفروع')} value={n(roster.branches)} accent="text-slate-800" />
-          <Kpi label={t('Vendors (3PL)', 'الموردين')} value={n(roster.vendors)} accent="text-violet-600" onClick={() => go('/system/crm/vendors')} />
+          {/* roster.vendors counts the procurement Vendor collection — link to
+              THAT list, not CRM's separate 3PL register (different numbers). */}
+          <Kpi label={t('Vendors', 'الموردين')} value={n(roster.vendors)} accent="text-violet-600" onClick={() => go('/system/vendors')} />
         </Kpis>
       </Section>
 
@@ -170,8 +172,12 @@ export default function ExecutiveOverviewPage() {
           <Kpi label={t('Reps', 'المناديب')} value={n(b2c.reps)} accent="text-slate-800" onClick={() => go('/system/b2c/reps')} />
           <Kpi label={t('Projects', 'المشاريع')} value={n(b2c.projects)} accent="text-slate-800" onClick={() => go('/system/b2c/projects')} />
           <Kpi label={t('Working Days', 'أيام العمل')} value={n(b2c.monthWorkingDays)} accent="text-slate-800" />
-          <Kpi label={t('Custody Inflow (MTD)', 'عهدة داخلة (الشهر)')} value={money(wallet.monthInflow)} accent="text-emerald-600" onClick={() => go('/system/b2c/custody')} />
-          <Kpi label={t('Custody Net (MTD)', 'صافي العهدة (الشهر)')} value={money(wallet.monthNet)} accent="text-slate-800" onClick={() => go('/system/b2c/custody')} />
+          {/* These two are the COLLECTORS' daily wallet (WalletTransaction /
+              DailyWallet) — not the B2C عهدة ledger. Labeling them "custody"
+              and linking to /b2c/custody showed the owner a different page
+              with different numbers. */}
+          <Kpi label={t('Collections Wallet In (MTD)', 'محفظة التحصيل — داخل (الشهر)')} value={money(wallet.monthInflow)} accent="text-emerald-600" onClick={() => go('/system/wallet-dashboard')} />
+          <Kpi label={t('Collections Wallet Net (MTD)', 'محفظة التحصيل — صافي (الشهر)')} value={money(wallet.monthNet)} accent="text-slate-800" onClick={() => go('/system/wallet-dashboard')} />
         </Kpis>
       </Section>
 

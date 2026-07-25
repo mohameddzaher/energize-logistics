@@ -21,11 +21,9 @@ const crmDealSchema = new mongoose.Schema(
     lostAt: { type: Date },
     lostReason: { type: String, trim: true },
 
-    source: {
-      type: String,
-      enum: ['referral', 'website', 'cold_call', 'social', 'event', 'campaign', 'other', ''],
-      default: '',
-    },
+    // Keys from the editable crm_source lookup — an enum would reject every
+    // option added through Reference Data.
+    source: { type: String, trim: true, default: '' },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

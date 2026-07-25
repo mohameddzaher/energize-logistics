@@ -122,8 +122,11 @@ export const hoursSince = (v?: string | null): number | null => {
 export const foldAr = (x: string) => x.toLowerCase()
   .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي');
 
-// Roles mirror backend/src/routes/fleet.js.
+// Roles mirror backend/src/routes/fleet.js — OR a dynamic grant from the
+// permissions matrix (backend rbac honours an 'edit' grant even on admin
+// routes, so the UI must too). Pass the USER: only it carries the grants.
+import { canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'];
 export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
-export const canEditFleet = (role?: string | null) => !!role && FLEET_EDIT_ROLES.includes(role);
-export const canAdminFleet = (role?: string | null) => !!role && FLEET_ADMIN_ROLES.includes(role);
+export const canEditFleet = (u: RoleOrUser) => FLEET_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Fleet Management');
+export const canAdminFleet = (u: RoleOrUser) => FLEET_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Fleet Management');

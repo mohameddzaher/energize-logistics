@@ -11,6 +11,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Wallet, Plus, ArrowDownCircle, ArrowUpCircle, Edit, Trash2, Check, Loader2, Users, X, Search } from 'lucide-react';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, TextArea, Select, StatCard } from '@/components/hr/HRKit';
+import { canEditSection } from '@/lib/sections';
 
 const MANAGER_ROLES = ['super_admin', 'admin', 'b2c_head'];
 type Entry = Record<string, any>;
@@ -36,7 +37,10 @@ export default function B2CCustodyPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (en: string, a: string) => (ar ? a : en);
-  const isManager = MANAGER_ROLES.includes(user?.role || '');
+  // Role list OR an 'edit' grant on B2C from the permissions matrix — the nav
+  // and the API both honour grants (and the FULL_ACCESS IT roles arrive as a
+  // blanket 'edit' grant), so the page gate must not be stricter.
+  const isManager = MANAGER_ROLES.includes(user?.role || '') || canEditSection((user as any)?.permissions, 'B2C');
   const SAR = t('SAR', 'ريال');
 
   const [loaded, setLoaded] = useState(false);

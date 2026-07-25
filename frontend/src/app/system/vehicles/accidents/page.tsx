@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -22,12 +22,14 @@ export default function VehicleAccidentsPage() {
   const ar = lang === 'ar';
   const tx = getVehiclesText(lang);
   const router = useRouter();
-  const staff = isVehicleStaff(user?.role);
+  const staff = isVehicleStaff(user);
 
+  // Dashboard KPI cards deep-link here with ?status= — honour it.
+  const sp = useSearchParams();
   const [accidents, setAccidents] = useState<VehicleAccident[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(sp?.get('status') || '');
   const [editing, setEditing] = useState<VehicleAccident | null>(null);
   const [form, setForm] = useState<any>(null);
   const [saving, setSaving] = useState(false);
@@ -130,7 +132,7 @@ export default function VehicleAccidentsPage() {
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
                     <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
-                    {isVehicleAdmin(user?.role) && (
+                    {isVehicleAdmin(user) && (
                       <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
                     )}
                   </div>

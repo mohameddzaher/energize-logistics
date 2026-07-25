@@ -29,7 +29,7 @@ export default function CustodyPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrCustodyTranslations(lang);
-  const staff = isHRStaff(user?.role);
+  const staff = isHRStaff(user);
   // Types/conditions are editable from Settings → Reference Data.
   const { types, conditions, typeLabel, conditionLabel } = useAssetVocab();
 

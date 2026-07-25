@@ -18,7 +18,7 @@ export default function LeaveTypesPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrLeaveTypesTranslations(lang);
-  const staff = isHRStaff(user?.role);
+  const staff = isHRStaff(user);
 
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [loading, setLoading] = useState(true);

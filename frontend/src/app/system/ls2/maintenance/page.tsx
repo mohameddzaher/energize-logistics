@@ -15,7 +15,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Wrench, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, ExternalLink, FileSpreadsheet, X, Search } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, fmtNum, fmtKm, fmtDate, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
+import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, fmtNum, fmtKm, fmtDate, checklistLabel, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
 import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
 import DeferralActionModal, { type DeferralLike } from '@/components/ls2/DeferralActionModal';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -483,7 +483,7 @@ export default function Ls2MaintenancePage() {
                   <div key={`${d.logId}-${d.label}`} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-800">
-                        {d.label}
+                        {checklistLabel(d, lang as Lang)}
                         <button type="button" onClick={() => router.push(`/system/ls2/${d.unitId}`)} className="ms-2 text-[#f37121] hover:underline text-xs font-semibold">{d.plate}</button>
                       </p>
                       <p className="text-[11px] text-slate-600">

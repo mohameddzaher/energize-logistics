@@ -28,8 +28,8 @@ export default function FleetDriversPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { confirm, notify } = useDialog();
-  const editor = canEditFleet(user?.role);
-  const admin = canAdminFleet(user?.role);
+  const editor = canEditFleet(user);
+  const admin = canAdminFleet(user);
 
   const [drivers, setDrivers] = useState<FleetDriver[]>([]);
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);

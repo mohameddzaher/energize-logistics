@@ -33,7 +33,7 @@ export default function VendorBillsPage() {
   const [payFor, setPayFor] = useState<VendorBill | null>(null);
   const [payAmount, setPayAmount] = useState('');
 
-  const canManage = isProcManager(user?.role);
+  const canManage = isProcManager(user);
 
   const load = useCallback(async () => {
     try {
@@ -81,7 +81,7 @@ export default function VendorBillsPage() {
     ], 'bills', tx.pageTitle);
   };
 
-  if (!isProcStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isProcStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (

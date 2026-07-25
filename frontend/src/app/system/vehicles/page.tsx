@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -28,13 +28,16 @@ export default function VehiclesPage() {
   const ar = lang === 'ar';
   const tx = getVehiclesText(lang);
   const router = useRouter();
-  const staff = isVehicleStaff(user?.role);
+  const staff = isVehicleStaff(user);
 
+  // The dashboard's KPI cards deep-link here with ?status=/?type=/?branch= —
+  // honour them or the drill-down lands on the unfiltered register.
+  const sp = useSearchParams();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState(sp?.get('branch') || '');
+  const [typeFilter, setTypeFilter] = useState(sp?.get('type') || '');
+  const [statusFilter, setStatusFilter] = useState(sp?.get('status') || '');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const [form, setForm] = useState<any>(EMPTY);
@@ -154,7 +157,7 @@ export default function VehiclesPage() {
                 <td className="px-4 py-3" onClick={(ev) => ev.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
                     <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
-                    {isVehicleAdmin(user?.role) && (
+                    {isVehicleAdmin(user) && (
                       <button type="button" onClick={() => remove(v)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
                     )}
                   </div>

@@ -10,6 +10,21 @@ const authorize = require('../middleware/rbac');
 const STAFF = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
 
 router.use(authenticate);
+
+// An employee may read THEIR OWN authorizations/accidents history — it feeds
+// the Vehicles tab of their own profile, which the HR router explicitly lets
+// them open. Declared before the section-wide staff wall; everything else
+// stays staff-only.
+router.get('/by-employee/:employeeId', async (req, res, next) => {
+  if (STAFF.includes(req.user.role)) return next();
+  try {
+    const Employee = require('../models/Employee');
+    const emp = await Employee.findById(req.params.employeeId).select('user').lean();
+    if (emp && emp.user && String(emp.user) === String(req.user._id)) return next();
+  } catch (e) { /* invalid id → fall through to 403 */ }
+  return res.status(403).json({ message: 'Insufficient permissions' });
+}, vehicle.getEmployeeHistory);
+
 router.use(authorize(...STAFF));
 
 // ── Static collection routes (must precede the /:id param routes) ─────────────
@@ -17,7 +32,6 @@ router.get('/dashboard', vehicle.getDashboard);
 router.get('/employees', vehicle.searchEmployees);
 router.get('/authorizations', vehicle.listAuthorizations);
 router.get('/accidents', vehicle.listAccidents);
-router.get('/by-employee/:employeeId', vehicle.getEmployeeHistory);
 
 router.put('/authorizations/:authId', vehicle.updateAuthorization);
 router.delete('/authorizations/:authId', vehicle.deleteAuthorization);

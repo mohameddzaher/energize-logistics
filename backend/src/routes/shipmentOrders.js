@@ -13,6 +13,7 @@ router.use(authenticate);
 
 // Orders
 router.get('/orders', so.listOrders);
+router.get('/orders/:id', so.getOrder); // the edit form loads ONE order directly
 router.post('/orders', authorize(...EDIT_ROLES), so.createOrder);
 router.put('/orders/:id', authorize(...EDIT_ROLES), so.updateOrder);
 router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); // inline from the list

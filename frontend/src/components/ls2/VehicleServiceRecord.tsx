@@ -12,7 +12,7 @@ import { useSocket } from '@/hooks/useSocket';
 import RepairModal from '@/components/ls2/RepairModal';
 import DeferralActionModal from '@/components/ls2/DeferralActionModal';
 import {
-  ls2Text, fmtNum, fmtKm, fmtDate, REPAIR_SEVERITIES, REPAIR_STATUSES, repairCategoryLabel,
+  ls2Text, fmtNum, fmtKm, fmtDate, REPAIR_SEVERITIES, REPAIR_STATUSES, repairCategoryLabel, checklistLabel,
   type Lang, type ServiceLog, type Deferral, type Repair,
 } from '@/lib/ls2';
 
@@ -58,7 +58,7 @@ export default function VehicleServiceRecord({
               return (
                 <div key={`${d.logId}-${d.label}`} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800">{d.label}</p>
+                    <p className="text-sm font-medium text-slate-800">{checklistLabel(d, lang)}</p>
                     <p className="text-[11px] text-slate-600">
                       {d.intervalName} · {t.deferredOn} {fmtDate(d.deferredAt, lang)}
                       {d.deferredAtOdometerKm != null && <> ({fmtKm(d.deferredAtOdometerKm)})</>}
@@ -124,7 +124,7 @@ export default function VehicleServiceRecord({
                             const Icon = c.status === 'done' ? CheckCircle2 : c.status === 'deferred' ? Clock : MinusCircle;
                             return (
                               <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${style}`}>
-                                <Icon className="w-2.5 h-2.5" /> {c.label}
+                                <Icon className="w-2.5 h-2.5" /> {checklistLabel(c, lang)}
                                 {c.status === 'deferred' && c.deferKm != null && <b>+{fmtNum(c.deferKm)} km</b>}
                                 {c.status === 'deferred' && c.resolved && <b>· {t.done}</b>}
                               </span>

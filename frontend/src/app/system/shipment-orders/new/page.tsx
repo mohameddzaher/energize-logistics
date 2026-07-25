@@ -91,8 +91,10 @@ function CreateShipmentInner() {
         setVehicles(v.vehicles || []);
         setSuppliers(sp.suppliers || []);
         if (editId) {
-          const d = await api.get<{ orders: any[] }>('/api/shipment-orders/orders?limit=1000');
-          const o = (d.orders || []).find((x) => x._id === editId);
+          // The order directly by id — paging through the list capped at 1000
+          // used to silently blank the form for older orders.
+          const d = await api.get<{ order: any }>(`/api/shipment-orders/orders/${editId}`);
+          const o = d.order;
           if (o) {
             setForm({
               ...o,
@@ -105,9 +107,14 @@ function CreateShipmentInner() {
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id : (o.vehicle || ''));
           }
         }
-      } catch {}
+      } catch (e: any) {
+        // A form rendered with zero questions reads as "nothing required" — say
+        // what actually happened instead.
+        notify(e?.message || (ar ? 'فشل تحميل النموذج — أعد المحاولة' : 'Failed to load the form — try again'), 'error');
+      }
       setLoading(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
@@ -223,7 +230,7 @@ function CreateShipmentInner() {
     setSaving(false);
   };
 
-  if (!canEditOrders(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
+  if (!canEditOrders(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
   if (loading) return <Spinner />;
 
   const miss = (k: string) => showErrors && missingKeys.has(k);

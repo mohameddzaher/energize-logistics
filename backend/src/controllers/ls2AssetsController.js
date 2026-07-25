@@ -16,6 +16,19 @@ const Ls2Vehicle = require('../models/Ls2Vehicle');
 
 // Shared with the workshop store — see utils/plateKey.js for why.
 const { plateKey, vehiclePlateKey } = require('../utils/plateKey');
+const { emitToAll } = require('../websocket/socketManager');
+
+// Any asset mutation must reach the screens that mirror this registry live (the
+// workshop store, fleet-assets, the vehicle profile). Coalesced so a bulk import
+// broadcasts once, not once per row.
+let emitTimer = null;
+function emitAssetsChanged() {
+  if (emitTimer) return;
+  emitTimer = setTimeout(() => {
+    emitTimer = null;
+    try { emitToAll('ls2:updated', { at: Date.now(), assets: true }); } catch (e) { /* socket down ≠ failed save */ }
+  }, 300);
+}
 
 const posLabel = (t) => [t.positionLabel || (t.positionNumber != null ? `اطار ${t.positionNumber}` : ''), t.section].filter(Boolean).join(' — ');
 
@@ -44,6 +57,7 @@ async function clearSensorNotice(...keys) {
 }
 
 async function logEvent(req, data) {
+  emitAssetsChanged(); // every logged movement is a change some open screen shows
   return Ls2AssetEvent.create({
     ...data,
     performedBy: req.user?._id || null,
@@ -346,6 +360,7 @@ exports.updateFlatbed = async (req, res) => {
     for (const k of allowed) if (req.body[k] !== undefined) patch[k] = req.body[k];
     const flatbed = await Ls2Flatbed.findByIdAndUpdate(req.params.id, patch, { new: true });
     if (!flatbed) return res.status(404).json({ message: 'Not found' });
+    emitAssetsChanged(); // the one mutation here that doesn't log an event
     res.json({ flatbed });
   } catch (e) {
     res.status(500).json({ message: e.message });

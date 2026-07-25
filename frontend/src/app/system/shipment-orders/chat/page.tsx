@@ -72,9 +72,14 @@ export default function ChatCreatePage() {
         setFields(f.fields || []);
         setCustomers(c.customers || []);
         setVehicles(v.vehicles || []);
-      } catch {}
+      } catch (e: any) {
+        // With zero fields the chat skips straight to the summary — that reads
+        // as "done" when it is actually "failed to load". Say so.
+        notify(e?.message || 'Failed to load the form', 'error');
+      }
       setLoading(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The script: customer → truck → every active configured question, in the
@@ -227,7 +232,7 @@ export default function ChatCreatePage() {
     setDone(null); setStepIdx(0); askedRef.current = -1; setDraft(''); setSearch('');
   };
 
-  if (!canEditOrders(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
+  if (!canEditOrders(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
   if (loading) return <Spinner />;
 
   const chip = 'px-3.5 py-2 rounded-full border text-sm font-semibold transition-all border-slate-300 bg-white text-slate-700 hover:border-[#f37121] hover:text-[#f37121]';

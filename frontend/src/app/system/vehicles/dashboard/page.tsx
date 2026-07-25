@@ -42,7 +42,7 @@ export default function VehiclesDashboardPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getVehiclesText(lang);
-  const staff = isVehicleStaff(user?.role);
+  const staff = isVehicleStaff(user);
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(true);
 

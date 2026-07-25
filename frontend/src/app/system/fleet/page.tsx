@@ -55,7 +55,7 @@ export default function FleetShipmentsPage() {
   const ar = lang === 'ar';
   const router = useRouter();
   const { confirm, notify } = useDialog();
-  const editor = canEditFleet(user?.role);
+  const editor = canEditFleet(user);
 
   const [shipments, setShipments] = useState<FleetShipment[]>([]);
   const [customers, setCustomers] = useState<FleetCustomer[]>([]);
@@ -330,7 +330,7 @@ export default function FleetShipmentsPage() {
                           <Pencil className="w-4 h-4" />
                         </button>
                       )}
-                      {canAdminFleet(user?.role) && (
+                      {canAdminFleet(user) && (
                         <button type="button" onClick={() => remove(s)}
                           className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'حذف' : 'Delete'}>
                           <Trash2 className="w-4 h-4" />

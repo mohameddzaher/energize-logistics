@@ -92,7 +92,10 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
     if (!String(form[cfg.titleField] || '').trim()) { setErr(t('Required', 'مطلوب')); return; }
     setSaving(true); setErr('');
     try {
-      const body: Row = { section, [cfg.titleField]: form[cfg.titleField], description: form.description, priority: form.priority, status: form.status, assignedTo: form.assignedTo || undefined };
+      // '' in the assignee picker means "Me". On create the backend defaults to
+      // the creator, but on EDIT an undefined field is skipped by pick() and the
+      // OLD assignee silently survives — send my id explicitly when editing.
+      const body: Row = { section, [cfg.titleField]: form[cfg.titleField], description: form.description, priority: form.priority, status: form.status, assignedTo: form.assignedTo || (editing ? user?._id : undefined) };
       if (kind === 'tasks') body.dueDate = form.dueDate || undefined;
       if (cfg.hasResolution) body.resolution = form.resolution;
       if (editing) await api.patch(`/api/section-work/${cfg.ep}/${editing._id}`, body);

@@ -8,7 +8,7 @@
 // on first paint and if the request fails, so no page ever shows a raw key.
 import { useEffect, useState, useMemo } from 'react';
 import api from '@/lib/api';
-import { CUSTODY_TYPES, CONDITIONS, IT_CUSTODY_TYPE_KEYS, Lang } from '@/lib/it';
+import { CUSTODY_TYPES, CONDITIONS, IT_CUSTODY_EXCLUDED_TYPE_KEYS, Lang } from '@/lib/it';
 
 export interface VocabOption { key: string; en: string; ar: string }
 
@@ -59,7 +59,7 @@ export function useAssetVocab() {
       types,
       conditions,
       // Vehicles and generic tools belong to other sections; IT never offers them.
-      itTypes: types.filter((t) => IT_CUSTODY_TYPE_KEYS.includes(t.key)),
+      itTypes: types.filter((t) => !IT_CUSTODY_EXCLUDED_TYPE_KEYS.includes(t.key)),
       typeLabel: (key: string, lang: Lang) => label(types, key, lang),
       conditionLabel: (key: string, lang: Lang) => label(conditions, key, lang),
     };

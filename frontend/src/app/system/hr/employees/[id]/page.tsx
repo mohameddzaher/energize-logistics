@@ -49,7 +49,7 @@ export default function EmployeeProfilePage() {
   const ar = lang === 'ar';
   const tx = getHrEmployeesIdTranslations(lang);
   const Back = isRTL ? ArrowRight : ArrowLeft;
-  const staff = isHRStaff(user?.role);
+  const staff = isHRStaff(user);
 
   const vtx = getVehiclesText(lang);
   const [data, setData] = useState<Profile | null>(null);

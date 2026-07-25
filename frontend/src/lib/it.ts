@@ -191,14 +191,11 @@ export const CUSTODY_TYPES: Record<string, Style> = {
   other: { en: 'Other', ar: 'أخرى', bg: 'bg-slate-500/15', text: 'text-slate-700' },
 };
 
-// The types IT actually hands out — used for the create-modal dropdown and the
-// filter bar. Vehicles belong to the fleet section, and `tool` is HR's (عدة,
-// safety kit), so neither is offered here.
-export const IT_CUSTODY_TYPE_KEYS = [
-  'laptop', 'desktop', 'phone', 'tablet', 'sim', 'monitor',
-  'keyboard', 'mouse', 'keyboard_mouse', 'headset', 'printer', 'router',
-  'charger', 'cable', 'laptop_bag', 'accessory', 'access_card', 'other',
-];
+// Types IT does NOT hand out (vehicles belong to the fleet section; `tool` is
+// HR's — عدة, safety kit). An EXCLUDE list, mirroring `itHandsOut: false` in
+// backend/src/config/assetDefaults.js: a frozen include-list silently hid every
+// new type added through Reference Data from IT's own dropdowns.
+export const IT_CUSTODY_EXCLUDED_TYPE_KEYS = ['vehicle', 'tool'];
 
 // The custody page never lists warehouse stock (that has its own page), so its
 // status filter must not offer `in_stock`.

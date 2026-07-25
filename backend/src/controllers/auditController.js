@@ -1,8 +1,13 @@
 const AuditLog = require('../models/AuditLog');
+const User = require('../models/User');
 
 exports.getAuditLogs = async (req, res) => {
   try {
-    const { entity, action, user, dateFrom, dateTo, page = 1, limit = 50 } = req.query;
+    // The page historically sent from/to while this read dateFrom/dateTo — the
+    // date filter never filtered anything. Accept both spellings.
+    const { entity, action, user, page = 1, limit = 50 } = req.query;
+    const dateFrom = req.query.dateFrom || req.query.from;
+    const dateTo = req.query.dateTo || req.query.to;
     const filter = {};
 
     if (entity) filter.entity = entity;
@@ -11,7 +16,9 @@ exports.getAuditLogs = async (req, res) => {
     if (dateFrom || dateTo) {
       filter.createdAt = {};
       if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
-      if (dateTo) filter.createdAt.$lte = new Date(dateTo);
+      // A bare YYYY-MM-DD is midnight — push to end-of-day so the chosen last
+      // day's activity is included.
+      if (dateTo) filter.createdAt.$lte = new Date(new Date(dateTo).getTime() + 86400000 - 1);
     }
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -27,5 +34,24 @@ exports.getAuditLogs = async (req, res) => {
     res.json({ logs, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load audit logs' });
+  }
+};
+
+// Filter vocabulary for the audit page: the entities that actually occur in the
+// log, and the people who actually performed something — so the person filter
+// offers real actors, not the whole user table.
+exports.getAuditOptions = async (req, res) => {
+  try {
+    const [entities, userIds] = await Promise.all([
+      AuditLog.distinct('entity'),
+      AuditLog.distinct('user'),
+    ]);
+    const users = await User.find({ _id: { $in: userIds.filter(Boolean) } })
+      .select('firstName lastName email role')
+      .lean();
+    users.sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+    res.json({ entities: entities.filter(Boolean).sort(), users });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load audit options' });
   }
 };

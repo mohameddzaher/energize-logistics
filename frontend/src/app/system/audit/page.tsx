@@ -11,6 +11,7 @@ import {
   ChevronLeft, ChevronRight, Calendar, Search, X, Download
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { SearchableSelect } from '@/components/hr/HRKit';
 
 interface AuditLog {
   _id: string;
@@ -19,13 +20,63 @@ interface AuditLog {
   entity: string;
   entityId?: string;
   details?: string;
-  changes?: {
-    before?: Record<string, any>;
-    after?: Record<string, any>;
-  };
+  // Either a { before, after } diff or a flat summary object — both occur.
+  changes?: Record<string, any> | null;
   ipAddress?: string;
   createdAt: string;
 }
+
+interface AuditActor { _id: string; firstName: string; lastName: string; email: string; role?: string }
+
+// ---- Readable rendering helpers --------------------------------------------
+// Arabic labels for the verbs and entities that actually occur, so a row reads
+// as "إنشاء · طلب شحن" instead of "create_shipment_order · ShipmentOrder".
+const ACTION_AR: Record<string, string> = {
+  create: 'إنشاء', add: 'إضافة', update: 'تعديل', edit: 'تعديل', delete: 'حذف', remove: 'إزالة',
+  complete: 'إكمال', receive: 'استلام', fulfill: 'تنفيذ', approve: 'اعتماد', reject: 'رفض',
+  login: 'تسجيل دخول', logout: 'تسجيل خروج', activate: 'تفعيل', deactivate: 'إيقاف',
+  transfer: 'نقل', assign: 'إسناد', revoke: 'إلغاء', import: 'استيراد', export: 'تصدير',
+  wallet_transaction: 'حركة محفظة', lock: 'قفل', unlock: 'فتح',
+};
+const ENTITY_AR: Record<string, string> = {
+  User: 'مستخدم', Customer: 'عميل', Invoice: 'فاتورة', Payment: 'دفعة', Dispute: 'نزاع',
+  Branch: 'فرع', Vendor: 'مورد', Employee: 'موظف', Contract: 'عقد', Asset: 'عهدة',
+  ShipmentOrder: 'طلب شحن', FleetShipment: 'حمولة أسطول', FleetDriver: 'سائق أسطول', FleetVehicle: 'سيارة أسطول',
+  MaintenanceRequest: 'طلب صيانة', InventoryItem: 'صنف مستودع', WorkshopPurchaseRequest: 'طلب شراء ورشة',
+  WalletTransaction: 'حركة محفظة', CustomsClearance: 'تخليص جمركي', B2CProject: 'مشروع B2C',
+  CompanyLicense: 'ترخيص شركة', VehicleAuthorization: 'تفويض مركبة', VehicleAccident: 'حادث مركبة',
+};
+const actionLabel = (a: string, ar: boolean) => {
+  if (!ar) return a.replace(/_/g, ' ');
+  if (ACTION_AR[a]) return ACTION_AR[a];
+  const [verb, ...rest] = a.split('_');
+  return ACTION_AR[verb] ? `${ACTION_AR[verb]} ${rest.join(' ')}`.trim() : a.replace(/_/g, ' ');
+};
+const entityLabel = (e: string, ar: boolean) => (ar && ENTITY_AR[e]) || e;
+
+const isDiffShape = (c: any) => c && typeof c === 'object' && ('before' in c || 'after' in c);
+const scalar = (v: any) => (v == null ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+
+// One human-readable line for the table's details column — the values that were
+// written, or which fields an update touched. No expanding needed to know what
+// a row DID.
+function changeSummary(log: AuditLog): string {
+  const c = log.changes;
+  if (!c || typeof c !== 'object') return '';
+  if (isDiffShape(c)) {
+    const before = (c as any).before || {};
+    const after = (c as any).after || {};
+    const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])]
+      .filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]));
+    const src = Object.keys(after).length ? after : before;
+    return keys.slice(0, 4).map((k) => `${k}: ${scalar(src[k])}`).join(' · ') + (keys.length > 4 ? ` · +${keys.length - 4}` : '');
+  }
+  const entries = Object.entries(c).filter(([, v]) => v != null);
+  return entries.slice(0, 4).map(([k, v]) => `${k}: ${scalar(v)}`).join(' · ') + (entries.length > 4 ? ` · +${entries.length - 4}` : '');
+}
+
+const hasChangeDetails = (log: AuditLog) =>
+  !!log.changes && typeof log.changes === 'object' && Object.keys(log.changes).length > 0;
 
 interface PaginationInfo {
   page: number;
@@ -34,11 +85,10 @@ interface PaginationInfo {
   pages: number;
 }
 
-const entityTypes = ['All', 'User', 'Customer', 'Invoice', 'Payment', 'Dispute'];
-
 export default function AuditPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
+  const ar = lang === 'ar';
   const T = getAuditTranslations(lang);
   const txx = getAuditExtraTranslations(lang);
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -47,12 +97,22 @@ export default function AuditPage() {
   const [pagination, setPagination] = useState<PaginationInfo>({ page: 1, limit: 25, total: 0, pages: 0 });
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
-  // Filters
-  const [entityFilter, setEntityFilter] = useState('All');
+  // Filters — the vocabulary (real actors + entities that actually occur)
+  // comes from /api/audit/options, not a hardcoded list.
+  const [entityFilter, setEntityFilter] = useState('');
+  const [userFilter, setUserFilter] = useState('');
   const [actionSearch, setActionSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [actors, setActors] = useState<AuditActor[]>([]);
+  const [entities, setEntities] = useState<string[]>([]);
+
+  useEffect(() => {
+    api.get<{ entities: string[]; users: AuditActor[] }>('/api/audit/options')
+      .then((d) => { setEntities(d.entities || []); setActors(d.users || []); })
+      .catch(() => { /* filters degrade to free entry */ });
+  }, []);
 
   const fetchLogs = useCallback(async (page = 1) => {
     try {
@@ -60,10 +120,11 @@ export default function AuditPage() {
       const params = new URLSearchParams();
       params.set('page', page.toString());
       params.set('limit', '25');
-      if (entityFilter !== 'All') params.set('entity', entityFilter);
+      if (entityFilter) params.set('entity', entityFilter);
+      if (userFilter) params.set('user', userFilter);
       if (actionSearch.trim()) params.set('action', actionSearch.trim());
-      if (dateFrom) params.set('from', dateFrom);
-      if (dateTo) params.set('to', dateTo);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
 
       const data = await api.get<any>(`/api/audit?${params.toString()}`);
       setLogs(data.logs || data.auditLogs || data || []);
@@ -82,7 +143,7 @@ export default function AuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [entityFilter, actionSearch, dateFrom, dateTo]);
+  }, [entityFilter, userFilter, actionSearch, dateFrom, dateTo]);
 
   useEffect(() => {
     setLoading(true);
@@ -96,13 +157,14 @@ export default function AuditPage() {
   };
 
   const clearFilters = () => {
-    setEntityFilter('All');
+    setEntityFilter('');
+    setUserFilter('');
     setActionSearch('');
     setDateFrom('');
     setDateTo('');
   };
 
-  const hasActiveFilters = entityFilter !== 'All' || actionSearch || dateFrom || dateTo;
+  const hasActiveFilters = !!(entityFilter || userFilter || actionSearch || dateFrom || dateTo);
 
   const formatTimestamp = (date: string) => {
     const d = new Date(date);
@@ -151,50 +213,64 @@ export default function AuditPage() {
     return 'text-slate-500';
   };
 
-  const renderJsonDiff = (before: Record<string, any> | undefined, after: Record<string, any> | undefined) => {
-    if (!before && !after) return <p className="text-slate-500 text-xs">{txx.noChangeDetails}</p>;
+  // A plain label → value list (create logs, flat summaries).
+  const renderValueList = (obj: Record<string, any>) => (
+    <div className="space-y-1">
+      {Object.entries(obj).map(([key, v]) => (
+        <div key={key} className="flex items-start gap-3 px-3 py-1.5 rounded text-xs bg-white">
+          <span className="text-slate-600 font-medium min-w-[140px] shrink-0 break-all">{key}</span>
+          <span className="text-slate-900 break-all">{scalar(v)}</span>
+        </div>
+      ))}
+    </div>
+  );
 
-    const allKeys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
-
-    return (
-      <div className="space-y-1">
-        {Array.from(allKeys).map((key) => {
-          const bVal = before?.[key];
-          const aVal = after?.[key];
-          const changed = JSON.stringify(bVal) !== JSON.stringify(aVal);
-
-          return (
-            <div key={key} className={`flex items-start gap-3 px-3 py-1.5 rounded text-xs ${changed ? 'bg-white' : ''}`}>
-              <span className="text-slate-500 font-mono min-w-[120px] shrink-0">{key}</span>
-              {changed ? (
-                <div className="flex-1 space-y-0.5">
-                  {bVal !== undefined && (
-                    <div className="flex items-start gap-1">
-                      <span className="text-red-600 shrink-0">-</span>
-                      <span className="text-red-700 font-mono break-all">
-                        {typeof bVal === 'object' ? JSON.stringify(bVal) : String(bVal)}
-                      </span>
-                    </div>
-                  )}
-                  {aVal !== undefined && (
-                    <div className="flex items-start gap-1">
-                      <span className="text-green-600 shrink-0">+</span>
-                      <span className="text-green-700 font-mono break-all">
-                        {typeof aVal === 'object' ? JSON.stringify(aVal) : String(aVal)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <span className="text-slate-500 font-mono break-all">
-                  {typeof bVal === 'object' ? JSON.stringify(bVal) : String(bVal ?? '-')}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
+  // Renders whatever shape the log carries: a before/after diff, an after-only
+  // snapshot (creates), or a flat summary object. The old renderer assumed
+  // before/after and showed "no details" for everything else.
+  const renderChanges = (c: Record<string, any>) => {
+    if (!c || !Object.keys(c).length) return <p className="text-slate-500 text-xs">{txx.noChangeDetails}</p>;
+    if (isDiffShape(c)) {
+      const before = (c as any).before || {};
+      const after = (c as any).after || {};
+      if (!Object.keys(before).length || !Object.keys(after).length) {
+        return renderValueList(Object.keys(after).length ? after : before);
+      }
+      const allKeys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+      return (
+        <div className="space-y-1">
+          {allKeys.map((key) => {
+            const bVal = before[key];
+            const aVal = after[key];
+            const changed = JSON.stringify(bVal) !== JSON.stringify(aVal);
+            return (
+              <div key={key} className={`flex items-start gap-3 px-3 py-1.5 rounded text-xs ${changed ? 'bg-white' : ''}`}>
+                <span className="text-slate-600 font-medium min-w-[140px] shrink-0 break-all">{key}</span>
+                {changed ? (
+                  <div className="flex-1 space-y-0.5">
+                    {bVal !== undefined && (
+                      <div className="flex items-start gap-1">
+                        <span className="text-red-600 shrink-0">-</span>
+                        <span className="text-red-700 break-all">{scalar(bVal)}</span>
+                      </div>
+                    )}
+                    {aVal !== undefined && (
+                      <div className="flex items-start gap-1">
+                        <span className="text-green-600 shrink-0">+</span>
+                        <span className="text-green-700 break-all">{scalar(aVal)}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-slate-600 break-all">{scalar(bVal)}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+    return renderValueList(c);
   };
 
   const toggleRow = (id: string) => {
@@ -231,7 +307,7 @@ export default function AuditPage() {
               { header: T.action, key: 'action', width: 20 },
               { header: T.entity, key: 'entity', width: 14 },
               { header: T.entityId, key: 'entityId', width: 26 },
-              { header: T.details, key: 'details', width: 40 },
+              { header: T.details, key: 'details', transform: (_: any, row: any) => changeSummary(row) || row.details || '', width: 48 },
               { header: T.ipAddress, key: 'ipAddress', width: 16 },
             ], `audit-log-${new Date().toISOString().split('T')[0]}`, T.title)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
@@ -295,19 +371,34 @@ export default function AuditPage() {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Entity Type */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* Person — the whole point: one user's own history */}
                 <div>
-                  <label className="block text-slate-500 text-xs font-medium mb-1.5">{T.entity}</label>
-                  <select
+                  <label className="block text-slate-600 text-xs font-medium mb-1.5">{ar ? 'الشخص' : 'Person'}</label>
+                  <SearchableSelect
+                    value={userFilter}
+                    onChange={setUserFilter}
+                    placeholder={ar ? 'كل المستخدمين' : 'All users'}
+                    searchPlaceholder={ar ? 'ابحث بالاسم أو الإيميل…' : 'Search name or email…'}
+                    options={[
+                      { value: '', label: ar ? 'كل المستخدمين' : 'All users' },
+                      ...actors.map((u) => ({ value: u._id, label: `${u.firstName} ${u.lastName}`.trim() || u.email, hint: u.email })),
+                    ]}
+                  />
+                </div>
+
+                {/* Entity Type — the entities that actually occur in the log */}
+                <div>
+                  <label className="block text-slate-600 text-xs font-medium mb-1.5">{T.entity}</label>
+                  <SearchableSelect
                     value={entityFilter}
-                    onChange={(e) => setEntityFilter(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-                  >
-                    {entityTypes.map((e) => (
-                      <option key={e} value={e}>{e}</option>
-                    ))}
-                  </select>
+                    onChange={setEntityFilter}
+                    placeholder={ar ? 'كل الأنواع' : 'All entities'}
+                    options={[
+                      { value: '', label: ar ? 'كل الأنواع' : 'All entities' },
+                      ...entities.map((e) => ({ value: e, label: entityLabel(e, ar), hint: ar ? e : undefined })),
+                    ]}
+                  />
                 </div>
 
                 {/* Action Search */}
@@ -383,11 +474,11 @@ export default function AuditPage() {
                 logs.map((log) => (
                   <React.Fragment key={log._id}>
                     <tr
-                      onClick={() => log.changes ? toggleRow(log._id) : undefined}
-                      className={`bg-slate-50 hover:bg-slate-100 transition-colors ${log.changes ? 'cursor-pointer' : ''}`}
+                      onClick={() => hasChangeDetails(log) ? toggleRow(log._id) : undefined}
+                      className={`bg-slate-50 hover:bg-slate-100 transition-colors ${hasChangeDetails(log) ? 'cursor-pointer' : ''}`}
                     >
                       <td className="px-4 py-3 text-sm text-slate-800">
-                        {log.changes && (
+                        {hasChangeDetails(log) && (
                           expandedRow === log._id ? (
                             <ChevronUp className="w-4 h-4" />
                           ) : (
@@ -404,7 +495,15 @@ export default function AuditPage() {
                       <td className="px-4 py-3 text-sm">
                         {log.user ? (
                           <div>
-                            <span className="text-slate-900 text-xs font-medium">{log.user.firstName} {log.user.lastName}</span>
+                            {/* Clicking a name filters straight to that person's history */}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setUserFilter(log.user!._id); setShowFilters(true); }}
+                              className="text-slate-900 text-xs font-medium hover:text-[#f37121] hover:underline text-start"
+                              title={ar ? 'عرض كل نشاط هذا المستخدم' : "Show this user's full history"}
+                            >
+                              {log.user.firstName} {log.user.lastName}
+                            </button>
                             <span className="text-slate-700 text-xs block">{log.user.email}</span>
                           </div>
                         ) : (
@@ -413,25 +512,27 @@ export default function AuditPage() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${getActionColor(log.action)}`}>
-                          {log.action}
+                          {actionLabel(log.action, ar)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <span className={`font-medium text-xs ${getEntityColor(log.entity)}`}>
-                          {log.entity}
+                          {entityLabel(log.entity, ar)}
                         </span>
                         {log.entityId && (
-                          <span className="text-slate-700 text-xs block font-mono truncate max-w-[120px]">
+                          <span className="text-slate-500 text-[10px] block font-mono truncate max-w-[120px]">
                             {log.entityId}
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-800 text-xs max-w-[200px] truncate">
-                        {log.details || '-'}
+                      <td className="px-4 py-3 text-xs text-slate-800 max-w-[340px]">
+                        <span className="line-clamp-2 break-words" title={changeSummary(log)}>
+                          {changeSummary(log) || log.details || '—'}
+                        </span>
                       </td>
                     </tr>
                     <AnimatePresence>
-                      {expandedRow === log._id && log.changes && (
+                      {expandedRow === log._id && hasChangeDetails(log) && (
                         <tr>
                           <td colSpan={6}>
                             <motion.div
@@ -442,9 +543,9 @@ export default function AuditPage() {
                               className="overflow-hidden"
                             >
                               <div className="px-6 py-4 bg-slate-100 border-t border-slate-200/70">
-                                <h4 className="text-slate-900 text-xs font-semibold uppercase tracking-wider mb-3">{T.changes} ({T.before} / {T.after})</h4>
+                                <h4 className="text-slate-900 text-xs font-semibold uppercase tracking-wider mb-3">{T.changes}</h4>
                                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-x-auto">
-                                  {renderJsonDiff(log.changes.before, log.changes.after)}
+                                  {renderChanges(log.changes as Record<string, any>)}
                                 </div>
                                 {log.ipAddress && (
                                   <p className="text-slate-700 text-xs mt-3">{T.ipAddress}: {log.ipAddress}</p>

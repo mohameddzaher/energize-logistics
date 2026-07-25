@@ -9,10 +9,11 @@ const auditLogSchema = new mongoose.Schema({
   action: { type: String, required: true },
   entity: { type: String, required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId },
-  changes: {
-    before: { type: mongoose.Schema.Types.Mixed },
-    after: { type: mongoose.Schema.Types.Mixed },
-  },
+  // Fully Mixed on purpose: callers log either { before, after } diffs or a
+  // flat summary object ({ waybillNumber, customerName }). The old
+  // { before, after }-only shape silently DROPPED every flat summary at write
+  // time (strict mode), leaving those rows with no detail at all.
+  changes: { type: mongoose.Schema.Types.Mixed, default: null },
   ipAddress: { type: String },
   createdAt: { type: Date, default: Date.now },
 });

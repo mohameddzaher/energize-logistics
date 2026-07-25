@@ -1384,8 +1384,14 @@ const getWorkshopUsers = async (req, res) => {
 // keeps the on-shelf count, the issue rows keep the "gone onto vehicle X" side.
 const issueInventoryItem = async (req, res) => {
   try {
-    const { quantity, vehicleNumber, notes, date } = req.body || {};
+    const { quantity, vehicleNumber, notes, date, replacedFate } = req.body || {};
     const qty = Math.max(1, Number(quantity) || 1);
+    // in ⇒ out: putting a part ON a truck replaces one coming OFF it, and the
+    // removed one must be declared — تالف, تحت التجديد, or explicitly nothing
+    // replaced (first fit / top-up). No silent default.
+    if (!['damaged', 'under_renewal', 'none'].includes(replacedFate)) {
+      return res.status(400).json({ message: 'حدد مصير القطعة المستبدلة: تالفة، تحت التجديد، أو لا توجد قطعة مستبدلة' });
+    }
 
     const item = await InventoryItem.findById(req.params.id);
     if (!item || item.isActive === false) {
@@ -1398,6 +1404,9 @@ const issueInventoryItem = async (req, res) => {
     }
 
     item.quantity = (Number(item.quantity) || 0) - qty;
+    // The displaced part enters its bucket on the same line — the register
+    // keeps sight of it instead of it vanishing off the truck.
+    if (replacedFate === 'under_renewal') item.underRenewalQty = (Number(item.underRenewalQty) || 0) + qty;
     await item.save();
 
     const issue = await InventoryIssue.create({
@@ -1408,6 +1417,7 @@ const issueInventoryItem = async (req, res) => {
       vehicleNumber: String(vehicleNumber || '').trim(),
       notes: String(notes || '').trim(),
       date: date || new Date().toISOString().slice(0, 10),
+      replacedFate,
       issuedBy: req.user._id,
     });
 
@@ -1465,6 +1475,10 @@ const deleteInventoryIssue = async (req, res) => {
     const item = await InventoryItem.findById(issue.item);
     if (item) {
       item.quantity = (Number(item.quantity) || 0) + issue.quantity;
+      // Undo the displaced-part bucket the issue filled, too.
+      if (issue.replacedFate === 'under_renewal') {
+        item.underRenewalQty = Math.max(0, (Number(item.underRenewalQty) || 0) - issue.quantity);
+      }
       await item.save();
       emitToAll('inventory:updated', item);
     }
@@ -1482,6 +1496,40 @@ const deleteInventoryIssue = async (req, res) => {
     res.json({ message: 'Issue reversed', item });
   } catch (error) {
     res.status(500).json({ message: 'Failed to reverse the issue' });
+  }
+};
+
+// The only exit from a line's تحت التجديد bucket: the shop either brought the
+// parts back usable (renewed → back onto the usable shelf count) or ruled them
+// سكراب (kept, to be sold — not usable stock).
+const inventoryRenewalResult = async (req, res) => {
+  try {
+    const { result, quantity } = req.body || {};
+    const qty = Math.max(1, Number(quantity) || 1);
+    if (!['renewed', 'scrap'].includes(result)) {
+      return res.status(400).json({ message: 'result must be renewed | scrap' });
+    }
+    const item = await InventoryItem.findById(req.params.id);
+    if (!item || item.isActive === false) return res.status(404).json({ message: 'Inventory item not found' });
+    if ((Number(item.underRenewalQty) || 0) < qty) {
+      return res.status(400).json({ message: `تحت التجديد لهذا الصنف ${item.underRenewalQty || 0} فقط` });
+    }
+    item.underRenewalQty = (Number(item.underRenewalQty) || 0) - qty;
+    if (result === 'renewed') item.quantity = (Number(item.quantity) || 0) + qty;
+    else item.scrapQty = (Number(item.scrapQty) || 0) + qty;
+    await item.save();
+    emitToAll('inventory:updated', item);
+    await logAudit({
+      user: req.user,
+      action: result === 'renewed' ? 'renewal_ok' : 'renewal_scrap',
+      entity: 'InventoryItem',
+      entityId: item._id,
+      changes: { name: item.name, quantity: qty, result },
+      ipAddress: req.ip,
+    });
+    res.json({ item });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to record the renewal result' });
   }
 };
 
@@ -1616,6 +1664,7 @@ module.exports = {
   getWorkshopStore,
   getInventory,
   issueInventoryItem,
+  inventoryRenewalResult,
   listInventoryIssues,
   deleteInventoryIssue,
   createInventoryItem,

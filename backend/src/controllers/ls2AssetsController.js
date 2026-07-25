@@ -131,15 +131,27 @@ exports.getVehicleAssets = async (req, res) => {
 
 // ---- Tires -----------------------------------------------------------------
 // POST /assets/tires — register a new tire (optionally mounted straight away).
+// A renewed (retreaded) tire carries the trailer-only rule: الرأس positions
+// (الرأس + المحور الخلفي للرأس) are where a blowout is most dangerous.
+const isHeadSection = (section) => String(section || '').includes('الرأس');
+
 exports.createTire = async (req, res) => {
   try {
-    const { serial, tireNumber = '', type = '', sensor = 'unknown', plate = null, positionNumber = null, positionLabel = '', section = '', notes = '' } = req.body;
+    const { serial, tireNumber = '', type = '', size = '', sensor = 'unknown', condition, plate = null, positionNumber = null, positionLabel = '', section = '', notes = '' } = req.body;
     if (!serial || !String(serial).trim()) return res.status(400).json({ message: 'Serial required' });
     const exists = await Ls2TireAsset.findOne({ serial: String(serial).trim() });
     if (exists) return res.status(409).json({ message: 'Serial already registered', tire: exists });
     const key = plate ? plateKey(plate) : null;
+    // A freshly registered unmounted tire is what a purchase just delivered —
+    // grade 'new' unless the workshop says otherwise; a tire registered already
+    // on a truck is ordinary 'used'.
+    const grade = ['new', 'used', 'renewed'].includes(condition) ? condition : (key ? 'used' : 'new');
+    if (grade === 'renewed' && key && isHeadSection(section)) {
+      return res.status(400).json({ message: 'الكاوتش المجدد يركب على التيدر فقط — لا يركب على الرأس' });
+    }
     const tire = await Ls2TireAsset.create({
-      serial: String(serial).trim(), tireNumber, type, sensor, notes,
+      serial: String(serial).trim(), tireNumber, type, size, sensor, notes,
+      condition: grade,
       status: key ? 'mounted' : 'spare',
       plate: key ? plate : null, plateKey: key,
       positionNumber: key ? positionNumber : null,
@@ -161,7 +173,7 @@ exports.createTire = async (req, res) => {
 // PATCH /assets/tires/:id — edit identity fields (not location — use /move).
 exports.updateTire = async (req, res) => {
   try {
-    const allowed = ['tireNumber', 'type', 'sensor', 'notes', 'serial', 'positionLabel'];
+    const allowed = ['tireNumber', 'type', 'size', 'sensor', 'notes', 'serial', 'positionLabel'];
     const patch = {};
     for (const k of allowed) if (req.body[k] !== undefined) patch[k] = req.body[k];
     const tire = await Ls2TireAsset.findByIdAndUpdate(req.params.id, patch, { new: true });
@@ -177,30 +189,46 @@ exports.updateTire = async (req, res) => {
 };
 
 // POST /assets/tires/:id/move — mount / transfer / unmount one tire.
-// body: { toPlate|null, positionNumber, positionLabel, section, reason, notes, date }
-// If the target slot is occupied, the occupant is dismounted to spare (own event).
+// body: { toPlate|null, positionNumber, positionLabel, section, reason, notes,
+//         date, destination, displacedTo }
+// The in⇒out rule lives here: mounting into an OCCUPIED slot requires
+// `displacedTo` — where the removed tire goes: 'repair' (تحت التجديد),
+// 'damaged' (تالف), or 'store' (سليمة، رجعت للمخزن).
 exports.moveTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store' } = req.body;
+    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store', displacedTo = '' } = req.body;
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
     const when = date ? new Date(date) : new Date();
 
     if (toPlate) {
+      // مجدد يركب على التيدر فقط.
+      if (tire.condition === 'renewed' && isHeadSection(section)) {
+        return res.status(400).json({ message: 'الكاوتش المجدد يركب على التيدر فقط — لا يركب على الرأس' });
+      }
       const toKey = plateKey(toPlate);
       const live = await vehicleByKey(toKey);
-      // Dismount whoever currently occupies the target slot.
+      // The slot's current occupant: an IN must declare its OUT.
       if (positionNumber != null) {
         const occupant = await Ls2TireAsset.findOne({
           plateKey: toKey, positionNumber, status: 'mounted', _id: { $ne: tire._id },
         });
         if (occupant) {
+          if (!['repair', 'damaged', 'store'].includes(displacedTo)) {
+            return res.status(400).json({
+              code: 'DISPLACED_FATE_REQUIRED',
+              message: `المكان مشغول بالفردة ${occupant.serial} — حدد مصيرها: تحت التجديد أو تالفة أو سليمة للمخزن`,
+              occupant: { serial: occupant.serial, tireNumber: occupant.tireNumber },
+            });
+          }
           const occFrom = posLabel(occupant);
-          occupant.set({ status: 'spare', plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '' });
+          const occStatus = displacedTo === 'repair' ? 'in_repair' : displacedTo === 'damaged' ? 'damaged' : 'spare';
+          occupant.set({ status: occStatus, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '' });
           await occupant.save();
           await logEvent(req, {
-            entityType: 'tire', refId: occupant._id, label: occupant.serial, action: 'removed',
+            entityType: 'tire', refId: occupant._id, label: occupant.serial,
+            action: displacedTo === 'repair' ? 'to_repair' : displacedTo === 'damaged' ? 'damaged' : 'removed',
             fromPlate: toPlate, fromPlateKey: toKey, fromPosition: occFrom, date: when,
             odometerKm: live?.odometerKm ?? null,
             reason: reason || `أُزيلت لتركيب الفردة ${tire.serial} مكانها`,
@@ -220,18 +248,18 @@ exports.moveTire = async (req, res) => {
         date: when, odometerKm: live?.odometerKm ?? null, reason, notes,
       });
     } else {
-      // Off the truck — but "where to" matters: the repair shop is not the
-      // shelf, and a tire out for repair must never read as available stock.
+      // Off the truck — but "where to" matters: the renewal shop is not the
+      // shelf, and تالف is not سكراب: one may come back, the other never.
       const wasInRepair = tire.status === 'in_repair';
-      const toRepair = destination === 'repair';
+      const toStatus = destination === 'repair' ? 'in_repair' : destination === 'damaged' ? 'damaged' : 'spare';
       tire.set({
-        status: toRepair ? 'in_repair' : 'spare',
+        status: toStatus,
         plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '',
       });
       await tire.save();
       await logEvent(req, {
         entityType: 'tire', refId: tire._id, label: tire.serial,
-        action: toRepair ? 'to_repair' : (wasInRepair ? 'from_repair' : 'removed'),
+        action: toStatus === 'in_repair' ? 'to_repair' : toStatus === 'damaged' ? 'damaged' : (wasInRepair ? 'from_repair' : 'removed'),
         fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
         date: when, reason, notes,
       });
@@ -243,16 +271,43 @@ exports.moveTire = async (req, res) => {
   }
 };
 
-// POST /assets/tires/:id/retire — end of life (scrapped / sold / destroyed).
+// POST /assets/tires/:id/renewal-result — the ONLY exit from تحت التجديد:
+// it either came back usable (مجدد → spare, trailer-only from now on) or it
+// did not (سكراب → kept in store to be sold).
+exports.tireRenewalResult = async (req, res) => {
+  try {
+    const tire = await Ls2TireAsset.findById(req.params.id);
+    if (!tire) return res.status(404).json({ message: 'Not found' });
+    if (tire.status !== 'in_repair') return res.status(400).json({ message: 'الفردة ليست تحت التجديد' });
+    const { result, notes = '' } = req.body || {};
+    if (!['renewed', 'scrap'].includes(result)) return res.status(400).json({ message: 'result must be renewed | scrap' });
+    if (result === 'renewed') tire.set({ status: 'spare', condition: 'renewed' });
+    else tire.set({ status: 'scrap' });
+    await tire.save();
+    await logEvent(req, {
+      entityType: 'tire', refId: tire._id, label: tire.serial,
+      action: result === 'renewed' ? 'renewed' : 'scrapped',
+      notes,
+    });
+    res.json({ tire });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+// POST /assets/tires/:id/retire — terminal states outside the renewal loop.
+// kind: 'damaged' (تالف — لا وجود لها) | 'scrap' (سكراب للبيع) | default legacy 'retired'.
 exports.retireTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
+    const kind = ['damaged', 'scrap'].includes(req.body?.kind) ? req.body.kind : 'retired';
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
-    tire.set({ status: 'retired', plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '' });
+    tire.set({ status: kind, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '' });
     await tire.save();
     await logEvent(req, {
-      entityType: 'tire', refId: tire._id, label: tire.serial, action: 'retired',
+      entityType: 'tire', refId: tire._id, label: tire.serial,
+      action: kind === 'damaged' ? 'damaged' : kind === 'scrap' ? 'scrapped' : 'retired',
       fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
       reason: req.body?.reason || '', notes: req.body?.notes || '',
     });

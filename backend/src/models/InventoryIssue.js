@@ -21,6 +21,11 @@ const inventoryIssueSchema = new mongoose.Schema({
 
   quantity: { type: Number, required: true, min: 1 },
   vehicleNumber: { type: String, trim: true, index: true }, // free text — matches how the whole workshop refers to trucks
+  // The OUT that this IN displaced: installing a part on a truck replaces an
+  // old one, and the old one must be accounted for — تالف (destroyed, gone),
+  // تحت التجديد (sent for refurbishing), or 'none' (nothing was replaced —
+  // first fit / top-up).
+  replacedFate: { type: String, enum: ['damaged', 'under_renewal', 'none'], default: 'none' },
   notes: { type: String, trim: true },
   date: { type: String }, // YYYY-MM-DD — the day it physically left the shelf
 

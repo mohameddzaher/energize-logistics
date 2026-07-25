@@ -22,6 +22,7 @@ router.get('/store', authorize(...allWorkshopRoles), workshopController.getWorks
 // /inventory/:id so "issues" is never swallowed as an id.
 router.get('/inventory/issues', authorize(...allWorkshopRoles), workshopController.listInventoryIssues);
 router.post('/inventory/:id/issue', authorize(...allWorkshopRoles), workshopController.issueInventoryItem);
+router.post('/inventory/:id/renewal-result', authorize(...allWorkshopRoles), workshopController.inventoryRenewalResult); // مجدد أو سكراب
 router.delete('/inventory/issues/:id', authorize(...managerRoles), workshopController.deleteInventoryIssue);
 
 router.get('/inventory/search', authorize(...allWorkshopRoles), workshopController.searchInventory);

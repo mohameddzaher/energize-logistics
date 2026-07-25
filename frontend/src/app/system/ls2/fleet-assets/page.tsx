@@ -30,7 +30,7 @@ import SearchSelect from '@/components/ls2/SearchSelect';
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
 interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; status: string; notes: string }
-interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; status: 'mounted' | 'spare' | 'in_repair' | 'retired'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; notes: string }
+interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used' | 'renewed'; status: 'mounted' | 'spare' | 'in_repair' | 'scrap' | 'damaged' | 'retired'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; notes: string }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
 interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
 
@@ -59,8 +59,11 @@ const ACTION_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
   transferred: { en: 'Transferred', ar: 'نقل', cls: 'bg-blue-100 text-blue-700' },
   retired: { en: 'Retired', ar: 'إعدام', cls: 'bg-red-100 text-red-700' },
   updated: { en: 'Edited', ar: 'تعديل', cls: 'bg-slate-100 text-slate-500' },
-  to_repair: { en: 'Sent to repair', ar: 'إنزال للصيانة', cls: 'bg-violet-100 text-violet-700' },
-  from_repair: { en: 'Back from repair', ar: 'رجعت من الصيانة', cls: 'bg-emerald-100 text-emerald-700' },
+  to_repair: { en: 'Sent for renewal', ar: 'إنزال تحت التجديد', cls: 'bg-violet-100 text-violet-700' },
+  from_repair: { en: 'Back from renewal', ar: 'رجعت من التجديد', cls: 'bg-emerald-100 text-emerald-700' },
+  renewed: { en: 'Renewed', ar: 'مجدد — قابلة للاستخدام', cls: 'bg-blue-100 text-blue-700' },
+  scrapped: { en: 'Scrapped', ar: 'سكراب — للبيع', cls: 'bg-slate-200 text-slate-700' },
+  damaged: { en: 'Damaged', ar: 'تالفة', cls: 'bg-red-100 text-red-700' },
 };
 const ENTITY_LABELS: Record<string, { en: string; ar: string }> = {
   tire: { en: 'Tire', ar: 'فردة كاوتش' },
@@ -72,12 +75,23 @@ const SENSOR_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
   no: { en: 'No sensor', ar: 'لا يوجد', cls: 'bg-slate-100 text-slate-500' },
   unknown: { en: 'Unknown', ar: 'غير محدد', cls: 'bg-slate-50 text-slate-400' },
 };
+// The tire's lifecycle exactly as the workshop runs it:
+// جديد/مجدد في المخزن ← مركّبة ← (in ⇒ out) ← تحت التجديد ← مجدد أو سكراب، أو تالفة.
 const TIRE_STATUS_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
   mounted: { en: 'Mounted', ar: 'مركّبة', cls: 'bg-emerald-100 text-emerald-700' },
   spare: { en: 'In stock', ar: 'في المخزن', cls: 'bg-amber-100 text-amber-700' },
-  in_repair: { en: 'In repair', ar: 'في الصيانة', cls: 'bg-violet-100 text-violet-700' },
-  retired: { en: 'Retired', ar: 'معدومة', cls: 'bg-red-100 text-red-700' },
+  in_repair: { en: 'Under renewal', ar: 'تحت التجديد', cls: 'bg-violet-100 text-violet-700' },
+  scrap: { en: 'Scrap (to sell)', ar: 'سكراب (للبيع)', cls: 'bg-slate-200 text-slate-700' },
+  damaged: { en: 'Damaged (gone)', ar: 'تالفة', cls: 'bg-red-100 text-red-700' },
+  retired: { en: 'Retired (legacy)', ar: 'معدومة (قديم)', cls: 'bg-red-50 text-red-500' },
 };
+// Quality grade, independent of location. مجدد يركب على التيدر فقط.
+const TIRE_CONDITION_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
+  new: { en: 'New', ar: 'جديد', cls: 'bg-emerald-50 text-emerald-700' },
+  used: { en: 'Used', ar: 'مستعمل', cls: 'bg-slate-100 text-slate-600' },
+  renewed: { en: 'Renewed', ar: 'مجدد', cls: 'bg-blue-100 text-blue-700' },
+};
+const isHeadSection = (section?: string) => String(section || '').includes('الرأس');
 
 const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#f37121] bg-white';
 const labelCls = 'block text-xs font-medium text-slate-500 mb-1';
@@ -136,6 +150,8 @@ export default function Ls2FleetAssetsPage() {
   // Modals
   const [moveTire, setMoveTire] = useState<TireAsset | null>(null);
   const [editTire, setEditTire] = useState<TireAsset | null>(null);
+  const [renewalTire, setRenewalTire] = useState<TireAsset | null>(null); // نتيجة التجديد: مجدد/سكراب
+  const [retireTire, setRetireTire] = useState<TireAsset | null>(null);   // تالفة/سكراب
   const [addTire, setAddTire] = useState(false);
   const [moveTrailer, setMoveTrailer] = useState<Trailer | null>(null);
   const [addTrailer, setAddTrailer] = useState(false);
@@ -164,7 +180,7 @@ export default function Ls2FleetAssetsPage() {
   const norm = (s: any) => String(s ?? '').toLowerCase();
   const fFlatbeds = useMemo(() => !q ? flatbeds : flatbeds.filter((f) => [f.plate, f.batch, f.brand, f.currentTrailerNumber, f.numbering, f.driver].some((x) => norm(x).includes(norm(q)))), [flatbeds, q]);
   const fTrailers = useMemo(() => !q ? trailers : trailers.filter((tr) => [tr.trailerNumber, tr.currentPlate, tr.status].some((x) => norm(x).includes(norm(q)))), [trailers, q]);
-  const fTires = useMemo(() => !q ? tires : tires.filter((ti) => [ti.serial, ti.tireNumber, ti.type, ti.plate, ti.section, ti.positionLabel, ti.status].some((x) => norm(x).includes(norm(q)))), [tires, q]);
+  const fTires = useMemo(() => !q ? tires : tires.filter((ti) => [ti.serial, ti.tireNumber, ti.type, ti.size, ti.condition, ti.plate, ti.section, ti.positionLabel, ti.status].some((x) => norm(x).includes(norm(q)))), [tires, q]);
   const fEvents = useMemo(() => !q ? events : events.filter((e) => [e.label, e.fromPlate, e.toPlate, e.reason, e.action, e.performedByName].some((x) => norm(x).includes(norm(q)))), [events, q]);
   const fSensors = useMemo(() => !q ? sensorRows : sensorRows.filter((r) => [r.plate, r.driver].some((x) => norm(x).includes(norm(q)))), [sensorRows, q]);
 
@@ -189,8 +205,10 @@ export default function Ls2FleetAssetsPage() {
     { header: ar ? 'رقم الفردة' : 'Tire no.', key: 'tireNumber', width: 9 },
     { header: ar ? 'السيريال' : 'Serial', key: 'serial', width: 16 },
     { header: ar ? 'النوع' : 'Type', key: 'type', width: 12 },
+    { header: ar ? 'المقاس' : 'Size', key: 'size', width: 12 },
     { header: ar ? 'سينسور' : 'Sensor', key: 'sensor', transform: (v) => (SENSOR_LABELS[v] ? (ar ? SENSOR_LABELS[v].ar : SENSOR_LABELS[v].en) : v), width: 9 },
-    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => (TIRE_STATUS_LABELS[v] ? (ar ? TIRE_STATUS_LABELS[v].ar : TIRE_STATUS_LABELS[v].en) : v), width: 10 },
+    { header: ar ? 'الدرجة' : 'Grade', key: 'condition', transform: (v) => (TIRE_CONDITION_LABELS[v] ? (ar ? TIRE_CONDITION_LABELS[v].ar : TIRE_CONDITION_LABELS[v].en) : (ar ? 'مستعمل' : 'used')), width: 9 },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => (TIRE_STATUS_LABELS[v] ? (ar ? TIRE_STATUS_LABELS[v].ar : TIRE_STATUS_LABELS[v].en) : v), width: 12 },
     { header: ar ? 'على السطحة' : 'On flatbed', key: 'plate', transform: (v) => v ?? '', width: 10 },
     { header: ar ? 'الموقع' : 'Position', key: 'positionLabel', width: 18 },
     { header: ar ? 'القسم' : 'Section', key: 'section', width: 16 },
@@ -233,11 +251,15 @@ export default function Ls2FleetAssetsPage() {
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
-  const doRetireTire = async (tire: TireAsset) => {
-    const reason = prompt(ar ? `سبب إعدام الفردة ${tire.serial}؟` : `Reason for retiring ${tire.serial}?`);
-    if (reason == null) return;
+  const doRetireTire = async (tire: TireAsset, kind: 'damaged' | 'scrap', reason: string) => {
     setBusy(true);
-    try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { reason }); await load(); }
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { kind, reason }); await load(); setRetireTire(null); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+    setBusy(false);
+  };
+  const doRenewalResult = async (tire: TireAsset, result: 'renewed' | 'scrap', notes: string) => {
+    setBusy(true);
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/renewal-result`, { result, notes }); await load(); setRenewalTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
@@ -265,8 +287,8 @@ export default function Ls2FleetAssetsPage() {
         icon={<Truck className="w-5 h-5" />}
         title={ar ? 'أصول الأسطول — سطحات وتيدرات وكاوتش' : 'Fleet Assets — Flatbeds, Trailers & Tires'}
         subtitle={ar
-          ? `${counts.flatbeds ?? 0} سطحة · ${counts.trailers ?? 0} تيدر · ${counts.mounted ?? 0} فردة مركّبة · ${counts.spare ?? 0} في المخزن · ${counts.inRepair ?? 0} في الصيانة`
-          : `${counts.flatbeds ?? 0} flatbeds · ${counts.trailers ?? 0} trailers · ${counts.mounted ?? 0} tires mounted · ${counts.spare ?? 0} in stock · ${counts.inRepair ?? 0} in repair`}
+          ? `${counts.flatbeds ?? 0} سطحة · ${counts.trailers ?? 0} تيدر · ${counts.mounted ?? 0} فردة مركّبة · ${counts.spare ?? 0} في المخزن · ${counts.inRepair ?? 0} تحت التجديد · ${tires.filter((x) => x.status === 'scrap').length} سكراب · ${tires.filter((x) => x.status === 'damaged').length} تالفة`
+          : `${counts.flatbeds ?? 0} flatbeds · ${counts.trailers ?? 0} trailers · ${counts.mounted ?? 0} tires mounted · ${counts.spare ?? 0} in stock · ${counts.inRepair ?? 0} under renewal · ${tires.filter((x) => x.status === 'scrap').length} scrap · ${tires.filter((x) => x.status === 'damaged').length} damaged`}
       >
         {admin && (
           <button type="button" onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium">
@@ -424,7 +446,9 @@ export default function Ls2FleetAssetsPage() {
                     <th className="text-start font-semibold px-4 py-3">{ar ? 'رقم' : 'No.'}</th>
                     <th className="text-start font-semibold px-4 py-3">{ar ? 'السيريال' : 'Serial'}</th>
                     <th className="text-start font-semibold px-4 py-3">{ar ? 'النوع' : 'Type'}</th>
+                    <th className="text-start font-semibold px-4 py-3">{ar ? 'المقاس' : 'Size'}</th>
                     <th className="text-center font-semibold px-4 py-3">{ar ? 'سينسور' : 'Sensor'}</th>
+                    <th className="text-center font-semibold px-4 py-3">{ar ? 'الدرجة' : 'Grade'}</th>
                     <th className="text-start font-semibold px-4 py-3">{ar ? 'على السطحة' : 'On flatbed'}</th>
                     <th className="text-start font-semibold px-4 py-3">{ar ? 'الموقع' : 'Position'}</th>
                     <th className="text-center font-semibold px-4 py-3">{t.status}</th>
@@ -435,49 +459,57 @@ export default function Ls2FleetAssetsPage() {
                   {fTires.map((ti) => {
                     const sen = SENSOR_LABELS[ti.sensor] || SENSOR_LABELS.unknown;
                     const st = TIRE_STATUS_LABELS[ti.status] || TIRE_STATUS_LABELS.spare;
+                    const grade = TIRE_CONDITION_LABELS[ti.condition || 'used'] || TIRE_CONDITION_LABELS.used;
+                    const terminal = ti.status === 'retired' || ti.status === 'damaged';
                     return (
                       <tr key={ti._id} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="px-4 py-3 tabular-nums text-slate-500">{ti.tireNumber || '—'}</td>
                         <td className="px-4 py-3 font-mono text-xs font-medium text-slate-800">{ti.serial}</td>
                         <td className="px-4 py-3 text-slate-600">{ti.type || '—'}</td>
+                        <td className="px-4 py-3 text-slate-600 tabular-nums">{ti.size || '—'}</td>
                         <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${sen.cls}`}>{ar ? sen.ar : sen.en}</span></td>
+                        <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${grade.cls}`}>{ar ? grade.ar : grade.en}</span></td>
                         <td className="px-4 py-3 font-medium text-slate-700">{ti.plate || <span className="text-slate-300">—</span>}</td>
                         <td className="px-4 py-3 text-xs text-slate-600">{ti.positionLabel ? `${ti.positionLabel}${ti.section ? ` · ${ti.section}` : ''}` : '—'}</td>
                         <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${st.cls}`}>{ar ? st.ar : st.en}</span></td>
                         <td className="px-4 py-3">
-                          {admin && ti.status !== 'retired' && (
+                          {admin && !terminal && (
                             <div className="flex items-center justify-end gap-1.5">
-                              <button type="button" title={ar ? 'نقل / تركيب' : 'Move / mount'} onClick={() => setMoveTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
+                              {ti.status !== 'in_repair' && ti.status !== 'scrap' && (
+                                <button type="button" title={ar ? 'نقل / تركيب' : 'Move / mount'} onClick={() => setMoveTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
+                              )}
                               {ti.status === 'mounted' && (<>
                                 <button
-                                  type="button" title={ar ? 'إنزال للمخزن' : 'Dismount to stock'} disabled={busy}
+                                  type="button" title={ar ? 'إنزال للمخزن (سليمة)' : 'Dismount to stock'} disabled={busy}
                                   onClick={() => { const reason = prompt(ar ? `سبب إنزال الفردة ${ti.serial}؟` : 'Reason?'); if (reason != null) doMoveTire(ti, { toPlate: null, reason }); }}
                                   className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600"
                                 ><ArrowDownToLine className="w-4 h-4" /></button>
-                                {/* Off for repair — NOT a swap and NOT stock. The tire stays
+                                {/* تحت التجديد — NOT a swap and NOT stock. The tire stays
                                     tracked, its slot stays empty, and the store won't offer it. */}
                                 <button
-                                  type="button" title={ar ? 'إنزال للصيانة' : 'Send to repair'} disabled={busy}
-                                  onClick={() => { const reason = prompt(ar ? `سبب إرسال الفردة ${ti.serial} للصيانة؟` : 'Reason for repair?'); if (reason != null) doMoveTire(ti, { toPlate: null, destination: 'repair', reason }); }}
+                                  type="button" title={ar ? 'إنزال تحت التجديد' : 'Send for renewal'} disabled={busy}
+                                  onClick={() => { const reason = prompt(ar ? `سبب إرسال الفردة ${ti.serial} للتجديد؟` : 'Reason for renewal?'); if (reason != null) doMoveTire(ti, { toPlate: null, destination: 'repair', reason }); }}
                                   className="p-1.5 rounded-md hover:bg-violet-50 text-slate-400 hover:text-violet-600"
                                 ><Wrench className="w-4 h-4" /></button>
                               </>)}
                               {ti.status === 'in_repair' && (
                                 <button
-                                  type="button" title={ar ? 'رجعت من الصيانة → المخزن' : 'Back from repair → stock'} disabled={busy}
-                                  onClick={() => { const notes = prompt(ar ? 'ملاحظات الإصلاح (اختياري)؟' : 'Repair notes (optional)?') || ''; doMoveTire(ti, { toPlate: null, destination: 'store', notes }); }}
-                                  className="p-1.5 rounded-md hover:bg-emerald-50 text-slate-400 hover:text-emerald-600"
-                                ><ArrowDownToLine className="w-4 h-4" /></button>
+                                  type="button" title={ar ? 'نتيجة التجديد: مجدد أو سكراب' : 'Renewal result'} disabled={busy}
+                                  onClick={() => setRenewalTire(ti)}
+                                  className="px-2 py-1 rounded-md bg-violet-50 hover:bg-violet-100 text-violet-700 text-[11px] font-medium"
+                                >{ar ? 'نتيجة التجديد' : 'Result'}</button>
                               )}
                               <button type="button" title={t.edit} onClick={() => setEditTire(ti)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
-                              <button type="button" title={ar ? 'إعدام' : 'Retire'} disabled={busy} onClick={() => doRetireTire(ti)} className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                              {ti.status !== 'in_repair' && ti.status !== 'scrap' && (
+                                <button type="button" title={ar ? 'تالفة / سكراب' : 'Damaged / scrap'} disabled={busy} onClick={() => setRetireTire(ti)} className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                              )}
                             </div>
                           )}
                         </td>
                       </tr>
                     );
                   })}
-                  {fTires.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
+                  {fTires.length === 0 && <tr><td colSpan={10} className="text-center text-slate-400 py-10">{t.noData}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -606,6 +638,8 @@ export default function Ls2FleetAssetsPage() {
 
       {/* ---- Modals ---------------------------------------------------------- */}
       {moveTire && <MoveTireModal tire={moveTire} flatbeds={flatbeds} tires={tires} ar={ar} busy={busy} onClose={() => setMoveTire(null)} onSubmit={(body) => doMoveTire(moveTire, body)} />}
+      {renewalTire && <RenewalResultModal tire={renewalTire} ar={ar} busy={busy} onClose={() => setRenewalTire(null)} onSubmit={(result, notes) => doRenewalResult(renewalTire, result, notes)} />}
+      {retireTire && <RetireTireModal tire={retireTire} ar={ar} busy={busy} onClose={() => setRetireTire(null)} onSubmit={(kind, reason) => doRetireTire(retireTire, kind, reason)} />}
       {(addTire || editTire) && (
         <TireFormModal
           tire={editTire} flatbeds={flatbeds} ar={ar}
@@ -638,8 +672,17 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
   const [posN, setPosN] = useState<number>(tire.positionNumber || 1);
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
+  // The mandatory OUT: when the slot is occupied, where does the removed tire go?
+  const [displacedTo, setDisplacedTo] = useState<'' | 'repair' | 'damaged' | 'store'>('');
   const pos = POSITION_DEFS.find((p) => p.n === posN) || POSITION_DEFS[0];
   const occupant = tires.find((x) => x._id !== tire._id && x.status === 'mounted' && x.plate === toPlate && x.positionNumber === posN);
+  // مجدد يركب على التيدر فقط — mirror of the server rule so the user sees why.
+  const renewedOnHead = tire.condition === 'renewed' && isHeadSection(pos.section);
+  const FATES: { key: 'repair' | 'damaged' | 'store'; ar: string; en: string; hint: string; hintEn: string }[] = [
+    { key: 'repair', ar: 'تحت التجديد', en: 'Under renewal', hint: 'رايحة الصيانة — ترجع مجدد أو سكراب', hintEn: 'to the shop — comes back renewed or scrap' },
+    { key: 'damaged', ar: 'تالفة', en: 'Damaged', hint: 'انفجرت / اتآكلت — لا وجود لها', hintEn: 'blown / worn out — gone' },
+    { key: 'store', ar: 'سليمة للمخزن', en: 'Fine → stock', hint: 'شغالة، بس اتشالت (تدوير مثلًا)', hintEn: 'still good, just swapped out' },
+  ];
   return (
     <Modal title={ar ? `نقل / تركيب الفردة ${tire.serial}` : `Move tire ${tire.serial}`} onClose={onClose}>
       <div className="space-y-3">
@@ -654,12 +697,30 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
           <SearchSelect value={String(posN)} onChange={(v) => setPosN(Number(v))} options={positionOptions()} ar={ar}
             searchPlaceholder={ar ? 'ابحث عن الموقع…' : 'Search position…'} />
         </div>
-        {occupant && (
-          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            {ar
-              ? `الموقع ده عليه حاليًا الفردة ${occupant.serial} — هتتنزل للمخزن تلقائيًا ويتسجّل ده في التاريخ.`
-              : `This slot currently holds ${occupant.serial} — it will be dismounted to stock automatically (logged).`}
+        {renewedOnHead && (
+          <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 font-medium">
+            {ar ? 'الفردة دي مجددة — المجدد يركب على التيدر فقط، مش على الرأس.' : 'This tire is RENEWED — renewed tires mount on the trailer only, never the head.'}
           </p>
+        )}
+        {occupant && (
+          <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-2">
+            <p className="text-amber-700 font-medium">
+              {ar
+                ? `فيه IN يبقى فيه OUT: الموقع ده عليه الفردة ${occupant.serial} — هي رايحة فين؟`
+                : `Every IN needs its OUT: this slot holds ${occupant.serial} — where does it go?`}
+            </p>
+            <div className="space-y-1">
+              {FATES.map((f) => (
+                <label key={f.key} className={`flex items-start gap-2 px-2 py-1.5 rounded-md cursor-pointer border ${displacedTo === f.key ? 'bg-white border-[#f37121]' : 'border-transparent hover:bg-white/60'}`}>
+                  <input type="radio" name="displacedTo" checked={displacedTo === f.key} onChange={() => setDisplacedTo(f.key)} className="mt-0.5 accent-[#f37121]" />
+                  <span>
+                    <span className="font-semibold text-slate-800">{ar ? f.ar : f.en}</span>
+                    <span className="block text-[11px] text-slate-500">{ar ? f.hint : f.hintEn}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
         )}
         <div>
           <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
@@ -670,11 +731,84 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
         </div>
         <button
-          type="button" disabled={busy || !toPlate}
-          onClick={() => onSubmit({ toPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section, reason, notes })}
+          type="button" disabled={busy || !toPlate || renewedOnHead || (!!occupant && !displacedTo)}
+          onClick={() => onSubmit({ toPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section, reason, notes, ...(occupant ? { displacedTo } : {}) })}
           className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40"
         >
-          {ar ? 'تنفيذ النقل' : 'Move'}
+          {occupant && !displacedTo ? (ar ? 'حدد مصير الفردة القديمة الأول' : 'Choose the old tire’s fate first') : (ar ? 'تنفيذ النقل' : 'Move')}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---- Renewal result: the ONLY exit from تحت التجديد --------------------------
+function RenewalResultModal({ tire, ar, busy, onClose, onSubmit }: {
+  tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void; onSubmit: (result: 'renewed' | 'scrap', notes: string) => void;
+}) {
+  const [result, setResult] = useState<'' | 'renewed' | 'scrap'>('');
+  const [notes, setNotes] = useState('');
+  return (
+    <Modal title={ar ? `نتيجة التجديد — الفردة ${tire.serial}` : `Renewal result — ${tire.serial}`} onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs text-slate-500">{ar ? 'الفردة رجعت من التجديد — طلعت إيه؟' : 'The tire is back from the renewal shop — what came out?'}</p>
+        <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${result === 'renewed' ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+          <input type="radio" name="renewalResult" checked={result === 'renewed'} onChange={() => setResult('renewed')} className="mt-0.5 accent-blue-600" />
+          <span>
+            <span className="font-semibold text-slate-800">{ar ? 'مجدد — قابلة للاستخدام' : 'Renewed — usable'}</span>
+            <span className="block text-[11px] text-slate-500">{ar ? 'ترجع المخزن بدرجة "مجدد" — ومن هنا ورايح تركب على التيدر فقط' : 'Back to stock as "renewed" — mounts on the TRAILER only from now on'}</span>
+          </span>
+        </label>
+        <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${result === 'scrap' ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:bg-slate-50'}`}>
+          <input type="radio" name="renewalResult" checked={result === 'scrap'} onChange={() => setResult('scrap')} className="mt-0.5 accent-slate-600" />
+          <span>
+            <span className="font-semibold text-slate-800">{ar ? 'سكراب — غير قابلة للاستخدام' : 'Scrap — not usable'}</span>
+            <span className="block text-[11px] text-slate-500">{ar ? 'تتحط سكراب في المخزن لحد ما تتباع' : 'Kept as scrap in store until sold'}</span>
+          </span>
+        </label>
+        <div>
+          <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
+        </div>
+        <button type="button" disabled={busy || !result} onClick={() => result && onSubmit(result, notes)}
+          className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
+          {ar ? 'تسجيل النتيجة' : 'Record result'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---- Damaged / scrap (outside the renewal loop) ------------------------------
+function RetireTireModal({ tire, ar, busy, onClose, onSubmit }: {
+  tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void; onSubmit: (kind: 'damaged' | 'scrap', reason: string) => void;
+}) {
+  const [kind, setKind] = useState<'' | 'damaged' | 'scrap'>('');
+  const [reason, setReason] = useState('');
+  return (
+    <Modal title={ar ? `إخراج الفردة ${tire.serial} من الخدمة` : `Take ${tire.serial} out of service`} onClose={onClose}>
+      <div className="space-y-3">
+        <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${kind === 'damaged' ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+          <input type="radio" name="retireKind" checked={kind === 'damaged'} onChange={() => setKind('damaged')} className="mt-0.5 accent-red-600" />
+          <span>
+            <span className="font-semibold text-slate-800">{ar ? 'تالفة' : 'Damaged'}</span>
+            <span className="block text-[11px] text-slate-500">{ar ? 'انفجرت / اتآكلت خالص — لا وجود لها ولا تتصلح' : 'Blown / fully worn — gone, unrepairable'}</span>
+          </span>
+        </label>
+        <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${kind === 'scrap' ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:bg-slate-50'}`}>
+          <input type="radio" name="retireKind" checked={kind === 'scrap'} onChange={() => setKind('scrap')} className="mt-0.5 accent-slate-600" />
+          <span>
+            <span className="font-semibold text-slate-800">{ar ? 'سكراب' : 'Scrap'}</span>
+            <span className="block text-[11px] text-slate-500">{ar ? 'موجودة بس مش صالحة — تتخزن لحد ما تتباع' : 'Exists but unusable — stored until sold'}</span>
+          </span>
+        </label>
+        <div>
+          <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
+        </div>
+        <button type="button" disabled={busy || !kind} onClick={() => kind && onSubmit(kind, reason)}
+          className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-40">
+          {ar ? 'تنفيذ' : 'Confirm'}
         </button>
       </div>
     </Modal>
@@ -690,6 +824,8 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
   const [serial, setSerial] = useState(tire?.serial || '');
   const [tireNumber, setTireNumber] = useState(tire?.tireNumber || '');
   const [type, setType] = useState(tire?.type || '');
+  const [size, setSize] = useState(tire?.size || '');
+  const [condition, setCondition] = useState<'new' | 'used' | 'renewed'>(tire?.condition || 'new');
   const [sensor, setSensor] = useState(tire?.sensor || 'unknown');
   const [notes, setNotes] = useState(tire?.notes || '');
   const [mountPlate, setMountPlate] = useState('');
@@ -702,10 +838,10 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
     setBusy(true);
     try {
       if (isEdit) {
-        await api.patch(`/api/ls2/assets/tires/${tire!._id}`, { serial: serial.trim(), tireNumber, type, sensor, notes });
+        await api.patch(`/api/ls2/assets/tires/${tire!._id}`, { serial: serial.trim(), tireNumber, type, size, sensor, notes });
       } else {
         await api.post('/api/ls2/assets/tires', {
-          serial: serial.trim(), tireNumber, type, sensor, notes,
+          serial: serial.trim(), tireNumber, type, size, sensor, notes, condition,
           ...(mountPlate ? { plate: mountPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section } : {}),
         });
       }
@@ -733,6 +869,12 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
             <input value={type} onChange={(e) => setType(e.target.value)} placeholder="Michelin / Bridgestone / Conti / China" className={inputCls} />
           </div>
           <div>
+            <label className={labelCls}>{ar ? 'المقاس' : 'Size'}</label>
+            <input value={size} onChange={(e) => setSize(e.target.value)} placeholder="315/80 R22.5" className={inputCls} dir="ltr" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
             <label className={labelCls}>{ar ? 'سينسور' : 'Sensor'}</label>
             <select value={sensor} onChange={(e) => setSensor(e.target.value as any)} className={inputCls}>
               <option value="yes">{ar ? 'يوجد' : 'Yes'}</option>
@@ -740,6 +882,16 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
               <option value="unknown">{ar ? 'غير محدد' : 'Unknown'}</option>
             </select>
           </div>
+          {!isEdit && (
+            <div>
+              <label className={labelCls}>{ar ? 'الدرجة' : 'Grade'}</label>
+              <select value={condition} onChange={(e) => setCondition(e.target.value as any)} className={inputCls}>
+                <option value="new">{ar ? 'جديد (من الشراء)' : 'New (from purchase)'}</option>
+                <option value="used">{ar ? 'مستعمل' : 'Used'}</option>
+                <option value="renewed">{ar ? 'مجدد (تيدر فقط)' : 'Renewed (trailer only)'}</option>
+              </select>
+            </div>
+          )}
         </div>
         {!isEdit && (
           <div className="border border-slate-200 rounded-lg p-3 space-y-3">

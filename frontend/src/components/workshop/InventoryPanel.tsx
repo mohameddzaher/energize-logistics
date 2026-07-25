@@ -22,9 +22,18 @@ interface IssueRow {
   vehicleNumber?: string;
   notes?: string;
   date?: string;
+  replacedFate?: 'damaged' | 'under_renewal' | 'none';
   issuedBy?: { firstName?: string; lastName?: string } | null;
   createdAt: string;
 }
+
+// The OUT that an issue's IN displaced — every installation must account for
+// the part it replaced.
+const FATE_LABELS: Record<string, { ar: string; en: string; cls: string }> = {
+  damaged: { ar: 'القديمة تالفة', en: 'Old part damaged', cls: 'bg-red-100 text-red-700' },
+  under_renewal: { ar: 'القديمة تحت التجديد', en: 'Old part → renewal', cls: 'bg-violet-100 text-violet-700' },
+  none: { ar: 'لا يوجد مستبدل', en: 'Nothing replaced', cls: 'bg-slate-100 text-slate-500' },
+};
 
 interface InventoryItem {
   _id: string;
@@ -32,6 +41,8 @@ interface InventoryItem {
   name: string;
   category: string;
   quantity: number;
+  underRenewalQty?: number;
+  scrapQty?: number;
   minQuantity: number;
   unit: string;
   costPrice: number;
@@ -100,7 +111,27 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
   // same installed-vs-stock picture the serial-tracked assets already have.
   const [view, setView] = useState<'stock' | 'issues'>('stock');
   const [issuing, setIssuing] = useState<InventoryItem | null>(null);
-  const [issueForm, setIssueForm] = useState({ quantity: '1', vehicleNumber: '', notes: '', date: new Date().toISOString().slice(0, 10) });
+  const [issueForm, setIssueForm] = useState({ quantity: '1', vehicleNumber: '', notes: '', date: new Date().toISOString().slice(0, 10), replacedFate: '' as '' | 'damaged' | 'under_renewal' | 'none' });
+  // نتيجة التجديد for a line's under-renewal bucket: back to stock or scrap.
+  const [renewing, setRenewing] = useState<InventoryItem | null>(null);
+  const [renewForm, setRenewForm] = useState({ result: '' as '' | 'renewed' | 'scrap', quantity: '1' });
+  const [renewSaving, setRenewSaving] = useState(false);
+  const submitRenewal = async () => {
+    if (!renewing || !renewForm.result) return;
+    setRenewSaving(true);
+    try {
+      await api.post(`/api/workshop/inventory/${renewing._id}/renewal-result`, {
+        result: renewForm.result,
+        quantity: Math.max(1, Number(renewForm.quantity) || 1),
+      });
+      notify(lang === 'ar'
+        ? (renewForm.result === 'renewed' ? 'رجعت للمخزون كقطع مجددة.' : 'اتسجلت سكراب — تتباع بعدين.')
+        : 'Renewal result recorded.', 'success');
+      setRenewing(null);
+      fetchItems();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setRenewSaving(false);
+  };
   const [issueSaving, setIssueSaving] = useState(false);
   const [issues, setIssues] = useState<IssueRow[]>([]);
   const [issuesTotal, setIssuesTotal] = useState(0);
@@ -128,6 +159,11 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
 
   const submitIssue = async () => {
     if (!issuing) return;
+    // in ⇒ out: the installed part replaces one — its fate must be declared.
+    if (!issueForm.replacedFate) {
+      notify(lang === 'ar' ? 'حدد مصير القطعة المستبدلة الأول (تالفة / تحت التجديد / لا يوجد).' : 'Choose the replaced part’s fate first.', 'error');
+      return;
+    }
     setIssueSaving(true);
     try {
       await api.post(`/api/workshop/inventory/${issuing._id}/issue`, {
@@ -135,6 +171,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
         vehicleNumber: issueForm.vehicleNumber.trim(),
         notes: issueForm.notes.trim(),
         date: issueForm.date,
+        replacedFate: issueForm.replacedFate,
       });
       notify(lang === 'ar' ? 'تم الصرف وخصم الكمية من المخزون.' : 'Issued and deducted from stock.', 'success');
       setIssuing(null);
@@ -433,7 +470,19 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                   </td>
                   <td className="py-3 px-3 text-slate-700">{item.category || '-'}</td>
                   <td className={`py-3 px-3 font-medium ${item.lowStock ? 'text-orange-600' : 'text-slate-700'}`}>
-                    {item.quantity}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span>{item.quantity}</span>
+                      {(item.underRenewalQty || 0) > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-semibold" title={lang === 'ar' ? 'تحت التجديد' : 'Under renewal'}>
+                          {lang === 'ar' ? `تجديد ${item.underRenewalQty}` : `renewal ${item.underRenewalQty}`}
+                        </span>
+                      )}
+                      {(item.scrapQty || 0) > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-semibold" title={lang === 'ar' ? 'سكراب للبيع' : 'Scrap to sell'}>
+                          {lang === 'ar' ? `سكراب ${item.scrapQty}` : `scrap ${item.scrapQty}`}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-3 text-slate-800">{item.minQuantity}</td>
                   <td className="py-3 px-3 text-slate-700">{item.unit}</td>
@@ -485,13 +534,23 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => { setIssuing(item); setIssueForm({ quantity: '1', vehicleNumber: '', notes: '', date: new Date().toISOString().slice(0, 10) }); }}
+                        onClick={() => { setIssuing(item); setIssueForm({ quantity: '1', vehicleNumber: '', notes: '', date: new Date().toISOString().slice(0, 10), replacedFate: '' }); }}
                         disabled={(item.quantity || 0) < 1}
                         className="px-2.5 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-xs font-semibold transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
                         title={lang === 'ar' ? 'صرف لمركبة' : 'Issue to a vehicle'}
                       >
                         <ArrowUpRight className="w-3.5 h-3.5" /> {lang === 'ar' ? 'صرف' : 'Issue'}
                       </button>
+                      {(item.underRenewalQty || 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setRenewing(item)}
+                          className="px-2.5 py-1.5 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 text-xs font-semibold transition-colors"
+                          title={lang === 'ar' ? 'نتيجة التجديد: مجدد أو سكراب' : 'Renewal result'}
+                        >
+                          {lang === 'ar' ? 'نتيجة التجديد' : 'Renewal'}
+                        </button>
+                      )}
                       {canEdit && (
                         <button
                           onClick={() => openEditModal(item)}
@@ -581,7 +640,14 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                       </td>
                       <td className="py-3 px-3 text-slate-700">{row.date || fmt.date(row.createdAt)}</td>
                       <td className="py-3 px-3 text-slate-700">{row.issuedBy ? `${row.issuedBy.firstName || ''} ${row.issuedBy.lastName || ''}`.trim() : '—'}</td>
-                      <td className="py-3 px-3 text-slate-500 text-xs max-w-[220px] truncate" title={row.notes || ''}>{row.notes || '—'}</td>
+                      <td className="py-3 px-3 text-slate-500 text-xs max-w-[220px]">
+                        {row.replacedFate && row.replacedFate !== 'none' && (
+                          <span className={`inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold me-1.5 ${FATE_LABELS[row.replacedFate].cls}`}>
+                            {lang === 'ar' ? FATE_LABELS[row.replacedFate].ar : FATE_LABELS[row.replacedFate].en}
+                          </span>
+                        )}
+                        <span className="truncate" title={row.notes || ''}>{row.notes || (row.replacedFate && row.replacedFate !== 'none' ? '' : '—')}</span>
+                      </td>
                       <td className="py-3 px-3">
                         {canDelete && (
                           <button type="button" onClick={() => undoIssue(row)}
@@ -811,6 +877,23 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                     <label className={labelClass}>{lang === 'ar' ? 'ملاحظات' : 'Notes'}</label>
                     <textarea rows={2} value={issueForm.notes} onChange={(e) => setIssueForm((f) => ({ ...f, notes: e.target.value }))} className={inputClass} />
                   </div>
+                  {/* in ⇒ out — the installed part replaces one; say where the old one went */}
+                  <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1.5">
+                    <p className="text-xs font-semibold text-amber-800">
+                      {lang === 'ar' ? 'فيه IN يبقى فيه OUT — القطعة القديمة اللي اتشالت راحت فين؟ *' : 'Every IN needs its OUT — where did the replaced part go? *'}
+                    </p>
+                    {([
+                      { key: 'damaged' as const, ar: 'تالفة — متدمرة / ملهاش وجود', en: 'Damaged — destroyed, gone' },
+                      { key: 'under_renewal' as const, ar: 'تحت التجديد — رايحة الصيانة وترجع مجدد أو سكراب', en: 'Under renewal — comes back renewed or scrap' },
+                      { key: 'none' as const, ar: 'لا يوجد قطعة مستبدلة — تركيب أول مرة / إضافة', en: 'Nothing replaced — first fit / top-up' },
+                    ]).map((f) => (
+                      <label key={f.key} className={`flex items-start gap-2 px-2 py-1.5 rounded-md cursor-pointer border ${issueForm.replacedFate === f.key ? 'bg-white border-[#f37121]' : 'border-transparent hover:bg-white/70'}`}>
+                        <input type="radio" name="replacedFate" checked={issueForm.replacedFate === f.key}
+                          onChange={() => setIssueForm((p) => ({ ...p, replacedFate: f.key }))} className="mt-0.5 accent-[#f37121]" />
+                        <span className="text-xs text-slate-800">{lang === 'ar' ? f.ar : f.en}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
               <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
@@ -820,6 +903,55 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                   className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e06010] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
                   {issueSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpRight className="w-4 h-4" />}
                   {lang === 'ar' ? 'تأكيد الصرف' : 'Confirm issue'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Renewal result — the only exit from a line's تحت التجديد bucket */}
+      <AnimatePresence>
+        {renewing && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => !renewSaving && setRenewing(null)}>
+            <motion.div initial={{ scale: 0.96 }} animate={{ scale: 1 }} exit={{ scale: 0.96 }}
+              className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                <h3 className="font-bold text-slate-900">{lang === 'ar' ? `نتيجة التجديد — ${renewing.name}` : `Renewal result — ${renewing.name}`}</h3>
+                <button type="button" onClick={() => setRenewing(null)} className="text-slate-500 hover:text-slate-900" aria-label="Close"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="p-6 space-y-3">
+                <p className="text-sm text-slate-600">
+                  {lang === 'ar' ? 'تحت التجديد حاليًا' : 'Under renewal now'}: <b className="text-slate-900">{renewing.underRenewalQty || 0}</b> {renewing.unit || ''}
+                </p>
+                <div>
+                  <label className={labelClass}>{lang === 'ar' ? 'العدد *' : 'Quantity *'}</label>
+                  <input type="number" min={1} max={renewing.underRenewalQty || 1} value={renewForm.quantity}
+                    onChange={(e) => setRenewForm((p) => ({ ...p, quantity: e.target.value }))} className={inputClass} />
+                </div>
+                <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${renewForm.result === 'renewed' ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                  <input type="radio" name="invRenewResult" checked={renewForm.result === 'renewed'} onChange={() => setRenewForm((p) => ({ ...p, result: 'renewed' }))} className="mt-0.5 accent-blue-600" />
+                  <span className="text-sm">
+                    <span className="font-semibold text-slate-800">{lang === 'ar' ? 'مجدد — قابل للاستخدام' : 'Renewed — usable'}</span>
+                    <span className="block text-[11px] text-slate-500">{lang === 'ar' ? 'يرجع لرصيد المخزون المتاح' : 'Goes back to usable stock'}</span>
+                  </span>
+                </label>
+                <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${renewForm.result === 'scrap' ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:bg-slate-50'}`}>
+                  <input type="radio" name="invRenewResult" checked={renewForm.result === 'scrap'} onChange={() => setRenewForm((p) => ({ ...p, result: 'scrap' }))} className="mt-0.5 accent-slate-600" />
+                  <span className="text-sm">
+                    <span className="font-semibold text-slate-800">{lang === 'ar' ? 'سكراب — غير قابل للاستخدام' : 'Scrap — unusable'}</span>
+                    <span className="block text-[11px] text-slate-500">{lang === 'ar' ? 'يتخزن سكراب لحد ما يتباع' : 'Stored as scrap until sold'}</span>
+                  </span>
+                </label>
+              </div>
+              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+                <button type="button" onClick={() => setRenewing(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
+                <button type="button" onClick={submitRenewal}
+                  disabled={renewSaving || !renewForm.result || !(Number(renewForm.quantity) >= 1) || Number(renewForm.quantity) > (renewing.underRenewalQty || 0)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e06010] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                  {renewSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {lang === 'ar' ? 'تسجيل النتيجة' : 'Record result'}
                 </button>
               </div>
             </motion.div>

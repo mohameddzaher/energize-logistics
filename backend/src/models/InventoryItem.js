@@ -5,6 +5,11 @@ const inventoryItemSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   category: { type: String, trim: true },
   quantity: { type: Number, default: 0, min: 0 },
+  // The lifecycle buckets beside the usable shelf count. When an issue replaces
+  // an old part, the removed one lands here (in ⇒ out): تحت التجديد until the
+  // shop rules it renewed (back into `quantity`) or سكراب (kept to sell).
+  underRenewalQty: { type: Number, default: 0, min: 0 },
+  scrapQty: { type: Number, default: 0, min: 0 },
   minQuantity: { type: Number, default: 0 },
   unit: { type: String, default: 'piece', trim: true },
   costPrice: { type: Number, default: 0 },

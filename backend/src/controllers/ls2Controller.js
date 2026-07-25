@@ -562,7 +562,9 @@ exports.getServiceTypes = async (req, res) => {
     const checklists = settings.checklists || {};
     const types = Array.from(byName.values())
       .sort((a, b) => String(a.key).localeCompare(String(b.key), undefined, { numeric: true }))
-      .map((t) => ({ ...t, checklist: checklists[t.key] || [] }));
+      // Checklists are keyed by serviceTemplateKey(name); the numeric key is only
+      // a legacy fallback for docs saved before the keying was unified.
+      .map((t) => ({ ...t, checklist: checklists[cfg.serviceTemplateKey(t.name)] || checklists[t.key] || [] }));
 
     res.json({ types });
   } catch (error) {

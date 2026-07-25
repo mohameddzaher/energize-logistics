@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { CheckCircle2, Loader2, Clock, MinusCircle } from 'lucide-react';
 import api from '@/lib/api';
-import { ls2Text, type Lang, type ServiceInterval, type ChecklistItem, type ChecklistTemplates } from '@/lib/ls2';
+import { ls2Text, serviceTemplateKey, type Lang, type ServiceInterval, type ChecklistItem, type ChecklistTemplates } from '@/lib/ls2';
 
 type Status = 'done' | 'deferred' | 'na';
 type Row = { label: string; status: Status; deferKm: string; note: string };
@@ -37,18 +37,22 @@ export default function RegisterServiceModal({
   const [rows, setRows] = useState<Row[]>([]);
 
   // Pull this service's checklist template (edited in the section's Settings).
+  // Templates are keyed by serviceTemplateKey(name) — NEVER by interval.id, which
+  // is per-vehicle noise in Wialon (the same id is a different service on
+  // different trucks). The id lookup remains only as a legacy fallback.
   useEffect(() => {
     (async () => {
       try {
         const res = await api.get<{ checklists: ChecklistTemplates }>('/api/ls2/settings');
-        const items: ChecklistItem[] = res.checklists?.[String(interval.id)] || [];
+        const items: ChecklistItem[] =
+          res.checklists?.[serviceTemplateKey(interval.name)] || res.checklists?.[String(interval.id)] || [];
         setRows(items.map((i) => ({
           label: ar && i.labelAr ? i.labelAr : i.label,
           status: 'done' as Status, deferKm: '', note: '',
         })));
       } catch { /* no template → plain service, no checklist */ }
     })();
-  }, [interval.id, ar]);
+  }, [interval.id, interval.name, ar]);
 
   const setRow = (idx: number, patch: Partial<Row>) =>
     setRows((r) => r.map((row, i) => (i === idx ? { ...row, ...patch } : row)));

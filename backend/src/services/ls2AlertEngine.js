@@ -25,15 +25,19 @@ const STATUS_RANK = { ok: 0, due: 1, overdue: 2 };
  *
  * Returns { intervals, summary } or null when the odometer is unknown.
  */
-function computeMaintenance(tel, maint) {
+function computeMaintenance(tel, maint, alertBefore) {
   const odo = tel.odometerKm;
   if (odo == null) return null;
   const alertBeforeKm = (maint && maint.alertBeforeKm) || 3000;
   const alertBeforeDays = (maint && maint.alertBeforeDays) || 14;
   // Each of the four services warns on its own window — a 20K and an 80K service
-  // are nothing alike. Falls back to the global only where none is set.
-  const perService = (maint && maint.alertBefore) || {};
-  const windowFor = (id) => Number(perService[id]) > 0 ? Number(perService[id]) : alertBeforeKm;
+  // are nothing alike. Keyed by serviceTemplateKey(name) — the interval id means
+  // a different service on different trucks. Falls back to the global where unset.
+  const perService = alertBefore || (maint && maint.alertBefore) || {};
+  const windowFor = (s) => {
+    const w = perService[cfg.serviceTemplateKey(s.name)] ?? perService[s.id];
+    return Number(w) > 0 ? Number(w) : alertBeforeKm;
+  };
   const source = Array.isArray(tel.serviceIntervals) ? tel.serviceIntervals : [];
   const now = Date.now();
 
@@ -53,7 +57,7 @@ function computeMaintenance(tel, maint) {
       const base = s.lastServiceKm != null ? s.lastServiceKm : odo;
       r.nextServiceKm = base + (s.intervalKm || 0);
       r.remainingKm = r.nextServiceKm - odo;
-      r.alertBeforeKm = windowFor(s.id); // exposed so the UI can show each window
+      r.alertBeforeKm = windowFor(s); // exposed so the UI can show each window
       r.statusLevel = r.remainingKm <= 0 ? 'overdue' : (r.remainingKm <= r.alertBeforeKm ? 'due' : 'ok');
     }
     return r;
@@ -220,7 +224,9 @@ function evaluate(tel, _vehicle, settings, deferrals = []) {
   // ---- Maintenance (Wialon's real per-service intervals) -----------------
   // One alert per due/overdue service, keyed by the Wialon interval id so each
   // service (Group A/B/C, TR Wheels…) reconciles independently.
-  const m = computeMaintenance(tel, maint);
+  // Per-service warn windows live on the settings doc itself (settings.alertBefore),
+  // NOT inside the maintenance number-map — pass them through explicitly.
+  const m = computeMaintenance(tel, maint, settings.alertBefore || null);
   if (m) {
     for (const iv of m.intervals) {
       if (iv.statusLevel === 'ok') continue;
@@ -240,14 +246,13 @@ function evaluate(tel, _vehicle, settings, deferrals = []) {
   // ---- Deferred checklist tasks (OUR extension, not Wialon) -------------
   // A task judged "still good for another N km" at a service gets an odometer
   // deadline. Warn before those km run out, escalate once they're used up.
-  const perServiceWindow = (maint && maint.alertBefore) || {};
+  const perServiceWindow = settings.alertBefore || (maint && maint.alertBefore) || {};
   for (const d of deferrals) {
     if (tel.odometerKm == null || d.dueAtOdometerKm == null) continue;
     const remaining = Math.round(d.dueAtOdometerKm - tel.odometerKm);
     // The task was deferred at a service, so it warns on that service's window.
-    const before = Number(perServiceWindow[d.intervalId]) > 0
-      ? Number(perServiceWindow[d.intervalId])
-      : (maint.alertBeforeKm || 3000);
+    const win = perServiceWindow[cfg.serviceTemplateKey(d.intervalName)] ?? perServiceWindow[d.intervalId];
+    const before = Number(win) > 0 ? Number(win) : (maint.alertBeforeKm || 3000);
     if (remaining > before) continue; // still comfortably within the grant
     const overdue = remaining < 0;
     add({

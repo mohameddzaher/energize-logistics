@@ -12,15 +12,57 @@ const ls2SettingsSchema = new mongoose.Schema({
   thresholds: { type: mongoose.Schema.Types.Mixed, default: () => ({ ...cfg.DEFAULT_THRESHOLDS }) },
   maintenance: { type: mongoose.Schema.Types.Mixed, default: () => ({ ...cfg.DEFAULT_MAINTENANCE }) },
   // OUR OWN addition (Wialon has no such thing): the checklist of tasks that make
-  // up each service. Keyed by the Wialon service-interval id ("1".."4"), since the
-  // 4 services are the same across the fleet. Fully editable from Settings.
-  checklists: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }, // { [intervalId]: [{label,labelAr}] }
-  // How early to warn for EACH of the real Wialon services, keyed by interval id.
-  // A single fleet-wide number can't fit them: 3,000 km before a 20K service is
-  // 15% of its life, but only 3.7% of an 80K one. Missing/blank → DEFAULT_ALERT_BEFORE_KM.
-  alertBefore: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }, // { [intervalId]: km }
+  // up each service. Keyed by serviceTemplateKey(name) — NOT the Wialon interval
+  // id, which means a different service on different trucks. Editable from Settings.
+  checklists: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }, // { [serviceTemplateKey]: [{label,labelAr}] }
+  // How early to warn for EACH of the real Wialon services, keyed by
+  // serviceTemplateKey(name). A single fleet-wide number can't fit them: 3,000 km
+  // before a 20K service is 15% of its life, but only 3.7% of an 80K one.
+  // Missing/blank → DEFAULT_ALERT_BEFORE_KM.
+  alertBefore: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }, // { [serviceTemplateKey]: km }
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, { timestamps: true });
+
+// One-time repair of docs written before checklists/alertBefore were keyed by
+// serviceTemplateKey. Old keys were bare numbers ("1".."4") that meant "the
+// service whose NAME starts with this number" — resolve each by majority vote
+// over the fleet's real interval names and re-key. Idempotent: once no numeric
+// keys remain, this is a no-op.
+async function migrateTemplateKeys(doc) {
+  const numeric = (o) => Object.keys(o || {}).some((k) => /^\d+$/.test(k));
+  if (!numeric(doc.checklists) && !numeric(doc.alertBefore)) return;
+  const Ls2Vehicle = require('./Ls2Vehicle');
+  const vehicles = await Ls2Vehicle.find({}).select('serviceIntervals.name').lean();
+  const votes = new Map(); // leading name-number -> { templateKey -> count }
+  for (const v of vehicles) {
+    for (const si of v.serviceIntervals || []) {
+      const num = (String(si.name || '').match(/^\s*(\d+)\s*-/) || [])[1];
+      const key = cfg.serviceTemplateKey(si.name);
+      if (!num || !key) continue;
+      if (!votes.has(num)) votes.set(num, new Map());
+      const m = votes.get(num);
+      m.set(key, (m.get(key) || 0) + 1);
+    }
+  }
+  const winner = (num) => {
+    const m = votes.get(num);
+    return m ? [...m.entries()].sort((a, b) => b[1] - a[1])[0][0] : null;
+  };
+  const remap = (obj) => {
+    const out = {};
+    for (const [k, v] of Object.entries(obj || {})) {
+      const nk = (/^\d+$/.test(k) && winner(k)) || k;
+      if (out[nk] == null) out[nk] = v; // never clobber an already-canonical entry
+    }
+    return out;
+  };
+  doc.checklists = remap(doc.checklists);
+  doc.alertBefore = remap(doc.alertBefore);
+  doc.markModified('checklists');
+  doc.markModified('alertBefore');
+  // A concurrent poll tick may win the save race — fine, it ran the same remap.
+  try { await doc.save(); } catch { /* re-checked on next getOrCreate */ }
+}
 
 // Fetch (creating on first use) the singleton settings doc.
 ls2SettingsSchema.statics.getOrCreate = async function () {
@@ -34,6 +76,7 @@ ls2SettingsSchema.statics.getOrCreate = async function () {
   delete mergedM.serviceIntervalKm;
   doc.thresholds = merged;
   doc.maintenance = mergedM;
+  await migrateTemplateKeys(doc);
   return doc;
 };
 

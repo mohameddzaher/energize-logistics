@@ -35,12 +35,20 @@ export interface ServiceInterval {
   statusLevel: 'ok' | 'due' | 'overdue';
 }
 // OUR OWN extensions beyond the Location Solutions API ------------------------
+// The ONE stable identity of a periodic service across the fleet: its name with
+// the leading order-number stripped, lowercased. Wialon's interval ids are
+// per-vehicle noise (id 2 is "Group B" on some trucks and "Group C" on others),
+// so everything stored in Settings is keyed by THIS. Must match the backend's
+// serviceTemplateKey in config/ls2Config.js.
+export const serviceTemplateKey = (name?: string | null) =>
+  String(name || '').replace(/^\s*\d+\s*-\s*/, '').trim().toLowerCase();
 // A task template under a service, editable from the section's Settings page.
 export interface ChecklistItem { _id?: string; label: string; labelAr?: string }
-// The map Settings edits + Register-service reads: { [intervalId]: items }
+// The map Settings edits + Register-service reads: { [serviceTemplateKey]: items }
 export type ChecklistTemplates = Record<string, ChecklistItem[]>;
-// How early each of the four services warns, keyed by interval id. One fleet-wide
-// number cannot fit them — 3,000 km is 15% of a 20K service but 3.7% of an 80K.
+// How early each of the four services warns, keyed by serviceTemplateKey. One
+// fleet-wide number cannot fit them — 3,000 km is 15% of a 20K service but 3.7%
+// of an 80K.
 export type AlertBeforeMap = Record<string, number>;
 // One task's outcome on a registered service.
 export interface ChecklistResult {

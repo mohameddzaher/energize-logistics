@@ -126,9 +126,17 @@ const ALERT_TYPES = {
   OFFLINE: 'offline',
 };
 
+// The ONE stable identity of a periodic service across the fleet: its name with
+// the leading order-number stripped, lowercased. Wialon's interval ids are
+// per-vehicle noise (id 2 is "Group B" on some trucks and "Group C" on others),
+// and even the leading number drifts (TR Wheels is "4-" on 56 trucks, "5-" on
+// one) — so checklists/alertBefore in Ls2Settings are keyed by THIS.
+const serviceTemplateKey = (name) => String(name || '').replace(/^\s*\d+\s*-\s*/, '').trim().toLowerCase();
+
 module.exports = {
   BASE_URL,
   TOKEN,
+  serviceTemplateKey,
   FLAGS,
   POLL_FLAGS,
   INVALID_RAW,

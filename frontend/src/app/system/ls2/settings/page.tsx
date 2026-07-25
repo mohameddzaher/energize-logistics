@@ -16,9 +16,32 @@ import {
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
-  ls2Text, isLs2Admin, THRESHOLD_GROUPS, thresholdField, fmtNum,
+  ls2Text, isLs2Admin, THRESHOLD_GROUPS, thresholdField, fmtNum, serviceTemplateKey,
   type Lang, type ChecklistTemplates, type AlertBeforeMap, type ServiceInterval, type Vehicle,
 } from '@/lib/ls2';
+
+// The order-number a service's name starts with ("2- Group B…" → 2).
+const serviceOrder = (name?: string) => {
+  const m = /^\s*(\d+)\s*-/.exec(name || '');
+  return m ? Number(m[1]) : 99;
+};
+
+// The fleet's unique services, one per serviceTemplateKey — NOT one vehicle's
+// list: Wialon interval ids (and even the leading name-numbers) differ between
+// trucks, so a single truck's plan is not a safe source of keys.
+function fleetServices(items: Vehicle[]): ServiceInterval[] {
+  const groups = new Map<string, ServiceInterval>();
+  for (const veh of items) {
+    for (const sv of veh.serviceIntervals || []) {
+      const k = serviceTemplateKey(sv.name);
+      if (!k) continue;
+      const cur = groups.get(k);
+      // The lowest-numbered name is the one the fleet agrees on — keep it.
+      if (!cur || serviceOrder(sv.name) < serviceOrder(cur.name)) groups.set(k, sv);
+    }
+  }
+  return [...groups.values()].sort((a, b) => serviceOrder(a.name) - serviceOrder(b.name) || (a.intervalKm || 0) - (b.intervalKm || 0));
+}
 
 type Tab = 'thresholds' | 'checklists';
 
@@ -54,8 +77,7 @@ export default function Ls2SettingsPage() {
       // Kept as strings so a cleared box stays cleared (and means "use the default").
       setAlertBefore(Object.fromEntries(Object.entries(s.alertBefore || {}).map(([k, v]) => [k, String(v)])));
       setSaved(JSON.stringify({ t: s.thresholds || {}, m: s.maintenance || {}, c: s.checklists || {}, a: s.alertBefore || {} }));
-      // The 4 services are identical fleet-wide — take the plan off any vehicle.
-      setServices((v.items || []).find((x) => (x.serviceIntervals?.length || 0) > 0)?.serviceIntervals || []);
+      setServices(fleetServices(v.items || []));
     } catch { /* keep */ }
     setLoading(false);
   }, []);
@@ -187,7 +209,9 @@ export default function Ls2SettingsPage() {
               <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-400">{t.noData}</div>
             )}
             {services.map((sv) => {
-              const key = String(sv.id);
+              // The stable fleet-wide key everything in Settings is stored under —
+              // never sv.id, which is a different service on different trucks.
+              const key = serviceTemplateKey(sv.name);
               const items = checklists[key] || [];
               const setItems = (next: typeof items) => setChecklists((p) => ({ ...p, [key]: next }));
               const move = (i: number, dir: -1 | 1) => {
@@ -198,7 +222,7 @@ export default function Ls2SettingsPage() {
                 setItems(next);
               };
               return (
-                <div key={sv.id} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div key={key} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                   <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="min-w-0">

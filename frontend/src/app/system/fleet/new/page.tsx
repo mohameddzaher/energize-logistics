@@ -360,8 +360,14 @@ function CreateFleetShipmentInner() {
           </div>
           <div>
             <label className={labelCls}>{ar ? 'المشرف' : 'Supervisor'}</label>
-            {/* Stamped from the signed-in account, shown so it is no surprise. */}
-            <input value={`${user?.firstName || ''} ${user?.lastName || ''}`.trim()} readOnly disabled className={inputCls + ' opacity-70'} />
+            {/* مشرف السيارة المعيَّن يتولّى الحمولة تلقائيًا؛ وإن لم يكن لها
+                مشرف بعد تُختم باسم منشئها. يُعرض هنا كي لا يكون مفاجأة. */}
+            <input
+              value={vehicle?.supervisorName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim()}
+              readOnly disabled className={inputCls + ' opacity-70'} />
+            {vehicle?.supervisorName && (
+              <p className="text-[11px] text-slate-500 mt-1">{ar ? 'مشرف هذه السيارة — يُسند تلقائيًا' : "This truck's assigned supervisor — set automatically"}</p>
+            )}
           </div>
           <div>
             <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>

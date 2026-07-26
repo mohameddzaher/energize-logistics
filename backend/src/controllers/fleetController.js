@@ -85,6 +85,12 @@ const resolveAssignments = async (req, data, existing = null) => {
     data.vehiclePlate = veh?.plate || '';
     data.trailerType = veh?.trailerType || '';
     data.gpsType = veh?.gpsType || '';
+    // مشرف الحمولة = المشرف المعيَّن على السيارة نفسها (نظام التوزيع)، فتظهر
+    // الحمولة تلقائيًا ضمن نطاق مشرفها في القوائم واللوحة والتحليلات.
+    if (veh?.supervisor) {
+      data.supervisor = veh.supervisor;
+      data.supervisorName = veh.supervisorName || '';
+    }
   }
   const vehicleId = data.vehicle !== undefined ? data.vehicle : existing?.vehicle;
 
@@ -182,8 +188,12 @@ exports.createShipment = async (req, res) => {
 
     const moveNotes = await resolveAssignments(req, data);
 
-    data.supervisor = req.user._id;            // المشرف — من الحساب، لا يُكتب
-    data.supervisorName = fullName(req.user);
+    // المشرف: يأتي من السيارة المعيَّنة (resolveAssignments أعلاه)؛ وإن لم يكن
+    // للسيارة مشرف بعد، يُختم بمنشئ الحمولة.
+    if (!data.supervisor) {
+      data.supervisor = req.user._id;
+      data.supervisorName = fullName(req.user);
+    }
     data.createdBy = req.user._id;
 
     const shipment = await FleetShipment.create(data);

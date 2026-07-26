@@ -1390,7 +1390,7 @@ const issueInventoryItem = async (req, res) => {
     // removed one must be declared — تالف, تحت التجديد, or explicitly nothing
     // replaced (first fit / top-up). No silent default.
     if (!['damaged', 'under_renewal', 'none'].includes(replacedFate)) {
-      return res.status(400).json({ message: 'حدد مصير القطعة المستبدلة: تالفة، تحت التجديد، أو لا توجد قطعة مستبدلة' });
+      return res.status(400).json({ message: 'حدد مصير القطعة المستبدلة: تالفة، أو تحت التجديد، أو لا توجد قطعة مستبدلة' });
     }
 
     const item = await InventoryItem.findById(req.params.id);

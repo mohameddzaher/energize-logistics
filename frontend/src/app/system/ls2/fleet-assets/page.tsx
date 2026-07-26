@@ -679,9 +679,9 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
   // مجدد يركب على التيدر فقط — mirror of the server rule so the user sees why.
   const renewedOnHead = tire.condition === 'renewed' && isHeadSection(pos.section);
   const FATES: { key: 'repair' | 'damaged' | 'store'; ar: string; en: string; hint: string; hintEn: string }[] = [
-    { key: 'repair', ar: 'تحت التجديد', en: 'Under renewal', hint: 'رايحة الصيانة — ترجع مجدد أو سكراب', hintEn: 'to the shop — comes back renewed or scrap' },
-    { key: 'damaged', ar: 'تالفة', en: 'Damaged', hint: 'انفجرت / اتآكلت — لا وجود لها', hintEn: 'blown / worn out — gone' },
-    { key: 'store', ar: 'سليمة للمخزن', en: 'Fine → stock', hint: 'شغالة، بس اتشالت (تدوير مثلًا)', hintEn: 'still good, just swapped out' },
+    { key: 'repair', ar: 'تحت التجديد', en: 'Under renewal', hint: 'تُرسَل للصيانة — تعود مجددة أو سكراب', hintEn: 'to the shop — comes back renewed or scrap' },
+    { key: 'damaged', ar: 'تالفة', en: 'Damaged', hint: 'انفجرت أو تآكلت — لا وجود لها', hintEn: 'blown / worn out — gone' },
+    { key: 'store', ar: 'سليمة إلى المخزن', en: 'Fine → stock', hint: 'صالحة للاستخدام، أُزيلت فقط (تدوير مثلًا)', hintEn: 'still good, just swapped out' },
   ];
   return (
     <Modal title={ar ? `نقل / تركيب الفردة ${tire.serial}` : `Move tire ${tire.serial}`} onClose={onClose}>
@@ -699,14 +699,14 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
         </div>
         {renewedOnHead && (
           <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 font-medium">
-            {ar ? 'الفردة دي مجددة — المجدد يركب على التيدر فقط، مش على الرأس.' : 'This tire is RENEWED — renewed tires mount on the trailer only, never the head.'}
+            {ar ? 'هذه الفردة مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس.' : 'This tire is RENEWED — renewed tires mount on the trailer only, never the head.'}
           </p>
         )}
         {occupant && (
           <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-2">
             <p className="text-amber-700 font-medium">
               {ar
-                ? `فيه IN يبقى فيه OUT: الموقع ده عليه الفردة ${occupant.serial} — هي رايحة فين؟`
+                ? `لكل تركيب إخراج: هذا الموقع عليه الفردة ${occupant.serial} — أين تذهب؟`
                 : `Every IN needs its OUT: this slot holds ${occupant.serial} — where does it go?`}
             </p>
             <div className="space-y-1">
@@ -735,7 +735,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
           onClick={() => onSubmit({ toPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section, reason, notes, ...(occupant ? { displacedTo } : {}) })}
           className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40"
         >
-          {occupant && !displacedTo ? (ar ? 'حدد مصير الفردة القديمة الأول' : 'Choose the old tire’s fate first') : (ar ? 'تنفيذ النقل' : 'Move')}
+          {occupant && !displacedTo ? (ar ? 'حدد مصير الفردة القديمة أولًا' : 'Choose the old tire’s fate first') : (ar ? 'تنفيذ النقل' : 'Move')}
         </button>
       </div>
     </Modal>
@@ -751,19 +751,19 @@ function RenewalResultModal({ tire, ar, busy, onClose, onSubmit }: {
   return (
     <Modal title={ar ? `نتيجة التجديد — الفردة ${tire.serial}` : `Renewal result — ${tire.serial}`} onClose={onClose}>
       <div className="space-y-3">
-        <p className="text-xs text-slate-500">{ar ? 'الفردة رجعت من التجديد — طلعت إيه؟' : 'The tire is back from the renewal shop — what came out?'}</p>
+        <p className="text-xs text-slate-500">{ar ? 'عادت الفردة من التجديد — ما النتيجة؟' : 'The tire is back from the renewal shop — what came out?'}</p>
         <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${result === 'renewed' ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
           <input type="radio" name="renewalResult" checked={result === 'renewed'} onChange={() => setResult('renewed')} className="mt-0.5 accent-blue-600" />
           <span>
             <span className="font-semibold text-slate-800">{ar ? 'مجدد — قابلة للاستخدام' : 'Renewed — usable'}</span>
-            <span className="block text-[11px] text-slate-500">{ar ? 'ترجع المخزن بدرجة "مجدد" — ومن هنا ورايح تركب على التيدر فقط' : 'Back to stock as "renewed" — mounts on the TRAILER only from now on'}</span>
+            <span className="block text-[11px] text-slate-500">{ar ? 'تعود إلى المخزن بدرجة «مجدد» — وتُركَّب على التيدر فقط من الآن فصاعدًا' : 'Back to stock as "renewed" — mounts on the TRAILER only from now on'}</span>
           </span>
         </label>
         <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${result === 'scrap' ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:bg-slate-50'}`}>
           <input type="radio" name="renewalResult" checked={result === 'scrap'} onChange={() => setResult('scrap')} className="mt-0.5 accent-slate-600" />
           <span>
             <span className="font-semibold text-slate-800">{ar ? 'سكراب — غير قابلة للاستخدام' : 'Scrap — not usable'}</span>
-            <span className="block text-[11px] text-slate-500">{ar ? 'تتحط سكراب في المخزن لحد ما تتباع' : 'Kept as scrap in store until sold'}</span>
+            <span className="block text-[11px] text-slate-500">{ar ? 'تُخزَّن سكراب حتى تُباع' : 'Kept as scrap in store until sold'}</span>
           </span>
         </label>
         <div>
@@ -792,14 +792,14 @@ function RetireTireModal({ tire, ar, busy, onClose, onSubmit }: {
           <input type="radio" name="retireKind" checked={kind === 'damaged'} onChange={() => setKind('damaged')} className="mt-0.5 accent-red-600" />
           <span>
             <span className="font-semibold text-slate-800">{ar ? 'تالفة' : 'Damaged'}</span>
-            <span className="block text-[11px] text-slate-500">{ar ? 'انفجرت / اتآكلت خالص — لا وجود لها ولا تتصلح' : 'Blown / fully worn — gone, unrepairable'}</span>
+            <span className="block text-[11px] text-slate-500">{ar ? 'انفجرت أو تآكلت تمامًا — لا وجود لها ولا يمكن إصلاحها' : 'Blown / fully worn — gone, unrepairable'}</span>
           </span>
         </label>
         <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${kind === 'scrap' ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:bg-slate-50'}`}>
           <input type="radio" name="retireKind" checked={kind === 'scrap'} onChange={() => setKind('scrap')} className="mt-0.5 accent-slate-600" />
           <span>
             <span className="font-semibold text-slate-800">{ar ? 'سكراب' : 'Scrap'}</span>
-            <span className="block text-[11px] text-slate-500">{ar ? 'موجودة بس مش صالحة — تتخزن لحد ما تتباع' : 'Exists but unusable — stored until sold'}</span>
+            <span className="block text-[11px] text-slate-500">{ar ? 'موجودة لكنها غير صالحة — تُخزَّن حتى تُباع' : 'Exists but unusable — stored until sold'}</span>
           </span>
         </label>
         <div>

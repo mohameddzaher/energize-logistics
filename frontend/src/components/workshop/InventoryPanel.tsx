@@ -30,9 +30,9 @@ interface IssueRow {
 // The OUT that an issue's IN displaced — every installation must account for
 // the part it replaced.
 const FATE_LABELS: Record<string, { ar: string; en: string; cls: string }> = {
-  damaged: { ar: 'القديمة تالفة', en: 'Old part damaged', cls: 'bg-red-100 text-red-700' },
-  under_renewal: { ar: 'القديمة تحت التجديد', en: 'Old part → renewal', cls: 'bg-violet-100 text-violet-700' },
-  none: { ar: 'لا يوجد مستبدل', en: 'Nothing replaced', cls: 'bg-slate-100 text-slate-500' },
+  damaged: { ar: 'القطعة القديمة تالفة', en: 'Old part damaged', cls: 'bg-red-100 text-red-700' },
+  under_renewal: { ar: 'القطعة القديمة تحت التجديد', en: 'Old part → renewal', cls: 'bg-violet-100 text-violet-700' },
+  none: { ar: 'لا توجد قطعة مستبدلة', en: 'Nothing replaced', cls: 'bg-slate-100 text-slate-500' },
 };
 
 interface InventoryItem {
@@ -125,7 +125,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
         quantity: Math.max(1, Number(renewForm.quantity) || 1),
       });
       notify(lang === 'ar'
-        ? (renewForm.result === 'renewed' ? 'رجعت للمخزون كقطع مجددة.' : 'اتسجلت سكراب — تتباع بعدين.')
+        ? (renewForm.result === 'renewed' ? 'أُعيدت إلى المخزون كقطع مجددة.' : 'سُجِّلت سكراب — تُباع لاحقًا.')
         : 'Renewal result recorded.', 'success');
       setRenewing(null);
       fetchItems();
@@ -161,7 +161,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
     if (!issuing) return;
     // in ⇒ out: the installed part replaces one — its fate must be declared.
     if (!issueForm.replacedFate) {
-      notify(lang === 'ar' ? 'حدد مصير القطعة المستبدلة الأول (تالفة / تحت التجديد / لا يوجد).' : 'Choose the replaced part’s fate first.', 'error');
+      notify(lang === 'ar' ? 'حدد مصير القطعة المستبدلة أولًا (تالفة / تحت التجديد / لا توجد).' : 'Choose the replaced part’s fate first.', 'error');
       return;
     }
     setIssueSaving(true);
@@ -880,12 +880,12 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                   {/* in ⇒ out — the installed part replaces one; say where the old one went */}
                   <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1.5">
                     <p className="text-xs font-semibold text-amber-800">
-                      {lang === 'ar' ? 'فيه IN يبقى فيه OUT — القطعة القديمة اللي اتشالت راحت فين؟ *' : 'Every IN needs its OUT — where did the replaced part go? *'}
+                      {lang === 'ar' ? 'لكل تركيب إخراج — أين ذهبت القطعة القديمة التي أُزيلت؟ *' : 'Every IN needs its OUT — where did the replaced part go? *'}
                     </p>
                     {([
-                      { key: 'damaged' as const, ar: 'تالفة — متدمرة / ملهاش وجود', en: 'Damaged — destroyed, gone' },
-                      { key: 'under_renewal' as const, ar: 'تحت التجديد — رايحة الصيانة وترجع مجدد أو سكراب', en: 'Under renewal — comes back renewed or scrap' },
-                      { key: 'none' as const, ar: 'لا يوجد قطعة مستبدلة — تركيب أول مرة / إضافة', en: 'Nothing replaced — first fit / top-up' },
+                      { key: 'damaged' as const, ar: 'تالفة — متضررة كليًا ولا وجود لها', en: 'Damaged — destroyed, gone' },
+                      { key: 'under_renewal' as const, ar: 'تحت التجديد — تُرسَل للصيانة ثم تعود مجددة أو سكراب', en: 'Under renewal — comes back renewed or scrap' },
+                      { key: 'none' as const, ar: 'لا توجد قطعة مستبدلة — تركيب لأول مرة / إضافة', en: 'Nothing replaced — first fit / top-up' },
                     ]).map((f) => (
                       <label key={f.key} className={`flex items-start gap-2 px-2 py-1.5 rounded-md cursor-pointer border ${issueForm.replacedFate === f.key ? 'bg-white border-[#f37121]' : 'border-transparent hover:bg-white/70'}`}>
                         <input type="radio" name="replacedFate" checked={issueForm.replacedFate === f.key}
@@ -934,14 +934,14 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                   <input type="radio" name="invRenewResult" checked={renewForm.result === 'renewed'} onChange={() => setRenewForm((p) => ({ ...p, result: 'renewed' }))} className="mt-0.5 accent-blue-600" />
                   <span className="text-sm">
                     <span className="font-semibold text-slate-800">{lang === 'ar' ? 'مجدد — قابل للاستخدام' : 'Renewed — usable'}</span>
-                    <span className="block text-[11px] text-slate-500">{lang === 'ar' ? 'يرجع لرصيد المخزون المتاح' : 'Goes back to usable stock'}</span>
+                    <span className="block text-[11px] text-slate-500">{lang === 'ar' ? 'يعود إلى رصيد المخزون المتاح' : 'Goes back to usable stock'}</span>
                   </span>
                 </label>
                 <label className={`flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer border ${renewForm.result === 'scrap' ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:bg-slate-50'}`}>
                   <input type="radio" name="invRenewResult" checked={renewForm.result === 'scrap'} onChange={() => setRenewForm((p) => ({ ...p, result: 'scrap' }))} className="mt-0.5 accent-slate-600" />
                   <span className="text-sm">
                     <span className="font-semibold text-slate-800">{lang === 'ar' ? 'سكراب — غير قابل للاستخدام' : 'Scrap — unusable'}</span>
-                    <span className="block text-[11px] text-slate-500">{lang === 'ar' ? 'يتخزن سكراب لحد ما يتباع' : 'Stored as scrap until sold'}</span>
+                    <span className="block text-[11px] text-slate-500">{lang === 'ar' ? 'يُخزَّن سكراب حتى يُباع' : 'Stored as scrap until sold'}</span>
                   </span>
                 </label>
               </div>

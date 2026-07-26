@@ -147,7 +147,7 @@ exports.createTire = async (req, res) => {
     // on a truck is ordinary 'used'.
     const grade = ['new', 'used', 'renewed'].includes(condition) ? condition : (key ? 'used' : 'new');
     if (grade === 'renewed' && key && isHeadSection(section)) {
-      return res.status(400).json({ message: 'الكاوتش المجدد يركب على التيدر فقط — لا يركب على الرأس' });
+      return res.status(400).json({ message: 'الكاوتش المجدد يُركَّب على التيدر فقط — لا يُركَّب على الرأس' });
     }
     const tire = await Ls2TireAsset.create({
       serial: String(serial).trim(), tireNumber, type, size, sensor, notes,
@@ -205,7 +205,7 @@ exports.moveTire = async (req, res) => {
     if (toPlate) {
       // مجدد يركب على التيدر فقط.
       if (tire.condition === 'renewed' && isHeadSection(section)) {
-        return res.status(400).json({ message: 'الكاوتش المجدد يركب على التيدر فقط — لا يركب على الرأس' });
+        return res.status(400).json({ message: 'الكاوتش المجدد يُركَّب على التيدر فقط — لا يُركَّب على الرأس' });
       }
       const toKey = plateKey(toPlate);
       const live = await vehicleByKey(toKey);
@@ -218,7 +218,7 @@ exports.moveTire = async (req, res) => {
           if (!['repair', 'damaged', 'store'].includes(displacedTo)) {
             return res.status(400).json({
               code: 'DISPLACED_FATE_REQUIRED',
-              message: `المكان مشغول بالفردة ${occupant.serial} — حدد مصيرها: تحت التجديد أو تالفة أو سليمة للمخزن`,
+              message: `الموقع مشغول بالفردة ${occupant.serial} — حدد مصيرها: تحت التجديد أو تالفة أو سليمة للمخزن`,
               occupant: { serial: occupant.serial, tireNumber: occupant.tireNumber },
             });
           }

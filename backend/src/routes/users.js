@@ -5,6 +5,12 @@ const userController = require('../controllers/userController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const validate = require('../middleware/validate');
+const User = require('../models/User');
+
+// The ONE source of truth for valid roles is the User schema enum. A second
+// hardcoded copy here silently rejected every role added after it was written
+// (the IT, marketing, BD and fleet roles all bounced with "Role is invalid").
+const VALID_ROLES = User.schema.path('role').enumValues;
 
 router.use(authenticate);
 
@@ -19,7 +25,7 @@ router.post(
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
     body('firstName').notEmpty().trim(),
     body('lastName').notEmpty().trim(),
-    body('role').isIn(['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'remote_employee', 'remote_manager', 'hr_manager', 'hr_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'finance_manager', 'accountant', 'sales_manager', 'sales_rep', 'procurement_manager', 'customs_manager', 'customs_officer']),
+    body('role').isIn(VALID_ROLES).withMessage('Role is invalid'),
   ],
   validate,
   userController.createUser

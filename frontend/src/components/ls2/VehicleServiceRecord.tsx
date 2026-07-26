@@ -67,16 +67,17 @@ export default function VehicleServiceRecord({
                     </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-end">
-                      <p className={`text-sm font-bold tabular-nums ${over ? 'text-red-600' : 'text-amber-700'}`}>
+                    <div className="text-end space-y-0.5">
+                      <p className={`text-sm font-bold tabular-nums whitespace-nowrap ${over ? 'text-red-600' : 'text-amber-700'}`}>
                         {d.remainingKm == null ? '—' : over ? `−${fmtNum(Math.abs(d.remainingKm))} ${t.kmOverdue}` : `${fmtNum(d.remainingKm)} ${t.kmLeft}`}
                       </p>
-                      <p className="text-[11px] text-slate-600">
-                        {ar ? 'العداد الحالي' : 'Odometer now'}: <b className="tabular-nums">{fmtKm(d.currentOdometerKm ?? currentOdo)}</b>
-                        {' · '}{t.dueAt} {fmtKm(d.dueAtOdometerKm)}
+                      <p className="text-[11px] text-slate-600 tabular-nums whitespace-nowrap">
+                        {ar ? 'العداد' : 'Odo'} <b className="text-slate-800">{fmtNum(d.currentOdometerKm ?? currentOdo)}</b>
+                        <span className="text-slate-400"> · </span>
+                        {ar ? 'الاستحقاق' : 'due'} <b className="text-slate-800">{fmtNum(d.dueAtOdometerKm)}</b> {ar ? 'كم' : 'km'}
                       </p>
                       {dayEstimateText(d, lang) && !over && (
-                        <p className="text-[11px] font-medium text-amber-700">{dayEstimateText(d, lang)}</p>
+                        <p className="text-[11px] font-medium text-amber-700 whitespace-nowrap">{dayEstimateText(d, lang)}</p>
                       )}
                     </div>
                     {admin && (

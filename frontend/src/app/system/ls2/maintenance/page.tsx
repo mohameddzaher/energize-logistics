@@ -169,6 +169,34 @@ function vehicleColumns(ar: boolean, items: Vehicle[]): ExportColumn[] {
   return cols;
 }
 
+// الأعمدة المسطّحة للتقارير الثلاثة (متأخر / قريب / معًا): صف واحد لكل خدمة
+// مستحقة، بلا أعمدة لا تخص التقرير — «متأخرة بـ» لا تظهر في تقرير القريبة،
+// و«المتبقي» لا يظهر في تقرير المتأخرات.
+function flatReportColumns(ar: boolean, kind: 'overdue' | 'due' | 'both'): ExportColumn[] {
+  const cols: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 13 },
+    { header: ar ? 'السائق' : 'Driver', key: 'driver', width: 22 },
+    { header: ar ? 'العداد الحالي (كم)' : 'Odometer (km)', key: 'odometerKm', width: 16 },
+    { header: ar ? 'وقت قراءة العداد' : 'Odometer read at', key: 'odometerAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 18 },
+    { header: ar ? 'الخدمة' : 'Service', key: 'service', width: 30 },
+  ];
+  if (kind === 'both') {
+    cols.push({ header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => (ar ? (v === 'overdue' ? 'متأخرة' : 'قريبة') : v), width: 10 });
+  }
+  if (kind !== 'due') {
+    cols.push({ header: ar ? 'متأخرة بـ (كم)' : 'Overdue by (km)', key: 'overdueBy', width: 14 });
+  }
+  if (kind !== 'overdue') {
+    cols.push({ header: ar ? 'المتبقي (كم)' : 'Remaining (km)', key: 'remaining', transform: (v) => (typeof v === 'number' && v > 0 ? v : ''), width: 13 });
+  }
+  cols.push(
+    { header: ar ? 'تستحق عند (كم)' : 'Due at (km)', key: 'nextDue', width: 14 },
+    { header: ar ? 'آخر صيانة (تاريخ)' : 'Last service (date)', key: 'lastServiceAt', transform: (v) => (v ? new Date(v).toLocaleDateString('en-GB') : ''), width: 16 },
+    { header: ar ? 'عداد آخر صيانة (كم)' : 'Last service (km)', key: 'lastServiceKm', width: 17 },
+  );
+  return cols;
+}
+
 function reportColumns(ar: boolean): ExportColumn[] {
   return [
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 12 },
@@ -313,14 +341,19 @@ export default function Ls2MaintenancePage() {
         <ExportMenu
           fileName="ls2-maintenance" lang={lang as Lang}
           options={[
+            // ثلاثة تقارير مسطّحة نظيفة: كل صف = خدمة مستحقة فعلًا — لا شيء
+            // «سليم» يزاحم القائمة، ولا مصفوفة أعمدة لكل خدمة.
             {
-              key: 'overdue', label: lang === 'ar' ? 'تقرير المتأخرات' : 'Overdue report',
-              // Sheet 1 = one row per vehicle (what the workshop reads), sheet 2 =
-              // the per-service breakdown for anyone who wants the raw lines.
-              sheets: [
-                { name: lang === 'ar' ? 'العربيات' : 'Vehicles', rows: vehicleRows(items, lang === 'ar', (iv) => iv.statusLevel === 'overdue'), columns: vehicleColumns(lang === 'ar', items) },
-                { name: lang === 'ar' ? 'تفصيلي' : 'Detailed', rows: intervalRows(items, (iv) => iv.statusLevel === 'overdue'), columns: reportColumns(lang === 'ar') },
-              ],
+              key: 'overdue', label: lang === 'ar' ? 'المتأخرات فقط (فات موعدها)' : 'Overdue only',
+              sheets: [{ name: lang === 'ar' ? 'المتأخرات' : 'Overdue', rows: intervalRows(items, (iv) => iv.statusLevel === 'overdue'), columns: flatReportColumns(lang === 'ar', 'overdue') }],
+            },
+            {
+              key: 'due', label: lang === 'ar' ? 'القريبة فقط (اقترب موعدها)' : 'Due soon only',
+              sheets: [{ name: lang === 'ar' ? 'القريبة' : 'Due soon', rows: intervalRows(items, (iv) => iv.statusLevel === 'due'), columns: flatReportColumns(lang === 'ar', 'due') }],
+            },
+            {
+              key: 'both', label: lang === 'ar' ? 'المتأخر والقريب معًا' : 'Overdue + due soon',
+              sheets: [{ name: lang === 'ar' ? 'المتأخر والقريب' : 'Overdue + due', rows: intervalRows(items, (iv) => iv.statusLevel === 'overdue' || iv.statusLevel === 'due'), columns: flatReportColumns(lang === 'ar', 'both') }],
             },
             {
               key: 'view', label: lang === 'ar' ? 'العرض الحالي (ملخص العربيات)' : 'Current view (vehicle summary)',
@@ -497,16 +530,17 @@ export default function Ls2MaintenancePage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <div className="text-end">
-                        <p className={`text-sm font-bold tabular-nums ${over ? 'text-red-600' : 'text-amber-700'}`}>
+                      <div className="text-end space-y-0.5">
+                        <p className={`text-sm font-bold tabular-nums whitespace-nowrap ${over ? 'text-red-600' : 'text-amber-700'}`}>
                           {d.remainingKm == null ? '—' : over ? `−${fmtNum(Math.abs(d.remainingKm))} ${t.kmOverdue}` : `${fmtNum(d.remainingKm)} ${t.kmLeft}`}
                         </p>
-                        <p className="text-[11px] text-slate-600">
-                          {lang === 'ar' ? 'العداد الحالي' : 'Odometer now'}: <b className="tabular-nums">{fmtKm(d.currentOdometerKm)}</b>
-                          {' · '}{t.dueAt} {fmtKm(d.dueAtOdometerKm)}
+                        <p className="text-[11px] text-slate-600 tabular-nums whitespace-nowrap">
+                          {lang === 'ar' ? 'العداد' : 'Odo'} <b className="text-slate-800">{fmtNum(d.currentOdometerKm)}</b>
+                          <span className="text-slate-400"> · </span>
+                          {lang === 'ar' ? 'الاستحقاق' : 'due'} <b className="text-slate-800">{fmtNum(d.dueAtOdometerKm)}</b> {lang === 'ar' ? 'كم' : 'km'}
                         </p>
                         {dayEstimateText(d, lang as Lang) && !over && (
-                          <p className="text-[11px] font-medium text-amber-700">{dayEstimateText(d, lang as Lang)}</p>
+                          <p className="text-[11px] font-medium text-amber-700 whitespace-nowrap">{dayEstimateText(d, lang as Lang)}</p>
                         )}
                       </div>
                       {admin && (

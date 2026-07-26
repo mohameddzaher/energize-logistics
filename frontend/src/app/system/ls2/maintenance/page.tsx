@@ -15,9 +15,10 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Wrench, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, ExternalLink, FileSpreadsheet, X, Search } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, fmtNum, fmtKm, fmtDate, checklistLabel, dayEstimateText, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
+import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, fmtNum, fmtKm, fmtDate, checklistLabel, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
 import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
 import DeferralActionModal, { type DeferralLike } from '@/components/ls2/DeferralActionModal';
+import DeferralCard from '@/components/ls2/DeferralCard';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { exportMultiSheet } from '@/utils/exportExcel';
 
@@ -513,45 +514,17 @@ export default function Ls2MaintenancePage() {
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2"><Clock className="w-4 h-4 text-amber-600" /> {t.fleetDeferrals} ({deferrals.length})</h3>
               <button type="button" onClick={() => setDeferOpen(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
             </div>
-            <div className="overflow-y-auto divide-y divide-slate-100">
+            <div className="overflow-y-auto p-3 space-y-2.5 bg-slate-50/60">
               {deferrals.length === 0 && <p className="text-sm text-slate-400 text-center py-12">{t.noOpenDeferrals}</p>}
-              {deferrals.map((d) => {
-                const over = d.remainingKm != null && d.remainingKm < 0;
-                return (
-                  <div key={`${d.logId}-${d.label}`} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-800">
-                        {checklistLabel(d, lang as Lang)}
-                        <button type="button" onClick={() => router.push(`/system/ls2/${d.unitId}`)} className="ms-2 text-[#f37121] hover:underline text-xs font-semibold">{d.plate}</button>
-                      </p>
-                      <p className="text-[11px] text-slate-600">
-                        {d.intervalName} · {t.deferredOn} {fmtDate(d.deferredAt, lang as Lang)}
-                        {d.deferKm != null && <> · +{fmtNum(d.deferKm)} km</>}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="text-end space-y-0.5">
-                        <p className={`text-sm font-bold tabular-nums whitespace-nowrap ${over ? 'text-red-600' : 'text-amber-700'}`}>
-                          {d.remainingKm == null ? '—' : over ? `−${fmtNum(Math.abs(d.remainingKm))} ${t.kmOverdue}` : `${fmtNum(d.remainingKm)} ${t.kmLeft}`}
-                        </p>
-                        <p className="text-[11px] text-slate-600 tabular-nums whitespace-nowrap">
-                          {lang === 'ar' ? 'العداد' : 'Odo'} <b className="text-slate-800">{fmtNum(d.currentOdometerKm)}</b>
-                          <span className="text-slate-400"> · </span>
-                          {lang === 'ar' ? 'الاستحقاق' : 'due'} <b className="text-slate-800">{fmtNum(d.dueAtOdometerKm)}</b> {lang === 'ar' ? 'كم' : 'km'}
-                        </p>
-                        {dayEstimateText(d, lang as Lang) && !over && (
-                          <p className="text-[11px] font-medium text-amber-700 whitespace-nowrap">{dayEstimateText(d, lang as Lang)}</p>
-                        )}
-                      </div>
-                      {admin && (
-                        <button type="button" onClick={() => setSettle(d)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-xs font-medium">
-                          {t.deferralSettle}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {deferrals.map((d) => (
+                <DeferralCard
+                  key={`${d.logId}-${d.label}`}
+                  d={d} lang={lang as Lang} admin={admin}
+                  plate={d.plate}
+                  onPlateClick={() => router.push(`/system/ls2/${d.unitId}`)}
+                  onSettle={() => setSettle(d)}
+                />
+              ))}
             </div>
           </div>
         </div>

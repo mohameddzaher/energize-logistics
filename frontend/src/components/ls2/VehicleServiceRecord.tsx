@@ -6,13 +6,14 @@
 // This is what any manager opening a vehicle profile needs to see, so it lives in
 // a component and is dropped into the vehicle page — there is only one profile.
 import { useState, useEffect, useCallback } from 'react';
-import { Clock, History, Hammer, Plus, CheckCircle2, MinusCircle, SlidersHorizontal } from 'lucide-react';
+import { Clock, History, Hammer, Plus, CheckCircle2, MinusCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import RepairModal from '@/components/ls2/RepairModal';
 import DeferralActionModal from '@/components/ls2/DeferralActionModal';
+import DeferralCard from '@/components/ls2/DeferralCard';
 import {
-  ls2Text, fmtNum, fmtKm, fmtDate, REPAIR_SEVERITIES, REPAIR_STATUSES, repairCategoryLabel, checklistLabel, dayEstimateText,
+  ls2Text, fmtNum, fmtKm, fmtDate, REPAIR_SEVERITIES, REPAIR_STATUSES, repairCategoryLabel, checklistLabel,
   type Lang, type ServiceLog, type Deferral, type Repair,
 } from '@/lib/ls2';
 
@@ -52,47 +53,15 @@ export default function VehicleServiceRecord({
           <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2 px-5 py-3 border-b border-amber-100 bg-amber-50">
             <Clock className="w-4 h-4 text-amber-600" /> {t.openDeferrals} ({deferrals.length})
           </h2>
-          <div className="divide-y divide-slate-100">
-            {deferrals.map((d) => {
-              const over = d.remainingKm != null && d.remainingKm < 0;
-              return (
-                <div key={`${d.logId}-${d.label}`} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800">{checklistLabel(d, lang)}</p>
-                    <p className="text-[11px] text-slate-600">
-                      {d.intervalName} · {t.deferredOn} {fmtDate(d.deferredAt, lang)}
-                      {d.deferredAtOdometerKm != null && <> ({fmtKm(d.deferredAtOdometerKm)})</>}
-                      {d.deferKm != null && <> · +{fmtNum(d.deferKm)} km</>}
-                      {d.note && <> · {d.note}</>}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-end space-y-0.5">
-                      <p className={`text-sm font-bold tabular-nums whitespace-nowrap ${over ? 'text-red-600' : 'text-amber-700'}`}>
-                        {d.remainingKm == null ? '—' : over ? `−${fmtNum(Math.abs(d.remainingKm))} ${t.kmOverdue}` : `${fmtNum(d.remainingKm)} ${t.kmLeft}`}
-                      </p>
-                      <p className="text-[11px] text-slate-600 tabular-nums whitespace-nowrap">
-                        {ar ? 'العداد' : 'Odo'} <b className="text-slate-800">{fmtNum(d.currentOdometerKm ?? currentOdo)}</b>
-                        <span className="text-slate-400"> · </span>
-                        {ar ? 'الاستحقاق' : 'due'} <b className="text-slate-800">{fmtNum(d.dueAtOdometerKm)}</b> {ar ? 'كم' : 'km'}
-                      </p>
-                      {dayEstimateText(d, lang) && !over && (
-                        <p className="text-[11px] font-medium text-amber-700 whitespace-nowrap">{dayEstimateText(d, lang)}</p>
-                      )}
-                    </div>
-                    {admin && (
-                      <button
-                        type="button"
-                        onClick={() => setSettle(d)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-xs font-medium"
-                      >
-                        <SlidersHorizontal className="w-3.5 h-3.5" /> {t.deferralSettle}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="p-3 space-y-2.5 bg-slate-50/60">
+            {deferrals.map((d) => (
+              <DeferralCard
+                key={`${d.logId}-${d.label}`}
+                d={d} lang={lang} admin={admin}
+                currentOdoFallback={currentOdo}
+                onSettle={() => setSettle(d)}
+              />
+            ))}
           </div>
         </div>
       )}

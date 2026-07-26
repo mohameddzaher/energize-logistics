@@ -339,6 +339,43 @@ const PURCHASE_EDITABLE = [
   'maintenanceRequest', 'partIndex', 'supplier', 'cost', 'invoiceNumber',
 ];
 
+// The goods a purchase brought, into the store — find (or create) the item line
+// by name and add the quantity. Shared by the receive endpoint (legacy pending
+// rows) and by createPurchaseRequest, which auto-receives: recording a purchase
+// MEANS the goods are in hand, so it lands in the store in the same call.
+const addPurchaseToStock = async (request, user, inventoryItemId = null) => {
+  const qty = Math.max(1, Number(request.quantity) || 1);
+  let invItem = inventoryItemId ? await InventoryItem.findById(inventoryItemId) : null;
+  if (!invItem && !inventoryItemId && request.itemName) {
+    // Only ACTIVE lines: a deleted one is invisible on every screen, so adding
+    // stock to it would silently swallow the delivery.
+    invItem = await InventoryItem.findOne({ name: new RegExp(`^${escapeRx(request.itemName)}$`, 'i'), isActive: true });
+    if (!invItem) {
+      invItem = await InventoryItem.create({
+        code: `WS-${Date.now().toString(36).toUpperCase()}`,
+        name: request.itemName,
+        category: '',
+        quantity: 0,
+        unit: 'piece',
+        costPrice: request.cost && qty ? Number(request.cost) / qty : 0,
+        supplier: request.supplier || '',
+        notes: 'أُنشئ تلقائيًا عند تسجيل طلب شراء',
+        createdBy: user._id,
+        approvalStatus: 'approved',
+      });
+    }
+  }
+  if (invItem) {
+    invItem.quantity = (Number(invItem.quantity) || 0) + qty;
+    if (request.supplier && !invItem.supplier) invItem.supplier = request.supplier;
+    await invItem.save();
+    request.inventoryItem = invItem._id;
+    await request.save();
+    emitToAll('inventory:updated', invItem);
+  }
+  return invItem;
+};
+
 const createPurchaseRequest = async (req, res) => {
   try {
     const data = {};
@@ -353,7 +390,21 @@ const createPurchaseRequest = async (req, res) => {
       if (mr) data.vehicleNumber = mr.vehicleNumber;
     }
 
+    // ONE step, not two: a directly-recorded purchase means the goods are
+    // already in hand — it goes straight into the store, no receive button.
+    // Only maintenance-driven rows stay pending: those are requests for
+    // purchasing to ACT on, nothing has been bought yet.
+    if (!data.maintenanceRequest) {
+      data.status = 'received';
+      data.receivedAt = new Date();
+      data.receivedBy = req.user._id;
+    }
+
     const request = await WorkshopPurchaseRequest.create(data);
+    if (request.status === 'received') {
+      await addPurchaseToStock(request, req.user);
+      emitToAll('purchase:received', request);
+    }
 
     // If linked to a maintenance request part, update the part reference
     if (data.maintenanceRequest && data.partIndex !== undefined) {
@@ -406,45 +457,10 @@ const receivePurchaseRequest = async (req, res) => {
     request.receivedBy = req.user._id;
     await request.save();
 
-    // Goods have ARRIVED, so the store gains them. This used to subtract, which
-    // is the wrong end of the flow: a purchase adds to stock when it is received
-    // and only leaves stock when it is issued to a job (see fulfil below). With
-    // the old direction nothing in the section ever increased stock at all, so
-    // the store could only ever go to zero.
-    const { inventoryItemId } = req.body || {};
-    const qty = Math.max(1, Number(request.quantity) || 1);
-    let invItem = inventoryItemId ? await InventoryItem.findById(inventoryItemId) : null;
-
-    // No existing line to add to — a first-time purchase is exactly how a part
-    // enters the catalogue, so create it rather than losing the receipt.
-    if (!invItem && !inventoryItemId && request.itemName) {
-      // Only ACTIVE lines: a deleted one is invisible on every screen, so adding
-      // stock to it would silently swallow the delivery.
-      invItem = await InventoryItem.findOne({ name: new RegExp(`^${escapeRx(request.itemName)}$`, 'i'), isActive: true });
-      if (!invItem) {
-        invItem = await InventoryItem.create({
-          code: `WS-${Date.now().toString(36).toUpperCase()}`,
-          name: request.itemName,
-          category: '',
-          quantity: 0,
-          unit: 'piece',
-          costPrice: request.cost && qty ? Number(request.cost) / qty : 0,
-          supplier: request.supplier || '',
-          notes: 'أُنشئ تلقائياً عند استلام طلب شراء',
-          createdBy: req.user._id,
-          approvalStatus: 'approved',
-        });
-      }
-    }
-
-    if (invItem) {
-      invItem.quantity = (Number(invItem.quantity) || 0) + qty;
-      if (request.supplier && !invItem.supplier) invItem.supplier = request.supplier;
-      await invItem.save();
-      request.inventoryItem = invItem._id;
-      await request.save();
-      emitToAll('inventory:updated', invItem);
-    }
+    // Goods have ARRIVED, so the store gains them. Kept for the rows that are
+    // still staged: maintenance-driven purchase REQUESTS, and legacy pending
+    // rows from before recording a purchase auto-received it.
+    await addPurchaseToStock(request, req.user, (req.body || {}).inventoryItemId || null);
 
     const populated = await WorkshopPurchaseRequest.findById(request._id)
       .populate('requestedBy', 'firstName lastName')
@@ -1384,7 +1400,7 @@ const getWorkshopUsers = async (req, res) => {
 // keeps the on-shelf count, the issue rows keep the "gone onto vehicle X" side.
 const issueInventoryItem = async (req, res) => {
   try {
-    const { quantity, vehicleNumber, notes, date, replacedFate } = req.body || {};
+    const { quantity, vehicleNumber, notes, date, replacedFate, fitLocation } = req.body || {};
     const qty = Math.max(1, Number(quantity) || 1);
     // in ⇒ out: putting a part ON a truck replaces one coming OFF it, and the
     // removed one must be declared — تالف, تحت التجديد, or explicitly nothing
@@ -1415,6 +1431,7 @@ const issueInventoryItem = async (req, res) => {
       itemCode: item.code,
       quantity: qty,
       vehicleNumber: String(vehicleNumber || '').trim(),
+      fitLocation: ['head', 'flatbed', 'trailer'].includes(fitLocation) ? fitLocation : '',
       notes: String(notes || '').trim(),
       date: date || new Date().toISOString().slice(0, 10),
       replacedFate,

@@ -21,6 +21,9 @@ const inventoryIssueSchema = new mongoose.Schema({
 
   quantity: { type: Number, required: true, min: 1 },
   vehicleNumber: { type: String, trim: true, index: true }, // free text — matches how the whole workshop refers to trucks
+  // WHERE on the truck it was fitted — الرأس، السطحة، التيدر — so the register
+  // answers "this part is on which vehicle, and on which part of it".
+  fitLocation: { type: String, enum: ['head', 'flatbed', 'trailer', ''], default: '' },
   // The OUT that this IN displaced: installing a part on a truck replaces an
   // old one, and the old one must be accounted for — تالف (destroyed, gone),
   // تحت التجديد (sent for refurbishing), or 'none' (nothing was replaced —

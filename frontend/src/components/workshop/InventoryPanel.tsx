@@ -20,6 +20,7 @@ interface IssueRow {
   itemCode?: string;
   quantity: number;
   vehicleNumber?: string;
+  fitLocation?: 'head' | 'flatbed' | 'trailer' | '';
   notes?: string;
   date?: string;
   replacedFate?: 'damaged' | 'under_renewal' | 'none';
@@ -29,6 +30,13 @@ interface IssueRow {
 
 // The OUT that an issue's IN displaced — every installation must account for
 // the part it replaced.
+// أين رُكِّبت على المركبة بالضبط.
+const FIT_LOCATION_LABELS: Record<string, { ar: string; en: string }> = {
+  head: { ar: 'الرأس', en: 'Head' },
+  flatbed: { ar: 'السطحة', en: 'Flatbed' },
+  trailer: { ar: 'التيدر', en: 'Trailer' },
+};
+
 const FATE_LABELS: Record<string, { ar: string; en: string; cls: string }> = {
   damaged: { ar: 'القطعة القديمة تالفة', en: 'Old part damaged', cls: 'bg-red-100 text-red-700' },
   under_renewal: { ar: 'القطعة القديمة تحت التجديد', en: 'Old part → renewal', cls: 'bg-violet-100 text-violet-700' },
@@ -111,7 +119,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
   // same installed-vs-stock picture the serial-tracked assets already have.
   const [view, setView] = useState<'stock' | 'issues'>('stock');
   const [issuing, setIssuing] = useState<InventoryItem | null>(null);
-  const [issueForm, setIssueForm] = useState({ quantity: '1', vehicleNumber: '', notes: '', date: new Date().toISOString().slice(0, 10), replacedFate: '' as '' | 'damaged' | 'under_renewal' | 'none' });
+  const [issueForm, setIssueForm] = useState({ quantity: '1', vehicleNumber: '', fitLocation: '' as '' | 'head' | 'flatbed' | 'trailer', notes: '', date: new Date().toISOString().slice(0, 10), replacedFate: '' as '' | 'damaged' | 'under_renewal' | 'none' });
   // نتيجة التجديد for a line's under-renewal bucket: back to stock or scrap.
   const [renewing, setRenewing] = useState<InventoryItem | null>(null);
   const [renewForm, setRenewForm] = useState({ result: '' as '' | 'renewed' | 'scrap', quantity: '1' });
@@ -169,6 +177,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
       await api.post(`/api/workshop/inventory/${issuing._id}/issue`, {
         quantity: Math.max(1, Number(issueForm.quantity) || 1),
         vehicleNumber: issueForm.vehicleNumber.trim(),
+        fitLocation: issueForm.fitLocation,
         notes: issueForm.notes.trim(),
         date: issueForm.date,
         replacedFate: issueForm.replacedFate,
@@ -534,7 +543,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => { setIssuing(item); setIssueForm({ quantity: '1', vehicleNumber: '', notes: '', date: new Date().toISOString().slice(0, 10), replacedFate: '' }); }}
+                        onClick={() => { setIssuing(item); setIssueForm({ quantity: '1', vehicleNumber: '', fitLocation: '', notes: '', date: new Date().toISOString().slice(0, 10), replacedFate: '' }); }}
                         disabled={(item.quantity || 0) < 1}
                         className="px-2.5 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-xs font-semibold transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
                         title={lang === 'ar' ? 'صرف لمركبة' : 'Issue to a vehicle'}
@@ -635,7 +644,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                       <td className="py-3 px-3 text-slate-900 font-semibold">{row.quantity}</td>
                       <td className="py-3 px-3">
                         {row.vehicleNumber
-                          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/15 text-blue-700 text-xs font-medium">{row.vehicleNumber}</span>
+                          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/15 text-blue-700 text-xs font-medium">{row.vehicleNumber}{row.fitLocation && FIT_LOCATION_LABELS[row.fitLocation] ? ` · ${lang === 'ar' ? FIT_LOCATION_LABELS[row.fitLocation].ar : FIT_LOCATION_LABELS[row.fitLocation].en}` : ''}</span>
                           : <span className="text-slate-400">—</span>}
                       </td>
                       <td className="py-3 px-3 text-slate-700">{row.date || fmt.date(row.createdAt)}</td>
@@ -868,10 +877,19 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
                     <label className={labelClass}>{lang === 'ar' ? 'التاريخ' : 'Date'}</label>
                     <input type="date" value={issueForm.date} onChange={(e) => setIssueForm((f) => ({ ...f, date: e.target.value }))} className={inputClass} />
                   </div>
-                  <div className="col-span-2">
+                  <div>
                     <label className={labelClass}>{lang === 'ar' ? 'إلى المركبة (رقمها)' : 'To vehicle (number)'}</label>
                     <input value={issueForm.vehicleNumber} onChange={(e) => setIssueForm((f) => ({ ...f, vehicleNumber: e.target.value }))}
-                      placeholder={lang === 'ar' ? 'مثال: 5030 — اتركه فارغاً لو صرف عام' : 'e.g. 5030 — leave empty for general use'} className={inputClass} />
+                      placeholder={lang === 'ar' ? 'مثال: 5030 — اتركه فارغًا للصرف العام' : 'e.g. 5030 — leave empty for general use'} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>{lang === 'ar' ? 'مكان التركيب' : 'Fitted on'}</label>
+                    <select value={issueForm.fitLocation} onChange={(e) => setIssueForm((f) => ({ ...f, fitLocation: e.target.value as any }))} className={inputClass}>
+                      <option value="">{lang === 'ar' ? 'غير محدد' : 'Unspecified'}</option>
+                      <option value="head">{lang === 'ar' ? 'الرأس' : 'Head'}</option>
+                      <option value="flatbed">{lang === 'ar' ? 'السطحة' : 'Flatbed'}</option>
+                      <option value="trailer">{lang === 'ar' ? 'التيدر' : 'Trailer'}</option>
+                    </select>
                   </div>
                   <div className="col-span-2">
                     <label className={labelClass}>{lang === 'ar' ? 'ملاحظات' : 'Notes'}</label>

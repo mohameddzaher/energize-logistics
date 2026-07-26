@@ -139,9 +139,8 @@ export default function WorkshopPurchasesPage() {
         invoiceNumber: createForm.invoiceNumber.trim(),
         description: createForm.description.trim(),
       });
-      // Recording IS receiving — a purchase is only entered once the goods are
-      // in hand, so it goes straight into the store. No staging steps.
-      if (created?._id) await api.put(`/api/workshop/purchases/${created._id}/receive`, {});
+      // Recording IS receiving — the server puts it straight into the store in
+      // the same call. One step, nothing staged, nothing to fail halfway.
       notify(isAr ? 'تم التسجيل وإضافته إلى المستودع.' : 'Recorded and added to the store.', 'success');
       setCreateOpen(false);
       setCreateForm({ itemName: '', quantity: '1', vehicleNumber: '', supplier: '', cost: '', invoiceNumber: '', description: '' });

@@ -12,7 +12,7 @@ import { useSocket } from '@/hooks/useSocket';
 import RepairModal from '@/components/ls2/RepairModal';
 import DeferralActionModal from '@/components/ls2/DeferralActionModal';
 import {
-  ls2Text, fmtNum, fmtKm, fmtDate, REPAIR_SEVERITIES, REPAIR_STATUSES, repairCategoryLabel, checklistLabel,
+  ls2Text, fmtNum, fmtKm, fmtDate, REPAIR_SEVERITIES, REPAIR_STATUSES, repairCategoryLabel, checklistLabel, dayEstimateText,
   type Lang, type ServiceLog, type Deferral, type Repair,
 } from '@/lib/ls2';
 
@@ -71,7 +71,13 @@ export default function VehicleServiceRecord({
                       <p className={`text-sm font-bold tabular-nums ${over ? 'text-red-600' : 'text-amber-700'}`}>
                         {d.remainingKm == null ? '—' : over ? `−${fmtNum(Math.abs(d.remainingKm))} ${t.kmOverdue}` : `${fmtNum(d.remainingKm)} ${t.kmLeft}`}
                       </p>
-                      <p className="text-[11px] text-slate-600">{t.dueAt} {fmtKm(d.dueAtOdometerKm)}</p>
+                      <p className="text-[11px] text-slate-600">
+                        {ar ? 'العداد الحالي' : 'Odometer now'}: <b className="tabular-nums">{fmtKm(d.currentOdometerKm ?? currentOdo)}</b>
+                        {' · '}{t.dueAt} {fmtKm(d.dueAtOdometerKm)}
+                      </p>
+                      {dayEstimateText(d, lang) && !over && (
+                        <p className="text-[11px] font-medium text-amber-700">{dayEstimateText(d, lang)}</p>
+                      )}
                     </div>
                     {admin && (
                       <button

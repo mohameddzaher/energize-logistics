@@ -15,7 +15,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Wrench, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, ExternalLink, FileSpreadsheet, X, Search } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, fmtNum, fmtKm, fmtDate, checklistLabel, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
+import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, fmtNum, fmtKm, fmtDate, checklistLabel, dayEstimateText, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
 import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
 import DeferralActionModal, { type DeferralLike } from '@/components/ls2/DeferralActionModal';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -501,7 +501,13 @@ export default function Ls2MaintenancePage() {
                         <p className={`text-sm font-bold tabular-nums ${over ? 'text-red-600' : 'text-amber-700'}`}>
                           {d.remainingKm == null ? '—' : over ? `−${fmtNum(Math.abs(d.remainingKm))} ${t.kmOverdue}` : `${fmtNum(d.remainingKm)} ${t.kmLeft}`}
                         </p>
-                        <p className="text-[11px] text-slate-600">{t.dueAt} {fmtKm(d.dueAtOdometerKm)}</p>
+                        <p className="text-[11px] text-slate-600">
+                          {lang === 'ar' ? 'العداد الحالي' : 'Odometer now'}: <b className="tabular-nums">{fmtKm(d.currentOdometerKm)}</b>
+                          {' · '}{t.dueAt} {fmtKm(d.dueAtOdometerKm)}
+                        </p>
+                        {dayEstimateText(d, lang as Lang) && !over && (
+                          <p className="text-[11px] font-medium text-amber-700">{dayEstimateText(d, lang as Lang)}</p>
+                        )}
                       </div>
                       {admin && (
                         <button type="button" onClick={() => setSettle(d)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-xs font-medium">

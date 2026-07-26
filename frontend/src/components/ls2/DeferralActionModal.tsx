@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { CheckCircle2, Clock, XCircle, Loader2, X } from 'lucide-react';
 import api from '@/lib/api';
-import { ls2Text, fmtKm, fmtNum, checklistLabel, type Lang, type Deferral } from '@/lib/ls2';
+import { ls2Text, fmtKm, fmtNum, checklistLabel, dayEstimateText, type Lang, type Deferral } from '@/lib/ls2';
 
 type Action = 'done' | 'defer' | 'skip';
 
@@ -72,11 +72,15 @@ export default function DeferralActionModal({
           {deferral.intervalName ? <> · {deferral.intervalName}</> : null}
         </p>
         <p className="text-[11px] text-slate-500 mb-4">
-          {t.dueAt} {fmtKm(deferral.dueAtOdometerKm)}
+          {ar ? 'العداد الحالي' : 'Odometer now'}: <b className="tabular-nums text-slate-700">{fmtKm(deferral.currentOdometerKm ?? currentOdo)}</b>
+          {' · '}{t.dueAt} {fmtKm(deferral.dueAtOdometerKm)}
           {deferral.remainingKm != null && (
             <> · {deferral.remainingKm < 0
               ? <span className="text-red-600 font-medium">−{fmtNum(Math.abs(deferral.remainingKm))} {t.kmOverdue}</span>
               : <span className="text-amber-700 font-medium">{fmtNum(deferral.remainingKm)} {t.kmLeft}</span>}</>
+          )}
+          {dayEstimateText(deferral, lang) && (deferral.remainingKm ?? 0) >= 0 && (
+            <span className="block text-amber-700 font-medium mt-0.5">{dayEstimateText(deferral, lang)}</span>
           )}
         </p>
 

@@ -66,7 +66,23 @@ export interface Deferral {
   label: string; labelAr?: string; note: string; deferKm: number | null; dueAtOdometerKm: number;
   remainingKm: number | null; intervalName: string;
   deferredAt: string | null; deferredAtOdometerKm: number | null; logId: string;
+  currentOdometerKm?: number | null;   // العداد الآن
+  estimatedDaysLeft?: number | null;   // remaining ÷ the truck's real km/day
+  estimatedDueDate?: string | null;    // YYYY-MM-DD
 }
+
+// "774 كم" as TIME: the day-estimate line for a deferral (empty when the truck
+// is parked or has no odometer history to pace from).
+export const dayEstimateText = (d: { estimatedDaysLeft?: number | null; estimatedDueDate?: string | null }, lang: Lang): string => {
+  const n = d.estimatedDaysLeft;
+  if (n == null) return '';
+  const date = d.estimatedDueDate ? ` (${fmtDate(d.estimatedDueDate, lang)})` : '';
+  if (lang === 'ar') {
+    const word = n === 0 ? 'أقل من يوم' : n === 1 ? 'يوم تقريبًا' : n === 2 ? 'يومين تقريبًا' : `${n} يومًا تقريبًا`;
+    return `≈ خلال ${word}${date}`;
+  }
+  return `≈ in ${n === 0 ? 'under a day' : `~${n} day${n === 1 ? '' : 's'}`}${date}`;
+};
 // The label to SHOW for a checklist task / deferral — Arabic when the UI is
 // Arabic and a translation exists, else the canonical label.
 export const checklistLabel = (x: { label: string; labelAr?: string }, lang: Lang) =>

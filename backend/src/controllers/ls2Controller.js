@@ -496,6 +496,48 @@ exports.markServiced = async (req, res) => {
   }
 };
 
+// Average km/day per unit over the last `days`, from the daily odometer
+// snapshots — what turns "774 km left" into "≈ يومين من الآن".
+async function avgKmPerDayByUnit(unitIds, days = 14) {
+  const since = addDays(cairoDate(), -days);
+  const rows = await Ls2OdometerDaily.aggregate([
+    { $match: { unitId: { $in: unitIds }, date: { $gte: since } } },
+    { $sort: { unitId: 1, date: 1 } },
+    { $group: {
+      _id: '$unitId',
+      first: { $first: '$odometerKm' }, last: { $last: '$odometerKm' },
+      firstDate: { $first: '$date' }, lastDate: { $last: '$date' },
+    } },
+  ]);
+  const out = new Map();
+  for (const r of rows) {
+    const span = Math.max(1, (new Date(r.lastDate) - new Date(r.firstDate)) / 86400000);
+    const km = Math.max(0, (r.last || 0) - (r.first || 0));
+    // Below ~10 km/day the truck is effectively parked — an ETA from that pace
+    // would read "due in 3 years" and mislead more than it informs.
+    if (km / span >= 10) out.set(r._id, km / span);
+  }
+  return out;
+}
+
+// Attach the day-estimate to each deferral: remaining km ÷ that truck's real
+// daily pace → estimatedDaysLeft + estimatedDueDate (null when parked/no data).
+function attachDayEstimates(deferrals, rates) {
+  const today = cairoDate();
+  for (const d of deferrals) {
+    const rate = rates.get(d.unitId);
+    if (rate && d.remainingKm != null && d.remainingKm > 0) {
+      const daysLeft = Math.max(0, Math.round(d.remainingKm / rate));
+      d.estimatedDaysLeft = daysLeft;
+      d.estimatedDueDate = addDays(today, daysLeft);
+    } else {
+      d.estimatedDaysLeft = null;
+      d.estimatedDueDate = null;
+    }
+  }
+  return deferrals;
+}
+
 // Open deferred checklist tasks for a vehicle ("good for another N km"), with how
 // far they are from their due odometer — the basis for the pre-emptive warning.
 function openDeferrals(history, currentOdo) {
@@ -504,11 +546,13 @@ function openDeferrals(history, currentOdo) {
     for (const c of log.checklist || []) {
       if (c.status !== 'deferred' || c.resolved || c.dueAtOdometerKm == null) continue;
       out.push({
+        unitId: log.unitId,
         label: c.label,
         labelAr: c.labelAr || '',
         note: c.note || '',
         deferKm: c.deferKm,
         dueAtOdometerKm: c.dueAtOdometerKm,
+        currentOdometerKm: currentOdo, // العداد الآن — بجانب "الاستحقاق عند"
         remainingKm: currentOdo != null ? Math.round(c.dueAtOdometerKm - currentOdo) : null,
         intervalId: log.intervalId,
         intervalName: log.intervalName,
@@ -589,7 +633,7 @@ exports.getVehicleMaintenance = async (req, res) => {
       vehicle: withMaintenance(v),
       history,
       repairs,
-      deferrals: openDeferrals(history, v.odometerKm),
+      deferrals: attachDayEstimates(openDeferrals(history, v.odometerKm), await avgKmPerDayByUnit([unitId])),
       checklists: settings.checklists || {},
     });
   } catch (error) {
@@ -810,7 +854,7 @@ exports.resolveDeferral = async (req, res) => {
 
     const v = await Ls2Vehicle.findOne({ unitId }).lean();
     const history = await Ls2ServiceLog.find({ unitId }).sort({ serviceDate: -1, createdAt: -1 }).limit(200).lean();
-    res.json({ ok: true, deferrals: openDeferrals(history, v ? v.odometerKm : null) });
+    res.json({ ok: true, deferrals: attachDayEstimates(openDeferrals(history, v ? v.odometerKm : null), await avgKmPerDayByUnit([unitId])) });
   } catch (error) {
     fail(res, error, 'Failed to resolve deferral');
   }
@@ -854,6 +898,8 @@ exports.listDeferrals = async (req, res) => {
     }
     // Most urgent first (most overdue → soonest due).
     out.sort((a, b) => (a.remainingKm ?? 1e9) - (b.remainingKm ?? 1e9));
+    // "774 كم" تبقى "≈ يومين" — بحسب معدل مشي كل شاحنة فعليًا.
+    attachDayEstimates(out, await avgKmPerDayByUnit([...new Set(out.map((d) => d.unitId))]));
     res.json({ deferrals: out });
   } catch (error) {
     fail(res, error, 'Failed to list deferrals');

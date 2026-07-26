@@ -69,6 +69,12 @@ export default function FleetBoardPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useSocket('ls2:updated', useCallback(() => load(), [load]));
+  // Belt-and-braces: the board is the operations command view — even if the
+  // socket drops, it must never sit stale for long.
+  useEffect(() => {
+    const id = setInterval(() => load(), 60000);
+    return () => clearInterval(id);
+  }, [load]);
 
   const filtered = useMemo(() => {
     let r = cards;

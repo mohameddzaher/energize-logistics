@@ -146,7 +146,20 @@ export function ErrorNotice({ error, onRetry, lang = 'en' }: { error: string; on
   );
 }
 
-export interface SearchOption { value: string; label: string; hint?: string }
+// `badge` + `tone`: an optional colored status chip under the label (the fleet
+// vehicle picker uses it for «متاحة — في جدة» / «عليها حمولة إلى…»). The badge
+// text participates in search just like the hint.
+export interface SearchOption {
+  value: string; label: string; hint?: string;
+  badge?: string;
+  tone?: 'ok' | 'busy' | 'info';
+}
+const OPTION_TONES: Record<string, string> = {
+  ok: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  busy: 'bg-amber-50 text-amber-800 border-amber-200',
+  info: 'bg-blue-50 text-blue-700 border-blue-200',
+};
+const OPTION_DOTS: Record<string, string> = { ok: 'bg-emerald-500', busy: 'bg-amber-500', info: 'bg-blue-500' };
 
 // A <select> replacement for lists nobody can reasonably scroll — employees,
 // customers, vendors. Filters on both the label and the hint (employee number,
@@ -187,7 +200,7 @@ export function SearchableSelect({
     // Every space-separated word must appear somewhere, so "ahmed 2570" works.
     const words = s.split(/\s+/);
     return options.filter((o) => {
-      const hay = fold(`${o.label} ${o.hint || ''}`);
+      const hay = fold(`${o.label} ${o.hint || ''} ${o.badge || ''}`);
       return words.every((w) => hay.includes(w));
     });
   }, [options, q]);
@@ -261,8 +274,14 @@ export function SearchableSelect({
                 className={`w-full text-start px-3 py-2 border-b border-slate-100 last:border-0 flex items-center gap-2 ${i === active ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
               >
                 <span className="flex-1 min-w-0">
-                  <span className="block text-sm text-slate-900 truncate">{o.label}</span>
-                  {o.hint && <span className="block text-xs text-slate-400 truncate">{o.hint}</span>}
+                  <span className="block text-sm font-medium text-slate-900 truncate">{o.label}</span>
+                  {o.badge && (
+                    <span className={`inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold max-w-full ${OPTION_TONES[o.tone || 'info']}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${OPTION_DOTS[o.tone || 'info']}`} />
+                      <span className="truncate">{o.badge}</span>
+                    </span>
+                  )}
+                  {o.hint && <span className="block text-xs text-slate-500 truncate mt-0.5">{o.hint}</span>}
                 </span>
                 {o.value === value && <CheckIcon className="w-4 h-4 shrink-0 text-[#f37121]" />}
               </button>

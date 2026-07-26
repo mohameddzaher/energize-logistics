@@ -245,10 +245,12 @@ function CreateFleetShipmentInner() {
               emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
               options={vehicles.map((v) => ({
                 value: v._id,
-                label: `${v.plate}${v.trip ? (ar ? ` ⟵ ${v.trip.toCity || '—'}` : ` → ${v.trip.toCity || '—'}`) : ''}`,
-                // سطر التوافر يُبحث فيه أيضًا: اكتب «جدة» تجد سيارات جدة فورًا.
+                label: v.plate,
+                // شارة ملونة واضحة: أخضر متاحة، كهرماني عليها حمولة، أزرق تفريغ.
+                // نصها يُبحث فيه أيضًا — اكتب «جدة» تجد سيارات جدة فورًا.
+                badge: vehicleAvailabilityText(v, lang as Lang),
+                tone: (v.trip ? (v.atDestination ? 'info' : 'busy') : 'ok') as 'ok' | 'busy' | 'info',
                 hint: [
-                  vehicleAvailabilityText(v, lang as Lang),
                   (v.drivers || []).map((d) => d.name).join(' + ') || (ar ? 'بدون سائق' : 'no driver'),
                   v.trailerType,
                 ].filter(Boolean).join(' · '),

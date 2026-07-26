@@ -442,11 +442,14 @@ exports.listVehicles = async (req, res) => {
     });
 
     // What the dispatcher needs WHILE PICKING a truck: where it is right now
-    // (live GPS → city), what it is already carrying (active trip → toCity +
-    // ETA), and whether it has already entered its destination's zone.
+    // (live GPS → city), what it is already carrying, and whether it entered
+    // its destination's zone. ONLY in-flight statuses make a truck "busy" here:
+    // a load marked وصلت/أُرسلت البوليصة is DONE dispatch-wise — the truck is
+    // free for the next trip and must not keep wearing its old destination.
+    const PICKER_BUSY = ['requesting', 'loading', 'uploaded', 'on_way', 'late'];
     const [ls2, trips] = await Promise.all([
       Ls2Vehicle.find({}).select('plate name position status lastMessageAt').lean(),
-      FleetShipment.find({ vehicle: { $in: vehicles.map((v) => v._id) }, status: { $in: BOARD_ACTIVE } })
+      FleetShipment.find({ vehicle: { $in: vehicles.map((v) => v._id) }, status: { $in: PICKER_BUSY } })
         .sort({ createdAt: -1 })
         .select('vehicle status fromCity toCity expectedArrival waybillNumber')
         .lean(),

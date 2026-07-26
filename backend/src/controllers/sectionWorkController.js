@@ -10,7 +10,7 @@ const User = require('../models/User');
 const { emitToUser } = require('../websocket/socketManager');
 
 // Sections that may own tasks/complaints (mirror of the frontend SECTIONS list).
-const SECTIONS = ['crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'workshop', 'customs', 'marketing', 'bd', 'it'];
+const SECTIONS = ['crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'workshop', 'customs', 'marketing', 'bd', 'it', 'fleet'];
 
 const isSuper = (u) => u && u.role === 'super_admin';
 const sameId = (a, b) => a && b && String(a) === String(b);

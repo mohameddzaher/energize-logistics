@@ -16,15 +16,15 @@ export type Lang = 'en' | 'ar';
 // across the company ask to see. Writes are the marketing team + admin/IT tier.
 export const MARKETING_STAFF_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee',
-  'marketing_manager', 'marketing_specialist',
+  'marketing_manager', 'marketing_specialist', 'bd_manager',
   'crm_manager', 'crm_team_lead', 'sales_manager', 'operations_manager',
 ];
 export const MARKETING_ADMIN_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager',
 ];
 // Roles that see the section pinned in their sidebar.
 export const MARKETING_SECTION_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator', 'bd_manager',
 ];
 
 export const isMarketingStaff = (role?: string | null) => !!role && MARKETING_STAFF_ROLES.includes(role);

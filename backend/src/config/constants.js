@@ -68,6 +68,8 @@ module.exports = {
     customs_manager: 'admin',
     customs_officer: 'customs_manager',
     it_manager: 'admin',
+    fleet_manager: 'admin',
+    fleet_supervisor: 'fleet_manager',
     it_specialist: 'it_manager',
     marketing_manager: 'admin',
     marketing_specialist: 'marketing_manager',
@@ -77,8 +79,8 @@ module.exports = {
   },
 
   // Roles that can access the Accounting section.
-  MARKETING_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator'],
-  MARKETING_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager'],
+  MARKETING_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator', 'bd_manager'],
+  MARKETING_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'bd_manager'],
   BD_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'],
   BD_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager'],
   IT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],

@@ -10,7 +10,7 @@ const ctrl = require('../controllers/marketingController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager']; // bd_manager يدير القسمين
 
 router.use(authenticate);
 

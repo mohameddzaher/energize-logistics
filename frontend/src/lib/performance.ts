@@ -16,7 +16,7 @@ export type Lang = 'en' | 'ar';
 export const PERF_STAFF_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator',
   'operations_manager', 'hr_manager', 'hr_specialist',
-  'crm_manager', 'crm_team_lead', 'sales_manager', 'finance_manager',
+  'crm_manager', 'crm_team_lead', 'sales_manager', 'finance_manager', 'fleet_manager',
   'procurement_manager', 'workshop_manager', 'customs_manager',
   'b2c_head', 'b2c_project_manager', 'remote_manager',
   'marketing_manager', 'bd_manager',

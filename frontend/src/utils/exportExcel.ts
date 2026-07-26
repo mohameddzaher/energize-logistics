@@ -1,4 +1,9 @@
-import ExcelJS from 'exceljs';
+// Type-only import — erased at build time, so exceljs (~1MB) stays OUT of every
+// page bundle and loads on demand the moment an export button is clicked.
+import type * as ExcelJSNS from 'exceljs';
+type Workbook = ExcelJSNS.Workbook;
+
+const loadExcelJS = async () => (await import('exceljs')).default ?? (await import('exceljs'));
 
 // Every Excel the platform produces goes through here, so the look is decided
 // ONCE: a real table — dark navy header with bold white text, thin row borders,
@@ -18,7 +23,7 @@ const ROW_BORDER = 'FFE2E8F0';
 const ZEBRA_BG = 'FFF8FAFC';
 
 function addStyledSheet(
-  wb: ExcelJS.Workbook,
+  wb: Workbook,
   name: string,
   data: Record<string, any>[],
   columns: ExportColumn[]
@@ -76,7 +81,7 @@ function addStyledSheet(
   return ws;
 }
 
-async function download(wb: ExcelJS.Workbook, fileName: string) {
+async function download(wb: Workbook, fileName: string) {
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
@@ -94,20 +99,26 @@ export function exportToExcel(
   sheetName = 'Sheet1'
 ) {
   if (!data || data.length === 0) return;
-  const wb = new ExcelJS.Workbook();
-  addStyledSheet(wb, sheetName, data, columns);
-  void download(wb, fileName);
+  void (async () => {
+    const ExcelJS: any = await loadExcelJS();
+    const wb: Workbook = new ExcelJS.Workbook();
+    addStyledSheet(wb, sheetName, data, columns);
+    await download(wb, fileName);
+  })();
 }
 
 export function exportMultiSheet(
   sheets: { name: string; data: Record<string, any>[]; columns: ExportColumn[] }[],
   fileName: string
 ) {
-  const wb = new ExcelJS.Workbook();
-  for (const sheet of sheets) {
-    addStyledSheet(wb, sheet.name, sheet.data || [], sheet.columns);
-  }
-  if (wb.worksheets.length > 0) void download(wb, fileName);
+  void (async () => {
+    const ExcelJS: any = await loadExcelJS();
+    const wb: Workbook = new ExcelJS.Workbook();
+    for (const sheet of sheets) {
+      addStyledSheet(wb, sheet.name, sheet.data || [], sheet.columns);
+    }
+    if (wb.worksheets.length > 0) await download(wb, fileName);
+  })();
 }
 
 export const fmt = {

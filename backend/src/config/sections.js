@@ -67,7 +67,7 @@ const SECTIONS = [
   {
     key: 'Marketing',
     apiPrefixes: ['/api/marketing'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager'],
   },
   {
     key: 'Business Development',

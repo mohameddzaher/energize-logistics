@@ -1,3 +1,4 @@
+import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 // Location Solutions (قسم لوكيشن سوليوشن) — shared config + helpers.
 //
 // This section is a LIVE mirror of our Location Solutions (Wialon) GPS/telemetry
@@ -17,8 +18,8 @@ export const LS2_STAFF_ROLES = [
 export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager'];
 // Roles that see the section pinned in their sidebar.
 export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'workshop_manager', 'moderator'];
-export const isLs2Staff = (role?: string | null) => !!role && LS2_STAFF_ROLES.includes(role);
-export const isLs2Admin = (role?: string | null) => !!role && LS2_ADMIN_ROLES.includes(role);
+export const isLs2Staff = (u: RoleOrUser) => LS2_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Location Solutions');
+export const isLs2Admin = (u: RoleOrUser) => LS2_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Location Solutions');
 
 // ---- Types (light shapes matching the API) --------------------------------
 export interface Tire { axle: number; position: number; tempC: number | null; pressurePsi: number | null; fault: boolean }

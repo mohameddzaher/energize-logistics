@@ -26,7 +26,7 @@ export default function ProfitLossPage() {
   }, [from, to]);
   useEffect(() => { load(); }, [load]);
 
-  if (!isFinanceStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isFinanceStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading || !data) return <Spinner />;
 
   return (

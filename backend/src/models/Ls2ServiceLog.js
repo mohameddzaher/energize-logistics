@@ -42,5 +42,6 @@ const ls2ServiceLogSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 ls2ServiceLogSchema.index({ unitId: 1, createdAt: -1 });
+ls2ServiceLogSchema.index({ unitId: 1, serviceDate: -1 }); // history sorts by the REAL service date
 
 module.exports = mongoose.models.Ls2ServiceLog || mongoose.model('Ls2ServiceLog', ls2ServiceLogSchema);

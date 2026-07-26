@@ -19,6 +19,7 @@ const auditLogSchema = new mongoose.Schema({
 });
 
 auditLogSchema.index({ entity: 1, entityId: 1 });
+auditLogSchema.index({ entity: 1, createdAt: -1 }); // filtered audit views sort by recency
 auditLogSchema.index({ user: 1 });
 auditLogSchema.index({ createdAt: -1 });
 

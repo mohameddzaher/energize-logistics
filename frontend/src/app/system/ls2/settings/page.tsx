@@ -99,7 +99,7 @@ export default function Ls2SettingsPage() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  if (!isLs2Admin(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Admin(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   const save = async () => {

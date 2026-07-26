@@ -48,7 +48,7 @@ export default function OpsShipmentsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const tx = opsText(lang);
-  const admin = isOpsAdmin(user?.role);
+  const admin = isOpsAdmin(user);
   const searchParams = useSearchParams();
 
   const [items, setItems] = useState<Row[]>([]);
@@ -158,7 +158,7 @@ export default function OpsShipmentsPage() {
 
   const totalPages = meta?.totalPages || 1;
   const selectedTotal = statuses.length ? statuses.reduce((a, s) => a + (counts[s] || 0), 0) : (counts.all ?? Object.values(counts).reduce((a, b) => a + b, 0));
-  if (!isOpsStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isOpsStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (!loaded) return <Spinner />;
 
   return (

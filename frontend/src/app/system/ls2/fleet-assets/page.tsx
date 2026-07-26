@@ -127,7 +127,7 @@ export default function Ls2FleetAssetsPage() {
   const router = useRouter();
   const t = ls2Text(lang as Lang);
   const ar = lang === 'ar';
-  const admin = isLs2Admin(user?.role);
+  const admin = isLs2Admin(user);
 
   // Deep-linkable: /system/ls2/fleet-assets?tab=tires&q=7360 lands filtered on
   // one truck's tires (the vehicle profile links here that way).
@@ -270,7 +270,7 @@ export default function Ls2FleetAssetsPage() {
     setBusy(false);
   };
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !flatbeds.length) return <Spinner />;
 
   const TABS = [

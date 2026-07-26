@@ -37,7 +37,9 @@ const pickWith = (list) => (body) => {
   const out = {};
   for (const k of list) if (body[k] !== undefined) out[k] = body[k];
   for (const f of REF_FIELDS) {
-    if (out[f] === '' || out[f] === null) delete out[f];
+    // '' / null from a cleared <select> means UNSET the link — dropping it
+    // silently kept the old ref forever (detaching a CRM company never stuck).
+    if (out[f] === '' || out[f] === null) out[f] = null;
   }
   if (out.competitors !== undefined) out.competitors = toArray(out.competitors);
   if (out.services !== undefined) out.services = toArray(out.services);
@@ -66,6 +68,9 @@ const badId = (id, res) => {
 
 const emit = (event, payload = {}) => {
   try { emitToAll(event, payload); } catch (e) { /* socket layer not ready — never fail the request */ }
+  // The dashboard cache must die WITH the mutation, or the socket-triggered
+  // reload re-serves the pre-mutation snapshot for up to 12s.
+  try { require('../utils/ttlCache').clear('dash:bd'); } catch (e) { /* cache is best-effort */ }
 };
 
 const userName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');

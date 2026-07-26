@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { canEditSection } from '@/lib/sections';
 import { ArrowLeft, ArrowRight, Check, Loader2, Ship, Copy, Mail, Ban, RotateCcw, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
@@ -22,7 +23,7 @@ export default function CustomsDetailPage() {
   const router = useRouter();
   const { notify } = useDialog();
   const { user } = useAuth();
-  const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '');
+  const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   const { lang, isRTL } = useLanguage();
   const T = getCustomsTranslations(lang);
   const txx = getCustomsIdExtraTranslations(lang);

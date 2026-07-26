@@ -48,8 +48,8 @@ export default function CrmCompanyDetailPage() {
   const [cForm, setCForm] = useState<any>({});
   const [savingCompany, setSavingCompany] = useState(false);
 
-  const canDelete = isCrmAdmin(user?.role);
-  const canEdit = isCrmStaff(user?.role);
+  const canDelete = isCrmAdmin(user);
+  const canEdit = isCrmStaff(user);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -127,7 +127,7 @@ export default function CrmCompanyDetailPage() {
     finally { setSavingCompany(false); }
   };
 
-  if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
   if (!company) return <div className="text-slate-500 p-8">{T.noResults}</div>;
 

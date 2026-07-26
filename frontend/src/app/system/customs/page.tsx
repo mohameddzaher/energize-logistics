@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { canEditSection } from '@/lib/sections';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, Download, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
@@ -66,7 +67,7 @@ export default function CustomsPage() {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const router = useRouter();
-  const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '');
+  const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   const canDelete = ['super_admin', 'admin', 'customs_manager'].includes(user?.role || '');
   const { lang } = useLanguage();
   const T = getCustomsTranslations(lang);

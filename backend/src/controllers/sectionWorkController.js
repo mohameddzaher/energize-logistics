@@ -7,7 +7,14 @@
 const SectionTask = require('../models/SectionTask');
 const SectionComplaint = require('../models/SectionComplaint');
 const User = require('../models/User');
-const { emitToUser } = require('../websocket/socketManager');
+const { emitToUser, emitToAll } = require('../websocket/socketManager');
+
+// Refresh trigger for every open tasks/complaints board — each client refetches
+// through the strict visibility filter, so broadcasting leaks nothing; emitting
+// to the assignee only left the creator's and super-admin's boards stale.
+const broadcastWork = (section, modelName) => {
+  try { emitToAll('section:work', { section, model: modelName }); } catch (e) { /* socket down ≠ failed save */ }
+};
 
 // Sections that may own tasks/complaints (mirror of the frontend SECTIONS list).
 const SECTIONS = ['crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'workshop', 'customs', 'marketing', 'bd', 'it', 'fleet'];
@@ -61,6 +68,7 @@ function makeHandlers(Model, requiredField, allowedFields) {
         if (doc.assignedTo && !sameId(doc.assignedTo, req.user._id)) {
           try { emitToUser(String(doc.assignedTo), 'section:work', { section, model: Model.modelName }); } catch (e) {}
         }
+        broadcastWork(section, Model.modelName);
         const item = await POPULATE(Model.findById(doc._id)).lean();
         res.status(201).json({ item });
       } catch (e) {
@@ -81,6 +89,7 @@ function makeHandlers(Model, requiredField, allowedFields) {
         if (doc.assignedTo && !sameId(doc.assignedTo, req.user._id)) {
           try { emitToUser(String(doc.assignedTo), 'section:work', { section: doc.section, model: Model.modelName }); } catch (e) {}
         }
+        broadcastWork(doc.section, Model.modelName);
         const item = await POPULATE(Model.findById(doc._id)).lean();
         res.json({ item });
       } catch (e) {
@@ -96,6 +105,7 @@ function makeHandlers(Model, requiredField, allowedFields) {
         const allowed = isSuper(req.user) || sameId(doc.assignedTo, req.user._id) || sameId(doc.createdBy, req.user._id);
         if (!allowed) return res.status(403).json({ message: 'Not allowed' });
         await doc.deleteOne();
+        broadcastWork(doc.section, Model.modelName);
         res.json({ ok: true });
       } catch (e) {
         console.error('sectionWork remove error:', e.message);

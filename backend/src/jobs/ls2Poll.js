@@ -254,10 +254,18 @@ async function tick() {
     if (alertOps.length) await Ls2Alert.bulkWrite(alertOps, { ordered: false });
     if (odoOps.length) await Ls2OdometerDaily.bulkWrite(odoOps, { ordered: false });
 
-    // Bust the dashboard cache so the refetch triggered by ls2:updated returns the
-    // snapshot we just wrote — no stale window, truly live.
-    cache.clear('ls2:');
-    emitToAll('ls2:updated', { at: Date.now(), vehicles: units.length, activeAlerts: totalActive, newCritical });
+    // Broadcast ONLY when the tick actually wrote something. Emitting every 20s
+    // regardless made every open board/maintenance/executive screen refetch its
+    // whole dataset three times a minute for no change at all — the single
+    // biggest source of idle churn in the app. (Telemetry rows update nearly
+    // every tick when trucks move, so live screens stay live.)
+    const changed = vehicleOps.length || driverOps.length || alertOps.length || odoOps.length;
+    if (changed) {
+      // Bust the dashboard cache so the refetch triggered by ls2:updated returns
+      // the snapshot we just wrote — no stale window, truly live.
+      cache.clear('ls2:');
+      emitToAll('ls2:updated', { at: Date.now(), vehicles: units.length, activeAlerts: totalActive, newCritical });
+    }
     if (newCritical > 0) emitToAll('ls2:alert', { at: Date.now(), newCritical });
 
     // Slow identity sync (first tick, then every ~30 min).

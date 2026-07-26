@@ -76,7 +76,7 @@ export default function CrmContactsPage() {
     try { await api.delete(`/api/crm/contacts/${c._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
-  if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (

@@ -67,7 +67,7 @@ export default function CrmCalendarPage() {
     return arr;
   }, [cursor]);
 
-  if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
 
   const todayKey = dayKey(new Date());
   const sel = selected ? byDay[selected] : null;

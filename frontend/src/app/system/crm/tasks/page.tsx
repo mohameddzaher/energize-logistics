@@ -86,7 +86,7 @@ export default function CrmTasksPage() {
     try { await api.put(`/api/crm/tasks/${t._id}`, { status }); load(); } catch (e: any) { notify(e.message, 'error'); load(); }
   };
 
-  if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (

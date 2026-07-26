@@ -786,8 +786,11 @@ exports.registerServiceInterval = async (req, res) => {
       performedBy: req.user._id, performedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
     });
 
-    // 3) Refresh our mirror from Wialon so the new "km left" shows immediately.
-    if (synced) { try { await require('../jobs/ls2Poll').tick(); } catch (e) {} }
+    // 3) Refresh our mirror from Wialon so the new "km left" shows soon — in the
+    // BACKGROUND: a full 57-truck poll takes seconds, and the user was sitting
+    // in the modal waiting for it. The tick's own ls2:updated emit refreshes
+    // every open screen when the mirror catches up.
+    if (synced) { require('../jobs/ls2Poll').tick().catch(() => {}); }
     cache.clear('ls2:');
     emitToAll('ls2:updated', { at: Date.now(), serviced: unitId, intervalId });
 

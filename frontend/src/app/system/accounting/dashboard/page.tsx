@@ -52,7 +52,7 @@ export default function AccountingDashboardPage() {
     finally { setSyncing(false); }
   };
 
-  if (!isFinanceStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isFinanceStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading || !data) return <Spinner />;
   const t = data.totals;
   const Arrow = isRTL ? ArrowLeft : ArrowRight;

@@ -12,6 +12,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { canAccessSection } from '@/lib/sections';
 import Link from 'next/link';
 import { Boxes, CircleDot, Container, Truck, Wrench, AlertTriangle, ExternalLink } from 'lucide-react';
 import { exportMultiSheet } from '@/utils/exportExcel';
@@ -61,7 +62,9 @@ export default function WorkshopStorePage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getWorkshopStoreTranslations(lang);
-  const staff = !!user?.role && STAFF.includes(user.role);
+  // Role list OR a permissions-matrix grant — a granted role otherwise gets
+  // the nav link and a dead not-authorized screen.
+  const staff = (!!user?.role && STAFF.includes(user.role)) || canAccessSection((user as any)?.permissions, 'Workshop');
 
   const [data, setData] = useState<StoreData | null>(null);
   const [loading, setLoading] = useState(true);

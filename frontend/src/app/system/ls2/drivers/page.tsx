@@ -64,7 +64,7 @@ export default function Ls2DriversPage() {
     setPdfBusy('');
   };
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
   const totalKm = filtered.reduce((s, d) => s + (d.km || 0), 0);

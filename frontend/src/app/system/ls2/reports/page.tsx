@@ -137,7 +137,7 @@ export default function Ls2ReportsPage() {
   }, [range.from, range.to]);
   useEffect(() => { if (unitId != null) loadVehicle(unitId); }, [unitId, loadVehicle]);
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !report) return <Spinner />;
 
   const s = report?.summary;

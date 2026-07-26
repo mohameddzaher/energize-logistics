@@ -64,7 +64,11 @@ export default function BdOpportunitiesPage() {
     setLoading(false);
   }, [search, stage]);
 
-  useEffect(() => { load(); }, [load]);
+  // Debounced: one request after typing pauses, not one per keystroke.
+  useEffect(() => {
+    const h = setTimeout(() => { load(); }, 250);
+    return () => clearTimeout(h);
+  }, [load]);
   useSocket('bd:updated', useCallback(() => { load(); }, [load]));
 
   // Optional CRM link — silently skipped when this role has no CRM access.

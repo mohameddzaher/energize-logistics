@@ -1,5 +1,6 @@
 // Shared helpers, types and bilingual labels for the CRM section pages.
 import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 
 export { exportToExcel, fmt };
 
@@ -7,8 +8,8 @@ export { exportToExcel, fmt };
 // crm_specialist (write, no delete) > crm_agent (entry level).
 export const CRM_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'];
 export const CRM_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead'];
-export const isCrmStaff = (role?: string | null) => !!role && CRM_STAFF_ROLES.includes(role);
-export const isCrmAdmin = (role?: string | null) => !!role && CRM_ADMIN_ROLES.includes(role);
+export const isCrmStaff = (u: RoleOrUser) => CRM_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'CRM');
+export const isCrmAdmin = (u: RoleOrUser) => CRM_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'CRM');
 
 export type Lang = 'en' | 'ar';
 const pick = (lang: Lang, en: string, ar: string) => (lang === 'ar' ? ar : en);

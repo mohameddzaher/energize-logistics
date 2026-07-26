@@ -21,7 +21,7 @@ export default function CustomerProfilePage() {
   const params = useParams();
   const id = String(params?.id || '');
   const tx = opsText(lang);
-  const admin = isOpsAdmin(user?.role);
+  const admin = isOpsAdmin(user);
 
   const [customer, setCustomer] = useState<Row | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -62,7 +62,7 @@ export default function CustomerProfilePage() {
     setSavingEdit(false);
   };
 
-  if (!isOpsStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isOpsStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (!loaded) return <Spinner />;
 
   const cityName = locName(customer?.city, lang);

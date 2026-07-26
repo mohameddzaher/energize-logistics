@@ -53,9 +53,14 @@ export default function BdOpportunityDetailPage() {
       );
       setOpp(d.opportunity);
       setActivities(d.activities || []);
-    } catch { /* keep the last good render */ }
+      setLoadError('');
+    } catch (e: any) {
+      // A failed request must never read as "الفرصة غير موجودة".
+      setLoadError(e?.message || 'Request failed');
+    }
     setLoading(false);
   }, [id]);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => { load(); }, [load]);
   useSocket('bd:updated', useCallback(() => { load(); }, [load]));
@@ -113,6 +118,14 @@ export default function BdOpportunityDetailPage() {
 
   if (!canViewBd(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
+  if (!opp && loadError) {
+    return (
+      <div className="p-8 space-y-3 text-center">
+        <p className="text-red-600 text-sm font-medium">{ar ? 'تعذّر تحميل الفرصة.' : 'Failed to load the opportunity.'} <span className="text-slate-500">{loadError}</span></p>
+        <button type="button" onClick={() => { setLoading(true); load(); }} className="px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm">{ar ? 'إعادة المحاولة' : 'Retry'}</button>
+      </div>
+    );
+  }
   if (!opp) return <div className="text-slate-500 p-8">{ar ? 'الفرصة غير موجودة' : 'Opportunity not found'}</div>;
 
   const st = OPP_STAGE[opp.stage];
@@ -121,8 +134,10 @@ export default function BdOpportunityDetailPage() {
   const weighted = Math.round((opp.estimatedValue || 0) * ((opp.probability || 0) / 100));
   const BackIcon = isRTL ? ArrowRight : ArrowLeft;
 
-  // An editable read-only field cell. Click to edit when the user is an admin.
-  const Cell = ({ label, field, value, display, type = 'text' }: {
+  // An editable field cell — a PLAIN render function, not a component: an
+  // inline component type remounts on every keystroke, so the autoFocus input
+  // lost its cursor mid-word.
+  const cell = ({ label, field, value, display, type = 'text' }: {
     label: string; field?: string; value?: any; display?: string; type?: string;
   }) => {
     const isEditing = editField === field;
@@ -217,23 +232,23 @@ export default function BdOpportunityDetailPage() {
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
           <h2 className="text-slate-900 font-semibold mb-2">{ar ? 'التفاصيل' : 'Details'}</h2>
           {canEdit && <p className="text-slate-400 text-xs mb-2">{ar ? 'اضغط على أي قيمة لتعديلها' : 'Click any value to edit it'}</p>}
-          <Cell label={ar ? 'الاسم (إنجليزي)' : 'Name (English)'} field="name" value={opp.name} display={opp.name} />
-          <Cell label={ar ? 'الاسم (عربي)' : 'Name (Arabic)'} field="nameAr" value={opp.nameAr} display={opp.nameAr} />
-          <Cell label={ar ? 'القيمة التقديرية' : 'Estimated value'} field="estimatedValue" value={opp.estimatedValue} display={money(opp.estimatedValue, opp.currency)} type="number" />
-          <Cell label={ar ? 'الاحتمالية %' : 'Probability %'} field="probability" value={opp.probability} display={`${opp.probability || 0}%`} type="number" />
-          <Cell label={ar ? 'الإغلاق المتوقع' : 'Expected close'} field="expectedCloseDate" value={toDateInput(opp.expectedCloseDate)} display={fmtDate(opp.expectedCloseDate)} type="date" />
-          <Cell label={ar ? 'المسؤول' : 'Owner'} field="ownerName" value={opp.ownerName} display={opp.ownerName || userName(opp.owner)} />
-          <Cell label={ar ? 'المنطقة' : 'Region'} field="region" value={opp.region} display={opp.region} />
-          <Cell label={ar ? 'المدينة' : 'City'} field="city" value={opp.city} display={opp.city} />
-          <Cell label={ar ? 'اسم الشريك' : 'Partner'} field="partnerName" value={opp.partnerName} display={opp.partnerName} />
-          <Cell label={ar ? 'شركة CRM مرتبطة' : 'Linked CRM company'} display={companyName(opp.crmCompany, lang)} />
-          <Cell label={ar ? 'المصدر' : 'Source'} field="source" value={opp.source} display={opp.source} />
-          <Cell label={ar ? 'الخطوة التالية' : 'Next step'} field="nextStep" value={opp.nextStep} display={opp.nextStep} />
-          <Cell label={ar ? 'تاريخ الخطوة التالية' : 'Next step date'} field="nextStepDate" value={toDateInput(opp.nextStepDate)} display={fmtDate(opp.nextStepDate)} type="date" />
-          <Cell label={ar ? 'المنافسون' : 'Competitors'} display={(opp.competitors || []).join('، ') || '—'} />
-          <Cell label={ar ? 'المخاطر' : 'Risks'} field="risks" value={opp.risks} display={opp.risks} />
-          <Cell label={ar ? 'الوصف' : 'Description'} field="description" value={opp.description} display={opp.description} />
-          <Cell label={ar ? 'ملاحظات' : 'Notes'} field="notes" value={opp.notes} display={opp.notes} />
+          {cell({ label: ar ? 'الاسم (إنجليزي)' : 'Name (English)', field: 'name', value: opp.name, display: opp.name })}
+          {cell({ label: ar ? 'الاسم (عربي)' : 'Name (Arabic)', field: 'nameAr', value: opp.nameAr, display: opp.nameAr })}
+          {cell({ label: ar ? 'القيمة التقديرية' : 'Estimated value', field: 'estimatedValue', value: opp.estimatedValue, display: money(opp.estimatedValue, opp.currency), type: 'number' })}
+          {cell({ label: ar ? 'الاحتمالية %' : 'Probability %', field: 'probability', value: opp.probability, display: `${opp.probability || 0}%`, type: 'number' })}
+          {cell({ label: ar ? 'الإغلاق المتوقع' : 'Expected close', field: 'expectedCloseDate', value: toDateInput(opp.expectedCloseDate), display: fmtDate(opp.expectedCloseDate), type: 'date' })}
+          {cell({ label: ar ? 'المسؤول' : 'Owner', field: 'ownerName', value: opp.ownerName, display: opp.ownerName || userName(opp.owner) })}
+          {cell({ label: ar ? 'المنطقة' : 'Region', field: 'region', value: opp.region, display: opp.region })}
+          {cell({ label: ar ? 'المدينة' : 'City', field: 'city', value: opp.city, display: opp.city })}
+          {cell({ label: ar ? 'اسم الشريك' : 'Partner', field: 'partnerName', value: opp.partnerName, display: opp.partnerName })}
+          {cell({ label: ar ? 'شركة CRM مرتبطة' : 'Linked CRM company', display: companyName(opp.crmCompany, lang) })}
+          {cell({ label: ar ? 'المصدر' : 'Source', field: 'source', value: opp.source, display: opp.source })}
+          {cell({ label: ar ? 'الخطوة التالية' : 'Next step', field: 'nextStep', value: opp.nextStep, display: opp.nextStep })}
+          {cell({ label: ar ? 'تاريخ الخطوة التالية' : 'Next step date', field: 'nextStepDate', value: toDateInput(opp.nextStepDate), display: fmtDate(opp.nextStepDate), type: 'date' })}
+          {cell({ label: ar ? 'المنافسون' : 'Competitors', display: (opp.competitors || []).join('، ') || '—' })}
+          {cell({ label: ar ? 'المخاطر' : 'Risks', field: 'risks', value: opp.risks, display: opp.risks })}
+          {cell({ label: ar ? 'الوصف' : 'Description', field: 'description', value: opp.description, display: opp.description })}
+          {cell({ label: ar ? 'ملاحظات' : 'Notes', field: 'notes', value: opp.notes, display: opp.notes })}
         </div>
 
         {/* Activity timeline */}

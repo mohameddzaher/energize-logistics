@@ -43,10 +43,14 @@ const enrichTransactionsWithOpsData = async (transactions) => {
 
   if (reportNumbers.length === 0) return transactions;
 
-  // Fetch all matching workflows in one query
+  // Fetch all matching workflows in one query. Exact $in on the indexed field —
+  // a case-insensitive-regex $in cannot use the unique index and was scanning
+  // the whole 30k-workflow collection on EVERY wallet dashboard load. Case
+  // variants are covered by querying the typed value + upper + lower forms.
   const uniqueNumbers = [...new Set(reportNumbers)];
+  const variants = [...new Set(uniqueNumbers.flatMap((n) => [String(n), String(n).toUpperCase(), String(n).toLowerCase()]))];
   const workflows = await OperationsWorkflow.find({
-    reportNumber: { $in: uniqueNumbers.map(n => new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) },
+    reportNumber: { $in: variants },
   }).select('reportNumber username fromLocation toLocation ownerType truckSize carNumber reportDate branch').lean();
 
   // Build lookup map
@@ -772,9 +776,23 @@ exports.getBranchDashboard = async (req, res) => {
       dateFilter = date;
     }
 
-    const wallets = await DailyWallet.find({ branch: branchId, date: dateFilter })
-      .populate('user', 'firstName lastName')
-      .populate('branch', 'name');
+    // The two finds are independent — one parallel wave, lean (read-only), at
+    // ~90ms/query RTT this alone halves the dashboard's DB time.
+    const [wallets, rawTransactions] = await Promise.all([
+      DailyWallet.find({ branch: branchId, date: dateFilter })
+        .populate('user', 'firstName lastName')
+        .populate('branch', 'name')
+        .lean(),
+      WalletTransaction.find({ branch: branchId, date: dateFilter })
+        .populate('user', 'firstName lastName')
+        .populate('customer', 'companyName customerNumber')
+        .populate('invoice', 'invoiceNumber amount balance')
+        .populate('vendor', 'name')
+        .populate('driver', 'name')
+        .populate('expenseCategory', 'name')
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
 
     let totalCollections = 0;
     let totalExpenses = 0;
@@ -787,15 +805,6 @@ exports.getBranchDashboard = async (req, res) => {
       totalPurchases += w.totalPurchases;
       totalClosingBalance += w.closingBalance;
     }
-
-    const rawTransactions = await WalletTransaction.find({ branch: branchId, date: dateFilter })
-      .populate('user', 'firstName lastName')
-      .populate('customer', 'companyName customerNumber')
-      .populate('invoice', 'invoiceNumber amount balance')
-      .populate('vendor', 'name')
-      .populate('driver', 'name')
-      .populate('expenseCategory', 'name')
-      .sort({ createdAt: -1 });
 
     const transactions = await enrichTransactionsWithOpsData(rawTransactions);
 

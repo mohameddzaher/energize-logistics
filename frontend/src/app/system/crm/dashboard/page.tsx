@@ -63,7 +63,7 @@ export default function CrmDashboardPage() {
   useSocket('crm:activity', useCallback(() => load(), [load]));
   useSocket('crm:contact', useCallback(() => load(), [load]));
 
-  if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading || !data) return <Spinner />;
 
   const stages = opts?.PIPELINE_STAGES.filter((s) => s.key !== 'won' && s.key !== 'lost') || [];

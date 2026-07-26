@@ -61,6 +61,7 @@ const customerSchema = new mongoose.Schema(
 );
 
 customerSchema.index({ assignedCollector: 1 });
+customerSchema.index({ isActive: 1, createdAt: -1 }); // the customers page's default query
 customerSchema.index({ riskLevel: 1 });
 customerSchema.index({ office: 1 });
 customerSchema.index({ grade: 1 });

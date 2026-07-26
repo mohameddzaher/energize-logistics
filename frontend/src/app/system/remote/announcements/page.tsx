@@ -20,7 +20,7 @@ export default function RemoteAnnouncementsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const tx = getRemoteAnnouncementsTranslations(lang);
-  const staff = isRemoteStaff(user?.role);
+  const staff = isRemoteStaff(user);
 
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);

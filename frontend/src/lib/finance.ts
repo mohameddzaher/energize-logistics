@@ -1,5 +1,6 @@
 // Shared helpers/types for the Accounting, Sales and KPI sections.
 import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 export { exportToExcel, fmt };
 
 export type Lang = 'en' | 'ar';
@@ -10,9 +11,9 @@ export const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sale
 export const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'sales_manager'];
 export const KPI_ROLES = ['super_admin', 'admin', 'moderator'];
 
-export const isFinanceStaff = (r?: string | null) => !!r && FINANCE_STAFF_ROLES.includes(r);
+export const isFinanceStaff = (u: RoleOrUser) => FINANCE_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Accounting');
 export const isFinanceAdmin = (r?: string | null) => !!r && FINANCE_ADMIN_ROLES.includes(r);
-export const isSalesStaff = (r?: string | null) => !!r && SALES_STAFF_ROLES.includes(r);
+export const isSalesStaff = (u: RoleOrUser) => SALES_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Sales');
 export const isSalesAdmin = (r?: string | null) => !!r && SALES_ADMIN_ROLES.includes(r);
 export const isKpiViewer = (r?: string | null) => !!r && KPI_ROLES.includes(r);
 

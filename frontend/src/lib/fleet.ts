@@ -145,7 +145,7 @@ export const foldAr = (x: string) => x.toLowerCase()
 // Roles mirror backend/src/routes/fleet.js — OR a dynamic grant from the
 // permissions matrix (backend rbac honours an 'edit' grant even on admin
 // routes, so the UI must too). Pass the USER: only it carries the grants.
-import { canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
+import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'];
 export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
@@ -159,3 +159,6 @@ export const BOARD_STATES: Record<string, { ar: string; en: string; card: string
 };
 export const canEditFleet = (u: RoleOrUser) => FLEET_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Fleet Management');
 export const canAdminFleet = (u: RoleOrUser) => FLEET_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Fleet Management');
+// View tier: a role granted VIEW on the section can open the read pages (board,
+// lists) even though it can't create or edit anything.
+export const canViewFleet = (u: RoleOrUser) => FLEET_EDIT_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Fleet Management');

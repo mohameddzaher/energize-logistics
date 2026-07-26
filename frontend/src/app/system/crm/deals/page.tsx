@@ -35,7 +35,7 @@ export default function CrmDealsPage() {
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const canDelete = isCrmAdmin(user?.role);
+  const canDelete = isCrmAdmin(user);
 
   const load = useCallback(async () => {
     try {
@@ -87,7 +87,7 @@ export default function CrmDealsPage() {
     try { await api.patch(`/api/crm/deals/${dealId}/move`, { stage }); load(); } catch (e: any) { notify(e.message, 'error'); load(); }
   };
 
-  if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (

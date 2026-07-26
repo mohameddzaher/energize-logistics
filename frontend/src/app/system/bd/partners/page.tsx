@@ -55,7 +55,11 @@ export default function BdPartnersPage() {
     setLoading(false);
   }, [search, status]);
 
-  useEffect(() => { load(); }, [load]);
+  // Debounced: one request after typing pauses, not one per keystroke.
+  useEffect(() => {
+    const h = setTimeout(() => { load(); }, 250);
+    return () => clearTimeout(h);
+  }, [load]);
   useSocket('bd:updated', useCallback(() => { load(); }, [load]));
 
   const statusCounts = useMemo(() => {

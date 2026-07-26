@@ -41,6 +41,7 @@ const fleetDriverSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 fleetDriverSchema.index({ name: 1 });
+fleetDriverSchema.index({ vehicle: 1 }); // every board/list joins drivers by seat
 
 // ── Customers of the fleet section (separate register from the trial's) ─────
 const fleetCustomerSchema = new mongoose.Schema({
@@ -108,6 +109,12 @@ const fleetShipmentSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 fleetShipmentSchema.index({ createdAt: -1 });
+// The board and the vehicle picker resolve each truck's active trip; the list
+// filters by status + sorts by recency; the follow-up sweep scans in-flight
+// loads by last contact.
+fleetShipmentSchema.index({ vehicle: 1, status: 1 });
+fleetShipmentSchema.index({ status: 1, createdAt: -1 });
+fleetShipmentSchema.index({ status: 1, lastContactAt: 1 });
 
 const counterSchema = new mongoose.Schema({ _id: String, seq: Number });
 const FleetCounter = mongoose.models.FleetCounter || mongoose.model('FleetCounter', counterSchema);

@@ -67,7 +67,7 @@ export default function Ls2LivePage() {
     ];
   }, [lang]);
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
   return (

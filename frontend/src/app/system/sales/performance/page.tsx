@@ -37,7 +37,7 @@ export default function SalesPerformancePage() {
     ], `sales-performance-${period}`, lang === 'ar' ? 'أداء المبيعات' : 'Sales Performance');
   };
 
-  if (!isSalesStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isSalesStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (

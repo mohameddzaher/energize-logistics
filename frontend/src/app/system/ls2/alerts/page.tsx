@@ -46,7 +46,7 @@ export default function Ls2AlertsPage() {
     try { await api.patch(`/api/ls2/alerts/${id}/ack`); await load(); } catch { /* ignore */ }
   };
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
   const selectCls = 'px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm';

@@ -8,6 +8,11 @@ const { CRM_STAFF_ROLES } = require('../config/constants');
 const STAFF = CRM_STAFF_ROLES;
 
 router.use(authenticate);
+
+// The BD team links opportunities to CRM companies — they need to READ the
+// companies list (only). Declared before the section-wide CRM staff wall.
+router.get('/companies', authorize(...STAFF, 'bd_manager', 'bd_specialist'), crm.listCompanies);
+
 router.use(authorize(...STAFF));
 
 // Meta

@@ -33,7 +33,7 @@ export default function DriverProfilePage() {
   useEffect(() => { loadDriver(); }, [loadDriver]);
   useSocket('ops:drivers:changed', useCallback(() => loadDriver(), [loadDriver]));
 
-  if (!isOpsStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isOpsStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (!loaded) return <Spinner />;
 
   const name = locName(driver?.admin?.name, lang) || locName(driver?.name, lang) || '—';

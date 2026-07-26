@@ -35,7 +35,7 @@ export default function SalesPipelinePage() {
   useEffect(() => { load(); }, [load]);
   useSocket('crm:deal', useCallback(() => load(), [load]));
 
-  if (!isSalesStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isSalesStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   const companyName = (c: any) => (!c ? '—' : ar && c.arabicName ? c.arabicName : c.name || '—');

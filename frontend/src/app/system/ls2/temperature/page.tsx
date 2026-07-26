@@ -55,7 +55,7 @@ export default function Ls2TemperaturePage() {
     { key: 'all', label: ar ? 'كل العربيات' : 'All vehicles', sheets: [{ name: ar ? 'الحرارة' : 'Temperature', rows: items, columns: exportColumns }] },
   ];
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
   const go = (id: number) => router.push(`/system/ls2/${id}`);

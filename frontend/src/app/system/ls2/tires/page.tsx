@@ -64,7 +64,7 @@ export default function Ls2TiresPage() {
     { key: 'filtered', label: ar ? 'العرض الحالي (المصفّى)' : 'Current view (filtered)', sheets: [{ name: ar ? 'العرض الحالي' : 'Filtered', rows: flattenTires(rows), columns: tireColumns }] },
   ];
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
   const open = (id: number) => router.push(`/system/ls2/${id}`);

@@ -129,7 +129,7 @@ export default function Ls2VehicleDetailPage() {
     setTrackLoading(false);
   };
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !d) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t.noData}</div>;
 
@@ -252,7 +252,7 @@ export default function Ls2VehicleDetailPage() {
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-slate-600">
                     <span>{t.lastService}: <b className="text-slate-800">{fmtDate(iv.lastServiceAt, lang as Lang)}</b>{iv.lastServiceKm != null && <> · {fmtKm(iv.lastServiceKm)}</>}</span>
                     <span>{lang === 'ar' ? 'القادمة' : 'Next'}: <b className="text-slate-800">{r.next}</b></span>
-                    {isLs2Admin(user?.role) && (
+                    {isLs2Admin(user) && (
                       <button type="button" onClick={() => setSvcModal(iv)} className="ms-auto inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 font-medium">
                         <CheckCircle2 className="w-3.5 h-3.5" /> {lang === 'ar' ? 'تم عمل الصيانة' : 'Mark serviced'}
                       </button>
@@ -270,7 +270,7 @@ export default function Ls2VehicleDetailPage() {
           checklist, and every exceptional repair. Same component everywhere. */}
       <VehicleServiceRecord
         unitId={v.unitId} plate={v.plate} currentOdo={v.odometerKm}
-        lang={lang as Lang} isRTL={isRTL} admin={isLs2Admin(user?.role)}
+        lang={lang as Lang} isRTL={isRTL} admin={isLs2Admin(user)}
       />
 
       {/* Workshop asset registry: which physical tires (by serial) + trailer are
@@ -401,7 +401,7 @@ export default function Ls2VehicleDetailPage() {
             ) : (
               <>
                 <span className={`text-sm font-medium ${v.tireBrand ? 'text-slate-800' : 'text-slate-300'}`}>{v.tireBrand || t.notSet}</span>
-                {isLs2Admin(user?.role) && <button type="button" title={t.edit} onClick={() => { setBrandInput(v.tireBrand || ''); setBrandEdit(true); }} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-[#f37121]"><Wrench className="w-3.5 h-3.5" /></button>}
+                {isLs2Admin(user) && <button type="button" title={t.edit} onClick={() => { setBrandInput(v.tireBrand || ''); setBrandEdit(true); }} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-[#f37121]"><Wrench className="w-3.5 h-3.5" /></button>}
               </>
             )}
           </div>

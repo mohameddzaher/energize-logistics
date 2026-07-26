@@ -44,9 +44,14 @@ export default function MarketingCampaignPage() {
       const r = await api.get<{ campaign: Campaign; activities: Activity[] }>(`/api/marketing/campaigns/${id}`);
       setCampaign(r.campaign);
       setActivities(r.activities || []);
-    } catch { /* keep previous */ }
+      setLoadError('');
+    } catch (e: any) {
+      // A failed request must never read as "الحملة غير موجودة".
+      setLoadError(e?.message || 'Request failed');
+    }
     setLoading(false);
   }, [id]);
+  const [loadError, setLoadError] = useState('');
   useEffect(() => { load(); }, [load]);
   useSocket('marketing:updated', useCallback(() => load(), [load]));
 
@@ -78,6 +83,14 @@ export default function MarketingCampaignPage() {
     return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول إلى قسم التسويق.' : 'You are not authorized to view the Marketing section.'}</div>;
   }
   if (loading && !campaign) return <Spinner />;
+  if (!campaign && loadError) {
+    return (
+      <div className="p-8 space-y-3 text-center">
+        <p className="text-red-600 text-sm font-medium">{ar ? 'تعذّر تحميل الحملة.' : 'Failed to load the campaign.'} <span className="text-slate-500">{loadError}</span></p>
+        <button type="button" onClick={() => { setLoading(true); load(); }} className="px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm">{ar ? 'إعادة المحاولة' : 'Retry'}</button>
+      </div>
+    );
+  }
   if (!campaign) return <div className="text-slate-500 p-8">{ar ? 'الحملة غير موجودة.' : 'Campaign not found.'}</div>;
 
   const st = statusStyle(campaign.status);

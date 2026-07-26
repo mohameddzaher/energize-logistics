@@ -47,7 +47,7 @@ export default function Ls2DashboardPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !d) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t.noData}</div>;
 

@@ -33,7 +33,7 @@ export default function OpsResourceTable({ cfg }: { cfg: ResourceCfg }) {
     if (cfg.profile && row.id) router.push(`/system/ops/${cfg.key}/${row.id}`);
     else setDetail(row);
   };
-  const admin = isOpsAdmin(user?.role);
+  const admin = isOpsAdmin(user);
   const writable = admin && Array.isArray(cfg.fields) && cfg.fields.length > 0;
 
   const [items, setItems] = useState<Record<string, unknown>[]>([]);

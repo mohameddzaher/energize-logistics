@@ -51,7 +51,7 @@ export default function SalesDashboardPage() {
   useSocket('crm:deal', useCallback(() => load(), [load]));
   useSocket('sales:target', useCallback(() => load(), [load]));
 
-  if (!isSalesStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isSalesStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading || !data) return <Spinner />;
 
   // Month-over-month delta indicator.

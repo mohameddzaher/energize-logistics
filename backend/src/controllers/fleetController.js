@@ -25,7 +25,13 @@ const supervisorVehicleIds = async (req) => {
 //   · a vehicle carries at most two drivers;
 //   · everything that happens to a shipment lands in its event log.
 
-const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} };
+const cache = require('../utils/ttlCache');
+// Every fleet mutation flows through emit() → also drop the cached board and
+// dashboard so the socket-triggered refetch returns the post-mutation state.
+const emit = (event, payload = {}) => {
+  try { emitToAll(event, payload); } catch (e) {}
+  cache.clear('fleet:');
+};
 
 const pick = (body, fields) => {
   const out = {};
@@ -702,8 +708,14 @@ const ARRIVED_FAMILY = ['arrived', 'bond_sent'];
 
 exports.getBoard = async (req, res) => {
   try {
-    const vFilter = { isActive: { $ne: false } };
+    // ~5 queries + joins recomputed per client otherwise; the board is the
+    // same for everyone with the same scope, so a short TTL absorbs the herd.
     const scope = await supervisorVehicleIds(req);
+    const cacheKey = `fleet:board:${scope ? String(req.user._id) : 'all'}`;
+    const hit = cache.get(cacheKey);
+    if (hit !== undefined) return res.json(hit);
+
+    const vFilter = { isActive: { $ne: false } };
     if (scope) vFilter._id = { $in: scope };
 
     const vehicles = await FleetVehicle.find(vFilter).sort({ plate: 1 }).lean();
@@ -788,7 +800,7 @@ exports.getBoard = async (req, res) => {
         byDestination[c.trip.toCity] = (byDestination[c.trip.toCity] || 0) + 1;
       }
     }
-    res.json({
+    const body = {
       cards,
       summary: {
         total: cards.length,
@@ -801,7 +813,9 @@ exports.getBoard = async (req, res) => {
         maintDue: cards.filter((c) => c.maintenance?.status === 'due').length,
         byDestination: Object.entries(byDestination).map(([city, n]) => ({ city, n })).sort((a, b) => b.n - a.n),
       },
-    });
+    };
+    cache.set(cacheKey, body, 12000);
+    res.json(body);
   } catch (error) {
     console.error('Error building fleet board:', error);
     res.status(500).json({ message: 'Failed to load the fleet board' });

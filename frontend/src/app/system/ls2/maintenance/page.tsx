@@ -284,7 +284,7 @@ export default function Ls2MaintenancePage() {
   const [filter, setFilter] = useState(params?.get('filter') || 'all');
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<Set<number>>(new Set());
-  const admin = isLs2Admin(user?.role);
+  const admin = isLs2Admin(user);
   const [svc, setSvc] = useState<{ v: Vehicle; iv: ServiceInterval } | null>(null);
   const [dueSoonOpen, setDueSoonOpen] = useState(false);
   const [deferrals, setDeferrals] = useState<DeferralLike[]>([]);
@@ -315,7 +315,7 @@ export default function Ls2MaintenancePage() {
   }, [items, filter, q]);
 
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
   const counts = {

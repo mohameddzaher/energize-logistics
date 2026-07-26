@@ -3,8 +3,10 @@
 // signature slots (employee / direct manager / HR). We render an off-screen A4
 // HTML node (so Arabic shapes correctly), rasterise it with html2canvas, then
 // place that image on an A4 pdf-lib page.
-import html2canvas from 'html2canvas';
-import { PDFDocument } from 'pdf-lib';
+
+// pdf-lib + html2canvas load at click time — static imports put them in the
+// page bundle of every screen that can print.
+
 
 const LETTERHEAD = '/images/payroll.png';
 
@@ -81,9 +83,11 @@ export async function downloadLeaveSheet(leave: any, lang: 'ar' | 'en') {
     await Promise.all(Array.from(el.querySelectorAll('img')).map((img) =>
       img.complete && img.naturalWidth ? Promise.resolve() : new Promise<void>((r) => { img.onload = () => r(); img.onerror = () => r(); })
     ));
+    const html2canvas = (await import('html2canvas')).default;
     const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
     const imgData = canvas.toDataURL('image/png');
 
+    const { PDFDocument } = await import('pdf-lib');
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([595.28, 841.89]); // A4 in points
     const png = await pdf.embedPng(imgData);

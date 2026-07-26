@@ -22,7 +22,7 @@ export default function RemoteReportPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const tx = getRemoteReportTranslations(lang);
-  const staff = isRemoteStaff(user?.role);
+  const staff = isRemoteStaff(user);
 
   if (staff) return <StaffReports isRTL={isRTL} tx={tx} />;
   return <EmployeeReport isRTL={isRTL} tx={tx} />;

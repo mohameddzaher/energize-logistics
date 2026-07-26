@@ -63,7 +63,7 @@ export default function SalesTargetsPage() {
     ], 'sales-targets', tx.pageTitle);
   };
 
-  if (!isSalesStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isSalesStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (

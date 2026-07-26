@@ -26,7 +26,7 @@ export default function RemoteChatPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const tx = getRemoteChatTranslations(lang);
-  const staff = isRemoteStaff(user?.role);
+  const staff = isRemoteStaff(user);
 
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeEmployee, setActiveEmployee] = useState<string | null>(null);

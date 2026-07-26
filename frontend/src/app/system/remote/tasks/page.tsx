@@ -25,7 +25,7 @@ export default function RemoteTasksPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const tx = getRemoteTasksTranslations(lang);
-  const staff = isRemoteStaff(user?.role);
+  const staff = isRemoteStaff(user);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<EmployeeOpt[]>([]);

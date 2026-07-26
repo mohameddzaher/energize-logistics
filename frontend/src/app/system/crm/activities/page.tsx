@@ -78,7 +78,7 @@ export default function CrmActivitiesPage() {
     try { await api.delete(`/api/crm/activities/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
-  if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (

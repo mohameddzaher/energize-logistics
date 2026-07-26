@@ -73,7 +73,7 @@ export default function ChartOfAccountsPage() {
     ], 'chart-of-accounts', tx.pageTitle);
   };
 
-  if (!isFinanceStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isFinanceStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (

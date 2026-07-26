@@ -10,7 +10,7 @@ export default function OpsResourcePage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const cfg = resourceByKey('users');
-  if (!isOpsStaff(user?.role)) return <div className="text-slate-500 p-8">{opsText(lang).notAuthorized}</div>;
+  if (!isOpsStaff(user)) return <div className="text-slate-500 p-8">{opsText(lang).notAuthorized}</div>;
   if (!cfg) return null;
   return <OpsResourceTable cfg={cfg} />;
 }

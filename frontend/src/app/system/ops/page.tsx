@@ -77,7 +77,7 @@ export default function OpsDashboardPage() {
   useSocket('ops:stats', useCallback((stats: any) => { if (!dateFrom && !dateTo && !branchFilter) setD((p) => ({ ...(p || {}), stats })); }, [dateFrom, dateTo, branchFilter]));
   useSocket('ops:shipments:changed', useCallback(() => load(), [load]));
 
-  if (!isOpsStaff(user?.role)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  if (!isOpsStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading && !d) return <Spinner />;
 
   const counts = d?.stats?.counts || {};

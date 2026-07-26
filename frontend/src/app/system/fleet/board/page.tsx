@@ -16,7 +16,7 @@ import {
   LayoutGrid, RefreshCw, Truck, MapPin, Clock, Wrench, User as UserIcon, Search, X, AlertTriangle,
 } from 'lucide-react';
 import { Spinner, PageHeader, ErrorNotice } from '@/components/hr/HRKit';
-import { canEditFleet, fleetStatusLabel, fmtDT, hoursSince, BOARD_STATES, foldAr, Lang } from '@/lib/fleet';
+import { canViewFleet, fleetStatusLabel, fmtDT, hoursSince, BOARD_STATES, foldAr, Lang } from '@/lib/fleet';
 
 interface BoardTrip {
   _id: string; waybillNumber: number; status: string;
@@ -98,7 +98,7 @@ export default function FleetBoardPage() {
     return [...m.entries()].sort((a, b) => (a[0] === '_none' ? 1 : b[0] === '_none' ? -1 : a[1].name.localeCompare(b[1].name)));
   }, [filtered, ar]);
 
-  if (!canEditFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح.' : 'Not authorized.'}</div>;
+  if (!canViewFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح.' : 'Not authorized.'}</div>;
   if (loading && !cards.length) return <Spinner />;
 
   const KPIS: { key: string; label: string; value: number; cls: string }[] = summary ? [

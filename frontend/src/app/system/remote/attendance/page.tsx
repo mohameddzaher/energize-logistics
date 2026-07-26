@@ -24,7 +24,7 @@ export default function RemoteAttendancePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const staff = isRemoteStaff(user?.role);
+  const staff = isRemoteStaff(user);
 
   if (staff) return <StaffAttendance ar={ar} isRTL={isRTL} />;
   return <EmployeeAttendance ar={ar} />;

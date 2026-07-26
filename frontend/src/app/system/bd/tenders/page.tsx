@@ -54,7 +54,11 @@ export default function BdTendersPage() {
     setLoading(false);
   }, [search, status]);
 
-  useEffect(() => { load(); }, [load]);
+  // Debounced: one request after typing pauses, not one per keystroke.
+  useEffect(() => {
+    const h = setTimeout(() => { load(); }, 250);
+    return () => clearTimeout(h);
+  }, [load]);
   useSocket('bd:updated', useCallback(() => { load(); }, [load]));
 
   useEffect(() => {
@@ -76,9 +80,11 @@ export default function BdTendersPage() {
     return m;
   }, [rows]);
 
+  // Same definition as the BD dashboard's «مناقصات قريبة» KPI (watching/preparing
+  // within 30 days) — two different numbers under one name confused everyone.
   const dueSoon = sorted.filter((r) => {
     const d = daysUntil(r.submissionDeadline);
-    return d !== null && d >= 0 && d <= 7 && !['won', 'lost', 'cancelled'].includes(r.status);
+    return d !== null && d >= 0 && d <= 30 && ['watching', 'preparing'].includes(r.status);
   }).length;
   const openValue = rows
     .filter((r) => !['lost', 'cancelled'].includes(r.status))

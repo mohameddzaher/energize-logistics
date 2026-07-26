@@ -50,7 +50,7 @@ export default function CrmCompaniesPage() {
   const [custResults, setCustResults] = useState<any[]>([]);
   const [linkedLabel, setLinkedLabel] = useState('');
 
-  const canDelete = isCrmAdmin(user?.role);
+  const canDelete = isCrmAdmin(user);
 
   const load = useCallback(async () => {
     try {
@@ -129,7 +129,7 @@ export default function CrmCompaniesPage() {
     try { await api.patch(`/api/crm/companies/${c._id}/rate`, { rating }); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
-  if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
+  if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (

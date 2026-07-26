@@ -22,7 +22,7 @@ export default function RemoteDashboardPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getRemoteDashboardTranslations(lang);
-  const staff = isRemoteStaff(user?.role);
+  const staff = isRemoteStaff(user);
 
   const [data, setData] = useState<DashData | null>(null);
   const [employees, setEmployees] = useState<EmployeeOpt[]>([]);

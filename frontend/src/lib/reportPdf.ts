@@ -6,8 +6,10 @@
 // lay out correctly) and placed on a pdf-lib A4 page.
 //
 // Used by the vehicle / driver / destination reports.
-import html2canvas from 'html2canvas';
-import { PDFDocument } from 'pdf-lib';
+
+// pdf-lib + html2canvas load at click time — static imports put them in the
+// page bundle of every screen that can print.
+
 
 const LETTERHEAD = '/images/payroll.png';
 // A4 at 96dpi.
@@ -136,6 +138,7 @@ export async function downloadReport({ fileName, lang, blocks, footerNote }: Rep
   if (!pages.length) pages.push([]);
 
   // 3) Render each page and add it to the PDF.
+  const { PDFDocument } = await import('pdf-lib');
   const pdf = await PDFDocument.create();
   for (let p = 0; p < pages.length; p++) {
     const pageEl = document.createElement('div');
@@ -156,6 +159,7 @@ export async function downloadReport({ fileName, lang, blocks, footerNote }: Rep
       await Promise.all(Array.from(pageEl.querySelectorAll('img')).map((img) =>
         img.complete && img.naturalWidth ? Promise.resolve() : new Promise<void>((r) => { img.onload = () => r(); img.onerror = () => r(); })
       ));
+      const html2canvas = (await import('html2canvas')).default;
       const canvas = await html2canvas(pageEl, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
       const png = await pdf.embedPng(canvas.toDataURL('image/png'));
       const page = pdf.addPage([595.28, 841.89]); // A4 points

@@ -32,4 +32,7 @@ const ls2AssetEventSchema = new mongoose.Schema({
 
 ls2AssetEventSchema.index({ entityType: 1, refId: 1, date: -1 });
 
+ls2AssetEventSchema.index({ fromPlateKey: 1, date: -1 }); // vehicle history $or lookups
+ls2AssetEventSchema.index({ toPlateKey: 1, date: -1 });
+
 module.exports = mongoose.models.Ls2AssetEvent || mongoose.model('Ls2AssetEvent', ls2AssetEventSchema);

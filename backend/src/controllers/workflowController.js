@@ -688,18 +688,21 @@ exports.bulkImport = async (req, res) => {
     });
 
     // Use save() instead of insertMany to trigger pre-save hooks (auto reportNumber)
-    // and handle duplicates gracefully
+    // and handle duplicates gracefully.
+    // ONE $in resolves every duplicate up front — the per-row findOne was a
+    // round trip per row (~200 imports ≈ 20s of pure latency at 90ms RTT).
+    const wanted = workflowsToCreate.map((w) => w.reportNumber).filter(Boolean);
+    const dupes = new Set(
+      (await OperationsWorkflow.find({ reportNumber: { $in: wanted } }).select('reportNumber').lean())
+        .map((w) => w.reportNumber)
+    );
     const createdWorkflows = [];
     const skipped = [];
     for (const wfData of workflowsToCreate) {
       try {
-        // Check for duplicate reportNumber
-        if (wfData.reportNumber) {
-          const existing = await OperationsWorkflow.findOne({ reportNumber: wfData.reportNumber });
-          if (existing) {
-            skipped.push(wfData.reportNumber);
-            continue;
-          }
+        if (wfData.reportNumber && dupes.has(wfData.reportNumber)) {
+          skipped.push(wfData.reportNumber);
+          continue;
         }
         const wf = new OperationsWorkflow(wfData);
         await wf.save();
@@ -713,50 +716,64 @@ exports.bulkImport = async (req, res) => {
       }
     }
 
-    // Create invoices and update customer outstanding based on sellingValue
-    // username (اسم المستخدم) maps to the customer companyName
+    // Create invoices and update customer outstanding based on sellingValue.
+    // username (اسم المستخدم) maps to the customer companyName.
+    //
+    // Batched: customers and existing invoices are prefetched with two queries
+    // (the per-row case-insensitive-regex findOne could not use the index and
+    // collection-scanned per row); outstanding increments are accumulated and
+    // written once per customer; emits are coalesced AFTER the loop — the
+    // per-row broadcasts made every connected client refetch mid-import,
+    // hundreds of times.
     const updatedCustomers = [];
+    const rowsWithMoney = workflowsToCreate.filter((row) => {
+      if (!row.username || (Number(row.sellingValue) || 0) <= 0) return false;
+      return createdWorkflows.some((w) => w.reportNumber === row.reportNumber);
+    });
+
+    const names = [...new Set(rowsWithMoney.map((r) => r.username.trim()))];
+    const invoiceNumbers = [...new Set(rowsWithMoney.map((r) => r.reportNumber).filter(Boolean))];
+    const [existingCustomers, existingInvoices] = await Promise.all([
+      names.length
+        ? Customer.find({ isActive: true, companyName: { $in: names } })
+          .collation({ locale: 'en', strength: 2 }) // case-insensitive equality, ONE query
+        : [],
+      invoiceNumbers.length
+        ? Invoice.find({ invoiceNumber: { $in: invoiceNumbers } }).select('invoiceNumber').lean()
+        : [],
+    ]);
     const customerCache = {};
+    for (const c of existingCustomers) customerCache[c.companyName.trim().toLowerCase()] = c;
+    const invoiceExists = new Set(existingInvoices.map((i) => i.invoiceNumber));
+    let createdCustomers = 0;
+    let createdInvoices = 0;
+    const outstandingAdd = new Map(); // customerId -> total added
 
-    for (let i = 0; i < workflowsToCreate.length; i++) {
-      const row = workflowsToCreate[i];
-      // Find the matching created workflow (createdWorkflows may be shorter due to skips)
-      const createdWf = createdWorkflows.find(w => w.reportNumber === row.reportNumber);
-      if (!createdWf) continue; // This row was skipped
-
+    for (const row of rowsWithMoney) {
+      const createdWf = createdWorkflows.find((w) => w.reportNumber === row.reportNumber);
       const sellingVal = Number(row.sellingValue) || 0;
-      if (!row.username || sellingVal <= 0) continue;
-
       const name = row.username.trim();
-      // Cache customer lookups, auto-create if not found
-      if (!customerCache[name.toLowerCase()]) {
-        let found = await Customer.findOne({
-          companyName: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+
+      let customer = customerCache[name.toLowerCase()];
+      if (!customer) {
+        customer = await Customer.create({
+          companyName: name,
+          creditTerm: 30,
           isActive: true,
+          clientStatus: 'new_client',
+          notes: 'Auto-created from operations import',
         });
-        if (!found) {
-          found = await Customer.create({
-            companyName: name,
-            creditTerm: 30,
-            isActive: true,
-            clientStatus: 'new_client',
-            notes: 'Auto-created from operations import',
-          });
-          try { emitToAll('customer:created', { customer: found }); } catch (e) { console.error('WebSocket emit error:', e); }
-        }
-        customerCache[name.toLowerCase()] = found;
+        customerCache[name.toLowerCase()] = customer;
+        createdCustomers += 1;
       }
-      const customer = customerCache[name.toLowerCase()];
 
       // Create invoice using reportNumber as invoice number
       const invoiceNumber = row.reportNumber || `WF-${createdWf._id.toString().slice(-8)}`;
-      const invoiceDate = row.reportDate ? new Date(row.reportDate) : new Date();
-      const dueDate = new Date(invoiceDate);
-      dueDate.setDate(dueDate.getDate() + (customer.creditTerm || 30));
-
-      const existingInvoice = await Invoice.findOne({ invoiceNumber });
-      if (!existingInvoice) {
-        const invoice = await Invoice.create({
+      if (!invoiceExists.has(invoiceNumber)) {
+        const invoiceDate = row.reportDate ? new Date(row.reportDate) : new Date();
+        const dueDate = new Date(invoiceDate);
+        dueDate.setDate(dueDate.getDate() + (customer.creditTerm || 30));
+        await Invoice.create({
           invoiceNumber,
           customer: customer._id,
           amount: sellingVal,
@@ -769,14 +786,26 @@ exports.bulkImport = async (req, res) => {
           notes: `Auto-created from operations import - ${row.fromLocation || ''} → ${row.toLocation || ''}`,
           createdBy: req.user._id,
         });
-        try { emitToAll('invoice:created', { invoice }); } catch (e) { console.error('WebSocket emit error:', e); }
+        invoiceExists.add(invoiceNumber);
+        createdInvoices += 1;
       }
 
-      customer.currentOutstanding = (Number(customer.currentOutstanding) || 0) + sellingVal;
-      await customer.save();
-      updatedCustomers.push({ companyName: customer.companyName, added: sellingVal, newOutstanding: customer.currentOutstanding });
-      try { emitToAll('customer:updated', { customer }); } catch (e) { console.error('WebSocket emit error:', e); }
+      outstandingAdd.set(String(customer._id), (outstandingAdd.get(String(customer._id)) || 0) + sellingVal);
     }
+
+    // One write per customer, one broadcast per entity type for the whole batch.
+    if (outstandingAdd.size) {
+      await Customer.bulkWrite([...outstandingAdd.entries()].map(([id, add]) => ({
+        updateOne: { filter: { _id: id }, update: { $inc: { currentOutstanding: add } } },
+      })), { ordered: false });
+      for (const [id, add] of outstandingAdd.entries()) {
+        const c = Object.values(customerCache).find((x) => String(x._id) === id);
+        if (c) updatedCustomers.push({ companyName: c.companyName, added: add });
+      }
+    }
+    if (createdCustomers) { try { emitToAll('customer:created', { bulk: true, count: createdCustomers }); } catch (e) {} }
+    if (createdInvoices) { try { emitToAll('invoice:created', { bulk: true, count: createdInvoices }); } catch (e) {} }
+    if (outstandingAdd.size) { try { emitToAll('customer:updated', { bulk: true, count: outstandingAdd.size }); } catch (e) {} }
 
     // Populate user references
     const populated = await OperationsWorkflow.find({

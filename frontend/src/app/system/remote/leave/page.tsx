@@ -28,7 +28,7 @@ export default function RemoteLeavePage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getRemoteLeaveTranslations(lang);
-  const staff = isRemoteStaff(user?.role);
+  const staff = isRemoteStaff(user);
 
   const [leaves, setLeaves] = useState<Leave[]>([]);
   const [employees, setEmployees] = useState<EmployeeOpt[]>([]);

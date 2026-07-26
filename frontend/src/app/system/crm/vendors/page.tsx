@@ -37,7 +37,7 @@ export default function CrmVendorsPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (en: string, a: string) => (ar ? a : en);
-  const admin = isCrmAdmin(user?.role);
+  const admin = isCrmAdmin(user);
 
   const [items, setItems] = useState<Vendor[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -114,7 +114,7 @@ export default function CrmVendorsPage() {
   const anyFilter = !!(debounced || fStatus || fRep || fType || fNew);
   const clearAll = () => { setSearch(''); setFStatus(''); setFRep(''); setFType(''); setFNew(''); };
 
-  if (!isCrmStaff(user?.role)) return <div className="text-slate-500 p-8">{t('Not authorized', 'لا تملك صلاحية')}</div>;
+  if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{t('Not authorized', 'لا تملك صلاحية')}</div>;
   if (!loaded) return <Spinner />;
 
   return (

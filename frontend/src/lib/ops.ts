@@ -5,6 +5,7 @@
 // /api/ops/* and broadcasts changes over socket.io, so these pages read/write
 // UPL directly while staying up to date without a refresh.
 
+import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 import {
   Truck, Users, Car, UserSquare, Building2, MapPin, Globe, Boxes, Ruler,
   Package, Tag, Palette, ShieldCheck, type LucideIcon,
@@ -31,8 +32,8 @@ export const OPS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specia
 // Core operations roles — used for the dedicated sidebar section so it isn't
 // shown in every staff member's nav even though they CAN read the data.
 export const OPS_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator', 'employee'];
-export const isOpsStaff = (role?: string | null) => !!role && OPS_STAFF_ROLES.includes(role);
-export const isOpsAdmin = (role?: string | null) => !!role && OPS_ADMIN_ROLES.includes(role);
+export const isOpsStaff = (u: RoleOrUser) => OPS_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Operations Platform');
+export const isOpsAdmin = (u: RoleOrUser) => OPS_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Operations Platform');
 
 // ---- Shipment statuses (the heart of the operation) ----------------------
 export interface StatusStyle { key: string; en: string; ar: string; bg: string; text: string; dot: string }

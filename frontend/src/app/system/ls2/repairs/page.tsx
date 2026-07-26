@@ -26,7 +26,7 @@ export default function Ls2RepairsPage() {
   const router = useRouter();
   const ar = lang === 'ar';
   const t = ls2Text(lang as Lang);
-  const admin = isLs2Admin(user?.role);
+  const admin = isLs2Admin(user);
   const [items, setItems] = useState<Repair[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +68,7 @@ export default function Ls2RepairsPage() {
     try { await api.delete(`/api/ls2/repairs/${r._id}`); load(); } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   };
 
-  if (!isLs2Staff(user?.role)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;
   if (loading && !items.length) return <Spinner />;
 
   const chip = (active: boolean) => `px-3 py-1.5 rounded-full text-xs font-medium border ${active ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200'}`;

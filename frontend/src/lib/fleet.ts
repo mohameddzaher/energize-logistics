@@ -10,6 +10,8 @@ export interface FleetVehicle {
   name?: string;
   trailerType?: string; // سطحة / ستارة …
   gpsType?: string;     // LS / EX
+  supervisor?: string | null;   // المشرف المسؤول — يعيّنه مدير القسم
+  supervisorName?: string;
   notes?: string;
   drivers?: { _id: string; name: string; phone?: string; working?: boolean }[];
 }
@@ -126,7 +128,16 @@ export const foldAr = (x: string) => x.toLowerCase()
 // permissions matrix (backend rbac honours an 'edit' grant even on admin
 // routes, so the UI must too). Pass the USER: only it carries the grants.
 import { canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
-export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'];
-export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
+export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
+
+// حالة البطاقة على اللوحة الرئيسية — تُحسب تلقائيًا في الخادم.
+export const BOARD_STATES: Record<string, { ar: string; en: string; card: string; chip: string; dot: string }> = {
+  late: { ar: 'متأخرة عن الوصول', en: 'Late', card: 'border-red-300 bg-red-50', chip: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
+  arrived: { ar: 'وصلت موقع التنزيل', en: 'Arrived', card: 'border-emerald-300 bg-emerald-50', chip: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  moving: { ar: 'في الطريق', en: 'On the road', card: 'border-amber-300 bg-amber-50', chip: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
+  preparing: { ar: 'تحميل / تجهيز', en: 'Loading', card: 'border-blue-200 bg-blue-50', chip: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
+  idle: { ar: 'بدون حمولة', en: 'Idle', card: 'border-slate-200 bg-white', chip: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
+};
 export const canEditFleet = (u: RoleOrUser) => FLEET_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Fleet Management');
 export const canAdminFleet = (u: RoleOrUser) => FLEET_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Fleet Management');

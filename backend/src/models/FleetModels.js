@@ -12,6 +12,10 @@ const fleetVehicleSchema = new mongoose.Schema({
   name: { type: String, trim: true, default: '' },
   trailerType: { type: String, trim: true, default: 'سطحة' }, // سطحة / ستارة / …
   gpsType: { type: String, trim: true, default: 'LS' },       // LS / EX
+  // المشرف المسؤول عن هذه السيارة: يعيّنه مدير القسم، وكل ما يراه المشرف في
+  // القسم (حمولات، سائقون، لوحة، تحليلات) محصور في سياراته هذه.
+  supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+  supervisorName: { type: String, trim: true, default: '' },
   notes: { type: String, trim: true, default: '' },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });

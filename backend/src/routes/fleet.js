@@ -4,11 +4,19 @@ const fleet = require('../controllers/fleetController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-// إدارة الأسطول — our own trucks. Same role set as the shipment-orders trial.
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'];
-const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
+// إدارة الأسطول — our own trucks. fleet_manager runs the section;
+// fleet_supervisor works his ASSIGNED trucks only (scoped in the controller).
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
 router.use(authenticate);
+
+// اللوحة الرئيسية — every truck as a card, grouped by supervisor, with the
+// automatic late/arrived/moving state and the maintenance flags.
+router.get('/board', fleet.getBoard);
+// Assignment: who the supervisors are, and moving a truck between them.
+router.get('/supervisors', fleet.listSupervisors);
+router.patch('/vehicles/:id/supervisor', authorize(...ADMIN_ROLES), fleet.assignVehicleSupervisor);
 
 // Shipments (الحمولات)
 router.get('/shipments', fleet.listShipments);

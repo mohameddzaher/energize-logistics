@@ -60,7 +60,7 @@ export default function FleetShipmentsPage() {
   const [shipments, setShipments] = useState<FleetShipment[]>([]);
   const [customers, setCustomers] = useState<FleetCustomer[]>([]);
   const [supervisors, setSupervisors] = useState<string[]>([]);
-  const [stats, setStats] = useState<{ byStatus: Record<string, number> } | null>(null);
+  const [stats, setStats] = useState<{ byStatus: Record<string, number>; byDestination?: { city: string; n: number }[] } | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -68,6 +68,7 @@ export default function FleetShipmentsPage() {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
   const [customerFilter, setCustomerFilter] = useState('');
   const [supervisorFilter, setSupervisorFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
@@ -91,6 +92,7 @@ export default function FleetShipmentsPage() {
       const qs = new URLSearchParams({ page: String(page), limit: '25' });
       if (debounced.trim()) qs.set('q', debounced.trim());
       if (statusFilter) qs.set('status', statusFilter);
+      if (cityFilter) qs.set('toCity', cityFilter);
       if (customerFilter) qs.set('customer', customerFilter);
       if (supervisorFilter) qs.set('supervisor', supervisorFilter);
       if (fromDate) qs.set('from', fromDate);
@@ -102,7 +104,7 @@ export default function FleetShipmentsPage() {
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, customerFilter, supervisorFilter, fromDate, toDate, page]);
+  }, [debounced, statusFilter, cityFilter, customerFilter, supervisorFilter, fromDate, toDate, page]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
@@ -215,6 +217,19 @@ export default function FleetShipmentsPage() {
         <StatCard label={ar ? 'وصلت / مكتملة' : 'Arrived / done'} value={arrived} accent="text-emerald-600" />
         <StatCard label={ar ? 'ملغاة' : 'Cancelled'} value={stats?.byStatus.cancelled || 0} accent="text-red-600" />
       </div>
+
+      {/* الوجهات الحالية — "الرايح جدة كام سيارة" دون بحث. الضغط يرشح القائمة. */}
+      {(stats?.byDestination?.length || 0) > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-600">{ar ? 'الوجهات الآن:' : 'Destinations now:'}</span>
+          {stats!.byDestination!.map((d) => (
+            <button key={d.city} type="button" onClick={() => { setCityFilter(cityFilter === d.city ? '' : d.city); setPage(1); }}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border ${cityFilter === d.city ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-700 border-slate-200 hover:border-[#f37121]'}`}>
+              {d.city} <b className="tabular-nums">{d.n}</b>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[240px] basis-72">

@@ -1,6 +1,20 @@
 const { FleetVehicle, FleetDriver, FleetCustomer, FleetShipment, FleetEvent } = require('../models/FleetModels');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
+const User = require('../models/User');
+// The fleet's trucks ARE the Location Solutions trucks — the maintenance state
+// on the board comes from that mirror, joined by normalized plate digits.
+const Ls2Vehicle = require('../models/Ls2Vehicle');
+const { plateKey, vehiclePlateKey } = require('../utils/plateKey');
+
+// A fleet_supervisor sees HIS trucks only — everywhere in the section. The
+// manager assigns vehicles to supervisors; every read funnels through this.
+// Returns null for every other role (no restriction).
+const supervisorVehicleIds = async (req) => {
+  if (req.user.role !== 'fleet_supervisor') return null;
+  const vs = await FleetVehicle.find({ supervisor: req.user._id }).select('_id').lean();
+  return vs.map((v) => v._id);
+};
 
 // إدارة الأسطول — our own trucks. The booking rules that matter:
 //   · picking a vehicle answers most of the form (its drivers, trailer, GPS);
@@ -97,11 +111,14 @@ const resolveAssignments = async (req, data, existing = null) => {
 
 exports.listShipments = async (req, res) => {
   try {
-    const { q, status, supervisor, customer, from, to, page = 1, limit = 25 } = req.query;
+    const { q, status, supervisor, customer, toCity, from, to, page = 1, limit = 25 } = req.query;
     const filter = {};
     if (status) filter.status = status;
     if (supervisor) filter.supervisor = supervisor;
     if (customer) filter.customer = customer;
+    if (toCity) filter.toCity = toCity;
+    const scope = await supervisorVehicleIds(req);
+    if (scope) filter.vehicle = { $in: scope };
     if (from || to) {
       filter.createdAt = {};
       if (from) filter.createdAt.$gte = new Date(`${from}T00:00:00`);
@@ -119,14 +136,24 @@ exports.listShipments = async (req, res) => {
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [shipments, total, statusAgg] = await Promise.all([
+    // "الرايح جدة كام سيارة" — destinations of the loads currently in motion,
+    // under the SAME filter (minus the status/city drill-down itself).
+    const destMatch = { ...filter, status: { $in: ['requesting', 'loading', 'uploaded', 'on_way', 'late'] } };
+    delete destMatch.toCity;
+    const [shipments, total, statusAgg, destAgg] = await Promise.all([
       FleetShipment.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
       FleetShipment.countDocuments(filter),
       FleetShipment.aggregate([{ $match: filter }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+      FleetShipment.aggregate([
+        { $match: destMatch },
+        { $group: { _id: '$toCity', n: { $sum: 1 } } },
+        { $sort: { n: -1 } },
+      ]),
     ]);
     const byStatus = {};
     statusAgg.forEach((r) => { byStatus[r._id] = r.n; });
-    res.json({ shipments, total, stats: { byStatus } });
+    const byDestination = destAgg.filter((r) => r._id).map((r) => ({ city: r._id, n: r.n }));
+    res.json({ shipments, total, stats: { byStatus, byDestination } });
   } catch (error) {
     console.error('Error listing fleet shipments:', error);
     res.status(500).json({ message: 'Failed to load fleet shipments' });
@@ -318,7 +345,10 @@ const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'working', 'onSponsorship', '
 
 exports.listDrivers = async (req, res) => {
   try {
-    const drivers = await FleetDriver.find({ isActive: { $ne: false } })
+    const dFilter = { isActive: { $ne: false } };
+    const scope = await supervisorVehicleIds(req);
+    if (scope) dFilter.vehicle = { $in: scope };
+    const drivers = await FleetDriver.find(dFilter)
       .populate('vehicle', 'plate trailerType gpsType')
       .sort({ name: 1 })
       .limit(1000)
@@ -386,8 +416,11 @@ const VEHICLE_EDITABLE = ['plate', 'name', 'trailerType', 'gpsType', 'notes', 'i
 
 exports.listVehicles = async (req, res) => {
   try {
+    const vFilter = { isActive: { $ne: false } };
+    const scope = await supervisorVehicleIds(req);
+    if (scope) vFilter._id = { $in: scope };
     const [vehicles, drivers] = await Promise.all([
-      FleetVehicle.find({ isActive: { $ne: false } }).sort({ plate: 1 }).limit(500).lean(),
+      FleetVehicle.find(vFilter).sort({ plate: 1 }).limit(500).lean(),
       FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } }).select('name phone working vehicle').lean(),
     ]);
     const byVehicle = {};
@@ -495,22 +528,29 @@ exports.getDashboard = async (req, res) => {
     const staleCut = new Date(now.getTime() - 3 * 3600 * 1000);
     const IN_FLIGHT = ['loading', 'uploaded', 'on_way'];
 
+    // A supervisor's analytics cover HIS trucks only — same scope as every list.
+    const scope = await supervisorVehicleIds(req);
+    const shipScope = scope ? { vehicle: { $in: scope } } : {};
+    const vehScope = scope ? { _id: { $in: scope } } : {};
+    const drvScope = scope ? { vehicle: { $in: scope } } : {};
+
     const [
       byStatusAgg, today, week, bySupervisorAgg,
       drivers, vehicles, followupsToday, needFollowUp,
     ] = await Promise.all([
-      FleetShipment.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
-      FleetShipment.countDocuments({ createdAt: { $gte: dayStart } }),
-      FleetShipment.countDocuments({ createdAt: { $gte: weekStart } }),
+      FleetShipment.aggregate([{ $match: shipScope }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+      FleetShipment.countDocuments({ ...shipScope, createdAt: { $gte: dayStart } }),
+      FleetShipment.countDocuments({ ...shipScope, createdAt: { $gte: weekStart } }),
       FleetShipment.aggregate([
-        { $match: { createdAt: { $gte: weekStart } } },
+        { $match: { ...shipScope, createdAt: { $gte: weekStart } } },
         { $group: { _id: '$supervisorName', n: { $sum: 1 } } },
         { $sort: { n: -1 } },
       ]),
-      FleetDriver.find({ isActive: { $ne: false } }).select('working vehicle offReason').lean(),
-      FleetVehicle.countDocuments({ isActive: { $ne: false } }),
+      FleetDriver.find({ isActive: { $ne: false }, ...drvScope }).select('working vehicle offReason').lean(),
+      FleetVehicle.countDocuments({ isActive: { $ne: false }, ...vehScope }),
       FleetEvent.countDocuments({ type: 'followup', createdAt: { $gte: dayStart } }),
       FleetShipment.find({
+        ...shipScope,
         status: { $in: IN_FLIGHT },
         $or: [{ lastContactAt: null }, { lastContactAt: { $lt: staleCut } }],
       }).select('waybillNumber customerName driverName vehiclePlate lastContactAt fromCity toCity').sort({ lastContactAt: 1 }).limit(20).lean(),
@@ -596,5 +636,159 @@ exports.ensureFleetDefaults = async () => {
       { name: 'مصنع اليمامة لانتاج ابراج الطاقة الكهربائية', routes: [{ fromCity: 'جدة', toCity: 'الرياض', price: 1100 }], notes: 'عميل تجريبي' },
       { name: 'شركة البحر الأحمر للتنمية', routes: [{ fromCity: 'جدة', toCity: 'ينبع', price: 900 }], notes: 'عميل تجريبي' },
     ]);
+  }
+};
+
+// ── اللوحة الرئيسية: كل سيارة كبطاقة، مجمّعة بالمشرف، بحالة تلقائية ─────────
+// The manager's landing view: every truck as one card, grouped under its
+// supervisor, colored by its CURRENT trip (late / arrived / moving / preparing
+// / idle) with the Location Solutions maintenance state riding on each card —
+// so nobody hunts through lists to know who is late or due for service.
+const BOARD_ACTIVE = ['requesting', 'loading', 'uploaded', 'on_way', 'late', 'arrived', 'bond_sent'];
+const ARRIVED_FAMILY = ['arrived', 'bond_sent'];
+
+exports.getBoard = async (req, res) => {
+  try {
+    const vFilter = { isActive: { $ne: false } };
+    const scope = await supervisorVehicleIds(req);
+    if (scope) vFilter._id = { $in: scope };
+
+    const vehicles = await FleetVehicle.find(vFilter).sort({ plate: 1 }).lean();
+    const [ships, drivers, ls2] = await Promise.all([
+      FleetShipment.find({ vehicle: { $in: vehicles.map((v) => v._id) }, status: { $in: BOARD_ACTIVE } })
+        .sort({ createdAt: -1 })
+        .select('vehicle status fromCity toCity expectedArrival loadDate waybillNumber customerName driverName lastContactAt')
+        .lean(),
+      FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } }).select('name vehicle working').lean(),
+      Ls2Vehicle.find({}).select('plate name maintenanceStatus kmToService nextServiceName odometerKm').lean(),
+    ]);
+
+    // Latest active trip per vehicle (list is newest-first).
+    const tripByVehicle = new Map();
+    for (const s of ships) {
+      const k = String(s.vehicle);
+      if (!tripByVehicle.has(k)) tripByVehicle.set(k, s);
+    }
+    const driversByVehicle = new Map();
+    for (const d of drivers) {
+      const k = String(d.vehicle);
+      if (!driversByVehicle.has(k)) driversByVehicle.set(k, []);
+      driversByVehicle.get(k).push({ name: d.name, working: d.working });
+    }
+    const maintByKey = new Map();
+    for (const lv of ls2) {
+      const k = vehiclePlateKey(lv);
+      if (k) maintByKey.set(k, lv);
+    }
+
+    const now = Date.now();
+    const cards = vehicles.map((v) => {
+      const trip = tripByVehicle.get(String(v._id)) || null;
+      const m = maintByKey.get(plateKey(v.plate)) || null;
+      // The card's automatic state:
+      //   late (متأخرة عن الوصول المتوقع) > arrived (وصلت موقع التنزيل) >
+      //   moving (في الطريق) > preparing (تحميل/تجهيز) > idle (بدون حمولة).
+      let state = 'idle';
+      if (trip) {
+        const lateByTime = trip.expectedArrival
+          && new Date(trip.expectedArrival).getTime() < now
+          && !ARRIVED_FAMILY.includes(trip.status);
+        if (ARRIVED_FAMILY.includes(trip.status)) state = 'arrived';
+        else if (trip.status === 'late' || lateByTime) state = 'late';
+        else if (trip.status === 'on_way') state = 'moving';
+        else state = 'preparing';
+      }
+      return {
+        _id: v._id,
+        plate: v.plate,
+        name: v.name,
+        trailerType: v.trailerType,
+        supervisor: v.supervisor ? String(v.supervisor) : null,
+        supervisorName: v.supervisorName || '',
+        drivers: driversByVehicle.get(String(v._id)) || [],
+        trip: trip && {
+          _id: trip._id, waybillNumber: trip.waybillNumber, status: trip.status,
+          fromCity: trip.fromCity, toCity: trip.toCity,
+          expectedArrival: trip.expectedArrival, loadDate: trip.loadDate,
+          customerName: trip.customerName, driverName: trip.driverName,
+          lastContactAt: trip.lastContactAt,
+        },
+        state,
+        maintenance: m ? {
+          status: m.maintenanceStatus || 'ok',
+          kmToService: m.kmToService ?? null,
+          nextServiceName: m.nextServiceName || '',
+          odometerKm: m.odometerKm ?? null,
+        } : null,
+      };
+    });
+
+    const count = (st) => cards.filter((c) => c.state === st).length;
+    const byDestination = {};
+    for (const c of cards) {
+      if (c.trip && !ARRIVED_FAMILY.includes(c.trip.status) && c.trip.toCity) {
+        byDestination[c.trip.toCity] = (byDestination[c.trip.toCity] || 0) + 1;
+      }
+    }
+    res.json({
+      cards,
+      summary: {
+        total: cards.length,
+        moving: count('moving'),
+        late: count('late'),
+        arrived: count('arrived'),
+        preparing: count('preparing'),
+        idle: count('idle'),
+        maintOverdue: cards.filter((c) => c.maintenance?.status === 'overdue').length,
+        maintDue: cards.filter((c) => c.maintenance?.status === 'due').length,
+        byDestination: Object.entries(byDestination).map(([city, n]) => ({ city, n })).sort((a, b) => b.n - a.n),
+      },
+    });
+  } catch (error) {
+    console.error('Error building fleet board:', error);
+    res.status(500).json({ message: 'Failed to load the fleet board' });
+  }
+};
+
+// ── تعيين المشرفين ───────────────────────────────────────────────────────────
+// The people the manager can assign trucks to.
+exports.listSupervisors = async (req, res) => {
+  try {
+    const users = await User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager'] }, isActive: { $ne: false } })
+      .select('firstName lastName email role').lean();
+    users.sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+    res.json({ users });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load supervisors' });
+  }
+};
+
+// PATCH /vehicles/:id/supervisor { supervisor: userId|null } — manager only
+// (route-gated). Moving a truck between supervisors is exactly this.
+exports.assignVehicleSupervisor = async (req, res) => {
+  try {
+    const v = await FleetVehicle.findById(req.params.id);
+    if (!v) return res.status(404).json({ message: 'Vehicle not found' });
+    const { supervisor } = req.body || {};
+    if (supervisor) {
+      const u = await User.findById(supervisor).select('firstName lastName role').lean();
+      if (!u) return res.status(404).json({ message: 'Supervisor not found' });
+      v.supervisor = u._id;
+      v.supervisorName = fullName(u);
+    } else {
+      v.supervisor = null;
+      v.supervisorName = '';
+    }
+    await v.save();
+    emit('fleet:vehicles', {});
+    emit('fleet:updated', {});
+    await logAudit({
+      user: req.user, action: 'assign_supervisor', entity: 'FleetVehicle', entityId: v._id,
+      changes: { plate: v.plate, supervisorName: v.supervisorName || null },
+      ipAddress: req.ip,
+    });
+    res.json({ vehicle: v });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to assign the supervisor' });
   }
 };

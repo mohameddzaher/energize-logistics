@@ -47,7 +47,7 @@ const SECTIONS = [
     // Shipment Orders trial (that one books supplier trucks).
     key: 'Fleet Management',
     apiPrefixes: ['/api/fleet'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'],
   },
   {
     key: 'Customs',
@@ -139,6 +139,7 @@ const ALL_ROLES = [
   'procurement_manager', 'customs_manager', 'customs_officer',
   'it_manager', 'it_specialist',
   'marketing_manager', 'marketing_specialist', 'bd_manager', 'bd_specialist',
+  'fleet_manager', 'fleet_supervisor',
 ];
 
 const getSection = (key) => SECTIONS.find((s) => s.key === key);

@@ -9,9 +9,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Truck, Plus, Pencil, Trash2, Check, Loader2 } from 'lucide-react';
+import { Truck, Plus, Pencil, Trash2, Check, Loader2, UserCog } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select, SmallBadge, StatCard, ErrorNotice,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select, SmallBadge, StatCard, ErrorNotice, SearchableSelect,
 } from '@/components/hr/HRKit';
 import { FleetVehicle, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
 
@@ -36,6 +36,26 @@ export default function FleetVehiclesPage() {
   const [editing, setEditing] = useState<FleetVehicle | null>(null);
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
+
+  // تعيين المشرف — مدير القسم يوزّع السيارات على المشرفين من هنا.
+  const [supervisors, setSupervisors] = useState<{ _id: string; firstName: string; lastName: string; email: string }[]>([]);
+  const [assigning, setAssigning] = useState<FleetVehicle | null>(null);
+  const [assignTo, setAssignTo] = useState('');
+  const [assignSaving, setAssignSaving] = useState(false);
+  useEffect(() => {
+    if (!admin) return;
+    api.get<{ users: any[] }>('/api/fleet/supervisors').then((d) => setSupervisors(d.users || [])).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admin]);
+  const saveAssign = async () => {
+    if (!assigning) return;
+    setAssignSaving(true);
+    try {
+      await api.patch(`/api/fleet/vehicles/${assigning._id}/supervisor`, { supervisor: assignTo || null });
+      setAssigning(null); load();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setAssignSaving(false);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -144,6 +164,7 @@ export default function FleetVehiclesPage() {
             <th className={th}>{ar ? 'نوع التيدر' : 'Trailer type'}</th>
             <th className={th}>GPS</th>
             <th className={th}>{ar ? 'السائقون عليها' : 'Drivers'}</th>
+            <th className={th}>{ar ? 'المشرف المسؤول' : 'Supervisor'}</th>
             <th className={th}>{ar ? 'ملاحظات' : 'Notes'}</th>
             <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
@@ -177,9 +198,20 @@ export default function FleetVehiclesPage() {
                     </div>
                   )}
                 </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {v.supervisorName
+                    ? <SmallBadge bg="bg-[#f37121]/10" text="text-[#f37121]" label={v.supervisorName} />
+                    : <span className="text-slate-400 text-xs">{ar ? 'غير مُسند' : 'Unassigned'}</span>}
+                </td>
                 <td className="px-4 py-3 text-slate-500 text-xs max-w-[220px] truncate" title={v.notes || undefined}>{v.notes || '—'}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
+                    {admin && (
+                      <button type="button" onClick={() => { setAssigning(v); setAssignTo(v.supervisor || ''); }}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعيين المشرف' : 'Assign supervisor'}>
+                        <UserCog className="w-4 h-4" />
+                      </button>
+                    )}
                     {editor && <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
                     {admin && <button type="button" onClick={() => remove(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
                   </div>
@@ -187,7 +219,7 @@ export default function FleetVehiclesPage() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="text-center text-slate-500 py-12">
+              <tr><td colSpan={7} className="text-center text-slate-500 py-12">
                 {vehicles.length === 0
                   ? (ar ? 'لا توجد سيارات بعد.' : 'No vehicles yet.')
                   : (ar ? 'لا نتائج مطابقة للبحث.' : 'No matches.')}
@@ -196,6 +228,35 @@ export default function FleetVehiclesPage() {
           </tbody>
         </table>
       </div>
+
+      {/* تعيين المشرف: هذه السيارة مسؤول عنها مَن؟ */}
+      <Modal open={!!assigning} onClose={() => setAssigning(null)}
+        title={assigning ? (ar ? `المشرف المسؤول عن ${assigning.plate}` : `Supervisor for ${assigning.plate}`) : ''}
+        footer={<>
+          <button type="button" onClick={() => setAssigning(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={saveAssign} disabled={assignSaving}>
+            {assignSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'حفظ' : 'Save'}
+          </PrimaryButton>
+        </>}>
+        <div className="space-y-2">
+          <Field label={ar ? 'المشرف' : 'Supervisor'}>
+            <SearchableSelect
+              value={assignTo} onChange={setAssignTo}
+              placeholder={ar ? 'بدون مشرف' : 'No supervisor'}
+              searchPlaceholder={ar ? 'ابحث بالاسم…' : 'Search name…'}
+              options={[
+                { value: '', label: ar ? 'بدون مشرف' : 'No supervisor' },
+                ...supervisors.map((u) => ({ value: u._id, label: `${u.firstName} ${u.lastName}`.trim() || u.email, hint: u.email })),
+              ]}
+            />
+          </Field>
+          {supervisors.length === 0 && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {ar ? 'لا يوجد مستخدمون بدور «مشرف أسطول» بعد — أنشئهم من إدارة المستخدمين أولًا.' : 'No users with the fleet_supervisor role yet — create them in user management first.'}
+            </p>
+          )}
+        </div>
+      </Modal>
 
       <Modal open={showModal} onClose={() => setShowModal(false)}
         title={editing ? (ar ? 'تعديل سيارة' : 'Edit vehicle') : (ar ? 'إضافة سيارة' : 'Add vehicle')}

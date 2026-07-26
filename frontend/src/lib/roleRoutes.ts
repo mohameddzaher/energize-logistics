@@ -41,6 +41,9 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   procurement_manager: '/system/procurement/dashboard',
   customs_manager: '/system/customs',
   customs_officer: '/system/customs',
+  // مدير القسم والمشرف يفتحان على اللوحة الرئيسية — البطاقات هي عملهما اليومي.
+  fleet_manager: '/system/fleet/board',
+  fleet_supervisor: '/system/fleet/board',
 };
 
 export const homeRouteForRole = (role?: string | null) =>

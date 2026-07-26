@@ -156,6 +156,8 @@ const layout = {
     roleCustomsOfficer: 'Customs Officer',
     roleITManager: 'Head of IT & Software',
     roleITSpecialist: 'IT & Software Specialist',
+    roleFleetManager: 'Fleet Manager',
+    roleFleetSupervisor: 'Fleet Supervisor',
     // Vehicle analytics & misc nav
     vehicleAnalytics: 'Vehicle Analytics',
     fuelAnalysis: 'Fuel Analysis',
@@ -324,6 +326,8 @@ const layout = {
     roleCustomsOfficer: 'مخلّص جمركي',
     roleITManager: 'مدير التقنية والبرمجيات',
     roleITSpecialist: 'أخصائي تقنية وبرمجيات',
+    roleFleetManager: 'مدير قسم الأسطول',
+    roleFleetSupervisor: 'مشرف أسطول',
     // Vehicle analytics & misc nav
     vehicleAnalytics: 'تحليلات المركبات',
     fuelAnalysis: 'تحليل الوقود',
@@ -7243,6 +7247,8 @@ export const ROLE_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   customs_officer: 'roleCustomsOfficer',
   it_manager: 'roleITManager',
   it_specialist: 'roleITSpecialist',
+  fleet_manager: 'roleFleetManager',
+  fleet_supervisor: 'roleFleetSupervisor',
 };
 
 export function getRoleLabel(role: string | undefined | null, lang: Lang): string {

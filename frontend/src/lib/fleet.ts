@@ -14,7 +14,25 @@ export interface FleetVehicle {
   supervisorName?: string;
   notes?: string;
   drivers?: { _id: string; name: string; phone?: string; working?: boolean }[];
+  // إثراء حي وقت الاختيار: أين هي الآن، وماذا تحمل بالفعل، وهل وصلت وجهتها.
+  live?: { city: string | null; status?: string | null; lastMessageAt?: string | null } | null;
+  trip?: { waybillNumber: number; status: string; fromCity: string; toCity: string; expectedArrival: string | null } | null;
+  atDestination?: boolean;
 }
+
+// سطر توافر السيارة أثناء الاختيار: «متاحة — في جدة» / «عليها حمولة إلى الرياض
+// · متوقع …» / «وصلت نطاق الدمام — تفريغ». يظهر في قائمة الاختيار ويُبحث فيه،
+// فكتابة اسم مدينة تُظهر سيارات هذه المدينة فورًا.
+export const vehicleAvailabilityText = (v: FleetVehicle, lang: Lang): string => {
+  const ar = lang === 'ar';
+  if (v.trip) {
+    if (v.atDestination) return ar ? `وصلت نطاق ${v.trip.toCity} — تفريغ` : `Reached ${v.trip.toCity} — unloading`;
+    const eta = v.trip.expectedArrival ? ` · ${ar ? 'متوقع' : 'ETA'} ${fmtDT(v.trip.expectedArrival, lang)}` : '';
+    return ar ? `عليها حمولة إلى ${v.trip.toCity || '—'}${eta}` : `Carrying to ${v.trip.toCity || '—'}${eta}`;
+  }
+  if (v.live?.city) return ar ? `متاحة — في ${v.live.city}` : `Available — in ${v.live.city}`;
+  return ar ? 'متاحة' : 'Available';
+};
 
 export interface FleetDriver {
   _id: string;

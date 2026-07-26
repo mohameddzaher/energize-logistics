@@ -6,6 +6,8 @@ const User = require('../models/User');
 // on the board comes from that mirror, joined by normalized plate digits.
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 const { plateKey, vehiclePlateKey } = require('../utils/plateKey');
+// Live GPS → "السيارة داخل نطاق جدة الآن" (and: reached its trip's destination).
+const { cityForPoint, sameCity } = require('../utils/saCities');
 
 // A fleet_supervisor sees HIS trucks only — everywhere in the section. The
 // manager assigns vehicles to supervisors; every read funnels through this.
@@ -428,7 +430,45 @@ exports.listVehicles = async (req, res) => {
       const k = String(d.vehicle);
       (byVehicle[k] = byVehicle[k] || []).push({ _id: d._id, name: d.name, phone: d.phone, working: d.working });
     });
-    res.json({ vehicles: vehicles.map((v) => ({ ...v, drivers: byVehicle[String(v._id)] || [] })) });
+
+    // What the dispatcher needs WHILE PICKING a truck: where it is right now
+    // (live GPS → city), what it is already carrying (active trip → toCity +
+    // ETA), and whether it has already entered its destination's zone.
+    const [ls2, trips] = await Promise.all([
+      Ls2Vehicle.find({}).select('plate name position status lastMessageAt').lean(),
+      FleetShipment.find({ vehicle: { $in: vehicles.map((v) => v._id) }, status: { $in: BOARD_ACTIVE } })
+        .sort({ createdAt: -1 })
+        .select('vehicle status fromCity toCity expectedArrival waybillNumber')
+        .lean(),
+    ]);
+    const liveByKey = new Map();
+    for (const lv of ls2) {
+      const k = vehiclePlateKey(lv);
+      if (k) liveByKey.set(k, lv);
+    }
+    const tripByVehicle = new Map();
+    for (const s of trips) {
+      const k = String(s.vehicle);
+      if (!tripByVehicle.has(k)) tripByVehicle.set(k, s);
+    }
+
+    res.json({
+      vehicles: vehicles.map((v) => {
+        const lv = liveByKey.get(plateKey(v.plate)) || null;
+        const liveCity = lv?.position ? cityForPoint(lv.position.lat, lv.position.lng) : null;
+        const trip = tripByVehicle.get(String(v._id)) || null;
+        return {
+          ...v,
+          drivers: byVehicle[String(v._id)] || [],
+          live: lv ? { city: liveCity, status: lv.status || null, lastMessageAt: lv.lastMessageAt || null } : null,
+          trip: trip && {
+            waybillNumber: trip.waybillNumber, status: trip.status,
+            fromCity: trip.fromCity, toCity: trip.toCity, expectedArrival: trip.expectedArrival,
+          },
+          atDestination: !!(trip && liveCity && sameCity(liveCity, trip.toCity)),
+        };
+      }),
+    });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load vehicles' });
   }
@@ -660,7 +700,7 @@ exports.getBoard = async (req, res) => {
         .select('vehicle status fromCity toCity expectedArrival loadDate waybillNumber customerName driverName lastContactAt')
         .lean(),
       FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null } }).select('name vehicle working').lean(),
-      Ls2Vehicle.find({}).select('plate name maintenanceStatus kmToService nextServiceName odometerKm').lean(),
+      Ls2Vehicle.find({}).select('plate name maintenanceStatus kmToService nextServiceName odometerKm position status').lean(),
     ]);
 
     // Latest active trip per vehicle (list is newest-first).
@@ -685,6 +725,9 @@ exports.getBoard = async (req, res) => {
     const cards = vehicles.map((v) => {
       const trip = tripByVehicle.get(String(v._id)) || null;
       const m = maintByKey.get(plateKey(v.plate)) || null;
+      // أين هي الآن جغرافيًا — وهل دخلت نطاق وجهتها بالفعل؟
+      const liveCity = m?.position ? cityForPoint(m.position.lat, m.position.lng) : null;
+      const atDestination = !!(trip && liveCity && !ARRIVED_FAMILY.includes(trip.status) && sameCity(liveCity, trip.toCity));
       // The card's automatic state:
       //   late (متأخرة عن الوصول المتوقع) > arrived (وصلت موقع التنزيل) >
       //   moving (في الطريق) > preparing (تحميل/تجهيز) > idle (بدون حمولة).
@@ -714,6 +757,8 @@ exports.getBoard = async (req, res) => {
           lastContactAt: trip.lastContactAt,
         },
         state,
+        liveCity,
+        atDestination,
         maintenance: m ? {
           status: m.maintenanceStatus || 'ok',
           kmToService: m.kmToService ?? null,

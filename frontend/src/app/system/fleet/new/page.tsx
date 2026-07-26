@@ -16,7 +16,7 @@ import {
 import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton, SmallBadge } from '@/components/hr/HRKit';
 import {
   FleetVehicle, FleetDriver, FleetCustomer, FLEET_STATUSES, fmtDT,
-  canEditFleet, Lang,
+  canEditFleet, vehicleAvailabilityText, Lang,
 } from '@/lib/fleet';
 
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -245,10 +245,12 @@ function CreateFleetShipmentInner() {
               emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
               options={vehicles.map((v) => ({
                 value: v._id,
-                label: v.plate,
+                label: `${v.plate}${v.trip ? (ar ? ` ⟵ ${v.trip.toCity || '—'}` : ` → ${v.trip.toCity || '—'}`) : ''}`,
+                // سطر التوافر يُبحث فيه أيضًا: اكتب «جدة» تجد سيارات جدة فورًا.
                 hint: [
+                  vehicleAvailabilityText(v, lang as Lang),
                   (v.drivers || []).map((d) => d.name).join(' + ') || (ar ? 'بدون سائق' : 'no driver'),
-                  v.trailerType, v.gpsType,
+                  v.trailerType,
                 ].filter(Boolean).join(' · '),
               }))} />
 
@@ -260,17 +262,29 @@ function CreateFleetShipmentInner() {
                   <p className="font-bold text-slate-900 font-mono">{vehicle.plate}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500 mb-0.5">{ar ? 'نوع التيدر' : 'Trailer'}</p>
-                  <p className="font-semibold text-slate-900">{vehicle.trailerType || '—'}</p>
+                  <p className="text-xs text-slate-500 mb-0.5">{ar ? 'مكانها الآن' : 'Location now'}</p>
+                  <p className="font-semibold text-slate-900 flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-[#f37121]" /> {vehicle.live?.city || (ar ? 'خارج نطاق المدن' : 'Between cities')}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500 mb-0.5">GPS</p>
-                  <p className="font-semibold text-slate-900 flex items-center gap-1"><Satellite className="w-3.5 h-3.5 text-[#f37121]" /> {vehicle.gpsType || '—'}</p>
+                  <p className="text-xs text-slate-500 mb-0.5">{ar ? 'نوع التيدر' : 'Trailer'}</p>
+                  <p className="font-semibold text-slate-900">{vehicle.trailerType || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 mb-0.5">{ar ? 'السائقون عليها' : 'Seated drivers'}</p>
                   <p className="font-semibold text-slate-900">{(vehicle.drivers || []).map((d) => d.name).join(' + ') || '—'}</p>
                 </div>
+              </div>
+            )}
+            {/* تنبيه: السيارة المختارة عليها حمولة نشطة بالفعل */}
+            {vehicle?.trip && (
+              <div className={`rounded-lg border px-3 py-2.5 text-xs font-medium ${vehicle.atDestination ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                {vehicle.atDestination
+                  ? (ar
+                    ? `هذه السيارة وصلت نطاق ${vehicle.trip.toCity} (بوليصة ${vehicle.trip.waybillNumber}) — يُفترض أنها تُفرِّغ الآن وستتاح قريبًا.`
+                    : `This truck reached ${vehicle.trip.toCity} (WB ${vehicle.trip.waybillNumber}) — presumably unloading, free soon.`)
+                  : (ar
+                    ? `انتبه: هذه السيارة عليها حمولة نشطة إلى ${vehicle.trip.toCity || '—'} (بوليصة ${vehicle.trip.waybillNumber})${vehicle.trip.expectedArrival ? ` — الوصول المتوقع ${fmtDT(vehicle.trip.expectedArrival, lang as Lang)}` : ''}.`
+                    : `Heads-up: this truck is carrying an active load to ${vehicle.trip.toCity || '—'} (WB ${vehicle.trip.waybillNumber})${vehicle.trip.expectedArrival ? ` — ETA ${fmtDT(vehicle.trip.expectedArrival, lang as Lang)}` : ''}.`)}
               </div>
             )}
           </div>

@@ -30,6 +30,8 @@ interface BoardCard {
   drivers: { name: string; working: boolean }[];
   trip: BoardTrip | null;
   state: 'late' | 'arrived' | 'moving' | 'preparing' | 'idle';
+  liveCity: string | null;      // أين هي الآن جغرافيًا (من GPS لوكيشن سوليوشن)
+  atDestination: boolean;       // دخلت نطاق مدينة وجهتها — يُفترض أنها تُفرِّغ
   maintenance: { status: 'ok' | 'due' | 'overdue'; kmToService: number | null; nextServiceName: string; odometerKm: number | null } | null;
 }
 interface BoardSummary {
@@ -75,7 +77,7 @@ export default function FleetBoardPage() {
     else if (stateFilter) r = r.filter((c) => c.state === stateFilter);
     if (cityFilter) r = r.filter((c) => c.trip?.toCity === cityFilter);
     const s = foldAr(q.trim());
-    if (s) r = r.filter((c) => [c.plate, c.name, c.supervisorName, c.trip?.toCity, c.trip?.customerName, c.trip?.driverName, ...c.drivers.map((d) => d.name)].some((x) => foldAr(String(x || '')).includes(s)));
+    if (s) r = r.filter((c) => [c.plate, c.name, c.supervisorName, c.liveCity, c.trip?.toCity, c.trip?.customerName, c.trip?.driverName, ...c.drivers.map((d) => d.name)].some((x) => foldAr(String(x || '')).includes(s)));
     return r;
   }, [cards, stateFilter, cityFilter, q]);
 
@@ -164,11 +166,24 @@ export default function FleetBoardPage() {
                   onClick={() => c.trip ? router.push(`/system/fleet/${c.trip._id}`) : router.push(`/system/fleet/vehicles?q=${encodeURIComponent(c.plate)}`)}
                   className={`text-start border rounded-xl p-3.5 shadow-sm hover:shadow-md transition ${st.card}`}>
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-bold text-slate-900 flex items-center gap-1.5"><Truck className="w-4 h-4 text-slate-500" /> {c.plate}</p>
+                    <p className="font-bold text-slate-900 flex items-center gap-1.5 min-w-0">
+                      <Truck className="w-4 h-4 text-slate-500 shrink-0" /> {c.plate}
+                      {c.liveCity && (
+                        <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white/70 border border-slate-200 text-slate-600 text-[10px] font-medium">
+                          <MapPin className="w-2.5 h-2.5 text-[#f37121]" /> {c.liveCity}
+                        </span>
+                      )}
+                    </p>
                     <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${st.chip}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} /> {ar ? st.ar : st.en}
                     </span>
                   </div>
+                  {/* GPS يقول إنها داخل نطاق وجهتها — يُفترض أنها تُفرِّغ الآن */}
+                  {c.atDestination && (
+                    <p className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
+                      <MapPin className="w-3 h-3" /> {ar ? `دخلت نطاق ${c.trip?.toCity} — يُفترض بدء التفريغ` : `Entered ${c.trip?.toCity} — presumably unloading`}
+                    </p>
+                  )}
                   {c.trip ? (
                     <div className="mt-2 space-y-1 text-xs text-slate-700">
                       <p className="flex items-center gap-1.5 font-medium">

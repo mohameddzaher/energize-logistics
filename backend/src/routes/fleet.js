@@ -17,6 +17,7 @@ router.get('/board', fleet.getBoard);
 // Assignment: who the supervisors are, and moving a truck between them.
 router.get('/supervisors', fleet.listSupervisors);
 router.patch('/vehicles/:id/supervisor', authorize(...ADMIN_ROLES), fleet.assignVehicleSupervisor);
+router.post('/vehicles/assign-supervisor-bulk', authorize(...ADMIN_ROLES), fleet.assignVehicleSupervisorBulk);
 
 // Shipments (الحمولات)
 router.get('/shipments', fleet.listShipments);

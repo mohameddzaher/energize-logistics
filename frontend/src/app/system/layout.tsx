@@ -23,7 +23,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { homeRouteForRole } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
 import { SO_EDIT_ROLES as SO_ROLES } from '@/lib/shipmentOrders';
-import { FLEET_EDIT_ROLES as FLEET_ROLES } from '@/lib/fleet';
+import { FLEET_EDIT_ROLES as FLEET_ROLES, FLEET_ADMIN_ROLES } from '@/lib/fleet';
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
 
 import { isManagedSection, canAccessSection } from '@/lib/sections';
@@ -196,6 +196,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'لوحة التحليلات' : 'Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <UserSquare className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/vehicles', label: lang === 'ar' ? 'سياراتنا' : 'Our Vehicles', icon: <Car className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/assign', label: lang === 'ar' ? 'توزيع المشرفين' : 'Assign Supervisors', icon: <UserCog className="w-5 h-5" />, roles: FLEET_ADMIN_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
 
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },

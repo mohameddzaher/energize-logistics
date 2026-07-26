@@ -792,3 +792,37 @@ exports.assignVehicleSupervisor = async (req, res) => {
     res.status(500).json({ message: 'Failed to assign the supervisor' });
   }
 };
+
+// POST /vehicles/assign-supervisor-bulk { supervisor: userId|null, vehicleIds: [] }
+// The manager's checklist flow: tick a set of trucks, hand them to a supervisor
+// in ONE save (or null to unassign). Manager/admin only (route-gated).
+exports.assignVehicleSupervisorBulk = async (req, res) => {
+  try {
+    const { supervisor = null, vehicleIds } = req.body || {};
+    if (!Array.isArray(vehicleIds) || vehicleIds.length === 0) {
+      return res.status(400).json({ message: 'حدد السيارات أولًا' });
+    }
+    let supName = '';
+    let supId = null;
+    if (supervisor) {
+      const u = await User.findById(supervisor).select('firstName lastName').lean();
+      if (!u) return res.status(404).json({ message: 'Supervisor not found' });
+      supId = u._id;
+      supName = fullName(u);
+    }
+    const r = await FleetVehicle.updateMany(
+      { _id: { $in: vehicleIds } },
+      { $set: { supervisor: supId, supervisorName: supName } }
+    );
+    emit('fleet:vehicles', {});
+    emit('fleet:updated', {});
+    await logAudit({
+      user: req.user, action: 'assign_supervisor_bulk', entity: 'FleetVehicle', entityId: vehicleIds[0],
+      changes: { vehicles: r.modifiedCount, supervisorName: supName || null },
+      ipAddress: req.ip,
+    });
+    res.json({ ok: true, modified: r.modifiedCount, supervisorName: supName });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to assign vehicles' });
+  }
+};

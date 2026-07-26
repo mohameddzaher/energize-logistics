@@ -15,7 +15,7 @@ import api from '@/lib/api';
 import {
   LayoutGrid, RefreshCw, Truck, MapPin, Clock, Wrench, User as UserIcon, Search, X, AlertTriangle,
 } from 'lucide-react';
-import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, ErrorNotice } from '@/components/hr/HRKit';
 import { canEditFleet, fleetStatusLabel, fmtDT, hoursSince, BOARD_STATES, foldAr, Lang } from '@/lib/fleet';
 
 interface BoardTrip {
@@ -47,6 +47,7 @@ export default function FleetBoardPage() {
   const [cards, setCards] = useState<BoardCard[]>([]);
   const [summary, setSummary] = useState<BoardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
@@ -56,7 +57,11 @@ export default function FleetBoardPage() {
       const d = await api.get<{ cards: BoardCard[]; summary: BoardSummary }>('/api/fleet/board');
       setCards(d.cards || []);
       setSummary(d.summary || null);
-    } catch { /* keep last */ }
+      setError('');
+    } catch (e: any) {
+      // An empty board must never masquerade as "no trucks" — say what failed.
+      setError(e?.message || 'Request failed');
+    }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -107,6 +112,8 @@ export default function FleetBoardPage() {
           <RefreshCw className="w-4 h-4" /> {ar ? 'تحديث' : 'Refresh'}
         </button>
       </PageHeader>
+
+      {error && <ErrorNotice error={error} lang={lang} onRetry={() => { setLoading(true); load(); }} />}
 
       {/* بطاقات الأرقام — الضغط على أي بطاقة يرشح السيارات تحتها */}
       <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">

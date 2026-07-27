@@ -4,6 +4,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import { canEditSection } from '@/lib/sections';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -125,7 +126,10 @@ export default function WorkshopPurchasesPage() {
     setReceivingIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
   };
 
-  const canCreate = user && ['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'].includes(user.role);
+  // Role list OR a permissions-matrix EDIT grant on Workshop (the backend
+  // rbac honours the grant, so hiding the button here just strands the user).
+  const canCreate = user && (['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'].includes(user.role)
+    || canEditSection((user as any)?.permissions, 'Workshop'));
   const submitCreate = async () => {
     if (!createForm.itemName.trim()) return;
     setCreating(true);

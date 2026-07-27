@@ -13,7 +13,7 @@ const ls2AssetEventSchema = new mongoose.Schema({
   label: { type: String, default: '' },     // serial for tires, trailer number for trailers
   action: {
     type: String,
-    enum: ['registered', 'mounted', 'removed', 'transferred', 'retired', 'updated', 'to_repair', 'from_repair'],
+    enum: ['registered', 'mounted', 'removed', 'transferred', 'retired', 'updated', 'to_repair', 'from_repair', 'renewed', 'scrapped', 'damaged'],
     required: true,
   },
   fromPlate: { type: String, default: null },

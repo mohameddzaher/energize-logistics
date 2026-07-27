@@ -32,6 +32,9 @@ const ls2TireAssetSchema = new mongoose.Schema({
   // Quality grade, independent of where it is: fresh from purchase, ordinary
   // used, or renewed (retreaded) — the grade the trailer-only rule reads.
   condition: { type: String, enum: ['new', 'used', 'renewed'], default: 'used' },
+  // كام في المية — recorded when a tire goes back to the shelf so the workshop
+  // can pick the right tire for the right slot later (تسكين). Null = never rated.
+  conditionPercent: { type: Number, min: 0, max: 100, default: null },
   // Current mount (null while spare/retired)
   plate: { type: String, default: null },
   plateKey: { type: String, default: null, index: true },

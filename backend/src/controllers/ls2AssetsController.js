@@ -190,16 +190,57 @@ exports.updateTire = async (req, res) => {
 
 // POST /assets/tires/:id/move — mount / transfer / unmount one tire.
 // body: { toPlate|null, positionNumber, positionLabel, section, reason, notes,
-//         date, destination, displacedTo }
+//         date, destination, conditionPercent, displacedTo, replacementTireId }
 // The in⇒out rule lives here: mounting into an OCCUPIED slot requires
 // `displacedTo` — where the removed tire goes: 'repair' (تحت التجديد),
-// 'damaged' (تالف), or 'store' (سليمة، رجعت للمخزن).
+// 'damaged' (تالف), 'scrap' (سكراب) or 'store' (سليمة، رجعت للمخزن).
+//
+// `replacementTireId` closes the OTHER half of a swap in the same operation:
+// a spare tire from the store mounts into the slot THIS tire just vacated —
+// whether it went down to the shelf/scrap or transferred to another truck.
+const DEST_STATUS = { repair: 'in_repair', damaged: 'damaged', scrap: 'scrap', store: 'spare' };
+const DEST_ACTION = { in_repair: 'to_repair', damaged: 'damaged', scrap: 'scrapped', spare: 'removed' };
+
+// Mount a spare tire into a specific (now empty) slot. Shared by the move and
+// swap paths; throws with a user-facing Arabic message on rule violations.
+async function mountSpareTire(req, tireId, slot, when, reason) {
+  const r = await Ls2TireAsset.findById(tireId);
+  if (!r) throw new Error('الفردة البديلة غير موجودة');
+  if (r.status !== 'spare') throw new Error(`الفردة البديلة ${r.serial} ليست في المخزن — حالتها الحالية لا تسمح بالتركيب`);
+  if (r.condition === 'renewed' && isHeadSection(slot.section)) {
+    throw new Error(`الفردة البديلة ${r.serial} مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس`);
+  }
+  r.set({
+    status: 'mounted', plate: slot.plate, plateKey: slot.plateKey,
+    positionNumber: slot.positionNumber, positionLabel: slot.positionLabel, section: slot.section,
+  });
+  await r.save();
+  const live = await vehicleByKey(slot.plateKey);
+  await logEvent(req, {
+    entityType: 'tire', refId: r._id, label: r.serial, action: 'mounted',
+    toPlate: slot.plate, toPlateKey: slot.plateKey, toPosition: posLabel(r),
+    date: when, odometerKm: live?.odometerKm ?? null,
+    reason: reason || 'رُكِّبت بديلًا في الموقع الذي أُخلي',
+  });
+  return r;
+}
+
 exports.moveTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store', displacedTo = '' } = req.body;
+    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store', conditionPercent = null, displacedTo = '', replacementTireId = null } = req.body;
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
+    // The exact slot being vacated — the replacement (if any) goes here.
+    const vacated = tire.status === 'mounted' && tire.plateKey
+      ? { plate: tire.plate, plateKey: tire.plateKey, positionNumber: tire.positionNumber, positionLabel: tire.positionLabel, section: tire.section }
+      : null;
+    if (replacementTireId && !vacated) {
+      return res.status(400).json({ message: 'لا يمكن تركيب بديل — الفردة ليست مركبة على سطحة أصلًا' });
+    }
+    if (replacementTireId && String(replacementTireId) === String(tire._id)) {
+      return res.status(400).json({ message: 'الفردة البديلة هي نفسها الفردة المُنزَلة' });
+    }
     const when = date ? new Date(date) : new Date();
 
     if (toPlate) {
@@ -215,20 +256,20 @@ exports.moveTire = async (req, res) => {
           plateKey: toKey, positionNumber, status: 'mounted', _id: { $ne: tire._id },
         });
         if (occupant) {
-          if (!['repair', 'damaged', 'store'].includes(displacedTo)) {
+          if (!DEST_STATUS[displacedTo]) {
             return res.status(400).json({
               code: 'DISPLACED_FATE_REQUIRED',
-              message: `الموقع مشغول بالفردة ${occupant.serial} — حدد مصيرها: تحت التجديد أو تالفة أو سليمة للمخزن`,
+              message: `الموقع مشغول بالفردة ${occupant.serial} — حدد مصيرها: تحت التجديد أو تالفة أو سكراب أو سليمة للمخزن`,
               occupant: { serial: occupant.serial, tireNumber: occupant.tireNumber },
             });
           }
           const occFrom = posLabel(occupant);
-          const occStatus = displacedTo === 'repair' ? 'in_repair' : displacedTo === 'damaged' ? 'damaged' : 'spare';
+          const occStatus = DEST_STATUS[displacedTo];
           occupant.set({ status: occStatus, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '' });
           await occupant.save();
           await logEvent(req, {
             entityType: 'tire', refId: occupant._id, label: occupant.serial,
-            action: displacedTo === 'repair' ? 'to_repair' : displacedTo === 'damaged' ? 'damaged' : 'removed',
+            action: DEST_ACTION[occStatus],
             fromPlate: toPlate, fromPlateKey: toKey, fromPosition: occFrom, date: when,
             odometerKm: live?.odometerKm ?? null,
             reason: reason || `أُزيلت لتركيب الفردة ${tire.serial} مكانها`,
@@ -249,23 +290,38 @@ exports.moveTire = async (req, res) => {
       });
     } else {
       // Off the truck — but "where to" matters: the renewal shop is not the
-      // shelf, and تالف is not سكراب: one may come back, the other never.
+      // shelf, سكراب is stored-to-sell, and تالف is gone for good.
       const wasInRepair = tire.status === 'in_repair';
-      const toStatus = destination === 'repair' ? 'in_repair' : destination === 'damaged' ? 'damaged' : 'spare';
+      const toStatus = DEST_STATUS[destination] || 'spare';
       tire.set({
         status: toStatus,
         plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '',
+        // نسبة الحالة تُسجَّل عند النزول إلى المخزن — هي ما يقرأه التسكين لاحقًا.
+        ...(toStatus === 'spare' && conditionPercent != null && conditionPercent !== ''
+          ? { conditionPercent: Math.max(0, Math.min(100, Number(conditionPercent))) } : {}),
       });
       await tire.save();
       await logEvent(req, {
         entityType: 'tire', refId: tire._id, label: tire.serial,
-        action: toStatus === 'in_repair' ? 'to_repair' : toStatus === 'damaged' ? 'damaged' : (wasInRepair ? 'from_repair' : 'removed'),
+        action: toStatus === 'spare' && wasInRepair ? 'from_repair' : DEST_ACTION[toStatus],
         fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
-        date: when, reason, notes,
+        date: when, reason,
+        notes: [notes, toStatus === 'spare' && conditionPercent != null && conditionPercent !== '' ? `الحالة ${conditionPercent}%` : ''].filter(Boolean).join(' — '),
       });
     }
+    // النصف الثاني من التبديل: بديل من المخزن يُركَّب في الموقع الذي أُخلي —
+    // نفس العملية، سواء نزلت الفردة أو انتقلت إلى سطحة أخرى.
+    let replacement = null;
+    if (replacementTireId && vacated) {
+      try {
+        replacement = await mountSpareTire(req, replacementTireId, vacated, when, reason);
+      } catch (err) {
+        // الفردة الأساسية تحركت بنجاح — بلّغ عن البديل فقط بدل إفشال كل العملية.
+        return res.status(400).json({ message: err.message, tire, partial: true });
+      }
+    }
     await clearSensorNotice(from.key, toPlate ? plateKey(toPlate) : null);
-    res.json({ tire });
+    res.json({ tire, replacement });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }

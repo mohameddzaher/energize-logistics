@@ -656,9 +656,13 @@ exports.getLeave = async (req, res) => {
 exports.listMyLeaves = async (req, res) => {
   try {
     const leaves = await populateLeave(LeaveRequest.find({ requester: req.user._id })).select(NO_SIG).sort({ createdAt: -1 }).lean();
+    // Resolve (auto-provisioning if needed) instead of trusting the cached
+    // req.user.linkedEmployee — a stale token copy made this report "not
+    // linked" for accounts that were linked all along.
+    const employeeId = await ensureSelfEmployee(req);
     let balance = null;
-    if (req.user.linkedEmployee) ({ balance } = await computeEmployeeBalance(req.user.linkedEmployee));
-    res.json({ leaves, balance });
+    if (employeeId) ({ balance } = await computeEmployeeBalance(employeeId));
+    res.json({ leaves, balance, linked: !!employeeId });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load your leaves' });
   }

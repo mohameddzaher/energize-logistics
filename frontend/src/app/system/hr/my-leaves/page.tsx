@@ -26,6 +26,9 @@ export default function MyLeavesPage() {
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [hasTeam, setHasTeam] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Backend truth — the login-cached user object may predate the employee
+  // link, which used to show "not linked" to accounts that were linked fine.
+  const [linked, setLinked] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ leaveType: '', startDate: '', endDate: '', reason: '' });
@@ -38,10 +41,11 @@ export default function MyLeavesPage() {
   const load = useCallback(async () => {
     try {
       const [mine, team] = await Promise.all([
-        api.get<{ leaves: LeaveRequest[]; balance: LeaveBalance | null }>('/api/hr/me/leaves'),
+        api.get<{ leaves: LeaveRequest[]; balance: LeaveBalance | null; linked?: boolean }>('/api/hr/me/leaves'),
         api.get<{ leaves: LeaveRequest[] }>('/api/hr/team/leaves').catch(() => ({ leaves: [] })),
       ]);
       setLeaves(mine.leaves || []); setBalance(mine.balance || null);
+      setLinked(mine.linked !== false);
       setTeamLeaves(team.leaves || []);
     } catch {}
     setLoading(false);
@@ -99,10 +103,10 @@ export default function MyLeavesPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<CalendarDays className="w-5 h-5" />} title={tx.pageTitle}>
-        {user?.linkedEmployee && <PrimaryButton onClick={() => setShowForm(true)}><Plus className="w-4 h-4" /> {tx.requestLeave}</PrimaryButton>}
+        {linked && <PrimaryButton onClick={() => setShowForm(true)}><Plus className="w-4 h-4" /> {tx.requestLeave}</PrimaryButton>}
       </PageHeader>
 
-      {!user?.linkedEmployee && (
+      {!linked && (
         <div className="bg-amber-500/10 border border-amber-500/30 text-amber-700 rounded-xl p-4 text-sm">
           {tx.notLinkedNotice}
         </div>

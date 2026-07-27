@@ -38,12 +38,12 @@ exports.listTasks = async (req, res) => {
   }
 };
 
-// Whoever can be handed a task: the section's own people plus the admin tier
-// that supervises them. Name + id only — this feeds a dropdown.
+// Whoever can be handed a task: ONLY the administration team itself — managers
+// hand work IN, the secretaries execute. Name + id only — this feeds a dropdown.
 exports.listAssignees = async (req, res) => {
   try {
     const users = await User.find({
-      role: { $in: ['administrator', 'admin', 'super_admin', 'bd_manager'] },
+      role: 'administrator',
       status: { $ne: 'inactive' },
     }).select('firstName lastName email role').sort({ firstName: 1 }).lean();
     res.json({

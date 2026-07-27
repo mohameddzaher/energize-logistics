@@ -88,6 +88,9 @@ exports.login = async (req, res) => {
         lastName: user.lastName,
         role: user.role,
         permissions,
+        // Without this the HR self-service pages think the account is not
+        // linked to an employee until the next /auth/me refresh.
+        linkedEmployee: user.linkedEmployee || null,
       },
     });
   } catch (error) {

@@ -1,9 +1,9 @@
 'use client';
 // الشؤون الإدارية (السكرتارية) — a Trello-style board kept deliberately simple:
 // four fixed columns, drag a card OR tap the arrow button to move it, click a
-// card to open the conversation. The people using this screen are not
-// technical, so every action has a visible button — drag & drop is a bonus,
-// never the only way.
+// card to open it with EVERYTHING editable behind one explicit save button.
+// The people using this screen are not technical, so every action has a
+// visible button — drag & drop is a bonus, never the only way.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -12,31 +12,34 @@ import api from '@/lib/api';
 import { canAccessSection, canEditSection } from '@/lib/sections';
 import {
   ClipboardList, Plus, CalendarDays, MessageSquare, User as UserIcon,
-  ChevronLeft, ChevronRight, Trash2, CheckCircle2, History, Flag,
+  ChevronLeft, ChevronRight, Trash2, CheckCircle2, History, Flag, Save,
 } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, Modal, Field, TextInput, TextArea, Select,
-  PrimaryButton, ErrorNotice, SearchableSelect, StatCard,
+  PrimaryButton, ErrorNotice, StatCard,
 } from '@/components/hr/HRKit';
 
 // ── Access ──────────────────────────────────────────────────────────────────
 const STAFF = ['super_admin', 'admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'];
 const DELETE_ROLES = ['super_admin', 'admin', 'bd_manager', 'it_manager'];
 
+// الكحلي — the navy the whole page keys off.
+const NAVY = '#12325c';
+
 // ── Vocabulary (فصحى) ───────────────────────────────────────────────────────
 const COLUMNS = [
-  { key: 'new', ar: 'جديدة', en: 'New', dot: 'bg-sky-500', head: 'text-sky-700', ring: 'ring-sky-200' },
-  { key: 'in_progress', ar: 'قيد التنفيذ', en: 'In Progress', dot: 'bg-amber-500', head: 'text-amber-700', ring: 'ring-amber-200' },
-  { key: 'follow_up', ar: 'قيد المتابعة', en: 'Follow-up', dot: 'bg-violet-500', head: 'text-violet-700', ring: 'ring-violet-200' },
-  { key: 'done', ar: 'مكتملة', en: 'Done', dot: 'bg-emerald-500', head: 'text-emerald-700', ring: 'ring-emerald-200' },
+  { key: 'new', ar: 'جديدة', en: 'New', dot: 'bg-sky-500', chip: 'bg-sky-50 text-sky-700' },
+  { key: 'in_progress', ar: 'قيد التنفيذ', en: 'In Progress', dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-700' },
+  { key: 'follow_up', ar: 'قيد المتابعة', en: 'Follow-up', dot: 'bg-violet-500', chip: 'bg-violet-50 text-violet-700' },
+  { key: 'done', ar: 'مكتملة', en: 'Done', dot: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-700' },
 ] as const;
 type StatusKey = typeof COLUMNS[number]['key'];
 
 const PRIORITIES = [
-  { key: 'urgent', ar: 'عاجلة', en: 'Urgent', chip: 'bg-red-100 text-red-700', bar: 'bg-red-500' },
-  { key: 'high', ar: 'مرتفعة', en: 'High', chip: 'bg-orange-100 text-orange-700', bar: 'bg-orange-400' },
-  { key: 'normal', ar: 'عادية', en: 'Normal', chip: 'bg-slate-100 text-slate-600', bar: 'bg-slate-300' },
-  { key: 'low', ar: 'منخفضة', en: 'Low', chip: 'bg-slate-50 text-slate-500', bar: 'bg-slate-200' },
+  { key: 'urgent', ar: 'عاجلة', en: 'Urgent', chip: 'bg-red-100 text-red-700' },
+  { key: 'high', ar: 'مرتفعة', en: 'High', chip: 'bg-orange-100 text-orange-700' },
+  { key: 'normal', ar: 'عادية', en: 'Normal', chip: 'bg-slate-100 text-slate-600' },
+  { key: 'low', ar: 'منخفضة', en: 'Low', chip: 'bg-slate-50 text-slate-500' },
 ] as const;
 const prio = (k?: string) => PRIORITIES.find((p) => p.key === k) || PRIORITIES[2];
 
@@ -60,25 +63,40 @@ interface Task {
 }
 interface Assignee { _id: string; name: string; role: string }
 
-const fmtD = (v?: string | null, ar = true) => {
+// datetime-local ⇄ ISO. The input works in local wall-clock time.
+const toLocalInput = (iso?: string | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const toISO = (local: string): string | null => (local ? new Date(local).toISOString() : null);
+// الافتراضي: اليوم في نهاية الدوام — يعدّله من يريد.
+const defaultDue = (): string => {
+  const d = new Date();
+  d.setHours(17, 0, 0, 0);
+  return toLocalInput(d.toISOString());
+};
+
+const fmtDT = (v?: string | null, ar = true) => {
   if (!v) return '—';
-  try { return new Date(v).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  try { return new Date(v).toLocaleString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); }
   catch { return String(v); }
 };
-const fmtDT = (v?: string | null, ar = true) => {
+const fmtFullDT = (v?: string | null, ar = true) => {
   if (!v) return '—';
   try { return new Date(v).toLocaleString(ar ? 'ar-EG' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }); }
   catch { return String(v); }
 };
 
 // Due-state of a card: overdue (red), due today (amber), otherwise quiet.
+// Time-aware: a 2pm deadline is overdue at 5pm the same day.
 const dueState = (t: Task): 'overdue' | 'today' | null => {
   if (!t.dueDate || t.status === 'done') return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
-  if (due < today) return 'overdue';
-  if (due.getTime() === today.getTime()) return 'today';
-  return null;
+  const due = new Date(t.dueDate);
+  const now = new Date();
+  if (due.getTime() < now.getTime()) return 'overdue';
+  return due.toDateString() === now.toDateString() ? 'today' : null;
 };
 
 export default function AdministrationBoardPage() {
@@ -99,15 +117,15 @@ export default function AdministrationBoardPage() {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // New-task modal
+  // New-task modal — due date pre-filled with today (end of workday).
   const [showNew, setShowNew] = useState(false);
-  const emptyForm = { title: '', description: '', assignee: '', dueDate: '', priority: 'normal' };
-  const [form, setForm] = useState(emptyForm);
+  const blankForm = () => ({ title: '', description: '', assignee: '', dueDate: defaultDue(), priority: 'normal' });
+  const [form, setForm] = useState(blankForm());
 
-  // Detail modal — track the id, resolve the task from state so socket
-  // refetches keep the open card fresh.
+  // Detail modal: a DRAFT of every editable field + one explicit save button.
   const [openId, setOpenId] = useState<string | null>(null);
   const openTask = useMemo(() => tasks.find((t) => t._id === openId) || null, [tasks, openId]);
+  const [draft, setDraft] = useState({ title: '', description: '', status: 'new' as StatusKey, priority: 'normal', dueDate: '', assignee: '' });
   const [comment, setComment] = useState('');
   const [showActivity, setShowActivity] = useState(false);
 
@@ -133,6 +151,20 @@ export default function AdministrationBoardPage() {
       .catch(() => {});
   }, [canEdit]);
   useSocket('admintasks:updated', useCallback(() => load(), [load]));
+
+  const openCard = (t: Task) => {
+    setOpenId(t._id);
+    setDraft({
+      title: t.title,
+      description: t.description || '',
+      status: t.status,
+      priority: t.priority,
+      dueDate: toLocalInput(t.dueDate),
+      assignee: t.assignee || '',
+    });
+    setComment('');
+    setShowActivity(false);
+  };
 
   const hit = useCallback((t: Task) => {
     const fold = (x: string) => x.toLowerCase()
@@ -167,11 +199,11 @@ export default function AdministrationBoardPage() {
         title: form.title,
         description: form.description,
         assignee: form.assignee || null,
-        dueDate: form.dueDate || null,
+        dueDate: toISO(form.dueDate),
         priority: form.priority,
       });
       setShowNew(false);
-      setForm(emptyForm);
+      setForm(blankForm());
       await load();
     } catch (e: any) {
       alert(e?.message || 'Request failed');
@@ -188,6 +220,39 @@ export default function AdministrationBoardPage() {
       alert(e?.message || 'Request failed');
     }
     await load();
+  };
+
+  const saveDraft = async () => {
+    if (!openTask || !draft.title.trim() || saving) return;
+    setSaving(true);
+    try {
+      await api.patch(`/api/admin-tasks/${openTask._id}`, {
+        title: draft.title,
+        description: draft.description,
+        status: draft.status,
+        priority: draft.priority,
+        dueDate: toISO(draft.dueDate),
+        assignee: draft.assignee || null,
+      });
+      setOpenId(null);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Request failed');
+    }
+    setSaving(false);
+  };
+
+  const completeTask = async () => {
+    if (!openTask || saving) return;
+    setSaving(true);
+    try {
+      await api.patch(`/api/admin-tasks/${openTask._id}`, { status: 'done' });
+      setOpenId(null);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || 'Request failed');
+    }
+    setSaving(false);
   };
 
   const moveTask = (t: Task, dir: 1 | -1) => {
@@ -234,29 +299,33 @@ export default function AdministrationBoardPage() {
   if (!canView) return <div className="text-slate-500 p-8">{ar ? 'غير مصرّح لك بالوصول إلى هذه الصفحة.' : 'You are not authorized to view this page.'}</div>;
   if (loading) return <Spinner />;
 
-  const assigneeOptions = [
-    { value: '', label: ar ? 'دون مسؤول' : 'Unassigned' },
-    ...assignees.map((a) => ({ value: a._id, label: a.name })),
-  ];
+  const assigneeSelect = (value: string, onChange: (v: string) => void, disabled = false) => (
+    <Select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{ar ? 'دون مسؤول' : 'Unassigned'}</option>
+      {assignees.map((a) => <option key={a._id} value={a._id}>{a.name}</option>)}
+    </Select>
+  );
 
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
-        icon={<ClipboardList className="w-7 h-7 text-violet-600" />}
+        icon={<ClipboardList className="w-7 h-7" style={{ color: NAVY }} />}
         title={ar ? 'الشؤون الإدارية — لوحة المهام' : 'Administration — Task Board'}
         subtitle={ar ? 'أضف المهمة، ثم انقلها بين الأعمدة حتى تكتمل، وتابع الحوار داخل كل بطاقة' : 'Add a task, move it across the columns, and follow the conversation inside each card'}
       >
         {canEdit && (
-          <PrimaryButton onClick={() => { setForm(emptyForm); setShowNew(true); }}>
-            <span className="inline-flex items-center gap-1.5"><Plus className="w-4 h-4" />{ar ? 'مهمة جديدة' : 'New Task'}</span>
-          </PrimaryButton>
+          <button onClick={() => { setForm(blankForm()); setShowNew(true); }}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-white font-semibold shadow-sm hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: NAVY }}>
+            <Plus className="w-4 h-4" />{ar ? 'مهمة جديدة' : 'New Task'}
+          </button>
         )}
       </PageHeader>
 
       {error && <ErrorNotice error={error} onRetry={() => { setLoading(true); load(); }} lang={lang} />}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label={ar ? 'مهام مفتوحة' : 'Open tasks'} value={stats.open} accent="text-sky-600" />
+        <StatCard label={ar ? 'مهام مفتوحة' : 'Open tasks'} value={stats.open} accent="text-sky-700" />
         <StatCard label={ar ? 'متأخرة عن موعدها' : 'Overdue'} value={stats.overdue} accent={stats.overdue ? 'text-red-600' : 'text-slate-400'} />
         <StatCard label={ar ? 'تستحق اليوم' : 'Due today'} value={stats.today} accent={stats.today ? 'text-amber-600' : 'text-slate-400'} />
         <StatCard label={ar ? 'أُنجزت هذا الأسبوع' : 'Done this week'} value={stats.doneWeek} accent="text-emerald-600" />
@@ -276,19 +345,20 @@ export default function AdministrationBoardPage() {
               onDragOver={(e) => { e.preventDefault(); setDragOver(col.key); }}
               onDragLeave={() => setDragOver((p) => (p === col.key ? null : p))}
               onDrop={() => dropOn(col.key)}
-              className={`rounded-xl bg-slate-50 border border-slate-200 p-3 min-h-[10rem] transition-shadow ${dragOver === col.key ? `ring-2 ${col.ring}` : ''}`}
+              className={`rounded-xl bg-white border border-slate-200 shadow-sm min-h-[12rem] transition-all ${dragOver === col.key ? 'ring-2 ring-offset-1' : ''}`}
+              style={dragOver === col.key ? { ['--tw-ring-color' as any]: NAVY } : undefined}
             >
-              <div className="flex items-center justify-between mb-3 px-1">
-                <div className={`flex items-center gap-2 font-bold ${col.head}`}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                <div className="flex items-center gap-2 font-bold" style={{ color: NAVY }}>
                   <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
                   {ar ? col.ar : col.en}
                 </div>
-                <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 rounded-full px-2 py-0.5">{list.length}</span>
+                <span className="text-xs font-bold rounded-full px-2.5 py-0.5" style={{ backgroundColor: `${NAVY}14`, color: NAVY }}>{list.length}</span>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-3 p-3">
                 {list.length === 0 && (
-                  <div className="text-center text-xs text-slate-400 py-6 border border-dashed border-slate-200 rounded-lg bg-white/50">
+                  <div className="text-center text-xs text-slate-400 py-8 border border-dashed border-slate-200 rounded-lg bg-slate-50/50">
                     {ar ? 'لا توجد مهام هنا' : 'No tasks here'}
                   </div>
                 )}
@@ -306,14 +376,14 @@ export default function AdministrationBoardPage() {
                       draggable={canEdit}
                       onDragStart={() => setDragId(t._id)}
                       onDragEnd={() => { setDragId(null); setDragOver(null); }}
-                      onClick={() => { setOpenId(t._id); setShowActivity(false); setComment(''); }}
-                      className={`group relative bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer overflow-hidden ${dragId === t._id ? 'opacity-50' : ''}`}
+                      onClick={() => openCard(t)}
+                      className={`bg-white rounded-lg border border-slate-200 border-t-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer ${dragId === t._id ? 'opacity-50' : ''}`}
+                      style={{ borderTopColor: NAVY }}
                     >
-                      <div className={`absolute inset-y-0 ${isRTL ? 'right-0' : 'left-0'} w-1 ${p.bar}`} />
-                      <div className={`p-3 ${isRTL ? 'pr-4' : 'pl-4'}`}>
-                        <div className="font-semibold text-slate-800 text-sm leading-snug">{t.title}</div>
+                      <div className="p-3.5">
+                        <div className="font-bold text-slate-800 text-sm leading-snug">{t.title}</div>
 
-                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                           {t.priority !== 'normal' && (
                             <span className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2 py-0.5 ${p.chip}`}>
                               <Flag className="w-3 h-3" />{ar ? p.ar : p.en}
@@ -324,8 +394,8 @@ export default function AdministrationBoardPage() {
                               due === 'overdue' ? 'bg-red-100 text-red-700' : due === 'today' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'
                             }`}>
                               <CalendarDays className="w-3 h-3" />
-                              {due === 'overdue' ? (ar ? 'متأخرة · ' : 'Overdue · ') : due === 'today' ? (ar ? 'اليوم · ' : 'Today · ') : ''}
-                              {fmtD(t.dueDate, ar)}
+                              {due === 'overdue' ? (ar ? 'متأخرة · ' : 'Overdue · ') : ''}
+                              {fmtDT(t.dueDate, ar)}
                             </span>
                           )}
                           {t.comments.length > 0 && (
@@ -335,12 +405,12 @@ export default function AdministrationBoardPage() {
                           )}
                         </div>
 
-                        <div className="flex items-center justify-between mt-2.5">
+                        <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-100">
                           <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
-                            <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                            <span className="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 text-white" style={{ backgroundColor: t.assigneeName ? NAVY : '#cbd5e1' }}>
                               {t.assigneeName ? t.assigneeName.trim()[0] : <UserIcon className="w-3 h-3" />}
                             </span>
-                            <span className="truncate">{t.assigneeName || (ar ? 'دون مسؤول' : 'Unassigned')}</span>
+                            <span className="truncate font-medium">{t.assigneeName || (ar ? 'دون مسؤول' : 'Unassigned')}</span>
                           </span>
                           {canEdit && (
                             <span className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -374,7 +444,11 @@ export default function AdministrationBoardPage() {
         footer={
           <div className="flex items-center gap-2 justify-end">
             <button onClick={() => setShowNew(false)} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-medium">{ar ? 'إلغاء' : 'Cancel'}</button>
-            <PrimaryButton onClick={createTask} disabled={!form.title.trim() || saving}>{ar ? 'إضافة المهمة' : 'Add Task'}</PrimaryButton>
+            <button onClick={createTask} disabled={!form.title.trim() || saving}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-white font-semibold disabled:opacity-40 hover:opacity-90"
+              style={{ backgroundColor: NAVY }}>
+              <Plus className="w-4 h-4" />{ar ? 'إضافة المهمة' : 'Add Task'}
+            </button>
           </div>
         }>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -385,73 +459,79 @@ export default function AdministrationBoardPage() {
             <TextArea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={ar ? 'اكتب أي تفاصيل تساعد على إنجاز المهمة…' : 'Any details that help get it done…'} />
           </Field>
           <Field label={ar ? 'المسؤول عن التنفيذ' : 'Assignee'}>
-            <SearchableSelect value={form.assignee} onChange={(v) => setForm({ ...form, assignee: v })} options={assigneeOptions} placeholder={ar ? 'دون مسؤول' : 'Unassigned'} searchPlaceholder={ar ? 'ابحث بالاسم…' : 'Search by name…'} />
-          </Field>
-          <Field label={ar ? 'تاريخ الاستحقاق' : 'Due date'}>
-            <TextInput type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+            {assigneeSelect(form.assignee, (v) => setForm({ ...form, assignee: v }))}
           </Field>
           <Field label={ar ? 'الأولوية' : 'Priority'}>
             <Select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
               {PRIORITIES.map((p) => <option key={p.key} value={p.key}>{ar ? p.ar : p.en}</option>)}
             </Select>
           </Field>
+          <Field label={ar ? 'موعد الاستحقاق (التاريخ والساعة)' : 'Due date & time'} span2>
+            <TextInput type="datetime-local" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+          </Field>
         </div>
       </Modal>
 
-      {/* ── Task details + conversation ── */}
-      <Modal open={!!openTask} onClose={() => setOpenId(null)} title={openTask?.title || ''} wide
+      {/* ── Task details: everything editable + one save button ── */}
+      <Modal open={!!openTask} onClose={() => setOpenId(null)} title={ar ? 'تفاصيل المهمة' : 'Task Details'} wide
         footer={openTask ? (
-          <div className="flex items-center justify-between w-full">
-            <div className="text-xs text-slate-400">
-              {ar ? 'أنشأها' : 'Created by'} {openTask.createdByName || '—'} · {fmtD(openTask.createdAt, ar)}
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 w-full">
             <div className="flex items-center gap-2">
               {canDelete && (
                 <button onClick={deleteTask} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 font-medium text-sm">
-                  <Trash2 className="w-4 h-4" />{ar ? 'حذف' : 'Delete'}
+                  <Trash2 className="w-4 h-4" />{ar ? 'حذف المهمة' : 'Delete'}
                 </button>
               )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setOpenId(null)} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-medium">{ar ? 'إغلاق' : 'Close'}</button>
               {canEdit && openTask.status !== 'done' && (
-                <PrimaryButton onClick={() => patchTask(openTask._id, { status: 'done' })}>
-                  <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" />{ar ? 'إتمام المهمة' : 'Mark done'}</span>
-                </PrimaryButton>
+                <button onClick={completeTask} disabled={saving}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-40">
+                  <CheckCircle2 className="w-4 h-4" />{ar ? 'إتمام المهمة' : 'Mark done'}
+                </button>
+              )}
+              {canEdit && (
+                <button onClick={saveDraft} disabled={!draft.title.trim() || saving}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-white font-semibold disabled:opacity-40 hover:opacity-90"
+                  style={{ backgroundColor: NAVY }}>
+                  <Save className="w-4 h-4" />{ar ? 'حفظ التعديلات' : 'Save changes'}
+                </button>
               )}
             </div>
           </div>
         ) : undefined}>
         {openTask && (
           <div className="space-y-5">
-            {openTask.description && (
-              <p className="text-sm text-slate-600 whitespace-pre-wrap bg-slate-50 border border-slate-100 rounded-lg p-3">{openTask.description}</p>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label={ar ? 'عنوان المهمة *' : 'Task title *'} span2>
+                <TextInput value={draft.title} disabled={!canEdit} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+              </Field>
+              <Field label={ar ? 'التفاصيل' : 'Details'} span2>
+                <TextArea rows={3} value={draft.description} disabled={!canEdit} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder={ar ? 'لا توجد تفاصيل — أضفها هنا' : 'No details — add them here'} />
+              </Field>
               <Field label={ar ? 'الحالة' : 'Status'}>
-                <Select value={openTask.status} disabled={!canEdit} onChange={(e) => patchTask(openTask._id, { status: e.target.value })}>
+                <Select value={draft.status} disabled={!canEdit} onChange={(e) => setDraft({ ...draft, status: e.target.value as StatusKey })}>
                   {COLUMNS.map((c) => <option key={c.key} value={c.key}>{ar ? c.ar : c.en}</option>)}
                 </Select>
               </Field>
               <Field label={ar ? 'الأولوية' : 'Priority'}>
-                <Select value={openTask.priority} disabled={!canEdit} onChange={(e) => patchTask(openTask._id, { priority: e.target.value })}>
+                <Select value={draft.priority} disabled={!canEdit} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}>
                   {PRIORITIES.map((p) => <option key={p.key} value={p.key}>{ar ? p.ar : p.en}</option>)}
                 </Select>
               </Field>
-              <Field label={ar ? 'تاريخ الاستحقاق' : 'Due date'}>
-                <TextInput type="date" disabled={!canEdit}
-                  value={openTask.dueDate ? new Date(openTask.dueDate).toISOString().slice(0, 10) : ''}
-                  onChange={(e) => patchTask(openTask._id, { dueDate: e.target.value || null })} />
+              <Field label={ar ? 'موعد الاستحقاق (التاريخ والساعة)' : 'Due date & time'}>
+                <TextInput type="datetime-local" disabled={!canEdit} value={draft.dueDate} onChange={(e) => setDraft({ ...draft, dueDate: e.target.value })} />
               </Field>
               <Field label={ar ? 'المسؤول عن التنفيذ' : 'Assignee'}>
-                <SearchableSelect value={openTask.assignee || ''} disabled={!canEdit}
-                  onChange={(v) => patchTask(openTask._id, { assignee: v || null })}
-                  options={assigneeOptions} placeholder={ar ? 'دون مسؤول' : 'Unassigned'} searchPlaceholder={ar ? 'ابحث بالاسم…' : 'Search by name…'} />
+                {assigneeSelect(draft.assignee, (v) => setDraft({ ...draft, assignee: v }), !canEdit)}
               </Field>
             </div>
 
             {/* المحادثة */}
-            <div>
-              <div className="font-bold text-slate-700 text-sm mb-2 flex items-center gap-1.5">
-                <MessageSquare className="w-4 h-4 text-violet-500" />{ar ? 'المحادثة والمتابعة' : 'Conversation & follow-up'}
+            <div className="border-t border-slate-100 pt-4">
+              <div className="font-bold text-sm mb-2 flex items-center gap-1.5" style={{ color: NAVY }}>
+                <MessageSquare className="w-4 h-4" />{ar ? 'المحادثة والمتابعة' : 'Conversation & follow-up'}
               </div>
               <div className="space-y-2 max-h-64 overflow-y-auto pe-1">
                 {openTask.comments.length === 0 && (
@@ -461,7 +541,7 @@ export default function AdministrationBoardPage() {
                   <div key={c._id || i} className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-bold text-slate-700">{c.byName}</span>
-                      <span className="text-[11px] text-slate-400" dir="ltr">{fmtDT(c.at, ar)}</span>
+                      <span className="text-[11px] text-slate-400" dir="ltr">{fmtFullDT(c.at, ar)}</span>
                     </div>
                     <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{c.text}</p>
                   </div>
@@ -488,11 +568,14 @@ export default function AdministrationBoardPage() {
                   {[...openTask.activity].reverse().map((a, i) => (
                     <div key={a._id || i} className="text-xs text-slate-500 flex items-start justify-between gap-3 border-b border-slate-50 pb-1.5">
                       <span><span className="font-semibold text-slate-600">{a.byName}</span> — {a.text}</span>
-                      <span className="text-slate-300 shrink-0" dir="ltr">{fmtDT(a.at, ar)}</span>
+                      <span className="text-slate-300 shrink-0" dir="ltr">{fmtFullDT(a.at, ar)}</span>
                     </div>
                   ))}
                 </div>
               )}
+              <div className="text-[11px] text-slate-400 mt-2">
+                {ar ? 'أنشأها' : 'Created by'} {openTask.createdByName || '—'} · {fmtFullDT(openTask.createdAt, ar)}
+              </div>
             </div>
           </div>
         )}

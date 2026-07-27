@@ -18,7 +18,7 @@ interface UserRecord {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_team_lead' | 'crm_specialist' | 'crm_agent' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager' | 'customs_manager' | 'customs_officer' | 'it_manager' | 'it_specialist' | 'marketing_manager' | 'marketing_specialist' | 'bd_manager' | 'bd_specialist' | 'fleet_manager' | 'fleet_supervisor';
+  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_team_lead' | 'crm_specialist' | 'crm_agent' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager' | 'customs_manager' | 'customs_officer' | 'it_manager' | 'it_specialist' | 'marketing_manager' | 'marketing_specialist' | 'bd_manager' | 'bd_specialist' | 'fleet_manager' | 'fleet_supervisor' | 'administrator';
   branch?: { _id: string; name: string };
   remoteAccess?: string[];
   status?: 'active' | 'locked' | 'inactive';
@@ -78,6 +78,7 @@ const roleConfig: Record<string, { bg: string; text: string }> = {
   marketing_specialist: { bg: 'bg-pink-500/20', text: 'text-pink-700' },
   bd_manager: { bg: 'bg-emerald-500/20', text: 'text-emerald-700' },
   bd_specialist: { bg: 'bg-lime-500/20', text: 'text-lime-700' },
+  administrator: { bg: 'bg-violet-500/20', text: 'text-violet-700' },
   fleet_manager: { bg: 'bg-amber-500/20', text: 'text-amber-700' },
   fleet_supervisor: { bg: 'bg-yellow-500/20', text: 'text-yellow-700' },
 };
@@ -487,6 +488,7 @@ export default function UsersPage() {
     marketing_specialist: lang === 'ar' ? 'أخصائي تسويق' : 'Marketing Specialist',
     bd_manager: lang === 'ar' ? 'مدير تطوير الأعمال' : 'Business Development Manager',
     bd_specialist: lang === 'ar' ? 'أخصائي تطوير أعمال' : 'Business Development Specialist',
+    administrator: lang === 'ar' ? 'موظف شؤون إدارية (سكرتارية)' : 'Administrator',
     fleet_manager: lang === 'ar' ? 'مدير قسم الأسطول' : 'Fleet Manager',
     fleet_supervisor: lang === 'ar' ? 'مشرف أسطول' : 'Fleet Supervisor',
   };

@@ -39,6 +39,8 @@ import { DialogProvider } from '@/components/system/DialogProvider';
 const MARKETING_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator', 'bd_manager'];
 const BD_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'];
 const IT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+// الشؤون الإدارية (السكرتارية) — the shared office task board.
+const ADMINISTRATION_ROLES = ['super_admin', 'admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'];
 
 // Self service (my profile / my leaves / my requests) belongs to EVERY employee,
 // managers included — they file leave like anyone else. The only login that is
@@ -52,7 +54,7 @@ const SELF_SERVICE_ROLES = [
   'finance_manager', 'accountant', 'sales_manager', 'sales_rep',
   'procurement_manager', 'customs_manager', 'customs_officer',
   'marketing_manager', 'marketing_specialist', 'bd_manager', 'bd_specialist',
-  'fleet_manager', 'fleet_supervisor',
+  'fleet_manager', 'fleet_supervisor', 'administrator',
 ];
 
 interface NavItem {
@@ -259,6 +261,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/bd/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
     { href: '/system/bd/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
     { href: '/system/bd/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(BD_ROLES), section: 'Business Development', restrict: true },
+    // ---- Administration (الشؤون الإدارية / السكرتارية) ----
+    { href: '/system/administration', label: lang === 'ar' ? 'لوحة المهام' : 'Task Board', icon: <ClipboardList className="w-5 h-5" />, roles: ADMINISTRATION_ROLES, section: 'Administration' },
     // ---- Software & IT ----
     { href: '/system/it', label: lang === 'ar' ? 'لوحة تقنية المعلومات' : 'IT Dashboard', icon: <MonitorCog className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/tickets', label: lang === 'ar' ? 'التذاكر والمشكلات' : 'Tickets', icon: <LifeBuoy className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },

@@ -34,6 +34,7 @@ module.exports = {
     MARKETING_SPECIALIST: 'marketing_specialist',
     BD_MANAGER: 'bd_manager',
     BD_SPECIALIST: 'bd_specialist',
+    ADMINISTRATOR: 'administrator',
   },
 
   // Org chart: each role's DEFAULT direct-manager role. Used to auto-suggest a
@@ -75,6 +76,7 @@ module.exports = {
     marketing_specialist: 'marketing_manager',
     bd_manager: 'admin',
     bd_specialist: 'bd_manager',
+    administrator: 'admin', // السكرتارية تتبع الإدارة مباشرة
     client: null,
   },
 
@@ -83,6 +85,8 @@ module.exports = {
   MARKETING_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager'],
   BD_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'],
   BD_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist'],
+  // قسم الشؤون الإدارية (السكرتارية) — the office task board.
+  ADMINISTRATION_STAFF_ROLES: ['super_admin', 'admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'],
   IT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],
   IT_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager'],
   FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'finance_manager', 'accountant'],

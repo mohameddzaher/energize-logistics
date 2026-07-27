@@ -80,6 +80,12 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'it_specialist'],
   },
   {
+    // الشؤون الإدارية (السكرتارية) — the shared office task board.
+    key: 'Administration',
+    apiPrefixes: ['/api/admin-tasks'],
+    defaultRoles: ['admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'],
+  },
+  {
     key: 'B2C',
     apiPrefixes: ['/api/b2c', '/api/b2c-wallet'],
     defaultRoles: ['admin', 'it_manager', 'b2c_head', 'b2c_project_manager'],

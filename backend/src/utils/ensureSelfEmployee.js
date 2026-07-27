@@ -16,8 +16,14 @@ async function ensureSelfEmployee(user) {
   if (existing) return existing;
   if (user.role === 'client') return null;
 
-  // Reuse a profile already pointing at this login, if one exists.
+  // Reuse a profile already pointing at this login — or one HR registered
+  // under the same email. Without the email match, an HR record entered
+  // before the login existed gets SHADOWED by a fresh minimal duplicate.
   let emp = await Employee.findOne({ user: user._id });
+  if (!emp && user.email) {
+    emp = await Employee.findOne({ email: new RegExp(`^${String(user.email).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+    if (emp && !emp.user) { emp.user = user._id; await emp.save(); }
+  }
   if (!emp) {
     emp = await Employee.create({
       firstName: user.firstName || 'User',

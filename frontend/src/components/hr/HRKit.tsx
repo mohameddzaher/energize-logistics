@@ -55,13 +55,15 @@ export function PrimaryButton({ onClick, children, disabled, type = 'button' }: 
   );
 }
 
+// font-semibold, not medium — the tinted /20 backgrounds are pale, so a light
+// text weight reads washed-out (the "الكلام باهت" complaint).
 export function Badge({ style, lang }: { style?: { bg: string; text: string; en: string; ar: string } | null; lang: 'en' | 'ar' }) {
   if (!style) return <span className="text-slate-500">—</span>;
-  return <span className={`px-2 py-1 rounded-full text-xs font-medium ${style.bg} ${style.text}`}>{lang === 'ar' ? style.ar : style.en}</span>;
+  return <span className={`px-2 py-1 rounded-full text-xs font-semibold ${style.bg} ${style.text}`}>{lang === 'ar' ? style.ar : style.en}</span>;
 }
 
 export function SmallBadge({ bg, text, label }: { bg: string; text: string; label: string }) {
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${bg} ${text}`}>{label}</span>;
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${bg} ${text}`}>{label}</span>;
 }
 
 export function Modal({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean }) {

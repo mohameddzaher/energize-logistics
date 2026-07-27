@@ -172,32 +172,32 @@ export const auditActionLabel = (key: string, lang: Lang) =>
 
 // ── Status styles & labels ───────────────────────────────────────────────────
 export const LEAVE_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
-  pending_manager: { bg: 'bg-amber-500/20', text: 'text-amber-400', en: 'With Manager', ar: 'عند المدير' },
-  pending_hr: { bg: 'bg-blue-500/20', text: 'text-blue-400', en: 'With HR', ar: 'عند الموارد البشرية' },
-  approved: { bg: 'bg-green-500/20', text: 'text-green-400', en: 'Approved', ar: 'مقبولة' },
-  rejected: { bg: 'bg-red-500/20', text: 'text-red-400', en: 'Rejected', ar: 'مرفوضة' },
-  cancelled: { bg: 'bg-gray-500/20', text: 'text-gray-400', en: 'Cancelled', ar: 'ملغاة' },
+  pending_manager: { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'With Manager', ar: 'عند المدير' },
+  pending_hr: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'With HR', ar: 'عند الموارد البشرية' },
+  approved: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Approved', ar: 'مقبولة' },
+  rejected: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Rejected', ar: 'مرفوضة' },
+  cancelled: { bg: 'bg-gray-500/20', text: 'text-gray-600', en: 'Cancelled', ar: 'ملغاة' },
 };
 
 export const REQUEST_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
-  open: { bg: 'bg-amber-500/20', text: 'text-amber-400', en: 'Open', ar: 'مفتوح' },
-  in_progress: { bg: 'bg-blue-500/20', text: 'text-blue-400', en: 'In Progress', ar: 'قيد التنفيذ' },
-  received: { bg: 'bg-purple-500/20', text: 'text-purple-400', en: 'Received', ar: 'تم الاستلام' },
-  resolved: { bg: 'bg-green-500/20', text: 'text-green-400', en: 'Resolved', ar: 'تم التسليم' },
-  closed: { bg: 'bg-gray-500/20', text: 'text-gray-400', en: 'Closed', ar: 'مغلق' },
+  open: { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'Open', ar: 'مفتوح' },
+  in_progress: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'In Progress', ar: 'قيد التنفيذ' },
+  received: { bg: 'bg-purple-500/20', text: 'text-purple-700', en: 'Received', ar: 'تم الاستلام' },
+  resolved: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Resolved', ar: 'تم التسليم' },
+  closed: { bg: 'bg-gray-500/20', text: 'text-gray-600', en: 'Closed', ar: 'مغلق' },
 };
 
 export const EMPLOYMENT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
-  active: { bg: 'bg-green-500/20', text: 'text-green-400', en: 'Active', ar: 'على رأس العمل' },
-  on_leave: { bg: 'bg-blue-500/20', text: 'text-blue-400', en: 'On Leave', ar: 'في إجازة' },
-  suspended: { bg: 'bg-amber-500/20', text: 'text-amber-400', en: 'Suspended', ar: 'موقوف' },
-  terminated: { bg: 'bg-red-500/20', text: 'text-red-400', en: 'Terminated', ar: 'منتهي' },
+  active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Active', ar: 'على رأس العمل' },
+  on_leave: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'On Leave', ar: 'في إجازة' },
+  suspended: { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'Suspended', ar: 'موقوف' },
+  terminated: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Terminated', ar: 'منتهي' },
 };
 
 export const CONTRACT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
-  active: { bg: 'bg-green-500/20', text: 'text-green-400', en: 'Active', ar: 'ساري' },
-  expired: { bg: 'bg-gray-500/20', text: 'text-gray-400', en: 'Expired', ar: 'منتهي' },
-  terminated: { bg: 'bg-red-500/20', text: 'text-red-400', en: 'Terminated', ar: 'مفسوخ' },
+  active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Active', ar: 'ساري' },
+  expired: { bg: 'bg-gray-500/20', text: 'text-gray-600', en: 'Expired', ar: 'منتهي' },
+  terminated: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Terminated', ar: 'مفسوخ' },
 };
 
 export const REQUEST_CATEGORIES: { key: string; en: string; ar: string }[] = [
@@ -274,8 +274,8 @@ export const daysUntil = (v?: string | null): number | null => {
 export const expiryBadge = (v?: string | null, lang: Lang = 'en') => {
   const d = daysUntil(v);
   if (d === null) return null;
-  if (d < 0) return { bg: 'bg-red-500/20', text: 'text-red-400', label: pick(lang, 'Expired', 'منتهية') };
-  if (d <= 30) return { bg: 'bg-red-500/20', text: 'text-red-400', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
-  if (d <= 60) return { bg: 'bg-amber-500/20', text: 'text-amber-400', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
-  return { bg: 'bg-green-500/20', text: 'text-green-400', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
+  if (d < 0) return { bg: 'bg-red-500/20', text: 'text-red-700', label: pick(lang, 'Expired', 'منتهية') };
+  if (d <= 30) return { bg: 'bg-red-500/20', text: 'text-red-700', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
+  if (d <= 60) return { bg: 'bg-amber-500/20', text: 'text-amber-700', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
+  return { bg: 'bg-green-500/20', text: 'text-green-700', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
 };

@@ -87,15 +87,23 @@ class ApiClient {
     } finally {
       clearTimeout(timeoutId);
     }
-    logTiming(res.status);
-
     // Auth endpoints (login/refresh/logout) must NOT go through the refresh-retry
     // path: a 401 there is the real answer (e.g. wrong password), and retrying a
     // refresh that also fails would mask it behind a generic "Authentication
     // required" message. Surface the actual error instead.
     const isAuthEndpoint = endpoint.startsWith('/api/auth/');
 
-    if (res.status === 401 && !skipAuth && !isAuthEndpoint) {
+    // A 401 we are about to recover from (expired 15-min access cookie →
+    // silent refresh → retry) is NOT an error — logging it red made people
+    // hunt for a bug that isn't there. Only a FINAL failure logs red.
+    const recoverable401 = res.status === 401 && !skipAuth && !isAuthEndpoint;
+    if (recoverable401) {
+      if (typeof window !== 'undefined') console.log(`[api] ${method} ${endpoint} → 401 in ${elapsed()}ms (access token expired — refreshing session)`);
+    } else {
+      logTiming(res.status);
+    }
+
+    if (recoverable401) {
       // If already refreshing, queue this request
       if (this.isRefreshing) {
         return new Promise<T>((resolve, reject) => {
@@ -116,6 +124,9 @@ class ApiClient {
       }
 
       this.processQueue(false);
+      // THIS is the real failure worth a red line: the refresh itself failed,
+      // so the session is genuinely over.
+      if (typeof window !== 'undefined') console.error(`❌ [api] ${method} ${endpoint} → 401 (session refresh failed — signed out)`);
       // Don't hard-redirect here — let AuthContext handle auth state
       // and the system layout will redirect to login when needed
       throw new Error('Authentication required');

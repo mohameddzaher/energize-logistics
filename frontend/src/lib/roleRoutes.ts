@@ -41,6 +41,10 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   procurement_manager: '/system/procurement/dashboard',
   customs_manager: '/system/customs',
   customs_officer: '/system/customs',
+  marketing_manager: '/system/marketing',
+  marketing_specialist: '/system/marketing',
+  bd_manager: '/system/bd',
+  bd_specialist: '/system/bd',
   // مدير القسم والمشرف يفتحان على اللوحة الرئيسية — البطاقات هي عملهما اليومي.
   fleet_manager: '/system/fleet/board',
   fleet_supervisor: '/system/fleet/board',

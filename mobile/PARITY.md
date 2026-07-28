@@ -85,13 +85,13 @@
 
 ## التسويق / marketing
 - [x] `marketing/campaigns` — الحملات — CRUD
-- [ ] `marketing` — اللوحة | `campaigns/[id]` تفاصيل | `activities` | `reports` | `my-tasks`/`complaints`/`kpis`
+- [~] `marketing` — اللوحة ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: `campaigns/[id]` | `activities` | `reports`
 
 ## تطوير الأعمال / bd
 - [x] `bd/opportunities` — CRUD (ناقص صفحة تفاصيل الفرصة بسجل نشاطها)
 - [x] `bd/partners` — CRUD
 - [x] `bd/tenders` — CRUD
-- [ ] `bd` — اللوحة | `opportunities/[id]` | `my-tasks`/`complaints`/`kpis`
+- [~] `bd` — اللوحة ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: `opportunities/[id]`
 
 ## الشؤون الإدارية / administration
 - [x] `administration` — لوحة المهام كاملة (إنشاء/تعديل/حذف/نقل/محادثة/إسناد)
@@ -101,13 +101,13 @@
 - [ ] `vendors/[id]` — الملف التحليلي بالجداول والمرفقات | `my-tasks`/`complaints`/`kpis`
 
 ## البرمجيات وتقنية المعلومات / it
-- [~] `tickets` ✓ `systems` ✓ `stock` ✓ `custody` ✓ (تسليم/نقل/إرجاع/إبلاغ/إخراج/سجل) `my-tasks`/`complaints`/`kpis` ✓ — باقي: اللوحة | recurring
+- [~] `tickets` ✓ `systems` ✓ `stock` ✓ `custody` ✓ (تسليم/نقل/إرجاع/إبلاغ/إخراج/سجل) `my-tasks`/`complaints`/`kpis` ✓ — باقي: recurring (اللوحة ✓)
 
 ## B2C / b2c
-- [~] `reps` ✓ `projects` ✓ `kpis` ✓ — باقي: dashboard/reps-performance/daily-entry/custody
+- [~] `reps` ✓ `projects` ✓ `kpis` ✓ — باقي: reps-performance/daily-entry/custody (اللوحة ✓)
 
 ## العمل عن بُعد / remote
-- [~] `attendance` ✓ (حضور/انصراف + السجل) — باقي: dashboard/leave/chat/tasks/report/announcements/kpis
+- [~] `attendance` ✓ `leave` ✓ (طلب + قرار) `tasks` ✓ `report` ✓ `chat` ✓ (محادثات المشرف + مباشرة) `announcements` ✓ — باقي: dashboard/kpis
 
 ## الموارد البشرية / hr
 - [x] `hr/dashboard` — اللوحة
@@ -123,16 +123,16 @@
 ## إدارة العلاقات / crm
 - [x] `crm/companies` — CRUD (ناقص: التقييم rate + ملف الشركة [id])
 - [x] `crm/contacts` — CRUD
-- [~] `deals` ✓ `tasks` ✓ `activities` ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard` | `companies/[id]` | `vendors` | `calendar`
+- [~] `deals` ✓ `tasks` ✓ `activities` ✓ `dashboard` ✓ `my-tasks`/`complaints`/`kpis` ✓ | `companies/[id]` | `vendors` | `calendar`
 
 ## المبيعات / sales
-- [~] `targets` CRUD ✓ | `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard` | `pipeline` | `performance`
+- [~] `targets` CRUD ✓ | `dashboard` ✓ `my-tasks`/`complaints`/`kpis` ✓ | `pipeline` | `performance`
 
 ## الحسابات / accounting
-- [~] `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard` | `accounts` | `journal` | التقارير الأربعة
+- [~] `my-tasks`/`complaints`/`kpis` ✓ — باقي: `accounts` | `journal` | التقارير الأربعة (اللوحة ✓)
 
 ## المشتريات / procurement
-- [~] `requests` ✓ (المسار كامل: مسودة←اعتماد←أمر شراء) `orders` ✓ (استلام) `bills` ✓ (دفعات) `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard`
+- [~] `requests` ✓ (المسار كامل: مسودة←اعتماد←أمر شراء) `orders` ✓ (استلام) `bills` ✓ (دفعات) `dashboard` ✓ `my-tasks`/`complaints`/`kpis` ✓
 
 ## الأدوات / tools
 - [ ] `kpis` — مؤشرات الأداء | `assistant` — المساعد | `settings` (كلمة مرور/توقيعات) | `reports`

@@ -21,10 +21,10 @@
 - [~] `invoices` — الفواتير ✓ (قائمة+فلاتر+تحصيل كامل+إنشاء) — باقي: refund/freeze
 - [ ] `invoices/[id]` — تفاصيل الفاتورة — status/freeze/refund/record payment — API: /api/invoices/${id}
 - [~] `payments` — المدفوعات ✓ (قائمة+بحث+إجمالي+تسجيل دفعة على فاتورة) — باقي: التخصيص الجماعي FIFO
-- [ ] `collections` — التحصيلات — complete/promise/follow-ups — API: /api/collections
+- [x] `collections` — متابعات التحصيل ✓ (المعلّقة + إنهاء بمبلغ محصّل)
 - [ ] `collectors` + `collectors/[id]` — المحصلين وأداؤهم — API: /api/analytics/performance
 - [ ] `tasks` — المهام — CRUD + AI suggestions — API: /api/tasks
-- [ ] `disputes` — النزاعات — CRUD/resolve — API: /api/disputes
+- [x] `disputes` — النزاعات ✓ (فلاتر الحالة + بدء مراجعة + حل بقرار)
 
 ## العمليات / Operations
 - [ ] `operations` — التشغيل — workflows list/stats/stage/bulk — API: /api/workflows

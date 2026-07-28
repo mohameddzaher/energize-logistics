@@ -37,6 +37,7 @@ import '../screens/accounting_suite.dart';
 import '../screens/ls2_drivers.dart';
 import '../screens/vehicles_suite.dart';
 import '../screens/marketing_activities.dart';
+import '../screens/collections_disputes.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -87,6 +88,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => const CustomersScreen()),
         AppPage('الفواتير', 'Invoices', Icons.receipt_long_outlined, (c) => const InvoicesScreen()),
         AppPage('المدفوعات', 'Payments', Icons.payments_outlined, (c) => const PaymentsScreen()),
+        AppPage('متابعات التحصيل', 'Collections', Icons.task_alt_outlined, (c) => const CollectionsScreen()),
+        AppPage('النزاعات', 'Disputes', Icons.gavel_outlined, (c) => const DisputesScreen()),
       ],
     ),
     AppSection(

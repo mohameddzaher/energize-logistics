@@ -3,6 +3,8 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../screens/crm_company_profile.dart';
 import '../screens/contracts_vendor_profile.dart';
+import '../screens/customs_detail.dart';
+import '../screens/bd_opportunity_detail.dart';
 import 'resource.dart';
 
 /// Page definitions on the CRUD engine — each entry IS a full native page
@@ -203,6 +205,7 @@ final crmContactsCfg = ResourceConfig(
 
 // ── تطوير الأعمال ────────────────────────────────────────────────────────────
 final bdOpportunitiesCfg = ResourceConfig(
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => BdOpportunityDetailScreen(opportunityId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
   arTitle: 'الفرص الاستراتيجية', enTitle: 'Opportunities', icon: Icons.explore_outlined,
   endpoint: '/api/business-development/opportunities', listKey: 'opportunities',
   liveEvent: 'bd:updated',
@@ -572,6 +575,7 @@ final hrLeaveTypesCfg = ResourceConfig(
 
 // ── التخليص الجمركي ──────────────────────────────────────────────────────────
 final customsCfg = ResourceConfig(
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: (r['_id'] ?? '').toString(), ref: (r['refNumber'] ?? '').toString()))),
   arTitle: 'التخليص الجمركي', enTitle: 'Customs Clearance', icon: Icons.directions_boat_outlined,
   endpoint: '/api/customs-clearance', listKey: 'clearances', liveEvent: 'customs:updated',
   searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city'],

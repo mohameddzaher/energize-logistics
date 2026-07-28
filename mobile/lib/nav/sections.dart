@@ -35,6 +35,8 @@ import '../screens/admin_suite.dart';
 import '../screens/workshop_inventory.dart';
 import '../screens/accounting_suite.dart';
 import '../screens/ls2_drivers.dart';
+import '../screens/vehicles_suite.dart';
+import '../screens/marketing_activities.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -156,6 +158,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: marketingDashSpec)),
         AppPage('الحملات', 'Campaigns', Icons.flag_outlined, (c) => ResourceScreen(config: marketingCampaignsCfg)),
+        AppPage('الأنشطة', 'Activities', Icons.bolt_outlined, (c) => const MarketingActivitiesScreen()),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'marketing')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'marketing', complaints: true)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
@@ -234,6 +237,17 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('فواتير الموردين', 'Bills', Icons.receipt_long_outlined, (c) => const ProcBillsScreen()),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'procurement')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'procurement', complaints: true)),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
+      ],
+    ),
+    AppSection(
+      key: 'Vehicles', arTitle: 'المركبات والتفويضات', enTitle: 'Vehicles & Authorizations', icon: Icons.directions_car_outlined,
+      roles: const [..._admins, 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
+      pages: [
+        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: vehiclesDashSpec)),
+        AppPage('المركبات', 'Vehicles', Icons.directions_car_outlined, (c) => const VehiclesListScreen()),
+        AppPage('الحوادث', 'Accidents', Icons.car_crash_outlined, (c) => const AccidentsListScreen()),
+        AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'hr')),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
       ],
     ),

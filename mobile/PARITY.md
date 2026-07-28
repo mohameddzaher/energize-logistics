@@ -64,13 +64,13 @@
 
 ## التخليص الجمركي / customs
 - [x] `customs` — قائمة التخليص — CRUD كامل بالمراحل الـ11
-- [ ] `customs/[id]` — تفاصيل التخليص (pipeline 11 مرحلة + checklists)
+- [x] `customs/[id]` — تفاصيل التخليص ✓ (مسار ١١ مرحلة بتقدّم بلمسة + مهام الإنجاز stageDone بتواريخها + تعديل التكاليف)
 - [ ] `customs/guide` — الدليل
 - [ ] `customs/analytics` — التحليلات
 - [x] `customs/my-tasks` + `complaints` + `kpis`
 
 ## المركبات / vehicles
-- [ ] `vehicles/dashboard` + `vehicles` + `vehicles/[id]` (تفويض/نقل/حوادث) + `accidents` + `kpis`
+- [x] `vehicles` — قسم كامل ✓: اللوحة + المركبات (CRUD) + تفاصيل المركبة (تفويض/نقل/إلغاء/سجل تفويضات) + الحوادث (قائمة+تسجيل) + KPIs
 
 ## لوكيشن سوليوشن / ls2
 - [~] `ls2/live`-style — قائمة المركبات بالصيانة والعداد ✓ (شاشة واحدة — ناقص باقي الصفحات)
@@ -86,13 +86,13 @@
 
 ## التسويق / marketing
 - [x] `marketing/campaigns` — الحملات — CRUD
-- [~] `marketing` — اللوحة ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: `campaigns/[id]` | `activities` | `reports`
+- [~] `marketing` — اللوحة ✓ `activities` ✓ (إنشاء+فلاتر منصة+مقاييس) `my-tasks`/`complaints`/`kpis` ✓ — باقي: `campaigns/[id]` | `reports`
 
 ## تطوير الأعمال / bd
 - [x] `bd/opportunities` — CRUD (ناقص صفحة تفاصيل الفرصة بسجل نشاطها)
 - [x] `bd/partners` — CRUD
 - [x] `bd/tenders` — CRUD
-- [~] `bd` — اللوحة ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: `opportunities/[id]`
+- [~] `bd` — اللوحة ✓ `opportunities/[id]` ✓ (تفاصيل+نقل مرحلة+سجل أنشطة+تسجيل نشاط) `my-tasks`/`complaints`/`kpis` ✓
 
 ## الشؤون الإدارية / administration
 - [x] `administration` — لوحة المهام كاملة (إنشاء/تعديل/حذف/نقل/محادثة/إسناد)

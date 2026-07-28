@@ -139,13 +139,13 @@
 - [ ] `kpis` — مؤشرات الأداء | `assistant` — المساعد | `settings` (كلمة مرور/توقيعات) | `reports`
 
 ## الإدارة / admin
-- [x] `branches` ✓ `expense-categories` ✓ | باقي: | `settings/reference-data` | `users` (كامل) | `permissions` | `audit` | `complaints` | `drivers` | `vendors`
+- [x] `branches` ✓ `expense-categories` ✓ `users` ✓ (إنشاء/تعديل/حذف/فلترة) `permissions` ✓ (دور×قسم) — باقي: `settings/reference-data` | `audit` | `complaints` | `drivers` | `vendors`
 
 ## البوابة / portal (عملاء خارجيون)
 - [ ] `portal` | `invoices` (+[id]) | `payments`
 
 ## مشترك / خاص
-- [ ] جرس الإشعارات + شارة غير المقروء
+- [x] الإشعارات ✓ (صفحة ضمن الخدمة الذاتية: غير المقروءة+قراءة الكل) — باقي: شارة عدّاد حية في الهيدر
 - [x] تبديل اللغة AR/EN فوري + RTL
 - [x] بوابة الصلاحيات (roles + matrix) في القوائم
 - [ ] التصدير (Excel/PDF/مشاركة) في القوائم والتقارير

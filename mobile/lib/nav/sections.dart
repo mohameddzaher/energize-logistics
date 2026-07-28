@@ -31,6 +31,7 @@ import '../screens/ls2_dashboard.dart';
 import '../screens/b2c_daily.dart';
 import '../screens/ops_platform.dart';
 import '../screens/ls2_fleet_assets.dart';
+import '../screens/admin_suite.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -303,6 +304,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'AdminTools', arTitle: 'الإدارة', enTitle: 'Admin', icon: Icons.admin_panel_settings_outlined,
       roles: const ['super_admin', 'admin', 'it_manager'], managed: false,
       pages: [
+        AppPage('المستخدمون', 'Users', Icons.group_outlined, (c) => const AdminUsersScreen()),
+        AppPage('الصلاحيات', 'Permissions', Icons.lock_person_outlined, (c) => const PermissionsScreen()),
         AppPage('الفروع', 'Branches', Icons.store_mall_directory_outlined, (c) => ResourceScreen(config: branchesCfg)),
         AppPage('فئات المصروفات', 'Expense Categories', Icons.category_outlined, (c) => ResourceScreen(config: expenseCategoriesCfg)),
       ],
@@ -314,6 +317,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
 
 /// Self-service — every signed-in employee, no gating.
 List<AppPage> selfServicePages(bool hasTeam) => [
+      AppPage('الإشعارات', 'Notifications', Icons.notifications_outlined, (c) => const NotificationsScreen()),
       AppPage('إجازاتي', 'My Leaves', Icons.beach_access_outlined, (c) => const MyLeavesScreen()),
       AppPage('طلباتي', 'My Requests', Icons.description_outlined, (c) => const MyRequestsScreen()),
       if (hasTeam) AppPage('موافقات فريقي', 'Team Approvals', Icons.fact_check_outlined, (c) => const ApprovalsScreen()),

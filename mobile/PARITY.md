@@ -78,7 +78,7 @@
 
 ## الورشة / workshop
 - [x] `workshop/purchases` — المشتريات — تسجيل=استلام + حذف
-- [ ] `workshop` — طلبات الصيانة | `store` — المستودع | `dashboard` | `tasks` — أوامر شغل | `inventory` | `my-tasks`/`complaints`/`kpis`
+- [x] `workshop` — طلبات الصيانة ✓ (CRUD) | `store` — المستودع | `dashboard` | `tasks` — أوامر شغل | `inventory` | `my-tasks`/`complaints`/`kpis`
 
 ## تقييم الأداء / performance
 - [ ] `performance` + `overview` + `evaluate/[id]` + `requests` + `settings`
@@ -101,7 +101,7 @@
 - [ ] `vendors/[id]` — الملف التحليلي بالجداول والمرفقات | `my-tasks`/`complaints`/`kpis`
 
 ## البرمجيات وتقنية المعلومات / it
-- [ ] `it` لوحة | `tickets` (+[id]) | `recurring` | `custody` (تعيين/نقل/إرجاع/عطل/تسليم) | `stock` | `systems` | `my-tasks`/`complaints`/`kpis`
+- [~] `tickets` ✓ `systems` ✓ `stock` ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: اللوحة | recurring | custody بعملياتها
 
 ## B2C / b2c
 - [ ] `dashboard` | `reps-performance` | `daily-entry` | `reps` | `projects` | `custody` (عهدة) | `kpis`

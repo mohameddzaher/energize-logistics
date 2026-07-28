@@ -622,3 +622,115 @@ final customsCfg = ResourceConfig(
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
+
+// ── الورشة: طلبات الصيانة ────────────────────────────────────────────────────
+final workshopMaintenanceCfg = ResourceConfig(
+  arTitle: 'طلبات الصيانة', enTitle: 'Maintenance Requests', icon: Icons.build_circle_outlined,
+  endpoint: '/api/workshop/maintenance', listKey: 'requests',
+  liveEvent: 'maintenance:updated',
+  searchFields: const ['vehicleNumber', 'driverName', 'technicianName', 'status'],
+  titleOf: (r) => _s(r, 'vehicleNumber'),
+  subtitleOf: (r) => [_s(r, 'driverName'), _s(r, 'technicianName')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'status')) {
+      'completed' => ('مكتملة', T.success),
+      'in_progress' => ('قيد الإصلاح', T.info),
+      _ => ('جديدة', T.warn),
+    },
+    if (_s(r, 'vehicleType').isNotEmpty) (_s(r, 'vehicleType'), T.navy),
+  ],
+  fields: const [
+    FieldSpec('vehicleNumber', 'رقم السيارة', 'Vehicle number', required: true),
+    FieldSpec('vehicleType', 'نوع السيارة', 'Vehicle type'),
+    FieldSpec('driverName', 'اسم السائق', 'Driver'),
+    FieldSpec('technicianName', 'الفني المسؤول', 'Technician'),
+    FieldSpec('notes', 'ملاحظات / الأعطال', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+// ── تقنية المعلومات ──────────────────────────────────────────────────────────
+final itTicketsCfg = ResourceConfig(
+  arTitle: 'التذاكر والمشكلات', enTitle: 'IT Tickets', icon: Icons.confirmation_number_outlined,
+  endpoint: '/api/it/tickets', listKey: 'tickets', liveEvent: 'it:updated',
+  searchFields: const ['title', 'requesterName', 'category', 'status', 'device'],
+  titleOf: (r) => _s(r, 'title'),
+  subtitleOf: (r) => [_s(r, 'requesterName'), _s(r, 'device')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'status')) {
+      'resolved' => ('محلولة', T.success),
+      'closed' => ('مغلقة', T.inkFaint),
+      'in_progress' => ('قيد الحل', T.info),
+      _ => ('مفتوحة', T.warn),
+    },
+    switch (_s(r, 'priority')) {
+      'high' => ('مرتفعة', T.danger),
+      'low' => ('منخفضة', T.inkFaint),
+      _ => ('متوسطة', T.warn),
+    },
+  ],
+  fields: const [
+    FieldSpec('title', 'عنوان المشكلة', 'Title', required: true),
+    FieldSpec('requesterName', 'مقدم الطلب', 'Requester'),
+    FieldSpec('category', 'التصنيف', 'Category'),
+    FieldSpec('device', 'الجهاز', 'Device'),
+    FieldSpec('priority', 'الأولوية', 'Priority', type: FieldType.select, options: [
+      ('high', 'مرتفعة', 'High'), ('medium', 'متوسطة', 'Medium'), ('low', 'منخفضة', 'Low'),
+    ]),
+    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
+      ('open', 'مفتوحة', 'Open'), ('in_progress', 'قيد الحل', 'In progress'),
+      ('resolved', 'محلولة', 'Resolved'), ('closed', 'مغلقة', 'Closed'),
+    ]),
+    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
+    FieldSpec('resolution', 'الحل', 'Resolution', type: FieldType.textarea),
+    FieldSpec('rootCause', 'السبب الجذري', 'Root cause'),
+  ],
+);
+
+final itSystemsCfg = ResourceConfig(
+  arTitle: 'الأنظمة والخدمات', enTitle: 'Systems & Services', icon: Icons.dns_outlined,
+  endpoint: '/api/it/systems', listKey: 'systems', liveEvent: 'it:updated',
+  searchFields: const ['name', 'nameAr', 'type', 'vendor', 'url'],
+  titleOf: (r) => _s(r, 'nameAr').isNotEmpty ? _s(r, 'nameAr') : _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'type'), _s(r, 'vendor')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'status')) {
+      'active' => ('نشط', T.success),
+      'retired' => ('متوقف', T.inkFaint),
+      _ => (_s(r, 'status').isEmpty ? 'نشط' : _s(r, 'status'), T.info),
+    },
+    if (r['cost'] != null) ('${r['cost']} ${_s(r, 'costPeriod')}', T.navy),
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم النظام', 'Name', required: true),
+    FieldSpec('nameAr', 'الاسم العربي', 'Arabic name'),
+    FieldSpec('type', 'النوع', 'Type'),
+    FieldSpec('vendor', 'المزود', 'Vendor'),
+    FieldSpec('url', 'الرابط', 'URL'),
+    FieldSpec('renewalDate', 'تاريخ التجديد', 'Renewal date', type: FieldType.date),
+    FieldSpec('cost', 'التكلفة', 'Cost', type: FieldType.number),
+    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
+  ],
+);
+
+final itStockCfg = ResourceConfig(
+  arTitle: 'مستودع الأجهزة', enTitle: 'IT Stock', icon: Icons.inventory_outlined,
+  endpoint: '/api/it/stock', listKey: 'items', liveEvent: 'it:updated',
+  searchFields: const ['name', 'type', 'serialNumber', 'brand', 'model'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'brand'), _s(r, 'model'), _s(r, 'serialNumber')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (r['quantity'] != null) ('الكمية: ${r['quantity']}', T.navy),
+    if (_s(r, 'condition').isNotEmpty) (_s(r, 'condition'), T.cyan),
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم الجهاز', 'Name', required: true),
+    FieldSpec('type', 'النوع', 'Type'),
+    FieldSpec('brand', 'الماركة', 'Brand'),
+    FieldSpec('model', 'الموديل', 'Model'),
+    FieldSpec('serialNumber', 'السيريال', 'Serial', ),
+    FieldSpec('quantity', 'الكمية', 'Quantity', type: FieldType.number),
+    FieldSpec('condition', 'الحالة', 'Condition'),
+    FieldSpec('location', 'المكان', 'Location'),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);

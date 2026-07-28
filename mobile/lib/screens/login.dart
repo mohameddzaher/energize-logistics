@@ -44,8 +44,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     return Scaffold(
       body: Stack(
         children: [
-          // الخلفية المتنفسة: تدرج كحلي + هالات ضوء تتحرك ببطء.
-          Container(decoration: const BoxDecoration(gradient: T.navyGradient)),
+          // الخلفية المتنفسة: كحلي غامق + هالات ضوء تتحرك ببطء.
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF0A1E3D), Color(0xFF081833), Color(0xFF050E1F)],
+              ),
+            ),
+          ),
           AnimatedBuilder(
             animation: _bg,
             builder: (context, _) {
@@ -75,15 +83,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   children: [
                     FadeSlideIn(
                       from: const Offset(0, -0.15),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-                        ),
-                        child: Image.asset('assets/logo.png', height: 46),
-                      ),
+                      child: Image.asset('assets/logo_white.png', height: 54),
                     ),
                     const SizedBox(height: 14),
                     FadeSlideIn(

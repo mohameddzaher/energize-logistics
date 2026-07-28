@@ -1,15 +1,21 @@
+import 'dart:async';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../config.dart';
 import 'api.dart';
 
-/// One socket for the whole app — the exact events the web listens on
-/// (admintasks:updated, hr:leave, …) so a phone and a laptop looking at the
-/// same board stay in sync.
+/// One socket for the whole app — the exact events the web listens on, so a
+/// phone and a laptop looking at the same board stay in sync.
+///
+/// The access token expires every 15 minutes, so a reconnect with the old
+/// token is silently rejected — the reason "realtime stopped working until I
+/// refreshed". Fix: on ANY connect error, refresh the token through the api
+/// client and reconnect with the fresh one.
 class Live {
   Live._();
   static final Live instance = Live._();
   io.Socket? _socket;
   final Map<String, List<void Function()>> _handlers = {};
+  bool _refreshing = false;
 
   void connect() {
     if (_socket != null) return;
@@ -19,13 +25,33 @@ class Live {
           .setTransports(['websocket'])
           .setAuth({'token': Api.instance.accessToken})
           .enableReconnection()
+          .setReconnectionDelay(2000)
           .build(),
     );
     _socket!.onAny((event, data) {
-      for (final h in _handlers[event] ?? const []) {
+      for (final h in List.of(_handlers[event] ?? const [])) {
         h();
       }
     });
+    // قبل كل محاولة إعادة اتصال: حدِّث التوكن في المصافحة.
+    _socket!.io.on('reconnect_attempt', (_) {
+      _socket!.auth = {'token': Api.instance.accessToken};
+    });
+    _socket!.onConnectError((_) => _refreshAndRetry());
+    _socket!.on('connect_error', (_) => _refreshAndRetry());
+  }
+
+  Future<void> _refreshAndRetry() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      // أي طلب عادي يمر بمسار التجديد التلقائي في العميل — يكفي لتحديث التوكن.
+      await Api.instance.get('/api/auth/me');
+      _socket?.auth = {'token': Api.instance.accessToken};
+      Future.delayed(const Duration(seconds: 1), () => _socket?.connect());
+    } catch (_) {/* سيُعاد تلقائيًا مع محاولة الاتصال القادمة */} finally {
+      _refreshing = false;
+    }
   }
 
   void on(String event, void Function() handler) {

@@ -335,7 +335,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                       : '${tr('الوصول المتوقع', 'ETA')}: ${_expectedArrival!.day}/${_expectedArrival!.month} ${_expectedArrival!.hour}:${_expectedArrival!.minute.toString().padLeft(2, '0')}'),
                   onPressed: () async {
                     final d = await showDatePicker(context: context, initialDate: _expectedArrival ?? DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 30)));
-                    if (d == null || !mounted) return;
+                    if (d == null || !context.mounted) return;
                     final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_expectedArrival ?? DateTime.now()));
                     setState(() => _expectedArrival = DateTime(d.year, d.month, d.day, t?.hour ?? 12, t?.minute ?? 0));
                   },

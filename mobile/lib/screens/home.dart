@@ -96,12 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        // اللوجو بألوانه الطبيعية على شريحة بيضاء — البراندينج كما هو.
-        title: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-          child: Image.asset('assets/logo.png', height: 22),
-        ),
+        title: Image.asset('assets/logo_white.png', height: 24),
         leading: Builder(
           builder: (c) => IconButton(
             icon: const Icon(Icons.menu_rounded, size: 26),
@@ -368,12 +363,7 @@ class _AppDrawer extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(18, MediaQuery.of(context).padding.top + 18, 18, 18),
           decoration: const BoxDecoration(gradient: T.navyGradient),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // اللوجو بألوانه الطبيعية على شريحة بيضاء.
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-              child: Image.asset('assets/logo.png', height: 26),
-            ),
+            Image.asset('assets/logo_white.png', height: 28),
             const SizedBox(height: 14),
             Text(auth.fullName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
             Text(auth.user?['email'] ?? '', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12)),

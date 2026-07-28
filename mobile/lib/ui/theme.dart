@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 /// grey canvas, white cards, Tajawal for Arabic.
 class T {
   static const navy = Color(0xFF12325C);
-  static const navyDark = Color(0xFF0B2244);
+  static const navyDark = Color(0xFF081833);
   static const orange = Color(0xFFF37121);
   static const canvas = Color(0xFFF4F6FA);
   static const card = Colors.white;
@@ -24,7 +24,7 @@ class T {
   static const navyGradient = LinearGradient(
     begin: Alignment.topRight,
     end: Alignment.bottomLeft,
-    colors: [Color(0xFF1A4178), navy, navyDark],
+    colors: [Color(0xFF0F2A52), Color(0xFF0A1E3D), navyDark],
   );
 
   static List<BoxShadow> get softShadow => const [

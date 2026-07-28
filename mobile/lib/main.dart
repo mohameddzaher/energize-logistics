@@ -21,6 +21,8 @@ class EnergizeApp extends StatelessWidget {
       child: ListenableBuilder(
         listenable: Lang.instance..load(),
         builder: (context, _) => MaterialApp(
+          // مفتاح باللغة: التبديل يعيد بناء الشجرة فورًا — دون أي تحديث يدوي.
+          key: ValueKey(Lang.instance.ar),
           title: 'Energize Logistics',
           debugShowCheckedModeBanner: false,
           locale: Locale(Lang.instance.ar ? 'ar' : 'en'),
@@ -46,13 +48,7 @@ class _Gate extends StatelessWidget {
       return Scaffold(
         body: Container(
           decoration: const BoxDecoration(gradient: T.navyGradient),
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-              child: Image.asset('assets/logo.png', height: 40),
-            ),
-          ),
+          child: Center(child: Image.asset('assets/logo_white.png', height: 44)),
         ),
       );
     }

@@ -3,6 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import 'fleet_new_shipment.dart';
+import 'fleet_shipment_details.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -68,13 +69,8 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
       .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
   void _open(Map<String, dynamic> s) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (c) => _ShipmentSheet(shipment: s, onDone: _load),
-    );
+    Navigator.push(context, MaterialPageRoute(
+        builder: (c) => FleetShipmentDetailsScreen(shipmentId: s['_id'].toString())));
   }
 
   @override
@@ -205,102 +201,5 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
     if (h >= 999) return '—';
     if (h < 1) return tr('منذ أقل من ساعة', '<1h ago');
     return tr('منذ $h ساعة', '${h}h ago');
-  }
-}
-
-/// Shipment detail + the follow-up form.
-class _ShipmentSheet extends StatefulWidget {
-  final Map<String, dynamic> shipment;
-  final Future<void> Function() onDone;
-  const _ShipmentSheet({required this.shipment, required this.onDone});
-  @override
-  State<_ShipmentSheet> createState() => _ShipmentSheetState();
-}
-
-class _ShipmentSheetState extends State<_ShipmentSheet> {
-  final _location = TextEditingController();
-  final _note = TextEditingController();
-  bool _busy = false;
-
-  static const _quickNotes = [
-    'في الطريق إلى موقع التنزيل', 'حمّل وتحرّك', 'نايم — استراحة', 'فاضي',
-    'واقف — مشكلة على الطريق', 'وصل موقع التنزيل', 'جاري التفريغ',
-  ];
-
-  Future<void> _send() async {
-    if ((_location.text.trim().isEmpty && _note.text.trim().isEmpty) || _busy) return;
-    setState(() => _busy = true);
-    try {
-      await Api.instance.post('/api/fleet/shipments/${widget.shipment['_id']}/followups', {
-        'currentLocation': _location.text,
-        'note': _note.text,
-      });
-      widget.onDone();
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = widget.shipment;
-    final st = _statuses[s['status']] ?? ('—', '—', T.inkFaint);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(context).viewInsets.bottom + 18),
-      child: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text('${tr('بوليصة', 'Waybill')} ${s['waybillNumber']}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-            const Spacer(),
-            Chip2(tr(st.$1, st.$2), st.$3),
-          ]),
-          const SizedBox(height: 10),
-          Text('${s['fromCity'] ?? '—'} ← ${s['toCity'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700)),
-          Text([s['customerName'], s['vehiclePlate'], s['driverName']].where((x) => (x ?? '').toString().isNotEmpty).join(' · '),
-              style: const TextStyle(fontSize: 13, color: T.inkSoft)),
-          const SizedBox(height: 12),
-          // تغيير الحالة — نفس قائمة السيستم، والتغيير يظهر لحظيًا في كل مكان.
-          DropdownButtonFormField<String>(
-            initialValue: (s['status'] ?? '').toString().isEmpty ? null : s['status'],
-            decoration: InputDecoration(labelText: tr('حالة الشحنة', 'Status')),
-            items: _statuses.entries
-                .map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2))))
-                .toList(),
-            onChanged: (v) async {
-              if (v == null) return;
-              try {
-                await Api.instance.patch('/api/fleet/shipments/${s['_id']}/status', {'status': v});
-                widget.onDone();
-                if (context.mounted) Navigator.pop(context);
-              } catch (e) {
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-              }
-            },
-          ),
-          const Divider(height: 26),
-          Text(tr('تسجيل متابعة', 'Log a follow-up'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          const SizedBox(height: 10),
-          TextField(controller: _location, decoration: InputDecoration(labelText: tr('الموقع الحالي', 'Current location'))),
-          const SizedBox(height: 8),
-          TextField(controller: _note, decoration: InputDecoration(labelText: tr('ملاحظة المتابعة', 'Note'))),
-          const SizedBox(height: 8),
-          Wrap(spacing: 6, runSpacing: 6, children: _quickNotes.map((n) => ActionChip(
-                label: Text(n, style: const TextStyle(fontSize: 11.5)),
-                onPressed: () => setState(() => _note.text = n),
-                backgroundColor: T.navy.withValues(alpha: 0.06),
-                side: BorderSide.none,
-              )).toList()),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            icon: const Icon(Icons.phone_in_talk_outlined),
-            onPressed: _busy ? null : _send,
-            label: Text(tr('حفظ المتابعة', 'Save follow-up')),
-          ),
-        ]),
-      ),
-    );
   }
 }

@@ -76,6 +76,15 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   Widget build(BuildContext context) {
     return AppScaffold(
       title: Text(tr('الموظفون', 'Employees')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          builder: (c) => EditEmployeeSheet(onDone: () async => _load()),
+        ),
+        icon: const Icon(Icons.person_add_alt_outlined),
+        label: Text(tr('موظف جديد', 'New')),
+      ),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),

@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'ls2_vehicle_detail.dart';
 
 /// مركبات لوكيشن سوليوشن — native: the live GPS fleet with maintenance state,
 /// odometer, driver and search; maintenance chips filter the list.
@@ -131,7 +132,12 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
                                 final color = maint == 'overdue' ? T.danger : maint == 'due' ? T.warn : T.success;
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
-                                  child: AppCard(
+                                  child: Pressable(
+                                    onTap: () => Navigator.push(c, MaterialPageRoute(
+                                        builder: (_) => Ls2VehicleDetailScreen(
+                                            vehicleId: (v['_id'] ?? '').toString(),
+                                            plate: (v['plate'] ?? v['name'] ?? '').toString()))),
+                                    child: AppCard(
                                     topAccent: color,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
@@ -152,6 +158,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
                                           Chip2(v['nextServiceName'], T.violet, icon: Icons.handyman_outlined),
                                       ]),
                                     ]),
+                                  ),
                                   ),
                                 );
                               },

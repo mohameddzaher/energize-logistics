@@ -63,7 +63,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (c) => _EditEmployeeSheet(employee: _emp, onDone: _load),
+      builder: (c) => EditEmployeeSheet(employee: _emp, onDone: _load),
     );
   }
 
@@ -277,16 +277,16 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
 }
 
 /// تعديل الحقول الأساسية — PUT /api/hr/employees/:id (الخادم يتجاهل ما لا يعرفه).
-class _EditEmployeeSheet extends StatefulWidget {
-  final Map<String, dynamic> employee;
+class EditEmployeeSheet extends StatefulWidget {
+  final Map<String, dynamic>? employee;
   final Future<void> Function() onDone;
-  const _EditEmployeeSheet({required this.employee, required this.onDone});
+  const EditEmployeeSheet({super.key, this.employee, required this.onDone});
 
   @override
-  State<_EditEmployeeSheet> createState() => _EditEmployeeSheetState();
+  State<EditEmployeeSheet> createState() => _EditEmployeeSheetState();
 }
 
-class _EditEmployeeSheetState extends State<_EditEmployeeSheet> {
+class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
   late final Map<String, TextEditingController> _c;
   String _status = 'active';
   bool _busy = false;
@@ -307,17 +307,22 @@ class _EditEmployeeSheetState extends State<_EditEmployeeSheet> {
   @override
   void initState() {
     super.initState();
-    _c = {for (final f in _fields) f.$1: TextEditingController(text: (widget.employee[f.$1] ?? '').toString())};
-    _status = (widget.employee['employmentStatus'] ?? 'active').toString();
+    _c = {for (final f in _fields) f.$1: TextEditingController(text: (widget.employee?[f.$1] ?? '').toString())};
+    _status = (widget.employee?['employmentStatus'] ?? 'active').toString();
   }
 
   Future<void> _save() async {
     setState(() => _busy = true);
     try {
-      await Api.instance.put('/api/hr/employees/${widget.employee['_id']}', {
+      final body = {
         for (final f in _fields) f.$1: _c[f.$1]!.text.trim(),
         'employmentStatus': _status,
-      });
+      };
+      if (widget.employee == null) {
+        await Api.instance.post('/api/hr/employees', body);
+      } else {
+        await Api.instance.put('/api/hr/employees/${widget.employee!['_id']}', body);
+      }
       await widget.onDone();
       if (mounted) Navigator.pop(context);
     } catch (e) {

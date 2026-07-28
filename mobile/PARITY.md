@@ -74,7 +74,7 @@
 
 ## لوكيشن سوليوشن / ls2
 - [~] `ls2/live`-style — قائمة المركبات بالصيانة والعداد ✓ (شاشة واحدة — ناقص باقي الصفحات)
-- [ ] `ls2` — لوحة التتبع | `ls2/registry` | `ls2/[id]` (تفاصيل+مسار+وقود) | `drivers` | `tires` | `temperature` | `maintenance` (+تسجيل خدمة وتأجيلات) | `fleet-assets` (كاوتش/تيدرات + عمليات) | `reports` | `settings` — `repairs` ✓ `alerts` ✓ `kpis` ✓
+- [~] `ls2` — اللوحة ✓ | `ls2/[id]` ✓ (نظرة عامة/صيانة+تسجيل خدمة بقائمة الفحص+مؤجلات/رحلات/مسافة+وقود/تنبيهات) — باقي: registry | drivers | tires | temperature | maintenance (fleet-wide) | fleet-assets بعملياتها | reports | settings
 
 ## الورشة / workshop
 - [x] `workshop/purchases` — المشتريات — تسجيل=استلام + حذف
@@ -104,7 +104,7 @@
 - [~] `tickets` ✓ `systems` ✓ `stock` ✓ `custody` ✓ (تسليم/نقل/إرجاع/إبلاغ/إخراج/سجل) `my-tasks`/`complaints`/`kpis` ✓ — باقي: recurring (اللوحة ✓)
 
 ## B2C / b2c
-- [~] `reps` ✓ `projects` ✓ `kpis` ✓ — باقي: reps-performance/daily-entry/custody (اللوحة ✓)
+- [~] `reps` ✓ `projects` ✓ `daily-entry` ✓ `kpis` ✓ اللوحة ✓ — باقي: reps-performance/custody
 
 ## العمل عن بُعد / remote
 - [~] `attendance` ✓ `leave` ✓ (طلب + قرار) `tasks` ✓ `report` ✓ `chat` ✓ (محادثات المشرف + مباشرة) `announcements` ✓ — باقي: dashboard/kpis
@@ -112,7 +112,7 @@
 ## الموارد البشرية / hr
 - [x] `hr/dashboard` — اللوحة
 - [x] `hr/employees` — قائمة + بحث + ملف الموظف الكامل (بيانات/عقود/إجازات/عهد/مستندات + تعديل) — ناقص: إنشاء موظف جديد + رفع مستندات
-- [ ] `employees/[id]` كامل | `contracts` | `leaves` (قرارات HR) | `requests` (ردود) | `custody` | `stock` | `licenses` | `leave-types` | `my-tasks`/`complaints`/`kpis`
+- [~] `employees/[id]` ✓ (٥ تبويبات+تعديل) `employees` إنشاء ✓ `leaves` ✓ `requests` ✓ `licenses` ✓ `leave-types` ✓ — باقي: `contracts` CRUD | `custody`/`stock` HR | رفع مستندات
 
 ## الخدمة الذاتية
 - [ ] `hr/me` — ملفي (عرض + تعديل)

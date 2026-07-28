@@ -27,6 +27,8 @@ import '../screens/procurement.dart';
 import '../screens/section_dash.dart';
 import '../screens/dash_specs.dart';
 import '../screens/remote_suite.dart';
+import '../screens/ls2_dashboard.dart';
+import '../screens/b2c_daily.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -184,6 +186,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Location Solutions', arTitle: 'لوكيشن سوليوشن', enTitle: 'Location Solutions', icon: Icons.gps_fixed_outlined,
       roles: const [..._admins, 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
       pages: [
+        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const Ls2DashboardScreen()),
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen()),
         AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg)),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const Ls2AlertsScreen()),
@@ -276,6 +279,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: b2cDashSpec)),
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg)),
+        AppPage('الإدخال اليومي', 'Daily Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen()),
         AppPage('مناديب المبيعات', 'Reps', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
       ],

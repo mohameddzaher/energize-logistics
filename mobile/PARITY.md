@@ -37,10 +37,10 @@
 - [ ] `vehicle-analytics/*` (5 صفحات) — تحليلات المركبات (IndexedDB محلي — يحتاج تصميم خاص للموبايل)
 
 ## منصة الأوبريشن (B2B) / ops
-- [ ] `ops` — لوحة الأوبريشن — API: /api/ops/dashboard
-- [ ] `ops/shipments` — الشحنات — status+timeline — API: /api/ops/shipments
-- [ ] `ops/drivers` (+[id]), `cars`, `car-owners`, `users` (+[id]), `branches`, `cities`, `countries`, `truck-types`, `truck-sizes`, `load-types`, `car-brands`, `car-colors` — جداول CRUD (13 صفحة) — API: /api/ops/* — ملائمة تمامًا لمحرك الـ CRUD
-- [ ] `ops/my-tasks` + `ops/complaints` (SectionWork) + `ops/kpis` (TeamBoard)
+- [x] `ops` — لوحة الأوبريشن ✓ (بطاقات أرقام المنصة الحية)
+- [x] `ops/shipments` — الشحنات ✓ الحالة + الجدول الزمني الكامل
+- [~] `ops/drivers`, `cars`, `car-owners`, `users`, `branches`, `cities`, `countries`, `truck-types`, `truck-sizes`, `load-types`, `car-brands`, `car-colors` ✓ (قوائم+بحث+تفاصيل) — باقي: التحرير الإداري وملفات [id] الموسعة
+- [x] `ops/my-tasks` ✓ `ops/complaints` ✓ `ops/kpis` ✓
 
 ## طلبات الشحنات / shipment-orders
 - [x] `shipment-orders` — الشحنات ✓ (قائمة+فلاتر+تغيير حالة+فتح للتعديل)
@@ -74,7 +74,8 @@
 
 ## لوكيشن سوليوشن / ls2
 - [~] `ls2/live`-style — قائمة المركبات بالصيانة والعداد ✓ (شاشة واحدة — ناقص باقي الصفحات)
-- [~] `ls2` — اللوحة ✓ | `ls2/[id]` ✓ (نظرة عامة/صيانة+تسجيل خدمة بقائمة الفحص+مؤجلات/رحلات/مسافة+وقود/تنبيهات) — باقي: registry | drivers | tires | temperature | maintenance (fleet-wide) | fleet-assets بعملياتها | reports | settings
+- [~] `ls2` — اللوحة ✓ | `ls2/[id]` ✓ (نظرة عامة/صيانة+تسجيل خدمة بقائمة الفحص+مؤجلات/رحلات/مسافة+وقود/تنبيهات) — باقي: registry | drivers | tires | temperature | maintenance (fleet-wide) | reports | settings
+- [x] `ls2/fleet-assets` — الكاوتشات ✓ بكل العمليات (تسجيل/فك بوجهة+نسبة حالة/تركيب مع مصير القاطن/نتيجة التجديد/إتلاف) + بطاقات فلترة
 
 ## الورشة / workshop
 - [x] `workshop/purchases` — المشتريات — تسجيل=استلام + حذف
@@ -150,4 +151,4 @@
 - [ ] التصدير (Excel/PDF/مشاركة) في القوائم والتقارير
 - [~] المرفقات والرفع (موجود في الباك — ناقص واجهات الرفع في العقود والموظفين…)
 - [x] SectionWork موحّد ✓ (مهامي/الشكاوى في ١٢ قسم) + TeamBoard ✓ (تقييم الأداء في كل الأقسام — عرض الدرجات؛ نموذج التقييم التفصيلي لاحقًا)
-- [ ] OpsResourceTable موحّد لجداول /api/ops/* (13 صفحة دفعة واحدة)
+- [x] OpsResourceScreen موحّد ✓ — 13 جدولًا ببحث الخادم وترقيم الصفحات وتفاصيل كاملة

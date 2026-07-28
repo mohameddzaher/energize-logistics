@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/api.dart';
+import '../services/lang.dart';
 import '../services/live.dart';
 
 /// لوحة مهام الشؤون الإدارية — the same four columns the web board shows,
@@ -13,17 +14,17 @@ class TasksBoardScreen extends StatefulWidget {
 }
 
 const _columns = [
-  ('new', 'جديدة', Color(0xFF0284C7)),
-  ('in_progress', 'قيد التنفيذ', Color(0xFFD97706)),
-  ('follow_up', 'قيد المتابعة', Color(0xFF7C3AED)),
-  ('done', 'مكتملة', Color(0xFF059669)),
+  ('new', 'جديدة', 'New', Color(0xFF0284C7)),
+  ('in_progress', 'قيد التنفيذ', 'In Progress', Color(0xFFD97706)),
+  ('follow_up', 'قيد المتابعة', 'Follow-up', Color(0xFF7C3AED)),
+  ('done', 'مكتملة', 'Done', Color(0xFF059669)),
 ];
 
 const _priorities = [
-  ('urgent', 'عاجلة', Color(0xFFDC2626)),
-  ('high', 'مرتفعة', Color(0xFFEA580C)),
-  ('normal', 'عادية', Color(0xFF64748B)),
-  ('low', 'منخفضة', Color(0xFF94A3B8)),
+  ('urgent', 'عاجلة', 'Urgent', Color(0xFFDC2626)),
+  ('high', 'مرتفعة', 'High', Color(0xFFEA580C)),
+  ('normal', 'عادية', 'Normal', Color(0xFF64748B)),
+  ('low', 'منخفضة', 'Low', Color(0xFF94A3B8)),
 ];
 
 class _TasksBoardScreenState extends State<TasksBoardScreen> {
@@ -99,14 +100,14 @@ class _TasksBoardScreenState extends State<TasksBoardScreen> {
       length: _columns.length,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('لوحة المهام'),
+          title: Text(tr('لوحة المهام', 'Task Board')),
           bottom: TabBar(
             indicatorColor: const Color(AppConfig.orange),
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white60,
             tabs: _columns.map((c) {
               final n = _tasks.where((t) => t['status'] == c.$1).length;
-              return Tab(text: '${c.$2} ($n)');
+              return Tab(text: '${tr(c.$2, c.$3)} ($n)');
             }).toList(),
           ),
         ),
@@ -115,7 +116,7 @@ class _TasksBoardScreenState extends State<TasksBoardScreen> {
           foregroundColor: Colors.white,
           onPressed: _newTask,
           icon: const Icon(Icons.add),
-          label: const Text('مهمة جديدة'),
+          label: Text(tr('مهمة جديدة', 'New Task')),
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -123,14 +124,14 @@ class _TasksBoardScreenState extends State<TasksBoardScreen> {
                 ? Center(
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                       Text(_error!, textAlign: TextAlign.center),
-                      TextButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+                      TextButton(onPressed: _load, child: Text(tr('إعادة المحاولة', 'Retry'))),
                     ]),
                   )
                 : TabBarView(
                     children: _columns.map((col) {
                       final items = _tasks.where((t) => t['status'] == col.$1).toList();
                       if (items.isEmpty) {
-                        return const Center(child: Text('لا توجد مهام هنا', style: TextStyle(color: Color(0xFF94A3B8))));
+                        return Center(child: Text(tr('لا توجد مهام هنا', 'No tasks here'), style: const TextStyle(color: Color(0xFF94A3B8))));
                       }
                       return RefreshIndicator(
                         onRefresh: _load,
@@ -194,10 +195,10 @@ class _TaskCard extends StatelessWidget {
               runSpacing: 6,
               children: [
                 if (task['priority'] != 'normal')
-                  _chip(p.$2, p.$3),
+                  _chip(tr(p.$2, p.$3), p.$4),
                 if (due != null)
                   _chip(
-                    '${overdue ? "متأخرة · " : ""}${due.day}/${due.month} ${due.hour}:${due.minute.toString().padLeft(2, '0')}',
+                    '${overdue ? tr('متأخرة · ', 'Overdue · ') : ''}${due.day}/${due.month} ${due.hour}:${due.minute.toString().padLeft(2, '0')}',
                     overdue ? const Color(0xFFDC2626) : const Color(0xFF64748B),
                   ),
                 if (comments > 0) _chip('💬 $comments', const Color(0xFF64748B)),
@@ -208,7 +209,7 @@ class _TaskCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    task['assigneeName']?.toString().isNotEmpty == true ? task['assigneeName'] : 'دون مسؤول',
+                    task['assigneeName']?.toString().isNotEmpty == true ? task['assigneeName'] : tr('دون مسؤول', 'Unassigned'),
                     style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -217,7 +218,7 @@ class _TaskCard extends StatelessWidget {
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFF94A3B8)),
-                    tooltip: 'إرجاع خطوة',
+                    tooltip: tr('إرجاع خطوة', 'Move back'),
                     onPressed: () => onMove(-1),
                   ),
                 if (!isLast)
@@ -228,7 +229,7 @@ class _TaskCard extends StatelessWidget {
                       size: task['status'] == 'follow_up' ? 20 : 16,
                       color: const Color(0xFF059669),
                     ),
-                    tooltip: 'الخطوة التالية',
+                    tooltip: tr('الخطوة التالية', 'Next step'),
                     onPressed: () => onMove(1),
                   ),
               ],
@@ -309,8 +310,8 @@ class _TaskSheetState extends State<_TaskSheet> {
             // الحالة
             DropdownButtonFormField<String>(
               initialValue: t['status'],
-              decoration: const InputDecoration(labelText: 'الحالة'),
-              items: _columns.map((c) => DropdownMenuItem(value: c.$1, child: Text(c.$2))).toList(),
+              decoration: InputDecoration(labelText: tr('الحالة', 'Status')),
+              items: _columns.map((c) => DropdownMenuItem(value: c.$1, child: Text(tr(c.$2, c.$3)))).toList(),
               onChanged: (v) {
                 if (v != null) {
                   setState(() => t['status'] = v);
@@ -321,9 +322,9 @@ class _TaskSheetState extends State<_TaskSheet> {
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               initialValue: (t['assignee'] ?? '') == '' ? '' : t['assignee'].toString(),
-              decoration: const InputDecoration(labelText: 'المسؤول عن التنفيذ'),
+              decoration: InputDecoration(labelText: tr('المسؤول عن التنفيذ', 'Assignee')),
               items: [
-                const DropdownMenuItem(value: '', child: Text('دون مسؤول')),
+                DropdownMenuItem(value: '', child: Text(tr('دون مسؤول', 'Unassigned'))),
                 ...widget.assignees.map((a) => DropdownMenuItem(value: a['_id'].toString(), child: Text(a['name'] ?? ''))),
               ],
               onChanged: (v) {
@@ -332,10 +333,10 @@ class _TaskSheetState extends State<_TaskSheet> {
               },
             ),
             const SizedBox(height: 18),
-            const Text('المحادثة والمتابعة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            Text(tr('المحادثة والمتابعة', 'Conversation'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
             const SizedBox(height: 8),
             if (comments.isEmpty)
-              const Text('لا توجد تعليقات بعد — ابدأ الحوار.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
+              Text(tr('لا توجد تعليقات بعد — ابدأ الحوار.', 'No comments yet.'), style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
             ...comments.map((c) => Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(10),
@@ -359,7 +360,7 @@ class _TaskSheetState extends State<_TaskSheet> {
                 Expanded(
                   child: TextField(
                     controller: _comment,
-                    decoration: const InputDecoration(hintText: 'اكتب تعليقًا أو متابعة…'),
+                    decoration: InputDecoration(hintText: tr('اكتب تعليقًا أو متابعة…', 'Write a comment…')),
                     onSubmitted: (_) => _sendComment(),
                   ),
                 ),
@@ -425,17 +426,17 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('مهمة جديدة', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(tr('مهمة جديدة', 'New Task'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
-          TextField(controller: _title, decoration: const InputDecoration(labelText: 'عنوان المهمة *')),
+          TextField(controller: _title, decoration: InputDecoration(labelText: tr('عنوان المهمة *', 'Title *'))),
           const SizedBox(height: 10),
-          TextField(controller: _desc, maxLines: 2, decoration: const InputDecoration(labelText: 'التفاصيل')),
+          TextField(controller: _desc, maxLines: 2, decoration: InputDecoration(labelText: tr('التفاصيل', 'Details'))),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
             initialValue: _assignee,
-            decoration: const InputDecoration(labelText: 'المسؤول عن التنفيذ'),
+            decoration: InputDecoration(labelText: tr('المسؤول عن التنفيذ', 'Assignee')),
             items: [
-              const DropdownMenuItem(value: '', child: Text('دون مسؤول')),
+              DropdownMenuItem(value: '', child: Text(tr('دون مسؤول', 'Unassigned'))),
               ...widget.assignees.map((a) => DropdownMenuItem(value: a['_id'].toString(), child: Text(a['name'] ?? ''))),
             ],
             onChanged: (v) => setState(() => _assignee = v ?? ''),
@@ -443,14 +444,14 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
             initialValue: _priority,
-            decoration: const InputDecoration(labelText: 'الأولوية'),
-            items: _priorities.map((p) => DropdownMenuItem(value: p.$1, child: Text(p.$2))).toList(),
+            decoration: InputDecoration(labelText: tr('الأولوية', 'Priority')),
+            items: _priorities.map((p) => DropdownMenuItem(value: p.$1, child: Text(tr(p.$2, p.$3)))).toList(),
             onChanged: (v) => setState(() => _priority = v ?? 'normal'),
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
             icon: const Icon(Icons.calendar_month),
-            label: Text('الاستحقاق: ${_due.day}/${_due.month}/${_due.year} — ${_due.hour}:${_due.minute.toString().padLeft(2, '0')}'),
+            label: Text('${tr('الاستحقاق', 'Due')}: ${_due.day}/${_due.month}/${_due.year} — ${_due.hour}:${_due.minute.toString().padLeft(2, '0')}'),
             onPressed: () async {
               final d = await showDatePicker(
                 context: context,
@@ -468,7 +469,7 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
             onPressed: _busy ? null : _save,
             child: _busy
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('إضافة المهمة'),
+                : Text(tr('إضافة المهمة', 'Add Task')),
           ),
         ],
       ),

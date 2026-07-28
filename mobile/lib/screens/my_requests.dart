@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/api.dart';
+import '../services/lang.dart';
 import '../services/live.dart';
 
 /// طلباتي — HR requests (salary certificate, letters, …): history + new request.
@@ -11,20 +12,20 @@ class MyRequestsScreen extends StatefulWidget {
 }
 
 const _categories = [
-  ('salary_certificate', 'تعريف بالراتب'),
-  ('letter', 'خطاب رسمي'),
-  ('document', 'مستند'),
-  ('data_update', 'تحديث بيانات'),
-  ('complaint', 'شكوى'),
-  ('other', 'أخرى'),
+  ('salary_certificate', 'تعريف بالراتب', 'Salary certificate'),
+  ('letter', 'خطاب رسمي', 'Official letter'),
+  ('document', 'مستند', 'Document'),
+  ('data_update', 'تحديث بيانات', 'Data update'),
+  ('complaint', 'شكوى', 'Complaint'),
+  ('other', 'أخرى', 'Other'),
 ];
 
 const _reqStatus = {
-  'open': ('مفتوح', Color(0xFFD97706)),
-  'in_progress': ('قيد التنفيذ', Color(0xFF2563EB)),
-  'received': ('تم الاستلام', Color(0xFF7C3AED)),
-  'resolved': ('تم التسليم', Color(0xFF059669)),
-  'closed': ('مغلق', Color(0xFF64748B)),
+  'open': ('مفتوح', 'Open', Color(0xFFD97706)),
+  'in_progress': ('قيد التنفيذ', 'In progress', Color(0xFF2563EB)),
+  'received': ('تم الاستلام', 'Received', Color(0xFF7C3AED)),
+  'resolved': ('تم التسليم', 'Delivered', Color(0xFF059669)),
+  'closed': ('مغلق', 'Closed', Color(0xFF64748B)),
 };
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
@@ -71,34 +72,36 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     );
   }
 
-  String _catLabel(String? key) =>
-      _categories.firstWhere((c) => c.$1 == key, orElse: () => ('other', 'أخرى')).$2;
+  String _catLabel(String? key) {
+    final c = _categories.firstWhere((x) => x.$1 == key, orElse: () => _categories.last);
+    return tr(c.$2, c.$3);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('طلباتي')),
+      appBar: AppBar(title: Text(tr('طلباتي', 'My Requests'))),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(AppConfig.navy),
         foregroundColor: Colors.white,
         onPressed: _newRequest,
         icon: const Icon(Icons.add),
-        label: const Text('طلب جديد'),
+        label: Text(tr('طلب جديد', 'New request')),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Text(_error!, textAlign: TextAlign.center),
-                  TextButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+                  TextButton(onPressed: _load, child: Text(tr('إعادة المحاولة', 'Retry'))),
                 ]))
               : RefreshIndicator(
                   onRefresh: _load,
                   child: _requests.isEmpty
-                      ? ListView(children: const [
+                      ? ListView(children: [
                           Padding(
-                            padding: EdgeInsets.only(top: 100),
-                            child: Center(child: Text('لا توجد طلبات بعد', style: TextStyle(color: Color(0xFF94A3B8)))),
+                            padding: const EdgeInsets.only(top: 100),
+                            child: Center(child: Text(tr('لا توجد طلبات بعد', 'No requests yet'), style: const TextStyle(color: Color(0xFF94A3B8)))),
                           ),
                         ])
                       : ListView.separated(
@@ -107,7 +110,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           separatorBuilder: (_, __) => const SizedBox(height: 10),
                           itemBuilder: (c, i) {
                             final r = _requests[i];
-                            final st = _reqStatus[r['status']] ?? ('—', const Color(0xFF64748B));
+                            final st = _reqStatus[r['status']] ?? ('—', '—', const Color(0xFF64748B));
                             return Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
@@ -122,8 +125,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                     Expanded(child: Text(r['subject'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold))),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(color: st.$2.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-                                      child: Text(st.$1, style: TextStyle(color: st.$2, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      decoration: BoxDecoration(color: st.$3.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                                      child: Text(tr(st.$1, st.$2), style: TextStyle(color: st.$3, fontSize: 12, fontWeight: FontWeight.bold)),
                                     ),
                                   ]),
                                   const SizedBox(height: 4),
@@ -177,24 +180,24 @@ class _NewRequestSheetState extends State<_NewRequestSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('طلب جديد', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(tr('طلب جديد', 'New request'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
             initialValue: _category,
-            decoration: const InputDecoration(labelText: 'نوع الطلب'),
-            items: _categories.map((c) => DropdownMenuItem(value: c.$1, child: Text(c.$2))).toList(),
+            decoration: InputDecoration(labelText: tr('نوع الطلب', 'Request type')),
+            items: _categories.map((c) => DropdownMenuItem(value: c.$1, child: Text(tr(c.$2, c.$3)))).toList(),
             onChanged: (v) => setState(() => _category = v ?? 'other'),
           ),
           const SizedBox(height: 10),
-          TextField(controller: _subject, decoration: const InputDecoration(labelText: 'الموضوع *')),
+          TextField(controller: _subject, decoration: InputDecoration(labelText: tr('الموضوع *', 'Subject *'))),
           const SizedBox(height: 10),
-          TextField(controller: _body, maxLines: 3, decoration: const InputDecoration(labelText: 'التفاصيل')),
+          TextField(controller: _body, maxLines: 3, decoration: InputDecoration(labelText: tr('التفاصيل', 'Details'))),
           const SizedBox(height: 14),
           FilledButton(
             onPressed: _busy ? null : _save,
             child: _busy
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('إرسال الطلب'),
+                : Text(tr('إرسال الطلب', 'Submit')),
           ),
         ],
       ),

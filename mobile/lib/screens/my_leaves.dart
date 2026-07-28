@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/api.dart';
+import '../services/lang.dart';
 import '../services/live.dart';
 
 /// إجازاتي — the self-service leave page: balance cards, request history and
@@ -12,11 +13,11 @@ class MyLeavesScreen extends StatefulWidget {
 }
 
 const _leaveStatus = {
-  'pending_manager': ('عند المدير', Color(0xFFD97706)),
-  'pending_hr': ('عند الموارد البشرية', Color(0xFF2563EB)),
-  'approved': ('مقبولة', Color(0xFF059669)),
-  'rejected': ('مرفوضة', Color(0xFFDC2626)),
-  'cancelled': ('ملغاة', Color(0xFF64748B)),
+  'pending_manager': ('عند المدير', 'With manager', Color(0xFFD97706)),
+  'pending_hr': ('عند الموارد البشرية', 'With HR', Color(0xFF2563EB)),
+  'approved': ('مقبولة', 'Approved', Color(0xFF059669)),
+  'rejected': ('مرفوضة', 'Rejected', Color(0xFFDC2626)),
+  'cancelled': ('ملغاة', 'Cancelled', Color(0xFF64748B)),
 };
 
 class _MyLeavesScreenState extends State<MyLeavesScreen> {
@@ -77,20 +78,20 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('إجازاتي')),
+      appBar: AppBar(title: Text(tr('إجازاتي', 'My Leaves'))),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(AppConfig.navy),
         foregroundColor: Colors.white,
         onPressed: _newRequest,
         icon: const Icon(Icons.add),
-        label: const Text('طلب إجازة'),
+        label: Text(tr('طلب إجازة', 'Request leave')),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Text(_error!, textAlign: TextAlign.center),
-                  TextButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+                  TextButton(onPressed: _load, child: Text(tr('إعادة المحاولة', 'Retry'))),
                 ]))
               : RefreshIndicator(
                   onRefresh: _load,
@@ -100,20 +101,20 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                       if (_balance != null)
                         Row(
                           children: [
-                            _stat('الاستحقاق', _balance!['entitlement']),
-                            _stat('المتراكم', _balance!['accrued']),
-                            _stat('المستخدم', _balance!['taken']),
-                            _stat('المتاح', _balance!['available'], highlight: true),
+                            _stat(tr('الاستحقاق', 'Entitled'), _balance!['entitlement']),
+                            _stat(tr('المتراكم', 'Accrued'), _balance!['accrued']),
+                            _stat(tr('المستخدم', 'Taken'), _balance!['taken']),
+                            _stat(tr('المتاح', 'Available'), _balance!['available'], highlight: true),
                           ],
                         ),
                       const SizedBox(height: 14),
                       if (_leaves.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 60),
-                          child: Center(child: Text('لا توجد طلبات إجازة بعد', style: TextStyle(color: Color(0xFF94A3B8)))),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 60),
+                          child: Center(child: Text(tr('لا توجد طلبات إجازة بعد', 'No leave requests yet'), style: const TextStyle(color: Color(0xFF94A3B8)))),
                         ),
                       ..._leaves.map((l) {
-                        final st = _leaveStatus[l['status']] ?? ('—', const Color(0xFF64748B));
+                        final st = _leaveStatus[l['status']] ?? ('—', '—', const Color(0xFF64748B));
                         final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
                         final canCancel = l['status'] == 'pending_manager' || l['status'] == 'pending_hr';
                         return Container(
@@ -132,13 +133,13 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                   Expanded(child: Text(type.toString(), style: const TextStyle(fontWeight: FontWeight.bold))),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(color: st.$2.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-                                    child: Text(st.$1, style: TextStyle(color: st.$2, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    decoration: BoxDecoration(color: st.$3.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                                    child: Text(tr(st.$1, st.$2), style: TextStyle(color: st.$3, fontSize: 12, fontWeight: FontWeight.bold)),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              Text('${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} يوم',
+                              Text('${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                                   style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
                               if ((l['reason'] ?? '').toString().isNotEmpty)
                                 Text(l['reason'], style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
@@ -154,7 +155,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
                                       }
                                     },
-                                    child: const Text('إلغاء الطلب', style: TextStyle(color: Color(0xFFDC2626), fontSize: 12)),
+                                    child: Text(tr('إلغاء الطلب', 'Cancel request'), style: const TextStyle(color: Color(0xFFDC2626), fontSize: 12)),
                                   ),
                                 ),
                             ],
@@ -234,18 +235,18 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
 
   @override
   Widget build(BuildContext context) {
-    String fmt(DateTime? d) => d == null ? 'اختر التاريخ' : '${d.day}/${d.month}/${d.year}';
+    String fmt(DateTime? d) => d == null ? tr('اختر التاريخ', 'Pick date') : '${d.day}/${d.month}/${d.year}';
     return Padding(
       padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(context).viewInsets.bottom + 18),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('طلب إجازة جديد', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(tr('طلب إجازة جديد', 'New leave request'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
             initialValue: _type.isEmpty ? null : _type,
-            decoration: const InputDecoration(labelText: 'نوع الإجازة *'),
+            decoration: InputDecoration(labelText: tr('نوع الإجازة *', 'Leave type *')),
             items: widget.types
                 .map((t) => DropdownMenuItem(value: t['_id'].toString(), child: Text(t['nameAr'] ?? t['nameEn'] ?? '')))
                 .toList(),
@@ -256,25 +257,25 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
             Expanded(
               child: OutlinedButton(
                 onPressed: () async { final d = await _pick(_start); if (d != null) setState(() => _start = d); },
-                child: Text('من: ${fmt(_start)}'),
+                child: Text('${tr('من', 'From')}: ${fmt(_start)}'),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton(
                 onPressed: () async { final d = await _pick(_end ?? _start); if (d != null) setState(() => _end = d); },
-                child: Text('إلى: ${fmt(_end)}'),
+                child: Text('${tr('إلى', 'To')}: ${fmt(_end)}'),
               ),
             ),
           ]),
           const SizedBox(height: 10),
-          TextField(controller: _reason, decoration: const InputDecoration(labelText: 'السبب')),
+          TextField(controller: _reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
           const SizedBox(height: 14),
           FilledButton(
             onPressed: _busy || _type.isEmpty || _start == null || _end == null ? null : _save,
             child: _busy
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('إرسال الطلب'),
+                : Text(tr('إرسال الطلب', 'Submit')),
           ),
         ],
       ),

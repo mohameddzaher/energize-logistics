@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/lang.dart';
 import '../services/live.dart';
 
 /// موافقات فريقي — leave requests from the manager's direct reports awaiting
@@ -50,19 +51,19 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text(decision == 'approve' ? 'اعتماد الطلب' : 'رفض الطلب'),
+        title: Text(decision == 'approve' ? tr('اعتماد الطلب', 'Approve request') : tr('رفض الطلب', 'Reject request')),
         content: TextField(
           controller: note,
-          decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)'),
+          decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: decision == 'approve' ? const Color(0xFF059669) : const Color(0xFFDC2626),
             ),
             onPressed: () => Navigator.pop(c, true),
-            child: Text(decision == 'approve' ? 'اعتماد' : 'رفض'),
+            child: Text(decision == 'approve' ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
           ),
         ],
       ),
@@ -90,13 +91,13 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     final past = _leaves.where((l) => l['status'] != 'pending_manager').toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('موافقات فريقي')),
+      appBar: AppBar(title: Text(tr('موافقات فريقي', 'Team Approvals'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Text(_error!, textAlign: TextAlign.center),
-                  TextButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+                  TextButton(onPressed: _load, child: Text(tr('إعادة المحاولة', 'Retry'))),
                 ]))
               : RefreshIndicator(
                   onRefresh: _load,
@@ -104,15 +105,15 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                     padding: const EdgeInsets.all(14),
                     children: [
                       if (pending.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 40),
-                          child: Center(child: Text('لا توجد طلبات منتظرة لقرارك ✅', style: TextStyle(color: Color(0xFF64748B)))),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 40),
+                          child: Center(child: Text(tr('لا توجد طلبات منتظرة لقرارك ✅', 'Nothing awaiting your decision ✅'), style: const TextStyle(color: Color(0xFF64748B)))),
                         ),
                       ...pending.map((l) => _card(l, actionable: true)),
                       if (past.isNotEmpty) ...[
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 10),
-                          child: Text('قرارات سابقة', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Text(tr('قرارات سابقة', 'Past decisions'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                         ),
                         ...past.take(15).map((l) => _card(l, actionable: false)),
                       ],
@@ -140,7 +141,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
         children: [
           Text(emp, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
           const SizedBox(height: 4),
-          Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} يوم',
+          Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
               style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
           if ((l['reason'] ?? '').toString().isNotEmpty)
             Text(l['reason'], style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
@@ -151,7 +152,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                 child: FilledButton(
                   style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669), minimumSize: const Size.fromHeight(40)),
                   onPressed: () => _decide(l, 'approve'),
-                  child: const Text('اعتماد'),
+                  child: Text(tr('اعتماد', 'Approve')),
                 ),
               ),
               const SizedBox(width: 8),
@@ -159,13 +160,13 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                 child: FilledButton(
                   style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626), minimumSize: const Size.fromHeight(40)),
                   onPressed: () => _decide(l, 'reject'),
-                  child: const Text('رفض'),
+                  child: Text(tr('رفض', 'Reject')),
                 ),
               ),
             ]),
           ] else
             Text(
-              l['status'] == 'approved' ? '✔ معتمدة' : l['status'] == 'rejected' ? '✖ مرفوضة' : l['status'] == 'pending_hr' ? 'عند الموارد البشرية' : '—',
+              l['status'] == 'approved' ? tr('✔ معتمدة', '✔ Approved') : l['status'] == 'rejected' ? tr('✖ مرفوضة', '✖ Rejected') : l['status'] == 'pending_hr' ? tr('عند الموارد البشرية', 'With HR') : '—',
               style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
             ),
         ],

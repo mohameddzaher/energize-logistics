@@ -18,11 +18,27 @@ dependencies:
   # State management (auth session + boards).
   provider: ^6.1.2
   intl: ^0.19.0
+  # خط عربي احترافي (Tajawal) — يُحمَّل ويُخزَّن تلقائيًا.
+  google_fonts: ^6.2.1
+  # المتصفح المدمج — كل صفحات السيستم غير الناتيف تفتح داخل التطبيق.
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1
+
+# أيقونة التطبيق — لوجو الشركة على خلفية كحلية (نفس هوية الموقع).
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: assets/icon.png
+  adaptive_icon_background: "#12325C"
+  adaptive_icon_foreground: assets/icon_fg.png
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo.png

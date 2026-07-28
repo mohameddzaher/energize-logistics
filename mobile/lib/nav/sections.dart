@@ -17,6 +17,8 @@ import '../screens/hr_employees.dart';
 import '../screens/ls2_vehicles.dart';
 import '../screens/section_work.dart';
 import '../screens/team_board.dart';
+import '../screens/finance_suite.dart';
+import '../screens/remote_attendance.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -59,6 +61,15 @@ List<AppSection> sectionsFor(AuthProvider auth) {
   }
 
   final all = <AppSection>[
+    AppSection(
+      key: 'Customers & Finance', arTitle: 'العملاء والمالية', enTitle: 'Customers & Finance', icon: Icons.payments_outlined,
+      roles: const [..._admins, 'employee', 'operations_manager', 'moderator'],
+      pages: [
+        AppPage('العملاء', 'Customers', Icons.people_outline, (c) => const CustomersScreen()),
+        AppPage('الفواتير', 'Invoices', Icons.receipt_long_outlined, (c) => const InvoicesScreen()),
+        AppPage('المدفوعات', 'Payments', Icons.payments_outlined, (c) => const PaymentsScreen()),
+      ],
+    ),
     AppSection(
       key: 'Administration', arTitle: 'الشؤون الإدارية', enTitle: 'Administration', icon: Icons.dashboard_customize_outlined,
       roles: const [..._admins, 'administrator', 'bd_manager'],
@@ -193,6 +204,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Customs', arTitle: 'التخليص الجمركي', enTitle: 'Customs', icon: Icons.directions_boat_outlined,
       roles: const [..._admins, 'operations_manager', 'customs_manager', 'customs_officer'],
       pages: [
+        AppPage('التخليص الجمركي', 'Clearances', Icons.directions_boat_outlined, (c) => ResourceScreen(config: customsCfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'customs')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'customs', complaints: true)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
@@ -205,6 +217,13 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'it')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'it', complaints: true)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
+      ],
+    ),
+    AppSection(
+      key: 'Remote', arTitle: 'العمل عن بُعد', enTitle: 'Remote', icon: Icons.laptop_mac_outlined,
+      roles: const [..._admins, 'remote_manager', 'remote_employee'],
+      pages: [
+        AppPage('الحضور والانصراف', 'Attendance', Icons.fingerprint_outlined, (c) => const RemoteAttendanceScreen()),
       ],
     ),
     AppSection(

@@ -16,11 +16,11 @@
 - [ ] `main/low-visit-customers` — العملاء منخفضو الزيارة — API: /api/tasks/low-visit-customers
 
 ## العملاء والمالية / Customers & Finance
-- [ ] `customers` — العملاء — CRUD + stop/unstop + export — API: /api/customers
+- [~] `customers` — العملاء ✓ (قائمة+بحث+ملف موجز بالأرصدة) — باقي: إنشاء/تعديل + stop/unstop + export
 - [ ] `customers/[id]` — ملف العميل — profile+invoices+payments+risk+credit-term — API: multiple
-- [ ] `invoices` — الفواتير — CRUD + mark-paid + refund — API: /api/invoices
+- [~] `invoices` — الفواتير ✓ (قائمة+فلاتر حالات+تحصيل كامل) — باقي: إنشاء/تعديل + refund
 - [ ] `invoices/[id]` — تفاصيل الفاتورة — status/freeze/refund/record payment — API: /api/invoices/${id}
-- [ ] `payments` — المدفوعات — create/bulk/auto-allocate — API: /api/payments
+- [~] `payments` — المدفوعات ✓ (قائمة+بحث+إجمالي) — باقي: إنشاء/تخصيص
 - [ ] `collections` — التحصيلات — complete/promise/follow-ups — API: /api/collections
 - [ ] `collectors` + `collectors/[id]` — المحصلين وأداؤهم — API: /api/analytics/performance
 - [ ] `tasks` — المهام — CRUD + AI suggestions — API: /api/tasks
@@ -63,7 +63,7 @@
 - [ ] `fleet/my-tasks` + `complaints` (SectionWork) + `kpis` (TeamBoard)
 
 ## التخليص الجمركي / customs
-- [ ] `customs` — قائمة التخليص — CRUD + status
+- [x] `customs` — قائمة التخليص — CRUD كامل بالمراحل الـ11
 - [ ] `customs/[id]` — تفاصيل التخليص (pipeline 11 مرحلة + checklists)
 - [ ] `customs/guide` — الدليل
 - [ ] `customs/analytics` — التحليلات
@@ -107,7 +107,7 @@
 - [ ] `dashboard` | `reps-performance` | `daily-entry` | `reps` | `projects` | `custody` (عهدة) | `kpis`
 
 ## العمل عن بُعد / remote
-- [ ] `attendance` (check-in/out) | `dashboard` | `leave` | `chat` | `tasks` | `report` | `announcements` | `kpis`
+- [~] `attendance` ✓ (حضور/انصراف + السجل) — باقي: dashboard/leave/chat/tasks/report/announcements/kpis
 
 ## الموارد البشرية / hr
 - [x] `hr/dashboard` — اللوحة

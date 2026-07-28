@@ -564,3 +564,61 @@ final hrLeaveTypesCfg = ResourceConfig(
     FieldSpec('code', 'الكود', 'Code'),
   ],
 );
+
+// ── التخليص الجمركي ──────────────────────────────────────────────────────────
+final customsCfg = ResourceConfig(
+  arTitle: 'التخليص الجمركي', enTitle: 'Customs Clearance', icon: Icons.directions_boat_outlined,
+  endpoint: '/api/customs-clearance', listKey: 'clearances', liveEvent: 'customs:updated',
+  searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city'],
+  titleOf: (r) => _s(r, 'refNumber').isNotEmpty ? '${_s(r, 'refNumber')} — ${_s(r, 'customerName')}' : _s(r, 'customerName'),
+  subtitleOf: (r) => [
+    if (_s(r, 'blNumber').isNotEmpty) 'BL: ${_s(r, 'blNumber')}',
+    if (_s(r, 'exporterCompany').isNotEmpty) _s(r, 'exporterCompany'),
+  ].join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'stage')) {
+      'papers_received' => ('استلام الأوراق', T.inkSoft),
+      'declaration_paid' => ('سداد البيان', T.info),
+      'do_requested' => ('طلب إذن التسليم', T.info),
+      'do_linked' => ('ربط إذن التسليم', T.cyan),
+      'port_fees_paid' => ('سداد أجور الموانئ', T.cyan),
+      'unloading_fees_paid' => ('سداد أجور التفريغ', T.cyan),
+      'transport_order' => ('أمر نقل', T.violet),
+      'containers_transported' => ('نقل الحاويات', T.violet),
+      'unloaded_stored' => ('التفريغ والتخزين', T.warn),
+      'containers_returned' => ('إرجاع الحاويات', T.warn),
+      'invoiced' => ('تمت الفوترة', T.success),
+      _ => (_s(r, 'stage'), T.inkFaint),
+    },
+    if (r['containerCount'] != null) ('${r['containerCount']} حاوية', T.navy),
+    (_s(r, 'branch') == 'dammam' ? 'الدمام' : 'جدة', T.inkSoft),
+  ],
+  fields: const [
+    FieldSpec('refNumber', 'الرقم المرجعي', 'Ref number'),
+    FieldSpec('customerName', 'اسم العميل', 'Customer', required: true),
+    FieldSpec('blNumber', 'رقم البوليصة BL', 'BL number'),
+    FieldSpec('declarationNumber', 'رقم البيان الجمركي', 'Declaration no.'),
+    FieldSpec('exporterCompany', 'الشركة المصدّرة', 'Exporter'),
+    FieldSpec('countryOfOrigin', 'بلد المنشأ', 'Origin country'),
+    FieldSpec('containerCount', 'عدد الحاويات', 'Containers', type: FieldType.number),
+    FieldSpec('invoiceValue', 'قيمة الفاتورة', 'Invoice value', type: FieldType.number),
+    FieldSpec('branch', 'الفرع', 'Branch', type: FieldType.select, options: [
+      ('jeddah', 'جدة', 'Jeddah'), ('dammam', 'الدمام', 'Dammam'),
+    ]),
+    FieldSpec('stage', 'المرحلة', 'Stage', type: FieldType.select, options: [
+      ('papers_received', 'استلام الأوراق', 'Papers received'),
+      ('declaration_paid', 'طباعة البيان وسداده', 'Declaration paid'),
+      ('do_requested', 'طلب إذن التسليم', 'DO requested'),
+      ('do_linked', 'ربط إذن التسليم', 'DO linked'),
+      ('port_fees_paid', 'سداد أجور الموانئ', 'Port fees paid'),
+      ('unloading_fees_paid', 'سداد أجور التفريغ', 'Unloading fees paid'),
+      ('transport_order', 'أمر نقل', 'Transport order'),
+      ('containers_transported', 'نقل الحاويات', 'Containers moved'),
+      ('unloaded_stored', 'التفريغ والتخزين', 'Unloaded & stored'),
+      ('containers_returned', 'إرجاع الحاويات', 'Containers returned'),
+      ('invoiced', 'عمل الفواتير', 'Invoiced'),
+    ]),
+    FieldSpec('declarationDate', 'تاريخ البيان', 'Declaration date', type: FieldType.date),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);

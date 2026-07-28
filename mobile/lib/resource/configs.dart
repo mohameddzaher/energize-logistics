@@ -376,3 +376,191 @@ final workshopPurchasesCfg = ResourceConfig(
     FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
   ],
 );
+
+// ── إدارة العلاقات: الصفقات والمهام والأنشطة ─────────────────────────────────
+final crmDealsCfg = ResourceConfig(
+  arTitle: 'الصفقات', enTitle: 'Deals', icon: Icons.attach_money_outlined,
+  endpoint: '/api/crm/deals', listKey: 'deals', liveEvent: 'crm:deal',
+  searchFields: const ['title', 'stage', 'source'],
+  titleOf: (r) => _s(r, 'title'),
+  subtitleOf: (r) => [_s(r, 'source')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    (_s(r, 'stage'), T.cyan),
+    if (r['value'] != null) ('${r['value']} ${_s(r, 'currency')}', T.success),
+    if (r['probability'] != null) ('${r['probability']}%', T.inkSoft),
+  ],
+  fields: const [
+    FieldSpec('title', 'عنوان الصفقة', 'Title', required: true),
+    FieldSpec('stage', 'المرحلة', 'Stage', type: FieldType.select, options: [
+      ('lead', 'عميل محتمل', 'Lead'), ('qualified', 'مؤهلة', 'Qualified'),
+      ('proposal', 'عرض مقدم', 'Proposal'), ('negotiation', 'تفاوض', 'Negotiation'),
+      ('won', 'مكسوبة', 'Won'), ('lost', 'خاسرة', 'Lost'),
+    ]),
+    FieldSpec('value', 'القيمة', 'Value', type: FieldType.number),
+    FieldSpec('probability', 'الاحتمالية %', 'Probability %', type: FieldType.number),
+    FieldSpec('expectedCloseDate', 'تاريخ الإغلاق المتوقع', 'Expected close', type: FieldType.date),
+    FieldSpec('source', 'المصدر', 'Source'),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+final crmTasksCfg = ResourceConfig(
+  arTitle: 'مهام العلاقات', enTitle: 'CRM Tasks', icon: Icons.task_alt_outlined,
+  endpoint: '/api/crm/tasks', listKey: 'tasks', liveEvent: 'crm:task',
+  searchFields: const ['title', 'status', 'priority'],
+  titleOf: (r) => _s(r, 'title'),
+  subtitleOf: (r) => _s(r, 'description'),
+  chipsOf: (r) => [
+    switch (_s(r, 'status')) {
+      'done' => ('منجزة', T.success),
+      'in_progress' => ('قيد التنفيذ', T.info),
+      _ => ('مفتوحة', T.warn),
+    },
+    if (_s(r, 'dueDate').isNotEmpty) (_s(r, 'dueDate').split('T').first, T.inkSoft),
+  ],
+  fields: const [
+    FieldSpec('title', 'العنوان', 'Title', required: true),
+    FieldSpec('description', 'التفاصيل', 'Details', type: FieldType.textarea),
+    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
+      ('open', 'مفتوحة', 'Open'), ('in_progress', 'قيد التنفيذ', 'In progress'), ('done', 'منجزة', 'Done'),
+    ]),
+    FieldSpec('priority', 'الأولوية', 'Priority', type: FieldType.select, options: [
+      ('high', 'مرتفعة', 'High'), ('medium', 'متوسطة', 'Medium'), ('low', 'منخفضة', 'Low'),
+    ]),
+    FieldSpec('dueDate', 'تاريخ الاستحقاق', 'Due date', type: FieldType.date),
+  ],
+);
+
+final crmActivitiesCfg = ResourceConfig(
+  arTitle: 'الأنشطة', enTitle: 'Activities', icon: Icons.history_outlined,
+  endpoint: '/api/crm/activities', listKey: 'activities', liveEvent: 'crm:activity',
+  searchFields: const ['subject', 'type', 'outcome'],
+  titleOf: (r) => _s(r, 'subject'),
+  subtitleOf: (r) => _s(r, 'body'),
+  chipsOf: (r) => [
+    (_s(r, 'type'), T.violet),
+    if (_s(r, 'outcome').isNotEmpty) (_s(r, 'outcome'), T.success),
+  ],
+  fields: const [
+    FieldSpec('subject', 'الموضوع', 'Subject', required: true),
+    FieldSpec('type', 'النوع', 'Type', type: FieldType.select, options: [
+      ('call', 'مكالمة', 'Call'), ('meeting', 'اجتماع', 'Meeting'),
+      ('email', 'بريد', 'Email'), ('visit', 'زيارة', 'Visit'), ('whatsapp', 'واتساب', 'WhatsApp'),
+    ]),
+    FieldSpec('date', 'التاريخ', 'Date', type: FieldType.date),
+    FieldSpec('outcome', 'النتيجة', 'Outcome'),
+    FieldSpec('body', 'التفاصيل', 'Details', type: FieldType.textarea),
+  ],
+);
+
+// ── المبيعات ─────────────────────────────────────────────────────────────────
+final salesTargetsCfg = ResourceConfig(
+  arTitle: 'الأهداف', enTitle: 'Targets', icon: Icons.track_changes_outlined,
+  endpoint: '/api/sales/targets', listKey: 'targets', liveEvent: 'sales:updated',
+  searchFields: const ['period', 'notes'],
+  titleOf: (r) => _s(r, 'period'),
+  subtitleOf: (r) => _s(r, 'notes'),
+  chipsOf: (r) => [
+    if (r['amountTarget'] != null) ('${r['amountTarget']} ر.س', T.success),
+    if (r['dealsTarget'] != null) ('${r['dealsTarget']} صفقة', T.info),
+  ],
+  fields: const [
+    FieldSpec('period', 'الفترة (YYYY-MM)', 'Period (YYYY-MM)', required: true),
+    FieldSpec('amountTarget', 'هدف المبلغ', 'Amount target', type: FieldType.number),
+    FieldSpec('dealsTarget', 'هدف الصفقات', 'Deals target', type: FieldType.number),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+// ── الإدارة (Admin) ──────────────────────────────────────────────────────────
+final branchesCfg = ResourceConfig(
+  arTitle: 'الفروع', enTitle: 'Branches', icon: Icons.store_mall_directory_outlined,
+  endpoint: '/api/branches', listKey: 'branches', liveEvent: 'branch:updated',
+  searchFields: const ['name', 'code', 'city'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'code'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),
+  fields: const [
+    FieldSpec('name', 'اسم الفرع', 'Name', required: true),
+    FieldSpec('code', 'الكود', 'Code'),
+    FieldSpec('city', 'المدينة', 'City'),
+  ],
+);
+
+final expenseCategoriesCfg = ResourceConfig(
+  arTitle: 'فئات المصروفات', enTitle: 'Expense Categories', icon: Icons.category_outlined,
+  endpoint: '/api/expense-categories', listKey: 'categories', liveEvent: 'expense:updated',
+  searchFields: const ['name', 'description'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => _s(r, 'description'),
+  fields: const [
+    FieldSpec('name', 'اسم الفئة', 'Name', required: true),
+    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
+  ],
+);
+
+// ── لوكيشن سوليوشن: الإصلاحات ────────────────────────────────────────────────
+final ls2RepairsCfg = ResourceConfig(
+  arTitle: 'الإصلاحات', enTitle: 'Repairs', icon: Icons.home_repair_service_outlined,
+  endpoint: '/api/ls2/repairs', listKey: 'items', liveEvent: 'ls2:updated',
+  searchFields: const ['description', 'category', 'status', 'plate'],
+  titleOf: (r) => _s(r, 'description').isNotEmpty ? _s(r, 'description') : _s(r, 'category'),
+  subtitleOf: (r) => [_s(r, 'plate'), _s(r, 'vehicleName')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (_s(r, 'category').isNotEmpty) (_s(r, 'category'), T.violet),
+    if (r['cost'] != null) ('${r['cost']} ر.س', T.success),
+    switch (_s(r, 'status')) {
+      'done' => ('منجز', T.success),
+      'in_progress' => ('قيد التنفيذ', T.info),
+      _ => (_s(r, 'status').isEmpty ? 'مفتوح' : _s(r, 'status'), T.warn),
+    },
+  ],
+  fields: const [
+    FieldSpec('unitId', 'رقم الوحدة (Unit ID)', 'Unit ID', type: FieldType.number, required: true),
+    FieldSpec('category', 'التصنيف', 'Category'),
+    FieldSpec('description', 'وصف الإصلاح', 'Description', type: FieldType.textarea, required: true),
+    FieldSpec('cost', 'التكلفة', 'Cost', type: FieldType.number),
+    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
+      ('open', 'مفتوح', 'Open'), ('in_progress', 'قيد التنفيذ', 'In progress'), ('done', 'منجز', 'Done'),
+    ]),
+  ],
+);
+
+// ── الموارد البشرية: التراخيص وأنواع الإجازات ────────────────────────────────
+final hrLicensesCfg = ResourceConfig(
+  arTitle: 'التراخيص والاشتراكات', enTitle: 'Licenses', icon: Icons.workspace_premium_outlined,
+  endpoint: '/api/hr/licenses', listKey: 'items', liveEvent: 'hr:license',
+  searchFields: const ['name', 'category', 'issuer', 'city'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'category'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) {
+    final end = DateTime.tryParse(_s(r, 'endDate'));
+    final days = end?.difference(DateTime.now()).inDays;
+    return [
+      if (days != null)
+        days < 0 ? ('منتهية', T.danger) : days <= 60 ? ('باقي $days يوم', T.warn) : ('سارية', T.success),
+    ];
+  },
+  fields: const [
+    FieldSpec('name', 'اسم الترخيص', 'Name', required: true),
+    FieldSpec('category', 'التصنيف', 'Category', required: true),
+    FieldSpec('issuer', 'الجهة المصدرة', 'Issuer'),
+    FieldSpec('city', 'المدينة', 'City'),
+    FieldSpec('startDate', 'تاريخ الإصدار', 'Start date', type: FieldType.date),
+    FieldSpec('endDate', 'تاريخ الانتهاء', 'End date', type: FieldType.date),
+    FieldSpec('cost', 'التكلفة', 'Cost', type: FieldType.number),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+final hrLeaveTypesCfg = ResourceConfig(
+  arTitle: 'أنواع الإجازات', enTitle: 'Leave Types', icon: Icons.event_note_outlined,
+  endpoint: '/api/hr/leave-types', listKey: 'leaveTypes', liveEvent: 'hr:leave',
+  searchFields: const ['nameAr', 'nameEn', 'code'],
+  titleOf: (r) => _s(r, 'nameAr').isNotEmpty ? _s(r, 'nameAr') : _s(r, 'nameEn'),
+  subtitleOf: (r) => _s(r, 'code'),
+  fields: const [
+    FieldSpec('nameAr', 'الاسم بالعربية', 'Arabic name', required: true),
+    FieldSpec('nameEn', 'الاسم بالإنجليزية', 'English name'),
+    FieldSpec('code', 'الكود', 'Code'),
+  ],
+);

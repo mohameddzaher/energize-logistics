@@ -67,14 +67,14 @@
 - [ ] `customs/[id]` — تفاصيل التخليص (pipeline 11 مرحلة + checklists)
 - [ ] `customs/guide` — الدليل
 - [ ] `customs/analytics` — التحليلات
-- [ ] `customs/my-tasks` + `complaints` + `kpis`
+- [x] `customs/my-tasks` + `complaints` + `kpis`
 
 ## المركبات / vehicles
 - [ ] `vehicles/dashboard` + `vehicles` + `vehicles/[id]` (تفويض/نقل/حوادث) + `accidents` + `kpis`
 
 ## لوكيشن سوليوشن / ls2
 - [~] `ls2/live`-style — قائمة المركبات بالصيانة والعداد ✓ (شاشة واحدة — ناقص باقي الصفحات)
-- [ ] `ls2` — لوحة التتبع | `ls2/registry` | `ls2/[id]` (تفاصيل+مسار+وقود) | `drivers` | `tires` | `temperature` | `maintenance` (+تسجيل خدمة وتأجيلات) | `fleet-assets` (كاوتش/تيدرات + عمليات) | `repairs` | `alerts` | `reports` | `settings` | `kpis`
+- [ ] `ls2` — لوحة التتبع | `ls2/registry` | `ls2/[id]` (تفاصيل+مسار+وقود) | `drivers` | `tires` | `temperature` | `maintenance` (+تسجيل خدمة وتأجيلات) | `fleet-assets` (كاوتش/تيدرات + عمليات) | `alerts` | `reports` | `settings` — `repairs` ✓ `kpis` ✓
 
 ## الورشة / workshop
 - [x] `workshop/purchases` — المشتريات — تسجيل=استلام + حذف
@@ -123,22 +123,22 @@
 ## إدارة العلاقات / crm
 - [x] `crm/companies` — CRUD (ناقص: التقييم rate + ملف الشركة [id])
 - [x] `crm/contacts` — CRUD
-- [ ] `dashboard` | `companies/[id]` | `vendors` | `deals` (+نقل مرحلة) | `tasks` | `calendar` | `activities` | `my-tasks`/`complaints`/`kpis`
+- [~] `deals` ✓ `tasks` ✓ `activities` ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard` | `companies/[id]` | `vendors` | `calendar`
 
 ## المبيعات / sales
-- [ ] `dashboard` | `pipeline` | `targets` CRUD | `performance` | `my-tasks`/`complaints`/`kpis`
+- [~] `targets` CRUD ✓ | `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard` | `pipeline` | `performance`
 
 ## الحسابات / accounting
-- [ ] `dashboard` (+sync) | `accounts` (+ledger) | `journal` | `trial-balance` | `profit-loss` | `receivables` | `payables` | `my-tasks`/`complaints`/`kpis`
+- [~] `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard` | `accounts` | `journal` | التقارير الأربعة
 
 ## المشتريات / procurement
-- [ ] `dashboard` | `requests` (submit/decision/convert) | `orders` (receive) | `bills` (pay) | `my-tasks`/`complaints`/`kpis`
+- [~] `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard` | `requests` | `orders` | `bills`
 
 ## الأدوات / tools
 - [ ] `kpis` — مؤشرات الأداء | `assistant` — المساعد | `settings` (كلمة مرور/توقيعات) | `reports`
 
 ## الإدارة / admin
-- [ ] `branches` | `expense-categories` | `settings/reference-data` | `users` (كامل) | `permissions` | `audit` | `complaints` | `drivers` | `vendors`
+- [x] `branches` ✓ `expense-categories` ✓ | باقي: | `settings/reference-data` | `users` (كامل) | `permissions` | `audit` | `complaints` | `drivers` | `vendors`
 
 ## البوابة / portal (عملاء خارجيون)
 - [ ] `portal` | `invoices` (+[id]) | `payments`
@@ -149,5 +149,5 @@
 - [x] بوابة الصلاحيات (roles + matrix) في القوائم
 - [ ] التصدير (Excel/PDF/مشاركة) في القوائم والتقارير
 - [~] المرفقات والرفع (موجود في الباك — ناقص واجهات الرفع في العقود والموظفين…)
-- [~] SectionWork موحّد ✓ (مهامي/الشكاوى في ٧ أقسام: أسطول/عقود/علاقات/HR/تسويق/تطوير أعمال/ورشة) — باقي TeamBoard (kpis)
+- [x] SectionWork موحّد ✓ (مهامي/الشكاوى في ١٢ قسم) + TeamBoard ✓ (تقييم الأداء في كل الأقسام — عرض الدرجات؛ نموذج التقييم التفصيلي لاحقًا)
 - [ ] OpsResourceTable موحّد لجداول /api/ops/* (13 صفحة دفعة واحدة)

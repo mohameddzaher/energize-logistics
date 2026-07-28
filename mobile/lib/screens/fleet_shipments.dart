@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import 'fleet_new_shipment.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -87,6 +88,17 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(tr('شحنات الأسطول', 'Fleet Shipments'))),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: const Color(0xFF12325C),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: Text(tr('إنشاء حمولة', 'New shipment')),
+        onPressed: () async {
+          final created = await Navigator.push<bool>(
+              context, MaterialPageRoute(builder: (c) => const FleetNewShipmentScreen()));
+          if (created == true) _load();
+        },
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer(),
@@ -249,6 +261,25 @@ class _ShipmentSheetState extends State<_ShipmentSheet> {
           Text('${s['fromCity'] ?? '—'} ← ${s['toCity'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700)),
           Text([s['customerName'], s['vehiclePlate'], s['driverName']].where((x) => (x ?? '').toString().isNotEmpty).join(' · '),
               style: const TextStyle(fontSize: 13, color: T.inkSoft)),
+          const SizedBox(height: 12),
+          // تغيير الحالة — نفس قائمة السيستم، والتغيير يظهر لحظيًا في كل مكان.
+          DropdownButtonFormField<String>(
+            initialValue: (s['status'] ?? '').toString().isEmpty ? null : s['status'],
+            decoration: InputDecoration(labelText: tr('حالة الشحنة', 'Status')),
+            items: _statuses.entries
+                .map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2))))
+                .toList(),
+            onChanged: (v) async {
+              if (v == null) return;
+              try {
+                await Api.instance.patch('/api/fleet/shipments/${s['_id']}/status', {'status': v});
+                widget.onDone();
+                if (context.mounted) Navigator.pop(context);
+              } catch (e) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+              }
+            },
+          ),
           const Divider(height: 26),
           Text(tr('تسجيل متابعة', 'Log a follow-up'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           const SizedBox(height: 10),

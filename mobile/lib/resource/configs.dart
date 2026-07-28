@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
+import '../screens/crm_company_profile.dart';
+import '../screens/contracts_vendor_profile.dart';
 import 'resource.dart';
 
 /// Page definitions on the CRUD engine — each entry IS a full native page
@@ -70,6 +72,7 @@ final fleetCustomersCfg = ResourceConfig(
 
 // ── إدارة العقود ─────────────────────────────────────────────────────────────
 final contractsVendorsCfg = ResourceConfig(
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => ContractsVendorProfileScreen(vendorId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
   arTitle: 'سجل موردي 3PL', enTitle: '3PL Vendors', icon: Icons.business_outlined,
   endpoint: '/api/contracts/vendors', listKey: 'vendors',
   updateMethod: 'PATCH', liveEvent: 'contracts:updated',
@@ -155,6 +158,7 @@ final contractsAgreementsCfg = ResourceConfig(
 
 // ── إدارة العلاقات (CRM) ─────────────────────────────────────────────────────
 final crmCompaniesCfg = ResourceConfig(
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CrmCompanyProfileScreen(companyId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
   arTitle: 'الشركات', enTitle: 'Companies', icon: Icons.apartment_outlined,
   endpoint: '/api/crm/companies', listKey: 'companies', liveEvent: 'crm:company',
   searchFields: const ['name', 'arabicName', 'phone', 'email', 'city', 'industry'],

@@ -99,7 +99,7 @@
 
 ## إدارة العقود / contracts
 - [x] `contracts` — اللوحة | [x] `vendors` CRUD (ناقص مرفقات) | [x] `analysis` | [x] `prospects` + تحويل | [~] `agreements` CRUD (ناقص مرفقات)
-- [ ] `vendors/[id]` — الملف التحليلي بالجداول والمرفقات | `my-tasks`/`complaints`/`kpis`
+- [x] `vendors/[id]` — الملف التحليلي ✓ (حالة العقد+السعة+التشغيل الشهري بنِسَب الاستغلال) — باقي: المرفقات | `my-tasks`/`complaints`/`kpis` ✓
 
 ## البرمجيات وتقنية المعلومات / it
 - [~] `tickets` ✓ `systems` ✓ `stock` ✓ `custody` ✓ (تسليم/نقل/إرجاع/إبلاغ/إخراج/سجل) `my-tasks`/`complaints`/`kpis` ✓ — باقي: recurring (اللوحة ✓)
@@ -122,7 +122,7 @@
 - [x] موافقات فريقي (قرارات المدير)
 
 ## إدارة العلاقات / crm
-- [x] `crm/companies` — CRUD (ناقص: التقييم rate + ملف الشركة [id])
+- [x] `crm/companies` — CRUD ✓ + ملف الشركة [id] ✓ (بيانات/جهات اتصال/صفقات/مهام/سجل أنشطة — النقرة تفتح الملف والضغط المطول يحرر)
 - [x] `crm/contacts` — CRUD
 - [~] `deals` ✓ `tasks` ✓ `activities` ✓ `dashboard` ✓ `my-tasks`/`complaints`/`kpis` ✓ | `companies/[id]` | `vendors` | `calendar`
 

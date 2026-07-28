@@ -42,6 +42,8 @@ class ResourceConfig {
   final bool canCreate;
   final bool canEdit;
   final bool canDelete;
+  /// عند ضبطها: نقرة الصف تفتح ملفًا كاملًا بدل ورقة التحرير (والتحرير من أيقونة القلم).
+  final void Function(BuildContext, Map<String, dynamic>)? onOpen;
 
   const ResourceConfig({
     required this.arTitle, required this.enTitle, required this.icon,
@@ -50,6 +52,7 @@ class ResourceConfig {
     required this.searchFields, required this.fields, required this.titleOf,
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
+    this.onOpen,
   });
 
   String get title => tr(arTitle, enTitle);
@@ -197,7 +200,10 @@ class _ResourceScreenState extends State<ResourceScreen> {
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: Pressable(
-                                    onTap: cfg.canEdit ? () => _openForm(row: r) : null,
+                                    onTap: cfg.onOpen != null
+                                        ? () => cfg.onOpen!(context, r)
+                                        : cfg.canEdit ? () => _openForm(row: r) : null,
+                                    onLongPress: cfg.onOpen != null && cfg.canEdit ? () => _openForm(row: r) : null,
                                     child: AppCard(
                                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                       child: Row(children: [

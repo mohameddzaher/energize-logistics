@@ -39,7 +39,8 @@ class _FadeSlideInState extends State<FadeSlideIn> with SingleTickerProviderStat
 class Pressable extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
-  const Pressable({super.key, required this.child, this.onTap});
+  final VoidCallback? onLongPress;
+  const Pressable({super.key, required this.child, this.onTap, this.onLongPress});
 
   @override
   State<Pressable> createState() => _PressableState();
@@ -55,6 +56,7 @@ class _PressableState extends State<Pressable> {
       onTapUp: (_) => setState(() => _down = false),
       onTapCancel: () => setState(() => _down = false),
       onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
       child: AnimatedScale(
         scale: _down ? 0.965 : 1,
         duration: const Duration(milliseconds: 110),

@@ -83,6 +83,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Customers & Finance', arTitle: 'العملاء والمالية', enTitle: 'Customers & Finance', icon: Icons.payments_outlined,
       roles: const [..._admins, 'employee', 'operations_manager', 'moderator'],
       pages: [
+        AppPage('اللوحة المالية', 'Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: mainFinanceDashSpec)),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => const CustomersScreen()),
         AppPage('الفواتير', 'Invoices', Icons.receipt_long_outlined, (c) => const InvoicesScreen()),
         AppPage('المدفوعات', 'Payments', Icons.payments_outlined, (c) => const PaymentsScreen()),
@@ -319,6 +320,13 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الإدخال اليومي', 'Daily Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen()),
         AppPage('مناديب المبيعات', 'Reps', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
+      ],
+    ),
+    AppSection(
+      key: 'Executive', arTitle: 'النظرة التنفيذية', enTitle: 'Executive', icon: Icons.insights_outlined,
+      roles: const ['super_admin', 'admin'], managed: false,
+      pages: [
+        AppPage('النظرة التنفيذية', 'Overview', Icons.insights_outlined, (c) => const SectionDashScreen(spec: executiveDashSpec)),
       ],
     ),
     AppSection(

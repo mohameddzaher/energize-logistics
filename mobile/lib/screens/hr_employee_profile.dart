@@ -67,6 +67,100 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     );
   }
 
+  // عقد جديد للموظف — نوع/تواريخ/راتب/بدلات/إجازة سنوية، بنفس حقول نموذج الويب.
+  void _newContract() {
+    final jobTitle = TextEditingController(text: (_emp['jobTitle'] ?? '').toString());
+    final basicSalary = TextEditingController();
+    final allowances = TextEditingController();
+    final annualLeave = TextEditingController(text: '21');
+    final duration = TextEditingController(text: '12');
+    String type = 'fixed';
+    DateTime start = DateTime.now();
+    DateTime end = DateTime.now().add(const Duration(days: 365));
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        String fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${tr('عقد جديد', 'New contract')} — $_name', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: type,
+                  decoration: InputDecoration(labelText: tr('نوع العقد', 'Contract type')),
+                  items: [
+                    DropdownMenuItem(value: 'fixed', child: Text(tr('محدد المدة', 'Fixed-term'))),
+                    DropdownMenuItem(value: 'unlimited', child: Text(tr('غير محدد المدة', 'Unlimited'))),
+                  ],
+                  onChanged: (v) => setS(() => type = v ?? type),
+                ),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: OutlinedButton.icon(onPressed: () async {
+                    final v = await showDatePicker(context: c, initialDate: start, firstDate: DateTime(2015), lastDate: DateTime(2100));
+                    if (v != null) setS(() => start = v);
+                  }, icon: const Icon(Icons.event, size: 16), label: Text('${tr('من', 'From')} ${fmt(start)}', style: const TextStyle(fontSize: 11.5)))),
+                  if (type == 'fixed') ...[
+                    const SizedBox(width: 8),
+                    Expanded(child: OutlinedButton.icon(onPressed: () async {
+                      final v = await showDatePicker(context: c, initialDate: end, firstDate: DateTime(2015), lastDate: DateTime(2100));
+                      if (v != null) setS(() => end = v);
+                    }, icon: const Icon(Icons.event, size: 16), label: Text('${tr('إلى', 'To')} ${fmt(end)}', style: const TextStyle(fontSize: 11.5)))),
+                  ],
+                ]),
+                const SizedBox(height: 10),
+                TextField(controller: jobTitle, decoration: InputDecoration(labelText: tr('المسمى الوظيفي', 'Job title'))),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: TextField(controller: basicSalary, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('الراتب الأساسي', 'Basic salary')))),
+                  const SizedBox(width: 10),
+                  Expanded(child: TextField(controller: allowances, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('البدلات', 'Allowances')))),
+                ]),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: TextField(controller: annualLeave, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('الإجازة السنوية (يوم)', 'Annual leave (days)')))),
+                  const SizedBox(width: 10),
+                  Expanded(child: TextField(controller: duration, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المدة (شهر)', 'Duration (months)')))),
+                ]),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () async {
+                      try {
+                        await Api.instance.post('/api/hr/contracts', {
+                          'employee': widget.employeeId,
+                          'type': type,
+                          'startDate': fmt(start),
+                          if (type == 'fixed') 'endDate': fmt(end),
+                          'durationMonths': num.tryParse(duration.text) ?? 12,
+                          'jobTitle': jobTitle.text.trim(),
+                          'basicSalary': num.tryParse(basicSalary.text) ?? 0,
+                          'allowances': num.tryParse(allowances.text) ?? 0,
+                          'annualLeaveDays': num.tryParse(annualLeave.text) ?? 21,
+                          'status': 'active',
+                        });
+                        if (c.mounted) Navigator.pop(c);
+                        _load();
+                      } catch (e) {
+                        if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
+                      }
+                    },
+                    child: Text(tr('إنشاء العقد', 'Create contract')),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
   Widget _info(String label, dynamic value, {bool ltr = false}) {
     final text = (value ?? '').toString();
     return Padding(
@@ -97,6 +191,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
       child: AppScaffold(
         title: Text(_loading ? tr('ملف الموظف', 'Employee') : _name),
         actions: [
+          IconButton(icon: const Icon(Icons.post_add_outlined), tooltip: tr('عقد جديد', 'New contract'), onPressed: _loading ? null : _newContract),
           IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('تعديل', 'Edit'), onPressed: _loading ? null : _edit),
         ],
         appBarBottom: TabBar(

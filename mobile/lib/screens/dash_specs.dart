@@ -312,3 +312,41 @@ const vehiclesDashSpec = DashSpec(
     DashBreakdown('حسب النوع', 'By type', 'byType'),
   ],
 );
+
+const mainFinanceDashSpec = DashSpec(
+  arTitle: 'اللوحة المالية', enTitle: 'Financial Dashboard',
+  endpoint: '/api/analytics/dashboard', liveEvent: 'invoice:updated',
+  stats: [
+    DashStat('إجمالي المستحق', 'Outstanding', 'totalOutstanding', Icons.account_balance_wallet_outlined, T.danger, money: true),
+    DashStat('تحصيل الشهر', 'Collected (month)', 'monthlyCollected', Icons.trending_up_rounded, T.success, money: true),
+    DashStat('تحصيل السنة', 'Collected (year)', 'yearlyCollected', Icons.savings_outlined, T.navy, money: true),
+    DashStat('نسبة التحصيل %', 'Collection %', 'collectionRate', Icons.percent_rounded, T.violet),
+    DashStat('متوسط أيام التحصيل', 'DSO', 'dso', Icons.schedule_outlined, T.orange),
+    DashStat('فواتير متأخرة', 'Overdue', 'overdueCount', Icons.warning_amber_outlined, T.danger),
+  ],
+);
+
+const executiveDashSpec = DashSpec(
+  arTitle: 'النظرة التنفيذية', enTitle: 'Executive Overview',
+  endpoint: '/api/analytics/super-overview', liveEvent: '',
+  stats: [
+    DashStat('تشغيلات الشهر', 'Ops (month)', 'operations.thisMonth', Icons.workspaces_outline, T.navy),
+    DashStat('طلبات B2C', 'B2C orders', 'b2c.monthOrders', Icons.storefront_outlined, T.violet),
+    DashStat('تحصيلات اليوم', "Today's collections", 'wallet.todayCollections', Icons.payments_outlined, T.success, money: true),
+    DashStat('صافي المحفظة', 'Wallet net', 'wallet.monthNet', Icons.account_balance_outlined, T.info, money: true),
+    DashStat('مهام الورشة', 'Workshop tasks', 'workshop.openTasks', Icons.build_outlined, T.orange),
+    DashStat('صيانة مفتوحة', 'Open maintenance', 'workshop.openMaintenance', Icons.engineering_outlined, T.warn),
+    DashStat('السائقون النشطون', 'Active drivers', 'roster.drivers', Icons.badge_outlined, T.cyan),
+    DashStat('الفروع', 'Branches', 'roster.branches', Icons.store_outlined, T.navy),
+    DashStat('مهام مستحقة اليوم', 'Tasks due today', 'tasks.dueToday', Icons.today_outlined, T.orange),
+    DashStat('شكاوى مفتوحة', 'Open complaints', 'service.complaintsOpen', Icons.report_outlined, T.danger),
+    DashStat('نزاعات مفتوحة', 'Open disputes', 'service.disputesOpen', Icons.gavel_outlined, T.danger),
+    DashStat('مشتريات معلقة', 'Pending purchases', 'workshop.pendingPurchases', Icons.shopping_bag_outlined, T.violet),
+  ],
+  lists: [
+    DashList('أنشط السائقين', 'Top drivers', 'roster.topDrivers', _topDriverTitle, subtitle: _topDriverSub),
+  ],
+);
+
+String _topDriverTitle(Map<String, dynamic> r) => (r['_id'] ?? r['driver'] ?? '—').toString();
+String _topDriverSub(Map<String, dynamic> r) => '${r['trips'] ?? 0} ${tr('رحلة', 'trips')}';

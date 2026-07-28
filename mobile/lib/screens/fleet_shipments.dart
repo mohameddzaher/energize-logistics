@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import 'fleet_new_shipment.dart';
 import 'fleet_shipment_details.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -82,8 +83,8 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
           .any((x) => _fold((x ?? '').toString()).contains(q));
     }).toList();
 
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('شحنات الأسطول', 'Fleet Shipments'))),
+    return AppScaffold(
+      title: Text(tr('شحنات الأسطول', 'Fleet Shipments')),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xFF12325C),
         foregroundColor: Colors.white,

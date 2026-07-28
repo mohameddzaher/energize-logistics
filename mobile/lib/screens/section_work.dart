@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -120,8 +121,8 @@ class _SectionWorkScreenState extends State<SectionWorkScreen> {
   @override
   Widget build(BuildContext context) {
     final title = widget.complaints ? tr('الشكاوى', 'Complaints') : tr('مهامي', 'My Tasks');
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
+    return AppScaffold(
+      title: Text(title),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: T.navy,
         foregroundColor: Colors.white,

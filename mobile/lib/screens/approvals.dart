@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../ui/app_scaffold.dart';
 import '../services/live.dart';
 
 /// موافقات فريقي — leave requests from the manager's direct reports awaiting
@@ -90,8 +91,8 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     final pending = _leaves.where((l) => l['status'] == 'pending_manager').toList();
     final past = _leaves.where((l) => l['status'] != 'pending_manager').toList();
 
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('موافقات فريقي', 'Team Approvals'))),
+    return AppScaffold(
+      title: Text(tr('موافقات فريقي', 'Team Approvals')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null

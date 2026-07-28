@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -39,8 +40,8 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
     final byDept = List<Map<String, dynamic>>.from(_d?['byDepartment'] ?? []);
     final docs = List<Map<String, dynamic>>.from(_d?['expiringDocs'] ?? []);
 
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('لوحة الموارد البشرية', 'HR Dashboard'))),
+    return AppScaffold(
+      title: Text(tr('لوحة الموارد البشرية', 'HR Dashboard')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 92), SizedBox(height: 10), Shimmer(height: 92), SizedBox(height: 10), Shimmer(height: 220),

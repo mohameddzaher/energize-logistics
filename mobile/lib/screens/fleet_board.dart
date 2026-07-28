@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -27,6 +28,7 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
   bool _loading = true;
   String? _error;
   String _filter = '';
+  String _q = '';
   late final void Function() _onLive;
 
   @override
@@ -55,8 +57,20 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    String fold(String x) => x
+        .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
+    final q = fold(_q.trim());
     final cards = List<Map<String, dynamic>>.from(_data?['cards'] ?? [])
         .where((c) => _filter.isEmpty || c['state'] == _filter)
+        .where((c) {
+          if (q.isEmpty) return true;
+          final trip = c['trip'] as Map<String, dynamic>?;
+          return [
+            c['plate'], c['name'], c['supervisorName'], c['liveCity'],
+            trip?['customerName'], trip?['toCity'], trip?['waybillNumber'],
+            ...List<Map<String, dynamic>>.from(c['drivers'] ?? []).map((d) => d['name']),
+          ].any((x) => fold((x ?? '').toString()).contains(q));
+        })
         .toList();
 
     // Group by supervisor, keeping insertion order.
@@ -69,8 +83,8 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
     final all = List<Map<String, dynamic>>.from(_data?['cards'] ?? []);
     int countOf(String s) => all.where((c) => c['state'] == s).length;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('لوحة الأسطول', 'Fleet Board'))),
+    return AppScaffold(
+      title: Text(tr('لوحة الأسطول', 'Fleet Board')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 60), SizedBox(height: 10), Shimmer(height: 120),
@@ -83,6 +97,15 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
+                      // بحث شامل: لوحة/سائق/عميل/مدينة/بوليصة/مشرف.
+                      TextField(
+                        onChanged: (v) => setState(() => _q = v),
+                        decoration: InputDecoration(
+                          hintText: tr('ابحث باللوحة أو السائق أو العميل أو الوجهة…', 'Search plate, driver, customer, city…'),
+                          prefixIcon: const Icon(Icons.search),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       // State filter chips — tap to focus, tap again to clear.
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,

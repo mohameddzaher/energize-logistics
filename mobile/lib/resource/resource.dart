@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -151,8 +152,8 @@ class _ResourceScreenState extends State<ResourceScreen> {
       return cfg.searchFields.any((f) => _fold((r[f] ?? '').toString()).contains(q));
     }).toList();
 
-    return Scaffold(
-      appBar: AppBar(title: Text(cfg.title)),
+    return AppScaffold(
+      title: Text(cfg.title),
       floatingActionButton: cfg.canCreate
           ? FloatingActionButton.extended(
               backgroundColor: T.navy,

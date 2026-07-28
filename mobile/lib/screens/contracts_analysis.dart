@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -65,8 +66,8 @@ class _ContractsAnalysisScreenState extends State<ContractsAnalysisScreen> {
     final wasted = List<Map<String, dynamic>>.from(_a?['wastedCapacity'] ?? []);
     final reps = List<Map<String, dynamic>>.from(_a?['reps'] ?? []);
 
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('تحليل التشغيل', 'Utilisation Analysis'))),
+    return AppScaffold(
+      title: Text(tr('تحليل التشغيل', 'Utilisation Analysis')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 92), SizedBox(height: 10), Shimmer(height: 160), SizedBox(height: 10), Shimmer(height: 240),

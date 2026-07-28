@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../ui/app_scaffold.dart';
+import 'hr_employee_profile.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -66,50 +68,14 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   }
 
   void _open(Map<String, dynamic> e) {
-    final st = _empStatus[e['employmentStatus']] ?? _empStatus['active']!;
-    Widget row(IconData icon, String label, dynamic value) {
-      final text = (value ?? '').toString();
-      if (text.isEmpty) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, size: 16, color: T.inkFaint),
-          const SizedBox(width: 8),
-          Text('$label: ', style: const TextStyle(fontSize: 13, color: T.inkSoft)),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
-        ]),
-      );
-    }
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (c) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(child: Text(_name(e), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
-            Chip2(tr(st.$1, st.$2), st.$3),
-          ]),
-          const SizedBox(height: 14),
-          row(Icons.work_outline, tr('المسمى الوظيفي', 'Job title'), e['jobTitle']),
-          row(Icons.apartment_outlined, tr('القسم', 'Department'), e['department']),
-          row(Icons.tag, tr('رقم الموظف', 'Employee no.'), e['employeeNumber']),
-          row(Icons.credit_card_outlined, tr('رقم الإقامة', 'Iqama'), e['iqamaNumber']),
-          row(Icons.flag_outlined, tr('الجنسية', 'Nationality'), e['nationality']),
-          row(Icons.phone_outlined, tr('الجوال', 'Phone'), e['mobileNumber'] ?? e['phone']),
-          row(Icons.email_outlined, tr('البريد', 'Email'), e['email']),
-          const SizedBox(height: 8),
-        ]),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(
+        builder: (c) => HrEmployeeProfileScreen(employeeId: e['_id'].toString())));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('الموظفون', 'Employees'))),
+    return AppScaffold(
+      title: Text(tr('الموظفون', 'Employees')),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),

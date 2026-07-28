@@ -5,6 +5,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -111,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      drawer: _AppDrawer(auth: auth, sections: sections, selfPages: selfPages),
+      drawer: const AppDrawer(),
       body: RefreshIndicator(
         onRefresh: _loadStats,
         child: ListView(
@@ -343,102 +344,4 @@ class _NavTile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The burger drawer: user header + self-service + every allowed section
-/// expandable into its pages + language toggle + sign out.
-class _AppDrawer extends StatelessWidget {
-  final AuthProvider auth;
-  final List<AppSection> sections;
-  final List<AppPage> selfPages;
-  const _AppDrawer({required this.auth, required this.sections, required this.selfPages});
-
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      backgroundColor: Colors.white,
-      child: Column(children: [
-        Container(
-          width: double.infinity,
-          padding: EdgeInsets.fromLTRB(18, MediaQuery.of(context).padding.top + 18, 18, 18),
-          decoration: const BoxDecoration(gradient: T.navyGradient),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Image.asset('assets/logo_white.png', height: 28),
-            const SizedBox(height: 14),
-            Text(auth.fullName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
-            Text(auth.user?['email'] ?? '', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12)),
-          ]),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            children: [
-              _drawerLabel(tr('الخدمة الذاتية', 'Self Service')),
-              ...selfPages.map((p) => ListTile(
-                    dense: true,
-                    leading: Icon(p.icon, size: 21, color: T.inkSoft),
-                    title: Text(p.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(context, MaterialPageRoute(builder: p.builder));
-                    },
-                  )),
-              _drawerLabel(tr('الأقسام', 'Sections')),
-              ...sections.map((s) => ExpansionTile(
-                    leading: Icon(s.icon, size: 21, color: T.navy),
-                    title: Text(s.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                    shape: const Border(),
-                    childrenPadding: EdgeInsets.only(right: Lang.instance.ar ? 16 : 0, left: Lang.instance.ar ? 0 : 16),
-                    children: s.pages
-                        .map((p) => ListTile(
-                              dense: true,
-                              leading: Icon(p.icon, size: 19, color: T.inkFaint),
-                              title: Text(p.title, style: const TextStyle(fontSize: 13.5)),
-                              onTap: () {
-                                Navigator.pop(context);
-                                Navigator.push(context, MaterialPageRoute(builder: p.builder));
-                              },
-                            ))
-                        .toList(),
-                  )),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        ListTile(
-          dense: true,
-          leading: const Icon(Icons.language_rounded, color: T.navy),
-          title: Text(tr('English', 'العربية'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-          onTap: () { Navigator.pop(context); Lang.instance.toggle(); },
-        ),
-        ListTile(
-          leading: const Icon(Icons.logout_rounded, color: T.danger),
-          title: Text(tr('تسجيل الخروج', 'Sign out'), style: const TextStyle(color: T.danger, fontWeight: FontWeight.w700)),
-          onTap: () async {
-            final ok = await showDialog<bool>(
-              context: context,
-              builder: (c) => AlertDialog(
-                title: Text(tr('تسجيل الخروج', 'Sign out')),
-                content: Text(tr('هل تريد تسجيل الخروج من التطبيق؟', 'Sign out of the app?')),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-                  TextButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('خروج', 'Sign out'))),
-                ],
-              ),
-            );
-            if (ok == true && context.mounted) {
-              Live.instance.disconnect();
-              await context.read<AuthProvider>().logout();
-            }
-          },
-        ),
-        SizedBox(height: MediaQuery.of(context).padding.bottom),
-      ]),
-    );
-  }
-
-  Widget _drawerLabel(String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
-        child: Text(text, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: T.inkFaint, letterSpacing: 0.3)),
-      );
 }

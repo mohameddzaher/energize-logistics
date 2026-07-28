@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../ui/app_scaffold.dart';
 import '../services/live.dart';
 
 /// إجازاتي — the self-service leave page: balance cards, request history and
@@ -77,8 +78,8 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('إجازاتي', 'My Leaves'))),
+    return AppScaffold(
+      title: Text(tr('إجازاتي', 'My Leaves')),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(AppConfig.navy),
         foregroundColor: Colors.white,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -138,8 +139,8 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
   Widget build(BuildContext context) {
     final s = _shipment;
     final st = s != null ? (_statuses[s['status']] ?? ('—', '—', T.inkFaint)) : ('—', '—', T.inkFaint);
-    return Scaffold(
-      appBar: AppBar(title: Text(s != null ? '${tr('بوليصة', 'Waybill')} ${s['waybillNumber'] ?? ''}' : tr('تفاصيل الشحنة', 'Shipment'))),
+    return AppScaffold(
+      title: Text(s != null ? '${tr('بوليصة', 'Waybill')} ${s['waybillNumber'] ?? ''}' : tr('تفاصيل الشحنة', 'Shipment')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 140), SizedBox(height: 10), Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 260),

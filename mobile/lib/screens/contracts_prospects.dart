@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -82,8 +83,8 @@ class _ContractsProspectsScreenState extends State<ContractsProspectsScreen> {
       return [p['companyName'], p['contactPerson'], p['phone'], p['headquarters']].any((x) => _fold((x ?? '').toString()).contains(q));
     }).toList();
 
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('تنشيط الموردين الجدد', 'Prospect Outreach'))),
+    return AppScaffold(
+      title: Text(tr('تنشيط الموردين الجدد', 'Prospect Outreach')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 48), SizedBox(height: 10), Shimmer(height: 110), SizedBox(height: 10), Shimmer(height: 110),

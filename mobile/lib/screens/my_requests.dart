@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../ui/app_scaffold.dart';
 import '../services/live.dart';
 
 /// طلباتي — HR requests (salary certificate, letters, …): history + new request.
@@ -79,8 +80,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('طلباتي', 'My Requests'))),
+    return AppScaffold(
+      title: Text(tr('طلباتي', 'My Requests')),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(AppConfig.navy),
         foregroundColor: Colors.white,

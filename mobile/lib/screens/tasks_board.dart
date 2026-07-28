@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../ui/app_scaffold.dart';
 import '../services/live.dart';
 
 /// لوحة مهام الشؤون الإدارية — the same four columns the web board shows,
@@ -98,10 +99,9 @@ class _TasksBoardScreenState extends State<TasksBoardScreen> {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: _columns.length,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(tr('لوحة المهام', 'Task Board')),
-          bottom: TabBar(
+      child: AppScaffold(
+        title: Text(tr('لوحة المهام', 'Task Board')),
+        appBarBottom: TabBar(
             indicatorColor: const Color(AppConfig.orange),
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white60,
@@ -109,7 +109,6 @@ class _TasksBoardScreenState extends State<TasksBoardScreen> {
               final n = _tasks.where((t) => t['status'] == c.$1).length;
               return Tab(text: '${tr(c.$2, c.$3)} ($n)');
             }).toList(),
-          ),
         ),
         floatingActionButton: FloatingActionButton.extended(
           backgroundColor: const Color(AppConfig.navy),

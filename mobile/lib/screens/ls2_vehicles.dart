@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -67,8 +68,8 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
     final overdue = _rows.where((v) => v['maintenanceStatus'] == 'overdue').length;
     final due = _rows.where((v) => v['maintenanceStatus'] == 'due').length;
 
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('مركبات لوكيشن سوليوشن', 'LS Fleet'))),
+    return AppScaffold(
+      title: Text(tr('مركبات لوكيشن سوليوشن', 'LS Fleet')),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),

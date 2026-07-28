@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -45,8 +46,8 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
   Widget build(BuildContext context) {
     final members = List<Map<String, dynamic>>.from(_d?['members'] ?? []);
     final summary = _d?['summary'] as Map<String, dynamic>?;
-    return Scaffold(
-      appBar: AppBar(title: Text(tr('تقييم الأداء', 'Performance'))),
+    return AppScaffold(
+      title: Text(tr('تقييم الأداء', 'Performance')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 80), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer(),

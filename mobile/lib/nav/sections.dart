@@ -20,6 +20,8 @@ import '../screens/team_board.dart';
 import '../screens/finance_suite.dart';
 import '../screens/remote_attendance.dart';
 import '../screens/hr_inbox.dart';
+import '../screens/ls2_alerts.dart';
+import '../screens/shipment_orders.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -174,6 +176,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen()),
         AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg)),
+        AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const Ls2AlertsScreen()),
       ],
     ),
     AppSection(
@@ -227,10 +230,27 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       ],
     ),
     AppSection(
+      key: 'Shipment Orders', arTitle: 'طلبات الشحنات', enTitle: 'Shipment Orders', icon: Icons.assignment_outlined,
+      roles: const [..._admins, 'operations_manager', 'operations', 'moderator'],
+      pages: [
+        AppPage('الشحنات', 'Orders', Icons.assignment_outlined, (c) => const ShipmentOrdersScreen()),
+        AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: shipmentOrdersCustomersCfg)),
+      ],
+    ),
+    AppSection(
       key: 'Remote', arTitle: 'العمل عن بُعد', enTitle: 'Remote', icon: Icons.laptop_mac_outlined,
       roles: const [..._admins, 'remote_manager', 'remote_employee'],
       pages: [
         AppPage('الحضور والانصراف', 'Attendance', Icons.fingerprint_outlined, (c) => const RemoteAttendanceScreen()),
+      ],
+    ),
+    AppSection(
+      key: 'B2C', arTitle: 'B2C', enTitle: 'B2C', icon: Icons.storefront_outlined,
+      roles: const [..._admins, 'b2c_head', 'b2c_project_manager'],
+      pages: [
+        AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg)),
+        AppPage('مناديب المبيعات', 'Reps', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg)),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
       ],
     ),
     AppSection(

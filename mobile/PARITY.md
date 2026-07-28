@@ -43,10 +43,10 @@
 - [ ] `ops/my-tasks` + `ops/complaints` (SectionWork) + `ops/kpis` (TeamBoard)
 
 ## طلبات الشحنات / shipment-orders
-- [ ] `shipment-orders` — الشحنات — status/edit/delete/export
+- [~] `shipment-orders` — الشحنات ✓ (قائمة+فلاتر+تغيير حالة) — باقي: النموذج الديناميكي للإنشاء
 - [ ] `shipment-orders/new` — طلب شحنة جديد (نموذج ديناميكي fields)
 - [ ] `shipment-orders/chat` — مساعد الإنشاء
-- [ ] `shipment-orders/customers` — العملاء — CRUD
+- [x] `shipment-orders/customers` — العملاء — CRUD
 - [ ] `shipment-orders/fleet` — الموردون والمركبات — CRUD
 - [ ] `shipment-orders/form-settings` — إعدادات النموذج
 
@@ -74,7 +74,7 @@
 
 ## لوكيشن سوليوشن / ls2
 - [~] `ls2/live`-style — قائمة المركبات بالصيانة والعداد ✓ (شاشة واحدة — ناقص باقي الصفحات)
-- [ ] `ls2` — لوحة التتبع | `ls2/registry` | `ls2/[id]` (تفاصيل+مسار+وقود) | `drivers` | `tires` | `temperature` | `maintenance` (+تسجيل خدمة وتأجيلات) | `fleet-assets` (كاوتش/تيدرات + عمليات) | `alerts` | `reports` | `settings` — `repairs` ✓ `kpis` ✓
+- [ ] `ls2` — لوحة التتبع | `ls2/registry` | `ls2/[id]` (تفاصيل+مسار+وقود) | `drivers` | `tires` | `temperature` | `maintenance` (+تسجيل خدمة وتأجيلات) | `fleet-assets` (كاوتش/تيدرات + عمليات) | `reports` | `settings` — `repairs` ✓ `alerts` ✓ `kpis` ✓
 
 ## الورشة / workshop
 - [x] `workshop/purchases` — المشتريات — تسجيل=استلام + حذف
@@ -104,7 +104,7 @@
 - [~] `tickets` ✓ `systems` ✓ `stock` ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: اللوحة | recurring | custody بعملياتها
 
 ## B2C / b2c
-- [ ] `dashboard` | `reps-performance` | `daily-entry` | `reps` | `projects` | `custody` (عهدة) | `kpis`
+- [~] `reps` ✓ `projects` ✓ `kpis` ✓ — باقي: dashboard/reps-performance/daily-entry/custody
 
 ## العمل عن بُعد / remote
 - [~] `attendance` ✓ (حضور/انصراف + السجل) — باقي: dashboard/leave/chat/tasks/report/announcements/kpis

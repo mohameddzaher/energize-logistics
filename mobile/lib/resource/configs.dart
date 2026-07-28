@@ -734,3 +734,59 @@ final itStockCfg = ResourceConfig(
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
+
+// ── B2C ──────────────────────────────────────────────────────────────────────
+final b2cProjectsCfg = ResourceConfig(
+  arTitle: 'مشاريع B2C', enTitle: 'B2C Projects', icon: Icons.folder_special_outlined,
+  endpoint: '/api/b2c/projects', listKey: 'projects', liveEvent: 'b2c:updated',
+  searchFields: const ['name', 'code'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => _s(r, 'code'),
+  chipsOf: (r) => [
+    if (r['monthlyTarget'] != null) ('هدف شهري: ${r['monthlyTarget']}', T.navy),
+    if (r['dailyTarget'] != null) ('يومي: ${r['dailyTarget']}', T.cyan),
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم المشروع', 'Name', required: true),
+    FieldSpec('code', 'الكود', 'Code'),
+    FieldSpec('monthlyTarget', 'الهدف الشهري', 'Monthly target', type: FieldType.number),
+    FieldSpec('dailyTarget', 'الهدف اليومي', 'Daily target', type: FieldType.number),
+    FieldSpec('expectedWorkingDays', 'أيام العمل المتوقعة', 'Working days', type: FieldType.number),
+    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
+  ],
+);
+
+final b2cRepsCfg = ResourceConfig(
+  arTitle: 'مناديب B2C', enTitle: 'B2C Reps', icon: Icons.sports_motorsports_outlined,
+  endpoint: '/api/b2c/reps', listKey: 'reps', liveEvent: 'b2c:updated',
+  searchFields: const ['arabicName', 'englishName', 'repId', 'phone'],
+  titleOf: (r) => _s(r, 'arabicName').isNotEmpty ? _s(r, 'arabicName') : _s(r, 'englishName'),
+  subtitleOf: (r) => [_s(r, 'repId'), _s(r, 'phone')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (r['monthlyTarget'] != null) ('هدف: ${r['monthlyTarget']}', T.navy),
+  ],
+  fields: const [
+    FieldSpec('repId', 'رقم المندوب', 'Rep ID', required: true),
+    FieldSpec('arabicName', 'الاسم بالعربية', 'Arabic name', required: true),
+    FieldSpec('englishName', 'الاسم بالإنجليزية', 'English name'),
+    FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
+    FieldSpec('joiningDate', 'تاريخ الانضمام', 'Joining date', type: FieldType.date),
+    FieldSpec('monthlyTarget', 'الهدف الشهري', 'Monthly target', type: FieldType.number),
+    FieldSpec('dailyTarget', 'الهدف اليومي', 'Daily target', type: FieldType.number),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+// ── طلبات الشحنات (التجربة المستقلة) ────────────────────────────────────────
+final shipmentOrdersCustomersCfg = ResourceConfig(
+  arTitle: 'عملاء طلبات الشحن', enTitle: 'SO Customers', icon: Icons.people_outline,
+  endpoint: '/api/shipment-orders/customers', listKey: 'customers', liveEvent: 'so:updated',
+  searchFields: const ['name', 'phone'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => _s(r, 'phone'),
+  fields: const [
+    FieldSpec('name', 'اسم العميل', 'Name', required: true),
+    FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);

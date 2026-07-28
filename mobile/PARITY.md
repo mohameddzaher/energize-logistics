@@ -101,7 +101,7 @@
 - [ ] `vendors/[id]` — الملف التحليلي بالجداول والمرفقات | `my-tasks`/`complaints`/`kpis`
 
 ## البرمجيات وتقنية المعلومات / it
-- [~] `tickets` ✓ `systems` ✓ `stock` ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: اللوحة | recurring | custody بعملياتها
+- [~] `tickets` ✓ `systems` ✓ `stock` ✓ `custody` ✓ (تسليم/نقل/إرجاع/إبلاغ/إخراج/سجل) `my-tasks`/`complaints`/`kpis` ✓ — باقي: اللوحة | recurring
 
 ## B2C / b2c
 - [~] `reps` ✓ `projects` ✓ `kpis` ✓ — باقي: dashboard/reps-performance/daily-entry/custody
@@ -132,7 +132,7 @@
 - [~] `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard` | `accounts` | `journal` | التقارير الأربعة
 
 ## المشتريات / procurement
-- [~] `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard` | `requests` | `orders` | `bills`
+- [~] `requests` ✓ (المسار كامل: مسودة←اعتماد←أمر شراء) `orders` ✓ (استلام) `bills` ✓ (دفعات) `my-tasks`/`complaints`/`kpis` ✓ — باقي: `dashboard`
 
 ## الأدوات / tools
 - [ ] `kpis` — مؤشرات الأداء | `assistant` — المساعد | `settings` (كلمة مرور/توقيعات) | `reports`

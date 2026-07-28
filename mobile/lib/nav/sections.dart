@@ -7,9 +7,9 @@ import '../screens/my_requests.dart';
 import '../screens/approvals.dart';
 import '../screens/fleet_board.dart';
 import '../screens/fleet_shipments.dart';
-import '../screens/fleet_drivers.dart';
+import '../resource/resource.dart';
+import '../resource/configs.dart';
 import '../screens/contracts_dashboard.dart';
-import '../screens/contracts_vendors.dart';
 import '../screens/contracts_analysis.dart';
 import '../screens/contracts_prospects.dart';
 import '../screens/hr_dashboard.dart';
@@ -70,7 +70,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('اللوحة الرئيسية', 'Board', Icons.grid_view_rounded, (c) => const FleetBoardScreen()),
         AppPage('الشحنات والمتابعة', 'Shipments', Icons.inventory_2_outlined, (c) => const FleetShipmentsScreen()),
-        AppPage('السائقون', 'Drivers', Icons.badge_outlined, (c) => const FleetDriversScreen()),
+        AppPage('السائقون', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: fleetDriversCfg)),
+        AppPage('السيارات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: fleetVehiclesCfg)),
+        AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: fleetCustomersCfg)),
       ],
     ),
     AppSection(
@@ -78,9 +80,18 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'contracts_manager', 'operations_manager'],
       pages: [
         AppPage('لوحة القسم', 'Dashboard', Icons.space_dashboard_outlined, (c) => const ContractsDashboardScreen()),
-        AppPage('سجل موردي 3PL', '3PL Vendors', Icons.business_outlined, (c) => const ContractsVendorsScreen()),
+        AppPage('سجل موردي 3PL', '3PL Vendors', Icons.business_outlined, (c) => ResourceScreen(config: contractsVendorsCfg)),
         AppPage('تحليل التشغيل', 'Utilisation', Icons.insights_outlined, (c) => const ContractsAnalysisScreen()),
         AppPage('تنشيط الموردين', 'Prospects', Icons.phone_in_talk_outlined, (c) => const ContractsProspectsScreen()),
+        AppPage('عقود الأقسام', 'Dept Contracts', Icons.folder_copy_outlined, (c) => ResourceScreen(config: contractsAgreementsCfg)),
+      ],
+    ),
+    AppSection(
+      key: 'CRM', arTitle: 'إدارة العلاقات', enTitle: 'CRM', icon: Icons.handshake_outlined,
+      roles: const [..._admins, 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'],
+      pages: [
+        AppPage('الشركات', 'Companies', Icons.apartment_outlined, (c) => ResourceScreen(config: crmCompaniesCfg)),
+        AppPage('جهات الاتصال', 'Contacts', Icons.contact_phone_outlined, (c) => ResourceScreen(config: crmContactsCfg)),
       ],
     ),
     AppSection(

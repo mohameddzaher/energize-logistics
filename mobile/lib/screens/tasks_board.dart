@@ -265,12 +265,53 @@ class _TaskSheet extends StatefulWidget {
 class _TaskSheetState extends State<_TaskSheet> {
   late Map<String, dynamic> t;
   final _comment = TextEditingController();
+  late final TextEditingController _title;
+  late final TextEditingController _desc;
   bool _busy = false;
 
   @override
   void initState() {
     super.initState();
     t = Map<String, dynamic>.from(widget.task);
+    _title = TextEditingController(text: (t['title'] ?? '').toString());
+    _desc = TextEditingController(text: (t['description'] ?? '').toString());
+  }
+
+  Future<void> _saveEdits() async {
+    if (_title.text.trim().isEmpty || _busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onPatch(t['_id'], {'title': _title.text, 'description': _desc.text});
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف المهمة', 'Delete task')),
+        content: Text(tr('هل تريد حذف هذه المهمة نهائيًا؟', 'Delete this task permanently?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(tr('حذف', 'Delete')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/admin-tasks/${t['_id']}');
+      widget.onReload();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
   }
 
   Future<void> _sendComment() async {
@@ -301,11 +342,23 @@ class _TaskSheetState extends State<_TaskSheet> {
           controller: scroll,
           padding: const EdgeInsets.all(18),
           children: [
-            Text(t['title'] ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            if ((t['description'] ?? '').toString().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(t['description'], style: const TextStyle(color: Color(0xFF475569))),
-            ],
+            Row(children: [
+              Expanded(child: Text(tr('تفاصيل المهمة', 'Task details'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold))),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Color(0xFFDC2626)),
+                tooltip: tr('حذف المهمة', 'Delete'),
+                onPressed: _delete,
+              ),
+            ]),
+            const SizedBox(height: 6),
+            TextField(controller: _title, decoration: InputDecoration(labelText: tr('عنوان المهمة *', 'Title *'))),
+            const SizedBox(height: 10),
+            TextField(controller: _desc, maxLines: 2, decoration: InputDecoration(labelText: tr('التفاصيل', 'Details'))),
+            const SizedBox(height: 10),
+            FilledButton.tonal(
+              onPressed: _busy ? null : _saveEdits,
+              child: Text(tr('حفظ التعديلات', 'Save changes')),
+            ),
             const SizedBox(height: 14),
             // الحالة
             DropdownButtonFormField<String>(

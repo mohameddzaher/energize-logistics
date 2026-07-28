@@ -32,6 +32,9 @@ import '../screens/b2c_daily.dart';
 import '../screens/ops_platform.dart';
 import '../screens/ls2_fleet_assets.dart';
 import '../screens/admin_suite.dart';
+import '../screens/workshop_inventory.dart';
+import '../screens/accounting_suite.dart';
+import '../screens/ls2_drivers.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -163,6 +166,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'workshop_manager', 'workshop_employee', 'purchasing'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: workshopDashSpec)),
+        AppPage('مستودع الورشة', 'Store', Icons.inventory_outlined, (c) => const WorkshopInventoryScreen()),
         AppPage('طلبات الصيانة', 'Maintenance', Icons.build_circle_outlined, (c) => ResourceScreen(config: workshopMaintenanceCfg)),
         AppPage('المشتريات', 'Purchases', Icons.shopping_cart_outlined, (c) => ResourceScreen(config: workshopPurchasesCfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'workshop')),
@@ -193,6 +197,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen()),
         AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg)),
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen()),
+        AppPage('السائقون (تتبع)', 'Drivers', Icons.badge_outlined, (c) => const Ls2DriversScreen()),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const Ls2AlertsScreen()),
       ],
     ),
@@ -212,6 +217,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'finance_manager', 'accountant'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: accountingDashSpec)),
+        AppPage('شجرة الحسابات', 'Accounts', Icons.account_tree_outlined, (c) => const AccountsScreen()),
+        AppPage('دفتر اليومية', 'Journal', Icons.menu_book_outlined, (c) => const JournalScreen()),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'accounting')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'accounting', complaints: true)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),

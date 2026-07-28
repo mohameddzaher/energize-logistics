@@ -74,12 +74,12 @@
 
 ## لوكيشن سوليوشن / ls2
 - [~] `ls2/live`-style — قائمة المركبات بالصيانة والعداد ✓ (شاشة واحدة — ناقص باقي الصفحات)
-- [~] `ls2` — اللوحة ✓ | `ls2/[id]` ✓ (نظرة عامة/صيانة+تسجيل خدمة بقائمة الفحص+مؤجلات/رحلات/مسافة+وقود/تنبيهات) — باقي: registry | drivers | tires | temperature | maintenance (fleet-wide) | reports | settings
+- [~] `ls2` — اللوحة ✓ | `ls2/[id]` ✓ (نظرة عامة/صيانة+تسجيل خدمة بقائمة الفحص+مؤجلات/رحلات/مسافة+وقود/تنبيهات) — باقي: registry | tires | temperature | maintenance (fleet-wide) | reports | settings (drivers ✓ بالتفاصيل)
 - [x] `ls2/fleet-assets` — الكاوتشات ✓ بكل العمليات (تسجيل/فك بوجهة+نسبة حالة/تركيب مع مصير القاطن/نتيجة التجديد/إتلاف) + بطاقات فلترة
 
 ## الورشة / workshop
 - [x] `workshop/purchases` — المشتريات — تسجيل=استلام + حذف
-- [x] `workshop` — طلبات الصيانة ✓ (CRUD) | `store` — المستودع | `dashboard` | `tasks` — أوامر شغل | `inventory` | `my-tasks`/`complaints`/`kpis`
+- [~] `workshop` — طلبات الصيانة ✓ اللوحة ✓ `inventory` ✓ (إضافة صنف+صرف بمصير القطعة المستبدلة) `my-tasks`/`complaints`/`kpis` ✓ — باقي: `store` الشامل | `tasks` أوامر الشغل
 
 ## تقييم الأداء / performance
 - [ ] `performance` + `overview` + `evaluate/[id]` + `requests` + `settings`
@@ -130,7 +130,7 @@
 - [~] `targets` CRUD ✓ | `dashboard` ✓ `my-tasks`/`complaints`/`kpis` ✓ | `pipeline` | `performance`
 
 ## الحسابات / accounting
-- [~] `my-tasks`/`complaints`/`kpis` ✓ — باقي: `accounts` | `journal` | التقارير الأربعة (اللوحة ✓)
+- [~] `accounts` ✓ (فلاتر النوع+الأرصدة) `journal` ✓ (عرض+قيد متوازن ببنود ديناميكية) اللوحة ✓ `my-tasks`/`complaints`/`kpis` ✓ — باقي: التقارير الأربعة/ledger/trial-balance
 
 ## المشتريات / procurement
 - [~] `requests` ✓ (المسار كامل: مسودة←اعتماد←أمر شراء) `orders` ✓ (استلام) `bills` ✓ (دفعات) `dashboard` ✓ `my-tasks`/`complaints`/`kpis` ✓

@@ -151,7 +151,7 @@ const ALL_ROLES = [
   'procurement_manager', 'customs_manager', 'customs_officer',
   'it_manager', 'it_specialist',
   'marketing_manager', 'marketing_specialist', 'bd_manager', 'bd_specialist',
-  'fleet_manager', 'fleet_supervisor',
+  'fleet_manager', 'fleet_supervisor', 'administrator', 'contracts_manager',
 ];
 
 const getSection = (key) => SECTIONS.find((s) => s.key === key);

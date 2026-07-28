@@ -254,6 +254,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('الشحنات', 'Orders', Icons.assignment_outlined, (c) => const ShipmentOrdersScreen()),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: shipmentOrdersCustomersCfg)),
+        AppPage('الموردون', 'Suppliers', Icons.business_outlined, (c) => ResourceScreen(config: shipmentOrdersSuppliersCfg)),
+        AppPage('الشاحنات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: shipmentOrdersVehiclesCfg)),
       ],
     ),
     AppSection(

@@ -193,7 +193,7 @@ final fleetDashSpec = DashSpec(
 
 final b2cDashSpec = DashSpec(
   arTitle: 'لوحة B2C', enTitle: 'B2C Dashboard',
-  endpoint: '/api/b2c/dashboard', liveEvent: 'b2c:updated',
+  endpoint: '/api/b2c/dashboard', liveEvent: 'b2c:*',
   stats: const [
     DashStat('إجمالي الطلبات', 'Total orders', 'kpis.totalOrders', Icons.shopping_basket_outlined, T.navy),
     DashStat('مناديب نشطون', 'Active reps', 'kpis.repsActive', Icons.groups_outlined, T.info),
@@ -298,7 +298,7 @@ final customsDashSpec = DashSpec(
 
 const vehiclesDashSpec = DashSpec(
   arTitle: 'لوحة المركبات', enTitle: 'Vehicles Dashboard',
-  endpoint: '/api/vehicles/dashboard', liveEvent: 'vehicles:updated',
+  endpoint: '/api/vehicles/dashboard', liveEvent: 'vehicle:updated',
   stats: [
     DashStat('المركبات', 'Vehicles', 'totals.vehicles', Icons.local_shipping_outlined, T.navy),
     DashStat('مفوَّضة', 'Authorized', 'totals.authorized', Icons.verified_outlined, T.success),

@@ -32,6 +32,14 @@ class Live {
       for (final h in List.of(_handlers[event] ?? const [])) {
         h();
       }
+      // اشتراك بالبادئة: المفتاح 'b2c:*' يستقبل كل أحداث 'b2c:...'.
+      for (final e in _handlers.entries) {
+        if (e.key.endsWith(':*') && event.startsWith(e.key.substring(0, e.key.length - 1))) {
+          for (final h in List.of(e.value)) {
+            h();
+          }
+        }
+      }
     });
     // قبل كل محاولة إعادة اتصال: حدِّث التوكن في المصافحة.
     _socket!.io.on('reconnect_attempt', (_) {

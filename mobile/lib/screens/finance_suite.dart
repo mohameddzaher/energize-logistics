@@ -41,6 +41,106 @@ class _CustomersScreenState extends State<CustomersScreen> {
     }
   }
 
+  // إنشاء أو تعديل عميل — نفس حقول نموذج الويب الأساسية.
+  Future<void> _editSheet(Map<String, dynamic>? c) async {
+    final name = TextEditingController(text: (c?['companyName'] ?? '').toString());
+    final contact = TextEditingController(text: (c?['contactPerson'] ?? '').toString());
+    final phone = TextEditingController(text: (c?['phone'] ?? '').toString());
+    final email = TextEditingController(text: (c?['email'] ?? '').toString());
+    final creditLimit = TextEditingController(text: (c?['creditLimit'] ?? '').toString());
+    final creditTerm = TextEditingController(text: (c?['creditTerm'] ?? '').toString());
+    final address = TextEditingController(text: (c?['address'] ?? '').toString());
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(c == null ? tr('عميل جديد', 'New customer') : tr('تعديل العميل', 'Edit customer'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 12),
+              TextField(controller: name, decoration: InputDecoration(labelText: tr('اسم الشركة *', 'Company name *'))),
+              const SizedBox(height: 10),
+              TextField(controller: contact, decoration: InputDecoration(labelText: tr('جهة الاتصال', 'Contact person'))),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('الجوال', 'Phone')))),
+                const SizedBox(width: 10),
+                Expanded(child: TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr('البريد', 'Email')))),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: TextField(controller: creditLimit, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('حد الائتمان', 'Credit limit')))),
+                const SizedBox(width: 10),
+                Expanded(child: TextField(controller: creditTerm, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('مدة السداد (يوم)', 'Credit term (days)')))),
+              ]),
+              const SizedBox(height: 10),
+              TextField(controller: address, decoration: InputDecoration(labelText: tr('العنوان', 'Address'))),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () async {
+                    if (name.text.trim().isEmpty) return;
+                    final body = {
+                      'companyName': name.text.trim(),
+                      'contactPerson': contact.text.trim(),
+                      'phone': phone.text.trim(),
+                      'email': email.text.trim(),
+                      'creditLimit': num.tryParse(creditLimit.text) ?? 0,
+                      if (creditTerm.text.trim().isNotEmpty) 'creditTerm': num.tryParse(creditTerm.text) ?? 0,
+                      'address': address.text.trim(),
+                    };
+                    try {
+                      if (c == null) {
+                        await Api.instance.post('/api/customers', body);
+                      } else {
+                        await Api.instance.put('/api/customers/${c['_id']}', body);
+                      }
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      _load();
+                    } catch (e) {
+                      if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.toString())));
+                    }
+                  },
+                  child: Text(c == null ? tr('إنشاء', 'Create') : tr('حفظ', 'Save')),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleStop(Map<String, dynamic> c) async {
+    final stopped = c['isStopped'] == true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(stopped ? tr('إعادة تفعيل العميل', 'Reactivate customer') : tr('إيقاف العميل', 'Stop customer')),
+        content: Text((c['companyName'] ?? '').toString()),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: stopped ? T.success : T.danger),
+            onPressed: () => Navigator.pop(d, true),
+            child: Text(stopped ? tr('تفعيل', 'Reactivate') : tr('إيقاف', 'Stop')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/customers/${c['_id']}/${stopped ? 'unstop' : 'stop'}');
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   void _open(Map<String, dynamic> c) {
     showModalBottomSheet(
       context: context,
@@ -50,7 +150,18 @@ class _CustomersScreenState extends State<CustomersScreen> {
       builder: (ctx) => Padding(
         padding: const EdgeInsets.all(20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text((c['companyName'] ?? '').toString(), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          Row(children: [
+            Expanded(child: Text((c['companyName'] ?? '').toString(), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, size: 20, color: T.navy),
+              onPressed: () { Navigator.pop(ctx); _editSheet(c); },
+            ),
+            IconButton(
+              icon: Icon(c['isStopped'] == true ? Icons.play_circle_outline : Icons.block_outlined, size: 20, color: c['isStopped'] == true ? T.success : T.danger),
+              onPressed: () { Navigator.pop(ctx); _toggleStop(c); },
+            ),
+          ]),
+          if (c['isStopped'] == true) Chip2(tr('موقوف', 'Stopped'), T.danger),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(child: StatCard(label: tr('الرصيد المستحق', 'Outstanding'), value: (c['outstandingBalance'] ?? 0) as num, color: T.danger, icon: Icons.account_balance_wallet_outlined)),
@@ -89,6 +200,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     return AppScaffold(
       title: Text(tr('العملاء', 'Customers')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _editSheet(null),
+        icon: const Icon(Icons.add),
+        label: Text(tr('عميل', 'New')),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
@@ -179,6 +295,117 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     }
   }
 
+  // إنشاء فاتورة — رقم + عميل + مبلغ + تاريخ؛ الاستحقاق يحسبه الخادم من مدة السداد.
+  Future<void> _createSheet() async {
+    List<Map<String, dynamic>> customers = [];
+    try {
+      final d = await Api.instance.get('/api/customers');
+      customers = List<Map<String, dynamic>>.from(d['customers'] ?? []);
+    } catch (_) {}
+    if (!mounted) return;
+    Map<String, dynamic>? customer;
+    final number = TextEditingController();
+    final amount = TextEditingController();
+    final notes = TextEditingController();
+    DateTime date = DateTime.now();
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('فاتورة جديدة', 'New invoice'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
+                onPressed: () async {
+                  final c = await showModalBottomSheet<Map<String, dynamic>>(
+                    context: ctx,
+                    isScrollControlled: true,
+                    builder: (p) {
+                      String q = '';
+                      return StatefulBuilder(builder: (p, setP) {
+                        final fq = _fold(q.trim());
+                        final list = customers.where((x) => fq.isEmpty || _fold((x['companyName'] ?? '').toString()).contains(fq)).toList();
+                        return SafeArea(
+                          child: SizedBox(
+                            height: MediaQuery.of(p).size.height * 0.7,
+                            child: Column(children: [
+                              Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: TextField(autofocus: true, onChanged: (v) => setP(() => q = v),
+                                    decoration: InputDecoration(hintText: tr('ابحث عن العميل…', 'Search customer…'), prefixIcon: const Icon(Icons.search))),
+                              ),
+                              Expanded(
+                                child: ListView.builder(
+                                  itemCount: list.length,
+                                  itemBuilder: (p, i) => ListTile(
+                                    title: Text((list[i]['companyName'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                    onTap: () => Navigator.pop(p, list[i]),
+                                  ),
+                                ),
+                              ),
+                            ]),
+                          ),
+                        );
+                      });
+                    },
+                  );
+                  if (c != null) setS(() => customer = c);
+                },
+                icon: const Icon(Icons.search, size: 17),
+                label: Text(customer == null ? tr('اختر العميل *', 'Choose customer *') : (customer!['companyName'] ?? '').toString(),
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: TextField(controller: number, decoration: InputDecoration(labelText: tr('رقم الفاتورة *', 'Invoice number *')))),
+                const SizedBox(width: 10),
+                Expanded(child: TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المبلغ *', 'Amount *')))),
+              ]),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final v = await showDatePicker(context: ctx, initialDate: date, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 30)));
+                  if (v != null) setS(() => date = v);
+                },
+                icon: const Icon(Icons.event, size: 17),
+                label: Text('${tr('تاريخ الفاتورة', 'Invoice date')}: ${date.day}/${date.month}/${date.year}'),
+              ),
+              const SizedBox(height: 10),
+              TextField(controller: notes, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () async {
+                    if (customer == null || number.text.trim().isEmpty || (num.tryParse(amount.text) ?? 0) <= 0) return;
+                    try {
+                      await Api.instance.post('/api/invoices', {
+                        'invoiceNumber': number.text.trim(),
+                        'customer': customer!['_id'],
+                        'amount': num.tryParse(amount.text),
+                        'invoiceDate': '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+                        if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim(),
+                      });
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      _load();
+                    } catch (e) {
+                      if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.toString())));
+                    }
+                  },
+                  child: Text(tr('إنشاء الفاتورة', 'Create')),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      )),
+    );
+  }
+
   Future<void> _markPaid(Map<String, dynamic> inv) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -214,6 +441,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
     return AppScaffold(
       title: Text(tr('الفواتير', 'Invoices')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _createSheet,
+        icon: const Icon(Icons.add),
+        label: Text(tr('فاتورة', 'New')),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
@@ -328,6 +560,127 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     }
   }
 
+  // تسجيل دفعة على فاتورة غير مسددة — بحث في الفواتير المفتوحة ثم المبلغ والطريقة.
+  Future<void> _logSheet() async {
+    List<Map<String, dynamic>> invoices = [];
+    try {
+      final d = await Api.instance.get('/api/invoices');
+      invoices = List<Map<String, dynamic>>.from(d['invoices'] ?? [])
+          .where((r) => ['pending', 'partial', 'overdue'].contains(r['status']))
+          .toList();
+    } catch (_) {}
+    if (!mounted) return;
+    Map<String, dynamic>? invoice;
+    final amount = TextEditingController();
+    final reference = TextEditingController();
+    String method = 'transfer';
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('تسجيل دفعة', 'Log payment'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
+                onPressed: () async {
+                  final v = await showModalBottomSheet<Map<String, dynamic>>(
+                    context: ctx,
+                    isScrollControlled: true,
+                    builder: (p) {
+                      String q = '';
+                      return StatefulBuilder(builder: (p, setP) {
+                        final fq = _fold(q.trim());
+                        final list = invoices.where((x) {
+                          final customer = x['customer'] is Map ? (x['customer']['companyName'] ?? '') : '';
+                          return fq.isEmpty || _fold('${x['invoiceNumber'] ?? ''} $customer').contains(fq);
+                        }).toList();
+                        return SafeArea(
+                          child: SizedBox(
+                            height: MediaQuery.of(p).size.height * 0.7,
+                            child: Column(children: [
+                              Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: TextField(autofocus: true, onChanged: (v) => setP(() => q = v),
+                                    decoration: InputDecoration(hintText: tr('ابحث بالفاتورة أو العميل…', 'Search…'), prefixIcon: const Icon(Icons.search))),
+                              ),
+                              Expanded(
+                                child: ListView.builder(
+                                  itemCount: list.length,
+                                  itemBuilder: (p, i) {
+                                    final customer = list[i]['customer'] is Map ? (list[i]['customer']['companyName'] ?? '') : '';
+                                    return ListTile(
+                                      title: Text('${list[i]['invoiceNumber'] ?? ''} · $customer', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                                      subtitle: Text('${tr('المتبقي', 'Balance')}: ${_money(list[i]['balance'])}', style: const TextStyle(fontSize: 12)),
+                                      onTap: () => Navigator.pop(p, list[i]),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ]),
+                          ),
+                        );
+                      });
+                    },
+                  );
+                  if (v != null) setS(() { invoice = v; amount.text = (v['balance'] ?? '').toString(); });
+                },
+                icon: const Icon(Icons.search, size: 17),
+                label: Text(
+                  invoice == null
+                      ? tr('اختر الفاتورة *', 'Choose invoice *')
+                      : '${invoice!['invoiceNumber']} · ${tr('المتبقي', 'balance')} ${_money(invoice!['balance'])}',
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المبلغ *', 'Amount *'))),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: method,
+                decoration: InputDecoration(labelText: tr('طريقة الدفع', 'Method')),
+                items: [
+                  DropdownMenuItem(value: 'transfer', child: Text(tr('تحويل بنكي', 'Bank transfer'))),
+                  DropdownMenuItem(value: 'cash', child: Text(tr('نقدًا', 'Cash'))),
+                  DropdownMenuItem(value: 'cheque', child: Text(tr('شيك', 'Cheque'))),
+                  DropdownMenuItem(value: 'other', child: Text(tr('أخرى', 'Other'))),
+                ],
+                onChanged: (v) => setS(() => method = v ?? method),
+              ),
+              const SizedBox(height: 10),
+              TextField(controller: reference, decoration: InputDecoration(labelText: tr('المرجع', 'Reference'))),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () async {
+                    if (invoice == null || (num.tryParse(amount.text) ?? 0) <= 0) return;
+                    try {
+                      await Api.instance.post('/api/payments', {
+                        'invoice': invoice!['_id'],
+                        'amount': num.tryParse(amount.text),
+                        'paymentMethod': method,
+                        if (reference.text.trim().isNotEmpty) 'reference': reference.text.trim(),
+                      });
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      _load();
+                    } catch (e) {
+                      if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.toString())));
+                    }
+                  },
+                  child: Text(tr('تسجيل', 'Log')),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      )),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
@@ -340,6 +693,11 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
 
     return AppScaffold(
       title: Text(tr('المدفوعات', 'Payments')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _logSheet,
+        icon: const Icon(Icons.add),
+        label: Text(tr('تسجيل دفعة', 'Log payment')),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null

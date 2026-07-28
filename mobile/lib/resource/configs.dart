@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/lang.dart';
 import '../ui/theme.dart';
 import 'resource.dart';
 
@@ -738,7 +739,7 @@ final itStockCfg = ResourceConfig(
 // ── B2C ──────────────────────────────────────────────────────────────────────
 final b2cProjectsCfg = ResourceConfig(
   arTitle: 'مشاريع B2C', enTitle: 'B2C Projects', icon: Icons.folder_special_outlined,
-  endpoint: '/api/b2c/projects', listKey: 'projects', liveEvent: 'b2c:updated',
+  endpoint: '/api/b2c/projects', listKey: 'projects', liveEvent: 'b2c:*',
   searchFields: const ['name', 'code'],
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => _s(r, 'code'),
@@ -758,7 +759,7 @@ final b2cProjectsCfg = ResourceConfig(
 
 final b2cRepsCfg = ResourceConfig(
   arTitle: 'مناديب B2C', enTitle: 'B2C Reps', icon: Icons.sports_motorsports_outlined,
-  endpoint: '/api/b2c/reps', listKey: 'reps', liveEvent: 'b2c:updated',
+  endpoint: '/api/b2c/reps', listKey: 'reps', liveEvent: 'b2c:*',
   searchFields: const ['arabicName', 'englishName', 'repId', 'phone'],
   titleOf: (r) => _s(r, 'arabicName').isNotEmpty ? _s(r, 'arabicName') : _s(r, 'englishName'),
   subtitleOf: (r) => [_s(r, 'repId'), _s(r, 'phone')].where((x) => x.isNotEmpty).join(' · '),
@@ -780,13 +781,48 @@ final b2cRepsCfg = ResourceConfig(
 // ── طلبات الشحنات (التجربة المستقلة) ────────────────────────────────────────
 final shipmentOrdersCustomersCfg = ResourceConfig(
   arTitle: 'عملاء طلبات الشحن', enTitle: 'SO Customers', icon: Icons.people_outline,
-  endpoint: '/api/shipment-orders/customers', listKey: 'customers', liveEvent: 'so:updated',
+  endpoint: '/api/shipment-orders/customers', listKey: 'customers', liveEvent: 'shipmentOrders:customers',
   searchFields: const ['name', 'phone'],
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => _s(r, 'phone'),
   fields: const [
     FieldSpec('name', 'اسم العميل', 'Name', required: true),
     FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+final shipmentOrdersSuppliersCfg = ResourceConfig(
+  arTitle: 'موردو الشاحنات', enTitle: 'SO Suppliers', icon: Icons.business_outlined,
+  endpoint: '/api/shipment-orders/suppliers', listKey: 'suppliers', liveEvent: 'shipmentOrders:fleet',
+  searchFields: const ['name', 'phone'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => _s(r, 'phone'),
+  chipsOf: (r) => [(r['type'] == 'freelancer' ? tr('مستقل', 'Freelancer') : tr('شركة', 'Company'), const Color(0xFF4F46E5))],
+  fields: const [
+    FieldSpec('name', 'اسم المورد', 'Name', required: true),
+    FieldSpec('type', 'النوع', 'Type', type: FieldType.select, options: [
+      ('company', 'شركة', 'Company'),
+      ('freelancer', 'مستقل', 'Freelancer'),
+    ]),
+    FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
+    FieldSpec('email', 'البريد', 'Email', type: FieldType.email),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+final shipmentOrdersVehiclesCfg = ResourceConfig(
+  arTitle: 'شاحنات طلبات الشحن', enTitle: 'SO Vehicles', icon: Icons.local_shipping_outlined,
+  endpoint: '/api/shipment-orders/vehicles', listKey: 'vehicles', liveEvent: 'shipmentOrders:fleet',
+  searchFields: const ['plate', 'name', 'defaultDriverName'],
+  titleOf: (r) => _s(r, 'plate'),
+  subtitleOf: (r) => '${_s(r, 'name')} ${_s(r, 'defaultDriverName')}'.trim(),
+  fields: const [
+    FieldSpec('plate', 'اللوحة', 'Plate', required: true),
+    FieldSpec('name', 'وصف الشاحنة', 'Description'),
+    FieldSpec('truckType', 'نوع الشاحنة', 'Truck type'),
+    FieldSpec('defaultDriverName', 'السائق الافتراضي', 'Default driver'),
+    FieldSpec('defaultDriverPhone', 'هاتف السائق', 'Driver phone', type: FieldType.phone),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );

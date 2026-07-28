@@ -16,11 +16,11 @@
 - [ ] `main/low-visit-customers` — العملاء منخفضو الزيارة — API: /api/tasks/low-visit-customers
 
 ## العملاء والمالية / Customers & Finance
-- [~] `customers` — العملاء ✓ (قائمة+بحث+ملف موجز بالأرصدة) — باقي: إنشاء/تعديل + stop/unstop + export
+- [~] `customers` — العملاء ✓ (قائمة+بحث+ملف موجز+إنشاء/تعديل+إيقاف/تفعيل) — باقي: export
 - [ ] `customers/[id]` — ملف العميل — profile+invoices+payments+risk+credit-term — API: multiple
-- [~] `invoices` — الفواتير ✓ (قائمة+فلاتر حالات+تحصيل كامل) — باقي: إنشاء/تعديل + refund
+- [~] `invoices` — الفواتير ✓ (قائمة+فلاتر+تحصيل كامل+إنشاء) — باقي: refund/freeze
 - [ ] `invoices/[id]` — تفاصيل الفاتورة — status/freeze/refund/record payment — API: /api/invoices/${id}
-- [~] `payments` — المدفوعات ✓ (قائمة+بحث+إجمالي) — باقي: إنشاء/تخصيص
+- [~] `payments` — المدفوعات ✓ (قائمة+بحث+إجمالي+تسجيل دفعة على فاتورة) — باقي: التخصيص الجماعي FIFO
 - [ ] `collections` — التحصيلات — complete/promise/follow-ups — API: /api/collections
 - [ ] `collectors` + `collectors/[id]` — المحصلين وأداؤهم — API: /api/analytics/performance
 - [ ] `tasks` — المهام — CRUD + AI suggestions — API: /api/tasks
@@ -43,11 +43,11 @@
 - [ ] `ops/my-tasks` + `ops/complaints` (SectionWork) + `ops/kpis` (TeamBoard)
 
 ## طلبات الشحنات / shipment-orders
-- [~] `shipment-orders` — الشحنات ✓ (قائمة+فلاتر+تغيير حالة) — باقي: النموذج الديناميكي للإنشاء
-- [ ] `shipment-orders/new` — طلب شحنة جديد (نموذج ديناميكي fields)
+- [x] `shipment-orders` — الشحنات ✓ (قائمة+فلاتر+تغيير حالة+فتح للتعديل)
+- [x] `shipment-orders/new` — طلب شحنة جديد ✓ نموذج ديناميكي من fields + عميل/شاحنة inline + سعر المسار التلقائي + تعديل
 - [ ] `shipment-orders/chat` — مساعد الإنشاء
 - [x] `shipment-orders/customers` — العملاء — CRUD
-- [ ] `shipment-orders/fleet` — الموردون والمركبات — CRUD
+- [x] `shipment-orders/fleet` — الموردون ✓ والمركبات ✓ — CRUD
 - [ ] `shipment-orders/form-settings` — إعدادات النموذج
 
 ## إدارة الأسطول / fleet

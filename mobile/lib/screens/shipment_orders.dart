@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'shipment_order_create.dart';
 
 /// طلبات الشحنات — the standalone shipment-orders trial: the orders list with
 /// the same status vocabulary, search and inline status change.
@@ -40,12 +41,12 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     super.initState();
     _load();
     _onLive = () => _load();
-    Live.instance.on('shipment-orders:updated', _onLive);
+    Live.instance.on('shipmentOrders:updated', _onLive);
   }
 
   @override
   void dispose() {
-    Live.instance.off('shipment-orders:updated', _onLive);
+    Live.instance.off('shipmentOrders:updated', _onLive);
     super.dispose();
   }
 
@@ -82,6 +83,14 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
 
     return AppScaffold(
       title: Text(tr('طلبات الشحنات', 'Shipment Orders')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final created = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const ShipmentOrderCreateScreen()));
+          if (created == true) _load();
+        },
+        icon: const Icon(Icons.add),
+        label: Text(tr('طلب جديد', 'New')),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
@@ -133,7 +142,13 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                                 final st = _soStatuses[r['status']] ?? ('—', '—', T.inkFaint);
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
-                                  child: AppCard(
+                                  child: Pressable(
+                                    onTap: () async {
+                                      final saved = await Navigator.push<bool>(
+                                          context, MaterialPageRoute(builder: (_) => ShipmentOrderCreateScreen(order: r)));
+                                      if (saved == true) _load();
+                                    },
+                                    child: AppCard(
                                     topAccent: st.$3,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
@@ -161,6 +176,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                                         ),
                                       ]),
                                     ]),
+                                    ),
                                   ),
                                 );
                               },

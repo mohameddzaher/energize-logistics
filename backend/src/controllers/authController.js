@@ -92,6 +92,10 @@ exports.login = async (req, res) => {
         // linked to an employee until the next /auth/me refresh.
         linkedEmployee: user.linkedEmployee || null,
       },
+      // For the mobile app (no cookie jar): the same tokens the cookies carry.
+      // The web client ignores these fields.
+      accessToken,
+      refreshToken,
     });
   } catch (error) {
     // Log the real reason — a bare "Failed to process login" leaves nothing to go
@@ -106,7 +110,9 @@ exports.login = async (req, res) => {
 
 exports.refresh = async (req, res) => {
   try {
-    const token = req.cookies?.refreshToken;
+    // Browsers refresh via the httpOnly cookie; the mobile app keeps its
+    // refresh token in secure storage and sends it in the body instead.
+    const token = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!token) {
       return res.status(401).json({ message: 'No refresh token' });
     }
@@ -145,7 +151,9 @@ exports.refresh = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    res.json({ message: 'Token refreshed' });
+    // The mobile app reads the new access token from the body (it cannot see
+    // httpOnly cookies); the web client ignores this field.
+    res.json({ message: 'Token refreshed', accessToken: newAccessToken });
   } catch (error) {
     return res.status(401).json({ message: 'Invalid refresh token' });
   }

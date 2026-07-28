@@ -17,7 +17,12 @@ const invalidateUserCache = (userId) => {
 
 const authenticate = async (req, res, next) => {
   try {
-    const token = req.cookies?.accessToken;
+    // Browsers authenticate with the httpOnly cookie; the mobile app sends the
+    // same access token as `Authorization: Bearer <token>` instead (native
+    // apps have no cookie jar worth trusting). Cookie wins when both exist.
+    const header = req.headers.authorization || '';
+    const bearer = header.startsWith('Bearer ') ? header.slice(7) : null;
+    const token = req.cookies?.accessToken || bearer;
 
     if (!token) {
       return res.status(401).json({ message: 'Authentication required' });

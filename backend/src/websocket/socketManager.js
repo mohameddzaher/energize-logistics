@@ -17,7 +17,9 @@ const initializeSocket = (server) => {
   io.use((socket, next) => {
     try {
       const cookies = cookie.parse(socket.handshake.headers.cookie || '');
-      const token = cookies.accessToken;
+      // Browsers hand the cookie; the mobile app passes the same access token
+      // via the socket.io handshake auth payload instead.
+      const token = cookies.accessToken || socket.handshake.auth?.token;
 
       if (!token) {
         return next(new Error('Authentication required'));

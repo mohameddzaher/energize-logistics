@@ -19,7 +19,7 @@ export const PERF_STAFF_ROLES = [
   'crm_manager', 'crm_team_lead', 'sales_manager', 'finance_manager', 'fleet_manager',
   'procurement_manager', 'workshop_manager', 'customs_manager',
   'b2c_head', 'b2c_project_manager', 'remote_manager',
-  'marketing_manager', 'bd_manager',
+  'marketing_manager', 'bd_manager', 'contracts_manager',
 ];
 // Full visibility across every department.
 export const PERF_FULL_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];

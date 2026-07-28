@@ -35,6 +35,7 @@ module.exports = {
     BD_MANAGER: 'bd_manager',
     BD_SPECIALIST: 'bd_specialist',
     ADMINISTRATOR: 'administrator',
+    CONTRACTS_MANAGER: 'contracts_manager',
   },
 
   // Org chart: each role's DEFAULT direct-manager role. Used to auto-suggest a
@@ -77,6 +78,7 @@ module.exports = {
     bd_manager: 'admin',
     bd_specialist: 'bd_manager',
     administrator: 'admin', // السكرتارية تتبع الإدارة مباشرة
+    contracts_manager: 'admin',
     client: null,
   },
 

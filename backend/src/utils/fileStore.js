@@ -31,29 +31,33 @@ const parseDataUrl = (dataUrl) => {
   return { mimeType: m[1].toLowerCase(), buffer: Buffer.from(m[2], 'base64') };
 };
 
-// Save a base64 data URL to the employees upload dir.
+// Save a base64 data URL under uploads/<subdir>.
 // Throws Error with a friendly message on validation failure.
-const saveEmployeeFile = (dataUrl, originalName = '') => {
+const saveUploadFile = (dataUrl, subdir, originalName = '') => {
   const parsed = parseDataUrl(dataUrl);
   if (!parsed) throw new Error('Invalid file data');
   const { mimeType, buffer } = parsed;
   if (!ALLOWED_MIME.has(mimeType)) throw new Error('Unsupported file type. Use an image, PDF, Word or Excel file.');
   if (buffer.length > MAX_BYTES) throw new Error('File too large (max 20MB).');
 
-  ensureDir(EMPLOYEES_DIR);
+  const safeSub = String(subdir || 'misc').replace(/[^a-z0-9_-]/gi, '');
+  const dir = path.join(UPLOAD_ROOT, safeSub);
+  ensureDir(dir);
   const ext = EXT_BY_MIME[mimeType] || 'bin';
   const name = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${ext}`;
-  fs.writeFileSync(path.join(EMPLOYEES_DIR, name), buffer);
+  fs.writeFileSync(path.join(dir, name), buffer);
 
   return {
     // Served under /api/uploads so the Next.js /api/* proxy forwards it to the
     // backend (keeps everything same-origin / first-party — see lib/api.ts).
-    fileUrl: `/api/uploads/employees/${name}`,
+    fileUrl: `/api/uploads/${safeSub}/${name}`,
     fileName: (originalName || name).slice(0, 200),
     mimeType,
     size: buffer.length,
   };
 };
+
+const saveEmployeeFile = (dataUrl, originalName = '') => saveUploadFile(dataUrl, 'employees', originalName);
 
 // Best-effort delete of a stored file given its public /api/uploads/... url.
 const deleteStoredFile = (fileUrl) => {
@@ -66,4 +70,4 @@ const deleteStoredFile = (fileUrl) => {
   } catch (e) { /* ignore */ }
 };
 
-module.exports = { saveEmployeeFile, deleteStoredFile, UPLOAD_ROOT };
+module.exports = { saveEmployeeFile, saveUploadFile, deleteStoredFile, UPLOAD_ROOT };

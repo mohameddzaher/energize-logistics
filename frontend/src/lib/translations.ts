@@ -123,6 +123,7 @@ const layout = {
     sectionShipmentOrders: 'Shipment Orders',
     sectionFleetManagement: 'Fleet Management',
     sectionAdministration: 'Administration',
+    sectionContracts: 'Contracts Management',
     vehiclesDashboard: 'Vehicles Dashboard',
     vehiclesFleet: 'Fleet & Authorizations',
     vehiclesAccidents: 'Accidents',
@@ -164,6 +165,7 @@ const layout = {
     roleBDManager: 'Business Development Manager',
     roleBDSpecialist: 'Business Development Specialist',
     roleAdministrator: 'Administrator',
+    roleContractsManager: 'Contracts Manager',
     // Vehicle analytics & misc nav
     vehicleAnalytics: 'Vehicle Analytics',
     fuelAnalysis: 'Fuel Analysis',
@@ -299,6 +301,7 @@ const layout = {
     sectionShipmentOrders: 'طلبات الشحنات',
     sectionFleetManagement: 'إدارة الأسطول',
     sectionAdministration: 'الشؤون الإدارية',
+    sectionContracts: 'إدارة العقود',
     vehiclesDashboard: 'لوحة المركبات',
     vehiclesFleet: 'الأسطول والتفاويض',
     vehiclesAccidents: 'الحوادث',
@@ -340,6 +343,7 @@ const layout = {
     roleBDManager: 'مدير تطوير الأعمال',
     roleBDSpecialist: 'أخصائي تطوير أعمال',
     roleAdministrator: 'موظف شؤون إدارية',
+    roleContractsManager: 'مدير إدارة العقود',
     // Vehicle analytics & misc nav
     vehicleAnalytics: 'تحليلات المركبات',
     fuelAnalysis: 'تحليل الوقود',
@@ -7227,6 +7231,7 @@ export const SECTION_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   'Shipment Orders': 'sectionShipmentOrders',
   'Fleet Management': 'sectionFleetManagement',
   'Administration': 'sectionAdministration',
+  'Contracts': 'sectionContracts',
 };
 
 // User role → layout translation key. Use with getLayoutTranslations(lang)[key].
@@ -7267,6 +7272,7 @@ export const ROLE_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   bd_manager: 'roleBDManager',
   bd_specialist: 'roleBDSpecialist',
   administrator: 'roleAdministrator',
+  contracts_manager: 'roleContractsManager',
 };
 
 export function getRoleLabel(role: string | undefined | null, lang: Lang): string {

@@ -17,6 +17,7 @@ import {
   Activity, Car, UserSquare, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck, PackageSearch, SlidersHorizontal,
   Thermometer, Satellite, Crown, Container, FileBarChart,
   Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid,
+  FileSignature, PhoneCall,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -41,6 +42,8 @@ const BD_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_man
 const IT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 // الشؤون الإدارية (السكرتارية) — the shared office task board.
 const ADMINISTRATION_ROLES = ['super_admin', 'admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'];
+// إدارة العقود — 3PL vendor contracts + analysis + other departments' contracts.
+const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager'];
 
 // Self service (my profile / my leaves / my requests) belongs to EVERY employee,
 // managers included — they file leave like anyone else. The only login that is
@@ -54,7 +57,7 @@ const SELF_SERVICE_ROLES = [
   'finance_manager', 'accountant', 'sales_manager', 'sales_rep',
   'procurement_manager', 'customs_manager', 'customs_officer',
   'marketing_manager', 'marketing_specialist', 'bd_manager', 'bd_specialist',
-  'fleet_manager', 'fleet_supervisor', 'administrator',
+  'fleet_manager', 'fleet_supervisor', 'administrator', 'contracts_manager',
 ];
 
 interface NavItem {
@@ -263,6 +266,15 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/bd/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(BD_ROLES), section: 'Business Development', restrict: true },
     // ---- Administration (الشؤون الإدارية / السكرتارية) ----
     { href: '/system/administration', label: lang === 'ar' ? 'لوحة المهام' : 'Task Board', icon: <ClipboardList className="w-5 h-5" />, roles: ADMINISTRATION_ROLES, section: 'Administration' },
+    // ---- Contracts (إدارة العقود) ----
+    { href: '/system/contracts', label: lang === 'ar' ? 'لوحة إدارة العقود' : 'Contracts Dashboard', icon: <FileSignature className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
+    { href: '/system/contracts/vendors', label: lang === 'ar' ? 'سجل موردي 3PL' : 'Vendor Register', icon: <Building2 className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
+    { href: '/system/contracts/analysis', label: lang === 'ar' ? 'تحليل التشغيل' : 'Utilisation Analysis', icon: <BarChart3 className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
+    { href: '/system/contracts/prospects', label: lang === 'ar' ? 'تنشيط الموردين الجدد' : 'Prospect Outreach', icon: <PhoneCall className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
+    { href: '/system/contracts/agreements', label: lang === 'ar' ? 'عقود الأقسام' : 'Department Contracts', icon: <ScrollText className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
+    { href: '/system/contracts/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
+    { href: '/system/contracts/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
+    { href: '/system/contracts/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(CONTRACTS_ROLES), section: 'Contracts', restrict: true },
     // ---- Software & IT ----
     { href: '/system/it', label: lang === 'ar' ? 'لوحة تقنية المعلومات' : 'IT Dashboard', icon: <MonitorCog className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/tickets', label: lang === 'ar' ? 'التذاكر والمشكلات' : 'Tickets', icon: <LifeBuoy className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },

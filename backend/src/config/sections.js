@@ -86,6 +86,12 @@ const SECTIONS = [
     defaultRoles: ['admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'],
   },
   {
+    // إدارة العقود — 3PL vendor contracts + analysis, other departments' contracts.
+    key: 'Contracts',
+    apiPrefixes: ['/api/contracts'],
+    defaultRoles: ['admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager'],
+  },
+  {
     key: 'B2C',
     apiPrefixes: ['/api/b2c', '/api/b2c-wallet'],
     defaultRoles: ['admin', 'it_manager', 'b2c_head', 'b2c_project_manager'],

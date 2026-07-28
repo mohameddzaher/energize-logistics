@@ -67,6 +67,7 @@ const marketingRoutes = require('./routes/marketing');
 const businessDevelopmentRoutes = require('./routes/businessDevelopment');
 const itRoutes = require('./routes/it');
 const adminTaskRoutes = require('./routes/adminTasks');
+const contractsRoutes = require('./routes/contracts');
 
 // Safety net: never let a single bad request/promise take down the whole
 // process. Before this, an unhandled rejection (e.g. express-rate-limit's
@@ -191,6 +192,7 @@ app.use('/api/marketing', authenticate, sectionGate('Marketing'), marketingRoute
 app.use('/api/business-development', authenticate, sectionGate('Business Development'), businessDevelopmentRoutes);
 app.use('/api/it', authenticate, sectionGate('Software & IT'), itRoutes);
 app.use('/api/admin-tasks', authenticate, sectionGate('Administration'), adminTaskRoutes);
+app.use('/api/contracts', authenticate, sectionGate('Contracts'), contractsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

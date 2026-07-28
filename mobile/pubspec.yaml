@@ -20,8 +20,6 @@ dependencies:
   intl: ^0.19.0
   # خط عربي احترافي (Tajawal) — يُحمَّل ويُخزَّن تلقائيًا.
   google_fonts: ^6.2.1
-  # المتصفح المدمج — كل صفحات السيستم غير الناتيف تفتح داخل التطبيق.
-  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:

@@ -95,6 +95,29 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       ],
     ),
     AppSection(
+      key: 'Business Development', arTitle: 'تطوير الأعمال', enTitle: 'Business Development', icon: Icons.rocket_launch_outlined,
+      roles: const [..._admins, 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'],
+      pages: [
+        AppPage('الفرص الاستراتيجية', 'Opportunities', Icons.explore_outlined, (c) => ResourceScreen(config: bdOpportunitiesCfg)),
+        AppPage('الشراكات', 'Partners', Icons.handshake_outlined, (c) => ResourceScreen(config: bdPartnersCfg)),
+        AppPage('المناقصات', 'Tenders', Icons.gavel_outlined, (c) => ResourceScreen(config: bdTendersCfg)),
+      ],
+    ),
+    AppSection(
+      key: 'Marketing', arTitle: 'التسويق', enTitle: 'Marketing', icon: Icons.campaign_outlined,
+      roles: const [..._admins, 'marketing_manager', 'marketing_specialist', 'bd_manager'],
+      pages: [
+        AppPage('الحملات', 'Campaigns', Icons.flag_outlined, (c) => ResourceScreen(config: marketingCampaignsCfg)),
+      ],
+    ),
+    AppSection(
+      key: 'Workshop', arTitle: 'الورشة', enTitle: 'Workshop', icon: Icons.handyman_outlined,
+      roles: const [..._admins, 'workshop_manager', 'workshop_employee', 'purchasing'],
+      pages: [
+        AppPage('المشتريات', 'Purchases', Icons.shopping_cart_outlined, (c) => ResourceScreen(config: workshopPurchasesCfg)),
+      ],
+    ),
+    AppSection(
       key: 'HR', arTitle: 'الموارد البشرية', enTitle: 'Human Resources', icon: Icons.groups_outlined,
       roles: const [..._admins, 'hr_manager', 'hr_specialist'],
       pages: [

@@ -195,3 +195,184 @@ final crmContactsCfg = ResourceConfig(
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
+
+// ── تطوير الأعمال ────────────────────────────────────────────────────────────
+final bdOpportunitiesCfg = ResourceConfig(
+  arTitle: 'الفرص الاستراتيجية', enTitle: 'Opportunities', icon: Icons.explore_outlined,
+  endpoint: '/api/business-development/opportunities', listKey: 'opportunities',
+  liveEvent: 'bd:updated',
+  searchFields: const ['name', 'nameAr', 'partnerName', 'region', 'city'],
+  titleOf: (r) => _s(r, 'nameAr').isNotEmpty ? _s(r, 'nameAr') : _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'partnerName'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'stage')) {
+      'identified' => ('مرصودة', T.inkSoft),
+      'researching' => ('قيد الدراسة', T.info),
+      'qualified' => ('مؤهلة', T.cyan),
+      'proposal' => ('عرض مقدم', T.violet),
+      'negotiation' => ('تفاوض', T.warn),
+      'won' => ('مكسوبة', T.success),
+      'lost' => ('خاسرة', T.danger),
+      _ => ('معلقة', T.inkFaint),
+    },
+    if (r['estimatedValue'] != null) ('${r['estimatedValue']}', T.navy),
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم الفرصة', 'Name', required: true),
+    FieldSpec('nameAr', 'الاسم العربي', 'Arabic name'),
+    FieldSpec('stage', 'المرحلة', 'Stage', type: FieldType.select, options: [
+      ('identified', 'مرصودة', 'Identified'), ('researching', 'قيد الدراسة', 'Researching'),
+      ('qualified', 'مؤهلة', 'Qualified'), ('proposal', 'عرض مقدم', 'Proposal'),
+      ('negotiation', 'تفاوض', 'Negotiation'), ('won', 'مكسوبة', 'Won'),
+      ('lost', 'خاسرة', 'Lost'), ('on_hold', 'معلقة', 'On hold'),
+    ]),
+    FieldSpec('priority', 'الأولوية', 'Priority', type: FieldType.select, options: [
+      ('high', 'مرتفعة', 'High'), ('medium', 'متوسطة', 'Medium'), ('low', 'منخفضة', 'Low'),
+    ]),
+    FieldSpec('estimatedValue', 'القيمة التقديرية', 'Estimated value', type: FieldType.number),
+    FieldSpec('partnerName', 'الشريك', 'Partner'),
+    FieldSpec('region', 'المنطقة', 'Region'),
+    FieldSpec('city', 'المدينة', 'City'),
+    FieldSpec('expectedCloseDate', 'تاريخ الإغلاق المتوقع', 'Expected close', type: FieldType.date),
+    FieldSpec('nextStep', 'الخطوة التالية', 'Next step'),
+    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
+  ],
+);
+
+final bdPartnersCfg = ResourceConfig(
+  arTitle: 'الشراكات', enTitle: 'Partners', icon: Icons.handshake_outlined,
+  endpoint: '/api/business-development/partners', listKey: 'partners',
+  liveEvent: 'bd:updated',
+  searchFields: const ['name', 'nameAr', 'contactName', 'contactPhone', 'city'],
+  titleOf: (r) => _s(r, 'nameAr').isNotEmpty ? _s(r, 'nameAr') : _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'contactName'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'status')) {
+      'active' => ('نشطة', T.success),
+      'in_discussion' => ('قيد النقاش', T.info),
+      'prospect' => ('مرشحة', T.inkSoft),
+      'paused' => ('متوقفة مؤقتًا', T.warn),
+      _ => ('منتهية', T.inkFaint),
+    },
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم الشريك', 'Name', required: true),
+    FieldSpec('nameAr', 'الاسم العربي', 'Arabic name'),
+    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
+      ('prospect', 'مرشحة', 'Prospect'), ('in_discussion', 'قيد النقاش', 'In discussion'),
+      ('active', 'نشطة', 'Active'), ('paused', 'متوقفة مؤقتًا', 'Paused'), ('ended', 'منتهية', 'Ended'),
+    ]),
+    FieldSpec('contactName', 'جهة الاتصال', 'Contact'),
+    FieldSpec('contactPhone', 'جوال جهة الاتصال', 'Contact phone', type: FieldType.phone),
+    FieldSpec('contactEmail', 'البريد', 'Email', type: FieldType.email),
+    FieldSpec('city', 'المدينة', 'City'),
+    FieldSpec('services', 'الخدمات', 'Services'),
+    FieldSpec('agreementStart', 'بداية الاتفاقية', 'Agreement start', type: FieldType.date),
+    FieldSpec('agreementEnd', 'نهاية الاتفاقية', 'Agreement end', type: FieldType.date),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+final bdTendersCfg = ResourceConfig(
+  arTitle: 'المناقصات', enTitle: 'Tenders', icon: Icons.gavel_outlined,
+  endpoint: '/api/business-development/tenders', listKey: 'tenders',
+  liveEvent: 'bd:updated',
+  searchFields: const ['title', 'titleAr', 'entity', 'referenceNumber'],
+  titleOf: (r) => _s(r, 'titleAr').isNotEmpty ? _s(r, 'titleAr') : _s(r, 'title'),
+  subtitleOf: (r) => [_s(r, 'entity'), _s(r, 'referenceNumber')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'status')) {
+      'watching' => ('قيد الرصد', T.inkSoft),
+      'preparing' => ('قيد التجهيز', T.info),
+      'submitted' => ('مقدمة', T.cyan),
+      'shortlisted' => ('قائمة قصيرة', T.violet),
+      'won' => ('مكسوبة', T.success),
+      'lost' => ('خاسرة', T.danger),
+      _ => ('ملغاة', T.inkFaint),
+    },
+    if (r['daysLeft'] != null && r['daysLeft'] >= 0) ('باقي ${r['daysLeft']} يوم', T.warn),
+  ],
+  fields: const [
+    FieldSpec('title', 'عنوان المناقصة', 'Title', required: true),
+    FieldSpec('titleAr', 'العنوان العربي', 'Arabic title'),
+    FieldSpec('entity', 'الجهة الطارحة', 'Entity'),
+    FieldSpec('referenceNumber', 'الرقم المرجعي', 'Reference no.'),
+    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
+      ('watching', 'قيد الرصد', 'Watching'), ('preparing', 'قيد التجهيز', 'Preparing'),
+      ('submitted', 'مقدمة', 'Submitted'), ('shortlisted', 'قائمة قصيرة', 'Shortlisted'),
+      ('won', 'مكسوبة', 'Won'), ('lost', 'خاسرة', 'Lost'), ('cancelled', 'ملغاة', 'Cancelled'),
+    ]),
+    FieldSpec('submissionDeadline', 'موعد التقديم', 'Deadline', type: FieldType.date),
+    FieldSpec('estimatedValue', 'القيمة التقديرية', 'Estimated value', type: FieldType.number),
+    FieldSpec('documentsReady', 'المستندات جاهزة', 'Documents ready', type: FieldType.checkbox),
+    FieldSpec('scope', 'نطاق العمل', 'Scope', type: FieldType.textarea),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+// ── التسويق ──────────────────────────────────────────────────────────────────
+final marketingCampaignsCfg = ResourceConfig(
+  arTitle: 'الحملات', enTitle: 'Campaigns', icon: Icons.flag_outlined,
+  endpoint: '/api/marketing/campaigns', listKey: 'items',
+  liveEvent: 'marketing:updated',
+  searchFields: const ['name', 'nameAr', 'platform', 'objective'],
+  titleOf: (r) => _s(r, 'nameAr').isNotEmpty ? _s(r, 'nameAr') : _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'platform'), _s(r, 'objective')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'status')) {
+      'active' => ('نشطة', T.success),
+      'paused' => ('متوقفة', T.warn),
+      'completed' => ('منتهية', T.inkSoft),
+      _ => ('مخططة', T.info),
+    },
+    if (r['budget'] != null) ('الميزانية: ${r['budget']}', T.navy),
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم الحملة', 'Name', required: true),
+    FieldSpec('nameAr', 'الاسم العربي', 'Arabic name'),
+    FieldSpec('platform', 'المنصة', 'Platform'),
+    FieldSpec('objective', 'الهدف', 'Objective'),
+    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
+      ('planned', 'مخططة', 'Planned'), ('active', 'نشطة', 'Active'),
+      ('paused', 'متوقفة', 'Paused'), ('completed', 'منتهية', 'Completed'),
+    ]),
+    FieldSpec('startDate', 'تاريخ البدء', 'Start', type: FieldType.date),
+    FieldSpec('endDate', 'تاريخ الانتهاء', 'End', type: FieldType.date),
+    FieldSpec('budget', 'الميزانية', 'Budget', type: FieldType.number),
+    FieldSpec('spend', 'المصروف', 'Spend', type: FieldType.number),
+    FieldSpec('leads', 'العملاء المحتملون', 'Leads', type: FieldType.number),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+// ── الورشة ───────────────────────────────────────────────────────────────────
+final workshopPurchasesCfg = ResourceConfig(
+  arTitle: 'المشتريات', enTitle: 'Purchases', icon: Icons.shopping_cart_outlined,
+  endpoint: '/api/workshop/purchases', listKey: 'purchases',
+  liveEvent: 'purchase:received',
+  canEdit: false, // التسجيل هو الاستلام — التعديل غير مفتوح في السيستم أصلًا
+  searchFields: const ['itemName', 'supplier', 'vehicleNumber', 'invoiceNumber'],
+  titleOf: (r) => _s(r, 'itemName'),
+  subtitleOf: (r) => [
+    if (_s(r, 'supplier').isNotEmpty) _s(r, 'supplier'),
+    if (_s(r, 'vehicleNumber').isNotEmpty) _s(r, 'vehicleNumber'),
+  ].join(' · '),
+  chipsOf: (r) => [
+    ('الكمية: ${r['quantity'] ?? 1}', T.navy),
+    if (r['cost'] != null) ('${r['cost']} ر.س', T.success),
+    switch (_s(r, 'status')) {
+      'received' => ('في المستودع', T.success),
+      'pending' => ('قيد الطلب', T.warn),
+      _ => (_s(r, 'status'), T.inkSoft),
+    },
+  ],
+  fields: const [
+    FieldSpec('itemName', 'اسم الصنف', 'Item name', required: true),
+    FieldSpec('quantity', 'الكمية', 'Quantity', type: FieldType.number, required: true),
+    FieldSpec('supplier', 'المورد', 'Supplier'),
+    FieldSpec('cost', 'التكلفة', 'Cost', type: FieldType.number),
+    FieldSpec('invoiceNumber', 'رقم الفاتورة', 'Invoice no.'),
+    FieldSpec('vehicleNumber', 'رقم السيارة (إن وجدت)', 'Vehicle no.'),
+    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
+  ],
+);

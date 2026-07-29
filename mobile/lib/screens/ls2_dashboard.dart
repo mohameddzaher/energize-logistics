@@ -151,13 +151,20 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(tr('حرارة الإطارات والمحرك', 'Temperatures'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                           const SizedBox(height: 8),
-                          Wrap(spacing: 8, runSpacing: 8, children: [
-                            if (temperature['avgTireTempC'] != null) Chip2('${tr('متوسط الإطار', 'Avg tire')}: ${_n(temperature['avgTireTempC']).toStringAsFixed(1)}°', T.info),
-                            if (temperature['maxTireTempC'] != null) Chip2('${tr('أقصى إطار', 'Max tire')}: ${_n(temperature['maxTireTempC']).toStringAsFixed(1)}°', T.danger),
-                            if (temperature['avgCoolantC'] != null) Chip2('${tr('متوسط التبريد', 'Avg coolant')}: ${_n(temperature['avgCoolantC']).toStringAsFixed(1)}°', T.cyan),
-                            Chip2('${tr('إطارات ساخنة', 'Hot tires')}: ${_n(temperature['hotTires'])}', T.orange),
-                            Chip2('${tr('محركات ساخنة', 'Hot engines')}: ${_n(temperature['hotEngines'])}', T.danger),
-                          ]),
+                          if (temperature['avgTireTempC'] == null && temperature['avgCoolantC'] == null)
+                            Row(children: [
+                              const Icon(Icons.warning_amber_rounded, size: 15, color: T.danger),
+                              const SizedBox(width: 6),
+                              Expanded(child: Text(tr('لا تصل بيانات حرارة من لوكيشن سوليوشن حاليًا', 'No temperature data from Location Solutions'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.danger))),
+                            ])
+                          else
+                            Wrap(spacing: 8, runSpacing: 8, children: [
+                              if (temperature['avgTireTempC'] != null) Chip2('${tr('متوسط الإطار', 'Avg tire')}: ${_n(temperature['avgTireTempC']).toStringAsFixed(1)}°', T.info),
+                              if (temperature['maxTireTempC'] != null) Chip2('${tr('أقصى إطار', 'Max tire')}: ${_n(temperature['maxTireTempC']).toStringAsFixed(1)}°', T.danger),
+                              if (temperature['avgCoolantC'] != null) Chip2('${tr('متوسط التبريد', 'Avg coolant')}: ${_n(temperature['avgCoolantC']).toStringAsFixed(1)}°', T.cyan),
+                              Chip2('${tr('إطارات ساخنة', 'Hot tires')}: ${_n(temperature['hotTires'])}', T.orange),
+                              Chip2('${tr('محركات ساخنة', 'Hot engines')}: ${_n(temperature['hotEngines'])}', T.danger),
+                            ]),
                         ]),
                       ),
                     ),

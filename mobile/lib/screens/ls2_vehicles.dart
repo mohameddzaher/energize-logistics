@@ -142,6 +142,8 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
                                         Text(v['name'] ?? v['plate'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                        const SizedBox(width: 6),
+                                        if (v['status'] == 'offline') const Icon(Icons.wifi_off_rounded, size: 15, color: T.danger),
                                         const Spacer(),
                                         Chip2(
                                           maint == 'overdue' ? tr('صيانة متأخرة', 'Overdue') : maint == 'due' ? tr('صيانة قريبة', 'Due soon') : tr('سليمة', 'OK'),
@@ -150,6 +152,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
                                       ]),
                                       const SizedBox(height: 8),
                                       Wrap(spacing: 6, runSpacing: 6, children: [
+                                        if (v['status'] == 'offline') Chip2(tr('غير متصلة', 'Offline'), T.danger, icon: Icons.wifi_off_rounded),
                                         if ((v['driver'] ?? '').toString().isNotEmpty) Chip2(v['driver'], T.inkSoft, icon: Icons.person_outline),
                                         Chip2('${tr('العداد', 'Odo')}: ${_fmtKm(v['odometerKm'])}', T.navy, icon: Icons.speed_outlined),
                                         if (v['kmToService'] != null)

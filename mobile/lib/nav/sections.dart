@@ -43,6 +43,7 @@ import '../screens/b2c_wallet.dart';
 import '../screens/my_profile.dart';
 import '../screens/finance_alerts.dart';
 import '../screens/collectors_performance.dart';
+import '../screens/customs_guide.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -270,6 +271,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'operations_manager', 'customs_manager', 'customs_officer'],
       pages: [
         AppPage('التحليلات', 'Analytics', Icons.insights_outlined, (c) => SectionDashScreen(spec: customsDashSpec)),
+        AppPage('الدليل', 'Guide', Icons.menu_book_outlined, (c) => const CustomsGuideScreen()),
         AppPage('التخليص الجمركي', 'Clearances', Icons.directions_boat_outlined, (c) => ResourceScreen(config: customsCfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'customs')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'customs', complaints: true)),

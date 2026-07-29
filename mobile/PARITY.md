@@ -65,7 +65,7 @@
 ## التخليص الجمركي / customs
 - [x] `customs` — قائمة التخليص — CRUD كامل بالمراحل الـ11
 - [x] `customs/[id]` — تفاصيل التخليص ✓ (مسار ١١ مرحلة بتقدّم بلمسة + مهام الإنجاز stageDone بتواريخها + تعديل التكاليف)
-- [ ] `customs/guide` — الدليل
+- [x] `customs/guide` — الدليل ✓ (الدورة+المنصات+المستندات+البيانات+أوراق الوكيل+قوالب البريد)
 - [x] `customs/analytics` — التحليلات ✓ (DashSpec)
 - [x] `customs/my-tasks` + `complaints` + `kpis`
 

@@ -46,9 +46,15 @@ class T {
         elevation: 0,
         titleTextStyle: GoogleFonts.tajawal(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
       ),
+      // خلفية كحلي + نص أبيض دايمًا — بدون foregroundColor كانت الأزرار الـ tonal
+      // (زي «تأكيد الاطلاع») بتاخد نص غامق على خلفية كحلي فيختفي.
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: navy,
+          foregroundColor: Colors.white,
+          iconColor: Colors.white,
+          disabledBackgroundColor: navy.withValues(alpha: 0.35),
+          disabledForegroundColor: Colors.white.withValues(alpha: 0.8),
           minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: GoogleFonts.tajawal(fontSize: 16, fontWeight: FontWeight.w700),

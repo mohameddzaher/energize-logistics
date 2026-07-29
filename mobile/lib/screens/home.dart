@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../nav/sections.dart';
+import '../nav/home_insights.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
@@ -25,6 +26,10 @@ class _HomeScreenState extends State<HomeScreen> {
   double _leaveAvailable = 0;
   bool _statsLoading = true;
 
+  HomeInsight? _insight;
+  Map<String, dynamic> _insightData = {};
+  bool _insightLoading = true;
+
   @override
   void initState() {
     super.initState();
@@ -32,16 +37,51 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadStats();
     Live.instance.on('admintasks:updated', _loadStats);
     Live.instance.on('hr:leave', _loadStats);
+    // النظرة الحية للقسم تُحدَّث على حدث القسم نفسه.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final i = homeInsightFor(context.read<AuthProvider>());
+      if (i != null && i.liveEvent.isNotEmpty) Live.instance.on(i.liveEvent, _loadInsight);
+    });
   }
 
   @override
   void dispose() {
     Live.instance.off('admintasks:updated', _loadStats);
     Live.instance.off('hr:leave', _loadStats);
+    if (_insight != null && _insight!.liveEvent.isNotEmpty) Live.instance.off(_insight!.liveEvent, _loadInsight);
     super.dispose();
   }
 
+  Future<void> _loadInsight() async {
+    final i = homeInsightFor(context.read<AuthProvider>());
+    if (i == null) { if (mounted) setState(() { _insight = null; _insightLoading = false; }); return; }
+    try {
+      final d = await Api.instance.get(i.endpoint);
+      if (!mounted) return;
+      setState(() { _insight = i; _insightData = Map<String, dynamic>.from(d); _insightLoading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _insight = i; _insightLoading = false; });
+    }
+  }
+
+  num _dig(String path) {
+    dynamic cur = _insightData;
+    for (final p in path.split('.')) {
+      if (cur is Map) { cur = cur[p]; } else { return 0; }
+    }
+    return cur is num ? cur : num.tryParse(cur?.toString() ?? '') ?? 0;
+  }
+
+  String _fmt(num n, bool money) {
+    if (money) {
+      final s = n.round().toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+      return '$s ${tr('ر.س', 'SAR')}';
+    }
+    return n.toStringAsFixed(n.truncateToDouble() == n ? 0 : 1);
+  }
+
   Future<void> _loadStats() async {
+    _loadInsight();
     final auth = context.read<AuthProvider>();
     try {
       final results = await Future.wait([
@@ -120,9 +160,61 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // ── الكارد الترحيبي: تدرج ليلي بلمسة برتقالي + زخارف دوائر ──
             FadeSlideIn(child: _HeroCard(auth: auth, greeting: _greeting(), today: _todayLabel())),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
-            // Today-at-a-glance stats
+            // ── نظرة القسم الحية (مخصّصة حسب الدور) ──
+            if (_insight != null) ...[
+              FadeSlideIn(
+                delayMs: 60,
+                child: Row(children: [
+                  Text(insightTitle(_insight!), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: T.success.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                    child: Row(children: [
+                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: T.success, shape: BoxShape.circle)),
+                      const SizedBox(width: 5),
+                      Text(tr('مباشر', 'Live'), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: T.success)),
+                    ]),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 10),
+              if (_insightLoading)
+                const Row(children: [Expanded(child: Shimmer(height: 78)), SizedBox(width: 10), Expanded(child: Shimmer(height: 78))])
+              else
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 1.75,
+                  children: _insight!.kpis.asMap().entries.map((e) {
+                    final k = e.value;
+                    return FadeSlideIn(
+                      delayMs: 80 + e.key * 45,
+                      child: AppCard(
+                        topAccent: k.color,
+                        padding: const EdgeInsets.all(12),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Row(children: [
+                            Icon(k.icon, size: 16, color: k.color),
+                            const SizedBox(width: 6),
+                            Expanded(child: Text(tr(k.ar, k.en), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          ]),
+                          const SizedBox(height: 6),
+                          Text(_fmt(_dig(k.path), k.money), style: TextStyle(fontSize: k.money ? 15 : 20, fontWeight: FontWeight.w900, color: T.ink)),
+                        ]),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              const SizedBox(height: 20),
+            ],
+
+            // ── مؤشراتي الشخصية ──
             if (_statsLoading)
               const Row(children: [
                 Expanded(child: Shimmer(height: 92)), SizedBox(width: 10), Expanded(child: Shimmer(height: 92)),

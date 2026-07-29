@@ -703,11 +703,13 @@ exports.importAssets = async (req, res) => {
         const serial = String(t.serial || '').trim();
         if (!serial) continue;
         const sensor = t.sensor === 'يوجد' ? 'yes' : t.sensor === 'لايوجد' || t.sensor === 'لا يوجد' ? 'no' : 'unknown';
+        // الاستبن فيتشر مستقل: نستنتجه من القسم (الاستبن) أو علَم صريح في الصف.
+        const isSpare = /استبن/.test(String(t.section || '')) || t.is_spare === true;
         const fields = {
           tireNumber: String(t.tire_number ?? ''), type: t.type || '', sensor,
           status: 'mounted', plate, plateKey: key,
           positionNumber: t.position_number ?? null,
-          positionLabel: t.position || '', section: t.section || '',
+          positionLabel: t.position || '', section: t.section || '', isSpare,
         };
         const existing = await Ls2TireAsset.findOne({ serial });
         if (!existing) {
@@ -730,7 +732,7 @@ exports.importAssets = async (req, res) => {
           summary.tiresMoved++;
         } else {
           // Same place — just refresh identity fields quietly.
-          existing.set({ tireNumber: fields.tireNumber, type: fields.type, sensor: fields.sensor, positionLabel: fields.positionLabel, section: fields.section });
+          existing.set({ tireNumber: fields.tireNumber, type: fields.type, sensor: fields.sensor, positionLabel: fields.positionLabel, section: fields.section, isSpare: fields.isSpare });
           await existing.save();
           summary.tiresUnchanged++;
         }

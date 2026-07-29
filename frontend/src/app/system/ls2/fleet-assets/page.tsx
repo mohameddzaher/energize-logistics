@@ -105,8 +105,25 @@ const flatbedOptions = (flatbeds: Flatbed[], ar: boolean) =>
     label: `${f.plate}${f.numbering != null ? ` (${ar ? 'ترقيم' : 'no.'} ${f.numbering})` : ''}`,
     hint: [f.brand, f.currentTrailerNumber ? `${ar ? 'تيدر' : 'trailer'} ${f.currentTrailerNumber}` : '', f.driver].filter(Boolean).join(' · '),
   }));
-const positionOptions = () =>
-  POSITION_DEFS.map((p) => ({ value: String(p.n), label: `${p.label} — ${p.section}` }));
+// Occupancy-aware: once a truck is chosen, every position says whether it is
+// FREE (🟢 — ركّب هنا مباشرة) or already carries a tire (🔴 — التركيب هنا = استبدال),
+// so the workshop picks an empty slot on purpose and knows a busy one means a swap.
+const positionOptions = (toPlate = '', tires: TireAsset[] = [], selfId = '', ar = false) =>
+  POSITION_DEFS.map((p) => {
+    const occ = toPlate
+      ? tires.find((x) => x._id !== selfId && x.status === 'mounted' && x.plate === toPlate && x.positionNumber === p.n)
+      : undefined;
+    const mark = !toPlate ? '' : occ ? '🔴 ' : '🟢 ';
+    return {
+      value: String(p.n),
+      label: `${mark}${p.label} — ${p.section}`,
+      hint: !toPlate
+        ? ''
+        : occ
+          ? (ar ? `عليها الفردة ${occ.serial} — التركيب هنا = استبدال` : `holds ${occ.serial} — mounting here = replacement`)
+          : (ar ? 'فارغة — لا يوجد كاوتش، ركّب هنا مباشرة' : 'empty — no tire, mount straight here'),
+    };
+  });
 
 function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
@@ -985,9 +1002,18 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
         </div>
         <div>
           <label className={labelCls}>{ar ? 'الموقع (1–14)' : 'Position (1–14)'}</label>
-          <SearchSelect value={String(posN)} onChange={(v) => setPosN(Number(v))} options={positionOptions()} ar={ar}
+          <SearchSelect value={String(posN)} onChange={(v) => setPosN(Number(v))} options={positionOptions(toPlate, tires, tire._id, ar)} ar={ar}
+            placeholder={ar ? (toPlate ? '— اختر الموقع —' : '— اختر السطحة أولًا —') : '— choose position —'}
             searchPlaceholder={ar ? 'ابحث عن الموقع…' : 'Search position…'} />
         </div>
+        {/* الموقع فاضي؟ نطمئن المستخدم إنه تركيب مباشر لا استبدال. */}
+        {toPlate && !occupant && (
+          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 font-medium">
+            {ar
+              ? `🟢 الموقع ${posN} على ${toPlate} فارغ — لا يوجد عليه كاوتش، سيُركَّب هنا مباشرة.`
+              : `🟢 Position ${posN} on ${toPlate} is empty — no tire here, it mounts straight in.`}
+          </p>
+        )}
         {renewedOnHead && (
           <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 font-medium">
             {ar ? 'هذه الفردة مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس.' : 'This tire is RENEWED — renewed tires mount on the trailer only, never the head.'}
@@ -997,8 +1023,8 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
           <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-2">
             <p className="text-amber-700 font-medium">
               {ar
-                ? `لكل تركيب إخراج: هذا الموقع عليه الفردة ${occupant.serial} — أين تذهب؟`
-                : `Every IN needs its OUT: this slot holds ${occupant.serial} — where does it go?`}
+                ? `🔴 استبدال: الموقع ${posN} عليه الفردة ${occupant.serial} — لازم تحدد الفردة القديمة دي هتروح فين؟`
+                : `🔴 Replacement: position ${posN} holds ${occupant.serial} — where does the old tire go?`}
             </p>
             <div className="space-y-1">
               {FATES.map((f) => (

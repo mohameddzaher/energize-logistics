@@ -779,27 +779,63 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
             const SizedBox(height: 10),
             TextField(controller: plate, onChanged: (_) => setS(() {}), decoration: InputDecoration(labelText: tr('أو اكتب اللوحة *', 'Or type plate *'))),
             const SizedBox(height: 10),
-            TextField(controller: position, keyboardType: TextInputType.number, onChanged: (_) => setS(() {}), decoration: InputDecoration(labelText: tr('رقم الموضع (اختر موضعًا فاضيًا)', 'Position # (pick a free one)'))),
-            // المواضع المشغولة حاليًا على الشاحنة المختارة — عشان تحط في موضع فاضي.
-            if (plate.text.trim().isNotEmpty) ...[
-              const SizedBox(height: 8),
+            // شبكة المواضع 1..14 على الشاحنة المختارة: 🟢 فاضي = تركيب مباشر،
+            // 🔴 عليه فردة = استبدال (هيتطلب مصير الفردة القديمة). اضغط الموضع لاختياره.
+            if (plate.text.trim().isNotEmpty)
               Builder(builder: (_) {
-                final occupied = _l(_d?['tires']).where((x) => x['status'] == 'mounted' && (x['plate'] ?? '').toString() == plate.text.trim() && x['positionNumber'] != null).toList();
-                if (occupied.isEmpty) return Text(tr('لا توجد مواضع مشغولة مسجّلة — تركيب مباشر.', 'No occupied positions on record — clean mount.'), style: const TextStyle(fontSize: 11.5, color: T.success));
-                final chosen = num.tryParse(position.text.trim());
-                final clash = chosen != null && occupied.any((x) => (x['positionNumber'] as num?) == chosen);
+                final mounted = _l(_d?['tires']).where((x) => x['status'] == 'mounted' && (x['plate'] ?? '').toString() == plate.text.trim() && x['positionNumber'] != null).toList();
+                Map<String, dynamic>? occAt(int n) {
+                  for (final x in mounted) {
+                    if ((x['positionNumber'] as num?)?.toInt() == n) return x;
+                  }
+                  return null;
+                }
+                final chosen = int.tryParse(position.text.trim());
+                final chosenOcc = chosen == null ? null : occAt(chosen);
                 return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${tr('المواضع المشغولة', 'Occupied positions')}:', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
-                  const SizedBox(height: 4),
-                  Wrap(spacing: 6, runSpacing: 6, children: occupied.map((x) {
-                    final taken = (x['positionNumber'] as num?) == chosen;
-                    return Chip2('${x['positionNumber']} · ${x['serial']}', taken ? T.danger : T.warn);
-                  }).toList()),
-                  if (clash)
-                    Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('⚠ الموضع مشغول — سيُطلب مصير الفردة الحالية (استبدال).', '⚠ Occupied — you will be asked where the current tire goes (replacement).'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: T.danger))),
+                  Text(tr('اختر الموضع (1–14):', 'Pick a position (1–14):'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft)),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 8, runSpacing: 8, children: List.generate(14, (idx) {
+                    final n = idx + 1;
+                    final occ = occAt(n);
+                    final selected = chosen == n;
+                    final color = occ != null ? T.danger : T.success;
+                    return GestureDetector(
+                      onTap: () => setS(() => position.text = '$n'),
+                      child: Container(
+                        width: 76,
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: selected ? 0.18 : 0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: selected ? color : color.withValues(alpha: 0.35), width: selected ? 2 : 1),
+                        ),
+                        child: Column(children: [
+                          Text('${occ != null ? '🔴' : '🟢'} $n', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: color)),
+                          const SizedBox(height: 2),
+                          Text(occ != null ? '${occ['serial']}' : tr('فارغ', 'empty'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 9.5, color: occ != null ? T.danger : T.inkSoft)),
+                        ]),
+                      ),
+                    );
+                  })),
+                  if (chosen != null) ...[
+                    const SizedBox(height: 10),
+                    chosenOcc != null
+                        ? Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(color: T.danger.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: T.danger.withValues(alpha: 0.3))),
+                            child: Text(tr('🔴 الموضع $chosen عليه الفردة ${chosenOcc['serial']} — استبدال: هيتطلب منك تحدد الفردة القديمة دي هتروح فين.', '🔴 Position $chosen holds ${chosenOcc['serial']} — replacement: you\'ll set where the old tire goes.'), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.danger)),
+                          )
+                        : Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(color: T.success.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: T.success.withValues(alpha: 0.3))),
+                            child: Text(tr('🟢 الموضع $chosen فارغ — لا يوجد عليه كاوتش، تركيب مباشر.', '🟢 Position $chosen is empty — no tire here, clean mount.'), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.success)),
+                          ),
+                  ],
                 ]);
               }),
-            ],
             const SizedBox(height: 14),
             SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تركيب', 'Mount')))),
           ]),

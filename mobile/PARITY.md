@@ -82,7 +82,7 @@
 - [~] `workshop` — طلبات الصيانة ✓ اللوحة ✓ `inventory` ✓ (إضافة صنف+صرف بمصير القطعة المستبدلة) `my-tasks`/`complaints`/`kpis` ✓ — باقي: `store` الشامل | `tasks` أوامر الشغل
 
 ## تقييم الأداء / performance
-- [ ] `performance` + `overview` + `evaluate/[id]` + `requests` + `settings`
+- [x] `performance` — تقييم الأداء ✓ (قائمة التقييمات+فلاتر+نموذج تقييم موزون: كل معيار من ٥ مع نسبة وفئة حية+حفظ مسودة/اعتماد) لكل مدير لفريقه
 
 ## التسويق / marketing
 - [x] `marketing/campaigns` — الحملات — CRUD

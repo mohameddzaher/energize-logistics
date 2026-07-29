@@ -47,6 +47,7 @@ import '../screens/customs_guide.dart';
 import '../screens/finance_tasks.dart';
 import '../screens/cash_wallet.dart';
 import '../screens/settings_screen.dart';
+import '../screens/performance_evaluations.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -373,5 +374,6 @@ List<AppPage> selfServicePages(bool hasTeam) => [
       AppPage('إجازاتي', 'My Leaves', Icons.beach_access_outlined, (c) => const MyLeavesScreen()),
       AppPage('طلباتي', 'My Requests', Icons.description_outlined, (c) => const MyRequestsScreen()),
       if (hasTeam) AppPage('موافقات فريقي', 'Team Approvals', Icons.fact_check_outlined, (c) => const ApprovalsScreen()),
+      if (hasTeam) AppPage('تقييم فريقي', 'Evaluate Team', Icons.rate_review_outlined, (c) => const EvaluationsScreen()),
       AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const SettingsScreen()),
     ];

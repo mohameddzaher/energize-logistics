@@ -5,6 +5,7 @@ import '../screens/crm_company_profile.dart';
 import '../screens/contracts_vendor_profile.dart';
 import '../screens/customs_detail.dart';
 import '../screens/bd_opportunity_detail.dart';
+import '../screens/marketing_campaign_detail.dart';
 import 'resource.dart';
 
 /// Page definitions on the CRUD engine — each entry IS a full native page
@@ -320,6 +321,7 @@ final bdTendersCfg = ResourceConfig(
 
 // ── التسويق ──────────────────────────────────────────────────────────────────
 final marketingCampaignsCfg = ResourceConfig(
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => MarketingCampaignDetailScreen(campaignId: (r['_id'] ?? '').toString(), name: (r['nameAr'] ?? r['name'] ?? '').toString()))),
   arTitle: 'الحملات', enTitle: 'Campaigns', icon: Icons.flag_outlined,
   endpoint: '/api/marketing/campaigns', listKey: 'items',
   liveEvent: 'marketing:updated',

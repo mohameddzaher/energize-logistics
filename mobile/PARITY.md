@@ -86,7 +86,7 @@
 
 ## التسويق / marketing
 - [x] `marketing/campaigns` — الحملات — CRUD
-- [~] `marketing` — اللوحة ✓ `activities` ✓ (إنشاء+فلاتر منصة+مقاييس) `my-tasks`/`complaints`/`kpis` ✓ — باقي: `campaigns/[id]` | `reports`
+- [x] `marketing` — اللوحة ✓ `activities` ✓ `campaigns` ✓ + `campaigns/[id]` ✓ (ميزانية/إنفاق/CTR/CPL/ROAS+أنشطة) `my-tasks`/`complaints`/`kpis` ✓ — باقي: `reports`
 
 ## تطوير الأعمال / bd
 - [x] `bd/opportunities` — CRUD (ناقص صفحة تفاصيل الفرصة بسجل نشاطها)

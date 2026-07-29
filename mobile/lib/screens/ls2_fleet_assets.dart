@@ -40,6 +40,8 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  String _qFlat = '';
+  String _qTrail = '';
   String _filter = '';
   late final void Function() _onLive;
 
@@ -116,18 +118,36 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       ('sold', tr('المباع', 'Sold'), tires.where((t) => t['status'] == 'sold').length, T.success),
     ];
 
-    return AppScaffold(
+    final flatbeds = _l(_d?['flatbeds']);
+    final trailers = _l(_d?['trailers']);
+
+    return DefaultTabController(
+      length: 3,
+      child: AppScaffold(
       title: Text(tr('أصول الأسطول', 'Fleet Assets')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createTire,
         icon: const Icon(Icons.add),
         label: Text(tr('كاوتش جديد', 'New tire')),
       ),
+      appBarBottom: TabBar(
+        labelColor: Colors.white,
+        unselectedLabelColor: Colors.white70,
+        indicatorColor: T.orange,
+        indicatorWeight: 3,
+        labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+        tabs: [
+          Tab(text: '${tr('الكاوتشات', 'Tires')} (${tires.length})'),
+          Tab(text: '${tr('السطحات', 'Flatbeds')} (${flatbeds.length})'),
+          Tab(text: '${tr('التيدرات', 'Trailers')} (${trailers.length})'),
+        ],
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 70), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : Column(children: [
+              : TabBarView(children: [
+                Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
                     child: SingleChildScrollView(
@@ -221,7 +241,129 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                     ),
                   ),
                 ]),
+                _flatbedsTab(flatbeds),
+                _trailersTab(trailers),
+              ]),
+      ),
     );
+  }
+
+  // ── تبويب السطحات ──
+  Widget _flatbedsTab(List<Map<String, dynamic>> flatbeds) {
+    final q = _fold(_qFlat.trim());
+    final list = flatbeds.where((f) {
+      if (q.isEmpty) return true;
+      return [f['plate'], f['numbering'], f['brand'], f['batch'], f['currentTrailerNumber'], f['driver']]
+          .any((x) => _fold((x ?? '').toString()).contains(q));
+    }).toList();
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+        child: TextField(
+          onChanged: (v) => setState(() => _qFlat = v),
+          decoration: InputDecoration(hintText: tr('ابحث بلوحة السطحة أو الرقم أو النوع…', 'Search flatbeds…'), prefixIcon: const Icon(Icons.search), suffixText: '${list.length}'),
+        ),
+      ),
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: list.isEmpty
+              ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا توجد سطحات مطابقة', 'No matches'))])
+              : ListView.separated(
+                  padding: const EdgeInsets.all(14),
+                  itemCount: list.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (c, i) {
+                    final f = list[i];
+                    final plate = (f['plate'] ?? '').toString();
+                    return FadeSlideIn(
+                      delayMs: (i * 10).clamp(0, 120),
+                      child: Pressable(
+                        onTap: plate.isEmpty ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2VehicleAssetsScreen(plate: plate))),
+                        child: AppCard(
+                          topAccent: T.navy,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Row(children: [
+                              Expanded(child: Text('${tr('سطحة', 'Flatbed')} $plate', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                              if (f['numbering'] != null) Chip2('#${f['numbering']}', T.navy),
+                            ]),
+                            const SizedBox(height: 6),
+                            Wrap(spacing: 6, runSpacing: 6, children: [
+                              if ((f['brand'] ?? '').toString().isNotEmpty) Chip2('${f['brand']}', T.inkFaint, icon: Icons.factory_outlined),
+                              if ((f['batch'] ?? '').toString().isNotEmpty) Chip2('${f['batch']}', T.violet),
+                              Chip2('${f['tireCount'] ?? 0} ${tr('كاوتش', 'tires')}', T.success, icon: Icons.circle_outlined),
+                              if ((f['currentTrailerNumber'] ?? '').toString().isNotEmpty) Chip2('${tr('تيدر', 'Trailer')} ${f['currentTrailerNumber']}', T.cyan, icon: Icons.rv_hookup_outlined),
+                              if ((f['driver'] ?? '').toString().isNotEmpty) Chip2('${f['driver']}', T.info, icon: Icons.person_outline),
+                              if (f['odometerKm'] != null) Chip2('${f['odometerKm']} ${tr('كم', 'km')}', T.inkFaint, icon: Icons.speed_outlined),
+                            ]),
+                            if (plate.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Align(alignment: AlignmentDirectional.centerEnd, child: Text(tr('اعرض الكاوتشات ←', 'View tires ←'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.navy))),
+                            ],
+                          ]),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ),
+    ]);
+  }
+
+  // ── تبويب التيدرات ──
+  Widget _trailersTab(List<Map<String, dynamic>> trailers) {
+    final q = _fold(_qTrail.trim());
+    final list = trailers.where((t) {
+      if (q.isEmpty) return true;
+      return [t['trailerNumber'], t['currentPlate'], t['status']].any((x) => _fold((x ?? '').toString()).contains(q));
+    }).toList();
+    const statusMap = {
+      'active': ('مركّب', 'Active', T.success),
+      'spare': ('سبير', 'Spare', T.info),
+      'retired': ('خارج الخدمة', 'Retired', T.inkFaint),
+    };
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+        child: TextField(
+          onChanged: (v) => setState(() => _qTrail = v),
+          decoration: InputDecoration(hintText: tr('ابحث برقم التيدر أو السطحة…', 'Search trailers…'), prefixIcon: const Icon(Icons.search), suffixText: '${list.length}'),
+        ),
+      ),
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: list.isEmpty
+              ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.rv_hookup_outlined, title: tr('لا توجد تيدرات مطابقة', 'No matches'))])
+              : ListView.separated(
+                  padding: const EdgeInsets.all(14),
+                  itemCount: list.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (c, i) {
+                    final t = list[i];
+                    final st = statusMap[t['status']] ?? ('—', '—', T.inkFaint);
+                    final plate = (t['currentPlate'] ?? '').toString();
+                    return FadeSlideIn(
+                      delayMs: (i * 10).clamp(0, 120),
+                      child: Pressable(
+                        onTap: plate.isEmpty ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2VehicleAssetsScreen(plate: plate))),
+                        child: AppCard(
+                          topAccent: st.$3,
+                          child: Row(children: [
+                            Expanded(child: Text('${tr('تيدر', 'Trailer')} ${t['trailerNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                            if (plate.isNotEmpty) Chip2('${tr('على', 'on')} $plate', T.navy, icon: Icons.local_shipping_outlined),
+                            const SizedBox(width: 6),
+                            Chip2(tr(st.$1, st.$2), st.$3),
+                          ]),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ),
+    ]);
   }
 
   // ── تسجيل كاوتش جديد ──

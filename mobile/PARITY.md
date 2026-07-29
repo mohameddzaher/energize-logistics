@@ -17,7 +17,7 @@
 
 ## العملاء والمالية / Customers & Finance
 - [~] `customers` — العملاء ✓ (قائمة+بحث+ملف موجز+إنشاء/تعديل+إيقاف/تفعيل) — باقي: export
-- [ ] `customers/[id]` — ملف العميل — profile+invoices+payments+risk+credit-term — API: multiple
+- [x] `customers/[id]` — ملف العميل ✓ (أرصدة+ائتمان+تبويبا الفواتير والمدفوعات؛ النقرة تفتح الملف والضغط المطول ملخصًا)
 - [~] `invoices` — الفواتير ✓ (قائمة+فلاتر+تحصيل كامل+إنشاء) — باقي: refund/freeze
 - [ ] `invoices/[id]` — تفاصيل الفاتورة — status/freeze/refund/record payment — API: /api/invoices/${id}
 - [~] `payments` — المدفوعات ✓ (قائمة+بحث+إجمالي+تسجيل دفعة على فاتورة) — باقي: التخصيص الجماعي FIFO
@@ -31,7 +31,7 @@
 - [~] `operations` كشوف التخريج ✓ عرض/تقدّم — باقي: الإنشاء اليدوي والاستيراد الجماعي و lock
 - [ ] `operations/[id]` — مراجعة التشغيل — stage/lock/attachments — API: /api/workflows/${id}
 - [ ] `operations/dispatch-sheets` — كشوف التخريج
-- [ ] `vendors` — الموردين — CRUD — API: /api/vendors
+- [x] `vendors` — الموردون ✓ CRUD (بحث+فئة+مستحق)
 - [x] `b2c-wallet` — عهد المشاريع ✓ (قائمة المديرين للمشرف + دفتر العهدة برصيد/وارد/صادر + تسجيل حركة)
 - [ ] `wallet-dashboard` (+branch/[id]) — لوحة المحفظة
 - [ ] `vehicle-analytics/*` (5 صفحات) — تحليلات المركبات (IndexedDB محلي — يحتاج تصميم خاص للموبايل)
@@ -58,15 +58,15 @@
 - [~] `fleet/drivers` — السائقون — CRUD ✓ (ناقص: bench بسبب + ربط عربية من الفورم)
 - [~] `fleet/vehicles` — سياراتنا — CRUD ✓ (ناقص: تعيين مشرف من الشاشة)
 - [x] `fleet/customers` — العملاء — CRUD
-- [ ] `fleet/dashboard` — لوحة التحليلات — API: /api/fleet/dashboard
+- [x] `fleet/dashboard` ✓ (مضاف كـ DashSpec)
 - [ ] `fleet/assign` — توزيع المشرفين bulk
-- [ ] `fleet/my-tasks` + `complaints` (SectionWork) + `kpis` (TeamBoard)
+- [x] `fleet/my-tasks` ✓ `complaints` ✓ `kpis` ✓
 
 ## التخليص الجمركي / customs
 - [x] `customs` — قائمة التخليص — CRUD كامل بالمراحل الـ11
 - [x] `customs/[id]` — تفاصيل التخليص ✓ (مسار ١١ مرحلة بتقدّم بلمسة + مهام الإنجاز stageDone بتواريخها + تعديل التكاليف)
 - [ ] `customs/guide` — الدليل
-- [ ] `customs/analytics` — التحليلات
+- [x] `customs/analytics` — التحليلات ✓ (DashSpec)
 - [x] `customs/my-tasks` + `complaints` + `kpis`
 
 ## المركبات / vehicles

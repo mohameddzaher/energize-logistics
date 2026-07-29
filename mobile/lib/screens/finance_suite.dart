@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'customer_profile.dart';
 
 /// المالية — العملاء والفواتير والمدفوعات: القوائم الكاملة بالبحث والفلاتر،
 /// ملف العميل الموجز، وفعل «تحصيل كامل» على الفاتورة (للمصرّح لهم).
@@ -232,7 +233,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: Pressable(
-                                    onTap: () => _open(c),
+                                    onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => CustomerProfileScreen(customerId: (c['_id'] ?? '').toString(), name: (c['companyName'] ?? '').toString()))),
+                                    onLongPress: () => _open(c),
                                     child: AppCard(
                                       child: Row(children: [
                                         Expanded(

@@ -18,7 +18,7 @@ const ContactCTA: React.FC = () => {
         className="absolute bottom-[-120px] end-[10%] w-[250px] h-[250px] bg-gray-600/30 rounded-full blur-[100px] opacity-50"
       />
 
-      <motion.div
+      <motion.div 
         initial={{ opacity: 0, y: 30 }}
         whileInView={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7 }} 

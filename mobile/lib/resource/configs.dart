@@ -834,3 +834,24 @@ final shipmentOrdersVehiclesCfg = ResourceConfig(
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
+
+final vendorsCfg = ResourceConfig(
+  arTitle: 'الموردون', enTitle: 'Vendors', icon: Icons.store_outlined,
+  endpoint: '/api/vendors', listKey: 'vendors', liveEvent: 'vendor:updated',
+  searchFields: const ['name', 'contactPerson', 'phone', 'category'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'contactPerson'), _s(r, 'phone')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (_s(r, 'category').isNotEmpty) (_s(r, 'category'), T.navy),
+    if ((r['totalOutstanding'] ?? 0) != 0) ('مستحق: ${r['totalOutstanding']}', T.danger),
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم المورد', 'Name', required: true),
+    FieldSpec('contactPerson', 'جهة الاتصال', 'Contact person'),
+    FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
+    FieldSpec('email', 'البريد', 'Email', type: FieldType.email),
+    FieldSpec('category', 'الفئة', 'Category'),
+    FieldSpec('address', 'العنوان', 'Address'),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);

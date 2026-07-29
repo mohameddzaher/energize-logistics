@@ -34,6 +34,28 @@ List<Map<String, dynamic>> _l(dynamic v) =>
 
 Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : {};
 
+/// شريحة حساس: تعرض القيمة، وإن غابت (السينسور لا يرسل / لا تصل من لوكيشن
+/// سوليوشن) تُبرز كتحذير أحمر بدل «—» صامتة.
+Widget _sensor(String label, dynamic value, String unit, IconData icon, Color okColor, {int digits = 0}) {
+  final n = _numOrNull(value);
+  if (n == null) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: T.danger.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: T.danger.withValues(alpha: 0.45)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.warning_amber_rounded, size: 13, color: T.danger),
+        const SizedBox(width: 4),
+        Text('$label: ${tr('لا تصل بيانات', 'no data')}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: T.danger)),
+      ]),
+    );
+  }
+  return Chip2('$label: ${n.toStringAsFixed(digits)}$unit', okColor, icon: icon);
+}
+
 class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
   Map<String, dynamic>? _vehicle;
   List<Map<String, dynamic>> _alerts = [];
@@ -144,17 +166,32 @@ class _OverviewTab extends StatelessWidget {
               ]),
               const SizedBox(height: 10),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                Chip2('${tr('السرعة', 'Speed')}: ${_fmt(v['speed'])} ${tr('كم/س', 'km/h')}', T.navy, icon: Icons.speed_outlined),
-                Chip2('${tr('العداد', 'Odometer')}: ${_fmt(v['odometerKm'])} ${tr('كم', 'km')}', T.violet),
-                if (_numOrNull(v['fuelPct']) != null) Chip2('${tr('الوقود', 'Fuel')}: ${_fmt(v['fuelPct'])}%', T.orange, icon: Icons.local_gas_station_outlined),
-                if (_numOrNull(v['coolantC']) != null) Chip2('${tr('التبريد', 'Coolant')}: ${_fmt(v['coolantC'])}°', T.cyan),
-                if (_numOrNull(v['weightKg']) != null) Chip2('${tr('الوزن', 'Weight')}: ${_fmt(v['weightKg'])} ${tr('كجم', 'kg')}', T.info),
-                if (_numOrNull(v['engineHours']) != null) Chip2('${tr('ساعات المحرك', 'Engine hrs')}: ${_fmt(v['engineHours'], digits: 1)}', T.inkFaint),
-                Chip2('${tr('آخر إشارة', 'Last seen')}: ${_dt(v['lastMessageAt'])}', T.inkFaint, icon: Icons.schedule_outlined),
+                _sensor(tr('السرعة', 'Speed'), v['speed'], ' ${tr('كم/س', 'km/h')}', Icons.speed_outlined, T.navy),
+                _sensor(tr('العداد', 'Odometer'), v['odometerKm'], ' ${tr('كم', 'km')}', Icons.straighten_outlined, T.violet),
+                _sensor(tr('الوقود', 'Fuel'), v['fuelPct'], '%', Icons.local_gas_station_outlined, T.orange),
+                _sensor(tr('التبريد', 'Coolant'), v['coolantC'], '°', Icons.thermostat_outlined, T.cyan),
+                _sensor(tr('الوزن', 'Weight'), v['weightKg'], ' ${tr('كجم', 'kg')}', Icons.scale_outlined, T.info),
+                _sensor(tr('ساعات المحرك', 'Engine hrs'), v['engineHours'], '', Icons.timelapse_outlined, T.inkFaint, digits: 1),
+                Chip2('${tr('آخر إشارة', 'Last seen')}: ${_dt(v['lastMessageAt'])}', status == 'offline' ? T.danger : T.inkFaint, icon: Icons.schedule_outlined),
               ]),
             ]),
           ),
         ),
+        // تحذير عام: المركبة غير متصلة → كل البيانات قد تكون قديمة.
+        if (status == 'offline')
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(color: T.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: T.danger.withValues(alpha: 0.4))),
+              child: Row(children: [
+                const Icon(Icons.wifi_off_rounded, size: 18, color: T.danger),
+                const SizedBox(width: 8),
+                Expanded(child: Text(tr('المركبة غير متصلة بلوكيشن سوليوشن — البيانات المعروضة قد تكون قديمة.', 'Vehicle offline from Location Solutions — readings may be stale.'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.danger))),
+              ]),
+            ),
+          ),
         if (tires.isNotEmpty) ...[
           const SizedBox(height: 12),
           FadeSlideIn(
@@ -166,9 +203,11 @@ class _OverviewTab extends StatelessWidget {
                 const SizedBox(height: 10),
                 Wrap(spacing: 8, runSpacing: 8, children: tires.map((t) {
                   final temp = _numOrNull(t['tempC']);
+                  final press = _numOrNull(t['pressurePsi']);
+                  final noData = temp == null && press == null; // الحساس لا يرسل
                   final hot = temp != null && temp >= 75;
                   final fault = t['fault'] == true;
-                  final color = fault ? T.danger : hot ? T.orange : T.success;
+                  final color = (fault || noData) ? T.danger : hot ? T.orange : T.success;
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                     decoration: BoxDecoration(
@@ -177,8 +216,14 @@ class _OverviewTab extends StatelessWidget {
                       border: Border.all(color: color.withValues(alpha: 0.35)),
                     ),
                     child: Column(children: [
-                      Text('${t['axle'] ?? '?'}-${t['position'] ?? '?'}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
-                      Text('${_fmt(t['tempC'])}° · ${_fmt(t['pressurePsi'])} psi', style: const TextStyle(fontSize: 10.5, color: T.inkSoft)),
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (noData) const Padding(padding: EdgeInsets.only(right: 3), child: Icon(Icons.warning_amber_rounded, size: 11, color: T.danger)),
+                        Text('${t['axle'] ?? '?'}-${t['position'] ?? '?'}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+                      ]),
+                      noData
+                          ? Text(tr('لا تصل بيانات', 'no data'), style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: T.danger))
+                          : Text('${temp == null ? '⚠' : '${temp.toStringAsFixed(0)}°'} · ${press == null ? '⚠' : '${press.toStringAsFixed(0)} psi'}',
+                              style: TextStyle(fontSize: 10.5, color: (temp == null || press == null) ? T.danger : T.inkSoft, fontWeight: (temp == null || press == null) ? FontWeight.w700 : FontWeight.w400)),
                     ]),
                   );
                 }).toList()),

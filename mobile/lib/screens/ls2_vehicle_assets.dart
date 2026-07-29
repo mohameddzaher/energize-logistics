@@ -173,7 +173,9 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
     final cond = _conditions[t['condition']];
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: AppCard(
+      child: Pressable(
+        onTap: () => _openTire(t),
+        child: AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         child: Row(children: [
           Container(
@@ -197,7 +199,112 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
             ]),
           ),
         ]),
+        ),
       ),
+    );
+  }
+
+  // تفاصيل فردة + تاريخها الكامل (عبر كل المركبات) + تعليم/إلغاء الاستبن.
+  Future<void> _openTire(Map<String, dynamic> t) async {
+    List<Map<String, dynamic>> events = [];
+    try {
+      final d = await Api.instance.get('/api/ls2/assets/events?refId=${t['_id']}&limit=200');
+      events = _l(d['events']);
+    } catch (_) {}
+    if (!mounted) return;
+    final cond = _conditions[t['condition']];
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(c).size.height * 0.8,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text('${t['serial'] ?? ''}${(t['tireNumber'] ?? '').toString().isNotEmpty ? ' · ${tr('رقم', 'no.')} ${t['tireNumber']}' : ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                  if (t['isSpare'] == true) Chip2(tr('استبن', 'Spare'), T.violet, icon: Icons.star_outline),
+                ]),
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  if ((t['positionLabel'] ?? '').toString().isNotEmpty) Chip2(t['positionLabel'].toString(), T.navy, icon: Icons.my_location_outlined),
+                  if (cond != null) Chip2(tr(cond.$1, cond.$2), cond.$3),
+                  if (t['conditionPercent'] != null) Chip2('${t['conditionPercent']}%', T.orange),
+                  if ((t['type'] ?? '').toString().isNotEmpty) Chip2('${t['type']} ${t['size'] ?? ''}'.trim(), T.inkFaint),
+                  Chip2(t['sensor'] == 'yes' ? tr('به حساس', 'Has sensor') : t['sensor'] == 'no' ? tr('بدون حساس', 'No sensor') : tr('الحساس غير معروف', 'Sensor unknown'),
+                      t['sensor'] == 'yes' ? T.cyan : T.inkFaint, icon: Icons.sensors),
+                ]),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      try {
+                        await Api.instance.patch('/api/ls2/assets/tires/${t['_id']}', {'isSpare': !(t['isSpare'] == true)});
+                        t['isSpare'] = !(t['isSpare'] == true);
+                        setS(() {});
+                        _load();
+                      } catch (e) {
+                        if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
+                      }
+                    },
+                    icon: Icon(t['isSpare'] == true ? Icons.star : Icons.star_outline, size: 18, color: T.violet),
+                    label: Text(t['isSpare'] == true ? tr('إلغاء تعليمها كاستبن', 'Unset as spare') : tr('تعليمها كـ استبن', 'Mark as the spare')),
+                  ),
+                ),
+              ]),
+            ),
+            const Divider(height: 1),
+            Padding(padding: const EdgeInsets.fromLTRB(18, 10, 18, 4), child: Text('${tr('تاريخ الفردة', 'Tire history')} (${events.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+            Expanded(
+              child: events.isEmpty
+                  ? EmptyState(icon: Icons.history, title: tr('لا يوجد سجل لهذه الفردة', 'No history for this tire'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+                      itemCount: events.length,
+                      itemBuilder: (c, i) {
+                        final e = events[i];
+                        final act = {
+                          'registered': (tr('تسجيل', 'Registered'), T.info),
+                          'mounted': (tr('تركيب', 'Mounted'), T.success),
+                          'transferred': (tr('نقل', 'Transferred'), T.navy),
+                          'removed': (tr('إزالة', 'Removed'), T.warn),
+                          'to_repair': (tr('للتجديد', 'To renewal'), T.warn),
+                          'from_repair': (tr('من التجديد', 'From renewal'), T.info),
+                          'renewed': (tr('تجديد', 'Renewed'), T.violet),
+                          'scrapped': (tr('سكراب', 'Scrapped'), T.inkFaint),
+                          'damaged': (tr('تلف', 'Damaged'), T.danger),
+                          'updated': (tr('تعديل', 'Updated'), T.inkFaint),
+                        }[e['action']] ?? ((e['action'] ?? '—').toString(), T.inkFaint);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Column(children: [
+                              Container(margin: const EdgeInsets.only(top: 4), width: 10, height: 10, decoration: BoxDecoration(color: act.$2, shape: BoxShape.circle)),
+                              if (i < events.length - 1) Container(width: 2, height: 34, color: T.navy.withValues(alpha: 0.1)),
+                            ]),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(
+                                  '${act.$1}'
+                                  '${(e['fromPlate'] ?? '').toString().isNotEmpty && e['action'] != 'mounted' && e['action'] != 'registered' ? ' · ${tr('من', 'from')} ${e['fromPlate']}' : ''}'
+                                  '${(e['toPlate'] ?? '').toString().isNotEmpty ? ' → ${e['toPlate']}' : ''}',
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                                Text('${_d(e['date'])}${(e['performedByName'] ?? '').toString().isNotEmpty ? ' · ${e['performedByName']}' : ''}${(e['reason'] ?? '').toString().isNotEmpty ? ' · ${e['reason']}' : ''}',
+                                    style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 2, overflow: TextOverflow.ellipsis),
+                              ]),
+                            ),
+                          ]),
+                        );
+                      },
+                    ),
+            ),
+          ]),
+        ),
+      )),
     );
   }
 }

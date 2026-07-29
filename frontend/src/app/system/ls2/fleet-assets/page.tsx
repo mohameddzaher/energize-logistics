@@ -31,7 +31,7 @@ import SearchSelect from '@/components/ls2/SearchSelect';
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
 interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; status: string; notes: string }
-interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used' | 'renewed'; conditionPercent?: number | null; status: 'mounted' | 'spare' | 'in_repair' | 'scrap' | 'damaged' | 'retired' | 'sold'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean; notes: string }
+interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used' | 'renewed'; conditionPercent?: number | null; status: 'mounted' | 'spare' | 'in_repair' | 'scrap' | 'damaged' | 'retired' | 'sold'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; plateKey?: string | null; isSpare?: boolean; notes: string }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
 interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
 
@@ -508,7 +508,7 @@ export default function Ls2FleetAssetsPage() {
                     const sen = SENSOR_LABELS[ti.sensor] || SENSOR_LABELS.unknown;
                     const st = TIRE_STATUS_LABELS[ti.status] || TIRE_STATUS_LABELS.spare;
                     const grade = TIRE_CONDITION_LABELS[ti.condition || 'used'] || TIRE_CONDITION_LABELS.used;
-                    const terminal = ti.status === 'retired' || ti.status === 'damaged';
+                    const terminal = ti.status === 'retired' || ti.status === 'damaged' || ti.status === 'sold';
                     return (
                       <tr key={ti._id} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="px-4 py-3 tabular-nums text-slate-500">{ti.tireNumber || '—'}</td>
@@ -528,8 +528,13 @@ export default function Ls2FleetAssetsPage() {
                         <td className="px-4 py-3">
                           {admin && !terminal && (
                             <div className="flex items-center justify-end gap-1.5">
-                              {ti.status !== 'in_repair' && ti.status !== 'scrap' && (
-                                <button type="button" title={ar ? 'نقل / تركيب' : 'Move / mount'} onClick={() => setMoveTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
+                              {/* المخزن/الجديد/المجدّد: فردة غير مركّبة ⇐ زرّ تركيب واضح (مش أيقونة مبهمة) */}
+                              {ti.status === 'spare' && (
+                                <button type="button" onClick={() => setMoveTire(ti)} className="px-2.5 py-1 rounded-md bg-orange-50 hover:bg-orange-100 text-[#f37121] text-[11px] font-semibold inline-flex items-center gap-1"><ArrowDownToLine className="w-3.5 h-3.5" />{ar ? 'تركيب على شاحنة' : 'Mount on truck'}</button>
+                              )}
+                              {/* المركّبة: نقل/تبديل مع فردة تانية */}
+                              {ti.status === 'mounted' && (
+                                <button type="button" title={ar ? 'نقل / تبديل' : 'Move / swap'} onClick={() => setMoveTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
                               )}
                               {ti.status === 'mounted' && (
                                 /* الإنزال بكل وجهاته (مخزن بنسبة٪ / تجديد / تالفة / سكراب)

@@ -247,7 +247,7 @@ exports.moveTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store', conditionPercent = null, displacedTo = '', replacementTireId = null } = req.body;
+    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store', conditionPercent = null, displacedTo = '', replacementTireId = null, secondReplacementTireId = null } = req.body;
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
     // The exact slot being vacated — the replacement (if any) goes here.
     const vacated = tire.status === 'mounted' && tire.plateKey
@@ -370,10 +370,16 @@ exports.moveTire = async (req, res) => {
         notes: [notes, toStatus === 'spare' && conditionPercent != null && conditionPercent !== '' ? `الحالة ${conditionPercent}%` : ''].filter(Boolean).join(' — '),
       });
     }
-    // النصف الثاني من التبديل: بديل من المخزن يُركَّب في الموقع الذي أُخلي —
-    // نفس العملية، سواء نزلت الفردة أو انتقلت إلى سطحة أخرى.
+    // النصف الثاني من التبديل: بديل يُركَّب في الموقع الذي أُخلي — من المخزن أو
+    // مسحوب من عربية أخرى (يُنقل تلقائيًا). نلتقط موقع البديلة قبل تحريكها حتى
+    // نتمكن من ملء مكانها بفردة ثالثة.
     let replacement = null;
+    let backfillSlot = null; // موقع البديلة على عربيتها (يُملأ بالفردة الثالثة)
     if (replacementTireId && vacated) {
+      const yPeek = await Ls2TireAsset.findById(replacementTireId).lean();
+      if (yPeek && yPeek.status === 'mounted' && yPeek.plateKey && yPeek.plateKey !== vacated.plateKey) {
+        backfillSlot = { plate: yPeek.plate, plateKey: yPeek.plateKey, positionNumber: yPeek.positionNumber, positionLabel: yPeek.positionLabel, section: yPeek.section };
+      }
       try {
         replacement = await mountSpareTire(req, replacementTireId, vacated, when, reason);
       } catch (err) {
@@ -381,8 +387,21 @@ exports.moveTire = async (req, res) => {
         return res.status(400).json({ message: err.message, tire, partial: true });
       }
     }
+    // النصف الثالث (اختياري ومرن): فردة تملأ مكان البديلة على عربيتها — من المخزن
+    // أو من عربية ثالثة. للحالات الكثيرة في الورشة (سلسلة تبديل).
+    let secondReplacement = null;
+    if (secondReplacementTireId && backfillSlot) {
+      if ([String(tire._id), String(replacementTireId)].includes(String(secondReplacementTireId))) {
+        return res.status(400).json({ message: 'الفردة التي تملأ المكان يجب أن تكون مختلفة عن الفردتين السابقتين', tire, replacement, partial: true });
+      }
+      try {
+        secondReplacement = await mountSpareTire(req, secondReplacementTireId, backfillSlot, when, reason);
+      } catch (err) {
+        return res.status(400).json({ message: err.message, tire, replacement, partial: true });
+      }
+    }
     await clearSensorNotice(from.key, toPlate ? plateKey(toPlate) : null);
-    res.json({ tire, replacement });
+    res.json({ tire, replacement, secondReplacement });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }

@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'ls2_vehicle_assets.dart';
 
 /// أصول الأسطول (الكاوتشات والتريلات والسطحات) — نفس عمليات الويب:
 /// تسجيل، فك إلى المستودع/التجديد/التالف/السكراب مع نسبة الحالة، تركيب/نقل
@@ -306,6 +307,9 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
             Wrap(spacing: 8, runSpacing: 8, children: [
               if (status == 'mounted')
                 _chip(sheet, Icons.download_outlined, tr('فك من الشاحنة', 'Dismount'), T.warn, () => _dismount(t)),
+              if (status == 'mounted' && (t['plate'] ?? '').toString().isNotEmpty)
+                _chip(sheet, Icons.local_shipping_outlined, tr('أصول المركبة', 'Vehicle assets'), T.navy,
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2VehicleAssetsScreen(plate: (t['plate'] ?? '').toString())))),
               if (status == 'spare' || status == 'mounted')
                 _chip(sheet, Icons.local_shipping_outlined, status == 'mounted' ? tr('نقل لشاحنة أخرى', 'Transfer') : tr('تركيب على شاحنة', 'Mount'), T.success, () => _mount(t)),
               if (status == 'in_repair')
@@ -335,6 +339,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final percent = TextEditingController();
     final reason = TextEditingController();
     Map<String, dynamic>? replacement;
+    Map<String, dynamic>? secondReplacement;
     bool swap = false;
     final mounted = t['status'] == 'mounted' && (t['plate'] ?? '').toString().isNotEmpty;
     final ok = await showModalBottomSheet<bool>(
@@ -384,7 +389,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 const SizedBox(height: 3),
                 Text(tr('من المخزن، أو فردة مركّبة على مركبة أخرى (تُنقل تلقائيًا).', 'From store, or a tire on another truck (auto-transferred).'), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
                 // تبديل متبادل: هذه الفردة تُركَّب مكان البديلة على عربيتها.
-                if (replacement != null && replacement!['status'] == 'mounted')
+                if (replacement != null && replacement!['status'] == 'mounted') ...[
                   Container(
                     margin: const EdgeInsets.only(top: 8),
                     decoration: BoxDecoration(color: T.warn.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
@@ -392,7 +397,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                       dense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                       value: swap,
-                      onChanged: (v) => setS(() => swap = v ?? false),
+                      onChanged: (v) => setS(() { swap = v ?? false; if (swap) secondReplacement = null; }),
                       title: Text(
                         tr('تبديل متبادل: هذه الفردة تُركَّب مكان ${replacement!['serial']} على المركبة ${replacement!['plate']} (بدل نزولها).',
                            "Two-way swap: this tire takes ${replacement!['serial']}'s slot on truck ${replacement!['plate']}."),
@@ -400,6 +405,29 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                       ),
                     ),
                   ),
+                  // بدون تبديل: اختر فردة تملأ مكان البديلة على عربيتها (مخزن أو عربية ثالثة).
+                  if (!swap) ...[
+                    const SizedBox(height: 8),
+                    Text(tr('يملأ مكان ${replacement!['serial']} على ${replacement!['plate']} (اختياري):', "Fills ${replacement!['serial']}'s slot on ${replacement!['plate']} (optional):"),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 5),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 44)),
+                      onPressed: () async {
+                        final r = await _pickReplacement(t,
+                            alsoExclude: [(replacement!['_id'] ?? '').toString()],
+                            excludePlateKey: (replacement!['plateKey'] ?? replacement!['plate'] ?? '').toString());
+                        if (r != null) setS(() => secondReplacement = r.isEmpty ? null : r);
+                      },
+                      icon: const Icon(Icons.add_circle_outline, size: 16),
+                      label: Text(
+                        secondReplacement == null ? tr('— دون —', '— none —') : '${secondReplacement!['serial']}${secondReplacement!['status'] == 'mounted' ? ' · ${tr('من', 'from')} ${secondReplacement!['plate']}' : ' · ${tr('مخزن', 'store')}'}',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Text(tr('من المخزن أو من عربية ثالثة.', 'From store, or a third truck.'), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                  ],
+                ],
               ],
               const SizedBox(height: 14),
               SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(swap ? tr('تبديل الفردتين', 'Swap the tires') : tr('فك', 'Dismount')))),
@@ -416,16 +444,17 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       if (!doSwap && destination == 'store' && percent.text.trim().isNotEmpty) 'conditionPercent': num.tryParse(percent.text),
       if (reason.text.trim().isNotEmpty) 'reason': reason.text.trim(),
       if (replacement != null) 'replacementTireId': replacement!['_id'],
+      if (!doSwap && secondReplacement != null) 'secondReplacementTireId': secondReplacement!['_id'],
     }, doSwap ? tr('تم التبديل', 'Swapped') : tr('تم الفك', 'Dismounted'));
   }
 
-  // منتقي الفردة البديلة: المخزن + المركّبة على مركبات أخرى (بحث بالسيريال/الرقم).
-  Future<Map<String, dynamic>?> _pickReplacement(Map<String, dynamic> source) {
+  // منتقي فردة: المخزن + المركّبة على مركبات أخرى، مع استثناء فردات وعربية محددة.
+  Future<Map<String, dynamic>?> _pickReplacement(Map<String, dynamic> source, {List<String> alsoExclude = const [], String? excludePlateKey}) {
     final all = _l(_d?['tires']);
-    final excludeId = (source['_id'] ?? '').toString();
-    final excludePlate = (source['plateKey'] ?? source['plate'] ?? '').toString();
+    final excludeIds = {(source['_id'] ?? '').toString(), ...alsoExclude};
+    final excludePlate = (excludePlateKey ?? source['plateKey'] ?? source['plate'] ?? '').toString();
     final options = all.where((x) {
-      if ((x['_id'] ?? '').toString() == excludeId) return false;
+      if (excludeIds.contains((x['_id'] ?? '').toString())) return false;
       if (x['status'] == 'spare') return true;
       if (x['status'] == 'mounted' && (x['plate'] ?? '').toString().isNotEmpty && (x['plateKey'] ?? x['plate']).toString() != excludePlate) return true;
       return false;

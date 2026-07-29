@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'ls2_vehicle_assets.dart';
 
 /// تفاصيل المركبة (لوكيشن سوليوشن) — خمس تبويبات كما في الويب:
 /// نظرة عامة (حساسات حية + إطارات)، الصيانة (فواصل + تسجيل خدمة + مؤجلات)،
@@ -82,6 +83,13 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
       length: tabs.length,
       child: AppScaffold(
         title: Text(widget.plate),
+        actions: [
+          IconButton(
+            tooltip: tr('أصول المركبة (الكاوتشات)', 'Vehicle assets (tires)'),
+            icon: const Icon(Icons.tire_repair_outlined, color: Colors.white),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2VehicleAssetsScreen(plate: widget.plate))),
+          ),
+        ],
         appBarBottom: TabBar(
           isScrollable: true,
           tabAlignment: TabAlignment.start,

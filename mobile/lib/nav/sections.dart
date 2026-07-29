@@ -335,7 +335,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'B2C', arTitle: 'B2C', enTitle: 'B2C', icon: Icons.storefront_outlined,
-      roles: const [..._admins, 'b2c_head', 'b2c_project_manager'],
+      // الباك يخدم داتا B2C لـ super_admin/admin + رؤوس B2C فقط؛ فمنستعرضهاش لـ IT
+      // (كانوا بيشوفوا القسم ببيانات صفر) — نطابق النطاق تمامًا.
+      roles: const ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: b2cDashSpec)),
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg)),

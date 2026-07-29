@@ -5,6 +5,8 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'ls2_vehicles.dart';
+import 'ls2_alerts.dart';
 
 /// لوحة لوكيشن سوليوشن — حالة الأسطول الحية، التنبيهات، الصيانة المستحقة،
 /// الحرارة، ومسافات الفترة — نفس أقسام لوحة الويب.
@@ -49,6 +51,17 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
   List<Map<String, dynamic>> _l(dynamic v) =>
       v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : const [];
 
+  void _open(Widget screen) => Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+
+  // سطر «التفاصيل ←» أسفل الكارت — يوضّح إنه قابل للضغط.
+  Widget _more() => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+          Text(tr('التفاصيل', 'Details'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.navy)),
+          Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, size: 18, color: T.navy),
+        ]),
+      );
+
   @override
   Widget build(BuildContext context) {
     final fleet = _m(_d?['fleet']);
@@ -70,27 +83,33 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
                   child: ListView(padding: const EdgeInsets.all(14), children: [
                     // ── حالة الأسطول ──
                     FadeSlideIn(
-                      child: AppCard(
-                        topAccent: T.navy,
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(tr('حالة الأسطول الآن', 'Fleet status'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                          const SizedBox(height: 10),
-                          Wrap(spacing: 8, runSpacing: 8, children: [
-                            Chip2('${tr('الإجمالي', 'Total')}: ${_n(fleet['total'])}', T.navy, icon: Icons.local_shipping_outlined),
-                            Chip2('${tr('متصلة', 'Online')}: ${_n(fleet['online'])}', T.success, icon: Icons.wifi),
-                            Chip2('${tr('متحركة', 'Moving')}: ${_n(statusCounts['moving'])}', T.success),
-                            Chip2('${tr('متوقفة مؤقتًا', 'Idle')}: ${_n(statusCounts['idle'])}', T.warn),
-                            Chip2('${tr('واقفة', 'Stopped')}: ${_n(statusCounts['stopped'])}', T.info),
-                            Chip2('${tr('غير متصلة', 'Offline')}: ${_n(statusCounts['offline'])}', T.inkFaint),
+                      child: Pressable(
+                        onTap: () => _open(const Ls2VehiclesScreen()),
+                        child: AppCard(
+                          topAccent: T.navy,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(tr('حالة الأسطول الآن', 'Fleet status'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            const SizedBox(height: 10),
+                            Wrap(spacing: 8, runSpacing: 8, children: [
+                              Chip2('${tr('الإجمالي', 'Total')}: ${_n(fleet['total'])}', T.navy, icon: Icons.local_shipping_outlined),
+                              Chip2('${tr('متصلة', 'Online')}: ${_n(fleet['online'])}', T.success, icon: Icons.wifi),
+                              Chip2('${tr('متحركة', 'Moving')}: ${_n(statusCounts['moving'])}', T.success),
+                              Chip2('${tr('متوقفة مؤقتًا', 'Idle')}: ${_n(statusCounts['idle'])}', T.warn),
+                              Chip2('${tr('واقفة', 'Stopped')}: ${_n(statusCounts['stopped'])}', T.info),
+                              Chip2('${tr('غير متصلة', 'Offline')}: ${_n(statusCounts['offline'])}', T.inkFaint),
+                            ]),
+                            _more(),
                           ]),
-                        ]),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     // ── التنبيهات ──
                     FadeSlideIn(
                       delayMs: 40,
-                      child: AppCard(
+                      child: Pressable(
+                        onTap: () => _open(const Ls2AlertsScreen()),
+                        child: AppCard(
                         topAccent: _n(bySeverity['critical']) > 0 ? T.danger : T.warn,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(children: [
@@ -113,14 +132,17 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
                               Expanded(child: Text('${a['plate'] ?? ''} — ${a['message'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5))),
                             ]),
                           )),
+                          _more(),
                         ]),
                       ),
-                    ),
+                    )),
                     const SizedBox(height: 12),
                     // ── الصيانة ──
                     FadeSlideIn(
                       delayMs: 80,
-                      child: AppCard(
+                      child: Pressable(
+                        onTap: () => _open(const Ls2VehiclesScreen()),
+                        child: AppCard(
                         topAccent: _n(maintenance['overdueCount']) > 0 ? T.danger : T.success,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(tr('الصيانة', 'Maintenance'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
@@ -139,9 +161,10 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
                               ),
                             ]),
                           )),
+                          _more(),
                         ]),
                       ),
-                    ),
+                    )),
                     const SizedBox(height: 12),
                     // ── الحرارة ──
                     FadeSlideIn(

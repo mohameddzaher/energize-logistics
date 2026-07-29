@@ -54,6 +54,8 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> {
   String _q = '';
+  // مشترك عبر فتحات الدرج → مايرجعش لفوق كل مرة، بيفضل على آخر مكان وصلت له.
+  static final ScrollController _sc = ScrollController();
 
   String _fold(String s) => s
       .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه')
@@ -131,6 +133,8 @@ class _AppDrawerState extends State<AppDrawer> {
         else
         Expanded(
           child: ListView(
+            controller: _sc,
+            key: const PageStorageKey('drawer-sections'),
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
               ListTile(

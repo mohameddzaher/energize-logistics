@@ -31,7 +31,7 @@ import SearchSelect from '@/components/ls2/SearchSelect';
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
 interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; status: string; notes: string }
-interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used' | 'renewed'; conditionPercent?: number | null; status: 'mounted' | 'spare' | 'in_repair' | 'scrap' | 'damaged' | 'retired'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean; notes: string }
+interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used' | 'renewed'; conditionPercent?: number | null; status: 'mounted' | 'spare' | 'in_repair' | 'scrap' | 'damaged' | 'retired' | 'sold'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean; notes: string }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
 interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
 
@@ -84,6 +84,7 @@ const TIRE_STATUS_LABELS: Record<string, { en: string; ar: string; cls: string }
   in_repair: { en: 'Under renewal', ar: 'تحت التجديد', cls: 'bg-violet-100 text-violet-700' },
   scrap: { en: 'Scrap (to sell)', ar: 'سكراب (للبيع)', cls: 'bg-slate-200 text-slate-700' },
   damaged: { en: 'Damaged (gone)', ar: 'تالفة', cls: 'bg-red-100 text-red-700' },
+  sold: { en: 'Sold', ar: 'مباعة', cls: 'bg-emerald-100 text-emerald-700' },
   retired: { en: 'Retired (legacy)', ar: 'معدومة (قديم)', cls: 'bg-red-50 text-red-500' },
 };
 // Quality grade, independent of location. مجدد يركب على التيدر فقط.
@@ -149,7 +150,7 @@ export default function Ls2FleetAssetsPage() {
   const [busy, setBusy] = useState(false);
 
   // بطاقات الحالة أعلى تبويب الكاوتشات تعمل كفلاتر — نقرة تحصر الجدول فيها.
-  const [tireFilter, setTireFilter] = useState<'' | 'mounted' | 'store' | 'new' | 'renewed' | 'in_repair' | 'scrap' | 'damaged'>('');
+  const [tireFilter, setTireFilter] = useState<'' | 'mounted' | 'store' | 'new' | 'renewed' | 'in_repair' | 'scrap' | 'damaged' | 'sold'>('');
 
   // Modals
   const [moveTire, setMoveTire] = useState<TireAsset | null>(null);
@@ -200,6 +201,7 @@ export default function Ls2FleetAssetsPage() {
       case 'in_repair': return ti.status === 'in_repair';
       case 'scrap': return ti.status === 'scrap';
       case 'damaged': return ti.status === 'damaged';
+      case 'sold': return ti.status === 'sold';
       default: return true;
     }
   }, [tireFilter]);
@@ -275,7 +277,7 @@ export default function Ls2FleetAssetsPage() {
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
-  const doRetireTire = async (tire: TireAsset, kind: 'damaged' | 'scrap', reason: string) => {
+  const doRetireTire = async (tire: TireAsset, kind: 'damaged' | 'scrap' | 'sold', reason: string) => {
     setBusy(true);
     try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { kind, reason }); await load(); setRetireTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
@@ -469,6 +471,7 @@ export default function Ls2FleetAssetsPage() {
               { key: 'renewed', label: ar ? 'المجدد' : 'Renewed', count: tires.filter((x) => x.condition === 'renewed').length, cls: 'text-indigo-700', dot: 'bg-indigo-500' },
               { key: 'scrap', label: ar ? 'السكراب' : 'Scrap', count: tires.filter((x) => x.status === 'scrap').length, cls: 'text-slate-600', dot: 'bg-slate-500' },
               { key: 'damaged', label: ar ? 'التالف' : 'Damaged', count: tires.filter((x) => x.status === 'damaged').length, cls: 'text-red-700', dot: 'bg-red-500' },
+              { key: 'sold', label: ar ? 'المباع' : 'Sold', count: tires.filter((x) => x.status === 'sold').length, cls: 'text-emerald-700', dot: 'bg-emerald-500' },
             ] as const).map((c) => (
               <button key={c.key} type="button" onClick={() => setTireFilter(tireFilter === c.key ? '' : c.key)}
                 className={`bg-white rounded-xl border px-3 py-2.5 text-start shadow-sm transition-all ${tireFilter === c.key ? 'border-[#f37121] ring-1 ring-[#f37121]/40' : 'border-slate-200 hover:border-slate-300'}`}>
@@ -548,6 +551,16 @@ export default function Ls2FleetAssetsPage() {
                               {ti.status !== 'in_repair' && ti.status !== 'scrap' && (
                                 <button type="button" title={ar ? 'تالفة / سكراب' : 'Damaged / scrap'} disabled={busy} onClick={() => setRetireTire(ti)} className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                               )}
+                            </div>
+                          )}
+                          {/* السكراب/التالف يُباع كخردة — أكشن البيع متاح حتى لو الحالة نهائية */}
+                          {admin && (ti.status === 'scrap' || ti.status === 'damaged') && (
+                            <div className="flex items-center justify-end">
+                              <button
+                                type="button" disabled={busy}
+                                onClick={() => { if (window.confirm(ar ? `تسجيل بيع الفردة ${ti.serial}؟` : `Mark ${ti.serial} as sold?`)) doRetireTire(ti, 'sold', ''); }}
+                                className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-medium"
+                              >{ar ? 'تمت بيعها' : 'Sold'}</button>
                             </div>
                           )}
                         </td>

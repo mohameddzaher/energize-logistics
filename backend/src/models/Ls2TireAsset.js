@@ -28,7 +28,7 @@ const ls2TireAssetSchema = new mongoose.Schema({
   //   scrap             ← سكراب: renewal failed; unusable, kept in store to sell
   //   damaged           ← تالف: blew out / worn beyond existence; terminal
   //   retired           ← legacy value from before scrap/damaged were separated
-  status: { type: String, enum: ['mounted', 'spare', 'in_repair', 'scrap', 'damaged', 'retired'], default: 'mounted', index: true },
+  status: { type: String, enum: ['mounted', 'spare', 'in_repair', 'scrap', 'damaged', 'retired', 'sold'], default: 'mounted', index: true },
   // Quality grade, independent of where it is: fresh from purchase, ordinary
   // used, or renewed (retreaded) — the grade the trailer-only rule reads.
   condition: { type: String, enum: ['new', 'used', 'renewed'], default: 'used' },

@@ -25,6 +25,7 @@ const _tireStatuses = {
   'in_repair': ('تحت التجديد', 'Renewing', T.warn),
   'scrap': ('سكراب', 'Scrap', T.inkFaint),
   'damaged': ('تالفة', 'Damaged', T.danger),
+  'sold': ('مباعة', 'Sold', T.success),
   'retired': ('خارج الخدمة', 'Retired', T.inkFaint),
 };
 
@@ -112,6 +113,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       ('renewed', tr('المجدد', 'Renewed'), tires.where((t) => t['condition'] == 'renewed').length, T.violet),
       ('scrap', tr('السكراب', 'Scrap'), tires.where((t) => t['status'] == 'scrap').length, T.inkFaint),
       ('damaged', tr('التالف', 'Damaged'), tires.where((t) => t['status'] == 'damaged').length, T.danger),
+      ('sold', tr('المباع', 'Sold'), tires.where((t) => t['status'] == 'sold').length, T.success),
     ];
 
     return AppScaffold(
@@ -137,7 +139,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                             padding: const EdgeInsets.only(left: 6),
                             child: FilterChip(
                               selected: selected,
-                              onSelected: (_) => setState(() => _filter = selected ? '' : f.$1),
+                              onSelected: (_) => setState(() { _filter = selected ? '' : f.$1; _q = ''; }),
                               label: Text('${f.$2} (${f.$3})'),
                               labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: selected ? Colors.white : f.$4),
                               selectedColor: f.$4,
@@ -197,6 +199,19 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                                           if ((t['type'] ?? '').toString().isNotEmpty) Chip2('${t['type']} ${t['size'] ?? ''}'.trim(), T.inkFaint),
                                           if (t['sensor'] == 'yes') Chip2(tr('حساس', 'Sensor'), T.cyan, icon: Icons.sensors),
                                         ]),
+                                        // إجراء سريع: تركيب الفردة المتاحة على شاحنة مباشرة.
+                                        if (t['status'] == 'spare' || t['status'] == 'in_repair') ...[
+                                          const SizedBox(height: 6),
+                                          Align(
+                                            alignment: AlignmentDirectional.centerEnd,
+                                            child: FilledButton.tonalIcon(
+                                              style: FilledButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 14)),
+                                              onPressed: t['status'] == 'spare' ? () => _mount(t) : () => _renewalResult(t),
+                                              icon: Icon(t['status'] == 'spare' ? Icons.add_to_photos_outlined : Icons.autorenew_rounded, size: 16),
+                                              label: Text(t['status'] == 'spare' ? tr('تركيب على شاحنة', 'Mount on truck') : tr('نتيجة التجديد', 'Renewal result'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                                            ),
+                                          ),
+                                        ],
                                       ]),
                                     ),
                                   ),
@@ -336,8 +351,11 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 _chip(sheet, Icons.local_shipping_outlined, status == 'mounted' ? tr('نقل لشاحنة أخرى', 'Transfer') : tr('تركيب على شاحنة', 'Mount'), T.success, () => _mount(t)),
               if (status == 'in_repair')
                 _chip(sheet, Icons.autorenew_rounded, tr('نتيجة التجديد', 'Renewal result'), T.violet, () => _renewalResult(t)),
-              if (status != 'scrap' && status != 'damaged' && status != 'retired')
+              if (status != 'scrap' && status != 'damaged' && status != 'retired' && status != 'sold')
                 _chip(sheet, Icons.dangerous_outlined, tr('إتلاف/سكراب مباشرة', 'Retire'), T.danger, () => _retire(t)),
+              // بيع الفردة (خاصة السكراب — تُباع كخردة).
+              if (status == 'scrap' || status == 'damaged')
+                _chip(sheet, Icons.sell_outlined, tr('تمت بيعها', 'Mark sold'), T.success, () => _sell(t)),
             ]),
             const SizedBox(height: 6),
           ]),
@@ -470,6 +488,48 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     }, doSwap ? tr('تم التبديل', 'Swapped') : tr('تم الفك', 'Dismounted'));
   }
 
+  // منتقي لوحة شاحنة من اللوحات المتاحة (بحث سريع).
+  Future<String?> _pickPlate(List<String> plates) {
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) {
+        String q = '';
+        return StatefulBuilder(builder: (c, setS) {
+          final fq = _fold(q.trim());
+          final list = plates.where((p) => fq.isEmpty || _fold(p).contains(fq)).toList();
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+              child: SizedBox(
+                height: MediaQuery.of(c).size.height * 0.7,
+                child: Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: TextField(autofocus: true, onChanged: (v) => setS(() => q = v),
+                        decoration: InputDecoration(hintText: tr('ابحث عن لوحة الشاحنة…', 'Search truck plate…'), prefixIcon: const Icon(Icons.search))),
+                  ),
+                  Expanded(
+                    child: list.isEmpty
+                        ? EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا توجد شاحنات', 'No trucks'))
+                        : ListView.builder(
+                            itemCount: list.length,
+                            itemBuilder: (c, i) => ListTile(
+                              leading: const Icon(Icons.local_shipping_outlined, color: T.navy),
+                              title: Text(list[i], style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                              onTap: () => Navigator.pop(c, list[i]),
+                            ),
+                          ),
+                  ),
+                ]),
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+
   // منتقي فردة: المخزن + المركّبة على أي مركبة (بما فيها نفس المركبة = الاستبن)،
   // مع استثناء فردات محددة. الترتيب: مخزن ← نفس المركبة ← مركبات أخرى.
   Future<Map<String, dynamic>?> _pickReplacement(Map<String, dynamic> source, {List<String> alsoExclude = const [], String? excludePlateKey}) {
@@ -554,20 +614,35 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
   Future<void> _mount(Map<String, dynamic> t) async {
     final plate = TextEditingController(text: (t['plate'] ?? '').toString());
     final position = TextEditingController(text: (t['positionNumber'] ?? '').toString());
-    final ok = await showDialog<bool>(
+    // قائمة الشاحنات المتاحة من الأصول المحمّلة (لوحات مميزة) للاختيار السريع.
+    final plates = (_l(_d?['tires']).map((x) => (x['plate'] ?? '').toString()).where((p) => p.isNotEmpty).toSet().toList()..sort());
+    final ok = await showModalBottomSheet<bool>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr('تركيب/نقل الكاوتش', 'Mount / transfer')),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: plate, decoration: InputDecoration(labelText: tr('لوحة الشاحنة *', 'Truck plate *'))),
-          const SizedBox(height: 10),
-          TextField(controller: position, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('رقم الموضع', 'Position #'))),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تركيب', 'Mount'))),
-        ],
-      ),
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${tr('تركيب', 'Mount')} ${t['serial'] ?? ''} ${tr('على شاحنة', 'on a truck')}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
+              onPressed: () async {
+                final p = await _pickPlate(plates);
+                if (p != null) setS(() => plate.text = p);
+              },
+              icon: const Icon(Icons.local_shipping_outlined, size: 18),
+              label: Text(plate.text.trim().isEmpty ? tr('اختر الشاحنة…', 'Choose truck…') : plate.text, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(height: 10),
+            TextField(controller: plate, decoration: InputDecoration(labelText: tr('أو اكتب اللوحة *', 'Or type plate *'))),
+            const SizedBox(height: 10),
+            TextField(controller: position, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('رقم الموضع', 'Position #'))),
+            const SizedBox(height: 14),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تركيب', 'Mount')))),
+          ]),
+        ),
+      )),
     );
     if (ok != true || plate.text.trim().isEmpty) return;
     final body = {
@@ -625,5 +700,27 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     );
     if (kind == null) return;
     await _post('/api/ls2/assets/tires/${t['_id']}/retire', {'kind': kind}, tr('تم التسجيل', 'Recorded'));
+  }
+
+  // بيع الفردة (السكراب/التالف يُباع كخردة) — تخرج من المخزون كمباعة.
+  Future<void> _sell(Map<String, dynamic> t) async {
+    final reason = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('تسجيل البيع', 'Mark as sold')),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${t['serial'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 10),
+          TextField(controller: reason, decoration: InputDecoration(labelText: tr('ملاحظة / السعر (اختياري)', 'Note / price (optional)'))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.success), onPressed: () => Navigator.pop(c, true), child: Text(tr('تمت بيعها', 'Sold'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _post('/api/ls2/assets/tires/${t['_id']}/retire', {'kind': 'sold', if (reason.text.trim().isNotEmpty) 'notes': reason.text.trim()}, tr('سُجّلت كمباعة', 'Marked sold'));
   }
 }

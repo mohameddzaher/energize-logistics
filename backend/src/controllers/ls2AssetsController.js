@@ -451,13 +451,13 @@ exports.retireTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    const kind = ['damaged', 'scrap'].includes(req.body?.kind) ? req.body.kind : 'retired';
+    const kind = ['damaged', 'scrap', 'sold'].includes(req.body?.kind) ? req.body.kind : 'retired';
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
     tire.set({ status: kind, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '', isSpare: false });
     await tire.save();
     await logEvent(req, {
       entityType: 'tire', refId: tire._id, label: tire.serial,
-      action: kind === 'damaged' ? 'damaged' : kind === 'scrap' ? 'scrapped' : 'retired',
+      action: kind === 'damaged' ? 'damaged' : kind === 'scrap' ? 'scrapped' : kind === 'sold' ? 'sold' : 'retired',
       fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
       reason: req.body?.reason || '', notes: req.body?.notes || '',
     });

@@ -4,6 +4,8 @@ import '../nav/sections.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../screens/my_profile.dart';
+import '../screens/admin_suite.dart' show NotificationsScreen;
 import 'theme.dart';
 
 /// The app-wide scaffold: EVERY screen gets the burger drawer (all sections)
@@ -39,6 +41,75 @@ class AppScaffold extends StatelessWidget {
       endDrawer: const AppDrawer(),
       floatingActionButton: floatingActionButton,
       body: body,
+      // شريط سفلي ثابت في كل الصفحات — الرئيسية/ملفي/الإشعارات/القائمة.
+      bottomNavigationBar: const AppBottomNav(),
+    );
+  }
+}
+
+/// The persistent bottom bar shown on EVERY screen (via AppScaffold) so it never
+/// disappears when you drill into a page. A soft press-animation on each item.
+class AppBottomNav extends StatelessWidget {
+  const AppBottomNav({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget item(IconData icon, String label, VoidCallback onTap) => Expanded(
+          child: _BounceTap(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 23, color: T.navy),
+                const SizedBox(height: 3),
+                Text(label, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: T.navy)),
+              ]),
+            ),
+          ),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, -3))],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(children: [
+          item(Icons.home_rounded, tr('الرئيسية', 'Home'), () => Navigator.popUntil(context, (r) => r.isFirst)),
+          item(Icons.account_circle_outlined, tr('ملفي', 'Profile'), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyProfileScreen()))),
+          item(Icons.notifications_outlined, tr('الإشعارات', 'Alerts'), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
+          Builder(builder: (c) => item(Icons.menu_rounded, tr('القائمة', 'Menu'), () => Scaffold.of(c).openEndDrawer())),
+        ]),
+      ),
+    );
+  }
+}
+
+/// A tap wrapper that gives a soft, springy scale-down while pressed — the
+/// «jellyfish» feel across the bottom bar.
+class _BounceTap extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  const _BounceTap({required this.child, required this.onTap});
+  @override
+  State<_BounceTap> createState() => _BounceTapState();
+}
+
+class _BounceTapState extends State<_BounceTap> {
+  double _s = 1;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _s = 0.86),
+      onTapUp: (_) { setState(() => _s = 1); widget.onTap(); },
+      onTapCancel: () => setState(() => _s = 1),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedScale(
+        scale: _s,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutBack,
+        child: widget.child,
+      ),
     );
   }
 }
@@ -131,7 +202,6 @@ class _AppDrawerState extends State<AppDrawer> {
         else
         Expanded(
           child: ListView(
-            key: const PageStorageKey('drawer-sections'),
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
               ListTile(

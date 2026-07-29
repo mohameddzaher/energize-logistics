@@ -9,6 +9,8 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'my_profile.dart';
+import 'admin_suite.dart' show NotificationsScreen;
 
 /// The app shell: burger drawer with EVERY section the signed-in user can
 /// open (same gating as the web sidebar), and an animated dashboard home.
@@ -153,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       drawer: const AppDrawer(),
+      bottomNavigationBar: _HomeBottomNav(),
       body: RefreshIndicator(
         onRefresh: _loadStats,
         child: ListView(
@@ -433,6 +436,41 @@ class _NavTile extends StatelessWidget {
             Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, color: T.inkFaint),
           ]),
         ),
+      ),
+    );
+  }
+}
+
+/// شريط سفلي احترافي: الرئيسية · ملفي · الإشعارات · القائمة.
+class _HomeBottomNav extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    Widget item(IconData icon, String label, VoidCallback onTap) => Expanded(
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 23, color: T.navy),
+                const SizedBox(height: 3),
+                Text(label, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: T.navy)),
+              ]),
+            ),
+          ),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, -3))],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(children: [
+          item(Icons.home_rounded, tr('الرئيسية', 'Home'), () => Navigator.popUntil(context, (r) => r.isFirst)),
+          item(Icons.account_circle_outlined, tr('ملفي', 'Profile'), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyProfileScreen()))),
+          item(Icons.notifications_outlined, tr('الإشعارات', 'Alerts'), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
+          item(Icons.menu_rounded, tr('القائمة', 'Menu'), () => Scaffold.of(context).openDrawer()),
+        ]),
       ),
     );
   }

@@ -63,6 +63,21 @@ class T {
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: navy, width: 1.6)),
         labelStyle: GoogleFonts.tajawal(color: inkSoft),
       ),
+      // مقبض سحب + حواف مدوّرة لكل الشيتات → المستخدم يقدر يقفلها بسهولة.
+      bottomSheetTheme: const BottomSheetThemeData(
+        showDragHandle: true,
+        dragHandleColor: line,
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        clipBehavior: Clip.antiAlias,
+      ),
+      // قوائم منسدلة أوضح (خلفية بيضاء + حواف مدوّرة).
+      dropdownMenuTheme: DropdownMenuThemeData(
+        menuStyle: MenuStyle(
+          backgroundColor: WidgetStateProperty.all(Colors.white),
+          shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+        ),
+      ),
     );
   }
 }

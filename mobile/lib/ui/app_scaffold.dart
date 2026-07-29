@@ -53,6 +53,12 @@ class AppDrawer extends StatefulWidget {
 }
 
 class _AppDrawerState extends State<AppDrawer> {
+  String _q = '';
+
+  String _fold(String s) => s
+      .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه')
+      .replaceAll('ؤ', 'و').replaceAll('ئ', 'ي').toLowerCase();
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -62,6 +68,19 @@ class _AppDrawerState extends State<AppDrawer> {
     void go(WidgetBuilder b) {
       Navigator.pop(context); // اقفل الدرج
       Navigator.push(context, MaterialPageRoute(builder: b));
+    }
+
+    // نتائج البحث: كل الصفحات (خدمة ذاتية + كل الأقسام) المطابقة، مسطّحة.
+    final q = _fold(_q.trim());
+    final List<(String, AppPage)> matches = [];
+    if (q.isNotEmpty) {
+      for (final p in selfPages) {
+        if (_fold(p.title).contains(q)) matches.add((tr('الخدمة الذاتية', 'Self Service'), p));
+      }
+      for (final s in sections) {
+        if (_fold(s.title).contains(q)) { for (final p in s.pages) { matches.add((s.title, p)); } }
+        else { for (final p in s.pages) { if (_fold(p.title).contains(q)) matches.add((s.title, p)); } }
+      }
     }
 
     return Drawer(
@@ -78,6 +97,38 @@ class _AppDrawerState extends State<AppDrawer> {
             Text(auth.user?['email'] ?? '', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11.5)),
           ]),
         ),
+        // بحث سريع في كل الأقسام والصفحات
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+          child: TextField(
+            onChanged: (v) => setState(() => _q = v),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: tr('ابحث عن قسم أو صفحة…', 'Search sections & pages…'),
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _q.isNotEmpty ? IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _q = '')) : null,
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            ),
+          ),
+        ),
+        // نتائج البحث المسطّحة
+        if (q.isNotEmpty)
+          Expanded(
+            child: matches.isEmpty
+                ? Center(child: Text(tr('لا توجد نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    itemCount: matches.length,
+                    itemBuilder: (c, i) => ListTile(
+                      dense: true,
+                      leading: Icon(matches[i].$2.icon, size: 20, color: T.navy),
+                      title: Text(matches[i].$2.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                      subtitle: Text(matches[i].$1, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                      onTap: () => go(matches[i].$2.builder),
+                    ),
+                  ),
+          )
+        else
         Expanded(
           child: ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),

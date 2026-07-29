@@ -230,6 +230,27 @@ class _OverviewTab extends StatelessWidget {
               ]),
             ),
           ),
+        ] else ...[
+          // لا توجد أي بيانات كاوتشات من لوكيشن سوليوشن — تحذير صريح.
+          const SizedBox(height: 12),
+          FadeSlideIn(
+            delayMs: 40,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(color: T.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14), border: Border.all(color: T.danger.withValues(alpha: 0.4))),
+              child: Row(children: [
+                const Icon(Icons.tire_repair_outlined, size: 20, color: T.danger),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(tr('لا تصل بيانات حساسات الكاوتشات', 'No tire-sensor data'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: T.danger)),
+                    Text(tr('لا تُرسل هذه المركبة حرارة أو ضغط الكاوتشات من لوكيشن سوليوشن.', 'This vehicle sends no tire temperature/pressure from Location Solutions.'), style: const TextStyle(fontSize: 11.5, color: T.danger)),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
         ],
         const SizedBox(height: 12),
         FadeSlideIn(

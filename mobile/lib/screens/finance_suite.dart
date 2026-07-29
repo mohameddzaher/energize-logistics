@@ -693,7 +693,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     final filtered = _rows.where((r) {
       if (q.isEmpty) return true;
       final customer = r['customer'] is Map ? (r['customer']['companyName'] ?? '') : '';
-      return [customer, r['method'], r['reference']].any((x) => _fold((x ?? '').toString()).contains(q));
+      return [customer, r['paymentMethod'], r['reference']].any((x) => _fold((x ?? '').toString()).contains(q));
     }).toList();
     final total = filtered.fold<num>(0, (s, r) => s + ((r['amount'] ?? 0) as num));
 
@@ -746,7 +746,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                                       Expanded(
                                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                           Text(customer.toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                          Text([r['method'], date != null ? '${date.day}/${date.month}/${date.year}' : null]
+                                          Text([r['paymentMethod'], date != null ? '${date.day}/${date.month}/${date.year}' : null]
                                               .where((x) => (x ?? '').toString().isNotEmpty)
                                               .join(' · '),
                                               style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),

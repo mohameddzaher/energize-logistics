@@ -126,7 +126,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                                   Expanded(
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Text(d['employeeName'] ?? '', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
-                                      Text('${d['docTypeLabel'] ?? d['docType'] ?? ''} · ${(d['expiry'] ?? '').toString().split('T').first}',
+                                      Text('${(Lang.instance.ar ? d['docAr'] : d['docEn']) ?? d['docType'] ?? ''} · ${(d['expiry'] ?? '').toString().split('T').first}',
                                           style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                                     ]),
                                   ),

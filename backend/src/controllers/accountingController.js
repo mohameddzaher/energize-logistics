@@ -182,6 +182,14 @@ exports.listAccounts = async (req, res) => {
       filter.$or = [{ code: rx }, { nameEn: rx }, { nameAr: rx }];
     }
     const accounts = await ChartAccount.find(filter).sort({ code: 1 }).lean();
+    // Attach each account's current balance (net posting, signed to its normal
+    // side) so the accounts list can show a real figure instead of 0.00.
+    const balances = await balancesByAccount({});
+    for (const a of accounts) {
+      const b = balances[String(a._id)] || { debit: 0, credit: 0 };
+      const net = b.debit - b.credit;
+      a.balance = round2(a.normalBalance === 'credit' ? -net : net);
+    }
     res.json({ accounts });
   } catch (error) {
     console.error('listAccounts error:', error);

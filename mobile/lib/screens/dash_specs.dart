@@ -332,7 +332,7 @@ const executiveDashSpec = DashSpec(
   stats: [
     DashStat('تشغيلات الشهر', 'Ops (month)', 'operations.thisMonth', Icons.workspaces_outline, T.navy),
     DashStat('طلبات B2C', 'B2C orders', 'b2c.monthOrders', Icons.storefront_outlined, T.violet),
-    DashStat('تحصيلات اليوم', "Today's collections", 'wallet.todayCollections', Icons.payments_outlined, T.success, money: true),
+    DashStat('عدد تحصيلات اليوم', "Collections today", 'wallet.todayCollections', Icons.payments_outlined, T.success),
     DashStat('صافي المحفظة', 'Wallet net', 'wallet.monthNet', Icons.account_balance_outlined, T.info, money: true),
     DashStat('مهام الورشة', 'Workshop tasks', 'workshop.openTasks', Icons.build_outlined, T.orange),
     DashStat('صيانة مفتوحة', 'Open maintenance', 'workshop.openMaintenance', Icons.engineering_outlined, T.warn),
@@ -348,5 +348,5 @@ const executiveDashSpec = DashSpec(
   ],
 );
 
-String _topDriverTitle(Map<String, dynamic> r) => (r['_id'] ?? r['driver'] ?? '—').toString();
+String _topDriverTitle(Map<String, dynamic> r) => (r['name'] ?? r['_id'] ?? r['driver'] ?? '—').toString();
 String _topDriverSub(Map<String, dynamic> r) => '${r['trips'] ?? 0} ${tr('رحلة', 'trips')}';

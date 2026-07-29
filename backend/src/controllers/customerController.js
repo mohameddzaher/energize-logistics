@@ -39,9 +39,22 @@ exports.getCustomers = async (req, res) => {
         .populate("assignedCollector", "firstName lastName email")
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(Number(limit))
+        .lean(),
       Customer.countDocuments(filter),
     ]);
+
+    // Attach each customer's outstanding balance (sum of unpaid invoice balances)
+    // so list screens (web + mobile) can show "due" without an N+1 per-customer call.
+    const ids = customers.map((c) => c._id);
+    const dueRows = ids.length
+      ? await Invoice.aggregate([
+          { $match: { customer: { $in: ids } } },
+          { $group: { _id: "$customer", outstanding: { $sum: "$balance" } } },
+        ])
+      : [];
+    const dueByCustomer = new Map(dueRows.map((r) => [String(r._id), r.outstanding]));
+    for (const c of customers) c.outstandingBalance = dueByCustomer.get(String(c._id)) || 0;
 
     res.json({
       customers,

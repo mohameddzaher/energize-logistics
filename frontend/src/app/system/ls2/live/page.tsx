@@ -57,6 +57,7 @@ export default function Ls2LivePage() {
       { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => { const st = statusStyle(v); return ar ? st.ar : st.en; }, width: 12 },
       { header: ar ? 'السرعة كم/س' : 'Speed km/h', key: 'speed', transform: (v) => v ?? '', width: 12 },
       { header: ar ? 'العداد كم' : 'Odometer km', key: 'odometerKm', transform: (v) => v ?? '', width: 14 },
+      { header: ar ? 'كم في الفترة' : 'Km in period', key: 'periodKm', transform: (v) => (v != null ? Math.round(v) : ''), width: 13 },
       { header: ar ? 'ساعات الموتور' : 'Engine hours', key: 'engineHours', transform: (v) => v ?? '', width: 14 },
       { header: ar ? 'الوقود %' : 'Fuel %', key: 'fuelPct', transform: (v) => v ?? '', width: 10 },
       { header: ar ? 'حرارة الموتور' : 'Coolant °C', key: 'coolantC', transform: (v) => v ?? '', width: 13 },

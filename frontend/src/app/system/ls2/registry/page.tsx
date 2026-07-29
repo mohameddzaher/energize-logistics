@@ -78,6 +78,7 @@ export default function Ls2RegistryPage() {
     { header: lang === 'ar' ? 'الماركة' : 'Brand', key: 'profile.brand', transform: (v) => v ?? '', width: 16 },
     { header: lang === 'ar' ? 'سنة الصنع' : 'Model year', key: 'profile.modelYear', transform: (v) => v ?? '', width: 12 },
     { header: lang === 'ar' ? 'النوع' : 'Type', key: 'profile.vehicleType', transform: (v) => v ?? '', width: 16 },
+    { header: lang === 'ar' ? 'ماركة الكاوتش' : 'Tire brand', key: 'tireBrand', transform: (v) => v ?? '', width: 16 },
     { header: lang === 'ar' ? 'رقم الشاسيه' : 'VIN', key: 'profile.vin', transform: (v) => v ?? '', width: 22 },
     { header: lang === 'ar' ? 'شريحة الاتصال' : 'SIM ICCID', key: 'profile.simIccid', transform: (v) => v ?? '', width: 22 },
     { header: lang === 'ar' ? 'تاريخ التركيب' : 'Install date', key: 'profile.installDate', transform: (v) => v ?? '', width: 14 },

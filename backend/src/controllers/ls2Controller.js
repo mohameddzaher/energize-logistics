@@ -152,7 +152,7 @@ exports.getDashboard = async (req, res) => {
     // Latest critical/warning alerts feed
     const latestAlerts = [...openAlerts]
       .sort((a, b) => new Date(b.firstSeenAt) - new Date(a.firstSeenAt)).slice(0, 12)
-      .map((a) => ({ id: a._id, unitId: a.unitId, plate: a.plate, type: a.type, severity: a.severity, message: a.message, value: a.value, unit: a.unit, lastSeenAt: a.lastSeenAt }));
+      .map((a) => ({ id: a._id, key: a.key, unitId: a.unitId, plate: a.plate, type: a.type, severity: a.severity, message: a.message, value: a.value, unit: a.unit, lastSeenAt: a.lastSeenAt }));
 
     // Distance travelled over the selected period (from daily odometer snapshots).
     const mileMap = await mileageByUnit(from, to);

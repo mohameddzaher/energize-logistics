@@ -120,7 +120,7 @@ const positionOptions = (toKey = '', tires: TireAsset[] = [], selfId = '', ar = 
     return {
       value: String(p.n),
       label: `${mark}${p.label} — ${p.section}`,
-      hint: !toPlate
+      hint: !toKey
         ? ''
         : occ
           ? (ar ? `عليها الفردة ${occ.serial}${occ.positionLabel ? ` (${occ.positionLabel})` : ''} — التركيب هنا = استبدال` : `holds ${occ.serial} — mounting here = replacement`)
@@ -265,6 +265,7 @@ export default function Ls2FleetAssetsPage() {
     { header: ar ? 'على السطحة' : 'On flatbed', key: 'plate', transform: (v) => v ?? '', width: 10 },
     { header: ar ? 'الموقع' : 'Position', key: 'positionLabel', width: 18 },
     { header: ar ? 'القسم' : 'Section', key: 'section', width: 16 },
+    { header: ar ? 'استبن؟' : 'Spare?', key: 'isSpare', transform: (v) => (v ? (ar ? 'نعم' : 'Yes') : ''), width: 8 },
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 20 },
   ];
   const eventCols: ExportColumn[] = [

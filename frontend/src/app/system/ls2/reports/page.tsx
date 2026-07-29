@@ -97,6 +97,14 @@ export default function Ls2ReportsPage() {
     });
   }, [report, fuel, q, maintFilter, sort]);
 
+  // Every vehicle with the loaded fuel merged but WITHOUT the search/maint filter —
+  // so the "All vehicles" export carries fuel too (not just the filtered export).
+  const allWithFuel = useMemo<FleetReportRow[]>(() =>
+    (report?.items || []).map((r) => {
+      const f = fuel[r.unitId];
+      return f === undefined ? r : { ...r, fuelL: f?.fuelL ?? null, kmPerL: f?.efficiencyKmL ?? null };
+    }), [report, fuel]);
+
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'plate' || key === 'driver' ? 'asc' : 'desc' }));
 
@@ -147,7 +155,7 @@ export default function Ls2ReportsPage() {
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<FileBarChart className="w-5 h-5" />} title={t.reports} subtitle={t.reportsSubtitle}>
         {tab === 'fleet'
-          ? <ExportMenu fileName={`ls2-fleet-report-${range.from}_${range.to}`} lang={lang as Lang} options={fleetExportOptions(ar, t, report, rows, periodLabel)} />
+          ? <ExportMenu fileName={`ls2-fleet-report-${range.from}_${range.to}`} lang={lang as Lang} options={fleetExportOptions(ar, t, report, allWithFuel, rows, periodLabel)} />
           : <ExportMenu fileName={`ls2-vehicle-report-${vr?.vehicle.plate || ''}-${range.from}_${range.to}`} lang={lang as Lang} options={vehicleExportOptions(ar, t, vr, periodLabel)} />}
         <button type="button" onClick={() => (tab === 'fleet' ? loadFleet() : unitId != null && loadVehicle(unitId))}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
@@ -641,7 +649,7 @@ function fleetSummaryRows(t: ReturnType<typeof ls2Text>, report: FleetReport | n
   ];
 }
 
-function fleetExportOptions(ar: boolean, t: ReturnType<typeof ls2Text>, report: FleetReport | null, filtered: FleetReportRow[], periodLabel: string) {
+function fleetExportOptions(ar: boolean, t: ReturnType<typeof ls2Text>, report: FleetReport | null, allRows: FleetReportRow[], filtered: FleetReportRow[], periodLabel: string) {
   const lang: Lang = ar ? 'ar' : 'en';
   const build = (vehicles: FleetReportRow[]): ExportSheet[] => [
     { name: ar ? 'الملخص' : 'Summary', rows: fleetSummaryRows(t, report, periodLabel), columns: kvColumns(ar) },
@@ -651,7 +659,7 @@ function fleetExportOptions(ar: boolean, t: ReturnType<typeof ls2Text>, report: 
     { name: ar ? 'الإصلاحات' : 'Repairs', rows: report?.repairs || [], columns: repairColumns(ar, lang) },
   ];
   return [
-    { key: 'all', label: ar ? 'كل المركبات' : 'All vehicles', sheets: build(report?.items || []) },
+    { key: 'all', label: ar ? 'كل المركبات' : 'All vehicles', sheets: build(allRows) },
     { key: 'filtered', label: ar ? 'النتائج الحالية (بعد الفلتر)' : 'Current filtered results', sheets: build(filtered) },
   ];
 }

@@ -11,7 +11,7 @@ import api from '@/lib/api';
 import { Thermometer, Flame, RefreshCw } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { ls2Text, isLs2Staff, tireTempColor, coolantColor, type Lang, type Vehicle } from '@/lib/ls2';
+import { ls2Text, isLs2Staff, tireTempColor, coolantColor, statusStyle, type Lang, type Vehicle } from '@/lib/ls2';
 
 export default function Ls2TemperaturePage() {
   const { user } = useAuth();
@@ -49,7 +49,7 @@ export default function Ls2TemperaturePage() {
     { header: ar ? 'أقصى ضغط' : 'Max Pressure psi', key: 'maxTirePressurePsi', transform: (v) => v ?? '' },
     { header: ar ? 'أقل ضغط' : 'Min Pressure psi', key: 'minTirePressurePsi', transform: (v) => v ?? '' },
     { header: ar ? 'أعطال حساسات' : 'Sensor Faults', key: 'tireFaults', transform: (v) => v ?? '' },
-    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => v ?? '' },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => { const st = statusStyle(v); return ar ? st.ar : st.en; } },
   ];
   const exportOptions = [
     { key: 'all', label: ar ? 'كل العربيات' : 'All vehicles', sheets: [{ name: ar ? 'الحرارة' : 'Temperature', rows: items, columns: exportColumns }] },

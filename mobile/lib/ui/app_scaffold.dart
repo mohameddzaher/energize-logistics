@@ -31,6 +31,13 @@ class AppScaffold extends StatelessWidget {
           ...?actions,
           Builder(
             builder: (c) => IconButton(
+              icon: const Icon(Icons.search_rounded),
+              tooltip: tr('بحث', 'Search'),
+              onPressed: () => showSearch(context: c, delegate: AppSearchDelegate(c.read<AuthProvider>())),
+            ),
+          ),
+          Builder(
+            builder: (c) => IconButton(
               icon: const Icon(Icons.menu_rounded),
               tooltip: tr('كل الأقسام', 'All sections'),
               onPressed: () => Scaffold.of(c).openEndDrawer(),
@@ -80,6 +87,66 @@ class AppBottomNav extends StatelessWidget {
           item(Icons.notifications_outlined, tr('الإشعارات', 'Alerts'), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
           Builder(builder: (c) => item(Icons.menu_rounded, tr('القائمة', 'Menu'), () => Scaffold.of(c).openEndDrawer())),
         ]),
+      ),
+    );
+  }
+}
+
+/// Global search from the top bar of every screen — flattens the user's allowed
+/// sections + self-service pages and jumps straight to whatever they type.
+class AppSearchDelegate extends SearchDelegate<void> {
+  final AuthProvider auth;
+  AppSearchDelegate(this.auth) : super(searchFieldLabel: tr('ابحث عن قسم أو صفحة…', 'Search sections & pages…'));
+
+  String _fold(String s) => s
+      .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه')
+      .replaceAll('ؤ', 'و').replaceAll('ئ', 'ي').toLowerCase();
+
+  List<(String, AppPage)> _matches() {
+    final q = _fold(query.trim());
+    final List<(String, AppPage)> out = [];
+    for (final p in selfServicePages(true)) {
+      if (q.isEmpty || _fold(p.title).contains(q)) out.add((tr('الخدمة الذاتية', 'Self Service'), p));
+    }
+    for (final s in sectionsFor(auth)) {
+      final sectionHit = _fold(s.title).contains(q);
+      for (final p in s.pages) {
+        if (q.isEmpty || sectionHit || _fold(p.title).contains(q)) out.add((s.title, p));
+      }
+    }
+    return out;
+  }
+
+  @override
+  List<Widget> buildActions(BuildContext context) =>
+      [if (query.isNotEmpty) IconButton(icon: const Icon(Icons.close), onPressed: () => query = '')];
+
+  @override
+  Widget buildLeading(BuildContext context) =>
+      IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, null));
+
+  @override
+  Widget buildResults(BuildContext context) => _list(context);
+  @override
+  Widget buildSuggestions(BuildContext context) => _list(context);
+
+  Widget _list(BuildContext context) {
+    final matches = _matches();
+    if (matches.isEmpty) {
+      return Center(child: Text(tr('لا توجد نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      itemCount: matches.length,
+      itemBuilder: (c, i) => ListTile(
+        leading: Icon(matches[i].$2.icon, color: T.navy),
+        title: Text(matches[i].$2.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+        subtitle: Text(matches[i].$1, style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+        onTap: () {
+          final b = matches[i].$2.builder;
+          close(context, null);
+          Navigator.push(context, MaterialPageRoute(builder: b));
+        },
       ),
     );
   }

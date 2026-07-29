@@ -71,6 +71,16 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
+  // نفس قاعدة الباك: نطابق العربية بأرقام اللوحة فقط (لأن لوحة السطحة كثيرًا ما
+  // تختلف عن لوحة الفردة المخزّنة). أرقام عربية → إنجليزية ثم استخراج الأرقام.
+  String _plateKey(String? p) {
+    if (p == null) return '';
+    const ar = '٠١٢٣٤٥٦٧٨٩';
+    final west = p.split('').map((ch) { final i = ar.indexOf(ch); return i >= 0 ? '$i' : ch; }).join();
+    final digits = RegExp(r'\d+').allMatches(west).map((m) => m.group(0)).join();
+    return digits.isNotEmpty ? digits : west.trim().toUpperCase();
+  }
+
   Future<void> _post(String path, Map<String, dynamic> body, String okMsg, {Future<bool> Function(Map<String, dynamic>)? onDisplaced}) async {
     try {
       await Api.instance.post(path, body);
@@ -497,7 +507,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 _chip(sheet, Icons.dangerous_outlined, tr('إتلاف/سكراب مباشرة', 'Retire'), T.danger, () => _retire(t)),
               // بيع الفردة (خاصة السكراب — تُباع كخردة).
               if (status == 'scrap' || status == 'damaged')
-                _chip(sheet, Icons.sell_outlined, tr('تمت بيعها', 'Mark sold'), T.success, () => _sell(t)),
+                _chip(sheet, Icons.sell_outlined, tr('بيع كخردة', 'Sell as scrap'), T.success, () => _sell(t)),
             ]),
             const SizedBox(height: 6),
           ]),
@@ -756,8 +766,8 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
   Future<void> _mount(Map<String, dynamic> t) async {
     final plate = TextEditingController(text: (t['plate'] ?? '').toString());
     final position = TextEditingController(text: (t['positionNumber'] ?? '').toString());
-    // قائمة الشاحنات المتاحة من الأصول المحمّلة (لوحات مميزة) للاختيار السريع.
-    final plates = (_l(_d?['tires']).map((x) => (x['plate'] ?? '').toString()).where((p) => p.isNotEmpty).toSet().toList()..sort());
+    // كل السطحات (61) متاحة للاختيار — مش بس اللي عليها كاوتشات مسجّلة.
+    final plates = (_l(_d?['flatbeds']).map((x) => (x['plate'] ?? '').toString()).where((p) => p.isNotEmpty).toSet().toList()..sort());
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -783,7 +793,12 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
             // 🔴 عليه فردة = استبدال (هيتطلب مصير الفردة القديمة). اضغط الموضع لاختياره.
             if (plate.text.trim().isNotEmpty)
               Builder(builder: (_) {
-                final mounted = _l(_d?['tires']).where((x) => x['status'] == 'mounted' && (x['plate'] ?? '').toString() == plate.text.trim() && x['positionNumber'] != null).toList();
+                final ptext = plate.text.trim();
+                final flats = _l(_d?['flatbeds']);
+                final fmatch = flats.firstWhere((x) => (x['plate'] ?? '').toString() == ptext, orElse: () => <String, dynamic>{});
+                final toKey = (fmatch['plateKey'] ?? '').toString().isNotEmpty ? (fmatch['plateKey']).toString() : _plateKey(ptext);
+                final mounted = _l(_d?['tires']).where((x) => x['status'] == 'mounted' && (x['plateKey'] ?? '').toString() == toKey && x['positionNumber'] != null).toList();
+                final truckHasTires = mounted.isNotEmpty;
                 Map<String, dynamic>? occAt(int n) {
                   for (final x in mounted) {
                     if ((x['positionNumber'] as num?)?.toInt() == n) return x;
@@ -793,6 +808,14 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 final chosen = int.tryParse(position.text.trim());
                 final chosenOcc = chosen == null ? null : occAt(chosen);
                 return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (!truckHasTires)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: T.warn.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(10), border: Border.all(color: T.warn.withValues(alpha: 0.35))),
+                      child: Text(tr('⚠ لا توجد كاوتشات مسجّلة لهذه الشاحنة بعد — كل المواقع ستظهر فارغة، تأكد قبل التركيب.', '⚠ No tires registered for this truck yet — every slot shows empty, verify before mounting.'), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.warn)),
+                    ),
                   Text(tr('اختر الموضع (1–14):', 'Pick a position (1–14):'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft)),
                   const SizedBox(height: 8),
                   Wrap(spacing: 8, runSpacing: 8, children: List.generate(14, (idx) {
@@ -851,22 +874,56 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       final fate = await showDialog<String>(
         context: context,
         builder: (c) => SimpleDialog(
-          title: Text(tr('الموضع مشغول — مصير الكاوتش الحالي؟', 'Slot occupied — occupant fate?')),
+          title: Text(tr('استبدال — الفردة القديمة هتروح فين؟', 'Replacement — where does the old tire go?')),
           children: [
             for (final o in [
-              ('store', tr('إلى المستودع', 'To store')),
-              ('repair', tr('إلى التجديد', 'To renewal')),
-              ('damaged', tr('تالف', 'Damaged')),
-              ('scrap', tr('سكراب', 'Scrap')),
+              ('store', tr('سليمة → المستودع', 'Fine → store'), tr('صالحة، أُزيلت فقط — هنسجّل نسبتها', 'still good — we\'ll record its %')),
+              ('repair', tr('تحت التجديد', 'Under renewal'), tr('تروح الورشة — تعود مجددة أو سكراب', 'to the shop — renewed or scrap')),
+              ('scrap', tr('سكراب', 'Scrap'), tr('غير صالحة — تُخزّن حتى تُباع', 'unusable — kept to sell')),
+              ('damaged', tr('تالفة', 'Damaged'), tr('انفجرت/تآكلت — لا وجود لها', 'blown/worn — gone')),
             ])
-              SimpleDialogOption(onPressed: () => Navigator.pop(c, o.$1), child: Text(o.$2)),
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(c, o.$1),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(o.$2, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                    Text(o.$3, style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  ]),
+                ),
+              ),
           ],
         ),
       );
       if (fate == null) return false;
-      await _post('/api/ls2/assets/tires/${t['_id']}/move', {...b, 'displacedTo': fate}, tr('تم التركيب', 'Mounted'));
+      // نكمّل السايكل: سليمة للمخزن → نسجّل نسبة الحالة (يقرأها التسكين لاحقًا).
+      num? pct;
+      if (fate == 'store') pct = await _askPercent();
+      await _post('/api/ls2/assets/tires/${t['_id']}/move',
+          {...b, 'displacedTo': fate, if (pct != null) 'displacedConditionPercent': pct}, tr('تم التركيب', 'Mounted'));
       return true;
     });
+  }
+
+  // كام في المية عند تخزين فردة سليمة — اختياري (يقدر يتخطّاها).
+  Future<num?> _askPercent() {
+    final ctrl = TextEditingController();
+    return showDialog<num?>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حالة الفردة عند التخزين', 'Condition on storing')),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: InputDecoration(labelText: tr('كام في المية؟ (0–100)', 'Percent? (0–100)'), suffixText: '%'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, null), child: Text(tr('تخطّي', 'Skip'))),
+          FilledButton(onPressed: () => Navigator.pop(c, num.tryParse(ctrl.text.trim())), child: Text(tr('حفظ', 'Save'))),
+        ],
+      ),
+    );
   }
 
   Future<void> _renewalResult(Map<String, dynamic> t) async {
@@ -906,15 +963,17 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text(tr('تسجيل البيع', 'Mark as sold')),
+        title: Text(tr('بيع الفردة كخردة', 'Sell tire as scrap')),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('${t['serial'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(tr('خطوة منفصلة عن وضعها سكراب — تُسجَّل الآن كمباعة وتخرج من المخزون.', 'A step after scrapping — records it sold and out of stock.'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft), textAlign: TextAlign.center),
           const SizedBox(height: 10),
           TextField(controller: reason, decoration: InputDecoration(labelText: tr('ملاحظة / السعر (اختياري)', 'Note / price (optional)'))),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.success), onPressed: () => Navigator.pop(c, true), child: Text(tr('تمت بيعها', 'Sold'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.success), onPressed: () => Navigator.pop(c, true), child: Text(tr('تأكيد البيع', 'Confirm sale'))),
         ],
       ),
     );

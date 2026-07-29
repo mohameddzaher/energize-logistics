@@ -252,7 +252,7 @@ exports.moveTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store', conditionPercent = null, displacedTo = '', replacementTireId = null, secondReplacementTireId = null } = req.body;
+    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store', conditionPercent = null, displacedTo = '', displacedConditionPercent = null, replacementTireId = null, secondReplacementTireId = null } = req.body;
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
     // The exact slot being vacated — the replacement (if any) goes here.
     const vacated = tire.status === 'mounted' && tire.plateKey
@@ -338,7 +338,13 @@ exports.moveTire = async (req, res) => {
           }
           const occFrom = posLabel(occupant);
           const occStatus = DEST_STATUS[displacedTo];
-          occupant.set({ status: occStatus, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '' });
+          const occPct = occStatus === 'spare' && displacedConditionPercent != null && displacedConditionPercent !== ''
+            ? Math.max(0, Math.min(100, Number(displacedConditionPercent))) : null;
+          occupant.set({
+            status: occStatus, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '', isSpare: false,
+            // سليمة للمخزن → نسجّل نسبة حالتها (يقرأها التسكين لاحقًا) تمامًا كالنزول العادي.
+            ...(occPct != null ? { conditionPercent: occPct } : {}),
+          });
           await occupant.save();
           await logEvent(req, {
             entityType: 'tire', refId: occupant._id, label: occupant.serial,
@@ -346,6 +352,7 @@ exports.moveTire = async (req, res) => {
             fromPlate: toPlate, fromPlateKey: toKey, fromPosition: occFrom, date: when,
             odometerKm: live?.odometerKm ?? null,
             reason: reason || `أُزيلت لتركيب الفردة ${tire.serial} مكانها`,
+            notes: occPct != null ? `الحالة ${occPct}%` : '',
           });
         }
       }

@@ -11,6 +11,7 @@
 // The "sensors" tab cross-checks what the workshop registered (يوجد / لايوجد)
 // against what the live Wialon feed actually reports, per vehicle.
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useSocket } from '@/hooks/useSocket';
 import Link from 'next/link';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -108,19 +109,21 @@ const flatbedOptions = (flatbeds: Flatbed[], ar: boolean) =>
 // Occupancy-aware: once a truck is chosen, every position says whether it is
 // FREE (🟢 — ركّب هنا مباشرة) or already carries a tire (🔴 — التركيب هنا = استبدال),
 // so the workshop picks an empty slot on purpose and knows a busy one means a swap.
-const positionOptions = (toPlate = '', tires: TireAsset[] = [], selfId = '', ar = false) =>
+// Matched on plateKey (digits-only) — a flatbed's plate string ("7362") often
+// differs from the tire's stored plate, so a raw string match wrongly reports free.
+const positionOptions = (toKey = '', tires: TireAsset[] = [], selfId = '', ar = false) =>
   POSITION_DEFS.map((p) => {
-    const occ = toPlate
-      ? tires.find((x) => x._id !== selfId && x.status === 'mounted' && x.plate === toPlate && x.positionNumber === p.n)
+    const occ = toKey
+      ? tires.find((x) => x._id !== selfId && x.status === 'mounted' && x.plateKey === toKey && x.positionNumber === p.n)
       : undefined;
-    const mark = !toPlate ? '' : occ ? '🔴 ' : '🟢 ';
+    const mark = !toKey ? '' : occ ? '🔴 ' : '🟢 ';
     return {
       value: String(p.n),
       label: `${mark}${p.label} — ${p.section}`,
       hint: !toPlate
         ? ''
         : occ
-          ? (ar ? `عليها الفردة ${occ.serial} — التركيب هنا = استبدال` : `holds ${occ.serial} — mounting here = replacement`)
+          ? (ar ? `عليها الفردة ${occ.serial}${occ.positionLabel ? ` (${occ.positionLabel})` : ''} — التركيب هنا = استبدال` : `holds ${occ.serial} — mounting here = replacement`)
           : (ar ? 'فارغة — لا يوجد كاوتش، ركّب هنا مباشرة' : 'empty — no tire, mount straight here'),
     };
   });
@@ -196,6 +199,13 @@ export default function Ls2FleetAssetsPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (tab === 'history') loadEvents(); if (tab === 'sensors') loadSensors(); }, [tab, loadEvents, loadSensors]);
+  // أي حركة على الأصول (تركيب/إنزال/تبديل/بيع…) — من هذه الشاشة أو أي مستخدم آخر —
+  // تصل فورًا وتلقائيًا عبر السوكت، فتُحدَّث القوائم والسجل والسينسورات بلا تحديث يدوي.
+  useSocket('ls2:updated', useCallback(() => {
+    load();
+    if (tab === 'history') loadEvents();
+    if (tab === 'sensors') loadSensors();
+  }, [load, loadEvents, loadSensors, tab]));
 
   const refreshAll = () => { setLoading(true); load(); if (tab === 'history') loadEvents(); if (tab === 'sensors') loadSensors(); };
 
@@ -580,9 +590,9 @@ export default function Ls2FleetAssetsPage() {
                             <div className="flex items-center justify-end">
                               <button
                                 type="button" disabled={busy}
-                                onClick={() => { if (window.confirm(ar ? `تسجيل بيع الفردة ${ti.serial}؟` : `Mark ${ti.serial} as sold?`)) doRetireTire(ti, 'sold', ''); }}
+                                onClick={() => { if (window.confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }}
                                 className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-medium"
-                              >{ar ? 'تمت بيعها' : 'Sold'}</button>
+                              >{ar ? 'بيع كخردة' : 'Sell'}</button>
                             </div>
                           )}
                         </td>
@@ -652,6 +662,12 @@ export default function Ls2FleetAssetsPage() {
                                 )}
                                 {admin && ti.status === 'in_repair' && (
                                   <button type="button" onClick={() => setRenewalTire(ti)} className="text-[11px] font-medium text-violet-600 hover:underline">{ar ? 'نتيجة التجديد' : 'Result'}</button>
+                                )}
+                                {/* السكراب/التالف: خطوة البيع كخردة — منفصلة عن وضعها سكراب. */}
+                                {admin && (ti.status === 'scrap' || ti.status === 'damaged') && (
+                                  <button type="button" disabled={busy}
+                                    onClick={() => { if (window.confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }}
+                                    className="text-[11px] font-medium text-emerald-600 hover:underline">{ar ? 'بيع كخردة' : 'Sell'}</button>
                                 )}
                               </td>
                             </tr>
@@ -978,10 +994,16 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
   const [notes, setNotes] = useState('');
   // The mandatory OUT: when the slot is occupied, where does the removed tire go?
   const [displacedTo, setDisplacedTo] = useState<'' | 'repair' | 'damaged' | 'scrap' | 'store'>('');
+  // لو رجعت سليمة للمخزن — كام في المية؟ (تُقرأ لاحقًا عند التسكين)
+  const [displacedPercent, setDisplacedPercent] = useState('');
   // بديل من المخزن يُركَّب في الموقع الذي ستخليه هذه الفردة على سطحتها الحالية.
   const [replacementId, setReplacementId] = useState('');
   const pos = POSITION_DEFS.find((p) => p.n === posN) || POSITION_DEFS[0];
-  const occupant = tires.find((x) => x._id !== tire._id && x.status === 'mounted' && x.plate === toPlate && x.positionNumber === posN);
+  // نطابق بالـ plateKey (أرقام فقط): لوحة السطحة كثيرًا ما تختلف عن لوحة الفردة المخزّنة.
+  const toKey = flatbeds.find((f) => f.plate === toPlate)?.plateKey || String(toPlate || '').replace(/[^0-9]/g, '') || String(toPlate || '').trim().toUpperCase();
+  const occupant = tires.find((x) => x._id !== tire._id && x.status === 'mounted' && x.plateKey === toKey && x.positionNumber === posN);
+  // شاحنة بلا كاوتشات مسجّلة أصلًا — كل المواقع ستظهر فارغة لأن الأصول لم تُدخَل بعد.
+  const truckHasTires = !!toKey && tires.some((x) => x.status === 'mounted' && x.plateKey === toKey);
   // مجدد يركب على التيدر فقط — mirror of the server rule so the user sees why.
   const renewedOnHead = tire.condition === 'renewed' && isHeadSection(pos.section);
   const replacementRenewedOnHead = !!replacementId && isHeadSection(tire.section) && tires.find((x) => x._id === replacementId)?.condition === 'renewed';
@@ -1002,12 +1024,20 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
         </div>
         <div>
           <label className={labelCls}>{ar ? 'الموقع (1–14)' : 'Position (1–14)'}</label>
-          <SearchSelect value={String(posN)} onChange={(v) => setPosN(Number(v))} options={positionOptions(toPlate, tires, tire._id, ar)} ar={ar}
+          <SearchSelect value={String(posN)} onChange={(v) => setPosN(Number(v))} options={positionOptions(toKey, tires, tire._id, ar)} ar={ar}
             placeholder={ar ? (toPlate ? '— اختر الموقع —' : '— اختر السطحة أولًا —') : '— choose position —'}
             searchPlaceholder={ar ? 'ابحث عن الموقع…' : 'Search position…'} />
         </div>
+        {/* شاحنة لسه مادخلناش كاوتشاتها — نصارح المستخدم عشان ميتغرش بـ«فارغ». */}
+        {toPlate && !truckHasTires && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-medium">
+            {ar
+              ? `⚠ لا توجد كاوتشات مسجّلة للسطحة ${toPlate} بعد — كل المواقع ستظهر فارغة. تأكد قبل التركيب.`
+              : `⚠ No tires registered for flatbed ${toPlate} yet — every slot shows empty. Verify before mounting.`}
+          </p>
+        )}
         {/* الموقع فاضي؟ نطمئن المستخدم إنه تركيب مباشر لا استبدال. */}
-        {toPlate && !occupant && (
+        {toPlate && truckHasTires && !occupant && (
           <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 font-medium">
             {ar
               ? `🟢 الموقع ${posN} على ${toPlate} فارغ — لا يوجد عليه كاوتش، سيُركَّب هنا مباشرة.`
@@ -1037,6 +1067,17 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
                 </label>
               ))}
             </div>
+            {/* سليمة للمخزن → نكمّل السايكل: نسجّل نسبة حالتها لأجل التسكين لاحقًا. */}
+            {displacedTo === 'store' && (
+              <div className="pt-1">
+                <label className={labelCls}>{ar ? `حالة الفردة ${occupant.serial} عند التخزين (كام في المية؟)` : `Condition % of ${occupant.serial} on storing`}</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} max={100} value={displacedPercent} onChange={(e) => setDisplacedPercent(e.target.value)}
+                    placeholder={ar ? 'مثال: 60' : 'e.g. 60'} className={`${inputCls} w-28`} />
+                  <span className="text-slate-500">%</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {tire.status === 'mounted' && tire.plate && tire.plate !== toPlate && (
@@ -1064,6 +1105,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
           onClick={() => onSubmit({
             toPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section, reason, notes,
             ...(occupant ? { displacedTo } : {}),
+            ...(occupant && displacedTo === 'store' && displacedPercent !== '' ? { displacedConditionPercent: Number(displacedPercent) } : {}),
             ...(replacementId && tire.plate && tire.plate !== toPlate ? { replacementTireId: replacementId } : {}),
           })}
           className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40"

@@ -11,8 +11,8 @@
 ## الرئيسية / Main (`system/`)
 - [x] `main/executive` — النظرة التنفيذية ✓ (١٢ بطاقة عبر الأقسام: تشغيل/B2C/محفظة/ورشة/طاقم/خدمة + أنشط السائقين)
 - [x] `main/dashboard` — اللوحة المالية ✓ (مستحق/تحصيل شهري وسنوي/نسبة/DSO/متأخرات)
-- [ ] `main/overdue` — متأخرات — API: /api/analytics/overdue
-- [ ] `main/credit-alerts` — تنبيهات الائتمان — API: /api/analytics/credit-alerts
+- [x] `main/overdue` — الفواتير المتأخرة ✓ (أيام التأخير+الإجمالي+بحث)
+- [x] `main/credit-alerts` — تنبيهات الائتمان ✓ (نسبة الاستخدام+تجاوز/قرب الحد)
 - [ ] `main/low-visit-customers` — العملاء منخفضو الزيارة — API: /api/tasks/low-visit-customers
 
 ## العملاء والمالية / Customers & Finance
@@ -116,7 +116,7 @@
 - [~] `employees/[id]` ✓ (٥ تبويبات+تعديل+إنشاء عقد) `employees` إنشاء ✓ `leaves` ✓ `requests` ✓ `licenses` ✓ `leave-types` ✓ — باقي: `custody`/`stock` HR | رفع مستندات
 
 ## الخدمة الذاتية
-- [ ] `hr/me` — ملفي (عرض + تعديل)
+- [x] `hr/me` — ملفي ✓ (بيانات+عقد نشط+رصيد إجازات+عهدي+آخر إجازاتي) ضمن الخدمة الذاتية
 - [x] `hr/my-leaves` — إجازاتي (رصيد/طلب/إلغاء)
 - [x] `hr/my-requests` — طلباتي
 - [x] موافقات فريقي (قرارات المدير)

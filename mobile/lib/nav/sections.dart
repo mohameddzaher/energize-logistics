@@ -40,6 +40,8 @@ import '../screens/marketing_activities.dart';
 import '../screens/collections_disputes.dart';
 import '../screens/ops_workflows.dart';
 import '../screens/b2c_wallet.dart';
+import '../screens/my_profile.dart';
+import '../screens/finance_alerts.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -94,6 +96,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('النزاعات', 'Disputes', Icons.gavel_outlined, (c) => const DisputesScreen()),
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen()),
         AppPage('الموردون', 'Vendors', Icons.store_outlined, (c) => ResourceScreen(config: vendorsCfg)),
+        AppPage('تنبيهات الائتمان', 'Credit Alerts', Icons.credit_card_outlined, (c) => const CreditAlertsScreen()),
+        AppPage('الفواتير المتأخرة', 'Overdue', Icons.event_busy_outlined, (c) => const OverdueScreen()),
       ],
     ),
     AppSection(
@@ -354,6 +358,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
 
 /// Self-service — every signed-in employee, no gating.
 List<AppPage> selfServicePages(bool hasTeam) => [
+      AppPage('ملفي', 'My Profile', Icons.account_circle_outlined, (c) => const MyProfileScreen()),
       AppPage('الإشعارات', 'Notifications', Icons.notifications_outlined, (c) => const NotificationsScreen()),
       AppPage('إجازاتي', 'My Leaves', Icons.beach_access_outlined, (c) => const MyLeavesScreen()),
       AppPage('طلباتي', 'My Requests', Icons.description_outlined, (c) => const MyRequestsScreen()),

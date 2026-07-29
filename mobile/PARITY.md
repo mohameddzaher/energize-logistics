@@ -22,7 +22,7 @@
 - [ ] `invoices/[id]` — تفاصيل الفاتورة — status/freeze/refund/record payment — API: /api/invoices/${id}
 - [~] `payments` — المدفوعات ✓ (قائمة+بحث+إجمالي+تسجيل دفعة على فاتورة) — باقي: التخصيص الجماعي FIFO
 - [x] `collections` — متابعات التحصيل ✓ (المعلّقة + إنهاء بمبلغ محصّل)
-- [ ] `collectors` + `collectors/[id]` — المحصلين وأداؤهم — API: /api/analytics/performance
+- [x] `collectors` — أداء المحصّلين ✓ (ترتيب بالكفاءة+مستهدف/محصّل+دفعات+وفاء الوعود)
 - [ ] `tasks` — المهام — CRUD + AI suggestions — API: /api/tasks
 - [x] `disputes` — النزاعات ✓ (فلاتر الحالة + بدء مراجعة + حل بقرار)
 

@@ -42,6 +42,7 @@ import '../screens/ops_workflows.dart';
 import '../screens/b2c_wallet.dart';
 import '../screens/my_profile.dart';
 import '../screens/finance_alerts.dart';
+import '../screens/collectors_performance.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -98,6 +99,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الموردون', 'Vendors', Icons.store_outlined, (c) => ResourceScreen(config: vendorsCfg)),
         AppPage('تنبيهات الائتمان', 'Credit Alerts', Icons.credit_card_outlined, (c) => const CreditAlertsScreen()),
         AppPage('الفواتير المتأخرة', 'Overdue', Icons.event_busy_outlined, (c) => const OverdueScreen()),
+        AppPage('أداء المحصّلين', 'Collectors', Icons.leaderboard_outlined, (c) => const CollectorsPerformanceScreen()),
       ],
     ),
     AppSection(

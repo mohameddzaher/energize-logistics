@@ -41,6 +41,10 @@ const ls2TireAssetSchema = new mongoose.Schema({
   positionNumber: { type: Number, default: null },    // 1..14
   positionLabel: { type: String, default: '' },       // "اطار 3 خارجي يمين"
   section: { type: String, default: '' },             // الرأس / المحور الخلفي للرأس / التيدر / الاستبن
+  // Is this mounted tire serving as the truck's SPARE (الاستبن)? A first-class
+  // flag (not just text) so the workshop can see at a glance which tire is the
+  // spare — surfaced everywhere. Cleared automatically when the tire leaves a truck.
+  isSpare: { type: Boolean, default: false, index: true },
   notes: { type: String, default: '' },
 }, { timestamps: true });
 

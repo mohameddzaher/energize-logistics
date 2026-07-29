@@ -10,7 +10,7 @@ import { CircleDot, Container, History, ExternalLink } from 'lucide-react';
 import api from '@/lib/api';
 import { fmtDateTime, plateDigitsKey, type Lang } from '@/lib/ls2';
 
-interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; positionNumber: number | null; positionLabel: string; section: string }
+interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; reason: string; notes: string; performedByName: string }
 interface Payload { flatbed: { numbering: number | null; batch: string; brand: string; currentTrailerNumber: string | null } | null; trailer: { trailerNumber: string } | null; tires: TireAsset[]; events: AssetEvent[] }
 
@@ -79,7 +79,7 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
                 <tr key={t._id} className="border-b border-slate-50">
                   <td className="px-2 py-1.5 text-slate-700">{t.positionLabel || (t.positionNumber != null ? `اطار ${t.positionNumber}` : '—')}</td>
                   <td className="px-2 py-1.5 text-slate-500">{t.section || '—'}</td>
-                  <td className="px-2 py-1.5 font-mono font-medium text-slate-800">{t.serial}</td>
+                  <td className="px-2 py-1.5 font-mono font-medium text-slate-800">{t.serial}{t.isSpare && <span className="ms-1.5 inline-block px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[10px] font-bold">{ar ? 'استبن' : 'spare'}</span>}</td>
                   <td className="px-2 py-1.5 text-slate-600">{t.type || '—'}</td>
                   <td className="px-2 py-1.5 text-center tabular-nums text-slate-500">{t.tireNumber || '—'}</td>
                   <td className="px-2 py-1.5 text-center">

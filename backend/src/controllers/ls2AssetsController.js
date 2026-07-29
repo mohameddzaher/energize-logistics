@@ -137,7 +137,7 @@ const isHeadSection = (section) => String(section || '').includes('الرأس');
 
 exports.createTire = async (req, res) => {
   try {
-    const { serial, tireNumber = '', type = '', size = '', sensor = 'unknown', condition, plate = null, positionNumber = null, positionLabel = '', section = '', notes = '' } = req.body;
+    const { serial, tireNumber = '', type = '', size = '', sensor = 'unknown', condition, plate = null, positionNumber = null, positionLabel = '', section = '', notes = '', isSpare = false } = req.body;
     if (!serial || !String(serial).trim()) return res.status(400).json({ message: 'Serial required' });
     const exists = await Ls2TireAsset.findOne({ serial: String(serial).trim() });
     if (exists) return res.status(409).json({ message: 'Serial already registered', tire: exists });
@@ -156,6 +156,7 @@ exports.createTire = async (req, res) => {
       plate: key ? plate : null, plateKey: key,
       positionNumber: key ? positionNumber : null,
       positionLabel: key ? positionLabel : '', section: key ? section : '',
+      isSpare: key ? !!isSpare : false, // الاستبن لا يُوسم إلا وهو مركّب على العربية
     });
     const live = key ? await vehicleByKey(key) : null;
     await logEvent(req, {
@@ -173,7 +174,7 @@ exports.createTire = async (req, res) => {
 // PATCH /assets/tires/:id — edit identity fields (not location — use /move).
 exports.updateTire = async (req, res) => {
   try {
-    const allowed = ['tireNumber', 'type', 'size', 'sensor', 'notes', 'serial', 'positionLabel'];
+    const allowed = ['tireNumber', 'type', 'size', 'sensor', 'notes', 'serial', 'positionLabel', 'isSpare'];
     const patch = {};
     for (const k of allowed) if (req.body[k] !== undefined) patch[k] = req.body[k];
     const tire = await Ls2TireAsset.findByIdAndUpdate(req.params.id, patch, { new: true });
@@ -213,8 +214,11 @@ async function mountSpareTire(req, tireId, slot, when, reason) {
   if (!['spare', 'mounted'].includes(r.status)) {
     throw new Error(`الفردة البديلة ${r.serial} ليست متاحة للتركيب — حالتها الحالية لا تسمح بذلك`);
   }
-  if (r.status === 'mounted' && r.plateKey && r.plateKey === slot.plateKey) {
-    throw new Error(`الفردة البديلة ${r.serial} مركّبة بالفعل على نفس المركبة`);
+  // نسمح بالتركيب من نفس المركبة (مثل: تبديل مع الاستبن على نفس العربية) طالما
+  // ليست نفس الموضع تمامًا.
+  if (r.status === 'mounted' && r.plateKey === slot.plateKey && r.positionNumber != null && slot.positionNumber != null
+      && String(r.positionNumber) === String(slot.positionNumber)) {
+    throw new Error(`الفردة البديلة ${r.serial} مركّبة بالفعل في نفس الموضع`);
   }
   if (r.condition === 'renewed' && isHeadSection(slot.section)) {
     throw new Error(`الفردة البديلة ${r.serial} مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس`);
@@ -227,6 +231,7 @@ async function mountSpareTire(req, tireId, slot, when, reason) {
   r.set({
     status: 'mounted', plate: slot.plate, plateKey: slot.plateKey,
     positionNumber: slot.positionNumber, positionLabel: slot.positionLabel, section: slot.section,
+    isSpare: !!slot.isSpare, // ترث الفردة كونها استبن من الموقع الذي تُركَّب فيه
   });
   await r.save();
   const live = await vehicleByKey(slot.plateKey);
@@ -251,7 +256,7 @@ exports.moveTire = async (req, res) => {
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
     // The exact slot being vacated — the replacement (if any) goes here.
     const vacated = tire.status === 'mounted' && tire.plateKey
-      ? { plate: tire.plate, plateKey: tire.plateKey, positionNumber: tire.positionNumber, positionLabel: tire.positionLabel, section: tire.section }
+      ? { plate: tire.plate, plateKey: tire.plateKey, positionNumber: tire.positionNumber, positionLabel: tire.positionLabel, section: tire.section, isSpare: tire.isSpare }
       : null;
     if (replacementTireId && !vacated) {
       return res.status(400).json({ message: 'لا يمكن تركيب بديل — الفردة ليست مركبة على سطحة أصلًا' });
@@ -270,8 +275,13 @@ exports.moveTire = async (req, res) => {
       const y = await Ls2TireAsset.findById(replacementTireId);
       if (!y) return res.status(404).json({ message: 'الفردة البديلة غير موجودة' });
       if (String(y._id) === String(tire._id)) return res.status(400).json({ message: 'لا يمكن تبديل الفردة مع نفسها' });
-      if (y.status !== 'mounted' || !y.plateKey) return res.status(400).json({ message: `الفردة ${y.serial} ليست مركّبة على عربية — التبديل يكون مع فردة مركّبة على عربية أخرى` });
-      if (y.plateKey === vacated.plateKey) return res.status(400).json({ message: 'الفردتان على نفس العربية — لا حاجة للتبديل بينهما' });
+      if (y.status !== 'mounted' || !y.plateKey) return res.status(400).json({ message: `الفردة ${y.serial} ليست مركّبة على عربية — التبديل يكون مع فردة مركّبة` });
+      // نسمح بالتبديل على نفس العربية (تبديل الاستبن مع فردة على نفس المركبة) —
+      // نمنع فقط لو كانتا في نفس الموضع تمامًا.
+      if (y.plateKey === vacated.plateKey && y.positionNumber != null && vacated.positionNumber != null
+          && String(y.positionNumber) === String(vacated.positionNumber)) {
+        return res.status(400).json({ message: 'الفردتان في نفس الموضع — لا يمكن التبديل' });
+      }
       if (y.condition === 'renewed' && isHeadSection(vacated.section)) {
         return res.status(400).json({ message: `الفردة ${y.serial} مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس` });
       }
@@ -280,12 +290,14 @@ exports.moveTire = async (req, res) => {
       }
       const ySlot = { plate: y.plate, plateKey: y.plateKey, positionNumber: y.positionNumber, positionLabel: y.positionLabel, section: y.section };
       const yPos = posLabel(y);
+      // وسم الاستبن يتبع الموقع: كل فردة ترث كونها استبن من الموقع الذي تنتقل إليه.
+      const xWasSpare = tire.isSpare, yWasSpare = y.isSpare;
       const [liveA, liveB] = [await vehicleByKey(vacated.plateKey), await vehicleByKey(ySlot.plateKey)];
       // Y → موقع X (العربية A)
-      y.set({ status: 'mounted', plate: vacated.plate, plateKey: vacated.plateKey, positionNumber: vacated.positionNumber, positionLabel: vacated.positionLabel, section: vacated.section });
+      y.set({ status: 'mounted', plate: vacated.plate, plateKey: vacated.plateKey, positionNumber: vacated.positionNumber, positionLabel: vacated.positionLabel, section: vacated.section, isSpare: xWasSpare });
       await y.save();
       // X → موقع Y (العربية B)
-      tire.set({ status: 'mounted', plate: ySlot.plate, plateKey: ySlot.plateKey, positionNumber: ySlot.positionNumber, positionLabel: ySlot.positionLabel, section: ySlot.section });
+      tire.set({ status: 'mounted', plate: ySlot.plate, plateKey: ySlot.plateKey, positionNumber: ySlot.positionNumber, positionLabel: ySlot.positionLabel, section: ySlot.section, isSpare: yWasSpare });
       await tire.save();
       await logEvent(req, {
         entityType: 'tire', refId: y._id, label: y.serial, action: 'transferred',
@@ -357,6 +369,8 @@ exports.moveTire = async (req, res) => {
       tire.set({
         status: toStatus,
         plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '',
+        isSpare: false, // فردة خارج العربية ليست الاستبن
+
         // نسبة الحالة تُسجَّل عند النزول إلى المخزن — هي ما يقرأه التسكين لاحقًا.
         ...(toStatus === 'spare' && conditionPercent != null && conditionPercent !== ''
           ? { conditionPercent: Math.max(0, Math.min(100, Number(conditionPercent))) } : {}),
@@ -377,8 +391,8 @@ exports.moveTire = async (req, res) => {
     let backfillSlot = null; // موقع البديلة على عربيتها (يُملأ بالفردة الثالثة)
     if (replacementTireId && vacated) {
       const yPeek = await Ls2TireAsset.findById(replacementTireId).lean();
-      if (yPeek && yPeek.status === 'mounted' && yPeek.plateKey && yPeek.plateKey !== vacated.plateKey) {
-        backfillSlot = { plate: yPeek.plate, plateKey: yPeek.plateKey, positionNumber: yPeek.positionNumber, positionLabel: yPeek.positionLabel, section: yPeek.section };
+      if (yPeek && yPeek.status === 'mounted' && yPeek.plateKey) {
+        backfillSlot = { plate: yPeek.plate, plateKey: yPeek.plateKey, positionNumber: yPeek.positionNumber, positionLabel: yPeek.positionLabel, section: yPeek.section, isSpare: yPeek.isSpare };
       }
       try {
         replacement = await mountSpareTire(req, replacementTireId, vacated, when, reason);
@@ -439,7 +453,7 @@ exports.retireTire = async (req, res) => {
     if (!tire) return res.status(404).json({ message: 'Not found' });
     const kind = ['damaged', 'scrap'].includes(req.body?.kind) ? req.body.kind : 'retired';
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
-    tire.set({ status: kind, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '' });
+    tire.set({ status: kind, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '', isSpare: false });
     await tire.save();
     await logEvent(req, {
       entityType: 'tire', refId: tire._id, label: tire.serial,

@@ -31,7 +31,7 @@ import SearchSelect from '@/components/ls2/SearchSelect';
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
 interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; status: string; notes: string }
-interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used' | 'renewed'; conditionPercent?: number | null; status: 'mounted' | 'spare' | 'in_repair' | 'scrap' | 'damaged' | 'retired'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; notes: string }
+interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used' | 'renewed'; conditionPercent?: number | null; status: 'mounted' | 'spare' | 'in_repair' | 'scrap' | 'damaged' | 'retired'; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean; notes: string }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
 interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
 
@@ -794,27 +794,36 @@ export default function Ls2FleetAssetsPage() {
 
 // خيار «فردة بديلة من المخزن» — يظهر في مودالي الإنزال والنقل: البديل يُركَّب
 // في الموقع الذي أخلته الفردة، فتكتمل العمليتان (نزول + تركيب) بحركة واحدة.
-// The replacement can be a spare from the store OR a tire currently mounted on
-// ANOTHER truck (a swap) — most workshops carry zero spares, so the replacement
-// is usually pulled off another vehicle. Store tires come first; a tire on the
-// SAME truck as the one being dismounted is excluded (the backend rejects it).
+// The replacement can be a spare from the store, a tire on ANOTHER truck (a
+// swap), OR another tire on the SAME truck — including the الاستبن (spare
+// mounted on the truck): a roadside blowout swaps the burst tire with the truck's
+// own spare. Order: store spares → same-truck → other trucks. Only the tire being
+// worked on itself is excluded.
 const spareOptions = (tires: TireAsset[], source: TireAsset | string, ar: boolean) => {
   const excludeId = typeof source === 'string' ? source : source._id;
-  const excludeKey = typeof source === 'string' ? null : source.plateKey;
+  const srcKey = typeof source === 'string' ? null : source.plateKey;
+  const rank = (x: TireAsset) => x.status === 'spare' ? 0 : (x.plateKey && x.plateKey === srcKey ? 1 : 2);
   return tires
-    .filter((x) => x._id !== excludeId
-      && (x.status === 'spare' || (x.status === 'mounted' && !!x.plateKey && x.plateKey !== excludeKey)))
-    .sort((a, b) => (a.status === 'spare' ? 0 : 1) - (b.status === 'spare' ? 0 : 1))
-    .map((x) => ({
-      value: x._id,
-      label: `${x.serial}${x.tireNumber ? ` — ${ar ? 'رقم' : 'no.'} ${x.tireNumber}` : ''}`,
-      hint: [
-        x.status === 'mounted' ? (ar ? `مركّبة على ${x.plate}` : `on ${x.plate}`) : (ar ? 'في المخزن' : 'in store'),
-        x.type,
-        x.condition === 'renewed' ? (ar ? 'مجدد' : 'renewed') : x.condition === 'new' ? (ar ? 'جديد' : 'new') : '',
-        x.conditionPercent != null ? `${x.conditionPercent}%` : '',
-      ].filter(Boolean).join(' · '),
-    }));
+    .filter((x) => x._id !== excludeId && (x.status === 'spare' || (x.status === 'mounted' && !!x.plateKey)))
+    .sort((a, b) => rank(a) - rank(b))
+    .map((x) => {
+      const sameTruck = x.plateKey && x.plateKey === srcKey;
+      return {
+        value: x._id,
+        label: `${x.serial}${x.tireNumber ? ` — ${ar ? 'رقم' : 'no.'} ${x.tireNumber}` : ''}`,
+        hint: [
+          x.isSpare ? (ar ? '⭐ استبن' : '⭐ spare') : '',
+          x.status === 'mounted'
+            ? (sameTruck
+                ? (ar ? `نفس المركبة · ${x.positionLabel || x.positionNumber || ''}` : `same truck · ${x.positionLabel || x.positionNumber || ''}`)
+                : (ar ? `مركّبة على ${x.plate} · ${x.positionLabel || x.positionNumber || ''}` : `on ${x.plate} · ${x.positionLabel || x.positionNumber || ''}`))
+            : (ar ? 'في المخزن' : 'in store'),
+          x.type,
+          x.condition === 'renewed' ? (ar ? 'مجدد' : 'renewed') : x.condition === 'new' ? (ar ? 'جديد' : 'new') : '',
+          x.conditionPercent != null ? `${x.conditionPercent}%` : '',
+        ].filter(Boolean).join(' · '),
+      };
+    });
 };
 
 // ---- Dismount: مخزن / تجديد / تالفة / سكراب + بديل اختياري -------------------

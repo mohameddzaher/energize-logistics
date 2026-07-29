@@ -189,6 +189,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                                         ]),
                                         const SizedBox(height: 5),
                                         Wrap(spacing: 6, runSpacing: 6, children: [
+                                          if (t['isSpare'] == true) Chip2(tr('استبن', 'Spare'), T.violet, icon: Icons.star_outline),
                                           if (cond != null) Chip2(tr(cond.$1, cond.$2), cond.$3),
                                           if (t['conditionPercent'] != null) Chip2('${t['conditionPercent']}%', T.orange),
                                           if ((t['plate'] ?? '').toString().isNotEmpty)
@@ -217,6 +218,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final plate = TextEditingController();
     final position = TextEditingController();
     String sensor = 'unknown';
+    bool isSpare = false;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -251,10 +253,18 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
               ),
               const SizedBox(height: 10),
               Row(children: [
-                Expanded(child: TextField(controller: plate, decoration: InputDecoration(labelText: tr('لوحة الشاحنة (اختياري)', 'Truck plate (optional)')))),
+                Expanded(child: TextField(controller: plate, onChanged: (_) => setS(() {}), decoration: InputDecoration(labelText: tr('لوحة الشاحنة (اختياري)', 'Truck plate (optional)')))),
                 const SizedBox(width: 10),
                 SizedBox(width: 110, child: TextField(controller: position, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('الموضع', 'Position')))),
               ]),
+              if (plate.text.trim().isNotEmpty)
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: isSpare,
+                  onChanged: (v) => setS(() => isSpare = v ?? false),
+                  title: Text(tr('هذه الفردة هي الاستبن على العربية', "This is the truck's spare (استبن)"), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                ),
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
@@ -270,6 +280,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                         'sensor': sensor,
                         if (plate.text.trim().isNotEmpty) 'plate': plate.text.trim(),
                         if (position.text.trim().isNotEmpty) 'positionNumber': num.tryParse(position.text),
+                        if (plate.text.trim().isNotEmpty && isSpare) 'isSpare': true,
                       });
                       if (c.mounted) Navigator.pop(c);
                       _load();
@@ -307,6 +318,17 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
             Wrap(spacing: 8, runSpacing: 8, children: [
               if (status == 'mounted')
                 _chip(sheet, Icons.download_outlined, tr('فك من الشاحنة', 'Dismount'), T.warn, () => _dismount(t)),
+              if (status == 'mounted')
+                _chip(sheet, Icons.star_outline, t['isSpare'] == true ? tr('إلغاء الاستبن', 'Unset spare') : tr('تعليم كـ استبن', 'Mark as spare'), T.violet,
+                    () async {
+                  try {
+                    await Api.instance.patch('/api/ls2/assets/tires/${t['_id']}', {'isSpare': !(t['isSpare'] == true)});
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم التحديث', 'Updated'))));
+                    _load();
+                  } catch (e) {
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                  }
+                }),
               if (status == 'mounted' && (t['plate'] ?? '').toString().isNotEmpty)
                 _chip(sheet, Icons.local_shipping_outlined, tr('أصول المركبة', 'Vehicle assets'), T.navy,
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2VehicleAssetsScreen(plate: (t['plate'] ?? '').toString())))),
@@ -448,18 +470,20 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     }, doSwap ? tr('تم التبديل', 'Swapped') : tr('تم الفك', 'Dismounted'));
   }
 
-  // منتقي فردة: المخزن + المركّبة على مركبات أخرى، مع استثناء فردات وعربية محددة.
+  // منتقي فردة: المخزن + المركّبة على أي مركبة (بما فيها نفس المركبة = الاستبن)،
+  // مع استثناء فردات محددة. الترتيب: مخزن ← نفس المركبة ← مركبات أخرى.
   Future<Map<String, dynamic>?> _pickReplacement(Map<String, dynamic> source, {List<String> alsoExclude = const [], String? excludePlateKey}) {
     final all = _l(_d?['tires']);
     final excludeIds = {(source['_id'] ?? '').toString(), ...alsoExclude};
-    final excludePlate = (excludePlateKey ?? source['plateKey'] ?? source['plate'] ?? '').toString();
+    final srcKey = (source['plateKey'] ?? source['plate'] ?? '').toString();
+    int rank(Map<String, dynamic> x) => x['status'] == 'spare' ? 0 : ((x['plateKey'] ?? x['plate']).toString() == srcKey ? 1 : 2);
     final options = all.where((x) {
       if (excludeIds.contains((x['_id'] ?? '').toString())) return false;
       if (x['status'] == 'spare') return true;
-      if (x['status'] == 'mounted' && (x['plate'] ?? '').toString().isNotEmpty && (x['plateKey'] ?? x['plate']).toString() != excludePlate) return true;
+      if (x['status'] == 'mounted' && (x['plate'] ?? '').toString().isNotEmpty) return true;
       return false;
     }).toList()
-      ..sort((a, b) => (a['status'] == 'spare' ? 0 : 1) - (b['status'] == 'spare' ? 0 : 1));
+      ..sort((a, b) => rank(a) - rank(b));
 
     return showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -494,11 +518,20 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                             itemBuilder: (c, i) {
                               final x = list[i];
                               final inStore = x['status'] == 'spare';
+                              final sameTruck = !inStore && (x['plateKey'] ?? x['plate']).toString() == srcKey;
+                              final where = inStore
+                                  ? tr('في المخزن', 'in store')
+                                  : sameTruck
+                                      ? '${tr('نفس المركبة', 'same truck')} · ${x['positionLabel'] ?? x['positionNumber'] ?? ''}'
+                                      : '${tr('مركّبة على', 'on')} ${x['plate']} · ${x['positionLabel'] ?? x['positionNumber'] ?? ''}';
                               return ListTile(
-                                leading: Icon(inStore ? Icons.inventory_2_outlined : Icons.local_shipping_outlined, color: inStore ? T.info : T.warn, size: 20),
-                                title: Text('${x['serial']}${(x['tireNumber'] ?? '').toString().isNotEmpty ? ' · ${x['tireNumber']}' : ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                                leading: Icon(inStore ? Icons.inventory_2_outlined : Icons.local_shipping_outlined, color: inStore ? T.info : sameTruck ? T.success : T.warn, size: 20),
+                                title: Row(children: [
+                                  Flexible(child: Text('${x['serial']}${(x['tireNumber'] ?? '').toString().isNotEmpty ? ' · ${x['tireNumber']}' : ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5), overflow: TextOverflow.ellipsis)),
+                                  if (x['isSpare'] == true) ...[const SizedBox(width: 6), Chip2(tr('استبن', 'Spare'), T.violet)],
+                                ]),
                                 subtitle: Text(
-                                  '${inStore ? tr('في المخزن', 'in store') : '${tr('مركّبة على', 'on')} ${x['plate']}'}'
+                                  '$where'
                                   '${(x['type'] ?? '').toString().isNotEmpty ? ' · ${x['type']}' : ''}'
                                   '${x['conditionPercent'] != null ? ' · ${x['conditionPercent']}%' : ''}',
                                   style: const TextStyle(fontSize: 11.5),

@@ -67,8 +67,10 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
     final flatbed = _d0?['flatbed'] is Map ? Map<String, dynamic>.from(_d0!['flatbed']) : null;
     final trailer = _d0?['trailer'] is Map ? Map<String, dynamic>.from(_d0!['trailer']) : null;
     final events = _l(_d0?['events']);
-    final head = tires.where((t) => _isHead(t['section'])).toList();
-    final trailerTires = tires.where((t) => !_isHead(t['section'])).toList();
+    final spares = tires.where((t) => t['isSpare'] == true).toList();
+    final onWheels = tires.where((t) => t['isSpare'] != true).toList();
+    final head = onWheels.where((t) => _isHead(t['section'])).toList();
+    final trailerTires = onWheels.where((t) => !_isHead(t['section'])).toList();
 
     return AppScaffold(
       title: Text('${tr('أصول المركبة', 'Vehicle assets')} ${widget.plate}'),
@@ -97,6 +99,7 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                             if (trailer != null) Chip2('${tr('تيدر', 'Trailer')} ${trailer['trailerNumber'] ?? ''}', T.violet, icon: Icons.rv_hookup_outlined),
                             Chip2('${tr('الرأس', 'Head')}: ${head.length}', T.navy),
                             Chip2('${tr('التيدر', 'Trailer')}: ${trailerTires.length}', T.orange),
+                            if (spares.isNotEmpty) Chip2('${tr('استبن', 'Spare')}: ${spares.length}', T.violet, icon: Icons.star_outline),
                           ]),
                         ]),
                       ),
@@ -114,6 +117,13 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                       _sectionTitle(tr('كاوتشات التيدر', 'Trailer tires'), trailerTires.length),
                       const SizedBox(height: 6),
                       ...trailerTires.map(_tireRow),
+                    ],
+                    // الاستبن
+                    if (spares.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _sectionTitle(tr('الاستبن', 'Spare'), spares.length),
+                      const SizedBox(height: 6),
+                      ...spares.map(_tireRow),
                     ],
                     if (tires.isEmpty)
                       Padding(padding: const EdgeInsets.only(top: 30), child: EmptyState(icon: Icons.tire_repair_outlined, title: tr('لا توجد كاوتشات مسجّلة على هذه المركبة', 'No tires registered on this vehicle'))),
@@ -177,6 +187,7 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
               Text('${t['serial'] ?? ''}${(t['tireNumber'] ?? '').toString().isNotEmpty ? ' · ${tr('رقم', 'no.')} ${t['tireNumber']}' : ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
               const SizedBox(height: 3),
               Wrap(spacing: 6, runSpacing: 4, children: [
+                if (t['isSpare'] == true) Chip2(tr('استبن', 'Spare'), T.violet, icon: Icons.star_outline),
                 if ((t['positionLabel'] ?? '').toString().isNotEmpty) Chip2(t['positionLabel'].toString(), T.navy, icon: Icons.my_location_outlined),
                 if (cond != null) Chip2(tr(cond.$1, cond.$2), cond.$3),
                 if (t['conditionPercent'] != null) Chip2('${t['conditionPercent']}%', T.orange),

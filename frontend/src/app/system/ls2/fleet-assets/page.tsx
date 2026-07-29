@@ -182,7 +182,13 @@ export default function Ls2FleetAssetsPage() {
   const refreshAll = () => { setLoading(true); load(); if (tab === 'history') loadEvents(); if (tab === 'sensors') loadSensors(); };
 
   // ---- Filters ---------------------------------------------------------------
-  const norm = (s: any) => String(s ?? '').toLowerCase();
+  // Fold Arabic orthography so a plain-alef query matches a hamza-alef record
+  // (and ة/ه, ى/ي, ؤ/و, ئ/ي) — otherwise Arabic names/types silently miss.
+  const norm = (s: any) => String(s ?? '')
+    .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/ـ/g, '')
+    .replace(/[ً-ْ]/g, '')
+    .toLowerCase().trim();
   const fFlatbeds = useMemo(() => !q ? flatbeds : flatbeds.filter((f) => [f.plate, f.batch, f.brand, f.currentTrailerNumber, f.numbering, f.driver].some((x) => norm(x).includes(norm(q)))), [flatbeds, q]);
   const fTrailers = useMemo(() => !q ? trailers : trailers.filter((tr) => [tr.trailerNumber, tr.currentPlate, tr.status].some((x) => norm(x).includes(norm(q)))), [trailers, q]);
   const matchesTireFilter = useCallback((ti: TireAsset) => {

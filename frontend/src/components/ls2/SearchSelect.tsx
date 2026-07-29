@@ -41,11 +41,20 @@ export default function SearchSelect({
 
   const selected = options.find((o) => o.value === value) || null;
 
+  // Fold Arabic orthography (alef/hamza/taa-marbuta/alef-maksura + diacritics)
+  // so a query typed with a plain alef matches a record written with a hamza —
+  // without this, Arabic driver names / types silently return "no matches".
+  const norm = (s: string) => (s || '')
+    .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/ـ/g, '')
+    .replace(/[ً-ْ]/g, '')
+    .toLowerCase();
+
   const rows = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    const term = norm(q.trim());
     if (!term) return options;
     return options.filter((o) =>
-      [o.label, o.hint, o.value].some((x) => (x || '').toLowerCase().includes(term))
+      [o.label, o.hint, o.value].some((x) => norm(x || '').includes(term))
     );
   }, [options, q]);
 

@@ -112,6 +112,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               controller: _email,
                               keyboardType: TextInputType.emailAddress,
                               textDirection: TextDirection.ltr,
+                              // iOS كان بيكبّر أول حرف ويعمل autocorrect للإيميل → فشل دخول.
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              textCapitalization: TextCapitalization.none,
+                              autofillHints: const [AutofillHints.username, AutofillHints.email],
                               decoration: InputDecoration(
                                 labelText: tr('البريد الإلكتروني', 'Email'),
                                 prefixIcon: const Icon(Icons.alternate_email, size: 20),

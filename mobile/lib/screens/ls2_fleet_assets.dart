@@ -334,32 +334,60 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     String destination = 'store';
     final percent = TextEditingController();
     final reason = TextEditingController();
-    final ok = await showDialog<bool>(
+    Map<String, dynamic>? replacement;
+    final mounted = t['status'] == 'mounted' && (t['plate'] ?? '').toString().isNotEmpty;
+    final ok = await showModalBottomSheet<bool>(
       context: context,
-      builder: (c) => StatefulBuilder(builder: (c, setS) => AlertDialog(
-        title: Text(tr('فك الكاوتش — إلى أين؟', 'Dismount — where to?')),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          DropdownButtonFormField<String>(
-            initialValue: destination,
-            items: [
-              DropdownMenuItem(value: 'store', child: Text(tr('المستودع (احتياطي)', 'Store (spare)'))),
-              DropdownMenuItem(value: 'repair', child: Text(tr('التجديد', 'Renewal'))),
-              DropdownMenuItem(value: 'damaged', child: Text(tr('تالف', 'Damaged'))),
-              DropdownMenuItem(value: 'scrap', child: Text(tr('سكراب مباشرة', 'Straight to scrap'))),
-            ],
-            onChanged: (v) => setS(() => destination = v ?? destination),
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('فك الكاوتش — إلى أين؟', 'Dismount — where to?'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: destination,
+                decoration: InputDecoration(labelText: tr('وجهة الفردة', 'Destination')),
+                items: [
+                  DropdownMenuItem(value: 'store', child: Text(tr('المستودع (احتياطي)', 'Store (spare)'))),
+                  DropdownMenuItem(value: 'repair', child: Text(tr('التجديد', 'Renewal'))),
+                  DropdownMenuItem(value: 'damaged', child: Text(tr('تالف', 'Damaged'))),
+                  DropdownMenuItem(value: 'scrap', child: Text(tr('سكراب مباشرة', 'Straight to scrap'))),
+                ],
+                onChanged: (v) => setS(() => destination = v ?? destination),
+              ),
+              if (destination == 'store') ...[
+                const SizedBox(height: 10),
+                TextField(controller: percent, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('حالته كم ٪؟', 'Condition %'))),
+              ],
+              const SizedBox(height: 10),
+              TextField(controller: reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
+              // فردة بديلة تُركَّب مكانها — من المخزن أو مسحوبة من مركبة أخرى.
+              if (mounted) ...[
+                const SizedBox(height: 12),
+                Text(tr('فردة بديلة تُركَّب مكانها (اختياري)', 'Replacement in its place (optional)'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
+                  onPressed: () async {
+                    final r = await _pickReplacement(t);
+                    if (r != null) setS(() => replacement = r.isEmpty ? null : r);
+                  },
+                  icon: const Icon(Icons.swap_horiz_rounded, size: 17),
+                  label: Text(
+                    replacement == null ? tr('— دون بديل —', '— none —') : '${replacement!['serial']}${replacement!['status'] == 'mounted' ? ' · ${tr('من', 'from')} ${replacement!['plate']}' : ' · ${tr('مخزن', 'store')}'}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(tr('من المخزن، أو فردة مركّبة على مركبة أخرى (تُنقل تلقائيًا).', 'From store, or a tire on another truck (auto-transferred).'), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+              ],
+              const SizedBox(height: 14),
+              SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('فك', 'Dismount')))),
+            ]),
           ),
-          if (destination == 'store') ...[
-            const SizedBox(height: 10),
-            TextField(controller: percent, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('حالته كم ٪؟', 'Condition %'))),
-          ],
-          const SizedBox(height: 10),
-          TextField(controller: reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('فك', 'Dismount'))),
-        ],
+        ),
       )),
     );
     if (ok != true) return;
@@ -368,7 +396,77 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       'destination': destination,
       if (destination == 'store' && percent.text.trim().isNotEmpty) 'conditionPercent': num.tryParse(percent.text),
       if (reason.text.trim().isNotEmpty) 'reason': reason.text.trim(),
+      if (replacement != null) 'replacementTireId': replacement!['_id'],
     }, tr('تم الفك', 'Dismounted'));
+  }
+
+  // منتقي الفردة البديلة: المخزن + المركّبة على مركبات أخرى (بحث بالسيريال/الرقم).
+  Future<Map<String, dynamic>?> _pickReplacement(Map<String, dynamic> source) {
+    final all = _l(_d?['tires']);
+    final excludeId = (source['_id'] ?? '').toString();
+    final excludePlate = (source['plateKey'] ?? source['plate'] ?? '').toString();
+    final options = all.where((x) {
+      if ((x['_id'] ?? '').toString() == excludeId) return false;
+      if (x['status'] == 'spare') return true;
+      if (x['status'] == 'mounted' && (x['plate'] ?? '').toString().isNotEmpty && (x['plateKey'] ?? x['plate']).toString() != excludePlate) return true;
+      return false;
+    }).toList()
+      ..sort((a, b) => (a['status'] == 'spare' ? 0 : 1) - (b['status'] == 'spare' ? 0 : 1));
+
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) {
+        String q = '';
+        return StatefulBuilder(builder: (c, setS) {
+          final fq = _fold(q.trim());
+          final list = options.where((x) => fq.isEmpty || [x['serial'], x['tireNumber'], x['type'], x['plate']].any((v) => _fold((v ?? '').toString()).contains(fq))).toList();
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+              child: SizedBox(
+                height: MediaQuery.of(c).size.height * 0.72,
+                child: Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: TextField(autofocus: true, onChanged: (v) => setS(() => q = v),
+                        decoration: InputDecoration(hintText: tr('ابحث بالسيريال أو الرقم…', 'Search serial / number…'), prefixIcon: const Icon(Icons.search))),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.block, color: T.inkFaint),
+                    title: Text(tr('— دون بديل —', '— none —')),
+                    onTap: () => Navigator.pop(c, <String, dynamic>{}),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: list.isEmpty
+                        ? EmptyState(icon: Icons.tire_repair_outlined, title: tr('لا توجد فردات متاحة', 'No available tires'))
+                        : ListView.builder(
+                            itemCount: list.length,
+                            itemBuilder: (c, i) {
+                              final x = list[i];
+                              final inStore = x['status'] == 'spare';
+                              return ListTile(
+                                leading: Icon(inStore ? Icons.inventory_2_outlined : Icons.local_shipping_outlined, color: inStore ? T.info : T.warn, size: 20),
+                                title: Text('${x['serial']}${(x['tireNumber'] ?? '').toString().isNotEmpty ? ' · ${x['tireNumber']}' : ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                                subtitle: Text(
+                                  '${inStore ? tr('في المخزن', 'in store') : '${tr('مركّبة على', 'on')} ${x['plate']}'}'
+                                  '${(x['type'] ?? '').toString().isNotEmpty ? ' · ${x['type']}' : ''}'
+                                  '${x['conditionPercent'] != null ? ' · ${x['conditionPercent']}%' : ''}',
+                                  style: const TextStyle(fontSize: 11.5),
+                                ),
+                                onTap: () => Navigator.pop(c, x),
+                              );
+                            },
+                          ),
+                  ),
+                ]),
+              ),
+            ),
+          );
+        });
+      },
+    );
   }
 
   // تركيب/نقل: لوحة + موضع؛ لو الموضع مشغول يسأل عن مصير القاطن ويعيد.

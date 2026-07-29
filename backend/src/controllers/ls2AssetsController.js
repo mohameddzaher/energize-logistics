@@ -206,10 +206,24 @@ const DEST_ACTION = { in_repair: 'to_repair', damaged: 'damaged', scrap: 'scrapp
 async function mountSpareTire(req, tireId, slot, when, reason) {
   const r = await Ls2TireAsset.findById(tireId);
   if (!r) throw new Error('الفردة البديلة غير موجودة');
-  if (r.status !== 'spare') throw new Error(`الفردة البديلة ${r.serial} ليست في المخزن — حالتها الحالية لا تسمح بالتركيب`);
+  // The replacement may come from the store (spare) OR be pulled off ANOTHER
+  // truck (a swap) — the workshop usually has zero spares, so a mounted tire is
+  // the common case. Only out-of-service tires (تحت التجديد/تالفة/سكراب/خارج
+  // الخدمة) are rejected.
+  if (!['spare', 'mounted'].includes(r.status)) {
+    throw new Error(`الفردة البديلة ${r.serial} ليست متاحة للتركيب — حالتها الحالية لا تسمح بذلك`);
+  }
+  if (r.status === 'mounted' && r.plateKey && r.plateKey === slot.plateKey) {
+    throw new Error(`الفردة البديلة ${r.serial} مركّبة بالفعل على نفس المركبة`);
+  }
   if (r.condition === 'renewed' && isHeadSection(slot.section)) {
     throw new Error(`الفردة البديلة ${r.serial} مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس`);
   }
+  // If it was mounted on another truck, record it leaving that truck first so
+  // the swap is a full audit trail (the old slot is now physically empty).
+  const fromMounted = r.status === 'mounted' && r.plateKey
+    ? { plate: r.plate, plateKey: r.plateKey, pos: posLabel(r) }
+    : null;
   r.set({
     status: 'mounted', plate: slot.plate, plateKey: slot.plateKey,
     positionNumber: slot.positionNumber, positionLabel: slot.positionLabel, section: slot.section,
@@ -217,10 +231,14 @@ async function mountSpareTire(req, tireId, slot, when, reason) {
   await r.save();
   const live = await vehicleByKey(slot.plateKey);
   await logEvent(req, {
-    entityType: 'tire', refId: r._id, label: r.serial, action: 'mounted',
+    entityType: 'tire', refId: r._id, label: r.serial,
+    action: fromMounted ? 'transferred' : 'mounted',
+    fromPlate: fromMounted?.plate ?? null, fromPlateKey: fromMounted?.plateKey ?? null, fromPosition: fromMounted?.pos ?? '',
     toPlate: slot.plate, toPlateKey: slot.plateKey, toPosition: posLabel(r),
     date: when, odometerKm: live?.odometerKm ?? null,
-    reason: reason || 'رُكِّبت بديلًا في الموقع الذي أُخلي',
+    reason: reason || (fromMounted
+      ? `نُقلت من ${fromMounted.plate} وركِّبت بديلًا في الموقع الذي أُخلي`
+      : 'رُكِّبت بديلًا في الموقع الذي أُخلي'),
   });
   return r;
 }

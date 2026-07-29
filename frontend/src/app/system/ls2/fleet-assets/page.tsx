@@ -794,12 +794,28 @@ export default function Ls2FleetAssetsPage() {
 
 // خيار «فردة بديلة من المخزن» — يظهر في مودالي الإنزال والنقل: البديل يُركَّب
 // في الموقع الذي أخلته الفردة، فتكتمل العمليتان (نزول + تركيب) بحركة واحدة.
-const spareOptions = (tires: TireAsset[], excludeId: string, ar: boolean) =>
-  tires.filter((x) => x.status === 'spare' && x._id !== excludeId).map((x) => ({
-    value: x._id,
-    label: `${x.serial}${x.tireNumber ? ` — ${ar ? 'رقم' : 'no.'} ${x.tireNumber}` : ''}`,
-    hint: [x.type, x.condition === 'renewed' ? (ar ? 'مجدد' : 'renewed') : x.condition === 'new' ? (ar ? 'جديد' : 'new') : '', x.conditionPercent != null ? `${x.conditionPercent}%` : ''].filter(Boolean).join(' · '),
-  }));
+// The replacement can be a spare from the store OR a tire currently mounted on
+// ANOTHER truck (a swap) — most workshops carry zero spares, so the replacement
+// is usually pulled off another vehicle. Store tires come first; a tire on the
+// SAME truck as the one being dismounted is excluded (the backend rejects it).
+const spareOptions = (tires: TireAsset[], source: TireAsset | string, ar: boolean) => {
+  const excludeId = typeof source === 'string' ? source : source._id;
+  const excludeKey = typeof source === 'string' ? null : source.plateKey;
+  return tires
+    .filter((x) => x._id !== excludeId
+      && (x.status === 'spare' || (x.status === 'mounted' && !!x.plateKey && x.plateKey !== excludeKey)))
+    .sort((a, b) => (a.status === 'spare' ? 0 : 1) - (b.status === 'spare' ? 0 : 1))
+    .map((x) => ({
+      value: x._id,
+      label: `${x.serial}${x.tireNumber ? ` — ${ar ? 'رقم' : 'no.'} ${x.tireNumber}` : ''}`,
+      hint: [
+        x.status === 'mounted' ? (ar ? `مركّبة على ${x.plate}` : `on ${x.plate}`) : (ar ? 'في المخزن' : 'in store'),
+        x.type,
+        x.condition === 'renewed' ? (ar ? 'مجدد' : 'renewed') : x.condition === 'new' ? (ar ? 'جديد' : 'new') : '',
+        x.conditionPercent != null ? `${x.conditionPercent}%` : '',
+      ].filter(Boolean).join(' · '),
+    }));
+};
 
 // ---- Dismount: مخزن / تجديد / تالفة / سكراب + بديل اختياري -------------------
 function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
@@ -840,8 +856,9 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
         )}
         <div>
           <label className={labelCls}>{ar ? 'فردة بديلة تُركَّب مكانها (اختياري)' : 'Replacement mounted in its place (optional)'}</label>
-          <SearchSelect value={replacementId} onChange={setReplacementId} options={[{ value: '', label: ar ? '— دون بديل —' : '— none —' }, ...spareOptions(tires, tire._id, ar)]} ar={ar}
+          <SearchSelect value={replacementId} onChange={setReplacementId} options={[{ value: '', label: ar ? '— دون بديل —' : '— none —' }, ...spareOptions(tires, tire, ar)]} ar={ar}
             placeholder={ar ? '— دون بديل —' : '— none —'} searchPlaceholder={ar ? 'ابحث بالسيريال أو الرقم…' : 'Search serial / number…'} />
+          <p className="text-[11px] text-slate-400 mt-1">{ar ? 'من المخزن، أو فردة مركّبة على مركبة أخرى (تُنقل تلقائيًا).' : 'From store, or a tire mounted on another truck (auto-transferred).'}</p>
           {replacementId && isHeadSection(tire.section) && tires.find((x) => x._id === replacementId)?.condition === 'renewed' && (
             <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 font-medium mt-1.5">
               {ar ? 'البديل المختار مجدد — المجدد يُركَّب على التيدر فقط، لا على الرأس.' : 'The chosen replacement is RENEWED — trailer only, never the head.'}
@@ -935,7 +952,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
         {tire.status === 'mounted' && tire.plate && tire.plate !== toPlate && (
           <div>
             <label className={labelCls}>{ar ? `بديل يُركَّب مكانها على ${tire.plate} (اختياري)` : `Replacement for its old slot on ${tire.plate} (optional)`}</label>
-            <SearchSelect value={replacementId} onChange={setReplacementId} options={[{ value: '', label: ar ? '— دون بديل —' : '— none —' }, ...spareOptions(tires, tire._id, ar)]} ar={ar}
+            <SearchSelect value={replacementId} onChange={setReplacementId} options={[{ value: '', label: ar ? '— دون بديل —' : '— none —' }, ...spareOptions(tires, tire, ar)]} ar={ar}
               placeholder={ar ? '— دون بديل —' : '— none —'} searchPlaceholder={ar ? 'ابحث بالسيريال أو الرقم…' : 'Search serial / number…'} />
             {replacementRenewedOnHead && (
               <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 font-medium mt-1.5">

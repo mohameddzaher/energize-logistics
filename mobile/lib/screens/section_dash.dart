@@ -154,26 +154,32 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
       context: context,
       isScrollControlled: true,
       builder: (c) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 6, 18, 22),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-            if (big != null) ...[
-              const SizedBox(height: 6),
-              Text(big, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 30, color: T.navy)),
-            ],
-            const SizedBox(height: 12),
-            ...entries.map((e) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(flex: 2, child: Text(_humanize(e.key), style: const TextStyle(fontSize: 12.5, color: T.inkSoft))),
-                    const SizedBox(width: 10),
-                    Expanded(flex: 3, child: Text(_fmtVal(e.value), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700), textAlign: TextAlign.end)),
-                  ]),
-                )),
-            if (entries.isEmpty && big == null)
-              Text(tr('لا توجد تفاصيل إضافية', 'No extra details'), style: const TextStyle(color: T.inkFaint)),
-          ]),
+        child: ConstrainedBox(
+          // نحبس ارتفاع الشيت ونخليه قابل للتمرير — عشان الصفوف الكتيرة ماتعملش overflow.
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.75),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 6, 18, 22),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                if (big != null) ...[
+                  const SizedBox(height: 6),
+                  Text(big, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 30, color: T.navy)),
+                ],
+                const SizedBox(height: 12),
+                ...entries.map((e) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(flex: 2, child: Text(_humanize(e.key), style: const TextStyle(fontSize: 12.5, color: T.inkSoft))),
+                        const SizedBox(width: 10),
+                        Expanded(flex: 3, child: Text(_fmtVal(e.value), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700), textAlign: TextAlign.end)),
+                      ]),
+                    )),
+                if (entries.isEmpty && big == null)
+                  Text(tr('لا توجد تفاصيل إضافية', 'No extra details'), style: const TextStyle(color: T.inkFaint)),
+              ]),
+            ),
+          ),
         ),
       ),
     );

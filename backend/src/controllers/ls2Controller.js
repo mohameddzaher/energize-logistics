@@ -462,6 +462,8 @@ exports.acknowledgeAlert = async (req, res) => {
       await Ls2Vehicle.updateOne({ unitId: a.unitId }, { $set: { sensorChangeNotice: null } });
     }
     emitToAll('ls2:alert', { at: Date.now(), acknowledged: String(a._id) });
+    // كل شاشات ls2 بتسمع ls2:updated — فنبعته كمان عشان الإقرار يظهر لحظيًا في كل مكان.
+    emitToAll('ls2:updated', { at: Date.now(), acknowledged: String(a._id) });
     res.json(a);
   } catch (error) {
     fail(res, error, 'Failed to acknowledge alert');
@@ -663,7 +665,8 @@ exports.createRepair = async (req, res) => {
     const b = req.body || {};
     if (!b.title || !String(b.title).trim()) return res.status(400).json({ message: 'A title is required' });
     const item = await Ls2Repair.create({
-      unitId, plate: v.plate, driver: v.driver,
+      // «السائق وقتها» يدويًا إن أُدخل، وإلا سائق العربية الحالي.
+      unitId, plate: v.plate, driver: (b.driver != null && String(b.driver).trim()) ? String(b.driver).trim() : v.driver,
       title: String(b.title).trim(),
       category: b.category || 'other',
       severity: b.severity || 'medium',
@@ -687,7 +690,7 @@ exports.createRepair = async (req, res) => {
 
 exports.updateRepair = async (req, res) => {
   try {
-    const allowed = ['title', 'category', 'severity', 'status', 'repairDate', 'odometerKm', 'cost', 'workshop', 'partsReplaced', 'description'];
+    const allowed = ['title', 'category', 'severity', 'status', 'repairDate', 'odometerKm', 'cost', 'workshop', 'partsReplaced', 'description', 'driver'];
     const set = {};
     for (const k of allowed) if (req.body[k] !== undefined) set[k] = req.body[k];
     const item = await Ls2Repair.findByIdAndUpdate(req.params.repairId, { $set: set }, { new: true });

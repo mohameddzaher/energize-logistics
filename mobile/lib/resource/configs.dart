@@ -857,3 +857,40 @@ final vendorsCfg = ResourceConfig(
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
+
+final shipmentOrdersFieldsCfg = ResourceConfig(
+  arTitle: 'إعدادات النموذج', enTitle: 'Form Settings', icon: Icons.tune_outlined,
+  endpoint: '/api/shipment-orders/fields?all=1', listKey: 'fields', liveEvent: 'shipmentOrders:fields',
+  searchFields: const ['labelAr', 'labelEn', 'group'],
+  titleOf: (r) => _s(r, 'labelAr'),
+  subtitleOf: (r) => [_s(r, 'labelEn'), _s(r, 'inputType')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    switch (_s(r, 'group')) {
+      'pickup_delivery' => ('الاستلام والتسليم', T.info),
+      'shipment' => ('الشحنة', T.navy),
+      'pricing_time' => ('التسعير والمواعيد', T.violet),
+      'payment' => ('الدفع', T.orange),
+      _ => (_s(r, 'group'), T.inkFaint),
+    },
+    r['active'] != false ? ('مُفعّل', T.success) : ('معطّل', T.inkFaint),
+    if (r['required'] == true) ('إلزامي', T.danger),
+    if (r['isSystem'] == true) ('نظامي', T.cyan),
+  ],
+  fields: const [
+    FieldSpec('labelAr', 'التسمية بالعربية', 'Arabic label', required: true),
+    FieldSpec('labelEn', 'التسمية بالإنجليزية', 'English label'),
+    FieldSpec('group', 'المجموعة', 'Group', type: FieldType.select, options: [
+      ('pickup_delivery', 'الاستلام والتسليم', 'Pickup & delivery'),
+      ('shipment', 'الشحنة', 'Shipment'),
+      ('pricing_time', 'التسعير والمواعيد', 'Pricing & times'),
+      ('payment', 'الدفع', 'Payment'),
+    ]),
+    FieldSpec('inputType', 'نوع الحقل', 'Input type', type: FieldType.select, options: [
+      ('text', 'نص', 'Text'), ('number', 'رقم', 'Number'), ('textarea', 'نص طويل', 'Textarea'),
+      ('select', 'قائمة', 'Select'), ('cards', 'بطاقات', 'Cards'), ('datetime', 'تاريخ ووقت', 'Datetime'),
+    ]),
+    FieldSpec('required', 'إلزامي', 'Required', type: FieldType.checkbox),
+    FieldSpec('active', 'مُفعّل', 'Active', type: FieldType.checkbox),
+    FieldSpec('order', 'الترتيب', 'Order', type: FieldType.number),
+  ],
+);

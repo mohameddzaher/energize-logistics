@@ -13,17 +13,17 @@
 - [x] `main/dashboard` — اللوحة المالية ✓ (مستحق/تحصيل شهري وسنوي/نسبة/DSO/متأخرات)
 - [x] `main/overdue` — الفواتير المتأخرة ✓ (أيام التأخير+الإجمالي+بحث)
 - [x] `main/credit-alerts` — تنبيهات الائتمان ✓ (نسبة الاستخدام+تجاوز/قرب الحد)
-- [ ] `main/low-visit-customers` — العملاء منخفضو الزيارة — API: /api/tasks/low-visit-customers
+- [x] `main/low-visit-customers` — العملاء الأقل زيارة ✓ (ضمن مهام التحصيل)
 
 ## العملاء والمالية / Customers & Finance
 - [~] `customers` — العملاء ✓ (قائمة+بحث+ملف موجز+إنشاء/تعديل+إيقاف/تفعيل) — باقي: export
 - [x] `customers/[id]` — ملف العميل ✓ (أرصدة+ائتمان+تبويبا الفواتير والمدفوعات؛ النقرة تفتح الملف والضغط المطول ملخصًا)
 - [~] `invoices` — الفواتير ✓ (قائمة+فلاتر+تحصيل كامل+إنشاء) — باقي: refund/freeze
-- [ ] `invoices/[id]` — تفاصيل الفاتورة — status/freeze/refund/record payment — API: /api/invoices/${id}
+- [x] `invoices/[id]` — تفاصيل الفاتورة ✓ (أرصدة+مدفوعاتها+تسجيل دفعة+تحصيل كامل+تجميد/استرداد للسوبر أدمن)
 - [~] `payments` — المدفوعات ✓ (قائمة+بحث+إجمالي+تسجيل دفعة على فاتورة) — باقي: التخصيص الجماعي FIFO
 - [x] `collections` — متابعات التحصيل ✓ (المعلّقة + إنهاء بمبلغ محصّل)
 - [x] `collectors` — أداء المحصّلين ✓ (ترتيب بالكفاءة+مستهدف/محصّل+دفعات+وفاء الوعود)
-- [ ] `tasks` — المهام — CRUD + AI suggestions — API: /api/tasks
+- [x] `tasks` — مهام التحصيل ✓ (مهامي بحالاتها+إنجاز/تأجيل+تبويب العملاء الأقل زيارة)
 - [x] `disputes` — النزاعات ✓ (فلاتر الحالة + بدء مراجعة + حل بقرار)
 
 ## العمليات / Operations
@@ -33,7 +33,7 @@
 - [ ] `operations/dispatch-sheets` — كشوف التخريج
 - [x] `vendors` — الموردون ✓ CRUD (بحث+فئة+مستحق)
 - [x] `b2c-wallet` — عهد المشاريع ✓ (قائمة المديرين للمشرف + دفتر العهدة برصيد/وارد/صادر + تسجيل حركة)
-- [ ] `wallet-dashboard` (+branch/[id]) — لوحة المحفظة
+- [~] `wallet` اليومية ✓ — باقي: لوحة الفروع المجمّعة
 - [ ] `vehicle-analytics/*` (5 صفحات) — تحليلات المركبات (IndexedDB محلي — يحتاج تصميم خاص للموبايل)
 
 ## منصة الأوبريشن (B2B) / ops
@@ -48,7 +48,7 @@
 - [ ] `shipment-orders/chat` — مساعد الإنشاء
 - [x] `shipment-orders/customers` — العملاء — CRUD
 - [x] `shipment-orders/fleet` — الموردون ✓ والمركبات ✓ — CRUD
-- [ ] `shipment-orders/form-settings` — إعدادات النموذج
+- [x] `shipment-orders/form-settings` — إعدادات النموذج ✓ (CRUD حقول: مجموعة/نوع/إلزامي/تفعيل/ترتيب)
 
 ## إدارة الأسطول / fleet
 - [x] `fleet/board` — اللوحة الرئيسية — فلاتر الحالات + مجموعات المشرفين + كروت حية
@@ -136,7 +136,7 @@
 - [~] `requests` ✓ (المسار كامل: مسودة←اعتماد←أمر شراء) `orders` ✓ (استلام) `bills` ✓ (دفعات) `dashboard` ✓ `my-tasks`/`complaints`/`kpis` ✓
 
 ## الأدوات / tools
-- [ ] `kpis` — مؤشرات الأداء | `assistant` — المساعد | `settings` (كلمة مرور/توقيعات) | `reports`
+- [~] `settings` — الإعدادات ✓ (تغيير كلمة المرور+اللغة+خروج) — باقي: `kpis`/`assistant`/`reports`/التوقيعات
 
 ## الإدارة / admin
 - [x] `branches` ✓ `expense-categories` ✓ `users` ✓ (إنشاء/تعديل/حذف/فلترة) `permissions` ✓ (دور×قسم) — باقي: `settings/reference-data` | `audit` | `complaints` | `drivers` | `vendors`

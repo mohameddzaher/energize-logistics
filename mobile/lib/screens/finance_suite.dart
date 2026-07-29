@@ -5,6 +5,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'customer_profile.dart';
+import 'invoice_detail.dart';
 
 /// المالية — العملاء والفواتير والمدفوعات: القوائم الكاملة بالبحث والفلاتر،
 /// ملف العميل الموجز، وفعل «تحصيل كامل» على الفاتورة (للمصرّح لهم).
@@ -501,7 +502,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                                 final canMarkPaid = r['status'] != 'paid' && r['status'] != 'refunded';
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
-                                  child: AppCard(
+                                  child: Pressable(
+                                    onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => InvoiceDetailScreen(invoiceId: (r['_id'] ?? '').toString(), number: (r['invoiceNumber'] ?? '').toString()))),
+                                    child: AppCard(
                                     topAccent: st.$3,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
@@ -525,6 +528,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                                           ),
                                       ]),
                                     ]),
+                                    ),
                                   ),
                                 );
                               },

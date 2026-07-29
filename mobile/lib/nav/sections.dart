@@ -44,6 +44,9 @@ import '../screens/my_profile.dart';
 import '../screens/finance_alerts.dart';
 import '../screens/collectors_performance.dart';
 import '../screens/customs_guide.dart';
+import '../screens/finance_tasks.dart';
+import '../screens/cash_wallet.dart';
+import '../screens/settings_screen.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -101,6 +104,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('تنبيهات الائتمان', 'Credit Alerts', Icons.credit_card_outlined, (c) => const CreditAlertsScreen()),
         AppPage('الفواتير المتأخرة', 'Overdue', Icons.event_busy_outlined, (c) => const OverdueScreen()),
         AppPage('أداء المحصّلين', 'Collectors', Icons.leaderboard_outlined, (c) => const CollectorsPerformanceScreen()),
+        AppPage('مهام التحصيل', 'Tasks', Icons.checklist_rtl_outlined, (c) => const FinanceTasksScreen()),
+        AppPage('المحفظة اليومية', 'Cash Wallet', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen()),
       ],
     ),
     AppSection(
@@ -312,6 +317,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: shipmentOrdersCustomersCfg)),
         AppPage('الموردون', 'Suppliers', Icons.business_outlined, (c) => ResourceScreen(config: shipmentOrdersSuppliersCfg)),
         AppPage('الشاحنات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: shipmentOrdersVehiclesCfg)),
+        AppPage('إعدادات النموذج', 'Form Settings', Icons.tune_outlined, (c) => ResourceScreen(config: shipmentOrdersFieldsCfg)),
       ],
     ),
     AppSection(
@@ -367,4 +373,5 @@ List<AppPage> selfServicePages(bool hasTeam) => [
       AppPage('إجازاتي', 'My Leaves', Icons.beach_access_outlined, (c) => const MyLeavesScreen()),
       AppPage('طلباتي', 'My Requests', Icons.description_outlined, (c) => const MyRequestsScreen()),
       if (hasTeam) AppPage('موافقات فريقي', 'Team Approvals', Icons.fact_check_outlined, (c) => const ApprovalsScreen()),
+      AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const SettingsScreen()),
     ];

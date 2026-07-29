@@ -38,6 +38,8 @@ import '../screens/ls2_drivers.dart';
 import '../screens/vehicles_suite.dart';
 import '../screens/marketing_activities.dart';
 import '../screens/collections_disputes.dart';
+import '../screens/ops_workflows.dart';
+import '../screens/b2c_wallet.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -90,6 +92,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المدفوعات', 'Payments', Icons.payments_outlined, (c) => const PaymentsScreen()),
         AppPage('متابعات التحصيل', 'Collections', Icons.task_alt_outlined, (c) => const CollectionsScreen()),
         AppPage('النزاعات', 'Disputes', Icons.gavel_outlined, (c) => const DisputesScreen()),
+        AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen()),
       ],
     ),
     AppSection(
@@ -321,6 +324,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: b2cDashSpec)),
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg)),
         AppPage('الإدخال اليومي', 'Daily Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen()),
+        AppPage('عهد المشاريع', 'Custody', Icons.account_balance_wallet_outlined, (c) => const B2cWalletScreen()),
         AppPage('مناديب المبيعات', 'Reps', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
       ],

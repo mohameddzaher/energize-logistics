@@ -27,12 +27,12 @@
 - [x] `disputes` — النزاعات ✓ (فلاتر الحالة + بدء مراجعة + حل بقرار)
 
 ## العمليات / Operations
-- [ ] `operations` — التشغيل — workflows list/stats/stage/bulk — API: /api/workflows
-- [ ] `operations/new` — طلب تشغيل جديد — create + bulk-import — API: /api/workflows
+- [x] `operations` — التشغيل ✓ (قائمة+إحصائيات+فلاتر مرحلة+تقدّم المرحلة+تفاصيل كاملة+بحث خادم+ترقيم)
+- [~] `operations` كشوف التخريج ✓ عرض/تقدّم — باقي: الإنشاء اليدوي والاستيراد الجماعي و lock
 - [ ] `operations/[id]` — مراجعة التشغيل — stage/lock/attachments — API: /api/workflows/${id}
 - [ ] `operations/dispatch-sheets` — كشوف التخريج
 - [ ] `vendors` — الموردين — CRUD — API: /api/vendors
-- [ ] `wallet` — المحفظة — transactions/close-day/reopen — API: /api/wallet
+- [x] `b2c-wallet` — عهد المشاريع ✓ (قائمة المديرين للمشرف + دفتر العهدة برصيد/وارد/صادر + تسجيل حركة)
 - [ ] `wallet-dashboard` (+branch/[id]) — لوحة المحفظة
 - [ ] `vehicle-analytics/*` (5 صفحات) — تحليلات المركبات (IndexedDB محلي — يحتاج تصميم خاص للموبايل)
 

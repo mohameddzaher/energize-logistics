@@ -296,6 +296,12 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                             Row(children: [
                               Expanded(child: Text('${tr('سطحة', 'Flatbed')} $plate', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                               if (f['numbering'] != null) Chip2('#${f['numbering']}', T.navy),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => _editFlatbed(f),
+                                icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
+                                tooltip: tr('تعديل', 'Edit'),
+                              ),
                             ]),
                             const SizedBox(height: 6),
                             Wrap(spacing: 6, runSpacing: 6, children: [
@@ -335,11 +341,22 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     };
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-        child: TextField(
-          onChanged: (v) => setState(() => _qTrail = v),
-          decoration: InputDecoration(hintText: tr('ابحث برقم التيدر أو السطحة…', 'Search trailers…'), prefixIcon: const Icon(Icons.search), suffixText: '${list.length}'),
-        ),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+        child: Row(children: [
+          Expanded(
+            child: TextField(
+              onChanged: (v) => setState(() => _qTrail = v),
+              decoration: InputDecoration(hintText: tr('ابحث برقم التيدر أو السطحة…', 'Search trailers…'), prefixIcon: const Icon(Icons.search), suffixText: '${list.length}'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonalIcon(
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 50)),
+            onPressed: _createTrailer,
+            icon: const Icon(Icons.add, size: 18),
+            label: Text(tr('تيدر', 'Trailer'), style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ]),
       ),
       Expanded(
         child: RefreshIndicator(
@@ -365,6 +382,12 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                             if (plate.isNotEmpty) Chip2('${tr('على', 'on')} $plate', T.navy, icon: Icons.local_shipping_outlined),
                             const SizedBox(width: 6),
                             Chip2(tr(st.$1, st.$2), st.$3),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _moveTrailer(t),
+                              icon: const Icon(Icons.swap_horiz_rounded, size: 19, color: T.info),
+                              tooltip: tr('نقل / فكّ', 'Move / unhitch'),
+                            ),
                           ]),
                         ),
                       ),
@@ -979,5 +1002,119 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     );
     if (ok != true) return;
     await _post('/api/ls2/assets/tires/${t['_id']}/retire', {'kind': 'sold', if (reason.text.trim().isNotEmpty) 'notes': reason.text.trim()}, tr('سُجّلت كمباعة', 'Marked sold'));
+  }
+
+  // ── تيدر جديد ──
+  Future<void> _createTrailer() async {
+    final number = TextEditingController();
+    final plate = TextEditingController();
+    final notes = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('تسجيل تيدر جديد', 'Register new trailer'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 12),
+            TextField(controller: number, decoration: InputDecoration(labelText: tr('رقم التيدر *', 'Trailer no. *'))),
+            const SizedBox(height: 10),
+            TextField(controller: plate, decoration: InputDecoration(labelText: tr('مركّب على سطحة (اختياري)', 'On flatbed (optional)'))),
+            const SizedBox(height: 10),
+            TextField(controller: notes, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+            const SizedBox(height: 14),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')))),
+          ]),
+        ),
+      ),
+    );
+    if (ok != true || number.text.trim().isEmpty) return;
+    await _post('/api/ls2/assets/trailers', {
+      'trailerNumber': number.text.trim(),
+      if (plate.text.trim().isNotEmpty) 'plate': plate.text.trim(),
+      if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim(),
+    }, tr('تم تسجيل التيدر', 'Trailer registered'));
+  }
+
+  // ── نقل تيدر إلى سطحة (أو فكّه) ──
+  Future<void> _moveTrailer(Map<String, dynamic> t) async {
+    final plates = (_l(_d?['flatbeds']).map((x) => (x['plate'] ?? '').toString()).where((p) => p.isNotEmpty).toSet().toList()..sort());
+    final plate = TextEditingController(text: (t['currentPlate'] ?? '').toString());
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${tr('نقل التيدر', 'Move trailer')} ${t['trailerNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
+              onPressed: () async { final p = await _pickPlate(plates); if (p != null) setS(() => plate.text = p); },
+              icon: const Icon(Icons.local_shipping_outlined, size: 18),
+              label: Text(plate.text.trim().isEmpty ? tr('اختر السطحة…', 'Choose flatbed…') : plate.text, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(height: 10),
+            TextField(controller: plate, onChanged: (_) => setS(() {}), decoration: InputDecoration(labelText: tr('أو اكتب لوحة السطحة', 'Or type flatbed plate'))),
+            const SizedBox(height: 14),
+            Row(children: [
+              Expanded(child: OutlinedButton(onPressed: () { plate.text = ''; Navigator.pop(c, true); }, child: Text(tr('فكّ (غير مركّب)', 'Unhitch')))),
+              const SizedBox(width: 10),
+              Expanded(child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('نقل', 'Move')))),
+            ]),
+          ]),
+        ),
+      )),
+    );
+    if (ok != true) return;
+    await _post('/api/ls2/assets/trailers/${t['_id']}/move', {'toPlate': plate.text.trim().isEmpty ? null : plate.text.trim()},
+        plate.text.trim().isEmpty ? tr('تم فكّ التيدر', 'Trailer unhitched') : tr('تم نقل التيدر', 'Trailer moved'));
+  }
+
+  // ── تعديل سطحة (ترقيم/دفعة/ماركة/ملاحظات) ──
+  Future<void> _editFlatbed(Map<String, dynamic> f) async {
+    final numbering = TextEditingController(text: (f['numbering'] ?? '').toString());
+    final batch = TextEditingController(text: (f['batch'] ?? '').toString());
+    final brand = TextEditingController(text: (f['brand'] ?? '').toString());
+    final notes = TextEditingController(text: (f['notes'] ?? '').toString());
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${tr('تعديل السطحة', 'Edit flatbed')} ${f['plate'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: TextField(controller: numbering, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('الترقيم', 'Numbering')))),
+              const SizedBox(width: 10),
+              Expanded(child: TextField(controller: batch, decoration: InputDecoration(labelText: tr('الدفعة', 'Batch')))),
+            ]),
+            const SizedBox(height: 10),
+            TextField(controller: brand, decoration: InputDecoration(labelText: tr('الماركة', 'Brand'))),
+            const SizedBox(height: 10),
+            TextField(controller: notes, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+            const SizedBox(height: 14),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')))),
+          ]),
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.patch('/api/ls2/assets/flatbeds/${f['_id']}', {
+        if (numbering.text.trim().isNotEmpty) 'numbering': num.tryParse(numbering.text.trim()),
+        'batch': batch.text.trim(),
+        'brand': brand.text.trim(),
+        'notes': notes.text.trim(),
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم تعديل السطحة', 'Flatbed updated'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
   }
 }

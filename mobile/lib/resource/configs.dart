@@ -513,10 +513,16 @@ final ls2RepairsCfg = ResourceConfig(
   arTitle: 'الإصلاحات', enTitle: 'Repairs', icon: Icons.home_repair_service_outlined,
   endpoint: '/api/ls2/repairs', listKey: 'items', liveEvent: 'ls2:updated',
   searchFields: const ['description', 'category', 'status', 'plate'],
-  titleOf: (r) => _s(r, 'description').isNotEmpty ? _s(r, 'description') : _s(r, 'category'),
+  titleOf: (r) => _s(r, 'title').isNotEmpty ? _s(r, 'title') : (_s(r, 'description').isNotEmpty ? _s(r, 'description') : _s(r, 'category')),
   subtitleOf: (r) => [_s(r, 'plate'), _s(r, 'vehicleName')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     if (_s(r, 'category').isNotEmpty) (_s(r, 'category'), T.violet),
+    switch (_s(r, 'severity')) {
+      'high' => ('خطيرة', T.danger),
+      'low' => ('بسيطة', T.inkFaint),
+      'medium' => ('متوسطة', T.warn),
+      _ => ('', T.warn),
+    },
     if (r['cost'] != null) ('${r['cost']} ر.س', T.success),
     switch (_s(r, 'status')) {
       'done' => ('منجز', T.success),
@@ -526,12 +532,24 @@ final ls2RepairsCfg = ResourceConfig(
   ],
   fields: const [
     FieldSpec('unitId', 'رقم الوحدة (Unit ID)', 'Unit ID', type: FieldType.number, required: true),
-    FieldSpec('category', 'التصنيف', 'Category'),
-    FieldSpec('description', 'وصف الإصلاح', 'Description', type: FieldType.textarea, required: true),
-    FieldSpec('cost', 'التكلفة', 'Cost', type: FieldType.number),
+    FieldSpec('title', 'ماذا حدث؟', 'What happened?', required: true),
+    FieldSpec('category', 'التصنيف', 'Category', type: FieldType.select, options: [
+      ('breakdown', 'عطل', 'Breakdown'), ('accident', 'حادث', 'Accident'), ('tires', 'كاوتش', 'Tires'),
+      ('electrical', 'كهرباء', 'Electrical'), ('engine', 'موتور', 'Engine'), ('body', 'هيكل', 'Body'), ('other', 'أخرى', 'Other'),
+    ]),
+    FieldSpec('severity', 'الخطورة', 'Severity', type: FieldType.select, options: [
+      ('low', 'بسيطة', 'Low'), ('medium', 'متوسطة', 'Medium'), ('high', 'خطيرة', 'High'),
+    ]),
     FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
       ('open', 'مفتوح', 'Open'), ('in_progress', 'قيد التنفيذ', 'In progress'), ('done', 'منجز', 'Done'),
     ]),
+    FieldSpec('repairDate', 'تاريخ الإصلاح', 'Repair date', type: FieldType.date),
+    FieldSpec('odometerKm', 'العداد وقتها (كم)', 'Odometer (km)', type: FieldType.number),
+    FieldSpec('cost', 'التكلفة', 'Cost', type: FieldType.number),
+    FieldSpec('workshop', 'الورشة / الفني', 'Workshop', ),
+    FieldSpec('partsReplaced', 'القطع المستبدلة', 'Parts replaced', type: FieldType.textarea),
+    FieldSpec('driver', 'السائق وقتها', 'Driver'),
+    FieldSpec('description', 'تفاصيل الإصلاح', 'Details', type: FieldType.textarea),
   ],
 );
 

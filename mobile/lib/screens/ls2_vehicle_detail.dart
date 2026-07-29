@@ -122,7 +122,7 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
             : _error != null
                 ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
                 : TabBarView(children: [
-                    _OverviewTab(vehicle: _vehicle!, onRefresh: _load),
+                    _OverviewTab(vehicleId: widget.vehicleId, vehicle: _vehicle!, onRefresh: _load),
                     _MaintenanceTab(vehicleId: widget.vehicleId, plate: widget.plate),
                     _TripsTab(vehicleId: widget.vehicleId),
                     _DistanceFuelTab(vehicleId: widget.vehicleId),
@@ -135,9 +135,34 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
 
 // ── نظرة عامة ────────────────────────────────────────────────────────────────
 class _OverviewTab extends StatelessWidget {
+  final String vehicleId;
   final Map<String, dynamic> vehicle;
   final Future<void> Function() onRefresh;
-  const _OverviewTab({required this.vehicle, required this.onRefresh});
+  const _OverviewTab({required this.vehicleId, required this.vehicle, required this.onRefresh});
+
+  // تعديل ماركة/نوع الكاوتش يدويًا (PATCH /meta) — يسمع فورًا عبر ls2:updated.
+  Future<void> _editTireBrand(BuildContext context) async {
+    final ctrl = TextEditingController(text: (vehicle['tireBrand'] ?? '').toString());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('ماركة / نوع الكاوتش', 'Tire brand / type')),
+        content: TextField(controller: ctrl, autofocus: true, decoration: InputDecoration(labelText: tr('مثال: Bridgestone', 'e.g. Bridgestone'))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.patch('/api/ls2/vehicles/$vehicleId/meta', {'tireBrand': ctrl.text.trim()});
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحفظ', 'Saved'))));
+      await onRefresh();
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -272,32 +297,41 @@ class _OverviewTab extends StatelessWidget {
             ]),
           ),
         ),
-        if (profile.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          FadeSlideIn(
-            delayMs: 120,
-            child: AppCard(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(tr('بيانات المركبة', 'Vehicle profile'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                const SizedBox(height: 8),
-                ...[
-                  (tr('الماركة', 'Brand'), profile['brand']),
-                  (tr('الموديل', 'Model year'), profile['modelYear']),
-                  (tr('النوع', 'Type'), profile['vehicleType']),
-                  (tr('رقم الهيكل', 'VIN'), profile['vin']),
-                  (tr('لوحة التسجيل', 'Registration'), profile['registrationPlate']),
-                  (tr('شريحة الاتصال', 'SIM'), profile['simIccid']),
-                ].where((x) => (x.$2 ?? '').toString().isNotEmpty).map((x) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(children: [
-                        Text('${x.$1}: ', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
-                        Expanded(child: Text(x.$2.toString(), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
-                      ]),
-                    )),
+        const SizedBox(height: 12),
+        FadeSlideIn(
+          delayMs: 120,
+          child: AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Text(tr('بيانات المركبة', 'Vehicle profile'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                TextButton.icon(
+                  onPressed: () => _editTireBrand(context),
+                  icon: const Icon(Icons.edit_outlined, size: 15),
+                  label: Text(tr('ماركة الكاوتش', 'Tire brand'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 32)),
+                ),
               ]),
-            ),
+              const SizedBox(height: 4),
+              ...[
+                (tr('الماركة', 'Brand'), profile['brand']),
+                (tr('الموديل', 'Model year'), profile['modelYear']),
+                (tr('النوع', 'Type'), profile['vehicleType']),
+                (tr('رقم الهيكل', 'VIN'), profile['vin']),
+                (tr('لوحة التسجيل', 'Registration'), profile['registrationPlate']),
+                (tr('شريحة الاتصال', 'SIM'), profile['simIccid']),
+                (tr('ماركة الكاوتش', 'Tire brand'), vehicle['tireBrand']),
+              ].where((x) => (x.$2 ?? '').toString().isNotEmpty).map((x) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(children: [
+                      Text('${x.$1}: ', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                      Expanded(child: Text(x.$2.toString(), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+                    ]),
+                  )),
+              if ((vehicle['tireBrand'] ?? '').toString().isEmpty && profile.isEmpty)
+                Text(tr('اضغط «ماركة الكاوتش» لإضافتها.', 'Tap "Tire brand" to add it.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+            ]),
           ),
-        ],
+        ),
         const SizedBox(height: 20),
       ]),
     );

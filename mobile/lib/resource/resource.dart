@@ -225,9 +225,9 @@ class _ResourceScreenState extends State<ResourceScreen> {
                                               Text(cfg.subtitleOf!(r),
                                                   style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
                                                   maxLines: 1, overflow: TextOverflow.ellipsis),
-                                            if (chips.isNotEmpty) ...[
+                                            if (chips.any((c2) => c2.$1.isNotEmpty)) ...[
                                               const SizedBox(height: 4),
-                                              Wrap(spacing: 4, runSpacing: 4, children: chips.map((c2) => Chip2(c2.$1, c2.$2)).toList()),
+                                              Wrap(spacing: 4, runSpacing: 4, children: chips.where((c2) => c2.$1.isNotEmpty).map((c2) => Chip2(c2.$1, c2.$2)).toList()),
                                             ],
                                           ]),
                                         ),

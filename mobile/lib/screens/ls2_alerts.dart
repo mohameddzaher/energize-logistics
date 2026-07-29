@@ -58,6 +58,17 @@ class _Ls2AlertsScreenState extends State<Ls2AlertsScreen> {
     return d == null ? '—' : '${d.day}/${d.month} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
   }
 
+  // تأكيد الاطلاع على التنبيه — يسمع فورًا في كل مكان عبر ls2:updated.
+  Future<void> _ack(Map<String, dynamic> a) async {
+    try {
+      await Api.instance.patch('/api/ls2/alerts/${a['_id'] ?? a['id']}/ack');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم تأكيد الاطلاع', 'Acknowledged'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
@@ -130,11 +141,26 @@ class _Ls2AlertsScreenState extends State<Ls2AlertsScreen> {
                                         Text(a['message'], style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                                       ],
                                       const SizedBox(height: 6),
-                                      Wrap(spacing: 6, runSpacing: 6, children: [
+                                      Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
                                         if ((a['plate'] ?? a['vehicleName'] ?? '').toString().isNotEmpty)
                                           Chip2((a['plate'] ?? a['vehicleName']).toString(), T.navy, icon: Icons.local_shipping_outlined),
-                                        Chip2(_dt(a['createdAt'] ?? a['at']), T.inkFaint, icon: Icons.schedule_outlined),
+                                        Chip2(_dt(a['createdAt'] ?? a['at'] ?? a['firstSeenAt']), T.inkFaint, icon: Icons.schedule_outlined),
+                                        if (a['acknowledgedAt'] != null)
+                                          Chip2('${tr('تم الاطلاع', 'Acked')} · ${_dt(a['acknowledgedAt'])}', T.success, icon: Icons.check_circle_outline),
                                       ]),
+                                      // زر تأكيد الاطلاع للتنبيهات المفتوحة غير المؤكَّدة.
+                                      if (a['acknowledgedAt'] == null && (a['status'] ?? 'open') != 'resolved') ...[
+                                        const SizedBox(height: 6),
+                                        Align(
+                                          alignment: AlignmentDirectional.centerEnd,
+                                          child: FilledButton.tonalIcon(
+                                            style: FilledButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 14)),
+                                            onPressed: () => _ack(a),
+                                            icon: const Icon(Icons.check_rounded, size: 16),
+                                            label: Text(tr('تأكيد الاطلاع', 'Acknowledge'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                                          ),
+                                        ),
+                                      ],
                                     ]),
                                   ),
                                 );

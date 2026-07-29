@@ -825,7 +825,12 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
   const [destination, setDestination] = useState<'' | 'store' | 'repair' | 'damaged' | 'scrap'>('');
   const [percent, setPercent] = useState('');
   const [replacementId, setReplacementId] = useState('');
+  const [swap, setSwap] = useState(false);
   const [reason, setReason] = useState('');
+  // Is the chosen replacement a tire mounted on ANOTHER truck? Only then can we
+  // offer a two-way swap (this tire takes the replacement's old slot over there).
+  const replTire = tires.find((x) => x._id === replacementId);
+  const canSwap = replTire?.status === 'mounted' && !!replTire.plateKey;
   const DESTS: { key: 'store' | 'repair' | 'damaged' | 'scrap'; ar: string; en: string; hint: string; hintEn: string; accent: string }[] = [
     { key: 'store', ar: 'سليمة إلى المخزن', en: 'Fine → store', hint: 'صالحة للاستخدام — سجِّل نسبة حالتها للتسكين لاحقًا', hintEn: 'still usable — record its condition % for later placement', accent: 'border-blue-400 bg-blue-50 accent-blue-600' },
     { key: 'repair', ar: 'تحت التجديد', en: 'Under renewal', hint: 'تُرسَل للتجديد — تعود مجددة أو سكراب', hintEn: 'sent for retreading — comes back renewed or scrap', accent: 'border-violet-400 bg-violet-50 accent-violet-600' },
@@ -859,6 +864,16 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
           <SearchSelect value={replacementId} onChange={setReplacementId} options={[{ value: '', label: ar ? '— دون بديل —' : '— none —' }, ...spareOptions(tires, tire, ar)]} ar={ar}
             placeholder={ar ? '— دون بديل —' : '— none —'} searchPlaceholder={ar ? 'ابحث بالسيريال أو الرقم…' : 'Search serial / number…'} />
           <p className="text-[11px] text-slate-400 mt-1">{ar ? 'من المخزن، أو فردة مركّبة على مركبة أخرى (تُنقل تلقائيًا).' : 'From store, or a tire mounted on another truck (auto-transferred).'}</p>
+          {canSwap && (
+            <label className="flex items-start gap-2 mt-2 px-3 py-2 rounded-lg cursor-pointer border border-amber-200 bg-amber-50/60">
+              <input type="checkbox" checked={swap} onChange={(e) => setSwap(e.target.checked)} className="mt-0.5 accent-amber-600" />
+              <span className="text-xs text-amber-800 font-medium leading-relaxed">
+                {ar
+                  ? `تبديل متبادل: هذه الفردة تُركَّب مكان ${replTire?.serial} على المركبة ${replTire?.plate} (بدل نزولها).`
+                  : `Two-way swap: this tire takes ${replTire?.serial}'s slot on truck ${replTire?.plate} (instead of coming off).`}
+              </span>
+            </label>
+          )}
           {replacementId && isHeadSection(tire.section) && tires.find((x) => x._id === replacementId)?.condition === 'renewed' && (
             <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 font-medium mt-1.5">
               {ar ? 'البديل المختار مجدد — المجدد يُركَّب على التيدر فقط، لا على الرأس.' : 'The chosen replacement is RENEWED — trailer only, never the head.'}
@@ -871,15 +886,23 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
         </div>
         <button
           type="button"
-          disabled={busy || !destination || (!!replacementId && isHeadSection(tire.section) && tires.find((x) => x._id === replacementId)?.condition === 'renewed')}
-          onClick={() => onSubmit({
-            toPlate: null, destination, reason,
-            ...(destination === 'store' && percent !== '' ? { conditionPercent: Number(percent) } : {}),
-            ...(replacementId ? { replacementTireId: replacementId } : {}),
-          })}
+          disabled={busy || (!(swap && canSwap) && !destination) || (!!replacementId && isHeadSection(tire.section) && tires.find((x) => x._id === replacementId)?.condition === 'renewed')}
+          onClick={() => onSubmit(
+            swap && canSwap
+              ? { toPlate: null, destination: 'swap', replacementTireId: replacementId, reason }
+              : {
+                  toPlate: null, destination, reason,
+                  ...(destination === 'store' && percent !== '' ? { conditionPercent: Number(percent) } : {}),
+                  ...(replacementId ? { replacementTireId: replacementId } : {}),
+                }
+          )}
           className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40"
         >
-          {!destination ? (ar ? 'اختر وجهة الفردة أولًا' : 'Choose a destination first') : replacementId ? (ar ? 'تنفيذ الإنزال وتركيب البديل' : 'Dismount & mount replacement') : (ar ? 'تنفيذ الإنزال' : 'Dismount')}
+          {swap && canSwap
+            ? (ar ? `تبديل الفردتين بين المركبتين` : 'Swap the two tires')
+            : !destination ? (ar ? 'اختر وجهة الفردة أولًا' : 'Choose a destination first')
+            : replacementId ? (ar ? 'تنفيذ الإنزال وتركيب البديل' : 'Dismount & mount replacement')
+            : (ar ? 'تنفيذ الإنزال' : 'Dismount')}
         </button>
       </div>
     </Modal>

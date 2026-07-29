@@ -335,6 +335,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final percent = TextEditingController();
     final reason = TextEditingController();
     Map<String, dynamic>? replacement;
+    bool swap = false;
     final mounted = t['status'] == 'mounted' && (t['plate'] ?? '').toString().isNotEmpty;
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -382,22 +383,40 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 ),
                 const SizedBox(height: 3),
                 Text(tr('من المخزن، أو فردة مركّبة على مركبة أخرى (تُنقل تلقائيًا).', 'From store, or a tire on another truck (auto-transferred).'), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                // تبديل متبادل: هذه الفردة تُركَّب مكان البديلة على عربيتها.
+                if (replacement != null && replacement!['status'] == 'mounted')
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    decoration: BoxDecoration(color: T.warn.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
+                    child: CheckboxListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      value: swap,
+                      onChanged: (v) => setS(() => swap = v ?? false),
+                      title: Text(
+                        tr('تبديل متبادل: هذه الفردة تُركَّب مكان ${replacement!['serial']} على المركبة ${replacement!['plate']} (بدل نزولها).',
+                           "Two-way swap: this tire takes ${replacement!['serial']}'s slot on truck ${replacement!['plate']}."),
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: T.warn),
+                      ),
+                    ),
+                  ),
               ],
               const SizedBox(height: 14),
-              SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('فك', 'Dismount')))),
+              SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(swap ? tr('تبديل الفردتين', 'Swap the tires') : tr('فك', 'Dismount')))),
             ]),
           ),
         ),
       )),
     );
     if (ok != true) return;
+    final doSwap = swap && replacement != null && replacement!['status'] == 'mounted';
     await _post('/api/ls2/assets/tires/${t['_id']}/move', {
       'toPlate': null,
-      'destination': destination,
-      if (destination == 'store' && percent.text.trim().isNotEmpty) 'conditionPercent': num.tryParse(percent.text),
+      'destination': doSwap ? 'swap' : destination,
+      if (!doSwap && destination == 'store' && percent.text.trim().isNotEmpty) 'conditionPercent': num.tryParse(percent.text),
       if (reason.text.trim().isNotEmpty) 'reason': reason.text.trim(),
       if (replacement != null) 'replacementTireId': replacement!['_id'],
-    }, tr('تم الفك', 'Dismounted'));
+    }, doSwap ? tr('تم التبديل', 'Swapped') : tr('تم الفك', 'Dismounted'));
   }
 
   // منتقي الفردة البديلة: المخزن + المركّبة على مركبات أخرى (بحث بالسيريال/الرقم).

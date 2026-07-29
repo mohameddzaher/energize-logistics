@@ -261,6 +261,49 @@ exports.moveTire = async (req, res) => {
     }
     const when = date ? new Date(date) : new Date();
 
+    // ── التبديل المتبادل بين عربيتين ──────────────────────────────────────────
+    // الفردة (X) على العربية A، والبديلة (Y) على العربية B: تنتقل Y إلى موقع X،
+    // وتنتقل X إلى موقع Y — تبديل كامل في عملية واحدة. يُطلب بـ destination='swap'.
+    if (destination === 'swap') {
+      if (!vacated) return res.status(400).json({ message: 'التبديل يتطلب أن تكون الفردة مركّبة على سطحة أصلًا' });
+      if (!replacementTireId) return res.status(400).json({ message: 'اختر الفردة التي ستُبدَّل معها من العربية الأخرى' });
+      const y = await Ls2TireAsset.findById(replacementTireId);
+      if (!y) return res.status(404).json({ message: 'الفردة البديلة غير موجودة' });
+      if (String(y._id) === String(tire._id)) return res.status(400).json({ message: 'لا يمكن تبديل الفردة مع نفسها' });
+      if (y.status !== 'mounted' || !y.plateKey) return res.status(400).json({ message: `الفردة ${y.serial} ليست مركّبة على عربية — التبديل يكون مع فردة مركّبة على عربية أخرى` });
+      if (y.plateKey === vacated.plateKey) return res.status(400).json({ message: 'الفردتان على نفس العربية — لا حاجة للتبديل بينهما' });
+      if (y.condition === 'renewed' && isHeadSection(vacated.section)) {
+        return res.status(400).json({ message: `الفردة ${y.serial} مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس` });
+      }
+      if (tire.condition === 'renewed' && isHeadSection(y.section)) {
+        return res.status(400).json({ message: `الفردة ${tire.serial} مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس` });
+      }
+      const ySlot = { plate: y.plate, plateKey: y.plateKey, positionNumber: y.positionNumber, positionLabel: y.positionLabel, section: y.section };
+      const yPos = posLabel(y);
+      const [liveA, liveB] = [await vehicleByKey(vacated.plateKey), await vehicleByKey(ySlot.plateKey)];
+      // Y → موقع X (العربية A)
+      y.set({ status: 'mounted', plate: vacated.plate, plateKey: vacated.plateKey, positionNumber: vacated.positionNumber, positionLabel: vacated.positionLabel, section: vacated.section });
+      await y.save();
+      // X → موقع Y (العربية B)
+      tire.set({ status: 'mounted', plate: ySlot.plate, plateKey: ySlot.plateKey, positionNumber: ySlot.positionNumber, positionLabel: ySlot.positionLabel, section: ySlot.section });
+      await tire.save();
+      await logEvent(req, {
+        entityType: 'tire', refId: y._id, label: y.serial, action: 'transferred',
+        fromPlate: ySlot.plate, fromPlateKey: ySlot.plateKey, fromPosition: yPos,
+        toPlate: vacated.plate, toPlateKey: vacated.plateKey, toPosition: posLabel(y),
+        date: when, odometerKm: liveA?.odometerKm ?? null,
+        reason: reason || `تبديل: نُقلت من ${ySlot.plate} إلى ${vacated.plate}`,
+      });
+      await logEvent(req, {
+        entityType: 'tire', refId: tire._id, label: tire.serial, action: 'transferred',
+        fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
+        toPlate: ySlot.plate, toPlateKey: ySlot.plateKey, toPosition: posLabel(tire),
+        date: when, odometerKm: liveB?.odometerKm ?? null,
+        reason: reason || `تبديل: نُقلت من ${vacated.plate} إلى ${ySlot.plate}`,
+      });
+      return res.json({ tire, replacement: y, swapped: true });
+    }
+
     if (toPlate) {
       // مجدد يركب على التيدر فقط.
       if (tire.condition === 'renewed' && isHeadSection(section)) {

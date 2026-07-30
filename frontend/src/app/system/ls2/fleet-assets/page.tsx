@@ -143,7 +143,7 @@ function Modal({ title, onClose, children, wide = false }: { title: string; onCl
 }
 
 export default function Ls2FleetAssetsPage() {
-  const { notify } = useDialog();
+  const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
@@ -468,7 +468,7 @@ export default function Ls2FleetAssetsPage() {
                             {tr.currentPlate && (
                               <button
                                 type="button" title={ar ? 'إنزال' : 'Unhitch'} disabled={busy}
-                                onClick={() => { const reason = prompt(ar ? `سبب إنزال التيدر ${tr.trailerNumber}؟` : 'Reason?'); if (reason != null) doMoveTrailer(tr, { toPlate: null, reason }); }}
+                                onClick={async () => { const reason = await prompt(ar ? `سبب إنزال التيدر ${tr.trailerNumber}؟` : 'Reason?'); if (reason != null) doMoveTrailer(tr, { toPlate: null, reason }); }}
                                 className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600"
                               ><ArrowDownToLine className="w-4 h-4" /></button>
                             )}
@@ -591,7 +591,7 @@ export default function Ls2FleetAssetsPage() {
                             <div className="flex items-center justify-end">
                               <button
                                 type="button" disabled={busy}
-                                onClick={() => { if (window.confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }}
+                                onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }}
                                 className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-medium"
                               >{ar ? 'بيع كخردة' : 'Sell'}</button>
                             </div>
@@ -667,7 +667,7 @@ export default function Ls2FleetAssetsPage() {
                                 {/* السكراب/التالف: خطوة البيع كخردة — منفصلة عن وضعها سكراب. */}
                                 {admin && (ti.status === 'scrap' || ti.status === 'damaged') && (
                                   <button type="button" disabled={busy}
-                                    onClick={() => { if (window.confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }}
+                                    onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }}
                                     className="text-[11px] font-medium text-emerald-600 hover:underline">{ar ? 'بيع كخردة' : 'Sell'}</button>
                                 )}
                               </td>

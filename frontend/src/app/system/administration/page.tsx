@@ -18,6 +18,7 @@ import {
   Spinner, PageHeader, SearchInput, Modal, Field, TextInput, TextArea, Select,
   PrimaryButton, ErrorNotice, StatCard,
 } from '@/components/hr/HRKit';
+import { useDialog } from '@/components/system/DialogProvider';
 
 // ── Access ──────────────────────────────────────────────────────────────────
 const STAFF = ['super_admin', 'admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'];
@@ -102,6 +103,7 @@ const dueState = (t: Task): 'overdue' | 'today' | null => {
 export default function AdministrationBoardPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
+  const { confirm, notify } = useDialog();
   const ar = lang === 'ar';
 
   const role = user?.role || '';
@@ -206,7 +208,7 @@ export default function AdministrationBoardPage() {
       setForm(blankForm());
       await load();
     } catch (e: any) {
-      alert(e?.message || 'Request failed');
+      notify(e?.message || 'Request failed', 'error');
     }
     setSaving(false);
   };
@@ -217,7 +219,7 @@ export default function AdministrationBoardPage() {
     try {
       await api.patch(`/api/admin-tasks/${id}`, body);
     } catch (e: any) {
-      alert(e?.message || 'Request failed');
+      notify(e?.message || 'Request failed', 'error');
     }
     await load();
   };
@@ -237,7 +239,7 @@ export default function AdministrationBoardPage() {
       setOpenId(null);
       await load();
     } catch (e: any) {
-      alert(e?.message || 'Request failed');
+      notify(e?.message || 'Request failed', 'error');
     }
     setSaving(false);
   };
@@ -250,7 +252,7 @@ export default function AdministrationBoardPage() {
       setOpenId(null);
       await load();
     } catch (e: any) {
-      alert(e?.message || 'Request failed');
+      notify(e?.message || 'Request failed', 'error');
     }
     setSaving(false);
   };
@@ -278,20 +280,20 @@ export default function AdministrationBoardPage() {
       setComment('');
       await load();
     } catch (e: any) {
-      alert(e?.message || 'Request failed');
+      notify(e?.message || 'Request failed', 'error');
     }
     setSaving(false);
   };
 
   const deleteTask = async () => {
     if (!openTask) return;
-    if (!confirm(ar ? 'هل تريد حذف هذه المهمة نهائيًا؟' : 'Delete this task permanently?')) return;
+    if (!(await confirm(ar ? 'هل تريد حذف هذه المهمة نهائيًا؟' : 'Delete this task permanently?'))) return;
     try {
       await api.delete(`/api/admin-tasks/${openTask._id}`);
       setOpenId(null);
       await load();
     } catch (e: any) {
-      alert(e?.message || 'Request failed');
+      notify(e?.message || 'Request failed', 'error');
     }
   };
 

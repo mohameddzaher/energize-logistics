@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { PenTool, Upload, Trash2, Star, Check, Eraser, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
+import { useDialog } from '@/components/system/DialogProvider';
 import { PrimaryButton } from '@/components/hr/HRKit';
 
 export interface Signature { _id: string; name: string; dataUrl: string; isDefault: boolean; createdAt?: string }
@@ -28,6 +29,7 @@ function downscale(dataUrl: string, maxW = 500): Promise<string> {
 }
 
 export default function SignatureManager() {
+  const { confirm, notify, prompt } = useDialog();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (en: string, a: string) => (ar ? a : en);
@@ -68,7 +70,7 @@ export default function SignatureManager() {
     try {
       await api.post('/api/auth/signatures', { name: name.trim() || undefined, dataUrl: c.toDataURL('image/png') });
       clearPad(); setName(''); await load();
-    } catch (e: any) { alert(e?.message || t('Failed to save', 'فشل الحفظ')); }
+    } catch (e: any) { notify(e?.message || t('Failed to save', 'فشل الحفظ'), 'error'); }
     setSaving(false);
   };
 
@@ -80,16 +82,16 @@ export default function SignatureManager() {
       const dataUrl = await downscale(raw);
       await api.post('/api/auth/signatures', { name: name.trim() || file.name.replace(/\.[^.]+$/, ''), dataUrl });
       setName(''); await load();
-    } catch (e: any) { alert(e?.message || t('Failed to upload', 'فشل الرفع')); }
+    } catch (e: any) { notify(e?.message || t('Failed to upload', 'فشل الرفع'), 'error'); }
     setSaving(false);
   };
 
   const setDefault = async (id: string) => { try { await api.put(`/api/auth/signatures/${id}`, { isDefault: true }); await load(); } catch { /* */ } };
   const rename = async (id: string, current: string) => {
-    const n = window.prompt(t('Signature name', 'اسم التوقيع'), current); if (n == null) return;
+    const n = await prompt({ message: t('Signature name', 'اسم التوقيع'), defaultValue: current }); if (n == null) return;
     try { await api.put(`/api/auth/signatures/${id}`, { name: n }); await load(); } catch { /* */ }
   };
-  const remove = async (id: string) => { if (!window.confirm(t('Delete this signature?', 'تمسح التوقيع ده؟'))) return; try { await api.delete(`/api/auth/signatures/${id}`); await load(); } catch { /* */ } };
+  const remove = async (id: string) => { if (!(await confirm(t('Delete this signature?', 'تمسح التوقيع ده؟')))) return; try { await api.delete(`/api/auth/signatures/${id}`); await load(); } catch { /* */ } };
 
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>

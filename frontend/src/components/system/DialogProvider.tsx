@@ -23,8 +23,18 @@ interface ConfirmOptions {
   cancelLabel?: string;
 }
 
+interface PromptOptions {
+  message: string;
+  title?: string;
+  defaultValue?: string;
+  placeholder?: string;
+  confirmLabel?: string;
+}
+
 interface DialogApi {
   confirm: (opts: ConfirmOptions | string) => Promise<boolean>;
+  // Styled replacement for window.prompt — resolves the entered text, or null on cancel.
+  prompt: (opts: PromptOptions | string) => Promise<string | null>;
   notify: (message: string, tone?: Tone) => void;
 }
 
@@ -44,11 +54,19 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const ar = lang === 'ar';
 
   const [ask, setAsk] = useState<(ConfirmOptions & { resolve: (v: boolean) => void }) | null>(null);
+  const [askP, setAskP] = useState<(PromptOptions & { resolve: (v: string | null) => void }) | null>(null);
+  const [pVal, setPVal] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const confirm = useCallback((opts: ConfirmOptions | string) => {
     const o = typeof opts === 'string' ? { message: opts } : opts;
     return new Promise<boolean>((resolve) => setAsk({ ...o, resolve }));
+  }, []);
+
+  const prompt = useCallback((opts: PromptOptions | string) => {
+    const o = typeof opts === 'string' ? { message: opts } : opts;
+    setPVal(o.defaultValue ?? '');
+    return new Promise<string | null>((resolve) => setAskP({ ...o, resolve }));
   }, []);
 
   const notify = useCallback((message: string, tone: Tone = 'info') => {
@@ -58,11 +76,16 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
   }, []);
 
-  const api = useMemo(() => ({ confirm, notify }), [confirm, notify]);
+  const api = useMemo(() => ({ confirm, prompt, notify }), [confirm, prompt, notify]);
 
   const close = (result: boolean) => {
     ask?.resolve(result);
     setAsk(null);
+  };
+
+  const closeP = (result: string | null) => {
+    askP?.resolve(result);
+    setAskP(null);
   };
 
   const tone = TONE[ask?.tone || 'danger'];
@@ -112,6 +135,45 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         )}
       </AnimatePresence>
 
+      {/* Prompt — a styled text-input replacement for window.prompt. */}
+      <AnimatePresence>
+        {askP && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            dir={isRTL ? 'rtl' : 'ltr'}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => closeP(null)}
+          >
+            <motion.form
+              initial={{ opacity: 0, scale: 0.95, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => { e.preventDefault(); closeP(pVal); }}
+              className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6">
+                <h3 className="text-base font-bold text-slate-900">{askP.title || (ar ? 'إدخال' : 'Enter')}</h3>
+                <p className="text-sm text-slate-600 mt-1.5 whitespace-pre-line leading-relaxed">{askP.message}</p>
+                <input
+                  autoFocus value={pVal} onChange={(e) => setPVal(e.target.value)}
+                  placeholder={askP.placeholder || ''}
+                  className="mt-3 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#f37121]"
+                />
+              </div>
+              <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3">
+                <button type="button" onClick={() => closeP(null)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors">
+                  {ar ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button type="submit"
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors bg-[#f37121] hover:bg-[#e06010]">
+                  {askP.confirmLabel || (ar ? 'تأكيد' : 'OK')}
+                </button>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div dir={isRTL ? 'rtl' : 'ltr'} className="fixed bottom-4 end-4 z-[100] flex flex-col gap-2 pointer-events-none">
         <AnimatePresence>
           {toasts.map((t) => {
@@ -146,6 +208,7 @@ export function useDialog(): DialogApi {
   const ctx = useContext(DialogContext);
   return ctx || {
     confirm: async (o) => window.confirm(typeof o === 'string' ? o : o.message),
+    prompt: async (o) => window.prompt(typeof o === 'string' ? o : o.message, typeof o === 'string' ? '' : (o.defaultValue ?? '')),
     notify: (m) => window.alert(m),
   };
 }

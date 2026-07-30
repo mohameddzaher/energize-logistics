@@ -18,6 +18,7 @@ import { exportToExcel } from '@/utils/exportExcel';
 import {
   ContractVendor, VENDOR_STATUS, canViewContracts, canEditContracts, fmtN, fmtD, foldAr,
 } from '@/lib/contracts';
+import { useDialog } from '@/components/system/DialogProvider';
 
 const emptyForm = {
   name: '', energizeRep: '', operationsRep: '', vendorType: '', contactPerson: '', phone: '',
@@ -29,6 +30,7 @@ const emptyForm = {
 function VendorsPageInner() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
+  const { confirm, notify } = useDialog();
   const ar = lang === 'ar';
   const params = useSearchParams();
 
@@ -97,14 +99,14 @@ function VendorsPageInner() {
       else await api.post('/api/contracts/vendors', body);
       setShowForm(false);
       await load();
-    } catch (e: any) { alert(e?.message || 'Request failed'); }
+    } catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
     setSaving(false);
   };
 
   const remove = async (v: ContractVendor) => {
-    if (!confirm(ar ? `هل تريد حذف المورد «${v.name}» نهائيًا؟ تاريخه التشغيلي سيبقى محفوظًا.` : `Delete vendor "${v.name}"?`)) return;
+    if (!(await confirm(ar ? `هل تريد حذف المورد «${v.name}» نهائيًا؟ تاريخه التشغيلي سيبقى محفوظًا.` : `Delete vendor "${v.name}"?`))) return;
     try { await api.delete(`/api/contracts/vendors/${v._id}`); await load(); }
-    catch (e: any) { alert(e?.message || 'Request failed'); }
+    catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
   };
 
   if (!canViewContracts(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرّح لك بالوصول إلى هذه الصفحة.' : 'Not authorized.'}</div>;

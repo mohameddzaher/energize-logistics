@@ -14,12 +14,14 @@ import {
   PrimaryButton, ErrorNotice, SmallBadge, StatCard,
 } from '@/components/hr/HRKit';
 import { ContractProspect, canViewContracts, canEditContracts, fmtN, fmtD, foldAr } from '@/lib/contracts';
+import { useDialog } from '@/components/system/DialogProvider';
 
 const emptyForm = { companyName: '', contactPerson: '', phone: '', headquarters: '', destinations: '', vehicleType: '', interestStatus: '', contactDate: '', assignedTo: '', notes: '' };
 
 export default function ProspectsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
+  const { confirm, notify } = useDialog();
   const ar = lang === 'ar';
   const router = useRouter();
   const canEdit = canEditContracts(user);
@@ -71,22 +73,22 @@ export default function ProspectsPage() {
       else await api.post('/api/contracts/prospects', body);
       setShowForm(false);
       await load();
-    } catch (e: any) { alert(e?.message || 'Request failed'); }
+    } catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
     setSaving(false);
   };
 
   const remove = async (p: ContractProspect) => {
-    if (!confirm(ar ? `حذف «${p.companyName}» من سجل التنشيط؟` : 'Delete prospect?')) return;
+    if (!(await confirm(ar ? `حذف «${p.companyName}» من سجل التنشيط؟` : 'Delete prospect?'))) return;
     try { await api.delete(`/api/contracts/prospects/${p._id}`); await load(); }
-    catch (e: any) { alert(e?.message || 'Request failed'); }
+    catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
   };
 
   const convert = async (p: ContractProspect) => {
-    if (!confirm(ar ? `تحويل «${p.companyName}» إلى مورد في السجل الرسمي؟` : 'Convert to vendor?')) return;
+    if (!(await confirm(ar ? `تحويل «${p.companyName}» إلى مورد في السجل الرسمي؟` : 'Convert to vendor?'))) return;
     try {
       const d = await api.post<{ vendor: { _id: string } }>(`/api/contracts/prospects/${p._id}/convert`, {});
       router.push(`/system/contracts/vendors/${d.vendor._id}`);
-    } catch (e: any) { alert(e?.message || 'Request failed'); }
+    } catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
   };
 
   if (!canViewContracts(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرّح لك بالوصول إلى هذه الصفحة.' : 'Not authorized.'}</div>;

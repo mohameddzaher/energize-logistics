@@ -13,7 +13,7 @@ import { getHrContractsTranslations } from '@/lib/translations';
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '' };
 
 export default function ContractsPage() {
-  const { notify } = useDialog();
+  const { notify, prompt } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -63,7 +63,7 @@ export default function ContractsPage() {
   };
 
   const terminate = async (c: Contract) => {
-    const reason = prompt(tx.terminationReasonPrompt) ?? '';
+    const reason = (await prompt(tx.terminationReasonPrompt)) ?? '';
     try {
       await api.post(`/api/hr/contracts/${c._id}/terminate`, { reason });
       load();

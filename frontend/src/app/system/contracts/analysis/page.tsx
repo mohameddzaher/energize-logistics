@@ -15,6 +15,7 @@ import {
   ArrowUpRight, ArrowDownRight, RefreshCw,
 } from 'lucide-react';
 import { Spinner, PageHeader, StatCard, ErrorNotice, Modal, Field, TextInput, Select, PrimaryButton, SearchableSelect } from '@/components/hr/HRKit';
+import { useDialog } from '@/components/system/DialogProvider';
 import {
   CATEGORY_LABELS, CategoryKey, MONTH_AR, canViewContracts, canEditContracts,
   fmtN, pct, monthLabel, ContractVendor,
@@ -44,6 +45,7 @@ function Card({ title, icon, children, tone = '' }: { title: string; icon?: Reac
 export default function ContractsAnalysisPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
+  const { notify } = useDialog();
   const ar = lang === 'ar';
   const canEdit = canEditContracts(user);
 
@@ -106,7 +108,7 @@ export default function ContractsAnalysisPage() {
       });
       setEntry({ ...entry, vendorName: '', orders: '' });
       await Promise.all([loadMonths(), load()]);
-    } catch (e: any) { alert(e?.message || 'Request failed'); }
+    } catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
     setSaving(false);
   };
 

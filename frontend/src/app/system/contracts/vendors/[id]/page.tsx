@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Spinner, ErrorNotice, SmallBadge, Modal, Field, TextInput, TextArea, PrimaryButton } from '@/components/hr/HRKit';
 import { ContractVendor, UtilisationRow, VENDOR_STATUS, MONTH_AR, canViewContracts, canEditContracts, fmtN, fmtD, pct } from '@/lib/contracts';
+import { useDialog } from '@/components/system/DialogProvider';
 
 const readFileAsDataUrl = (f: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader();
@@ -79,6 +80,7 @@ function ProfileTable({ t, ar }: { t: any; ar: boolean }) {
 export default function VendorProfilePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
+  const { confirm, notify } = useDialog();
   const ar = lang === 'ar';
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -121,14 +123,14 @@ export default function VendorProfilePage() {
       await api.post(`/api/contracts/vendors/${vendor._id}/attachments`, { dataUrl, fileName: f.name, title: attTitle });
       setAttTitle('');
       await load();
-    } catch (e: any) { alert(e?.message || 'Upload failed'); }
+    } catch (e: any) { notify(e?.message || 'Upload failed', 'error'); }
     setUploading(false);
   };
 
   const removeAttachment = async (attId: string) => {
-    if (!vendor || !confirm(ar ? 'حذف هذا المرفق نهائيًا؟' : 'Delete this attachment?')) return;
+    if (!vendor || !(await confirm(ar ? 'حذف هذا المرفق نهائيًا؟' : 'Delete this attachment?'))) return;
     try { await api.delete(`/api/contracts/vendors/${vendor._id}/attachments/${attId}`); await load(); }
-    catch (e: any) { alert(e?.message || 'Failed'); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   };
 
   const saveRating = async () => {
@@ -137,7 +139,7 @@ export default function VendorProfilePage() {
       await api.patch(`/api/contracts/vendors/${vendor._id}`, { rating: ratingDraft.rating || null, ratingNotes: ratingDraft.ratingNotes });
       setShowRating(false);
       await load();
-    } catch (e: any) { alert(e?.message || 'Failed'); }
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   };
 
   if (!canViewContracts(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرّح لك بالوصول إلى هذه الصفحة.' : 'Not authorized.'}</div>;

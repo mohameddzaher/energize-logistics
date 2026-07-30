@@ -13,6 +13,7 @@ import {
   PrimaryButton, ErrorNotice, SmallBadge, Tabs,
 } from '@/components/hr/HRKit';
 import { DeptContract, DEPT_LABELS, DEPT_CONTRACT_STATUS, canViewContracts, canEditContracts, fmtN, fmtD, foldAr } from '@/lib/contracts';
+import { useDialog } from '@/components/system/DialogProvider';
 
 const readFileAsDataUrl = (f: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader();
@@ -29,6 +30,7 @@ const emptyForm = {
 export default function AgreementsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
+  const { confirm, notify } = useDialog();
   const ar = lang === 'ar';
   const canEdit = canEditContracts(user);
 
@@ -95,14 +97,14 @@ export default function AgreementsPage() {
       else await api.post('/api/contracts/agreements', body);
       setShowForm(false);
       await load();
-    } catch (e: any) { alert(e?.message || 'Request failed'); }
+    } catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
     setSaving(false);
   };
 
   const remove = async (c: DeptContract) => {
-    if (!confirm(ar ? `حذف عقد «${c.partyName}» نهائيًا بمرفقاته؟` : 'Delete contract?')) return;
+    if (!(await confirm(ar ? `حذف عقد «${c.partyName}» نهائيًا بمرفقاته؟` : 'Delete contract?'))) return;
     try { await api.delete(`/api/contracts/agreements/${c._id}`); await load(); }
-    catch (e: any) { alert(e?.message || 'Request failed'); }
+    catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
   };
 
   const uploadFile = async (f: File | null) => {
@@ -113,14 +115,14 @@ export default function AgreementsPage() {
       await api.post(`/api/contracts/agreements/${openContract._id}/attachments`, { dataUrl, fileName: f.name, title: attTitle });
       setAttTitle('');
       await load();
-    } catch (e: any) { alert(e?.message || 'Upload failed'); }
+    } catch (e: any) { notify(e?.message || 'Upload failed', 'error'); }
     setUploading(false);
   };
 
   const removeAttachment = async (attId: string) => {
-    if (!openContract || !confirm(ar ? 'حذف هذا المرفق؟' : 'Delete attachment?')) return;
+    if (!openContract || !(await confirm(ar ? 'حذف هذا المرفق؟' : 'Delete attachment?'))) return;
     try { await api.delete(`/api/contracts/agreements/${openContract._id}/attachments/${attId}`); await load(); }
-    catch (e: any) { alert(e?.message || 'Failed'); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   };
 
   if (!canViewContracts(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرّح لك بالوصول إلى هذه الصفحة.' : 'Not authorized.'}</div>;

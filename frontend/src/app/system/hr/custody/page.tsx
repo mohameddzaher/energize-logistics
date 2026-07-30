@@ -24,7 +24,7 @@ const isLocked = (a: Asset) => isItOwned(a) && a.type !== 'sim';
 const userName = (u: any) => (u && typeof u === 'object' ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 
 export default function CustodyPage() {
-  const { confirm, notify } = useDialog();
+  const { confirm, notify, prompt } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -74,7 +74,7 @@ export default function CustodyPage() {
   };
 
   const returnAsset = async (a: Asset) => {
-    const cond = prompt(tx.returnConditionPrompt, a.condition || 'good') || a.condition;
+    const cond = (await prompt({ message: tx.returnConditionPrompt, defaultValue: a.condition || 'good' })) || a.condition;
     try { await api.post(`/api/hr/assets/${a._id}/return`, { returnedCondition: cond }); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
   const remove = async (a: Asset) => { if (!(await confirm(tx.deleteConfirm))) return; try { await api.delete(`/api/hr/assets/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); } };

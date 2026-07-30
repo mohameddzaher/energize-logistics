@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../ui/contact.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -300,14 +301,23 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                 ),
                 if (vehicleDrivers.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    initialValue: _driverId.isEmpty ? null : _driverId,
-                    decoration: InputDecoration(labelText: tr('السائق', 'Driver')),
-                    items: vehicleDrivers
-                        .map((d) => DropdownMenuItem(value: (d['_id'] ?? '').toString(), child: Text((d['name'] ?? '').toString())))
-                        .toList(),
-                    onChanged: (v) => setState(() => _driverId = v ?? ''),
-                  ),
+                  Row(children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _driverId.isEmpty ? null : _driverId,
+                        decoration: InputDecoration(labelText: tr('السائق', 'Driver')),
+                        items: vehicleDrivers
+                            .map((d) => DropdownMenuItem(value: (d['_id'] ?? '').toString(), child: Text((d['name'] ?? '').toString())))
+                            .toList(),
+                        onChanged: (v) => setState(() => _driverId = v ?? ''),
+                      ),
+                    ),
+                    // اتصال/واتساب على رقم السائق المختار مباشرة.
+                    Builder(builder: (_) {
+                      final d = vehicleDrivers.firstWhere((x) => (x['_id'] ?? '').toString() == _driverId, orElse: () => const {});
+                      return ContactButtons(phone: (d['phone'] ?? d['mobile'] ?? '').toString(), compact: true);
+                    }),
+                  ]),
                 ],
                 const Divider(height: 24),
 

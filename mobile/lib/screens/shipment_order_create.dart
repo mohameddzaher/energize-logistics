@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/contact.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -407,10 +408,12 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                             child: TextField(
                               controller: _ctrl('driverPhone'),
                               keyboardType: TextInputType.phone,
-                              onChanged: (v) => _form['driverPhone'] = v,
+                              onChanged: (v) => setState(() => _form['driverPhone'] = v),
                               decoration: InputDecoration(labelText: tr('هاتف السائق', 'Driver phone')),
                             ),
                           ),
+                          // اتصال/واتساب على رقم السائق مباشرة.
+                          ContactButtons(phone: (_form['driverPhone'] ?? _ctrls['driverPhone']?.text ?? '').toString(), compact: true),
                         ]),
                       ]),
                     ),

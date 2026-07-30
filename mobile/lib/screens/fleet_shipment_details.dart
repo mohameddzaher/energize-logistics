@@ -3,6 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/contact.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -178,6 +179,19 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                               if (s['expectedArrival'] != null)
                                 Chip2('${tr('الوصول المتوقع', 'ETA')}: ${_dt(s['expectedArrival'])}', T.warn, icon: Icons.schedule_outlined),
                             ]),
+                            // اتصال/واتساب على رقم السائق مباشرة من التفاصيل.
+                            Builder(builder: (_) {
+                              final phone = (s['driverPhone'] ?? (s['driver'] is Map ? s['driver']['phone'] : null) ?? '').toString();
+                              if (phone.isEmpty) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(children: [
+                                  Text('${tr('السائق', 'Driver')}: ${s['driverName'] ?? ''}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
+                                  const Spacer(),
+                                  ContactButtons(phone: phone, compact: true),
+                                ]),
+                              );
+                            }),
                             if ((s['notes'] ?? '').toString().isNotEmpty) ...[
                               const SizedBox(height: 8),
                               Text(s['notes'], style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),

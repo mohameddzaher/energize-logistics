@@ -20,6 +20,8 @@ dependencies:
   intl: ^0.19.0
   # خط عربي احترافي (Tajawal) — يُحمَّل ويُخزَّن تلقائيًا.
   google_fonts: ^6.2.1
+  # فتح المكالمة/الواتساب من داخل التطبيق (tel: و wa.me).
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

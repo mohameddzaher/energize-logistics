@@ -33,6 +33,7 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
+        _tile(context, Icons.person_outline, tr('تعديل الاسم والبريد', 'Edit name & email'), () => _editProfile(context, auth)),
         _tile(context, Icons.lock_outline, tr('تغيير كلمة المرور', 'Change password'), () => _changePassword(context)),
         _tile(context, Icons.translate, tr('اللغة', 'Language'), () => Lang.instance.toggle(), trailing: Text(tr('العربية', 'English'), style: const TextStyle(fontWeight: FontWeight.w700, color: T.navy))),
         _tile(context, Icons.logout_rounded, tr('تسجيل الخروج', 'Sign out'), () async {
@@ -68,6 +69,56 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
       );
+
+  // تعديل الاسم والبريد الحقيقي للحساب (PATCH /api/auth/me) — يتحدّث فورًا.
+  void _editProfile(BuildContext context, AuthProvider auth) {
+    final firstName = TextEditingController(text: (auth.user?['firstName'] ?? '').toString());
+    final lastName = TextEditingController(text: (auth.user?['lastName'] ?? '').toString());
+    final email = TextEditingController(text: (auth.user?['email'] ?? '').toString());
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('تعديل بيانات الحساب', 'Edit account'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: TextField(controller: firstName, decoration: InputDecoration(labelText: tr('الاسم الأول', 'First name')))),
+              const SizedBox(width: 10),
+              Expanded(child: TextField(controller: lastName, decoration: InputDecoration(labelText: tr('الاسم الأخير', 'Last name')))),
+            ]),
+            const SizedBox(height: 10),
+            TextField(controller: email, keyboardType: TextInputType.emailAddress, textDirection: TextDirection.ltr,
+                autocorrect: false, enableSuggestions: false, textCapitalization: TextCapitalization.none,
+                decoration: InputDecoration(labelText: tr('البريد الإلكتروني', 'Email'))),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () async {
+                  try {
+                    await Api.instance.patch('/api/auth/me', {
+                      'firstName': firstName.text.trim(),
+                      'lastName': lastName.text.trim(),
+                      'email': email.text.trim(),
+                    });
+                    await auth.refreshUser();
+                    if (c.mounted) Navigator.pop(c);
+                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم حفظ البيانات ✔', 'Saved ✔'))));
+                  } catch (e) {
+                    if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
+                  }
+                },
+                child: Text(tr('حفظ', 'Save')),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 
   void _changePassword(BuildContext context) {
     final current = TextEditingController();

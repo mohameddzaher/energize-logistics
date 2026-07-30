@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getSettingsTranslations, getSettingsExtraTranslations } from '@/lib/translations';
@@ -8,7 +8,7 @@ import { Settings, Shield, RefreshCw, Lock, Eye, EyeOff, CheckCircle2, User, Pen
 import SignatureManager from '@/components/SignatureManager';
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const isSuperAdmin = ['super_admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
 
   const { lang } = useLanguage();
@@ -24,6 +24,32 @@ export default function SettingsPage() {
   const [pwLoading, setPwLoading] = useState(false);
   const [pwMessage, setPwMessage] = useState('');
   const [pwError, setPwError] = useState('');
+
+  // Account (name/email) edit — self-service.
+  const [profFirst, setProfFirst] = useState('');
+  const [profLast, setProfLast] = useState('');
+  const [profEmail, setProfEmail] = useState('');
+  const [profLoading, setProfLoading] = useState(false);
+  const [profMsg, setProfMsg] = useState('');
+  const [profErr, setProfErr] = useState('');
+
+  useEffect(() => {
+    if (user) { setProfFirst(user.firstName || ''); setProfLast(user.lastName || ''); setProfEmail(user.email || ''); }
+  }, [user]);
+
+  const handleSaveProfile = async () => {
+    setProfErr(''); setProfMsg('');
+    try {
+      setProfLoading(true);
+      await api.patch('/api/auth/me', { firstName: profFirst, lastName: profLast, email: profEmail });
+      await refreshUser();
+      setProfMsg(lang === 'ar' ? 'تم حفظ البيانات ✔' : 'Saved ✔');
+    } catch (err: any) {
+      setProfErr(err.message || (lang === 'ar' ? 'تعذّر الحفظ' : 'Failed to save'));
+    } finally {
+      setProfLoading(false);
+    }
+  };
 
   // Risk recalculation
   const [recalculating, setRecalculating] = useState(false);
@@ -186,18 +212,40 @@ export default function SettingsPage() {
           <User className="w-5 h-5 text-[#f37121]" />
           {txx.accountInformation}
         </h3>
-        <div className="space-y-3 text-sm">
-          <div className="flex justify-between py-2 border-b border-slate-200/70">
-            <span className="text-slate-500">{txx.name}</span>
-            <span className="text-slate-900">{user?.firstName} {user?.lastName}</span>
+        <p className="text-slate-500 text-sm mb-4">
+          {lang === 'ar' ? 'عدّل اسمك وبريدك — يُحفظ فورًا ويظهر في كل النظام.' : 'Edit your name and email — saved instantly and reflected across the system.'}
+        </p>
+        {profMsg && (
+          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-600 text-sm flex items-center gap-2 mb-4">
+            <CheckCircle2 className="w-4 h-4" /> {profMsg}
           </div>
-          <div className="flex justify-between py-2 border-b border-slate-200/70">
-            <span className="text-slate-500">{txx.email}</span>
-            <span className="text-slate-900">{user?.email}</span>
+        )}
+        {profErr && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm mb-4">{profErr}</div>}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-slate-700 text-sm font-medium mb-1.5">{lang === 'ar' ? 'الاسم الأول' : 'First name'}</label>
+              <input value={profFirst} onChange={(e) => setProfFirst(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+            </div>
+            <div>
+              <label className="block text-slate-700 text-sm font-medium mb-1.5">{lang === 'ar' ? 'الاسم الأخير' : 'Last name'}</label>
+              <input value={profLast} onChange={(e) => setProfLast(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+            </div>
           </div>
-          <div className="flex justify-between py-2">
-            <span className="text-slate-500">{txx.role}</span>
-            <span className="text-slate-900 capitalize">{user?.role?.replace('_', ' ')}</span>
+          <div>
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">{txx.email}</label>
+            <input type="email" dir="ltr" value={profEmail} onChange={(e) => setProfEmail(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+          </div>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-sm text-slate-500">{txx.role}: <span className="text-slate-900 capitalize font-medium">{user?.role?.replace('_', ' ')}</span></span>
+            <button type="button" onClick={handleSaveProfile} disabled={profLoading}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium transition-all disabled:opacity-50">
+              {profLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <User className="w-4 h-4" />}
+              {lang === 'ar' ? 'حفظ' : 'Save'}
+            </button>
           </div>
         </div>
       </div>

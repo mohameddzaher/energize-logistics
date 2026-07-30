@@ -218,6 +218,34 @@ exports.changePassword = async (req, res) => {
   }
 };
 
+// Self-service profile update — a user editing their OWN name/email. Role and
+// permissions are NOT touchable here (only the admin users page does that).
+exports.updateMyProfile = async (req, res) => {
+  try {
+    const { firstName, lastName, email } = req.body;
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (email !== undefined && String(email).trim().toLowerCase() !== (user.email || '').toLowerCase()) {
+      const clean = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return res.status(400).json({ message: 'بريد إلكتروني غير صالح' });
+      const exists = await User.findOne({ email: clean, _id: { $ne: user._id } });
+      if (exists) return res.status(400).json({ message: 'هذا البريد الإلكتروني مستخدم بالفعل' });
+      user.email = clean;
+    }
+    if (firstName !== undefined && String(firstName).trim()) user.firstName = String(firstName).trim();
+    if (lastName !== undefined && String(lastName).trim()) user.lastName = String(lastName).trim();
+    await user.save();
+    invalidateUserCache(user._id); // so /me returns the new name/email immediately
+
+    await logAudit({ user: req.user._id, action: 'update_profile', entity: 'User', entityId: user._id, ipAddress: req.ip });
+    res.json({ user: { _id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role } });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ message: 'Failed to update profile' });
+  }
+};
+
 exports.getMe = async (req, res) => {
   try {
     // Ensure staff logins (incl. the super admin / demo accounts) always have a

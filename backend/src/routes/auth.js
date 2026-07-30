@@ -22,6 +22,8 @@ router.post('/refresh', authController.refresh);
 router.post('/logout', authenticate, authController.logout);
 
 router.get('/me', authenticate, authController.getMe);
+// Self-service: a user edits their own name/email (not role/permissions).
+router.patch('/me', authenticate, authController.updateMyProfile);
 
 // Personal signatures (manage in profile, apply to leave approvals etc.)
 router.get('/signatures', authenticate, authController.getMySignatures);

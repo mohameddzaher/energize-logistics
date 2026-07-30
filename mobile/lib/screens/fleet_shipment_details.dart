@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
+import '../ui/doc_pdf.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -116,6 +117,29 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     return '${d.day}/${d.month} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
   }
 
+  // طباعة/مشاركة البوليصة كـ PDF من داخل التطبيق.
+  Future<void> _print(Map<String, dynamic> s) async {
+    final st = _statuses[s['status']];
+    await printDocument(
+      title: tr('بوليصة شحن', 'Shipment waybill'),
+      number: (s['waybillNumber'] ?? '').toString(),
+      subtitle: '${s['fromCity'] ?? ''} ← ${s['toCity'] ?? ''}',
+      rows: [
+        (tr('العميل', 'Customer'), (s['customerName'] ?? '').toString()),
+        (tr('من', 'From'), (s['fromCity'] ?? '').toString()),
+        (tr('إلى', 'To'), (s['toCity'] ?? '').toString()),
+        (tr('السيارة', 'Vehicle'), (s['vehiclePlate'] ?? '').toString()),
+        (tr('السائق', 'Driver'), (s['driverName'] ?? '').toString()),
+        (tr('هاتف السائق', 'Driver phone'), (s['driverPhone'] ?? '').toString()),
+        (tr('المشرف', 'Supervisor'), (s['supervisorName'] ?? '').toString()),
+        (tr('تاريخ التحميل', 'Load date'), _dt(s['loadDate']?.toString())),
+        (tr('الوصول المتوقع', 'ETA'), _dt(s['expectedArrival']?.toString())),
+        (tr('الحالة', 'Status'), st != null ? tr(st.$1, st.$2) : (s['status'] ?? '').toString()),
+        (tr('ملاحظات', 'Notes'), (s['notes'] ?? '').toString()),
+      ],
+    );
+  }
+
   String _eventText(Map<String, dynamic> e) {
     final data = e['data'] as Map<String, dynamic>? ?? {};
     switch (e['type']) {
@@ -142,6 +166,14 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     final st = s != null ? (_statuses[s['status']] ?? ('—', '—', T.inkFaint)) : ('—', '—', T.inkFaint);
     return AppScaffold(
       title: Text(s != null ? '${tr('بوليصة', 'Waybill')} ${s['waybillNumber'] ?? ''}' : tr('تفاصيل الشحنة', 'Shipment')),
+      actions: [
+        if (s != null)
+          IconButton(
+            icon: const Icon(Icons.print_outlined),
+            tooltip: tr('طباعة / مشاركة', 'Print / share'),
+            onPressed: () => _print(s),
+          ),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 140), SizedBox(height: 10), Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 260),

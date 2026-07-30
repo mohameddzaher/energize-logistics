@@ -22,6 +22,9 @@ dependencies:
   google_fonts: ^6.2.1
   # فتح المكالمة/الواتساب من داخل التطبيق (tel: و wa.me).
   url_launcher: ^6.3.1
+  # طباعة/مشاركة PDF من داخل التطبيق (البوليصة وغيرها) — يدعم العربية عبر خطوط جوجل.
+  printing: ^5.13.1
+  pdf: ^3.11.1
 
 dev_dependencies:
   flutter_test:

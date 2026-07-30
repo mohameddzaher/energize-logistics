@@ -3,6 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/doc_pdf.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'shipment_order_create.dart';
@@ -68,6 +69,31 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
+  }
+
+  // طباعة/مشاركة بوليصة الطلب كـ PDF.
+  Future<void> _printOrder(Map<String, dynamic> r) async {
+    String s(String k) => (r[k] ?? '').toString();
+    await printDocument(
+      title: tr('بوليصة شحن', 'Shipment waybill'),
+      number: s('waybillNumber'),
+      subtitle: '${s('fromCity')} ← ${s('toCity')}',
+      rows: [
+        (tr('العميل', 'Customer'), s('customerName')),
+        (tr('المورّد', 'Supplier'), s('supplierName')),
+        (tr('من', 'From'), s('fromCity')),
+        (tr('إلى', 'To'), s('toCity')),
+        (tr('نوع الشاحنة', 'Truck type'), s('truckType')),
+        (tr('نوع البضاعة', 'Cargo'), s('cargoType')),
+        (tr('السيارة', 'Vehicle'), s('vehicleName').isNotEmpty ? s('vehicleName') : s('vehiclePlate')),
+        (tr('السائق', 'Driver'), s('driverName')),
+        (tr('هاتف السائق', 'Driver phone'), s('driverPhone')),
+        (tr('سعر البيع', 'Sell price'), s('sellPrice')),
+        (tr('سعر الشراء', 'Buy price'), s('buyPrice')),
+        (tr('الفرع', 'Branch'), s('branch')),
+        (tr('ملاحظات', 'Notes'), s('notes')),
+      ],
+    );
   }
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
@@ -154,6 +180,12 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                                       Row(children: [
                                         Text('${tr('بوليصة', 'WB')} ${r['waybillNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                                         const Spacer(),
+                                        InkWell(
+                                          onTap: () => _printOrder(r),
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.print_outlined, size: 19, color: T.navy)),
+                                        ),
+                                        const SizedBox(width: 6),
                                         Chip2(tr(st.$1, st.$2), st.$3),
                                       ]),
                                       const SizedBox(height: 4),

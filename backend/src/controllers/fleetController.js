@@ -165,6 +165,17 @@ exports.listShipments = async (req, res) => {
         { $sort: { n: -1 } },
       ]),
     ]);
+    // إثراء البوليصة ببيانات السائق (الإقامة/الجوال) من سجل السائق — الحقول دي
+    // مش مخزّنة على الشحنة نفسها لكن البوليصة محتاجاها فتطلع فاضية.
+    const driverIds = [...new Set(shipments.map((s) => s.driver).filter(Boolean).map(String))];
+    if (driverIds.length) {
+      const drivers = await FleetDriver.find({ _id: { $in: driverIds } }).select('iqama phone').lean();
+      const dmap = new Map(drivers.map((d) => [String(d._id), d]));
+      for (const s of shipments) {
+        const d = s.driver ? dmap.get(String(s.driver)) : null;
+        if (d) { s.driverIqama = d.iqama || ''; if (!s.driverPhone) s.driverPhone = d.phone || ''; }
+      }
+    }
     const byStatus = {};
     statusAgg.forEach((r) => { byStatus[r._id] = r.n; });
     const byDestination = destAgg.filter((r) => r._id).map((r) => ({ city: r._id, n: r.n }));
@@ -329,11 +340,16 @@ exports.getShipment = async (req, res) => {
       FleetShipment.findById(req.params.id)
         .populate('customer', 'name phone routes')
         .populate('vehicle', 'plate trailerType gpsType')
-        .populate('driver secondDriver', 'name phone working onSponsorship')
+        .populate('driver secondDriver', 'name phone iqama working onSponsorship')
         .lean(),
       FleetEvent.find({ shipment: req.params.id }).sort({ createdAt: -1 }).limit(500).lean(),
     ]);
     if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+    // للبوليصة: إقامة/جوال السائق من سجل السائق لو مش متسنابين على الشحنة.
+    if (shipment.driver && typeof shipment.driver === 'object') {
+      shipment.driverIqama = shipment.driver.iqama || '';
+      if (!shipment.driverPhone) shipment.driverPhone = shipment.driver.phone || '';
+    }
     res.json({ shipment, events });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load the shipment' });

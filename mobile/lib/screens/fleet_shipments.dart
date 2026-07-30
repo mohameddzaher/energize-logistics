@@ -5,6 +5,7 @@ import '../services/live.dart';
 import 'fleet_new_shipment.dart';
 import 'fleet_shipment_details.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/contact.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -175,6 +176,8 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                                             Chip2(s['vehiclePlate'], T.navy, icon: Icons.local_shipping_outlined),
                                           if ((s['driverName'] ?? '').toString().isNotEmpty)
                                             Chip2(s['driverName'], T.inkSoft, icon: Icons.person_outline),
+                                          if ((s['driverPhone'] ?? '').toString().isNotEmpty)
+                                            ContactButtons(phone: (s['driverPhone']).toString(), compact: true, size: 17),
                                           if (s['lastContactAt'] != null)
                                             Chip2('${tr('آخر تواصل', 'Last contact')}: ${_ago(s['lastContactAt'])}',
                                                 _hoursSince(s['lastContactAt']) >= 3 ? T.danger : T.success,

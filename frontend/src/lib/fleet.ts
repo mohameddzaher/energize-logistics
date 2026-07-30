@@ -68,6 +68,7 @@ export interface FleetShipment {
   driver?: FleetDriver | string | null;
   driverName?: string;
   driverPhone?: string;
+  driverIqama?: string;
   secondDriver?: FleetDriver | string | null;
   secondDriverName?: string;
   supervisor?: string | null;

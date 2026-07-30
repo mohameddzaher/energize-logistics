@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { ContactButtons } from '@/components/crm/CrmKit';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
@@ -31,7 +32,7 @@ const toSheetRow = (s: FleetShipment): DispatchSheetRow => ({
   plateNumber: s.vehiclePlate || '',
   driverAdvance: '',
   driverPhone: s.driverPhone || '',
-  driverIqama: '',
+  driverIqama: s.driverIqama || '',
   driverNationality: '',
   driverName: [s.driverName, s.secondDriverName].filter(Boolean).join(' + '),
   customerName: s.customerName || '',
@@ -309,8 +310,11 @@ export default function FleetShipmentsPage() {
                   <td className="px-3 py-3 text-slate-900 font-medium max-w-[200px] truncate" title={s.customerName}>{s.customerName || '—'}</td>
                   <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{s.fromCity || '—'} ← {s.toCity || '—'}</td>
                   <td className="px-3 py-3 text-slate-700 font-mono text-xs">{s.vehiclePlate || '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 text-xs max-w-[180px] truncate">
-                    {[s.driverName, s.secondDriverName].filter(Boolean).join(' + ') || '—'}
+                  <td className="px-3 py-3 text-slate-700 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="max-w-[150px] truncate">{[s.driverName, s.secondDriverName].filter(Boolean).join(' + ') || '—'}</span>
+                      {(s.driverPhone || '').trim() && <ContactButtons phone={s.driverPhone} size={13} />}
+                    </div>
                   </td>
                   <td className="px-3 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtD(s.loadDate)}</td>
                   <td className="px-3 py-3 whitespace-nowrap">

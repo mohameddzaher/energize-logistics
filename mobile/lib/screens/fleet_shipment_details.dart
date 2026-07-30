@@ -131,6 +131,8 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
         (tr('السيارة', 'Vehicle'), (s['vehiclePlate'] ?? '').toString()),
         (tr('السائق', 'Driver'), (s['driverName'] ?? '').toString()),
         (tr('هاتف السائق', 'Driver phone'), (s['driverPhone'] ?? '').toString()),
+        (tr('إقامة السائق', 'Driver ID (iqama)'), (s['driverIqama'] ?? '').toString()),
+        (tr('نوع النقل', 'Trailer type'), (s['trailerType'] ?? '').toString()),
         (tr('المشرف', 'Supervisor'), (s['supervisorName'] ?? '').toString()),
         (tr('تاريخ التحميل', 'Load date'), _dt(s['loadDate']?.toString())),
         (tr('الوصول المتوقع', 'ETA'), _dt(s['expectedArrival']?.toString())),

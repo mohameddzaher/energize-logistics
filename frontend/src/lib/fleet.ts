@@ -10,6 +10,8 @@ export interface FleetVehicle {
   name?: string;
   trailerType?: string; // سطحة / ستارة …
   gpsType?: string;     // LS / EX
+  brand?: string;
+  color?: string;
   supervisor?: string | null;   // المشرف المسؤول — يعيّنه مدير القسم
   supervisorName?: string;
   notes?: string;
@@ -39,6 +41,7 @@ export interface FleetDriver {
   name: string;
   phone?: string;
   iqama?: string;
+  nationality?: string;
   working: boolean;       // حالة السائق: يعمل أم لا
   offReason?: '' | 'sick' | 'leave' | 'other'; // سبب التوقف — مرضية/إجازة/أخرى
   offNote?: string;
@@ -69,6 +72,12 @@ export interface FleetShipment {
   driverName?: string;
   driverPhone?: string;
   driverIqama?: string;
+  driverNationality?: string;
+  vehicleBrand?: string;
+  vehicleColor?: string;
+  rentType?: string;
+  driverAdvance?: string;
+  branch?: string;
   secondDriver?: FleetDriver | string | null;
   secondDriverName?: string;
   supervisor?: string | null;

@@ -15,7 +15,7 @@ import {
 } from '@/components/hr/HRKit';
 import { FleetVehicle, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
 
-const EMPTY = { plate: '', name: '', trailerType: '', gpsType: '', notes: '' };
+const EMPTY = { plate: '', name: '', brand: '', color: '', trailerType: '', gpsType: '', notes: '' };
 
 export default function FleetVehiclesPage() {
   const { user } = useAuth();
@@ -74,7 +74,7 @@ export default function FleetVehiclesPage() {
   const openCreate = () => { setEditing(null); setForm({ ...EMPTY }); setShowModal(true); };
   const openEdit = (v: FleetVehicle) => {
     setEditing(v);
-    setForm({ plate: v.plate, name: v.name || '', trailerType: v.trailerType || '', gpsType: v.gpsType || '', notes: v.notes || '' });
+    setForm({ plate: v.plate, name: v.name || '', brand: v.brand || '', color: v.color || '', trailerType: v.trailerType || '', gpsType: v.gpsType || '', notes: v.notes || '' });
     setShowModal(true);
   };
 
@@ -269,6 +269,8 @@ export default function FleetVehiclesPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label={ar ? 'رقم اللوحة *' : 'Plate *'}><TextInput value={form.plate} onChange={(e) => setForm((f: any) => ({ ...f, plate: e.target.value }))} /></Field>
           <Field label={ar ? 'الوصف' : 'Description'}><TextInput value={form.name} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
+          <Field label={ar ? 'الماركة' : 'Brand'}><TextInput value={form.brand} onChange={(e) => setForm((f: any) => ({ ...f, brand: e.target.value }))} /></Field>
+          <Field label={ar ? 'اللون' : 'Color'}><TextInput value={form.color} onChange={(e) => setForm((f: any) => ({ ...f, color: e.target.value }))} /></Field>
           <Field label={ar ? 'نوع التيدر' : 'Trailer type'}>
             <Select value={form.trailerType} onChange={(e) => setForm((f: any) => ({ ...f, trailerType: e.target.value }))}>
               <option value="">—</option>

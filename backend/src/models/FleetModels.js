@@ -12,6 +12,8 @@ const fleetVehicleSchema = new mongoose.Schema({
   name: { type: String, trim: true, default: '' },
   trailerType: { type: String, trim: true, default: 'سطحة' }, // سطحة / ستارة / …
   gpsType: { type: String, trim: true, default: 'LS' },       // LS / EX
+  brand: { type: String, trim: true, default: '' },           // ماركة السيارة — للبوليصة
+  color: { type: String, trim: true, default: '' },           // لون السيارة — للبوليصة
   // المشرف المسؤول عن هذه السيارة: يعيّنه مدير القسم، وكل ما يراه المشرف في
   // القسم (حمولات، سائقون، لوحة، تحليلات) محصور في سياراته هذه.
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
@@ -25,6 +27,7 @@ const fleetDriverSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   phone: { type: String, trim: true, default: '' },
   iqama: { type: String, trim: true, default: '' },
+  nationality: { type: String, trim: true, default: '' }, // الجنسية — للبوليصة
   // حالة السائق: does he work at the moment (sick / on leave ⇒ false)?
   working: { type: Boolean, default: true },
   // WHY he is off — مرضية / إجازة / أخرى — so the dashboard can answer "who is
@@ -75,10 +78,18 @@ const fleetShipmentSchema = new mongoose.Schema({
   vehiclePlate: { type: String, trim: true, default: '' },
   trailerType: { type: String, trim: true, default: '' },
   gpsType: { type: String, trim: true, default: '' },
+  vehicleBrand: { type: String, trim: true, default: '' }, // snapshot — للبوليصة
+  vehicleColor: { type: String, trim: true, default: '' }, // snapshot — للبوليصة
 
   driver: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetDriver', default: null },
   driverName: { type: String, trim: true, default: '' },
   driverPhone: { type: String, trim: true, default: '' },
+  driverIqama: { type: String, trim: true, default: '' },       // snapshot — للبوليصة
+  driverNationality: { type: String, trim: true, default: '' }, // snapshot — للبوليصة
+  // حقول البوليصة الخاصة بالحمولة نفسها (تُدخَل وقت الإنشاء):
+  rentType: { type: String, trim: true, default: '' },     // نوع الإيجار
+  driverAdvance: { type: String, trim: true, default: '' }, // سلفة السائق
+  branch: { type: String, trim: true, default: '' },        // الفرع
   // سائق ثانٍ — for loads that must arrive fast, two drivers share the wheel.
   secondDriver: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetDriver', default: null },
   secondDriverName: { type: String, trim: true, default: '' },

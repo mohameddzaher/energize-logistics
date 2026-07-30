@@ -73,6 +73,7 @@ function CreateFleetShipmentInner() {
               status: o.status, fromCity: o.fromCity || '', toCity: o.toCity || '',
               loadDate: toLocalDate(o.loadDate), expectedArrival: toLocalInput(o.expectedArrival),
               notes: o.notes || '',
+              rentType: o.rentType || '', driverAdvance: o.driverAdvance || '', branch: o.branch || '',
             });
             setCustomerId(typeof o.customer === 'object' ? o.customer?._id || '' : (o.customer || ''));
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id || '' : (o.vehicle || ''));
@@ -153,6 +154,7 @@ function CreateFleetShipmentInner() {
         expectedArrival: form.expectedArrival ? new Date(form.expectedArrival).toISOString() : null,
         status: form.status || 'requesting',
         notes: form.notes || '',
+        rentType: form.rentType || '', driverAdvance: form.driverAdvance || '', branch: form.branch || '',
       };
       if (customerId) payload.customer = customerId;
       else payload.newCustomer = { name: newCustomer.name.trim(), phone: newCustomer.phone.trim() };
@@ -370,6 +372,18 @@ function CreateFleetShipmentInner() {
             {vehicle?.supervisorName && (
               <p className="text-[11px] text-slate-500 mt-1">{ar ? 'مشرف هذه السيارة — يُسند تلقائيًا' : "This truck's assigned supervisor — set automatically"}</p>
             )}
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'نوع الإيجار' : 'Rent type'}</label>
+            <input value={form.rentType || ''} onChange={(e) => set('rentType', e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'سلفة السائق' : 'Driver advance'}</label>
+            <input value={form.driverAdvance || ''} onChange={(e) => set('driverAdvance', e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'الفرع' : 'Branch'}</label>
+            <input value={form.branch || ''} onChange={(e) => set('branch', e.target.value)} className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>

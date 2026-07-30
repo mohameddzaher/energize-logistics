@@ -16,7 +16,7 @@ import {
 } from '@/components/hr/HRKit';
 import { FleetDriver, FleetVehicle, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
 
-const EMPTY = { name: '', phone: '', iqama: '', working: true, onSponsorship: true, vehicle: '', notes: '' };
+const EMPTY = { name: '', phone: '', iqama: '', nationality: '', working: true, onSponsorship: true, vehicle: '', notes: '' };
 
 // The list endpoint populates `vehicle` — but after an edit it can transiently
 // be a bare id, so both shapes are handled.
@@ -121,7 +121,7 @@ export default function FleetDriversPage() {
   const openEdit = (d: FleetDriver) => {
     setEditing(d);
     setForm({
-      name: d.name, phone: d.phone || '', iqama: d.iqama || '',
+      name: d.name, phone: d.phone || '', iqama: d.iqama || '', nationality: d.nationality || '',
       working: !!d.working, onSponsorship: !!d.onSponsorship,
       vehicle: vehId(d), notes: d.notes || '',
     });
@@ -299,6 +299,7 @@ export default function FleetDriversPage() {
           <Field label={ar ? 'الاسم *' : 'Name *'} span2><TextInput value={form.name} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
           <Field label={ar ? 'الجوال' : 'Phone'}><TextInput value={form.phone} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} /></Field>
           <Field label={ar ? 'رقم الإقامة' : 'Iqama'}><TextInput value={form.iqama} onChange={(e) => setForm((f: any) => ({ ...f, iqama: e.target.value }))} /></Field>
+          <Field label={ar ? 'الجنسية' : 'Nationality'}><TextInput value={form.nationality} onChange={(e) => setForm((f: any) => ({ ...f, nationality: e.target.value }))} /></Field>
           <Field label={ar ? 'الحالة' : 'Status'}>
             <Select value={form.working ? 'yes' : 'no'} onChange={(e) => setForm((f: any) => ({ ...f, working: e.target.value === 'yes' }))}>
               <option value="yes">{ar ? 'يعمل' : 'Working'}</option>

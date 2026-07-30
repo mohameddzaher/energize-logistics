@@ -29,6 +29,7 @@ final fleetDriversCfg = ResourceConfig(
     FieldSpec('name', 'اسم السائق', 'Name', required: true),
     FieldSpec('phone', 'رقم الجوال', 'Phone', type: FieldType.phone),
     FieldSpec('iqama', 'رقم الإقامة', 'Iqama', type: FieldType.number),
+    FieldSpec('nationality', 'الجنسية', 'Nationality'),
     FieldSpec('working', 'يعمل حاليًا', 'Working', type: FieldType.checkbox),
     FieldSpec('onSponsorship', 'على الكفالة', 'On sponsorship', type: FieldType.checkbox),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
@@ -48,6 +49,8 @@ final fleetVehiclesCfg = ResourceConfig(
   fields: const [
     FieldSpec('plate', 'اللوحة', 'Plate', required: true),
     FieldSpec('name', 'اسم السيارة', 'Name'),
+    FieldSpec('brand', 'الماركة', 'Brand'),
+    FieldSpec('color', 'اللون', 'Color'),
     FieldSpec('trailerType', 'نوع المقطورة', 'Trailer type', type: FieldType.select, options: [
       ('سطحة', 'سطحة', 'Flatbed'), ('ستارة', 'ستارة', 'Curtain'), ('جوانب', 'جوانب', 'Sides'),
       ('براد', 'براد', 'Reefer'), ('صهريج', 'صهريج', 'Tanker'), ('لوبد', 'لوبد', 'Lowbed'),

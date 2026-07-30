@@ -54,6 +54,8 @@ const logEvent = async (req, shipmentId, type, data = {}) => {
 const SHIPMENT_EDITABLE = [
   'customer', 'vehicle', 'driver', 'secondDriver',
   'loadDate', 'fromCity', 'toCity', 'status', 'expectedArrival', 'notes',
+  // حقول البوليصة الخاصة بالحمولة:
+  'rentType', 'driverAdvance', 'branch',
 ];
 
 // Move a driver onto a vehicle, enforcing the two-seat rule. Returns a line
@@ -92,6 +94,8 @@ const resolveAssignments = async (req, data, existing = null) => {
     data.vehiclePlate = veh?.plate || '';
     data.trailerType = veh?.trailerType || '';
     data.gpsType = veh?.gpsType || '';
+    data.vehicleBrand = veh?.brand || '';
+    data.vehicleColor = veh?.color || '';
     // مشرف الحمولة = المشرف المعيَّن على السيارة نفسها (نظام التوزيع)، فتظهر
     // الحمولة تلقائيًا ضمن نطاق مشرفها في القوائم واللوحة والتحليلات.
     if (veh?.supervisor) {
@@ -105,7 +109,7 @@ const resolveAssignments = async (req, data, existing = null) => {
     if (data[key] === undefined) continue;
     if (!data[key]) {
       data[key === 'driver' ? 'driverName' : 'secondDriverName'] = '';
-      if (key === 'driver') data.driverPhone = '';
+      if (key === 'driver') { data.driverPhone = ''; data.driverIqama = ''; data.driverNationality = ''; }
       continue;
     }
     const seated = await seatDriver(data[key], vehicleId);
@@ -114,6 +118,8 @@ const resolveAssignments = async (req, data, existing = null) => {
       if (key === 'driver') {
         data.driverName = seated.driver.name;
         data.driverPhone = seated.driver.phone || '';
+        data.driverIqama = seated.driver.iqama || '';
+        data.driverNationality = seated.driver.nationality || '';
       } else {
         data.secondDriverName = seated.driver.name;
       }
@@ -169,11 +175,24 @@ exports.listShipments = async (req, res) => {
     // مش مخزّنة على الشحنة نفسها لكن البوليصة محتاجاها فتطلع فاضية.
     const driverIds = [...new Set(shipments.map((s) => s.driver).filter(Boolean).map(String))];
     if (driverIds.length) {
-      const drivers = await FleetDriver.find({ _id: { $in: driverIds } }).select('iqama phone').lean();
+      const drivers = await FleetDriver.find({ _id: { $in: driverIds } }).select('iqama phone nationality').lean();
       const dmap = new Map(drivers.map((d) => [String(d._id), d]));
       for (const s of shipments) {
         const d = s.driver ? dmap.get(String(s.driver)) : null;
-        if (d) { s.driverIqama = d.iqama || ''; if (!s.driverPhone) s.driverPhone = d.phone || ''; }
+        if (d) {
+          if (!s.driverIqama) s.driverIqama = d.iqama || '';
+          if (!s.driverNationality) s.driverNationality = d.nationality || '';
+          if (!s.driverPhone) s.driverPhone = d.phone || '';
+        }
+      }
+    }
+    const vehIds = [...new Set(shipments.filter((s) => !s.vehicleBrand && !s.vehicleColor).map((s) => s.vehicle).filter(Boolean).map(String))];
+    if (vehIds.length) {
+      const vehs = await FleetVehicle.find({ _id: { $in: vehIds } }).select('brand color').lean();
+      const vmap = new Map(vehs.map((v) => [String(v._id), v]));
+      for (const s of shipments) {
+        const v = s.vehicle ? vmap.get(String(s.vehicle)) : null;
+        if (v) { if (!s.vehicleBrand) s.vehicleBrand = v.brand || ''; if (!s.vehicleColor) s.vehicleColor = v.color || ''; }
       }
     }
     const byStatus = {};
@@ -339,16 +358,21 @@ exports.getShipment = async (req, res) => {
     const [shipment, events] = await Promise.all([
       FleetShipment.findById(req.params.id)
         .populate('customer', 'name phone routes')
-        .populate('vehicle', 'plate trailerType gpsType')
-        .populate('driver secondDriver', 'name phone iqama working onSponsorship')
+        .populate('vehicle', 'plate trailerType gpsType brand color')
+        .populate('driver secondDriver', 'name phone iqama nationality working onSponsorship')
         .lean(),
       FleetEvent.find({ shipment: req.params.id }).sort({ createdAt: -1 }).limit(500).lean(),
     ]);
     if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
-    // للبوليصة: إقامة/جوال السائق من سجل السائق لو مش متسنابين على الشحنة.
+    // للبوليصة: املأ الحقول من السجلات لو مش متسنابة على الشحنة (شحنات قديمة).
     if (shipment.driver && typeof shipment.driver === 'object') {
-      shipment.driverIqama = shipment.driver.iqama || '';
+      if (!shipment.driverIqama) shipment.driverIqama = shipment.driver.iqama || '';
+      if (!shipment.driverNationality) shipment.driverNationality = shipment.driver.nationality || '';
       if (!shipment.driverPhone) shipment.driverPhone = shipment.driver.phone || '';
+    }
+    if (shipment.vehicle && typeof shipment.vehicle === 'object') {
+      if (!shipment.vehicleBrand) shipment.vehicleBrand = shipment.vehicle.brand || '';
+      if (!shipment.vehicleColor) shipment.vehicleColor = shipment.vehicle.color || '';
     }
     res.json({ shipment, events });
   } catch (error) {
@@ -402,7 +426,7 @@ exports.addFollowUp = async (req, res) => {
 
 // ── Drivers ─────────────────────────────────────────────────────────────────
 
-const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'working', 'onSponsorship', 'vehicle', 'notes', 'isActive', 'offReason', 'offNote'];
+const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'working', 'onSponsorship', 'nationality', 'vehicle', 'notes', 'isActive', 'offReason', 'offNote'];
 
 exports.listDrivers = async (req, res) => {
   try {
@@ -473,7 +497,7 @@ exports.deleteDriver = async (req, res) => {
 
 // ── Vehicles ────────────────────────────────────────────────────────────────
 
-const VEHICLE_EDITABLE = ['plate', 'name', 'trailerType', 'gpsType', 'notes', 'isActive'];
+const VEHICLE_EDITABLE = ['plate', 'name', 'trailerType', 'gpsType', 'brand', 'color', 'notes', 'isActive'];
 
 exports.listVehicles = async (req, res) => {
   try {

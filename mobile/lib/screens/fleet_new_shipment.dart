@@ -35,6 +35,10 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
   DateTime _loadDate = DateTime.now();
   DateTime? _expectedArrival;
   final _notes = TextEditingController();
+  // حقول البوليصة الخاصة بالحمولة:
+  final _rentType = TextEditingController();
+  final _driverAdvance = TextEditingController();
+  final _branch = TextEditingController();
   bool _busy = false;
 
   @override
@@ -169,6 +173,9 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         'toCity': _toCity.text.trim(),
         'loadDate': _loadDate.toIso8601String(),
         if (_expectedArrival != null) 'expectedArrival': _expectedArrival!.toUtc().toIso8601String(),
+        if (_rentType.text.trim().isNotEmpty) 'rentType': _rentType.text.trim(),
+        if (_driverAdvance.text.trim().isNotEmpty) 'driverAdvance': _driverAdvance.text.trim(),
+        if (_branch.text.trim().isNotEmpty) 'branch': _branch.text.trim(),
         'notes': _notes.text,
       });
       if (mounted) {
@@ -351,6 +358,17 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                     setState(() => _expectedArrival = DateTime(d.year, d.month, d.day, t?.hour ?? 12, t?.minute ?? 0));
                   },
                 ),
+                const SizedBox(height: 16),
+                // ── بيانات البوليصة (اختياري) ──
+                Text(tr('بيانات البوليصة', 'Waybill data'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: TextField(controller: _rentType, decoration: InputDecoration(labelText: tr('نوع الإيجار', 'Rent type')))),
+                  const SizedBox(width: 10),
+                  Expanded(child: TextField(controller: _driverAdvance, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('سلفة السائق', 'Driver advance')))),
+                ]),
+                const SizedBox(height: 10),
+                TextField(controller: _branch, decoration: InputDecoration(labelText: tr('الفرع', 'Branch'))),
                 const SizedBox(height: 10),
                 TextField(controller: _notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
                 const SizedBox(height: 16),

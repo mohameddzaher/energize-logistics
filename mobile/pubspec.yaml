@@ -25,6 +25,8 @@ dependencies:
   # طباعة/مشاركة PDF من داخل التطبيق (البوليصة وغيرها) — يدعم العربية عبر خطوط جوجل.
   printing: ^5.13.1
   pdf: ^3.11.1
+  # إشعارات محلية بصوت تظهر في مركز الإشعارات (مجاني، بدون Apple Developer للأندرويد).
+  flutter_local_notifications: ^17.2.3
 
 dev_dependencies:
   flutter_test:

@@ -18,6 +18,13 @@ const notificationSchema = new mongoose.Schema({
       'credit_term_changed',
       'follow_up_reminder',
       'system_alert',
+      // عامة عبر الأقسام:
+      'task_assigned',
+      'complaint_assigned',
+      'approval_needed',
+      'status_changed',
+      'shipment_update',
+      'general',
     ],
     required: true,
   },

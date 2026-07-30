@@ -8,6 +8,22 @@ const SectionTask = require('../models/SectionTask');
 const SectionComplaint = require('../models/SectionComplaint');
 const User = require('../models/User');
 const { emitToUser, emitToAll } = require('../websocket/socketManager');
+const { createNotification } = require('../services/notificationService');
+
+// إشعار للمكلَّف عند تعيين مهمة/شكوى له (غير المنشئ نفسه) — يظهر لحظيًا وبصوت على الموبايل.
+const notifyAssignee = async (doc, req, isComplaint, label) => {
+  if (!doc.assignedTo || sameId(doc.assignedTo, req.user._id)) return;
+  try {
+    await createNotification({
+      recipient: doc.assignedTo,
+      type: isComplaint ? 'complaint_assigned' : 'task_assigned',
+      title: isComplaint ? 'شكوى جديدة مُسندة إليك' : 'مهمة جديدة مُسندة إليك',
+      message: `${label || ''} — قسم ${doc.section}`.trim(),
+      relatedEntity: isComplaint ? 'SectionComplaint' : 'SectionTask',
+      relatedEntityId: doc._id,
+    });
+  } catch (e) { /* الإشعار إضافة — لا يفشل الحفظ */ }
+};
 
 // Refresh trigger for every open tasks/complaints board — each client refetches
 // through the strict visibility filter, so broadcasting leaks nothing; emitting
@@ -67,6 +83,7 @@ function makeHandlers(Model, requiredField, allowedFields) {
         const doc = await Model.create(data);
         if (doc.assignedTo && !sameId(doc.assignedTo, req.user._id)) {
           try { emitToUser(String(doc.assignedTo), 'section:work', { section, model: Model.modelName }); } catch (e) {}
+          await notifyAssignee(doc, req, Model.modelName === 'SectionComplaint', String(req.body[requiredField] || ''));
         }
         broadcastWork(section, Model.modelName);
         const item = await POPULATE(Model.findById(doc._id)).lean();
@@ -86,8 +103,9 @@ function makeHandlers(Model, requiredField, allowedFields) {
         const updates = pick(req.body);
         Object.assign(doc, updates);
         await doc.save();
-        if (doc.assignedTo && !sameId(doc.assignedTo, req.user._id)) {
+        if (doc.assignedTo && !sameId(doc.assignedTo, req.user._id) && updates.assignedTo) {
           try { emitToUser(String(doc.assignedTo), 'section:work', { section: doc.section, model: Model.modelName }); } catch (e) {}
+          await notifyAssignee(doc, req, Model.modelName === 'SectionComplaint', String(doc[requiredField] || ''));
         }
         broadcastWork(doc.section, Model.modelName);
         const item = await POPULATE(Model.findById(doc._id)).lean();

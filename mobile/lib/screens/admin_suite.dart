@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/notifications.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -399,6 +400,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _loading = false;
         _error = null;
       });
+      NotificationService.instance.setUnread(_unread); // مزامنة الشارة
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
@@ -412,7 +414,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         if (_unread > 0)
           TextButton(
             onPressed: () async {
-              try { await Api.instance.put('/api/notifications/read-all'); _load(); } catch (_) {}
+              try { await Api.instance.put('/api/notifications/read-all'); NotificationService.instance.clearBadge(); _load(); } catch (_) {}
             },
             child: Text(tr('قراءة الكل', 'Read all'), style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
           ),

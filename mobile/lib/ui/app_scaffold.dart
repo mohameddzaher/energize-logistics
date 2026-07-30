@@ -4,6 +4,7 @@ import '../nav/sections.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../services/notifications.dart';
 import '../screens/my_profile.dart';
 import '../screens/admin_suite.dart' show NotificationsScreen;
 import 'theme.dart';
@@ -67,13 +68,33 @@ class AppBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget item(IconData icon, String label, VoidCallback onTap) => Expanded(
+    Widget item(IconData icon, String label, VoidCallback onTap, {bool badge = false}) => Expanded(
           child: _BounceTap(
             onTap: onTap,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(icon, size: 23, color: T.navy),
+                badge
+                    ? ListenableBuilder(
+                        listenable: NotificationService.instance,
+                        builder: (_, __) {
+                          final n = NotificationService.instance.unread;
+                          return Stack(clipBehavior: Clip.none, children: [
+                            Icon(icon, size: 23, color: T.navy),
+                            if (n > 0)
+                              Positioned(
+                                top: -5, right: -6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                  constraints: const BoxConstraints(minWidth: 15),
+                                  decoration: BoxDecoration(color: T.danger, borderRadius: BorderRadius.circular(9)),
+                                  child: Text(n > 99 ? '99+' : '$n', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                                ),
+                              ),
+                          ]);
+                        },
+                      )
+                    : Icon(icon, size: 23, color: T.navy),
                 const SizedBox(height: 3),
                 Text(label, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: T.navy)),
               ]),
@@ -90,7 +111,7 @@ class AppBottomNav extends StatelessWidget {
         child: Row(children: [
           item(Icons.home_rounded, tr('الرئيسية', 'Home'), () => Navigator.popUntil(context, (r) => r.isFirst)),
           item(Icons.account_circle_outlined, tr('ملفي', 'Profile'), () => _openOnce(context, 'profile', (_) => const MyProfileScreen())),
-          item(Icons.notifications_outlined, tr('الإشعارات', 'Alerts'), () => _openOnce(context, 'alerts', (_) => const NotificationsScreen())),
+          item(Icons.notifications_outlined, tr('الإشعارات', 'Alerts'), () => _openOnce(context, 'alerts', (_) => const NotificationsScreen()), badge: true),
           Builder(builder: (c) => item(Icons.menu_rounded, tr('القائمة', 'Menu'), () => Scaffold.of(c).openEndDrawer())),
         ]),
       ),

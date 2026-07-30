@@ -6,6 +6,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../services/notifications.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -36,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     Live.instance.connect();
+    NotificationService.instance.init(); // إشعارات حية + صوت + شارة
     _loadStats();
     Live.instance.on('admintasks:updated', _loadStats);
     Live.instance.on('hr:leave', _loadStats);

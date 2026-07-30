@@ -15,6 +15,8 @@ class Live {
   static final Live instance = Live._();
   io.Socket? _socket;
   final Map<String, List<void Function()>> _handlers = {};
+  // مستمعون يحتاجون حمولة الحدث (زي الإشعارات: العنوان والرسالة).
+  final Map<String, List<void Function(dynamic)>> _dataHandlers = {};
   bool _refreshing = false;
 
   void connect() {
@@ -31,6 +33,9 @@ class Live {
     _socket!.onAny((event, data) {
       for (final h in List.of(_handlers[event] ?? const [])) {
         h();
+      }
+      for (final h in List.of(_dataHandlers[event] ?? const [])) {
+        h(data);
       }
       // اشتراك بالبادئة: المفتاح 'b2c:*' يستقبل كل أحداث 'b2c:...'.
       for (final e in _handlers.entries) {
@@ -70,9 +75,18 @@ class Live {
     _handlers[event]?.remove(handler);
   }
 
+  void onData(String event, void Function(dynamic) handler) {
+    _dataHandlers.putIfAbsent(event, () => []).add(handler);
+  }
+
+  void offData(String event, void Function(dynamic) handler) {
+    _dataHandlers[event]?.remove(handler);
+  }
+
   void disconnect() {
     _socket?.dispose();
     _socket = null;
     _handlers.clear();
+    _dataHandlers.clear();
   }
 }

@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { ContactButtons } from '@/components/crm/CrmKit';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
@@ -283,7 +284,12 @@ export default function ShipmentOrdersPage() {
                   <td className="px-4 py-3 text-slate-900 font-bold font-mono">{o.waybillNumber}</td>
                   <td className="px-4 py-3 text-slate-900 font-medium max-w-[220px] truncate" title={o.customerName}>{o.customerName || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.fromCity || '—'} ← {o.toCity || '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{o.driverName || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate">{o.driverName || '—'}</span>
+                      {(o.driverPhone || '').trim() && <ContactButtons phone={o.driverPhone} size={14} />}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-slate-700">{o.truckType || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtDT(o.pickupTime, lang as Lang)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{money(o.sellPrice)} / {money(o.buyPrice)}</td>

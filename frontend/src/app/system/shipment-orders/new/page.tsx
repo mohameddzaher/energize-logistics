@@ -17,6 +17,7 @@ import {
   MapPin, Package, Clock3, Wallet, User as UserIcon, Building2,
 } from 'lucide-react';
 import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton } from '@/components/hr/HRKit';
+import { ContactButtons } from '@/components/crm/CrmKit';
 import {
   FormField, OrderCustomer, OrderVehicle, OrderSupplier, GROUP_LABELS, fieldLabel, optionLabel,
   ORDER_STATUSES, FIXED_KEYS, Lang, canEditOrders,
@@ -398,7 +399,10 @@ function CreateShipmentInner() {
             </div>
             <div>
               <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
-              <input value={form.driverPhone || ''} onChange={(e) => set('driverPhone', e.target.value)} className={inputCls} />
+              <div className="flex items-center gap-2">
+                <input value={form.driverPhone || ''} onChange={(e) => set('driverPhone', e.target.value)} className={`${inputCls} flex-1`} />
+                {(form.driverPhone || '').trim() && <ContactButtons phone={form.driverPhone} />}
+              </div>
             </div>
           </div>
 

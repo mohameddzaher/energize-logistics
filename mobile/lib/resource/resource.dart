@@ -32,6 +32,7 @@ class ResourceConfig {
   final IconData icon;
   final String endpoint;      // '/api/fleet/drivers'
   final String listKey;       // 'drivers'
+  final String listQuery;     // extra query for the LIST GET only (e.g. 'all=1') — kept off endpoint so /:id actions stay clean
   final String updateMethod;  // 'PUT' | 'PATCH'
   final String liveEvent;     // 'fleet:updated'
   final List<String> searchFields;
@@ -48,7 +49,7 @@ class ResourceConfig {
   const ResourceConfig({
     required this.arTitle, required this.enTitle, required this.icon,
     required this.endpoint, required this.listKey,
-    this.updateMethod = 'PUT', required this.liveEvent,
+    this.listQuery = '', this.updateMethod = 'PUT', required this.liveEvent,
     required this.searchFields, required this.fields, required this.titleOf,
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
@@ -95,10 +96,13 @@ class _ResourceScreenState extends State<ResourceScreen> {
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('${cfg.endpoint}?limit=200');
+      final qs = [if (cfg.listQuery.isNotEmpty) cfg.listQuery, 'limit=200'].join('&');
+      final d = await Api.instance.get('${cfg.endpoint}?$qs');
       if (!mounted) return;
+      // نتحمّل أي شكل استجابة: {listKey:[...]} أو مصفوفة مباشرة — بلا كراش.
+      final raw = d is Map ? d[cfg.listKey] : (d is List ? d : null);
       setState(() {
-        _rows = List<Map<String, dynamic>>.from(d[cfg.listKey] ?? []);
+        _rows = raw is List ? List<Map<String, dynamic>>.from(raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : [];
         _loading = false;
         _error = null;
       });
@@ -389,14 +393,19 @@ class _ResourceFormState extends State<_ResourceForm> {
           ),
         );
       case FieldType.select:
+        // قيمة الصف قد تكون null أو قيمة قديمة مش في options — نتحمّل الاتنين بلا كراش.
+        final current = (_values[f.name] ?? '').toString();
+        final opts = f.options ?? const <(String, String, String)>[];
+        final known = opts.any((o) => o.$1 == current);
         return Padding(
           padding: pad,
           child: DropdownButtonFormField<String>(
-            initialValue: (_values[f.name] as String).isEmpty ? null : _values[f.name],
+            initialValue: current.isEmpty ? null : current,
             decoration: InputDecoration(labelText: f.label + (f.required ? ' *' : '')),
-            items: (f.options ?? const [])
-                .map((o) => DropdownMenuItem(value: o.$1, child: Text(tr(o.$2, o.$3))))
-                .toList(),
+            items: [
+              ...opts.map((o) => DropdownMenuItem(value: o.$1, child: Text(tr(o.$2, o.$3)))),
+              if (current.isNotEmpty && !known) DropdownMenuItem(value: current, child: Text(current)),
+            ],
             onChanged: (v) => setState(() => _values[f.name] = v ?? ''),
           ),
         );

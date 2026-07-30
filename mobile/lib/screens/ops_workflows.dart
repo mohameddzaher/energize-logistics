@@ -101,7 +101,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     );
     if (ok != true) return;
     try {
-      await Api.instance.put('/api/workflows/${w['_id']}', {'stage': next});
+      await Api.instance.put('/api/workflows/${w['_id']}/stage', {'stage': next});
       _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));

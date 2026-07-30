@@ -61,14 +61,14 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text(decision == 'approve' ? tr('اعتماد الطلب', 'Approve') : tr('رفض الطلب', 'Reject')),
+        title: Text(decision == 'approved' ? tr('اعتماد الطلب', 'Approve') : tr('رفض الطلب', 'Reject')),
         content: TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note'))),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: decision == 'approve' ? T.success : T.danger),
+            style: FilledButton.styleFrom(backgroundColor: decision == 'approved' ? T.success : T.danger),
             onPressed: () => Navigator.pop(c, true),
-            child: Text(decision == 'approve' ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
+            child: Text(decision == 'approved' ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
           ),
         ],
       ),
@@ -159,13 +159,13 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                         Row(children: [
                                           Expanded(child: FilledButton(
                                             style: FilledButton.styleFrom(backgroundColor: T.success, minimumSize: const Size.fromHeight(38)),
-                                            onPressed: () => _decide(l, 'approve'),
+                                            onPressed: () => _decide(l, 'approved'),
                                             child: Text(tr('اعتماد', 'Approve')),
                                           )),
                                           const SizedBox(width: 8),
                                           Expanded(child: FilledButton(
                                             style: FilledButton.styleFrom(backgroundColor: T.danger, minimumSize: const Size.fromHeight(38)),
-                                            onPressed: () => _decide(l, 'reject'),
+                                            onPressed: () => _decide(l, 'rejected'),
                                             child: Text(tr('رفض', 'Reject')),
                                           )),
                                         ]),

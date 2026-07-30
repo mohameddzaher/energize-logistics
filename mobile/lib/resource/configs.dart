@@ -511,7 +511,7 @@ final expenseCategoriesCfg = ResourceConfig(
 // ── لوكيشن سوليوشن: الإصلاحات ────────────────────────────────────────────────
 final ls2RepairsCfg = ResourceConfig(
   arTitle: 'الإصلاحات', enTitle: 'Repairs', icon: Icons.home_repair_service_outlined,
-  endpoint: '/api/ls2/repairs', listKey: 'items', liveEvent: 'ls2:updated',
+  endpoint: '/api/ls2/repairs', listKey: 'items', liveEvent: 'ls2:updated', updateMethod: 'PATCH',
   searchFields: const ['description', 'category', 'status', 'plate'],
   titleOf: (r) => _s(r, 'title').isNotEmpty ? _s(r, 'title') : (_s(r, 'description').isNotEmpty ? _s(r, 'description') : _s(r, 'category')),
   subtitleOf: (r) => [_s(r, 'plate'), _s(r, 'vehicleName')].where((x) => x.isNotEmpty).join(' · '),
@@ -556,12 +556,12 @@ final ls2RepairsCfg = ResourceConfig(
 // ── الموارد البشرية: التراخيص وأنواع الإجازات ────────────────────────────────
 final hrLicensesCfg = ResourceConfig(
   arTitle: 'التراخيص والاشتراكات', enTitle: 'Licenses', icon: Icons.workspace_premium_outlined,
-  endpoint: '/api/hr/licenses', listKey: 'items', liveEvent: 'hr:license',
-  searchFields: const ['name', 'category', 'issuer', 'city'],
+  endpoint: '/api/hr/licenses', listKey: 'licenses', liveEvent: 'hr:license',
+  searchFields: const ['name', 'category', 'location', 'duration'],
   titleOf: (r) => _s(r, 'name'),
-  subtitleOf: (r) => [_s(r, 'category'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),
+  subtitleOf: (r) => [_s(r, 'category'), _s(r, 'location')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) {
-    final end = DateTime.tryParse(_s(r, 'endDate'));
+    final end = DateTime.tryParse(_s(r, 'expiryDate'));
     final days = end?.difference(DateTime.now()).inDays;
     return [
       if (days != null)
@@ -571,11 +571,9 @@ final hrLicensesCfg = ResourceConfig(
   fields: const [
     FieldSpec('name', 'اسم الترخيص', 'Name', required: true),
     FieldSpec('category', 'التصنيف', 'Category', required: true),
-    FieldSpec('issuer', 'الجهة المصدرة', 'Issuer'),
-    FieldSpec('city', 'المدينة', 'City'),
-    FieldSpec('startDate', 'تاريخ الإصدار', 'Start date', type: FieldType.date),
-    FieldSpec('endDate', 'تاريخ الانتهاء', 'End date', type: FieldType.date),
-    FieldSpec('cost', 'التكلفة', 'Cost', type: FieldType.number),
+    FieldSpec('duration', 'المدة', 'Duration'),
+    FieldSpec('location', 'الموقع', 'Location'),
+    FieldSpec('expiryDate', 'تاريخ الانتهاء', 'Expiry date', type: FieldType.date),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
@@ -878,7 +876,7 @@ final vendorsCfg = ResourceConfig(
 
 final shipmentOrdersFieldsCfg = ResourceConfig(
   arTitle: 'إعدادات النموذج', enTitle: 'Form Settings', icon: Icons.tune_outlined,
-  endpoint: '/api/shipment-orders/fields?all=1', listKey: 'fields', liveEvent: 'shipmentOrders:fields',
+  endpoint: '/api/shipment-orders/fields', listQuery: 'all=1', listKey: 'fields', liveEvent: 'shipmentOrders:fields',
   searchFields: const ['labelAr', 'labelEn', 'group'],
   titleOf: (r) => _s(r, 'labelAr'),
   subtitleOf: (r) => [_s(r, 'labelEn'), _s(r, 'inputType')].where((x) => x.isNotEmpty).join(' · '),

@@ -579,7 +579,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     Map<String, dynamic>? invoice;
     final amount = TextEditingController();
     final reference = TextEditingController();
-    String method = 'transfer';
+    String method = 'bank_transfer';
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -649,9 +649,11 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 initialValue: method,
                 decoration: InputDecoration(labelText: tr('طريقة الدفع', 'Method')),
                 items: [
-                  DropdownMenuItem(value: 'transfer', child: Text(tr('تحويل بنكي', 'Bank transfer'))),
+                  DropdownMenuItem(value: 'bank_transfer', child: Text(tr('تحويل بنكي', 'Bank transfer'))),
                   DropdownMenuItem(value: 'cash', child: Text(tr('نقدًا', 'Cash'))),
-                  DropdownMenuItem(value: 'cheque', child: Text(tr('شيك', 'Cheque'))),
+                  DropdownMenuItem(value: 'check', child: Text(tr('شيك', 'Cheque'))),
+                  DropdownMenuItem(value: 'online', child: Text(tr('إلكتروني', 'Online'))),
+                  DropdownMenuItem(value: 'other', child: Text(tr('أخرى', 'Other'))),
                   DropdownMenuItem(value: 'other', child: Text(tr('أخرى', 'Other'))),
                 ],
                 onChanged: (v) => setS(() => method = v ?? method),

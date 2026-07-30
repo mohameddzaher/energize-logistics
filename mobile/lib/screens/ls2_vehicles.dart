@@ -48,7 +48,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
       final d = await Api.instance.get('/api/ls2/vehicles${params.isEmpty ? '' : '?${params.join('&')}'}');
       if (!mounted) return;
       setState(() {
-        _rows = List<Map<String, dynamic>>.from(d['vehicles'] ?? []);
+        _rows = List<Map<String, dynamic>>.from(d['items'] ?? d['vehicles'] ?? []);
         _loading = false;
         _error = null;
       });

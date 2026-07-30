@@ -52,7 +52,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text(decision == 'approve' ? tr('اعتماد الطلب', 'Approve request') : tr('رفض الطلب', 'Reject request')),
+        title: Text(decision == 'approved' ? tr('اعتماد الطلب', 'Approve request') : tr('رفض الطلب', 'Reject request')),
         content: TextField(
           controller: note,
           decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)')),
@@ -61,10 +61,10 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: decision == 'approve' ? const Color(0xFF059669) : const Color(0xFFDC2626),
+              backgroundColor: decision == 'approved' ? const Color(0xFF059669) : const Color(0xFFDC2626),
             ),
             onPressed: () => Navigator.pop(c, true),
-            child: Text(decision == 'approve' ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
+            child: Text(decision == 'approved' ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
           ),
         ],
       ),
@@ -152,7 +152,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
               Expanded(
                 child: FilledButton(
                   style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669), minimumSize: const Size.fromHeight(40)),
-                  onPressed: () => _decide(l, 'approve'),
+                  onPressed: () => _decide(l, 'approved'),
                   child: Text(tr('اعتماد', 'Approve')),
                 ),
               ),
@@ -160,7 +160,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
               Expanded(
                 child: FilledButton(
                   style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626), minimumSize: const Size.fromHeight(40)),
-                  onPressed: () => _decide(l, 'reject'),
+                  onPressed: () => _decide(l, 'rejected'),
                   child: Text(tr('رفض', 'Reject')),
                 ),
               ),

@@ -95,6 +95,11 @@ final contractsVendorsCfg = ResourceConfig(
   fields: const [
     FieldSpec('name', 'اسم المورد', 'Vendor name', required: true),
     FieldSpec('energizeRep', 'مندوب التنشيط', 'Energize rep'),
+    FieldSpec('operationsRep', 'مسؤول العمليات', 'Operations rep'),
+    FieldSpec('crNumber', 'السجل التجاري', 'CR number'),
+    FieldSpec('vehicleTypes', 'أنواع المركبات', 'Vehicle types'),
+    FieldSpec('paymentTermDays', 'مدة السداد (يوم)', 'Payment term (days)', type: FieldType.number),
+    FieldSpec('ratingNotes', 'ملاحظات التقييم', 'Rating notes'),
     FieldSpec('vendorType', 'نوع المورد', 'Type', type: FieldType.select, options: [
       ('ضريبي', 'ضريبي', 'Tax'), ('آجل', 'آجل', 'Credit'), ('كاش', 'كاش', 'Cash'),
     ]),
@@ -146,6 +151,8 @@ final contractsAgreementsCfg = ResourceConfig(
     FieldSpec('subject', 'موضوع العقد', 'Subject'),
     FieldSpec('contactPerson', 'جهة الاتصال', 'Contact'),
     FieldSpec('phone', 'رقم الجوال', 'Phone', type: FieldType.phone),
+    FieldSpec('email', 'البريد الإلكتروني', 'Email'),
+    FieldSpec('renewalPolicy', 'سياسة التجديد', 'Renewal policy'),
     FieldSpec('contractDate', 'تاريخ العقد', 'Contract date', type: FieldType.date),
     FieldSpec('startDate', 'تاريخ البدء', 'Start date', type: FieldType.date),
     FieldSpec('endDate', 'تاريخ الانتهاء', 'End date', type: FieldType.date),

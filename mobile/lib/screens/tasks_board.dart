@@ -266,6 +266,8 @@ class _TaskSheetState extends State<_TaskSheet> {
   final _comment = TextEditingController();
   late final TextEditingController _title;
   late final TextEditingController _desc;
+  late String _priority;
+  DateTime? _due;
   bool _busy = false;
 
   @override
@@ -274,13 +276,20 @@ class _TaskSheetState extends State<_TaskSheet> {
     t = Map<String, dynamic>.from(widget.task);
     _title = TextEditingController(text: (t['title'] ?? '').toString());
     _desc = TextEditingController(text: (t['description'] ?? '').toString());
+    _priority = (t['priority'] ?? 'normal').toString();
+    _due = t['dueDate'] != null ? DateTime.tryParse(t['dueDate'].toString())?.toLocal() : null;
   }
 
   Future<void> _saveEdits() async {
     if (_title.text.trim().isEmpty || _busy) return;
     setState(() => _busy = true);
     try {
-      await widget.onPatch(t['_id'], {'title': _title.text, 'description': _desc.text});
+      await widget.onPatch(t['_id'], {
+        'title': _title.text,
+        'description': _desc.text,
+        'priority': _priority,
+        'dueDate': _due?.toUtc().toIso8601String(),
+      });
       if (mounted) Navigator.pop(context);
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -353,6 +362,34 @@ class _TaskSheetState extends State<_TaskSheet> {
             TextField(controller: _title, decoration: InputDecoration(labelText: tr('عنوان المهمة *', 'Title *'))),
             const SizedBox(height: 10),
             TextField(controller: _desc, maxLines: 2, decoration: InputDecoration(labelText: tr('التفاصيل', 'Details'))),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: _priority,
+                  decoration: InputDecoration(labelText: tr('الأولوية', 'Priority')),
+                  items: _priorities.map((p) => DropdownMenuItem(value: p.$1, child: Text(tr(p.$2, p.$3)))).toList(),
+                  onChanged: (v) => setState(() => _priority = v ?? _priority),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(0, 54)),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: context,
+                      initialDate: _due ?? DateTime.now(),
+                      firstDate: DateTime(2024),
+                      lastDate: DateTime(2030),
+                    );
+                    if (d != null) setState(() => _due = d);
+                  },
+                  icon: const Icon(Icons.event_outlined, size: 18),
+                  label: Text(_due == null ? tr('تاريخ الاستحقاق', 'Due date') : '${_due!.year}-${_due!.month.toString().padLeft(2, '0')}-${_due!.day.toString().padLeft(2, '0')}', style: const TextStyle(fontSize: 12.5)),
+                ),
+              ),
+            ]),
             const SizedBox(height: 10),
             FilledButton.tonal(
               onPressed: _busy ? null : _saveEdits,

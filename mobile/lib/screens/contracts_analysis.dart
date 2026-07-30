@@ -57,6 +57,92 @@ class _ContractsAnalysisScreenState extends State<ContractsAnalysisScreen> {
     }
   }
 
+  // إدخال بيانات شهر لمورد (POST /api/contracts/utilisation) — نفس مدخل الويب.
+  Future<void> _enterMonth() async {
+    final now = DateTime.now();
+    final vendorName = TextEditingController();
+    final orders = TextEditingController();
+    final fleetSize = TextEditingController();
+    final avg = TextEditingController();
+    final operationsRep = TextEditingController();
+    final vendorType = TextEditingController();
+    int year = now.year;
+    int month = now.month;
+    bool isExternal = false;
+    bool hasContract = false;
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('إدخال تشغيل شهر', 'Enter month data'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 12),
+              TextField(controller: vendorName, decoration: InputDecoration(labelText: tr('اسم المورد *', 'Vendor *'))),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: DropdownButtonFormField<int>(
+                  initialValue: year,
+                  decoration: InputDecoration(labelText: tr('السنة', 'Year')),
+                  items: [for (var y = now.year - 3; y <= now.year + 1; y++) DropdownMenuItem(value: y, child: Text('$y'))],
+                  onChanged: (v) => setS(() => year = v ?? year),
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: DropdownButtonFormField<int>(
+                  initialValue: month,
+                  decoration: InputDecoration(labelText: tr('الشهر', 'Month')),
+                  items: [for (var m = 1; m <= 12; m++) DropdownMenuItem(value: m, child: Text('$m'))],
+                  onChanged: (v) => setS(() => month = v ?? month),
+                )),
+              ]),
+              const SizedBox(height: 10),
+              TextField(controller: orders, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('عدد الطلبات (الشحنات) *', 'Orders *'))),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: TextField(controller: fleetSize, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('حجم الأسطول', 'Fleet size')))),
+                const SizedBox(width: 10),
+                Expanded(child: TextField(controller: avg, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('متوسط حمولات/مركبة', 'Avg loads/veh')))),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: TextField(controller: vendorType, decoration: InputDecoration(labelText: tr('نوع المورد', 'Vendor type')))),
+                const SizedBox(width: 10),
+                Expanded(child: TextField(controller: operationsRep, decoration: InputDecoration(labelText: tr('مسؤول العمليات', 'Ops rep')))),
+              ]),
+              const SizedBox(height: 4),
+              SwitchListTile(contentPadding: EdgeInsets.zero, value: hasContract, onChanged: (v) => setS(() => hasContract = v), title: Text(tr('عليه عقد موقّع', 'Has signed contract'))),
+              SwitchListTile(contentPadding: EdgeInsets.zero, value: isExternal, onChanged: (v) => setS(() => isExternal = v), title: Text(tr('أفراد خارجية (بلا عقد)', 'External (no contract)'))),
+              const SizedBox(height: 8),
+              SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')))),
+            ]),
+          ),
+        ),
+      )),
+    );
+    if (ok != true || vendorName.text.trim().isEmpty) return;
+    final body = {
+      'vendorName': vendorName.text.trim(),
+      'year': year,
+      'month': month,
+      'orders': num.tryParse(orders.text.trim()) ?? 0,
+      if (fleetSize.text.trim().isNotEmpty) 'fleetSize': num.tryParse(fleetSize.text.trim()),
+      if (avg.text.trim().isNotEmpty) 'avgMonthlyLoadsPerVehicle': num.tryParse(avg.text.trim()),
+      if (vendorType.text.trim().isNotEmpty) 'vendorType': vendorType.text.trim(),
+      if (operationsRep.text.trim().isNotEmpty) 'operationsRep': operationsRep.text.trim(),
+      'hasContract': hasContract,
+      'isExternal': isExternal,
+    };
+    try {
+      await Api.instance.post('/api/contracts/utilisation', body);
+      _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم حفظ بيانات الشهر', 'Month data saved'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final totals = _a?['totals'] as Map<String, dynamic>?;
@@ -68,6 +154,11 @@ class _ContractsAnalysisScreenState extends State<ContractsAnalysisScreen> {
 
     return AppScaffold(
       title: Text(tr('تحليل التشغيل', 'Utilisation Analysis')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _enterMonth,
+        icon: const Icon(Icons.add_chart_outlined),
+        label: Text(tr('إدخال شهر', 'Enter month')),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 92), SizedBox(height: 10), Shimmer(height: 160), SizedBox(height: 10), Shimmer(height: 240),

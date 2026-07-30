@@ -2,6 +2,7 @@ const { FleetVehicle, FleetDriver, FleetCustomer, FleetShipment, FleetEvent } = 
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const User = require('../models/User');
+const { createNotification } = require('../services/notificationService');
 // The fleet's trucks ARE the Location Solutions trucks — the maintenance state
 // on the board comes from that mirror, joined by normalized plate digits.
 const Ls2Vehicle = require('../models/Ls2Vehicle');
@@ -207,6 +208,19 @@ exports.createShipment = async (req, res) => {
     for (const line of moveNotes) await logEvent(req, shipment._id, 'driver_change', { text: line });
 
     emit('fleet:updated', { id: String(shipment._id) });
+    // Notify the load's supervisor (assigned via the vehicle) — never the actor.
+    if (shipment.supervisor && String(shipment.supervisor) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: shipment.supervisor,
+          type: 'shipment_update',
+          title: 'شحنة جديدة',
+          message: `بوليصة ${shipment.waybillNumber} — ${shipment.fromCity || ''} ← ${shipment.toCity || ''}`,
+          relatedEntity: 'FleetShipment',
+          relatedEntityId: shipment._id,
+        });
+      } catch (e) {}
+    }
     await logAudit({
       user: req.user, action: 'create', entity: 'FleetShipment', entityId: shipment._id,
       changes: { waybillNumber: shipment.waybillNumber, customerName: shipment.customerName },
@@ -290,6 +304,19 @@ exports.patchStatus = async (req, res) => {
     await shipment.save();
     await logEvent(req, shipment._id, 'status', { from, to: shipment.status });
     emit('fleet:updated', { id: String(shipment._id) });
+    // Status change → tell the load's supervisor (unless they made the change).
+    if (shipment.supervisor && String(shipment.supervisor) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: shipment.supervisor,
+          type: 'status_changed',
+          title: 'تغيّرت حالة الشحنة',
+          message: `بوليصة ${shipment.waybillNumber} — ${from} → ${shipment.status}`,
+          relatedEntity: 'FleetShipment',
+          relatedEntityId: shipment._id,
+        });
+      } catch (e) {}
+    }
     res.json({ shipment });
   } catch (error) {
     res.status(400).json({ message: 'Invalid status' });

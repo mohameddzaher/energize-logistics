@@ -22,6 +22,7 @@ const cache = require('../utils/ttlCache');
 const emitToAll = (event, payload) => { try { socket.emitToAll(event, payload); } catch (e) {} cache.clear('ws:'); };
 const WS_DASH_TTL = 30 * 1000;
 const logAudit = require('../utils/auditLogger');
+const { createNotification } = require('../services/notificationService');
 
 // Item names are user text and go into a RegExp when matching an existing line.
 const escapeRx = (str) => String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -229,6 +230,20 @@ const completeMaintenanceRequest = async (req, res) => {
       .populate('completedBy', 'firstName lastName');
 
     emitToAll('maintenance:completed', populated);
+
+    // The employee who opened the request wants to know it is done.
+    if (request.createdBy && String(request.createdBy) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: request.createdBy,
+          type: 'status_changed',
+          title: 'اكتمل طلب الصيانة',
+          message: `المركبة ${request.vehicleNumber} — تم إنهاء الصيانة`,
+          relatedEntity: 'MaintenanceRequest',
+          relatedEntityId: request._id,
+        });
+      } catch (e) {}
+    }
 
     await logAudit({
       user: req.user,
@@ -469,6 +484,20 @@ const receivePurchaseRequest = async (req, res) => {
 
     emitToAll('purchase:received', populated);
 
+    // Let the requester know their parts arrived in the store.
+    if (request.requestedBy && String(request.requestedBy) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: request.requestedBy,
+          type: 'status_changed',
+          title: 'تم استلام المشتريات',
+          message: `${request.itemName} (${request.quantity}) — وصلت المخزن`,
+          relatedEntity: 'WorkshopPurchaseRequest',
+          relatedEntityId: request._id,
+        });
+      } catch (e) {}
+    }
+
     await logAudit({
       user: req.user,
       action: 'receive',
@@ -523,6 +552,20 @@ const fulfillPurchaseRequest = async (req, res) => {
       .populate('maintenanceRequest', 'vehicleNumber status');
 
     emitToAll('purchase:fulfilled', populated);
+
+    // Let the requester know their parts were issued to the job.
+    if (request.requestedBy && String(request.requestedBy) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: request.requestedBy,
+          type: 'status_changed',
+          title: 'تم صرف المشتريات',
+          message: `${request.itemName} (${request.quantity}) — تم الصرف`,
+          relatedEntity: 'WorkshopPurchaseRequest',
+          relatedEntityId: request._id,
+        });
+      } catch (e) {}
+    }
 
     await logAudit({
       user: req.user,
@@ -684,6 +727,20 @@ const createWorkshopTask = async (req, res) => {
 
     emitToAll('workshopTask:created', populated);
 
+    // Notify the assignee that a task was assigned to them.
+    if (data.assignedTo && String(data.assignedTo) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: data.assignedTo,
+          type: 'task_assigned',
+          title: 'مهمة ورشة جديدة',
+          message: `${data.title || 'مهمة'}${data.vehicleNumber ? ' — ' + data.vehicleNumber : ''}`,
+          relatedEntity: 'WorkshopTask',
+          relatedEntityId: task._id,
+        });
+      } catch (e) {}
+    }
+
     await logAudit({
       user: req.user,
       action: 'create',
@@ -723,6 +780,21 @@ const updateWorkshopTaskStatus = async (req, res) => {
     }
 
     emitToAll('workshopTask:updated', task);
+
+    // Tell the task's creator its status moved — unless they moved it.
+    const taskCreator = task.createdBy && (task.createdBy._id || task.createdBy);
+    if (taskCreator && String(taskCreator) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: taskCreator,
+          type: 'status_changed',
+          title: 'تحديث مهمة الورشة',
+          message: `${task.title || 'مهمة'} — ${status}`,
+          relatedEntity: 'WorkshopTask',
+          relatedEntityId: task._id,
+        });
+      } catch (e) {}
+    }
 
     await logAudit({
       user: req.user,

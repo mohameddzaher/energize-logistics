@@ -1,6 +1,7 @@
 const CollectionActivity = require('../models/CollectionActivity');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
+const { createNotification } = require('../services/notificationService');
 
 exports.logActivity = async (req, res) => {
   try {
@@ -108,6 +109,20 @@ exports.completeFollowUp = async (req, res) => {
     }
     await activity.save();
 
+    // Notify the collector who owned this follow-up (if closed by someone else).
+    if (activity.collector && String(activity.collector) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: activity.collector,
+          type: 'status_changed',
+          title: 'تم إغلاق متابعة تحصيل',
+          message: 'تم إكمال متابعة تحصيل كنت مسؤولاً عنها.',
+          relatedEntity: 'CollectionActivity',
+          relatedEntityId: activity._id,
+        });
+      } catch (e) {}
+    }
+
     await logAudit({
       user: req.user._id,
       action: 'complete_follow_up',
@@ -139,6 +154,20 @@ exports.markPromiseFulfilled = async (req, res) => {
 
     activity.promiseFulfilled = req.body.fulfilled;
     await activity.save();
+
+    // Notify the collector who owned this activity (if updated by someone else).
+    if (activity.collector && String(activity.collector) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: activity.collector,
+          type: 'status_changed',
+          title: 'تحديث حالة وعد بالسداد',
+          message: `تم تحديث حالة وعد بالسداد إلى: ${activity.promiseFulfilled ? 'تم الوفاء' : 'لم يتم الوفاء'}.`,
+          relatedEntity: 'CollectionActivity',
+          relatedEntityId: activity._id,
+        });
+      } catch (e) {}
+    }
 
     res.json({ activity });
   } catch (error) {

@@ -2,6 +2,7 @@ const CustomsClearance = require('../models/CustomsClearance');
 const { recomputeTotals } = require('../models/CustomsClearance');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
+const { createNotification } = require('../services/notificationService');
 
 // Scalar fields a client may set on create/update.
 const EDITABLE = [
@@ -139,6 +140,21 @@ exports.updateClearance = async (req, res) => {
 
     await logAudit({ user: req.user._id, action: 'update_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { refNumber: clearance.refNumber, stage: clearance.stage } }, ipAddress: req.ip });
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+
+    // Stage advance → notify the transaction's creator (unless they advanced it).
+    if (data.stage && existing.stage !== clearance.stage
+      && clearance.createdBy && String(clearance.createdBy) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: clearance.createdBy,
+          type: 'status_changed',
+          title: 'تحديث معاملة تخليص',
+          message: `${clearance.refNumber} — المرحلة: ${clearance.stage}`,
+          relatedEntity: 'CustomsClearance',
+          relatedEntityId: clearance._id,
+        });
+      } catch (e) {}
+    }
 
     res.json({ clearance });
   } catch (error) {

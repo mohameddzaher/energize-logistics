@@ -4,6 +4,7 @@ const BdPartner = require('../models/BdPartner');
 const BdTender = require('../models/BdTender');
 const BdActivity = require('../models/BdActivity');
 const { emitToAll } = require('../websocket/socketManager');
+const { createNotification } = require('../services/notificationService');
 
 // ── Field whitelists ─────────────────────────────────────────────────────────
 // Only these keys may ever come off the wire. `status` and `closedAt` are
@@ -253,6 +254,19 @@ exports.createOpportunity = async (req, res) => {
     data.createdBy = req.user._id;
     if (!data.owner) { data.owner = req.user._id; data.ownerName = userName(req.user); }
     const opportunity = await BdOpportunity.create(data);
+    // Notify the owner if the opportunity was assigned to someone else.
+    if (opportunity.owner && String(opportunity.owner) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: opportunity.owner,
+          type: 'task_assigned',
+          title: 'فرصة تطوير أعمال جديدة',
+          message: `تم إسناد الفرصة "${opportunity.name}" إليك.`,
+          relatedEntity: 'BdOpportunity',
+          relatedEntityId: opportunity._id,
+        });
+      } catch (e) {}
+    }
     emit('bd:updated', { entity: 'opportunity', action: 'created', id: opportunity._id });
     res.status(201).json({ opportunity });
   } catch (error) {
@@ -265,10 +279,24 @@ exports.updateOpportunity = async (req, res) => {
     if (badId(req.params.id, res)) return;
     const opportunity = await BdOpportunity.findById(req.params.id);
     if (!opportunity) return res.status(404).json({ message: 'Opportunity not found' });
+    const prevStage = opportunity.stage;
     // set()+save() rather than findByIdAndUpdate so the pre-save hook that keeps
     // `status`/`closedAt` in sync with `stage` actually runs.
     opportunity.set(pickOpp(req.body));
     await opportunity.save();
+    // Notify the owner when the opportunity moves to a new stage (if not the actor).
+    if (opportunity.stage !== prevStage && opportunity.owner && String(opportunity.owner) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: opportunity.owner,
+          type: 'status_changed',
+          title: 'تغيّرت مرحلة الفرصة',
+          message: `انتقلت الفرصة "${opportunity.name}" إلى مرحلة: ${opportunity.stage}.`,
+          relatedEntity: 'BdOpportunity',
+          relatedEntityId: opportunity._id,
+        });
+      } catch (e) {}
+    }
     const populated = await popOpp(BdOpportunity.findById(opportunity._id)).lean();
     emit('bd:updated', { entity: 'opportunity', action: 'updated', id: opportunity._id });
     res.json({ opportunity: populated });
@@ -330,6 +358,19 @@ exports.createPartner = async (req, res) => {
     data.createdBy = req.user._id;
     if (!data.owner) { data.owner = req.user._id; data.ownerName = userName(req.user); }
     const partner = await BdPartner.create(data);
+    // Notify the owner if the partner was assigned to someone else.
+    if (partner.owner && String(partner.owner) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: partner.owner,
+          type: 'task_assigned',
+          title: 'شريك جديد',
+          message: `تم إسناد الشريك "${partner.name}" إليك.`,
+          relatedEntity: 'BdPartner',
+          relatedEntityId: partner._id,
+        });
+      } catch (e) {}
+    }
     emit('bd:updated', { entity: 'partner', action: 'created', id: partner._id });
     res.status(201).json({ partner });
   } catch (error) {
@@ -340,10 +381,24 @@ exports.createPartner = async (req, res) => {
 exports.updatePartner = async (req, res) => {
   try {
     if (badId(req.params.id, res)) return;
+    const beforePartner = await BdPartner.findById(req.params.id).select('status').lean();
     const partner = await popPartner(
       BdPartner.findByIdAndUpdate(req.params.id, pickPartner(req.body), { new: true, runValidators: true })
     ).lean();
     if (!partner) return res.status(404).json({ message: 'Partner not found' });
+    // Notify the owner when the partner's status changes (if not the actor).
+    if (beforePartner && partner.status !== beforePartner.status && partner.owner && String(partner.owner._id || partner.owner) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: partner.owner._id || partner.owner,
+          type: 'status_changed',
+          title: 'تغيّرت حالة الشريك',
+          message: `أصبحت حالة الشريك "${partner.name}": ${partner.status}.`,
+          relatedEntity: 'BdPartner',
+          relatedEntityId: partner._id,
+        });
+      } catch (e) {}
+    }
     emit('bd:updated', { entity: 'partner', action: 'updated', id: partner._id });
     res.json({ partner });
   } catch (error) {
@@ -406,6 +461,19 @@ exports.createTender = async (req, res) => {
     data.createdBy = req.user._id;
     if (!data.owner) { data.owner = req.user._id; data.ownerName = userName(req.user); }
     const tender = await BdTender.create(data);
+    // Notify the owner if the tender was assigned to someone else.
+    if (tender.owner && String(tender.owner) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: tender.owner,
+          type: 'task_assigned',
+          title: 'مناقصة جديدة',
+          message: `تم إسناد المناقصة "${tender.title}" إليك.`,
+          relatedEntity: 'BdTender',
+          relatedEntityId: tender._id,
+        });
+      } catch (e) {}
+    }
     emit('bd:updated', { entity: 'tender', action: 'created', id: tender._id });
     res.status(201).json({ tender });
   } catch (error) {
@@ -416,10 +484,24 @@ exports.createTender = async (req, res) => {
 exports.updateTender = async (req, res) => {
   try {
     if (badId(req.params.id, res)) return;
+    const beforeTender = await BdTender.findById(req.params.id).select('status').lean();
     const tender = await popTender(
       BdTender.findByIdAndUpdate(req.params.id, pickTender(req.body), { new: true, runValidators: true })
     ).lean();
     if (!tender) return res.status(404).json({ message: 'Tender not found' });
+    // Notify the owner when the tender's status changes (if not the actor).
+    if (beforeTender && tender.status !== beforeTender.status && tender.owner && String(tender.owner._id || tender.owner) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: tender.owner._id || tender.owner,
+          type: 'status_changed',
+          title: 'تغيّرت حالة المناقصة',
+          message: `أصبحت حالة المناقصة "${tender.title}": ${tender.status}.`,
+          relatedEntity: 'BdTender',
+          relatedEntityId: tender._id,
+        });
+      } catch (e) {}
+    }
     emit('bd:updated', { entity: 'tender', action: 'updated', id: tender._id });
     res.json({ tender: { ...tender, daysLeft: daysUntil(tender.submissionDeadline) } });
   } catch (error) {
@@ -471,6 +553,19 @@ exports.createActivity = async (req, res) => {
     data.createdBy = req.user._id;
     if (!data.performedBy) { data.performedBy = req.user._id; data.performedByName = userName(req.user); }
     const activity = await BdActivity.create(data);
+    // Notify the person the activity was logged for (if not the actor).
+    if (activity.performedBy && String(activity.performedBy) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: activity.performedBy,
+          type: 'task_assigned',
+          title: 'نشاط تطوير أعمال جديد',
+          message: `تم إسناد نشاط "${activity.title}" إليك.`,
+          relatedEntity: 'BdActivity',
+          relatedEntityId: activity._id,
+        });
+      } catch (e) {}
+    }
     emit('bd:updated', { entity: 'activity', action: 'created', id: activity._id });
     res.status(201).json({ activity });
   } catch (error) {

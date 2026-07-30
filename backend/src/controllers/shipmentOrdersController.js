@@ -5,6 +5,7 @@ const ShipmentOrderSupplier = require('../models/ShipmentOrderSupplier');
 const ShipmentOrderVehicle = require('../models/ShipmentOrderVehicle');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
+const { createNotification } = require('../services/notificationService');
 
 // The trial section for creating shipments natively, instead of on the external
 // UPL platform. Fully self-contained: nothing here reads or writes anything the
@@ -256,6 +257,19 @@ exports.patchStatus = async (req, res) => {
     order.status = status;
     await order.save(); // save() so the enum validates the value
     emit('shipmentOrders:updated', { id: String(order._id) });
+    // Tell whoever created the order its status moved — unless they moved it.
+    if (order.createdBy && String(order.createdBy) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: order.createdBy,
+          type: 'status_changed',
+          title: 'تغيّرت حالة الطلب',
+          message: `بوليصة ${order.waybillNumber} — ${order.status}`,
+          relatedEntity: 'ShipmentOrder',
+          relatedEntityId: order._id,
+        });
+      } catch (e) {}
+    }
     res.json({ order });
   } catch (error) {
     res.status(400).json({ message: 'Invalid status' });

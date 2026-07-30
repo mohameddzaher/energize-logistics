@@ -12,6 +12,7 @@
 const MarketingCampaign = require('../models/MarketingCampaign');
 const MarketingActivity = require('../models/MarketingActivity');
 const { emitToAll } = require('../websocket/socketManager');
+const { createNotification } = require('../services/notificationService');
 
 const emit = (payload) => {
   try { emitToAll('marketing:updated', payload || {}); } catch (e) { /* socket optional */ }
@@ -335,6 +336,19 @@ exports.createCampaign = async (req, res) => {
   try {
     if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ message: 'Campaign name is required' });
     const doc = await MarketingCampaign.create({ ...pickCampaign(req.body), createdBy: req.user._id });
+    // Notify the campaign owner (if assigned to someone other than the creator).
+    if (doc.owner && String(doc.owner) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: doc.owner,
+          type: 'task_assigned',
+          title: 'حملة تسويقية جديدة',
+          message: `تم إسناد حملة "${doc.name}" إليك.`,
+          relatedEntity: 'MarketingCampaign',
+          relatedEntityId: doc._id,
+        });
+      } catch (e) {}
+    }
     emit({ kind: 'campaign', id: String(doc._id) });
     res.status(201).json({ campaign: derive(doc) });
   } catch (e) {
@@ -345,12 +359,26 @@ exports.createCampaign = async (req, res) => {
 
 exports.updateCampaign = async (req, res) => {
   try {
+    const before = await MarketingCampaign.findById(req.params.id).select('status').lean();
     const doc = await MarketingCampaign.findByIdAndUpdate(
       req.params.id,
       { $set: pickCampaign(req.body) },
       { new: true, runValidators: true }
     ).lean();
     if (!doc) return res.status(404).json({ message: 'Campaign not found' });
+    // Notify the owner when the campaign's status changes (if not the actor).
+    if (before && doc.status !== before.status && doc.owner && String(doc.owner) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: doc.owner,
+          type: 'status_changed',
+          title: 'تغيّرت حالة الحملة',
+          message: `أصبحت حالة حملة "${doc.name}": ${doc.status}.`,
+          relatedEntity: 'MarketingCampaign',
+          relatedEntityId: doc._id,
+        });
+      } catch (e) {}
+    }
     emit({ kind: 'campaign', id: String(req.params.id) });
     res.json({ campaign: derive(doc) });
   } catch (e) {
@@ -411,6 +439,19 @@ exports.createActivity = async (req, res) => {
       data.performedByName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
     }
     const doc = await MarketingActivity.create({ ...data, createdBy: req.user._id });
+    // Notify the person the activity was logged for (if not the actor).
+    if (doc.performedBy && String(doc.performedBy) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: doc.performedBy,
+          type: 'task_assigned',
+          title: 'نشاط تسويقي جديد',
+          message: `تم إسناد نشاط تسويقي "${doc.title || ''}" إليك.`,
+          relatedEntity: 'MarketingActivity',
+          relatedEntityId: doc._id,
+        });
+      } catch (e) {}
+    }
     emit({ kind: 'activity', id: String(doc._id) });
     res.status(201).json({ activity: doc });
   } catch (e) {

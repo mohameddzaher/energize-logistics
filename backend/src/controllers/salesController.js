@@ -5,6 +5,7 @@ const CrmDeal = require('../models/CrmDeal');
 const CrmCompany = require('../models/CrmCompany');
 const { emitToAll } = require('../websocket/socketManager');
 const { grantedBySection } = require('../utils/sectionAccess');
+const { createNotification } = require('../services/notificationService');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
 const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'];
@@ -169,6 +170,19 @@ exports.createTarget = async (req, res) => {
     const data = { rep: rep || null, period, amountTarget: Number(amountTarget) || 0, dealsTarget: Number(dealsTarget) || 0, notes, createdBy: req.user._id };
     // Upsert so re-setting a rep's target for a period overwrites it.
     const target = await SalesTarget.findOneAndUpdate({ rep: data.rep, period }, data, { new: true, upsert: true, setDefaultsOnInsert: true });
+    // Notify the rep this target was set for (skip team-wide targets and self).
+    if (target.rep && String(target.rep) !== String(req.user._id)) {
+      try {
+        await createNotification({
+          recipient: target.rep,
+          type: 'task_assigned',
+          title: 'تم تحديد هدف مبيعات',
+          message: `تم تعيين هدف مبيعات لك للفترة ${period}.`,
+          relatedEntity: 'SalesTarget',
+          relatedEntityId: target._id,
+        });
+      } catch (e) {}
+    }
     emitSales('sales:target', { id: String(target._id) });
     res.status(201).json({ target });
   } catch (error) {

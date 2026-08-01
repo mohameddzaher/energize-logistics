@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/theme.dart';
+import '../ui/widgets.dart';
 import '../services/live.dart';
 
 /// موافقات فريقي — leave requests from the manager's direct reports awaiting
@@ -94,83 +96,93 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     return AppScaffold(
       title: Text(tr('موافقات فريقي', 'Team Approvals')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? ListView(padding: const EdgeInsets.all(14), children: const [
+              Shimmer(height: 96), SizedBox(height: 10), Shimmer(height: 96), SizedBox(height: 10), Shimmer(height: 96),
+            ])
           : _error != null
-              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text(_error!, textAlign: TextAlign.center),
-                  TextButton(onPressed: _load, child: Text(tr('إعادة المحاولة', 'Retry'))),
-                ]))
+              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.all(14),
-                    children: [
-                      if (pending.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 40),
-                          child: Center(child: Text(tr('لا توجد طلبات منتظرة لقرارك ✅', 'Nothing awaiting your decision ✅'), style: const TextStyle(color: Color(0xFF64748B)))),
+                  child: (pending.isEmpty && past.isEmpty)
+                      ? ListView(children: [
+                          const SizedBox(height: 80),
+                          EmptyState(icon: Icons.verified_outlined, title: tr('لا توجد طلبات منتظرة لقرارك', 'Nothing awaiting your decision')),
+                        ])
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                          children: [
+                            ...pending.asMap().entries.map((e) => _card(e.value, actionable: true, i: e.key)),
+                            if (past.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Text(tr('قرارات سابقة', 'Past decisions'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.inkSoft, fontSize: 13)),
+                              const SizedBox(height: 8),
+                              ...past.take(15).map((l) => _card(l, actionable: false)),
+                            ],
+                          ],
                         ),
-                      ...pending.map((l) => _card(l, actionable: true)),
-                      if (past.isNotEmpty) ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Text(tr('قرارات سابقة', 'Past decisions'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                        ),
-                        ...past.take(15).map((l) => _card(l, actionable: false)),
-                      ],
-                    ],
-                  ),
                 ),
     );
   }
 
-  Widget _card(Map<String, dynamic> l, {required bool actionable}) {
+  Widget _card(Map<String, dynamic> l, {required bool actionable, int i = 0}) {
     final emp = l['employee'] is Map
         ? '${l['employee']['firstName'] ?? ''} ${l['employee']['lastName'] ?? ''}'.trim()
         : (l['requester'] is Map ? '${l['requester']['firstName'] ?? ''} ${l['requester']['lastName'] ?? ''}'.trim() : '—');
     final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: actionable ? const Color(0xFFFDBA74) : const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(emp, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 4),
-          Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
-              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-          if ((l['reason'] ?? '').toString().isNotEmpty)
-            Text(l['reason'], style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
-          if (actionable) ...[
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(
-                child: FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669), minimumSize: const Size.fromHeight(40)),
-                  onPressed: () => _decide(l, 'approved'),
-                  child: Text(tr('اعتماد', 'Approve')),
+    final st = l['status'];
+    final (String, String, Color) badge = st == 'approved'
+        ? ('معتمدة', 'Approved', T.success)
+        : st == 'rejected'
+            ? ('مرفوضة', 'Rejected', T.danger)
+            : st == 'pending_hr'
+                ? ('عند الموارد البشرية', 'With HR', T.info)
+                : ('—', '—', T.inkFaint);
+    return FadeSlideIn(
+      delayMs: (i * 20).clamp(0, 200),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: AppCard(
+          topAccent: actionable ? T.warn : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Expanded(child: Text(emp, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+                if (!actionable) Chip2(tr(badge.$1, badge.$2), badge.$3),
+              ]),
+              const SizedBox(height: 4),
+              Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
+                  style: const TextStyle(fontSize: 13, color: T.inkSoft)),
+              if ((l['reason'] ?? '').toString().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626), minimumSize: const Size.fromHeight(40)),
-                  onPressed: () => _decide(l, 'rejected'),
-                  child: Text(tr('رفض', 'Reject')),
-                ),
-              ),
-            ]),
-          ] else
-            Text(
-              l['status'] == 'approved' ? tr('✔ معتمدة', '✔ Approved') : l['status'] == 'rejected' ? tr('✖ مرفوضة', '✖ Rejected') : l['status'] == 'pending_hr' ? tr('عند الموارد البشرية', 'With HR') : '—',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-            ),
-        ],
+              if (actionable) ...[
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: T.success, minimumSize: const Size.fromHeight(42)),
+                      onPressed: () => _decide(l, 'approved'),
+                      icon: const Icon(Icons.check_rounded, size: 18),
+                      label: Text(tr('اعتماد', 'Approve')),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: T.danger, minimumSize: const Size.fromHeight(42)),
+                      onPressed: () => _decide(l, 'rejected'),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      label: Text(tr('رفض', 'Reject')),
+                    ),
+                  ),
+                ]),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

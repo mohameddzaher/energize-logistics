@@ -612,20 +612,25 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                         final ast = accidentStatus[a['status']] ?? ('—', '—', T.inkFaint);
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
-                          child: AppCard(
+                          child: Pressable(
+                            onTap: () => editAccident(context, a, _load),
+                            child: AppCard(
                             topAccent: sev.$3,
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Row(children: [
                                 Expanded(child: Text((a['description'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                                const Icon(Icons.edit_outlined, size: 15, color: T.inkFaint),
                               ]),
                               const SizedBox(height: 5),
                               Wrap(spacing: 6, runSpacing: 6, children: [
                                 Chip2(_d(a['date']), T.inkFaint, icon: Icons.event),
                                 Chip2(tr(sev.$1, sev.$2), sev.$3),
                                 Chip2(tr(ast.$1, ast.$2), ast.$3),
-                                if ((a['estimatedCost'] ?? 0) != 0) Chip2('${a['estimatedCost']} ${tr('ر.س', 'SAR')}', T.orange),
+                                if ((a['actualCost'] ?? 0) != 0) Chip2('${tr('فعلي', 'Actual')}: ${a['actualCost']} ${tr('ر.س', 'SAR')}', T.danger)
+                                else if ((a['estimatedCost'] ?? 0) != 0) Chip2('${a['estimatedCost']} ${tr('ر.س', 'SAR')}', T.orange),
                               ]),
                             ]),
+                          ),
                           ),
                         );
                       }),
@@ -643,6 +648,69 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         side: BorderSide.none,
         onPressed: onTap,
       );
+}
+
+// تعديل حادث: الحالة + الخطورة + التكلفة الفعلية + التسوية، مع حذف.
+// endpoint: PUT/DELETE /api/vehicles/accidents/:accId
+Future<void> editAccident(BuildContext context, Map<String, dynamic> a, Future<void> Function() onDone) async {
+  String status = (a['status'] ?? 'reported').toString();
+  String severity = (a['severity'] ?? 'minor').toString();
+  final actualCost = TextEditingController(text: (a['actualCost'] == null || a['actualCost'] == 0) ? '' : a['actualCost'].toString());
+  final resolution = TextEditingController(text: (a['resolution'] ?? '').toString());
+  final ok = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+      padding: EdgeInsets.fromLTRB(18, 16, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(tr('تعديل الحادث', 'Edit accident'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: T.danger),
+            onPressed: () async {
+              Navigator.pop(c, false);
+              try { await Api.instance.delete('/api/vehicles/accidents/${a['_id']}'); await onDone(); }
+              catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+            },
+          ),
+        ]),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: status,
+          decoration: InputDecoration(labelText: tr('الحالة', 'Status')),
+          items: accidentStatus.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2)))).toList(),
+          onChanged: (v) => setS(() => status = v ?? status),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          initialValue: severity,
+          decoration: InputDecoration(labelText: tr('الخطورة', 'Severity')),
+          items: accidentSeverity.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2)))).toList(),
+          onChanged: (v) => setS(() => severity = v ?? severity),
+        ),
+        const SizedBox(height: 10),
+        TextField(controller: actualCost, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('التكلفة الفعلية (ر.س)', 'Actual cost (SAR)'))),
+        const SizedBox(height: 10),
+        TextField(controller: resolution, maxLines: 2, decoration: InputDecoration(labelText: tr('التسوية / الإجراء', 'Resolution'))),
+        const SizedBox(height: 14),
+        SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')))),
+      ]),
+    )),
+  );
+  if (ok != true) return;
+  try {
+    await Api.instance.put('/api/vehicles/accidents/${a['_id']}', {
+      'status': status,
+      'severity': severity,
+      'actualCost': actualCost.text.trim().isEmpty ? null : num.tryParse(actualCost.text.trim()),
+      'resolution': resolution.text.trim(),
+    });
+    await onDone();
+  } catch (e) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+  }
 }
 
 // ── قائمة الحوادث المستقلة ──────────────────────────────────────────────────
@@ -739,7 +807,9 @@ class _AccidentsListScreenState extends State<AccidentsListScreen> {
                                 final veh = a['vehicle'] is Map ? (a['vehicle']['plateNumber'] ?? '').toString() : '';
                                 return FadeSlideIn(
                                   delayMs: (i * 12).clamp(0, 120),
-                                  child: AppCard(
+                                  child: Pressable(
+                                    onTap: () => editAccident(context, a, _load),
+                                    child: AppCard(
                                     topAccent: sev.$3,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
@@ -753,9 +823,11 @@ class _AccidentsListScreenState extends State<AccidentsListScreen> {
                                         Chip2(_d(a['date']), T.inkFaint, icon: Icons.event),
                                         Chip2(tr(sev.$1, sev.$2), sev.$3),
                                         if (a['employee'] != null) Chip2(empName(a['employee']), T.info, icon: Icons.person_outline),
-                                        if ((a['estimatedCost'] ?? 0) != 0) Chip2('${a['estimatedCost']} ${tr('ر.س', 'SAR')}', T.orange),
+                                        if ((a['actualCost'] ?? 0) != 0) Chip2('${tr('فعلي', 'Actual')}: ${a['actualCost']} ${tr('ر.س', 'SAR')}', T.danger)
+                                        else if ((a['estimatedCost'] ?? 0) != 0) Chip2('${a['estimatedCost']} ${tr('ر.س', 'SAR')}', T.orange),
                                       ]),
                                     ]),
+                                  ),
                                   ),
                                 );
                               },

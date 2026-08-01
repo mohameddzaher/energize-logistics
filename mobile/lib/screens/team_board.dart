@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'performance_evaluations.dart';
 
 /// تقييم الأداء — the mobile twin of the web TeamBoard: the signed-in
 /// manager's team for the current period with each member's score and band.
@@ -92,41 +93,58 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
                               final score = (eval0?['finalScore'] ?? eval0?['score'] ?? m['score']) as num?;
                               final band = (eval0?['band'] ?? m['band'] ?? '').toString();
                               final color = _scoreColor(score);
+                              final empId = (emp['_id'] ?? '').toString();
                               return FadeSlideIn(
                                 delayMs: (e.key * 25).clamp(0, 250),
                                 child: Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
-                                  child: AppCard(
-                                    child: Row(children: [
-                                      CircleAvatar(
-                                        radius: 20,
-                                        backgroundColor: color.withValues(alpha: 0.12),
-                                        child: Text(name.toString().isNotEmpty ? name.toString().characters.first : '؟',
-                                            style: TextStyle(color: color, fontWeight: FontWeight.w800)),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                          Text(name.toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                                          Text((emp['jobTitle'] ?? emp['department'] ?? '').toString(),
-                                              style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                                  child: Pressable(
+                                    onTap: empId.isEmpty
+                                        ? null
+                                        : () async {
+                                            await Navigator.push(context, MaterialPageRoute(
+                                              builder: (_) => EvaluateEmployeeScreen(
+                                                employeeId: empId,
+                                                name: name.toString(),
+                                                periodKey: (_d?['periodKey'] ?? '').toString(),
+                                              ),
+                                            ));
+                                            _load(); // حدّث الدرجة بعد الرجوع من التقييم
+                                          },
+                                    child: AppCard(
+                                      child: Row(children: [
+                                        CircleAvatar(
+                                          radius: 20,
+                                          backgroundColor: color.withValues(alpha: 0.12),
+                                          child: Text(name.toString().isNotEmpty ? name.toString().characters.first : '؟',
+                                              style: TextStyle(color: color, fontWeight: FontWeight.w800)),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                            Text(name.toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                            Text((emp['jobTitle'] ?? emp['department'] ?? '').toString(),
+                                                style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                                          ]),
+                                        ),
+                                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                                          Text(score != null ? score.toStringAsFixed(0) : '—',
+                                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color)),
+                                          if (band.isNotEmpty) Chip2(band, color),
+                                          if (eval0 == null)
+                                            Chip2(tr('لم يُقيَّم', 'Not evaluated'), T.inkFaint),
                                         ]),
-                                      ),
-                                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                                        Text(score != null ? score.toStringAsFixed(0) : '—',
-                                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color)),
-                                        if (band.isNotEmpty) Chip2(band, color),
-                                        if (eval0 == null)
-                                          Chip2(tr('لم يُقيَّم', 'Not evaluated'), T.inkFaint),
+                                        const SizedBox(width: 4),
+                                        Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, color: T.inkFaint),
                                       ]),
-                                    ]),
+                                    ),
                                   ),
                                 ),
                               );
                             }),
                             const SizedBox(height: 6),
                             Text(
-                              tr('التقييم التفصيلي (بنود المؤشرات والاعتماد) متاح على الويب — قادم للتطبيق.', 'Detailed evaluation forms are on the web — coming to the app.'),
+                              tr('اضغط على أي عضو لفتح نموذج التقييم التفصيلي (بنود المؤشرات والاعتماد).', 'Tap a member to open the detailed evaluation form.'),
                               style: const TextStyle(fontSize: 11.5, color: T.inkFaint),
                               textAlign: TextAlign.center,
                             ),

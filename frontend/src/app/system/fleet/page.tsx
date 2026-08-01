@@ -16,6 +16,7 @@ import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
 import { exportToExcel } from '@/utils/exportExcel';
+import { useFleetLookups } from '@/hooks/useFleetLookups';
 import {
   FleetShipment, FleetCustomer, FLEET_STATUSES, fleetStatus, fleetStatusLabel,
   fmtDT, fmtD, hoursSince, canEditFleet, canAdminFleet, Lang,
@@ -54,6 +55,7 @@ export default function FleetShipmentsPage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
+  const lkp = useFleetLookups(ar);
   const router = useRouter();
   const { confirm, notify } = useDialog();
   const editor = canEditFleet(user);
@@ -140,8 +142,9 @@ export default function FleetShipmentsPage() {
   const downloadOne = async (s: FleetShipment) => {
     setDownloadingId(s._id);
     try {
+      // نفس ملف الموبايل بالضبط: الخادم يولّد البوليصة على الترويسة بالختم.
+      const blob = await api.getBlob(`/api/fleet/shipments/${s._id}/waybill.pdf?lang=${ar ? 'ar' : 'en'}`);
       const gen = await import('@/lib/dispatchSheetGenerator');
-      const { blob } = await gen.generateSingleDispatchPdf(toSheetRow(s));
       gen.triggerDownload(blob, `${waybillFileName(s)}.pdf`);
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setDownloadingId(null);
@@ -200,6 +203,12 @@ export default function FleetShipmentsPage() {
           { header: 'Driver', key: 'driverName', width: 18 },
           { header: 'Second driver', key: 'secondDriverName', width: 18 },
           { header: 'Supervisor', key: 'supervisorName', width: 18 },
+          { header: 'Customer type', key: 'customerType', transform: (v: any) => (v === 'heavy' ? 'Heavy' : v === 'branch' ? 'Branch' : ''), width: 14 },
+          { header: 'Load type', key: 'loadType', width: 16 },
+          { header: 'Vehicle rent', key: 'price', width: 14 },
+          { header: 'Full rent', key: 'fullRent', width: 14 },
+          { header: 'Driver expense', key: 'driverExpense', width: 14 },
+          { header: 'Payment', key: 'paymentType', width: 12 },
           { header: 'Load date', key: 'loadDate', transform: (v: any) => fmtD(v), width: 14 },
           { header: 'Status', key: 'status', transform: (v: any) => fleetStatusLabel(v, 'en'), width: 14 },
         ], `fleet-shipments-${new Date().toISOString().slice(0, 10)}`, 'Shipments')} />
@@ -282,6 +291,9 @@ export default function FleetShipmentsPage() {
               ar ? 'المسار' : 'Route',
               ar ? 'اللوحة' : 'Plate',
               ar ? 'السائقون' : 'Drivers',
+              ar ? 'إيجار السيارة' : 'Vehicle rent',
+              ar ? 'نوع العميل' : 'Cust. type',
+              ar ? 'نوع الحمولة' : 'Load type',
               ar ? 'تاريخ التحميل' : 'Load date',
               ar ? 'آخر تواصل' : 'Last contact',
               ar ? 'المشرف' : 'Supervisor',
@@ -316,6 +328,18 @@ export default function FleetShipmentsPage() {
                       {(s.driverPhone || '').trim() && <ContactButtons phone={s.driverPhone} size={13} />}
                     </div>
                   </td>
+                  <td className="px-3 py-3 text-xs whitespace-nowrap">
+                    <span className="font-semibold text-emerald-700">{s.price ? Number(s.price).toLocaleString('en-US') : '—'}</span>
+                    {s.fullRent ? <span className="text-slate-400"> / {Number(s.fullRent).toLocaleString('en-US')}</span> : null}
+                  </td>
+                  <td className="px-3 py-3 text-xs whitespace-nowrap">
+                    {s.customerType === 'heavy'
+                      ? <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[11px] font-semibold">{ar ? 'نقل ثقيل' : 'Heavy'}</span>
+                      : s.customerType === 'branch'
+                        ? <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold">{ar ? 'فروع' : 'Branch'}</span>
+                        : <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-3 py-3 text-slate-600 text-xs whitespace-nowrap">{lkp('fleet_load_type', s.loadType) || '—'}</td>
                   <td className="px-3 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtD(s.loadDate)}</td>
                   <td className="px-3 py-3 whitespace-nowrap">
                     {/* The follow-up cadence, visible per row: red once 3h pass. */}

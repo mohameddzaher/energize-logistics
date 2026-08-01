@@ -163,6 +163,25 @@ class ApiClient {
     return this.request<T>(endpoint, { ...options, method: 'GET' });
   }
 
+  // Fetch a binary endpoint (e.g. the server-rendered بوليصة PDF) as a Blob,
+  // carrying the session cookie and doing ONE silent refresh on a 401 — same
+  // recovery as request(), but returning bytes instead of JSON.
+  async getBlob(endpoint: string, retried = false): Promise<Blob> {
+    const res = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (res.status === 401 && !retried && !endpoint.startsWith('/api/auth/')) {
+      if (await this.refreshToken()) return this.getBlob(endpoint, true);
+      throw new Error('Authentication required');
+    }
+    if (!res.ok) {
+      const msg = await res.json().catch(() => ({ message: 'Request failed' }));
+      throw new Error(msg.message || 'Request failed');
+    }
+    return res.blob();
+  }
+
   post<T>(endpoint: string, data?: unknown, options?: FetchOptions): Promise<T> {
     return this.request<T>(endpoint, {
       ...options,

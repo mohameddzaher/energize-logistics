@@ -127,7 +127,17 @@ employeeSchema.index({ iqamaNumber: 1 });
 employeeSchema.index({ nationalId: 1 });
 employeeSchema.index({ employeeNumber: 1 });
 employeeSchema.index({ employmentStatus: 1 });
+// The employees list sorts by createdAt (optionally filtered by status) — index
+// it so a busy office doesn't pay an in-memory sort of the whole collection.
+employeeSchema.index({ createdAt: -1 });
+employeeSchema.index({ employmentStatus: 1, createdAt: -1 });
 employeeSchema.index({ user: 1 });
+
+// Any employee write clears the cached list so edits/new hires/terminations show
+// immediately (the list is cached ~30s to survive concurrent office-wide loads).
+employeeSchema.post('save', function () {
+  try { require('../utils/ttlCache').clear('hr:employees'); } catch (e) { /* noop */ }
+});
 employeeSchema.index({ directManager: 1 });
 employeeSchema.index({ vehiclePlate: 1 });
 

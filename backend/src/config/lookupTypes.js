@@ -13,7 +13,46 @@ const assetDefaults = require('./assetDefaults');
 // Roles that can manage every lookup regardless of module.
 const BASE_WRITE_ROLES = ['super_admin', 'admin'];
 
+const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations'];
 const REGISTRY = [
+  // ── إدارة الأسطول — قوائم منسدلة قابلة للتعديل ────────────────────────────
+  {
+    type: 'fleet_rent_type',
+    module: 'fleet',
+    nameEn: 'Fleet Rent Types',
+    nameAr: 'أنواع الإيجار (الأسطول)',
+    roles: FLEET_ROLES,
+    seed: [
+      { key: 'forward', nameEn: 'Forward', nameAr: 'قدام' },
+      { key: 'return', nameEn: 'Return', nameAr: 'راجعة' },
+    ],
+  },
+  {
+    type: 'fleet_payment_type',
+    module: 'fleet',
+    nameEn: 'Fleet Payment Types',
+    nameAr: 'أنواع الدفع (الأسطول)',
+    roles: FLEET_ROLES,
+    seed: [
+      { key: 'cash', nameEn: 'Cash', nameAr: 'كاش' },
+      { key: 'tax', nameEn: 'Tax invoice', nameAr: 'ضريبي' },
+    ],
+  },
+  {
+    type: 'fleet_load_type',
+    module: 'fleet',
+    nameEn: 'Fleet Load Types',
+    nameAr: 'أنواع الحمولة (الأسطول)',
+    roles: FLEET_ROLES,
+    seed: [
+      { key: 'general', nameEn: 'General cargo', nameAr: 'بضائع عامة' },
+      { key: 'containers', nameEn: 'Containers', nameAr: 'حاويات' },
+      { key: 'vehicles', nameEn: 'Vehicles', nameAr: 'سيارات' },
+      { key: 'equipment', nameEn: 'Equipment', nameAr: 'معدات' },
+      { key: 'reefer', nameEn: 'Refrigerated', nameAr: 'مبرّدة' },
+      { key: 'liquids', nameEn: 'Liquids', nameAr: 'سوائل' },
+    ],
+  },
   {
     type: 'procurement_category',
     module: 'procurement',

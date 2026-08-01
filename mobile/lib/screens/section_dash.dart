@@ -142,6 +142,67 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
     return s;
   }
 
+  // شيت بطاقة رقم: القيمة كبيرة + كل مؤشرات اللوحة في سياق واحد (المختار مُبرَز)
+  // بدل الشيت الفاضي القديم.
+  void _openStatDetails(int index) {
+    final spec = widget.spec;
+    final sel = spec.stats[index];
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.8),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(color: sel.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(11)),
+                    child: Icon(sel.icon, color: sel.color, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(tr(sel.ar, sel.en), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                ]),
+                const SizedBox(height: 10),
+                Text(_fmt(_dig(_data!, sel.path), sel.money),
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 34, color: sel.color)),
+                const Divider(height: 26),
+                Text(tr('لمحة عامة على المؤشرات', 'All indicators'),
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: T.inkSoft)),
+                const SizedBox(height: 4),
+                ...spec.stats.asMap().entries.map((e) {
+                  final s = e.value;
+                  final on = e.key == index;
+                  return Container(
+                    margin: const EdgeInsets.symmetric(vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: on ? s.color.withValues(alpha: 0.08) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(children: [
+                      Icon(s.icon, size: 15, color: s.color),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(tr(s.ar, s.en),
+                          style: TextStyle(fontSize: 13, fontWeight: on ? FontWeight.w800 : FontWeight.w600))),
+                      Text(_fmt(_dig(_data!, s.path), s.money),
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: on ? s.color : T.ink)),
+                    ]),
+                  );
+                }),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // شيت تفاصيل لأي صف/كارت — يعرض كل الحقول القابلة للقراءة مفتاح: قيمة.
   void _openDetails(String title, Map<String, dynamic> row, {String? big}) {
     final entries = row.entries.where((e) {
@@ -210,7 +271,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
                         return FadeSlideIn(
                           delayMs: e.key * 40,
                           child: Pressable(
-                            onTap: () => _openDetails(tr(s.ar, s.en), const <String, dynamic>{}, big: _fmt(v, s.money)),
+                            onTap: () => _openStatDetails(e.key),
                             child: AppCard(
                             topAccent: s.color,
                             padding: const EdgeInsets.all(12),

@@ -58,24 +58,63 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
 
   Future<void> _decide(Map<String, dynamic> l, String decision) async {
     final note = TextEditingController();
+    final approving = decision == 'approved';
+    // نجلب تواقيع المعتمِد ليختار توقيعه (اختياري) عند الاعتماد.
+    List<Map<String, dynamic>> signatures = [];
+    if (approving) {
+      try {
+        final d = await Api.instance.get('/api/auth/signatures');
+        signatures = List<Map<String, dynamic>>.from(d['signatures'] ?? []);
+      } catch (_) { /* بدون تواقيع */ }
+    }
+    if (!mounted) return;
+    String? sigId = approving
+        ? (signatures.firstWhere((s) => s['isDefault'] == true, orElse: () => signatures.isNotEmpty ? signatures.first : {})['_id'])?.toString()
+        : null;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: Text(decision == 'approved' ? tr('اعتماد الطلب', 'Approve') : tr('رفض الطلب', 'Reject')),
-        content: TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note'))),
+      builder: (c) => StatefulBuilder(builder: (c, setD) => AlertDialog(
+        title: Text(approving ? tr('اعتماد الطلب', 'Approve') : tr('رفض الطلب', 'Reject')),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note'))),
+          if (approving) ...[
+            const SizedBox(height: 12),
+            if (signatures.isEmpty)
+              Row(children: [
+                const Icon(Icons.info_outline, size: 15, color: T.inkFaint),
+                const SizedBox(width: 6),
+                Expanded(child: Text(tr('لا يوجد توقيع — أضِفه من الإعدادات', 'No signature — add one in Settings'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
+              ])
+            else
+              DropdownButtonFormField<String>(
+                initialValue: sigId,
+                isExpanded: true,
+                decoration: InputDecoration(labelText: tr('التوقيع', 'Signature'), prefixIcon: const Icon(Icons.draw_outlined, size: 18)),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('— بدون —')),
+                  ...signatures.map((s) => DropdownMenuItem(value: (s['_id']).toString(), child: Text((s['name'] ?? 'توقيع').toString()))),
+                ],
+                onChanged: (v) => setD(() => sigId = v),
+              ),
+          ],
+        ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: decision == 'approved' ? T.success : T.danger),
+            style: FilledButton.styleFrom(backgroundColor: approving ? T.success : T.danger),
             onPressed: () => Navigator.pop(c, true),
-            child: Text(decision == 'approved' ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
+            child: Text(approving ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
           ),
         ],
-      ),
+      )),
     );
     if (ok != true) return;
     try {
-      await Api.instance.patch('/api/hr/leaves/${l['_id']}/decision', {'decision': decision, 'note': note.text});
+      await Api.instance.patch('/api/hr/leaves/${l['_id']}/decision', {
+        'decision': decision,
+        'note': note.text,
+        if (approving && sigId != null) 'signatureId': sigId,
+      });
       _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));

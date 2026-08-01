@@ -22,6 +22,7 @@ router.post('/vehicles/assign-supervisor-bulk', authorize(...ADMIN_ROLES), fleet
 // Shipments (الحمولات)
 router.get('/shipments', fleet.listShipments);
 router.post('/shipments', authorize(...EDIT_ROLES), fleet.createShipment);
+router.get('/shipments/:id/waybill.pdf', fleet.getWaybillPdf); // البوليصة PDF — نفس ملف الويب
 router.get('/shipments/:id', fleet.getShipment); // details + the full event log
 router.put('/shipments/:id', authorize(...EDIT_ROLES), fleet.updateShipment);
 router.patch('/shipments/:id/status', authorize(...EDIT_ROLES), fleet.patchStatus);
@@ -42,11 +43,17 @@ router.delete('/vehicles/:id', authorize(...ADMIN_ROLES), fleet.deleteVehicle);
 
 // Customers
 router.get('/customers', fleet.listCustomers);
+router.get('/customers/:id/profile', fleet.getCustomerProfile); // العميل + سجل رحلاته الكامل
 router.post('/customers', authorize(...EDIT_ROLES), fleet.createCustomer);
 router.put('/customers/:id', authorize(...EDIT_ROLES), fleet.updateCustomer);
 router.delete('/customers/:id', authorize(...ADMIN_ROLES), fleet.deleteCustomer);
 
-// Dashboard
+// Dashboard + rich analytics
 router.get('/dashboard', fleet.getDashboard);
+router.get('/analytics', fleet.getAnalytics);
+
+// Section settings (Friday bonus amount, default monthly target)
+router.get('/config', fleet.getConfig);
+router.put('/config', authorize(...ADMIN_ROLES), fleet.updateConfig);
 
 module.exports = router;

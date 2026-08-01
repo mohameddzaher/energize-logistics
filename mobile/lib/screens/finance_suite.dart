@@ -6,6 +6,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'customer_profile.dart';
 import 'invoice_detail.dart';
+import 'collections_disputes.dart' show pickFromApi;
 
 /// المالية — العملاء والفواتير والمدفوعات: القوائم الكاملة بالبحث والفلاتر،
 /// ملف العميل الموجز، وفعل «تحصيل كامل» على الفاتورة (للمصرّح لهم).
@@ -567,6 +568,58 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }
 
   // تسجيل دفعة على فاتورة غير مسددة — بحث في الفواتير المفتوحة ثم المبلغ والطريقة.
+  // توزيع تلقائي (FIFO): مبلغ واحد يُوزَّع على فواتير العميل المفتوحة من الأقدم.
+  Future<void> _autoAllocate() async {
+    final customer = await pickFromApi(context,
+        endpoint: '/api/customers', listKey: 'customers',
+        label: (r) => (r['companyName'] ?? '').toString(), title: tr('اختر العميل', 'Pick customer'));
+    if (customer == null || !mounted) return;
+    final amount = TextEditingController();
+    String method = 'bank_transfer';
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${tr('توزيع تلقائي', 'Auto-allocate')} — ${customer['companyName'] ?? ''}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(tr('يُوزَّع المبلغ على الفواتير المفتوحة من الأقدم للأحدث.', 'Spread across open invoices, oldest first.'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+          const SizedBox(height: 12),
+          TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('إجمالي المبلغ *', 'Total amount *'))),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            initialValue: method,
+            decoration: InputDecoration(labelText: tr('طريقة الدفع', 'Payment method')),
+            items: const [
+              ('bank_transfer', 'تحويل بنكي', 'Bank transfer'), ('cash', 'نقدًا', 'Cash'),
+              ('check', 'شيك', 'Check'), ('online', 'إلكتروني', 'Online'), ('other', 'أخرى', 'Other'),
+            ].map((m) => DropdownMenuItem(value: m.$1, child: Text(tr(m.$2, m.$3)))).toList(),
+            onChanged: (v) => setS(() => method = v ?? method),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('توزيع', 'Allocate')))),
+        ]),
+      )),
+    );
+    if (ok != true) return;
+    final amt = num.tryParse(amount.text.trim()) ?? 0;
+    if (amt <= 0) return;
+    try {
+      await Api.instance.post('/api/payments/auto-allocate', {
+        'customer': customer['_id'],
+        'totalAmount': amt,
+        'paymentMethod': method,
+      });
+      _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم التوزيع', 'Allocated'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   Future<void> _logSheet() async {
     List<Map<String, dynamic>> invoices = [];
     try {
@@ -701,6 +754,13 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
 
     return AppScaffold(
       title: Text(tr('المدفوعات', 'Payments')),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.auto_awesome_motion_outlined),
+          tooltip: tr('توزيع تلقائي', 'Auto-allocate'),
+          onPressed: _autoAllocate,
+        ),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _logSheet,
         icon: const Icon(Icons.add),

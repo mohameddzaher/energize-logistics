@@ -1,4 +1,4 @@
-const { FleetVehicle, FleetDriver, FleetCustomer, FleetShipment, FleetEvent } = require('../models/FleetModels');
+const { FleetVehicle, FleetDriver, FleetCustomer, FleetShipment, FleetEvent, FleetConfig } = require('../models/FleetModels');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const User = require('../models/User');
@@ -54,9 +54,25 @@ const logEvent = async (req, shipmentId, type, data = {}) => {
 const SHIPMENT_EDITABLE = [
   'customer', 'vehicle', 'driver', 'secondDriver',
   'loadDate', 'fromCity', 'toCity', 'status', 'expectedArrival', 'notes',
-  // حقول البوليصة الخاصة بالحمولة:
-  'rentType', 'driverAdvance', 'branch',
+  // حقول الحمولة/البوليصة:
+  'rentType', 'paymentType', 'loadType', 'price', 'fullRent', 'customerType',
+  'driverExpense', 'driverAdvance', 'fridayBonus', 'branch',
 ];
+
+// The fleet settings singleton — created on first read with sensible defaults.
+const getFleetConfig = async () => {
+  let cfg = await FleetConfig.findOne({ key: 'fleet' });
+  if (!cfg) cfg = await FleetConfig.create({ key: 'fleet' });
+  return cfg;
+};
+
+// Add the configured Friday bonus to the driver expense when the flag is set.
+const applyFridayBonus = async (data) => {
+  if (data.fridayBonus) {
+    const cfg = await getFleetConfig();
+    data.driverExpense = (Number(data.driverExpense) || 0) + (Number(cfg.fridayBonusAmount) || 0);
+  }
+};
 
 // Move a driver onto a vehicle, enforcing the two-seat rule. Returns a line
 // for the event log when he actually moved.
@@ -219,9 +235,16 @@ exports.createShipment = async (req, res) => {
       emit('fleet:customers', {});
     }
     if (data.customer) {
-      const c = await FleetCustomer.findById(data.customer).select('name').lean();
-      if (c) data.customerName = c.name;
+      const c = await FleetCustomer.findById(data.customer).select('name customerType').lean();
+      if (c) {
+        data.customerName = c.name;
+        // لقطة نوع العميل على الحمولة إن لم يُحدَّد صراحةً (للتقارير).
+        if (!data.customerType && c.customerType) data.customerType = c.customerType;
+      }
     }
+
+    // بونص الجمعة: يُضاف مبلغ الإعدادات لمصروف السائق مرة واحدة عند الإنشاء.
+    await applyFridayBonus(data);
 
     const moveNotes = await resolveAssignments(req, data);
 
@@ -380,6 +403,49 @@ exports.getShipment = async (req, res) => {
   }
 };
 
+// البوليصة كـ PDF — نفس الملف بالظبط اللي بيطلع من الويب (Puppeteer + نفس القالب
+// + نفس الترويسة) عشان الموبايل والسايت يطبعوا نفس البوليصة.
+exports.getWaybillPdf = async (req, res) => {
+  try {
+    const { renderWaybillPdf, rowFromShipment } = require('../utils/waybillPdf');
+    const shipment = await FleetShipment.findById(req.params.id)
+      .populate('vehicle', 'plate trailerType gpsType brand color')
+      .populate('driver secondDriver', 'name phone iqama nationality working onSponsorship')
+      .lean();
+    if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
+    if (shipment.driver && typeof shipment.driver === 'object') {
+      if (!shipment.driverIqama) shipment.driverIqama = shipment.driver.iqama || '';
+      if (!shipment.driverNationality) shipment.driverNationality = shipment.driver.nationality || '';
+      if (!shipment.driverPhone) shipment.driverPhone = shipment.driver.phone || '';
+    }
+    if (shipment.vehicle && typeof shipment.vehicle === 'object') {
+      if (!shipment.vehicleBrand) shipment.vehicleBrand = shipment.vehicle.brand || '';
+      if (!shipment.vehicleColor) shipment.vehicleColor = shipment.vehicle.color || '';
+    }
+    // نوع الإيجار/الدفع/الحمولة مخزَّنة كمفاتيح قوائم (forward/general…) — نحوّلها
+    // إلى الاسم المعروض بلغة الطلب حتى لا تظهر بالإنجليزية في بوليصة عربية.
+    const Lookup = require('../models/Lookup');
+    const lang = req.query.lang === 'en' ? 'en' : 'ar';
+    const lut = await Lookup.find({ type: { $in: ['fleet_rent_type', 'fleet_payment_type', 'fleet_load_type'] } })
+      .select('type key nameAr nameEn').lean();
+    const nameOf = (type, key) => {
+      if (!key) return '';
+      const it = lut.find((x) => x.type === type && x.key === key);
+      return it ? (lang === 'en' ? (it.nameEn || it.nameAr) : (it.nameAr || it.nameEn)) : key;
+    };
+    shipment.rentType = nameOf('fleet_rent_type', shipment.rentType);
+    shipment.paymentType = nameOf('fleet_payment_type', shipment.paymentType);
+    shipment.loadType = nameOf('fleet_load_type', shipment.loadType);
+    const pdf = await renderWaybillPdf(rowFromShipment(shipment));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="waybill-${shipment.waybillNumber || shipment._id}.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    console.error('waybill pdf error:', error.message);
+    res.status(500).json({ message: 'تعذّر توليد البوليصة' });
+  }
+};
+
 exports.deleteShipment = async (req, res) => {
   try {
     const shipment = await FleetShipment.findByIdAndDelete(req.params.id);
@@ -497,7 +563,7 @@ exports.deleteDriver = async (req, res) => {
 
 // ── Vehicles ────────────────────────────────────────────────────────────────
 
-const VEHICLE_EDITABLE = ['plate', 'name', 'trailerType', 'gpsType', 'brand', 'color', 'notes', 'isActive'];
+const VEHICLE_EDITABLE = ['plate', 'name', 'trailerType', 'gpsType', 'brand', 'color', 'monthlyTarget', 'notes', 'isActive'];
 
 exports.listVehicles = async (req, res) => {
   try {
@@ -597,7 +663,7 @@ exports.deleteVehicle = async (req, res) => {
 
 // ── Customers ───────────────────────────────────────────────────────────────
 
-const CUSTOMER_EDITABLE = ['name', 'phone', 'email', 'routes', 'notes', 'isActive'];
+const CUSTOMER_EDITABLE = ['name', 'phone', 'email', 'customerType', 'rating', 'routes', 'notes', 'isActive'];
 
 exports.listCustomers = async (req, res) => {
   try {
@@ -963,5 +1029,218 @@ exports.assignVehicleSupervisorBulk = async (req, res) => {
     res.json({ ok: true, modified: r.modifiedCount, supervisorName: supName });
   } catch (error) {
     res.status(500).json({ message: 'Failed to assign vehicles' });
+  }
+};
+
+// ── Section settings (Friday bonus, default monthly target) ─────────────────
+exports.getConfig = async (req, res) => {
+  try {
+    const cfg = await getFleetConfig();
+    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget } });
+  } catch (e) {
+    res.status(500).json({ message: 'Failed to load fleet settings' });
+  }
+};
+
+exports.updateConfig = async (req, res) => {
+  try {
+    const cfg = await getFleetConfig();
+    if (req.body.fridayBonusAmount != null) cfg.fridayBonusAmount = Number(req.body.fridayBonusAmount) || 0;
+    if (req.body.defaultMonthlyTarget != null) cfg.defaultMonthlyTarget = Number(req.body.defaultMonthlyTarget) || 0;
+    cfg.updatedBy = req.user._id;
+    await cfg.save();
+    emit('fleet:updated', {});
+    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget } });
+  } catch (e) {
+    res.status(500).json({ message: 'Failed to save fleet settings' });
+  }
+};
+
+// ── Rich analytics (income, targets, rankings, trends) with many filters ────
+const _multi = (v) => (v ? String(v).split(',').map((s) => s.trim()).filter(Boolean) : []);
+const _monthIndex = (d) => d.getFullYear() * 12 + d.getMonth();
+
+exports.getAnalytics = async (req, res) => {
+  try {
+    const scope = await supervisorVehicleIds(req); // null = no restriction
+    const { from, to, month, q, includeCancelled } = req.query;
+    const customerTypes = _multi(req.query.customerType);
+    const supervisors = _multi(req.query.supervisor);
+    const vehicleF = _multi(req.query.vehicle);
+    const trailerTypes = _multi(req.query.trailerType);
+    const statuses = _multi(req.query.status);
+
+    // Resolve the period. month=YYYY-MM is a shortcut; else from/to; else this month.
+    let start, end;
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      start = new Date(`${month}-01T00:00:00`);
+      end = new Date(start); end.setMonth(end.getMonth() + 1);
+    } else {
+      const now = new Date();
+      start = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1);
+      end = to ? new Date(new Date(to).getTime() + 86400000) : new Date(now.getTime() + 86400000);
+    }
+    const monthsInRange = Math.max(1, _monthIndex(new Date(end.getTime() - 1)) - _monthIndex(start) + 1);
+
+    // Build the Mongo filter: effective date (loadDate else createdAt) in range,
+    // supervisor scope, plus the explicit multi-value filters.
+    const inRange = {
+      $or: [
+        { loadDate: { $gte: start, $lt: end } },
+        { $and: [{ loadDate: null }, { createdAt: { $gte: start, $lt: end } }] },
+      ],
+    };
+    const filter = { $and: [inRange] };
+    if (scope) filter.$and.push({ vehicle: { $in: scope } });
+    if (vehicleF.length) filter.$and.push({ vehicle: { $in: vehicleF } });
+    if (supervisors.length) filter.$and.push({ supervisor: { $in: supervisors } });
+    if (customerTypes.length) filter.$and.push({ customerType: { $in: customerTypes } });
+    if (trailerTypes.length) filter.$and.push({ trailerType: { $in: trailerTypes } });
+    if (statuses.length) filter.$and.push({ status: { $in: statuses } });
+    if (!includeCancelled && !statuses.length) filter.$and.push({ status: { $ne: 'cancelled' } });
+    if (q && q.trim()) {
+      const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$and.push({ $or: [{ customerName: rx }, { vehiclePlate: rx }, { driverName: rx }, { fromCity: rx }, { toCity: rx }, { loadType: rx }] });
+    }
+
+    const [shipments, vehicles, customers] = await Promise.all([
+      FleetShipment.find(filter).select('price fullRent customerType trailerType vehicle vehiclePlate driverName driver supervisor supervisorName customer customerName status loadDate createdAt fromCity toCity').lean(),
+      FleetVehicle.find(scope ? { _id: { $in: scope } } : {}).select('plate name trailerType monthlyTarget supervisor supervisorName').lean(),
+      FleetCustomer.find({}).select('name customerType rating').lean(),
+    ]);
+
+    // إيجار السيارة (price) = دخل قسم الأسطول. الفرق بين «الإيجار كامل» وإيجار
+    // السيارة (عند وجوده) = حصة قسم الفروع — يُعرض منفصلًا، ولا يدخل دخل القسم.
+    const income = (s) => Number(s.price) || 0;
+    const totalIncome = shipments.reduce((a, s) => a + income(s), 0);
+    const totalFullRent = shipments.reduce((a, s) => a + (Number(s.fullRent) || 0), 0);
+    const branchShare = shipments.reduce((a, s) => {
+      const fr = Number(s.fullRent) || 0; return a + (fr > 0 ? Math.max(0, fr - income(s)) : 0);
+    }, 0);
+    const tripCount = shipments.length;
+
+    // Trips by trailer type (كام سطحة/ستارة…) + by customer type.
+    const byTrailerType = {}; const byCustomerType = { heavy: { count: 0, income: 0 }, branch: { count: 0, income: 0 } };
+    for (const s of shipments) {
+      const t = s.trailerType || '—'; byTrailerType[t] = (byTrailerType[t] || 0) + 1;
+      const ct = s.customerType === 'branch' ? 'branch' : (s.customerType === 'heavy' ? 'heavy' : null);
+      if (ct) { byCustomerType[ct].count += 1; byCustomerType[ct].income += income(s); }
+    }
+
+    // Per-vehicle achieved vs target (target scaled by months in the period).
+    const vById = new Map(vehicles.map((v) => [String(v._id), v]));
+    const vehAgg = new Map();
+    for (const s of shipments) {
+      const id = s.vehicle ? String(s.vehicle) : `plate:${s.vehiclePlate || '—'}`;
+      const cur = vehAgg.get(id) || { trips: 0, income: 0, plate: s.vehiclePlate || (vById.get(id)?.plate) || '—' };
+      cur.trips += 1; cur.income += income(s); vehAgg.set(id, cur);
+    }
+    const vehiclesOut = [...vById.entries()].map(([id, v]) => {
+      const a = vehAgg.get(id) || { trips: 0, income: 0 };
+      const target = (Number(v.monthlyTarget) || 0) * monthsInRange;
+      return {
+        _id: id, plate: v.plate, name: v.name, trailerType: v.trailerType,
+        supervisorName: v.supervisorName, trips: a.trips, income: a.income,
+        monthlyTarget: Number(v.monthlyTarget) || 0, periodTarget: target,
+        achievedPct: target > 0 ? Math.round((a.income / target) * 100) : null,
+        achieved: target > 0 ? a.income >= target : null,
+      };
+    }).sort((x, y) => y.income - x.income);
+    const vehiclesAchieved = vehiclesOut.filter((v) => v.achieved === true).length;
+    const vehiclesBelow = vehiclesOut.filter((v) => v.achieved === false).length;
+
+    // Top drivers.
+    const drvAgg = new Map();
+    for (const s of shipments) {
+      const key = s.driverName || (s.driver && String(s.driver)) || '—';
+      const cur = drvAgg.get(key) || { name: s.driverName || '—', trips: 0, income: 0 };
+      cur.trips += 1; cur.income += income(s); drvAgg.set(key, cur);
+    }
+    const topDrivers = [...drvAgg.values()].sort((a, b) => b.income - a.income).slice(0, 20);
+
+    // Supervisors performance (loads created / income through them).
+    const supAgg = new Map();
+    for (const s of shipments) {
+      const key = s.supervisor ? String(s.supervisor) : (s.supervisorName || '—');
+      const cur = supAgg.get(key) || { name: s.supervisorName || '—', trips: 0, income: 0 };
+      cur.trips += 1; cur.income += income(s); supAgg.set(key, cur);
+    }
+    const supervisorsOut = [...supAgg.values()].sort((a, b) => b.income - a.income);
+
+    // Customers ranking (+ split heavy vs branch), enriched with our rating.
+    const cById = new Map(customers.map((c) => [String(c._id), c]));
+    const custAgg = new Map();
+    for (const s of shipments) {
+      const key = s.customer ? String(s.customer) : (s.customerName || '—');
+      const c = s.customer ? cById.get(String(s.customer)) : null;
+      const cur = custAgg.get(key) || { _id: s.customer ? String(s.customer) : null, name: s.customerName || (c && c.name) || '—', customerType: (c && c.customerType) || s.customerType || '', rating: (c && c.rating) || 0, trips: 0, income: 0 };
+      cur.trips += 1; cur.income += income(s); custAgg.set(key, cur);
+    }
+    const customersOut = [...custAgg.values()].sort((a, b) => b.income - a.income);
+    const topHeavyCustomers = customersOut.filter((c) => c.customerType === 'heavy').slice(0, 15);
+    const topBranchCustomers = customersOut.filter((c) => c.customerType === 'branch').slice(0, 15);
+
+    // 12-month trend (income + trips) — respects scope + customerType, ignores the date window.
+    const trendStart = new Date(); trendStart.setMonth(trendStart.getMonth() - 11); trendStart.setDate(1); trendStart.setHours(0, 0, 0, 0);
+    const trendFilter = { $and: [{ $or: [{ loadDate: { $gte: trendStart } }, { $and: [{ loadDate: null }, { createdAt: { $gte: trendStart } }] }] }, { status: { $ne: 'cancelled' } }] };
+    if (scope) trendFilter.$and.push({ vehicle: { $in: scope } });
+    if (customerTypes.length) trendFilter.$and.push({ customerType: { $in: customerTypes } });
+    const trendDocs = await FleetShipment.find(trendFilter).select('price loadDate createdAt').lean();
+    const trendMap = new Map();
+    for (let i = 0; i < 12; i++) { const d = new Date(trendStart); d.setMonth(d.getMonth() + i); trendMap.set(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, { month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, income: 0, trips: 0 }); }
+    for (const s of trendDocs) {
+      const d = new Date(s.loadDate || s.createdAt); const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (trendMap.has(k)) { const m = trendMap.get(k); m.income += Number(s.price) || 0; m.trips += 1; }
+    }
+    const monthlyTrend = [...trendMap.values()];
+
+    res.json({
+      period: { from: start, to: end, monthsInRange },
+      totals: {
+        totalIncome, totalFullRent, branchShare, tripCount,
+        vehicleCount: vehiclesOut.length, customerCount: customersOut.length,
+        vehiclesAchieved, vehiclesBelow,
+        avgTripIncome: tripCount ? Math.round(totalIncome / tripCount) : 0,
+      },
+      byTrailerType, byCustomerType,
+      vehicles: vehiclesOut,
+      topDrivers, supervisors: supervisorsOut,
+      customers: customersOut, topHeavyCustomers, topBranchCustomers,
+      monthlyTrend,
+    });
+  } catch (error) {
+    console.error('fleet analytics error:', error);
+    res.status(500).json({ message: 'Failed to load fleet analytics' });
+  }
+};
+
+// ── One customer's full profile + trip history + stats ──────────────────────
+exports.getCustomerProfile = async (req, res) => {
+  try {
+    const customer = await FleetCustomer.findById(req.params.id).lean();
+    if (!customer) return res.status(404).json({ message: 'Customer not found' });
+    const scope = await supervisorVehicleIds(req);
+    const q = { customer: customer._id };
+    if (scope) q.vehicle = { $in: scope };
+    const shipments = await FleetShipment.find(q)
+      .select('waybillNumber vehiclePlate driverName fromCity toCity status price fullRent loadType rentType paymentType customerType loadDate createdAt supervisorName')
+      .sort({ loadDate: -1, createdAt: -1 }).limit(1000).lean();
+    const income = shipments.reduce((a, s) => a + (Number(s.price) || 0), 0);
+    const byStatus = {};
+    for (const s of shipments) byStatus[s.status] = (byStatus[s.status] || 0) + 1;
+    res.json({
+      customer,
+      stats: {
+        trips: shipments.length, income,
+        avgTripIncome: shipments.length ? Math.round(income / shipments.length) : 0,
+        byStatus,
+        firstTrip: shipments.length ? shipments[shipments.length - 1].loadDate || shipments[shipments.length - 1].createdAt : null,
+        lastTrip: shipments.length ? shipments[0].loadDate || shipments[0].createdAt : null,
+      },
+      shipments,
+    });
+  } catch (error) {
+    console.error('fleet customer profile error:', error);
+    res.status(500).json({ message: 'Failed to load customer profile' });
   }
 };

@@ -184,6 +184,47 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     }
   }
 
+  // إعادة تعيين كلمة المرور (٨ أحرف على الأقل) — POST /users/:id/reset-password.
+  Future<void> _resetPassword(Map<String, dynamic> u) async {
+    final pass = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('كلمة سر جديدة', 'New password')),
+        content: TextField(
+          controller: pass,
+          autofocus: true,
+          decoration: InputDecoration(labelText: tr('كلمة السر (٨ أحرف على الأقل)', 'Password (min 8)')),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تعيين', 'Set'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    if (pass.text.trim().length < 8) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('كلمة السر ٨ أحرف على الأقل', 'At least 8 characters'))));
+      return;
+    }
+    try {
+      await Api.instance.post('/api/users/${u['_id']}/reset-password', {'newPassword': pass.text.trim()});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم تغيير كلمة السر', 'Password reset'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  // قفل/فك قفل الحساب — POST /users/:id/lock (تبديل).
+  Future<void> _toggleLock(Map<String, dynamic> u) async {
+    try {
+      await Api.instance.post('/api/users/${u['_id']}/lock', {});
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
@@ -255,12 +296,24 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                             Wrap(spacing: 6, children: [
                                               Chip2(roleLabel(u['role']), T.navy),
                                               if (!active) Chip2(tr('موقوف', 'Inactive'), T.danger),
+                                              if (u['isLocked'] == true) Chip2(tr('مقفول', 'Locked'), T.warn),
                                             ]),
                                           ]),
                                         ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete_outline, size: 19, color: T.danger),
-                                          onPressed: () => _delete(u),
+                                        PopupMenuButton<int>(
+                                          icon: const Icon(Icons.more_vert, size: 20, color: T.inkFaint),
+                                          onSelected: (v) {
+                                            if (v == 0) _editSheet(u);
+                                            if (v == 1) _resetPassword(u);
+                                            if (v == 2) _toggleLock(u);
+                                            if (v == 3) _delete(u);
+                                          },
+                                          itemBuilder: (c2) => [
+                                            PopupMenuItem(value: 0, child: Row(children: [const Icon(Icons.edit_outlined, size: 18, color: T.navy), const SizedBox(width: 10), Text(tr('تعديل', 'Edit'))])),
+                                            PopupMenuItem(value: 1, child: Row(children: [const Icon(Icons.key_outlined, size: 18, color: T.info), const SizedBox(width: 10), Text(tr('إعادة تعيين كلمة السر', 'Reset password'))])),
+                                            PopupMenuItem(value: 2, child: Row(children: [Icon(u['isLocked'] == true ? Icons.lock_open_outlined : Icons.lock_outline, size: 18, color: T.warn), const SizedBox(width: 10), Text(u['isLocked'] == true ? tr('فك القفل', 'Unlock') : tr('قفل الحساب', 'Lock'))])),
+                                            PopupMenuItem(value: 3, child: Row(children: [const Icon(Icons.delete_outline, size: 18, color: T.danger), const SizedBox(width: 10), Text(tr('حذف', 'Delete'))])),
+                                          ],
                                         ),
                                       ]),
                                     ),

@@ -22,6 +22,8 @@ const MODULE_LABELS: Record<string, { en: string; ar: string }> = {
   hr: { en: 'HR', ar: 'الموارد البشرية' },
   sales: { en: 'Sales', ar: 'المبيعات' },
   accounting: { en: 'Accounting', ar: 'المحاسبة' },
+  fleet: { en: 'Fleet', ar: 'إدارة الأسطول' },
+  it: { en: 'IT', ar: 'تقنية المعلومات' },
 };
 
 const EMPTY = { nameEn: '', nameAr: '', color: '#f37121', isActive: true };

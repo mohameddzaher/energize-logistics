@@ -362,6 +362,14 @@ class _RemoteTasksScreenState extends State<RemoteTasksScreen> {
                                       ]),
                                     ]),
                                   ),
+                                  if (staff)
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, size: 19, color: T.danger),
+                                      onPressed: () async {
+                                        try { await Api.instance.delete('/api/remote/tasks/${r['_id']}'); _load(); }
+                                        catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+                                      },
+                                    ),
                                 ]),
                               ),
                             );
@@ -811,6 +819,98 @@ class _RemoteChatScreenState extends State<RemoteChatScreen> {
           ),
         ),
       ]),
+    );
+  }
+}
+
+// ── لوحة العمل عن بُعد ───────────────────────────────────────────────────────
+// ملخص (أيام العمل/الساعات/الإجازات/طلبات معلّقة) + جدول لكل موظف (للمشرفين).
+class RemoteDashboardScreen extends StatefulWidget {
+  const RemoteDashboardScreen({super.key});
+  @override
+  State<RemoteDashboardScreen> createState() => _RemoteDashboardScreenState();
+}
+
+class _RemoteDashboardScreenState extends State<RemoteDashboardScreen> {
+  Map<String, dynamic>? _d;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get('/api/remote/dashboard');
+      if (!mounted) return;
+      setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  Widget _stat(String ar, String en, dynamic v, IconData icon, Color color) => Expanded(
+        child: AppCard(
+          topAccent: color,
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [Icon(icon, size: 16, color: color), const SizedBox(width: 5), Expanded(child: Text(tr(ar, en), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis))]),
+            const SizedBox(height: 6),
+            Text('${v ?? 0}', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+          ]),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _d?['summary'] is Map ? Map<String, dynamic>.from(_d!['summary']) : {};
+    final per = List<Map<String, dynamic>>.from(_d?['perEmployee'] ?? []);
+    return AppScaffold(
+      title: Text(tr('لوحة العمل عن بُعد', 'Remote Dashboard')),
+      body: _loading
+          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 160)])
+          : _error != null
+              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                    Row(children: [
+                      _stat('أيام العمل', 'Days worked', s['daysWorked'], Icons.event_available_outlined, T.success),
+                      const SizedBox(width: 10),
+                      _stat('الساعات', 'Hours', s['totalHours'], Icons.schedule_outlined, T.info),
+                    ]),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      _stat('أيام الإجازات', 'Leave days', s['leaveDays'], Icons.beach_access_outlined, T.warn),
+                      const SizedBox(width: 10),
+                      _stat('طلبات معلّقة', 'Pending leaves', s['pendingLeaves'], Icons.pending_actions_outlined, T.danger),
+                    ]),
+                    if (per.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(tr('لكل موظف', 'Per employee'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                      const SizedBox(height: 8),
+                      ...per.asMap().entries.map((e) {
+                        final u = e.value;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: AppCard(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            child: Row(children: [
+                              CircleAvatar(radius: 15, backgroundColor: T.navy.withValues(alpha: 0.1), child: Text('${e.key + 1}', style: const TextStyle(color: T.navy, fontWeight: FontWeight.w800, fontSize: 12))),
+                              const SizedBox(width: 10),
+                              Expanded(child: Text((u['name'] ?? '—').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                              Wrap(spacing: 6, children: [
+                                Chip2('${u['daysWorked'] ?? 0} ${tr('يوم', 'd')}', T.success),
+                                Chip2('${((u['totalMinutes'] ?? 0) as num) ~/ 60} ${tr('س', 'h')}', T.info),
+                              ]),
+                            ]),
+                          ),
+                        );
+                      }),
+                    ],
+                    const SizedBox(height: 20),
+                  ]),
+                ),
     );
   }
 }

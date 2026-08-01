@@ -6,6 +6,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'signatures.dart';
 
 /// الإعدادات — تغيير كلمة المرور وتبديل اللغة وتسجيل الخروج.
 class SettingsScreen extends StatelessWidget {
@@ -34,6 +35,7 @@ class SettingsScreen extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         _tile(context, Icons.person_outline, tr('تعديل الاسم والبريد', 'Edit name & email'), () => _editProfile(context, auth)),
+        _tile(context, Icons.draw_outlined, tr('توقيعاتي', 'My signatures'), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignaturesScreen()))),
         _tile(context, Icons.lock_outline, tr('تغيير كلمة المرور', 'Change password'), () => _changePassword(context)),
         _tile(context, Icons.translate, tr('اللغة', 'Language'), () => Lang.instance.toggle(), trailing: Text(tr('العربية', 'English'), style: const TextStyle(fontWeight: FontWeight.w700, color: T.navy))),
         _tile(context, Icons.logout_rounded, tr('تسجيل الخروج', 'Sign out'), () async {

@@ -250,6 +250,67 @@ class _B2cWalletLedgerScreenState extends State<B2cWalletLedgerScreen> {
     );
   }
 
+  Future<void> _editEntry(Map<String, dynamic> e) async {
+    String direction = (e['direction'] ?? 'in').toString();
+    final amount = TextEditingController(text: (e['amount'] ?? '').toString());
+    final reason = TextEditingController(text: (e['reason'] ?? '').toString());
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('تعديل الحركة', 'Edit entry'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 12),
+          SegmentedButton<String>(
+            segments: [
+              ButtonSegment(value: 'in', label: Text(tr('وارد', 'In')), icon: const Icon(Icons.south_west, size: 16)),
+              ButtonSegment(value: 'out', label: Text(tr('صادر', 'Out')), icon: const Icon(Icons.north_east, size: 16)),
+            ],
+            selected: {direction},
+            onSelectionChanged: (s) => setS(() => direction = s.first),
+          ),
+          const SizedBox(height: 12),
+          TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المبلغ *', 'Amount *'))),
+          const SizedBox(height: 10),
+          TextField(controller: reason, decoration: InputDecoration(labelText: tr('البيان', 'Reason'))),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')))),
+        ]),
+      )),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.patch('/api/b2c-wallet/${e['_id']}', {
+        'direction': direction,
+        'amount': num.tryParse(amount.text) ?? e['amount'],
+        'reason': reason.text.trim(),
+      });
+      _load();
+    } catch (err) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.toString())));
+    }
+  }
+
+  Future<void> _deleteEntry(Map<String, dynamic> e) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف الحركة', 'Delete entry')),
+        content: Text(tr('حذف هذه الحركة نهائيًا؟', 'Delete this entry?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try { await Api.instance.delete('/api/b2c-wallet/${e['_id']}'); _load(); }
+    catch (err) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.toString()))); }
+  }
+
   String _dt(dynamic v) {
     final d = v != null ? DateTime.tryParse(v.toString())?.toLocal() : null;
     return d == null ? '—' : '${d.day}/${d.month}/${d.year} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
@@ -308,6 +369,15 @@ class _B2cWalletLedgerScreenState extends State<B2cWalletLedgerScreen> {
                               ]),
                             ),
                             Text('${isIn ? '+' : '−'}${_money(e['amount'])}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: isIn ? T.success : T.danger)),
+                            if (_canAdd)
+                              PopupMenuButton<int>(
+                                icon: const Icon(Icons.more_vert, size: 18, color: T.inkFaint),
+                                onSelected: (v) => v == 0 ? _editEntry(e) : _deleteEntry(e),
+                                itemBuilder: (c2) => [
+                                  PopupMenuItem(value: 0, child: Row(children: [const Icon(Icons.edit_outlined, size: 18, color: T.navy), const SizedBox(width: 10), Text(tr('تعديل', 'Edit'))])),
+                                  PopupMenuItem(value: 1, child: Row(children: [const Icon(Icons.delete_outline, size: 18, color: T.danger), const SizedBox(width: 10), Text(tr('حذف', 'Delete'))])),
+                                ],
+                              ),
                           ]),
                         ),
                       );

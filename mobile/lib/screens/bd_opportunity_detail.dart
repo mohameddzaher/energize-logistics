@@ -112,22 +112,47 @@ class _BdOpportunityDetailScreenState extends State<BdOpportunityDetailScreen> {
     }
   }
 
-  Future<void> _logActivity() async {
-    final title = TextEditingController();
-    final summary = TextEditingController();
-    final nextStep = TextEditingController();
-    String type = 'meeting';
-    DateTime date = DateTime.now();
+  Future<void> _deleteActivity(Map<String, dynamic> a) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف النشاط', 'Delete activity')),
+        content: Text(tr('حذف هذا النشاط؟', 'Delete this activity?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try { await Api.instance.delete('/api/business-development/activities/${a['_id']}'); _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+  }
+
+  // تسجيل/تعديل نشاط الفرصة — بالنتيجة والخطوة التالية. تعديل ⇒ PUT، جديد ⇒ POST.
+  Future<void> _logActivity({Map<String, dynamic>? row}) async {
+    final isEdit = row != null;
+    final title = TextEditingController(text: (row?['title'] ?? '').toString());
+    final summary = TextEditingController(text: (row?['summary'] ?? '').toString());
+    final outcome = TextEditingController(text: (row?['outcome'] ?? '').toString());
+    final nextStep = TextEditingController(text: (row?['nextStep'] ?? '').toString());
+    String type = (row?['type'] ?? 'meeting').toString();
+    DateTime date = DateTime.tryParse((row?['date'] ?? '').toString())?.toLocal() ?? DateTime.now();
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(tr('تسجيل نشاط', 'Log activity'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: Text(isEdit ? tr('تعديل النشاط', 'Edit activity') : tr('تسجيل نشاط', 'Log activity'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+                if (isEdit) IconButton(icon: const Icon(Icons.delete_outline, color: T.danger), onPressed: () { Navigator.pop(c); _deleteActivity(row); }),
+              ]),
+              const SizedBox(height: 8),
               Row(children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
@@ -152,6 +177,8 @@ class _BdOpportunityDetailScreenState extends State<BdOpportunityDetailScreen> {
               const SizedBox(height: 10),
               TextField(controller: summary, maxLines: 2, decoration: InputDecoration(labelText: tr('الملخص', 'Summary'))),
               const SizedBox(height: 10),
+              TextField(controller: outcome, decoration: InputDecoration(labelText: tr('النتيجة', 'Outcome'))),
+              const SizedBox(height: 10),
               TextField(controller: nextStep, decoration: InputDecoration(labelText: tr('الخطوة التالية', 'Next step'))),
               const SizedBox(height: 14),
               SizedBox(
@@ -159,21 +186,27 @@ class _BdOpportunityDetailScreenState extends State<BdOpportunityDetailScreen> {
                 child: FilledButton(
                   onPressed: () async {
                     if (title.text.trim().isEmpty) return;
+                    final body = {
+                      'entityType': 'opportunity', 'refId': widget.opportunityId,
+                      'title': title.text.trim(), 'type': type,
+                      'date': '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+                      'summary': summary.text.trim(),
+                      'outcome': outcome.text.trim(),
+                      'nextStep': nextStep.text.trim(),
+                    };
                     try {
-                      await Api.instance.post('/api/business-development/activities', {
-                        'entityType': 'opportunity', 'refId': widget.opportunityId,
-                        'title': title.text.trim(), 'type': type,
-                        'date': '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-                        if (summary.text.trim().isNotEmpty) 'summary': summary.text.trim(),
-                        if (nextStep.text.trim().isNotEmpty) 'nextStep': nextStep.text.trim(),
-                      });
+                      if (isEdit) {
+                        await Api.instance.put('/api/business-development/activities/${row['_id']}', body);
+                      } else {
+                        await Api.instance.post('/api/business-development/activities', body);
+                      }
                       if (c.mounted) Navigator.pop(c);
                       _load();
                     } catch (e) {
                       if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
                     }
                   },
-                  child: Text(tr('تسجيل', 'Log')),
+                  child: Text(isEdit ? tr('حفظ', 'Save') : tr('تسجيل', 'Log')),
                 ),
               ),
             ]),
@@ -241,7 +274,10 @@ class _BdOpportunityDetailScreenState extends State<BdOpportunityDetailScreen> {
                       EmptyState(icon: Icons.history_outlined, title: tr('لا توجد أنشطة بعد — سجّل أول نشاط', 'No activities yet')),
                     ..._activities.map((a) {
                       final ty = _activityTypes[a['type']] ?? ('—', '—');
-                      return Padding(
+                      return InkWell(
+                        onTap: () => _logActivity(row: a),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Column(children: [
@@ -258,10 +294,13 @@ class _BdOpportunityDetailScreenState extends State<BdOpportunityDetailScreen> {
                               ]),
                               if ((a['summary'] ?? '').toString().isNotEmpty)
                                 Padding(padding: const EdgeInsets.only(top: 2), child: Text(a['summary'].toString(), style: const TextStyle(fontSize: 12, color: T.inkSoft))),
+                              if ((a['outcome'] ?? '').toString().isNotEmpty)
+                                Padding(padding: const EdgeInsets.only(top: 2), child: Text('${tr('النتيجة', 'Outcome')}: ${a['outcome']}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.success))),
                               Text('${_d(a['date'])}${_userName(a['performedBy']).isNotEmpty ? ' · ${_userName(a['performedBy'])}' : ''}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                             ]),
                           ),
                         ]),
+                        ),
                       );
                     }),
                     const SizedBox(height: 20),

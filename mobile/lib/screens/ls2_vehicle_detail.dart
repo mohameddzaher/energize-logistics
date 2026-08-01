@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import 'ls2_track_map.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
@@ -106,6 +107,12 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
       child: AppScaffold(
         title: Text(widget.plate),
         actions: [
+          IconButton(
+            tooltip: tr('المسار على الخريطة', 'Track on map'),
+            icon: const Icon(Icons.map_outlined, color: Colors.white),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2TrackMapScreen(
+              vehicleId: int.tryParse(widget.vehicleId) ?? 0, plate: widget.plate))),
+          ),
           IconButton(
             tooltip: tr('أصول المركبة (الكاوتشات)', 'Vehicle assets (tires)'),
             icon: const Icon(Icons.tire_repair_outlined, color: Colors.white),

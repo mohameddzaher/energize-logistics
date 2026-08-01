@@ -243,10 +243,20 @@ exports.listCompanies = async (req, res) => {
       const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ name: rx }, { arabicName: rx }, { email: rx }, { phone: rx }, { city: rx }, { industry: rx }];
     }
-    const [companies, total] = await Promise.all([
+    const runQuery = () => Promise.all([
       popCompany(CrmCompany.find(filter)).sort({ updatedAt: -1 }).limit(2000).lean(),
       CrmCompany.countDocuments(filter),
     ]);
+    // Cache the common team-load (no search term); live-typed searches skip cache.
+    // CrmCompany writes clear 'crm:companies' via the model post-hooks.
+    let companies, total;
+    if (q && q.trim()) {
+      [companies, total] = await runQuery();
+    } else {
+      const cache = require('../utils/ttlCache');
+      const ck = `crm:companies:${status || ''}:${type || ''}:${owner || ''}:${minRating || ''}:${tag || ''}`;
+      [companies, total] = await cache.wrap(ck, 20000, runQuery);
+    }
     res.json({ companies, total });
   } catch (error) {
     console.error('listCompanies error:', error);

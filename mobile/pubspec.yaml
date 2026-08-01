@@ -27,6 +27,11 @@ dependencies:
   pdf: ^3.11.1
   # إشعارات محلية بصوت تظهر في مركز الإشعارات (مجاني، بدون Apple Developer للأندرويد).
   flutter_local_notifications: ^17.2.3
+  # اختيار الملفات لرفع المستندات (مستندات الموظف، المرفقات) كـ base64.
+  file_picker: ^8.1.6
+  # خرائط GPS (OpenStreetMap — مجاني بلا مفتاح API) لمسار المركبات في لوكيشن سوليوشن.
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
 
 dev_dependencies:
   flutter_test:

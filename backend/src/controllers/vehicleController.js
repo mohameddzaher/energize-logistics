@@ -70,7 +70,12 @@ exports.listVehicles = async (req, res) => {
     if (status) filter.status = status;
     if (branch) filter.branch = branch;
     if (project) filter.project = project;
-    let vehicles = await populateVehicle(Vehicle.find(filter)).sort({ plateNumber: 1 }).limit(5000).lean();
+    // Cache the populated list (search 'q' is applied in-memory below) so the
+    // whole team loading the vehicles page at once hits one query; Vehicle writes
+    // clear 'vehicles:list' via the model post-hooks.
+    const ck = `vehicles:list:${type || ''}:${status || ''}:${branch || ''}:${project || ''}`;
+    let vehicles = await cache.wrap(ck, 20000, () =>
+      populateVehicle(Vehicle.find(filter)).sort({ plateNumber: 1 }).limit(5000).lean());
     if (q && q.trim()) {
       const s = q.trim().toLowerCase();
       vehicles = vehicles.filter((v) =>

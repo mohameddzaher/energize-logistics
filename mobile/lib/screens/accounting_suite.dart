@@ -49,6 +49,98 @@ class _AccountsScreenState extends State<AccountsScreen> {
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
+  void _rowMenu(Map<String, dynamic> r) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.edit_outlined, color: T.navy), title: Text(tr('تعديل الحساب', 'Edit account')), onTap: () { Navigator.pop(c); _openForm(row: r); }),
+          ListTile(leading: const Icon(Icons.delete_outline, color: T.danger), title: Text(tr('حذف', 'Delete')), onTap: () { Navigator.pop(c); _delete(r); }),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _delete(Map<String, dynamic> r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف الحساب', 'Delete account')),
+        content: Text(tr('حذف «${r['nameAr'] ?? r['nameEn']}»؟', 'Delete this account?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try { await Api.instance.delete('/api/accounting/accounts/${r['_id']}'); _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+  }
+
+  void _openForm({Map<String, dynamic>? row}) {
+    final isEdit = row != null;
+    final code = TextEditingController(text: (row?['code'] ?? '').toString());
+    final nameAr = TextEditingController(text: (row?['nameAr'] ?? '').toString());
+    final nameEn = TextEditingController(text: (row?['nameEn'] ?? '').toString());
+    final desc = TextEditingController(text: (row?['description'] ?? '').toString());
+    String type = (row?['type'] ?? 'asset').toString();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(isEdit ? tr('تعديل حساب', 'Edit account') : tr('حساب جديد', 'New account'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            TextField(controller: code, decoration: InputDecoration(labelText: tr('الكود *', 'Code *'))),
+            const SizedBox(height: 10),
+            TextField(controller: nameAr, decoration: InputDecoration(labelText: tr('الاسم بالعربي', 'Arabic name'))),
+            const SizedBox(height: 10),
+            TextField(controller: nameEn, decoration: InputDecoration(labelText: tr('الاسم بالإنجليزي *', 'English name *'))),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: type,
+              decoration: InputDecoration(labelText: tr('النوع', 'Type')),
+              items: _accTypes.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2)))).toList(),
+              onChanged: (v) => setS(() => type = v ?? type),
+            ),
+            const SizedBox(height: 10),
+            TextField(controller: desc, maxLines: 2, decoration: InputDecoration(labelText: tr('الوصف', 'Description'))),
+            const SizedBox(height: 14),
+            SizedBox(width: double.infinity, child: FilledButton(
+              onPressed: () async {
+                if (code.text.trim().isEmpty || nameEn.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('الكود والاسم الإنجليزي مطلوبان', 'Code and English name required'))));
+                  return;
+                }
+                final body = {
+                  'code': code.text.trim(), 'nameEn': nameEn.text.trim(), 'nameAr': nameAr.text.trim(),
+                  'type': type, 'description': desc.text.trim(),
+                };
+                try {
+                  if (isEdit) { await Api.instance.put('/api/accounting/accounts/${row['_id']}', body); }
+                  else { await Api.instance.post('/api/accounting/accounts', body); }
+                  if (c.mounted) Navigator.pop(c);
+                  _load();
+                } catch (e) {
+                  if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
+                }
+              },
+              child: Text(isEdit ? tr('حفظ', 'Save') : tr('إضافة', 'Add')),
+            )),
+          ]),
+        ),
+      )),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
@@ -59,6 +151,18 @@ class _AccountsScreenState extends State<AccountsScreen> {
 
     return AppScaffold(
       title: Text(tr('شجرة الحسابات', 'Chart of Accounts')),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.assessment_outlined),
+          tooltip: tr('التقارير المالية', 'Financial reports'),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountingReportsScreen())),
+        ),
+      ],
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: T.navy, foregroundColor: Colors.white,
+        onPressed: () => _openForm(),
+        icon: const Icon(Icons.add), label: Text(tr('حساب', 'Account')),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
@@ -110,7 +214,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
                                 final ty = _accTypes[r['type']] ?? ('—', '—', T.inkFaint);
                                 return FadeSlideIn(
                                   delayMs: (i * 10).clamp(0, 100),
-                                  child: AppCard(
+                                  child: Pressable(
+                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LedgerScreen(account: r))),
+                                    onLongPress: () => _rowMenu(r),
+                                    child: AppCard(
                                     topAccent: ty.$3,
                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                     child: Row(children: [
@@ -125,6 +232,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                                         Text(tr(ty.$1, ty.$2), style: TextStyle(fontSize: 10, color: ty.$3, fontWeight: FontWeight.w700)),
                                       ]),
                                     ]),
+                                  ),
                                   ),
                                 );
                               },
@@ -383,6 +491,264 @@ class _JournalScreenState extends State<JournalScreen> {
                     ),
                   ),
                 ]),
+    );
+  }
+}
+
+// ── التقارير المالية ────────────────────────────────────────────────────────
+// ميزان المراجعة · الأرباح والخسائر · الذمم المدينة · الذمم الدائنة (تبويبات).
+class AccountingReportsScreen extends StatelessWidget {
+  const AccountingReportsScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 4,
+      child: AppScaffold(
+        title: Text(tr('التقارير المالية', 'Financial Reports')),
+        appBarBottom: TabBar(
+          isScrollable: true,
+          indicatorColor: T.orange,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          tabs: [
+            Tab(text: tr('ميزان المراجعة', 'Trial Balance')),
+            Tab(text: tr('الأرباح والخسائر', 'P&L')),
+            Tab(text: tr('ذمم مدينة', 'Receivables')),
+            Tab(text: tr('ذمم دائنة', 'Payables')),
+          ],
+        ),
+        body: const TabBarView(children: [
+          _ReportView(endpoint: '/api/accounting/trial-balance', kind: 'trial'),
+          _ReportView(endpoint: '/api/accounting/profit-loss', kind: 'pl'),
+          _ReportView(endpoint: '/api/accounting/receivables', kind: 'ar'),
+          _ReportView(endpoint: '/api/accounting/payables', kind: 'ap'),
+        ]),
+      ),
+    );
+  }
+}
+
+class _ReportView extends StatefulWidget {
+  final String endpoint;
+  final String kind; // trial | pl | ar | ap
+  const _ReportView({required this.endpoint, required this.kind});
+  @override
+  State<_ReportView> createState() => _ReportViewState();
+}
+
+class _ReportViewState extends State<_ReportView> with AutomaticKeepAliveClientMixin {
+  Map<String, dynamic>? _d;
+  bool _loading = true;
+  String? _error;
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get(widget.endpoint);
+      if (!mounted) return;
+      setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  String _accName(dynamic acc) {
+    if (acc is Map) return tr((acc['nameAr'] ?? acc['nameEn'] ?? '').toString(), (acc['nameEn'] ?? acc['nameAr'] ?? '').toString());
+    return (acc ?? '').toString();
+  }
+
+  Widget _line(String label, dynamic value, {Color? color, bool bold = false, String? sub}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: TextStyle(fontSize: 13, fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
+            if (sub != null) Text(sub, style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+          ])),
+          Text(_money(value), style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: color ?? T.ink)),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    if (_loading) {
+      return ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 60), SizedBox(height: 10), Shimmer(height: 200)]);
+    }
+    if (_error != null) return ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); });
+    final d = _d ?? {};
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(padding: const EdgeInsets.all(14), children: _content(d)),
+    );
+  }
+
+  List<Widget> _content(Map<String, dynamic> d) {
+    switch (widget.kind) {
+      case 'trial':
+        final rows = List<Map<String, dynamic>>.from(d['rows'] ?? []);
+        return [
+          AppCard(child: Row(children: [
+            Expanded(child: _kv(tr('إجمالي المدين', 'Total debit'), _money(d['totalDebit']))),
+            Expanded(child: _kv(tr('إجمالي الدائن', 'Total credit'), _money(d['totalCredit']))),
+          ])),
+          const SizedBox(height: 6),
+          Align(alignment: AlignmentDirectional.centerStart, child: Chip2(d['balanced'] == true ? tr('متوازن', 'Balanced') : tr('غير متوازن', 'Unbalanced'), d['balanced'] == true ? T.success : T.danger)),
+          const SizedBox(height: 10),
+          if (rows.isEmpty) EmptyState(icon: Icons.balance_outlined, title: tr('لا توجد بيانات', 'No data')),
+          ...rows.map((r) => AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(children: [
+              Chip2((r['account'] is Map ? r['account']['code'] : '').toString(), T.navy),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_accName(r['account']), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+              if ((r['debit'] ?? 0) != 0) Text('${_money(r['debit'])} ${tr('م', 'Dr')}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.info)),
+              if ((r['credit'] ?? 0) != 0) Text('${_money(r['credit'])} ${tr('د', 'Cr')}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.orange)),
+            ]),
+          )),
+        ];
+      case 'pl':
+        final rev = List<Map<String, dynamic>>.from(d['revenue'] ?? []);
+        final exp = List<Map<String, dynamic>>.from(d['expenses'] ?? []);
+        return [
+          AppCard(topAccent: (d['netIncome'] ?? 0) >= 0 ? T.success : T.danger, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _line(tr('صافي الدخل', 'Net income'), d['netIncome'], bold: true, color: (d['netIncome'] ?? 0) >= 0 ? T.success : T.danger),
+          ])),
+          const SizedBox(height: 10),
+          Text(tr('الإيرادات', 'Revenue'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.success)),
+          ...rev.map((r) => _line(_accName(r['account']), r['amount'], color: T.success)),
+          _line(tr('إجمالي الإيرادات', 'Total revenue'), d['totalRevenue'], bold: true, color: T.success),
+          const Divider(height: 22),
+          Text(tr('المصروفات', 'Expenses'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.orange)),
+          ...exp.map((r) => _line(_accName(r['account']), r['amount'], color: T.orange)),
+          _line(tr('إجمالي المصروفات', 'Total expenses'), d['totalExpenses'], bold: true, color: T.orange),
+        ];
+      default: // ar / ap
+        final rows = List<Map<String, dynamic>>.from(d['rows'] ?? []);
+        final b = d['buckets'] is Map ? Map<String, dynamic>.from(d['buckets']) : {};
+        final isAr = widget.kind == 'ar';
+        return [
+          AppCard(topAccent: T.navy, child: _line(tr('الإجمالي المستحق', 'Total outstanding'), d['total'], bold: true, color: T.navy)),
+          const SizedBox(height: 8),
+          AppCard(child: Wrap(spacing: 8, runSpacing: 8, children: [
+            Chip2('${tr('جاري', 'Current')}: ${_money(b['current'])}', T.success),
+            Chip2('1-30: ${_money(b['d30'])}', T.info),
+            Chip2('31-60: ${_money(b['d60'])}', T.warn),
+            Chip2('61-90: ${_money(b['d90'])}', T.orange),
+            Chip2('90+: ${_money(b['over90'])}', T.danger),
+          ])),
+          const SizedBox(height: 10),
+          if (rows.isEmpty) EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد مستحقات', 'Nothing outstanding')),
+          ...rows.map((r) {
+            final party = isAr ? r['customer'] : r['vendor'];
+            final pname = party is Map ? (party['companyName'] ?? party['name'] ?? '').toString() : '';
+            final days = (r['daysOverdue'] ?? 0) as num;
+            return AppCard(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(pname.isEmpty ? (r['invoice'] ?? r['bill'] ?? '—').toString() : pname, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                  Text('${isAr ? (r['invoice'] ?? '') : (r['bill'] ?? '')} · ${days > 0 ? '${tr('متأخر', 'overdue')} ${days.toInt()} ${tr('يوم', 'd')}' : tr('غير متأخر', 'current')}',
+                      style: TextStyle(fontSize: 11, color: days > 0 ? T.danger : T.inkSoft)),
+                ])),
+                Text(_money(r['balance']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+              ]),
+            );
+          }),
+        ];
+    }
+  }
+
+  Widget _kv(String k, String v) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(k, style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+        Text(v, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+      ]);
+}
+
+// ── كشف حساب (Ledger) ───────────────────────────────────────────────────────
+// حركات حساب واحد مع الرصيد الجاري. /api/accounting/ledger/:id
+class LedgerScreen extends StatefulWidget {
+  final Map<String, dynamic> account;
+  const LedgerScreen({super.key, required this.account});
+  @override
+  State<LedgerScreen> createState() => _LedgerScreenState();
+}
+
+class _LedgerScreenState extends State<LedgerScreen> {
+  List<Map<String, dynamic>> _rows = [];
+  num _closing = 0;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get('/api/accounting/ledger/${widget.account['_id']}');
+      if (!mounted) return;
+      setState(() {
+        _rows = List<Map<String, dynamic>>.from(d['rows'] ?? []);
+        _closing = (d['closingBalance'] ?? 0) as num;
+        _loading = false; _error = null;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  String _d(dynamic v) {
+    final x = v != null ? DateTime.tryParse(v.toString())?.toLocal() : null;
+    return x == null ? '—' : '${x.day}/${x.month}/${x.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = widget.account;
+    final name = tr((a['nameAr'] ?? a['nameEn'] ?? '').toString(), (a['nameEn'] ?? a['nameAr'] ?? '').toString());
+    return AppScaffold(
+      title: Text('${a['code'] ?? ''} · $name'),
+      body: _loading
+          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 60), SizedBox(height: 10), Shimmer(height: 200)])
+          : _error != null
+              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                    AppCard(
+                      topAccent: T.navy,
+                      child: Row(children: [
+                        Expanded(child: Text(tr('الرصيد الختامي', 'Closing balance'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                        Text(_money(_closing), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+                      ]),
+                    ),
+                    const SizedBox(height: 10),
+                    if (_rows.isEmpty) EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد حركات', 'No transactions')),
+                    ..._rows.map((r) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: AppCard(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Row(children: [
+                                Expanded(child: Text('${r['entryNumber'] ?? ''} · ${_d(r['date'])}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5))),
+                                Text('${tr('الرصيد', 'Bal')}: ${_money(r['balance'])}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.navy)),
+                              ]),
+                              if ((r['memo'] ?? '').toString().isNotEmpty)
+                                Padding(padding: const EdgeInsets.only(top: 2), child: Text(r['memo'].toString(), style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
+                              const SizedBox(height: 4),
+                              Row(children: [
+                                if ((r['debit'] ?? 0) != 0) Chip2('${tr('مدين', 'Dr')} ${_money(r['debit'])}', T.info),
+                                if ((r['credit'] ?? 0) != 0) Chip2('${tr('دائن', 'Cr')} ${_money(r['credit'])}', T.orange),
+                              ]),
+                            ]),
+                          ),
+                        )),
+                    const SizedBox(height: 20),
+                  ]),
+                ),
     );
   }
 }

@@ -174,6 +174,22 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                                           context, MaterialPageRoute(builder: (_) => ShipmentOrderCreateScreen(order: r)));
                                       if (saved == true) _load();
                                     },
+                                    onLongPress: () async {
+                                      final ok = await showDialog<bool>(
+                                        context: context,
+                                        builder: (c) => AlertDialog(
+                                          title: Text(tr('حذف الطلب', 'Delete order')),
+                                          content: Text(tr('حذف بوليصة ${r['waybillNumber'] ?? ''} نهائيًا؟', 'Delete this order?')),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+                                            FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+                                          ],
+                                        ),
+                                      );
+                                      if (ok != true) return;
+                                      try { await Api.instance.delete('/api/shipment-orders/orders/${r['_id']}'); _load(); }
+                                      catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+                                    },
                                     child: AppCard(
                                     topAccent: st.$3,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

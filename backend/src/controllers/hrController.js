@@ -99,13 +99,23 @@ exports.listEmployees = async (req, res) => {
         { phone: rx }, { email: rx }, { jobTitle: rx },
       ];
     }
-    const employees = await Employee.find(filter)
+    // List/table view needs ~20 of the 74 employee fields — projecting cuts the
+    // BSON deserialization + payload ~3x (the profile screen fetches the full
+    // doc separately via getEmployee). And because the whole office loads this
+    // same list concurrently, a 30s cache collapses that into one query set;
+    // writes (create/update/terminate/renew) clear it so edits show immediately.
+    const cache = require('../utils/ttlCache');
+    const cacheKey = `hr:employees:${status || ''}:${(q || '').trim()}`;
+    const employees = await cache.wrap(cacheKey, 30000, () => Employee.find(filter)
+      .select('firstName lastName arabicName employeeNumber jobTitle department employmentStatus '
+        + 'phone email iqamaNumber iqamaExpiry nationalId nationality photo hireDate workLocation '
+        + 'project branch directManager user createdAt')
       .populate('user', 'firstName lastName email role')
       .populate('directManager', 'firstName lastName email')
       .populate('branch', 'name')
       .sort({ createdAt: -1 })
       .limit(2000)
-      .lean();
+      .lean());
     res.json({ employees });
   } catch (error) {
     console.error('listEmployees error:', error);

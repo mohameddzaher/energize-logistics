@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/theme.dart';
+import '../ui/widgets.dart';
 import '../services/live.dart';
 
 /// إجازاتي — the self-service leave page: balance cards, request history and
@@ -81,23 +82,22 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
     return AppScaffold(
       title: Text(tr('إجازاتي', 'My Leaves')),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(AppConfig.navy),
+        backgroundColor: T.navy,
         foregroundColor: Colors.white,
         onPressed: _newRequest,
         icon: const Icon(Icons.add),
         label: Text(tr('طلب إجازة', 'Request leave')),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? ListView(padding: const EdgeInsets.all(14), children: const [
+              Shimmer(height: 70), SizedBox(height: 14), Shimmer(height: 84), SizedBox(height: 10), Shimmer(height: 84),
+            ])
           : _error != null
-              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text(_error!, textAlign: TextAlign.center),
-                  TextButton(onPressed: _load, child: Text(tr('إعادة المحاولة', 'Retry'))),
-                ]))
+              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 90),
                     children: [
                       if (_balance != null)
                         Row(
@@ -111,59 +111,58 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                       const SizedBox(height: 14),
                       if (_leaves.isEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(top: 60),
-                          child: Center(child: Text(tr('لا توجد طلبات إجازة بعد', 'No leave requests yet'), style: const TextStyle(color: Color(0xFF94A3B8)))),
+                          padding: const EdgeInsets.only(top: 50),
+                          child: EmptyState(icon: Icons.beach_access_outlined, title: tr('لا توجد طلبات إجازة بعد', 'No leave requests yet')),
                         ),
-                      ..._leaves.map((l) {
-                        final st = _leaveStatus[l['status']] ?? ('—', '—', const Color(0xFF64748B));
+                      ..._leaves.asMap().entries.map((e) {
+                        final l = e.value;
+                        final st = _leaveStatus[l['status']] ?? ('—', '—', T.inkFaint);
                         final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
                         final canCancel = l['status'] == 'pending_manager' || l['status'] == 'pending_hr';
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                        return FadeSlideIn(
+                          delayMs: (e.key * 20).clamp(0, 200),
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: AppCard(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(child: Text(type.toString(), style: const TextStyle(fontWeight: FontWeight.bold))),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(color: st.$3.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-                                    child: Text(tr(st.$1, st.$2), style: TextStyle(color: st.$3, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  Row(
+                                    children: [
+                                      Expanded(child: Text(type.toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                                      Chip2(tr(st.$1, st.$2), st.$3),
+                                    ],
                                   ),
+                                  const SizedBox(height: 6),
+                                  Text('${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
+                                      style: const TextStyle(fontSize: 13, color: T.inkSoft)),
+                                  if ((l['reason'] ?? '').toString().isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                                    ),
+                                  if (canCancel)
+                                    Align(
+                                      alignment: AlignmentDirectional.centerStart,
+                                      child: TextButton.icon(
+                                        onPressed: () async {
+                                          try {
+                                            await Api.instance.patch('/api/hr/me/leaves/${l['_id']}/cancel');
+                                            _load();
+                                          } catch (e) {
+                                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                                          }
+                                        },
+                                        icon: const Icon(Icons.close_rounded, size: 15, color: T.danger),
+                                        label: Text(tr('إلغاء الطلب', 'Cancel request'), style: const TextStyle(color: T.danger, fontSize: 12)),
+                                      ),
+                                    ),
                                 ],
                               ),
-                              const SizedBox(height: 6),
-                              Text('${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
-                                  style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-                              if ((l['reason'] ?? '').toString().isNotEmpty)
-                                Text(l['reason'], style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
-                              if (canCancel)
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: TextButton(
-                                    onPressed: () async {
-                                      try {
-                                        await Api.instance.patch('/api/hr/me/leaves/${l['_id']}/cancel');
-                                        _load();
-                                      } catch (e) {
-                                        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-                                      }
-                                    },
-                                    child: Text(tr('إلغاء الطلب', 'Cancel request'), style: const TextStyle(color: Color(0xFFDC2626), fontSize: 12)),
-                                  ),
-                                ),
-                            ],
+                            ),
                           ),
                         );
                       }),
-                      const SizedBox(height: 70),
                     ],
                   ),
                 ),
@@ -175,18 +174,18 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 3),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: highlight ? const Color(AppConfig.navy) : Colors.white,
+            color: highlight ? T.navy : Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: highlight ? T.navy : const Color(0xFFE2E8F0)),
           ),
           child: Column(
             children: [
               Text('${value ?? 0}',
                   style: TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.bold,
-                    color: highlight ? Colors.white : const Color(0xFF0F172A),
+                    fontSize: 18, fontWeight: FontWeight.w800,
+                    color: highlight ? Colors.white : T.ink,
                   )),
-              Text(label, style: TextStyle(fontSize: 10, color: highlight ? Colors.white70 : const Color(0xFF64748B))),
+              Text(label, style: TextStyle(fontSize: 10, color: highlight ? Colors.white70 : T.inkSoft)),
             ],
           ),
         ),

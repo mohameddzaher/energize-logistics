@@ -1,177 +1,366 @@
 'use client';
-// لوحة تحليلات الأسطول — one screen for the operations lead. The follow-up
-// debt sits ON TOP in amber, because an in-flight load nobody has called in
-// three hours is the thing this section exists to prevent.
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+// لوحة تحليلات إدارة الأسطول — الدخل، تحقيق الأهداف لكل سيارة، ترتيب السواقين
+// والعملاء والمشرفين، الترند الشهري وتوزيع الحمولات — بفلاتر متعددة وتصدير Excel.
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { BarChart3, AlertTriangle, PhoneCall } from 'lucide-react';
-import { Spinner, PageHeader, StatCard, ErrorNotice } from '@/components/hr/HRKit';
-import { FleetShipment, FLEET_STATUSES, fmtDT, hoursSince } from '@/lib/fleet';
+import {
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, CartesianGrid, Legend,
+} from 'recharts';
+import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
+import { exportMultiSheet } from '@/utils/exportExcel';
+import { canViewFleet, FLEET_STATUSES, TRAILER_TYPES } from '@/lib/fleet';
+import { BarChart3, TrendingUp, RotateCcw, FileDown, Search, Star } from 'lucide-react';
 
-interface DashboardData {
-  byStatus: Record<string, number>;
-  shipmentsToday: number;
-  shipmentsWeek: number;
-  bySupervisor: { name: string; count: number }[];
-  drivers: { total: number; working: number; off: number; sick: number; onLeave: number; unassigned: number };
-  vehicles: { total: number; withTwoDrivers: number; withOneDriver: number; withNoDriver: number };
-  followupsToday: number;
-  needFollowUp: FleetShipment[];
-}
+type Cust = { _id: string | null; name: string; customerType: string; rating: number; trips: number; income: number };
+type Analytics = {
+  period: { from: string; to: string; monthsInRange: number };
+  totals: { totalIncome: number; totalFullRent: number; branchShare: number; tripCount: number; vehicleCount: number; customerCount: number; vehiclesAchieved: number; vehiclesBelow: number; avgTripIncome: number };
+  byTrailerType: Record<string, number>;
+  byCustomerType: { heavy: { count: number; income: number }; branch: { count: number; income: number } };
+  vehicles: { _id: string; plate: string; name?: string; trailerType?: string; supervisorName?: string; trips: number; income: number; monthlyTarget: number; periodTarget: number; achievedPct: number | null; achieved: boolean | null }[];
+  topDrivers: { name: string; trips: number; income: number }[];
+  supervisors: { name: string; trips: number; income: number }[];
+  customers: Cust[];
+  topHeavyCustomers: Cust[];
+  topBranchCustomers: Cust[];
+  monthlyTrend: { month: string; income: number; trips: number }[];
+};
 
-export default function FleetDashboardPage() {
+const ORANGE = '#f37121';
+const PALETTE = ['#f37121', '#2563eb', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ef4444', '#64748b'];
+const money = (n: number) => (Number(n) || 0).toLocaleString('en-US');
+
+export default function FleetAnalyticsPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const router = useRouter();
+  const { user } = useAuth();
 
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [supers, setSupers] = useState<{ _id: string; name: string }[]>([]);
+
+  // ── الفلاتر ──
+  const [month, setMonth] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [customerType, setCustomerType] = useState<string[]>([]);
+  const [trailerType, setTrailerType] = useState<string[]>([]);
+  const [status, setStatus] = useState<string[]>([]);
+  const [supervisor, setSupervisor] = useState<string[]>([]);
+  const [vehicle] = useState<string[]>([]);
+  const [q, setQ] = useState('');
+  const [vehSort, setVehSort] = useState<'income' | 'trips' | 'achievedPct'>('income');
+  const [custTab, setCustTab] = useState<'all' | 'heavy' | 'branch'>('all');
+
+  const toggle = (arr: string[], set: (v: string[]) => void, v: string) =>
+    set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+
+  const query = useMemo(() => {
+    const p = new URLSearchParams();
+    if (month) p.set('month', month);
+    else { if (from) p.set('from', from); if (to) p.set('to', to); }
+    if (customerType.length) p.set('customerType', customerType.join(','));
+    if (trailerType.length) p.set('trailerType', trailerType.join(','));
+    if (status.length) p.set('status', status.join(','));
+    if (supervisor.length) p.set('supervisor', supervisor.join(','));
+    if (vehicle.length) p.set('vehicle', vehicle.join(','));
+    if (q.trim()) p.set('q', q.trim());
+    return p.toString();
+  }, [month, from, to, customerType, trailerType, status, supervisor, vehicle, q]);
 
   const load = useCallback(async () => {
-    try {
-      const d = await api.get<DashboardData>('/api/fleet/dashboard');
-      setData(d);
-      setError('');
-    } catch (e: any) { setError(e?.message || 'Request failed'); }
+    try { setData(await api.get<Analytics>(`/api/fleet/analytics?${query}`)); } catch { /* keep last */ }
     setLoading(false);
+  }, [query]);
+
+  useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await api.get<{ users: { _id: string; firstName: string; lastName: string }[] }>('/api/fleet/supervisors').catch(() => ({ users: [] }));
+        setSupers((s.users || []).map((u) => ({ _id: u._id, name: `${u.firstName || ''} ${u.lastName || ''}`.trim() })));
+      } catch { /* noop */ }
+    })();
   }, []);
-
-  useEffect(() => { load(); }, [load]);
-  // Every fleet mutation shifts at least one number here, so all four events reload.
   useSocket('fleet:updated', useCallback(() => load(), [load]));
-  useSocket('fleet:drivers', useCallback(() => load(), [load]));
-  useSocket('fleet:vehicles', useCallback(() => load(), [load]));
-  useSocket('fleet:customers', useCallback(() => load(), [load]));
 
-  // Formal Arabic hour phrasing follows the dual/plural rules — «منذ ساعتين»,
-  // not a bare number glued to a noun.
-  const hoursLabel = (v?: string | null) => {
-    const h = hoursSince(v);
-    if (h == null) return ar ? 'لم يُتواصَل معه بعد' : 'Not contacted yet';
-    if (!ar) return h === 0 ? 'Less than an hour ago' : `${h}h ago`;
-    if (h === 0) return 'منذ أقل من ساعة';
-    if (h === 1) return 'منذ ساعة';
-    if (h === 2) return 'منذ ساعتين';
-    if (h <= 10) return `منذ ${h} ساعات`;
-    return `منذ ${h} ساعة`;
+  const reset = () => { setMonth(''); setFrom(''); setTo(''); setCustomerType([]); setTrailerType([]); setStatus([]); setSupervisor([]); setQ(''); };
+  const thisMonth = () => { const d = new Date(); setFrom(''); setTo(''); setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); };
+  const prevMonth = () => { const d = new Date(); d.setMonth(d.getMonth() - 1); setFrom(''); setTo(''); setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); };
+
+  const sortedVehicles = useMemo(() => {
+    if (!data) return [];
+    return [...data.vehicles].sort((a, b) => {
+      if (vehSort === 'trips') return b.trips - a.trips;
+      if (vehSort === 'achievedPct') return (b.achievedPct ?? -1) - (a.achievedPct ?? -1);
+      return b.income - a.income;
+    });
+  }, [data, vehSort]);
+
+  const custRows = useMemo(() => {
+    if (!data) return [];
+    if (custTab === 'heavy') return data.customers.filter((c) => c.customerType === 'heavy');
+    if (custTab === 'branch') return data.customers.filter((c) => c.customerType === 'branch');
+    return data.customers;
+  }, [data, custTab]);
+
+  const doExport = () => {
+    if (!data) return;
+    exportMultiSheet([
+      { name: ar ? 'السيارات' : 'Vehicles', data: sortedVehicles, columns: [
+        { header: 'Plate', key: 'plate' }, { header: 'Trailer', key: 'trailerType' }, { header: 'Supervisor', key: 'supervisorName' },
+        { header: 'Trips', key: 'trips' }, { header: 'Income', key: 'income' }, { header: 'Period target', key: 'periodTarget' }, { header: 'Achieved %', key: 'achievedPct' } ] },
+      { name: ar ? 'السواقون' : 'Drivers', data: data.topDrivers, columns: [
+        { header: 'Driver', key: 'name' }, { header: 'Trips', key: 'trips' }, { header: 'Income', key: 'income' } ] },
+      { name: ar ? 'المشرفون' : 'Supervisors', data: data.supervisors, columns: [
+        { header: 'Supervisor', key: 'name' }, { header: 'Loads', key: 'trips' }, { header: 'Income', key: 'income' } ] },
+      { name: ar ? 'العملاء' : 'Customers', data: data.customers, columns: [
+        { header: 'Customer', key: 'name' }, { header: 'Type', key: 'customerType' }, { header: 'Rating', key: 'rating' }, { header: 'Trips', key: 'trips' }, { header: 'Income', key: 'income' } ] },
+      { name: ar ? 'الترند الشهري' : 'Monthly', data: data.monthlyTrend, columns: [
+        { header: 'Month', key: 'month' }, { header: 'Income', key: 'income' }, { header: 'Trips', key: 'trips' } ] },
+    ], `fleet-analytics-${new Date().toISOString().slice(0, 10)}`);
   };
 
-  if (loading) return <Spinner />;
+  if (!canViewFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
+  if (loading && !data) return <Spinner />;
 
-  const th = 'text-start font-semibold px-4 py-3 whitespace-nowrap';
-  const supMax = Math.max(1, ...(data?.bySupervisor || []).map((s) => s.count));
+  const chip = (active: boolean) =>
+    `px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${active ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`;
+  const trailerData = data ? Object.entries(data.byTrailerType).map(([name, value]) => ({ name, value })) : [];
 
   return (
-    <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<BarChart3 className="w-5 h-5" />} title={ar ? 'لوحة التحليلات' : 'Analytics dashboard'}
-        subtitle={ar ? 'نظرة حية على الشحنات والسائقين والسيارات ومتابعات اليوم' : 'A live view of shipments, drivers, vehicles and today’s follow-ups'} />
+    <div className="space-y-5 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
+      <PageHeader icon={<BarChart3 className="w-5 h-5" />}
+        title={ar ? 'تحليلات إدارة الأسطول' : 'Fleet Analytics'}
+        subtitle={ar ? 'الدخل وتحقيق الأهداف والترتيبات — قابلة للفلترة والتصدير' : 'Income, targets, rankings — filterable & exportable'}>
+        <button type="button" onClick={doExport}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm">
+          <FileDown className="w-4 h-4" /> {ar ? 'تصدير Excel' : 'Export Excel'}
+        </button>
+      </PageHeader>
 
-      {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
+      {/* ── شريط الفلاتر ── */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={thisMonth} className={chip(false)}>{ar ? 'هذا الشهر' : 'This month'}</button>
+            <button type="button" onClick={prevMonth} className={chip(false)}>{ar ? 'الشهر السابق' : 'Last month'}</button>
+          </div>
+          <div>
+            <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'شهر' : 'Month'}</label>
+            <input type="month" value={month} onChange={(e) => { setMonth(e.target.value); setFrom(''); setTo(''); }} className="px-2 py-1.5 rounded-lg border border-slate-200 text-sm" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'من' : 'From'}</label>
+            <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setMonth(''); }} className="px-2 py-1.5 rounded-lg border border-slate-200 text-sm" />
+          </div>
+          <div>
+            <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'إلى' : 'To'}</label>
+            <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setMonth(''); }} className="px-2 py-1.5 rounded-lg border border-slate-200 text-sm" />
+          </div>
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'بحث' : 'Search'}</label>
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? 'عميل / لوحة / سائق / مدينة…' : 'customer / plate / driver / city…'} className="w-full ps-8 pe-3 py-1.5 rounded-lg border border-slate-200 text-sm" />
+            </div>
+          </div>
+          <button type="button" onClick={reset} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm">
+            <RotateCcw className="w-3.5 h-3.5" /> {ar ? 'مسح' : 'Reset'}
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-[11px] text-slate-400 self-center me-1">{ar ? 'نوع العميل:' : 'Customer:'}</span>
+          <button type="button" onClick={() => toggle(customerType, setCustomerType, 'heavy')} className={chip(customerType.includes('heavy'))}>{ar ? 'نقل ثقيل' : 'Heavy'}</button>
+          <button type="button" onClick={() => toggle(customerType, setCustomerType, 'branch')} className={chip(customerType.includes('branch'))}>{ar ? 'فروع' : 'Branch'}</button>
+          <span className="text-[11px] text-slate-400 self-center mx-1">{ar ? 'التيدر:' : 'Trailer:'}</span>
+          {TRAILER_TYPES.map((t) => <button key={t} type="button" onClick={() => toggle(trailerType, setTrailerType, t)} className={chip(trailerType.includes(t))}>{t}</button>)}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-[11px] text-slate-400 self-center me-1">{ar ? 'الحالة:' : 'Status:'}</span>
+          {FLEET_STATUSES.map((s) => <button key={s.key} type="button" onClick={() => toggle(status, setStatus, s.key)} className={chip(status.includes(s.key))}>{ar ? s.ar : s.en}</button>)}
+        </div>
+        {supers.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            <span className="text-[11px] text-slate-400 self-center me-1">{ar ? 'المشرف:' : 'Supervisor:'}</span>
+            {supers.map((s) => <button key={s._id} type="button" onClick={() => toggle(supervisor, setSupervisor, s._id)} className={chip(supervisor.includes(s._id))}>{s.name}</button>)}
+          </div>
+        )}
+      </div>
 
       {data && (
         <>
-          {/* The follow-up debt — deliberately first and loud. */}
-          <div className="rounded-xl border border-amber-300 bg-amber-50 shadow-sm overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-amber-200">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-              <p className="font-bold text-amber-900">{ar ? 'شحنات تحتاج متابعة' : 'Shipments needing follow-up'}</p>
-              {data.needFollowUp.length > 0 && (
-                <span className="bg-amber-600 text-white text-xs font-bold rounded-full px-2 py-0.5">{data.needFollowUp.length}</span>
-              )}
-              <p className="text-xs text-amber-700 ms-auto hidden sm:block">
-                {ar ? 'شحنات جارية مضى على آخر تواصل معها ثلاث ساعات أو أكثر' : 'In-flight loads not contacted for 3+ hours'}
-              </p>
-            </div>
-            {data.needFollowUp.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-amber-800">
-                {ar ? 'لا توجد شحنات متأخرة عن المتابعة — جميع الشحنات الجارية جرى التواصل بشأنها حديثاً.' : 'Nothing overdue — every in-flight load was contacted recently.'}
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm bg-white">
-                  <thead><tr className="border-b border-amber-200 text-amber-900 bg-amber-100/60">
-                    <th className={th}>{ar ? 'بوليصة' : 'Waybill'}</th>
-                    <th className={th}>{ar ? 'العميل' : 'Customer'}</th>
-                    <th className={th}>{ar ? 'السائق' : 'Driver'}</th>
-                    <th className={th}>{ar ? 'اللوحة' : 'Plate'}</th>
-                    <th className={th}>{ar ? 'آخر تواصل' : 'Last contact'}</th>
-                  </tr></thead>
-                  <tbody>
-                    {data.needFollowUp.map((s) => (
-                      <tr key={s._id} onClick={() => router.push(`/system/fleet/${s._id}`)}
-                        className="border-b border-slate-200/70 hover:bg-amber-50 cursor-pointer">
-                        <td className="px-4 py-3 font-mono font-bold text-[#f37121]">{s.waybillNumber}</td>
-                        <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{s.customerName || '—'}</td>
-                        <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{s.driverName || '—'}</td>
-                        <td className="px-4 py-3 text-slate-700 font-mono">{s.vehiclePlate || '—'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="font-semibold text-amber-700">{hoursLabel(s.lastContactAt)}</span>
-                          {s.lastContactAt && <span className="block text-xs text-slate-400">{fmtDT(s.lastContactAt, lang as 'ar' | 'en')}</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+            <StatCard label={ar ? 'إجمالي إيجار السيارات' : 'Total vehicle rent'} value={money(data.totals.totalIncome)} accent="text-emerald-600" />
+            <StatCard label={ar ? 'حصة قسم الفروع' : 'Branches’ share'} value={money(data.totals.branchShare)} accent="text-amber-600" />
+            <StatCard label={ar ? 'عدد الرحلات' : 'Trips'} value={data.totals.tripCount} accent="text-[#f37121]" />
+            <StatCard label={ar ? 'متوسط دخل الرحلة' : 'Avg / trip'} value={money(data.totals.avgTripIncome)} />
+            <StatCard label={ar ? 'سيارات محقّقة الهدف' : 'On target'} value={`${data.totals.vehiclesAchieved} / ${data.totals.vehicleCount}`} accent="text-emerald-600" />
+            <StatCard label={ar ? 'سيارات دون الهدف' : 'Below target'} value={data.totals.vehiclesBelow} accent="text-red-600" />
+            <StatCard label={ar ? 'عدد العملاء' : 'Customers'} value={data.totals.customerCount} />
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
-            <StatCard label={ar ? 'شحنات اليوم' : 'Shipments today'} value={data.shipmentsToday} accent="text-[#f37121]" />
-            <StatCard label={ar ? 'شحنات الأسبوع' : 'Shipments this week'} value={data.shipmentsWeek} />
-            <StatCard label={ar ? 'متابعات اليوم' : 'Follow-ups today'} value={data.followupsToday} accent="text-emerald-600" />
-            <StatCard label={ar ? 'السائقون العاملون' : 'Working drivers'} value={`${data.drivers.working} / ${data.drivers.total}`} />
-            <StatCard label={ar ? 'في إجازة مرضية' : 'On sick leave'} value={data.drivers.sick}
-              accent={data.drivers.sick > 0 ? 'text-red-600' : 'text-slate-900'} />
-            <StatCard label={ar ? 'في إجازة' : 'On leave'} value={data.drivers.onLeave}
-              accent={data.drivers.onLeave > 0 ? 'text-amber-600' : 'text-slate-900'} />
-            <StatCard label={ar ? 'سيارات بدون سائق' : 'Vehicles without a driver'} value={data.vehicles.withNoDriver}
-              accent={data.vehicles.withNoDriver > 0 ? 'text-red-600' : 'text-emerald-600'} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="font-bold text-slate-900 mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-[#f37121]" /> {ar ? 'الدخل الشهري (آخر 12 شهرًا)' : 'Monthly income (last 12 months)'}</p>
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={data.monthlyTrend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: number) => money(v)} />
+                  <Legend />
+                  <Line yAxisId="left" type="monotone" dataKey="income" name={ar ? 'الدخل' : 'Income'} stroke={ORANGE} strokeWidth={2.5} dot={{ r: 3 }} />
+                  <Line yAxisId="right" type="monotone" dataKey="trips" name={ar ? 'الرحلات' : 'Trips'} stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="font-bold text-slate-900 mb-3">{ar ? 'الدخل حسب نوع العميل' : 'Income by customer type'}</p>
+              <ResponsiveContainer width="100%" height={190}>
+                <PieChart>
+                  <Pie dataKey="value" data={[
+                    { name: ar ? 'نقل ثقيل' : 'Heavy', value: data.byCustomerType.heavy.income },
+                    { name: ar ? 'فروع' : 'Branch', value: data.byCustomerType.branch.income },
+                  ]} cx="50%" cy="50%" outerRadius={68} label>
+                    <Cell fill={ORANGE} /><Cell fill="#2563eb" />
+                  </Pie>
+                  <Tooltip formatter={(v: number) => money(v)} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-2 gap-2 text-center text-sm">
+                <div className="rounded-lg bg-orange-50 p-2"><p className="text-xs text-slate-500">{ar ? 'نقل ثقيل' : 'Heavy'}</p><p className="font-bold text-[#f37121]">{money(data.byCustomerType.heavy.income)}</p><p className="text-[11px] text-slate-500">{data.byCustomerType.heavy.count} {ar ? 'رحلة' : 'trips'}</p></div>
+                <div className="rounded-lg bg-blue-50 p-2"><p className="text-xs text-slate-500">{ar ? 'فروع' : 'Branch'}</p><p className="font-bold text-blue-600">{money(data.byCustomerType.branch.income)}</p><p className="text-[11px] text-slate-500">{data.byCustomerType.branch.count} {ar ? 'رحلة' : 'trips'}</p></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="font-bold text-slate-900 mb-3">{ar ? 'دخل السيارات مقابل الهدف (أعلى 15)' : 'Vehicle income vs target (top 15)'}</p>
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={sortedVehicles.slice(0, 15)}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                  <XAxis dataKey="plate" tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: number) => money(v)} />
+                  <Legend />
+                  <Bar dataKey="income" name={ar ? 'الدخل' : 'Income'} fill={ORANGE} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="periodTarget" name={ar ? 'الهدف' : 'Target'} fill="#cbd5e1" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="font-bold text-slate-900 mb-3">{ar ? 'الرحلات حسب نوع التيدر' : 'Trips by trailer type'}</p>
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie dataKey="value" data={trailerData} cx="50%" cy="50%" outerRadius={80} label>
+                    {trailerData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                  </Pie>
+                  <Tooltip /><Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <p className="font-bold text-slate-900">{ar ? 'أداء السيارات مقابل الهدف' : 'Vehicles vs target'}</p>
+              <div className="flex gap-1.5 text-xs">
+                {(['income', 'trips', 'achievedPct'] as const).map((k) => (
+                  <button key={k} onClick={() => setVehSort(k)} className={chip(vehSort === k)}>
+                    {k === 'income' ? (ar ? 'الدخل' : 'Income') : k === 'trips' ? (ar ? 'الرحلات' : 'Trips') : (ar ? 'التحقيق' : 'Attainment')}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-500 text-xs">
+                  <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor', ar ? 'الرحلات' : 'Trips', ar ? 'الدخل' : 'Income', ar ? 'الهدف' : 'Target', ar ? 'التحقيق' : 'Attained'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {sortedVehicles.map((v) => (
+                    <tr key={v._id} className="hover:bg-slate-50">
+                      <td className="px-3 py-2 font-mono font-semibold">{v.plate}</td>
+                      <td className="px-3 py-2 text-slate-600">{v.trailerType || '—'}</td>
+                      <td className="px-3 py-2 text-slate-600">{v.supervisorName || '—'}</td>
+                      <td className="px-3 py-2">{v.trips}</td>
+                      <td className="px-3 py-2 font-semibold text-emerald-700">{money(v.income)}</td>
+                      <td className="px-3 py-2 text-slate-500">{money(v.periodTarget)}</td>
+                      <td className="px-3 py-2">
+                        {v.achievedPct == null ? <span className="text-slate-400">—</span> : (
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${v.achieved ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{v.achievedPct}%</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {sortedVehicles.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد بيانات لهذه الفلاتر' : 'No data'}</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Status breakdown — same colour vocabulary as the shipments list. */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-              <p className="font-bold text-slate-900 mb-3">{ar ? 'الشحنات حسب الحالة' : 'Shipments by status'}</p>
-              {Object.keys(data.byStatus).length === 0 ? (
-                <p className="text-sm text-slate-400">{ar ? 'لا توجد شحنات بعد.' : 'No shipments yet.'}</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {FLEET_STATUSES.filter((s) => data.byStatus[s.key]).map((s) => (
-                    <span key={s.key} className={`px-2.5 py-1.5 rounded-lg text-sm font-medium ${s.bg} ${s.text}`}>
-                      {ar ? s.ar : s.en} · <span className="font-bold">{data.byStatus[s.key]}</span>
-                    </span>
-                  ))}
-                </div>
-              )}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="font-bold text-slate-900 mb-3">{ar ? 'أعلى السواقين دخلاً' : 'Top drivers by income'}</p>
+              <ResponsiveContainer width="100%" height={Math.max(160, Math.min(360, data.topDrivers.length * 34))}>
+                <BarChart data={data.topDrivers.slice(0, 10)} layout="vertical" margin={{ left: 20 }}>
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={100} />
+                  <Tooltip formatter={(v: number) => money(v)} />
+                  <Bar dataKey="income" name={ar ? 'الدخل' : 'Income'} fill="#10b981" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="font-bold text-slate-900 mb-3">{ar ? 'أداء المشرفين' : 'Supervisor performance'}</p>
+              <ResponsiveContainer width="100%" height={Math.max(160, Math.min(360, data.supervisors.length * 40))}>
+                <BarChart data={data.supervisors} layout="vertical" margin={{ left: 20 }}>
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={100} />
+                  <Tooltip formatter={(v: number) => money(v)} />
+                  <Legend />
+                  <Bar dataKey="income" name={ar ? 'الدخل' : 'Income'} fill={ORANGE} radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="trips" name={ar ? 'الحمولات' : 'Loads'} fill="#2563eb" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-            {/* Who booked what this week — the supervisor workload at a glance. */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-              <p className="font-bold text-slate-900 mb-3 flex items-center gap-2">
-                <PhoneCall className="w-4 h-4 text-[#f37121]" /> {ar ? 'شحنات الأسبوع حسب المشرف' : 'This week by supervisor'}
-              </p>
-              {data.bySupervisor.length === 0 ? (
-                <p className="text-sm text-slate-400">{ar ? 'لا توجد شحنات هذا الأسبوع.' : 'No shipments this week.'}</p>
-              ) : (
-                <div className="space-y-2.5">
-                  {data.bySupervisor.map((s) => (
-                    <div key={s.name}>
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-slate-700 truncate">{s.name}</span>
-                        <span className="font-bold text-slate-900 shrink-0 ms-2">{s.count}</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div className="h-full rounded-full bg-[#f37121]" style={{ width: `${Math.round((s.count / supMax) * 100)}%` }} />
-                      </div>
-                    </div>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <p className="font-bold text-slate-900">{ar ? 'ترتيب العملاء' : 'Customer ranking'}</p>
+              <div className="flex gap-1.5 text-xs">
+                <button onClick={() => setCustTab('all')} className={chip(custTab === 'all')}>{ar ? 'الكل' : 'All'}</button>
+                <button onClick={() => setCustTab('heavy')} className={chip(custTab === 'heavy')}>{ar ? 'نقل ثقيل' : 'Heavy'}</button>
+                <button onClick={() => setCustTab('branch')} className={chip(custTab === 'branch')}>{ar ? 'فروع' : 'Branch'}</button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-500 text-xs">
+                  <tr>{[ar ? 'العميل' : 'Customer', ar ? 'النوع' : 'Type', ar ? 'التقييم' : 'Rating', ar ? 'الرحلات' : 'Trips', ar ? 'الدخل' : 'Income'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {custRows.map((c, i) => (
+                    <tr key={c._id || i} className="hover:bg-slate-50">
+                      <td className="px-3 py-2 font-semibold">{c._id ? <Link href={`/system/fleet/customers/${c._id}`} className="text-[#f37121] hover:underline">{c.name}</Link> : c.name}</td>
+                      <td className="px-3 py-2">{c.customerType === 'heavy' ? (ar ? 'نقل ثقيل' : 'Heavy') : c.customerType === 'branch' ? (ar ? 'فروع' : 'Branch') : '—'}</td>
+                      <td className="px-3 py-2"><span className="inline-flex items-center gap-0.5 text-amber-500">{c.rating ? <>{c.rating}<Star className="w-3.5 h-3.5 fill-amber-400" /></> : <span className="text-slate-300">—</span>}</span></td>
+                      <td className="px-3 py-2">{c.trips}</td>
+                      <td className="px-3 py-2 font-semibold text-emerald-700">{money(c.income)}</td>
+                    </tr>
                   ))}
-                </div>
-              )}
+                  {custRows.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا يوجد عملاء' : 'No customers'}</td></tr>}
+                </tbody>
+              </table>
             </div>
           </div>
         </>

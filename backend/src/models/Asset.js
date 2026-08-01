@@ -63,4 +63,9 @@ assetSchema.index({ status: 1 });
 assetSchema.index({ serialNumber: 1 });
 assetSchema.index({ importKey: 1 }, { unique: true, sparse: true });
 
+// Any asset write clears the cached IT custody list so changes show immediately.
+const bustCustodyList = () => { try { require('../utils/ttlCache').clear('it:custody'); } catch (e) { /* noop */ } };
+assetSchema.post('save', bustCustodyList);
+assetSchema.post(/^find.*[UD]/, bustCustodyList);
+
 module.exports = mongoose.model('Asset', assetSchema);

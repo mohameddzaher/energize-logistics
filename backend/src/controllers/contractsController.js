@@ -97,7 +97,12 @@ exports.getDashboard = async (req, res) => {
 // ---- Vendors ----------------------------------------------------------------
 exports.listVendors = async (req, res) => {
   try {
-    const vendors = await ContractVendor.find().select('-profileTables').sort({ name: 1 }).lean();
+    // `attachments` are base64 contract files — fetching them for the whole list
+    // was ~5s. The list never shows file bytes (the profile does), so exclude
+    // them (and profileTables), and cache under the 'contracts:' prefix that
+    // vendor writes already clear.
+    const vendors = await cache.wrap('contracts:vendors-list', 20000, () =>
+      ContractVendor.find().select('-profileTables -attachments').sort({ name: 1 }).lean());
     res.json({ vendors: vendors.map((v) => ({ ...v, status: vendorStatus(v) })) });
   } catch (e) {
     res.status(500).json({ message: e.message });

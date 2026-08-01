@@ -3,6 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -57,6 +58,41 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
 
   num _n(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
 
+  Future<void> _uploadAttachment() async {
+    final picked = await pickFileAsDataUrl();
+    if (picked == null || !mounted) return;
+    final title = TextEditingController(text: picked.fileName.replaceAll(RegExp(r'\.[^.]+$'), ''));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('رفع مرفق', 'Upload attachment')),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(picked.fileName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+          const SizedBox(height: 8),
+          TextField(controller: title, autofocus: true, decoration: InputDecoration(labelText: tr('العنوان', 'Title'))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('رفع', 'Upload'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/contracts/vendors/${widget.vendorId}/attachments', {
+        'dataUrl': picked.dataUrl, 'fileName': picked.fileName, 'title': title.text.trim(),
+      });
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _deleteAttachment(Map<String, dynamic> att) async {
+    try { await Api.instance.delete('/api/contracts/vendors/${widget.vendorId}/attachments/${att['_id']}'); _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+  }
+
   @override
   Widget build(BuildContext context) {
     final v = _vendor ?? {};
@@ -69,8 +105,12 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
     final capacity = _n(v['monthlyCapacity']);
     final maxOrders = _util.fold<num>(1, (m, r) => _n(r['orders']) > m ? _n(r['orders']) : m);
 
+    final attachments = List<Map<String, dynamic>>.from(v['attachments'] ?? []);
     return AppScaffold(
       title: Text(widget.name),
+      actions: [
+        IconButton(icon: const Icon(Icons.upload_file_outlined), tooltip: tr('رفع مرفق', 'Upload attachment'), onPressed: _loading ? null : _uploadAttachment),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 150), SizedBox(height: 10), Shimmer(height: 220)])
           : _error != null
@@ -151,6 +191,30 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
                               ]),
                             );
                           }),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // ── المرفقات ──
+                    FadeSlideIn(
+                      child: AppCard(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Text('${tr('المرفقات', 'Attachments')} (${attachments.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            const Spacer(),
+                            TextButton.icon(onPressed: _uploadAttachment, icon: const Icon(Icons.add, size: 16), label: Text(tr('رفع', 'Upload'))),
+                          ]),
+                          if (attachments.isEmpty)
+                            Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(tr('لا توجد مرفقات', 'No attachments'), style: const TextStyle(color: T.inkFaint, fontSize: 12.5))),
+                          ...attachments.map((att) => Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                child: Row(children: [
+                                  const Icon(Icons.attach_file_rounded, size: 17, color: T.navy),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text((att['title'] ?? att['fileName'] ?? att['originalName'] ?? '—').toString(), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                  IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger), onPressed: () => _deleteAttachment(att)),
+                                ]),
+                              )),
                         ]),
                       ),
                     ),

@@ -70,4 +70,9 @@ crmCompanySchema.index(
   { unique: true, partialFilterExpression: { externalId: { $exists: true } } }
 );
 
+// Any company write clears the cached companies list so edits show immediately.
+const bustCompaniesList = () => { try { require('../utils/ttlCache').clear('crm:companies'); } catch (e) { /* noop */ } };
+crmCompanySchema.post('save', bustCompaniesList);
+crmCompanySchema.post(/^find.*[UD]/, bustCompaniesList);
+
 module.exports = mongoose.model('CrmCompany', crmCompanySchema);

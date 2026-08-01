@@ -55,6 +55,8 @@ export interface FleetCustomer {
   name: string;
   phone?: string;
   email?: string;
+  customerType?: 'heavy' | 'branch' | '';
+  rating?: number;
   routes: { fromCity: string; toCity: string; price: number | null }[];
   notes?: string;
 }
@@ -76,7 +78,14 @@ export interface FleetShipment {
   vehicleBrand?: string;
   vehicleColor?: string;
   rentType?: string;
+  paymentType?: string;
+  loadType?: string;
+  price?: number;
+  fullRent?: number;
+  customerType?: 'heavy' | 'branch' | '';
+  driverExpense?: number;
   driverAdvance?: string;
+  fridayBonus?: boolean;
   branch?: string;
   secondDriver?: FleetDriver | string | null;
   secondDriverName?: string;

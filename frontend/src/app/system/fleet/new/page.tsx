@@ -3,10 +3,11 @@
 // the form on the spot: its seated drivers (with their status), trailer type,
 // GPS type, plate. Picking a driver seated on another truck moves him here —
 // the swap the operations team asked to do WITHOUT visiting the drivers page.
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import {
@@ -14,6 +15,7 @@ import {
   MapPin, Satellite, Users as UsersIcon, ShieldCheck, ShieldOff,
 } from 'lucide-react';
 import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton, SmallBadge } from '@/components/hr/HRKit';
+import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import {
   FleetVehicle, FleetDriver, FleetCustomer, FLEET_STATUSES, fmtDT,
   canEditFleet, vehicleAvailabilityText, Lang,
@@ -43,8 +45,11 @@ function CreateFleetShipmentInner() {
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [drivers, setDrivers] = useState<FleetDriver[]>([]);
   const [customers, setCustomers] = useState<FleetCustomer[]>([]);
+  const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // اليوم جمعة؟ لإظهار زر بونص الجمعة تلقائيًا وقت الإنشاء.
+  const isFriday = new Date().getDay() === 5;
 
   const [customerId, setCustomerId] = useState('');
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
@@ -57,14 +62,16 @@ function CreateFleetShipmentInner() {
   useEffect(() => {
     (async () => {
       try {
-        const [v, d, c] = await Promise.all([
+        const [v, d, c, b] = await Promise.all([
           api.get<{ vehicles: FleetVehicle[] }>('/api/fleet/vehicles'),
           api.get<{ drivers: FleetDriver[] }>('/api/fleet/drivers'),
           api.get<{ customers: FleetCustomer[] }>('/api/fleet/customers'),
+          api.get<{ branches: { _id: string; name: string }[] }>('/api/branches?active=true').catch(() => ({ branches: [] })),
         ]);
         setVehicles(v.vehicles || []);
         setDrivers(d.drivers || []);
         setCustomers(c.customers || []);
+        setBranches(b.branches || []);
         if (editId) {
           const s = await api.get<{ shipment: any }>(`/api/fleet/shipments/${editId}`);
           const o = s.shipment;
@@ -73,7 +80,9 @@ function CreateFleetShipmentInner() {
               status: o.status, fromCity: o.fromCity || '', toCity: o.toCity || '',
               loadDate: toLocalDate(o.loadDate), expectedArrival: toLocalInput(o.expectedArrival),
               notes: o.notes || '',
-              rentType: o.rentType || '', driverAdvance: o.driverAdvance || '', branch: o.branch || '',
+              rentType: o.rentType || '', paymentType: o.paymentType || '', loadType: o.loadType || '',
+              price: o.price ?? '', fullRent: o.fullRent ?? '', customerType: o.customerType || '',
+              driverExpense: o.driverExpense ?? '', fridayBonus: !!o.fridayBonus, branch: o.branch || '',
             });
             setCustomerId(typeof o.customer === 'object' ? o.customer?._id || '' : (o.customer || ''));
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id || '' : (o.vehicle || ''));
@@ -89,9 +98,21 @@ function CreateFleetShipmentInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
+  // العملاء يتحدّثون لحظيًا: أي عميل جديد (من هنا أو من صفحة العملاء) يظهر فورًا
+  // في القائمة المنسدلة بلا إعادة تحميل.
+  const reloadCustomers = useCallback(async () => {
+    try { const c = await api.get<{ customers: FleetCustomer[] }>('/api/fleet/customers'); setCustomers(c.customers || []); } catch { /* noop */ }
+  }, []);
+  useSocket('fleet:customers', reloadCustomers);
+
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const vehicle = useMemo(() => vehicles.find((v) => v._id === vehicleId) || null, [vehicles, vehicleId]);
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
+  // اختيار عميل يملأ «نوع العميل» تلقائيًا من نوعه المسجَّل (قابل للتعديل بعدها).
+  useEffect(() => {
+    if (customer?.customerType) setForm((f) => ({ ...f, customerType: customer.customerType }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId]);
   const driverOf = (id: string) => drivers.find((d) => d._id === id) || null;
 
   // Picking the truck seats its own drivers into the two slots automatically.
@@ -154,7 +175,13 @@ function CreateFleetShipmentInner() {
         expectedArrival: form.expectedArrival ? new Date(form.expectedArrival).toISOString() : null,
         status: form.status || 'requesting',
         notes: form.notes || '',
-        rentType: form.rentType || '', driverAdvance: form.driverAdvance || '', branch: form.branch || '',
+        rentType: form.rentType || '', paymentType: form.paymentType || '', loadType: form.loadType || '',
+        price: form.price === '' || form.price == null ? 0 : Number(form.price),
+        fullRent: form.fullRent === '' || form.fullRent == null ? 0 : Number(form.fullRent),
+        customerType: form.customerType || '',
+        driverExpense: form.driverExpense === '' || form.driverExpense == null ? 0 : Number(form.driverExpense),
+        fridayBonus: !!form.fridayBonus,
+        branch: form.branch || '',
       };
       if (customerId) payload.customer = customerId;
       else payload.newCustomer = { name: newCustomer.name.trim(), phone: newCustomer.phone.trim() };
@@ -375,17 +402,79 @@ function CreateFleetShipmentInner() {
           </div>
           <div>
             <label className={labelCls}>{ar ? 'نوع الإيجار' : 'Rent type'}</label>
-            <input value={form.rentType || ''} onChange={(e) => set('rentType', e.target.value)} className={inputCls} />
+            <SearchableManagedSelect type="fleet_rent_type" value={form.rentType || ''} onChange={(v) => set('rentType', v)}
+              placeholder={ar ? 'اختر نوع الإيجار' : 'Rent type'} />
           </div>
           <div>
-            <label className={labelCls}>{ar ? 'سلفة السائق' : 'Driver advance'}</label>
-            <input value={form.driverAdvance || ''} onChange={(e) => set('driverAdvance', e.target.value)} className={inputCls} />
+            <label className={labelCls}>{ar ? 'نوع الدفع' : 'Payment type'}</label>
+            <SearchableManagedSelect type="fleet_payment_type" value={form.paymentType || ''} onChange={(v) => set('paymentType', v)}
+              placeholder={ar ? 'كاش / ضريبي' : 'Cash / Tax'} />
           </div>
           <div>
             <label className={labelCls}>{ar ? 'الفرع' : 'Branch'}</label>
-            <input value={form.branch || ''} onChange={(e) => set('branch', e.target.value)} className={inputCls} />
+            <SearchableSelect value={form.branch || ''} onChange={(v) => set('branch', v)} searchAfter={0}
+              placeholder={ar ? 'اختر الفرع — اكتب للبحث…' : 'Branch — type to search…'}
+              searchPlaceholder={ar ? 'ابحث عن فرع…' : 'Search…'} emptyLabel={ar ? 'لا نتائج' : 'No matches'}
+              options={branches.map((b) => ({ value: b.name, label: b.name }))} />
+          </div>
+        </div>
+      ))}
+
+      {/* بيانات الحمولة والتسعير */}
+      {card(ar ? 'بيانات الحمولة والتسعير' : 'Load & pricing', UsersIcon, (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label className={labelCls}>{ar ? 'إيجار السيارة' : 'Vehicle rent'}</label>
+            <input type="number" min={0} value={form.price ?? ''} onChange={(e) => set('price', e.target.value)}
+              className={inputCls} placeholder="0" />
+            <p className="text-[11px] text-slate-500 mt-1">{ar ? 'الفلوس الداخلة لقسم إدارة الأسطول من هذه الحمولة.' : 'The money that goes into the fleet section.'}</p>
           </div>
           <div>
+            <label className={labelCls}>{ar ? 'الإيجار كامل (اختياري)' : 'Full rent (optional)'}</label>
+            <input type="number" min={0} value={form.fullRent ?? ''} onChange={(e) => set('fullRent', e.target.value)}
+              className={inputCls} placeholder={ar ? 'ما يستلمه السائق من العميل' : 'what the driver collects'} />
+            {(() => {
+              const vr = Number(form.price) || 0; const fr = Number(form.fullRent) || 0;
+              const diff = fr - vr;
+              if (fr > 0 && diff > 0) return <p className="text-[11px] text-amber-700 mt-1">{ar ? `الفرق ${diff.toLocaleString('en-US')} ر.س يذهب لقسم الفروع.` : `Difference ${diff.toLocaleString('en-US')} SAR goes to the branches dept.`}</p>;
+              if (fr > 0 && diff < 0) return <p className="text-[11px] text-red-600 mt-1">{ar ? 'الإيجار كامل أقل من إيجار السيارة — تحقّق.' : 'Full rent is below the vehicle rent — check.'}</p>;
+              return <p className="text-[11px] text-slate-500 mt-1">{ar ? 'يستلمه السائق من العميل — عادةً مع «قدام». الفرق لقسم الفروع.' : 'Collected by the driver — usually with “forward”. The gap goes to branches.'}</p>;
+            })()}
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'نوع العميل' : 'Customer type'}</label>
+            <Select value={form.customerType || ''} onChange={(e) => set('customerType', e.target.value)}>
+              <option value="">{ar ? '— غير محدد —' : '— unset —'}</option>
+              <option value="heavy">{ar ? 'عملاء النقل الثقيل' : 'Heavy transport'}</option>
+              <option value="branch">{ar ? 'عملاء الفروع' : 'Branch customers'}</option>
+            </Select>
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'نوع الحمولة' : 'Load type'}</label>
+            <SearchableManagedSelect type="fleet_load_type" value={form.loadType || ''} onChange={(v) => set('loadType', v)}
+              placeholder={ar ? 'اختر أو أضف نوع الحمولة' : 'Pick or add a load type'} />
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'مصروف السائق' : 'Driver expense'}</label>
+            <input type="number" min={0} value={form.driverExpense ?? ''} onChange={(e) => set('driverExpense', e.target.value)}
+              className={inputCls} placeholder="0" />
+          </div>
+          {/* بونص الجمعة — يظهر بارزًا يوم الجمعة؛ زر واحد يزوّد المصروف تلقائيًا على الخادم. */}
+          <div className="sm:col-span-2 flex items-end">
+            <button type="button" onClick={() => set('fridayBonus', !form.fridayBonus)}
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${
+                form.fridayBonus
+                  ? 'bg-emerald-500/15 border-emerald-300 text-emerald-800'
+                  : isFriday
+                    ? 'bg-amber-500/15 border-amber-300 text-amber-800 animate-pulse'
+                    : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
+              }`}>
+              {form.fridayBonus ? <Check className="w-4 h-4" /> : <span className="text-lg leading-none">＋</span>}
+              {ar ? `بونص الجمعة للسائق ${form.fridayBonus ? '(مُضاف)' : ''}` : `Friday driver bonus ${form.fridayBonus ? '(added)' : ''}`}
+              {isFriday && !form.fridayBonus && <span className="text-[11px]">({ar ? 'اليوم جمعة' : 'today is Friday'})</span>}
+            </button>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>
             <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} className={inputCls} />
           </div>

@@ -14,6 +14,9 @@ const fleetVehicleSchema = new mongoose.Schema({
   gpsType: { type: String, trim: true, default: 'LS' },       // LS / EX
   brand: { type: String, trim: true, default: '' },           // ماركة السيارة — للبوليصة
   color: { type: String, trim: true, default: '' },           // لون السيارة — للبوليصة
+  // الهدف الشهري للدخل لهذه السيارة (ر.س) — يُقارَن بالمحقَّق في التحليلات.
+  // الافتراضي من إعدادات القسم (FleetConfig.defaultMonthlyTarget) عند الإنشاء.
+  monthlyTarget: { type: Number, default: 27000 },
   // المشرف المسؤول عن هذه السيارة: يعيّنه مدير القسم، وكل ما يراه المشرف في
   // القسم (حمولات، سائقون، لوحة، تحليلات) محصور في سياراته هذه.
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
@@ -51,6 +54,10 @@ const fleetCustomerSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   phone: { type: String, trim: true, default: '' },
   email: { type: String, trim: true, default: '' },
+  // نوع العميل: عملاء النقل الثقيل (عملاء قسم الأسطول) أو عملاء الفروع.
+  customerType: { type: String, enum: ['heavy', 'branch'], default: 'heavy', index: true },
+  // تقييمنا للعميل (0–5) — يظهر في ترتيب العملاء بالتحليلات.
+  rating: { type: Number, default: 0, min: 0, max: 5 },
   routes: [{
     fromCity: { type: String, trim: true, default: '' },
     toCity: { type: String, trim: true, default: '' },
@@ -86,10 +93,22 @@ const fleetShipmentSchema = new mongoose.Schema({
   driverPhone: { type: String, trim: true, default: '' },
   driverIqama: { type: String, trim: true, default: '' },       // snapshot — للبوليصة
   driverNationality: { type: String, trim: true, default: '' }, // snapshot — للبوليصة
-  // حقول البوليصة الخاصة بالحمولة نفسها (تُدخَل وقت الإنشاء):
-  rentType: { type: String, trim: true, default: '' },     // نوع الإيجار
-  driverAdvance: { type: String, trim: true, default: '' }, // سلفة السائق
-  branch: { type: String, trim: true, default: '' },        // الفرع
+  // حقول البوليصة/الحمولة (تُدخَل وقت الإنشاء):
+  rentType: { type: String, trim: true, default: '' },      // نوع الإيجار (قدام/راجعة…) — قائمة قابلة للتعديل
+  paymentType: { type: String, trim: true, default: '' },   // نوع الدفع (كاش/ضريبي) — قائمة قابلة للتعديل
+  loadType: { type: String, trim: true, default: '' },      // نوع الحمولة — قائمة أو كتابة يدوية
+  // إيجار السيارة — الدخل الفعلي لقسم إدارة الأسطول من هذه الحمولة (أساس التحليلات).
+  price: { type: Number, default: 0, index: true },
+  // الإيجار كامل (اختياري) — المبلغ الذي يستلمه السائق من العميل. عادةً مع «قدام».
+  // الفرق (fullRent − price) حصة قسم الفروع (سيناريو 3PL). صفر يعني لا يوجد.
+  fullRent: { type: Number, default: 0 },
+  // نوع العميل لهذه الحمولة (لقطة): نقل ثقيل أم فرع — للتقارير حتى لو تغيّر العميل لاحقًا.
+  customerType: { type: String, enum: ['heavy', 'branch', ''], default: '', index: true },
+  driverExpense: { type: Number, default: 0 },              // مصروف السائق (كان «سلفة السائق»)
+  driverAdvance: { type: String, trim: true, default: '' }, // legacy — يُقرأ للبوليصات القديمة فقط
+  // بونص يوم الجمعة: عند تفعيله يُضاف مبلغ ثابت (FleetConfig.fridayBonusAmount) لمصروف السائق.
+  fridayBonus: { type: Boolean, default: false },
+  branch: { type: String, trim: true, default: '' },        // الفرع — من فروع الشركة
   // سائق ثانٍ — for loads that must arrive fast, two drivers share the wheel.
   secondDriver: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetDriver', default: null },
   secondDriverName: { type: String, trim: true, default: '' },
@@ -164,10 +183,22 @@ const fleetEventSchema = new mongoose.Schema({
 }, { timestamps: true });
 fleetEventSchema.index({ shipment: 1, createdAt: -1 });
 
+// ── Section-wide settings (singleton) ───────────────────────────────────────
+// One editable row that holds the fleet section's tunable numbers. Dropdown
+// option lists (rent type / payment type / load type) live in the shared Lookup
+// system, not here.
+const fleetConfigSchema = new mongoose.Schema({
+  key: { type: String, default: 'fleet', unique: true },
+  fridayBonusAmount: { type: Number, default: 50 },      // ريال يُضاف لمصروف السائق يوم الجمعة
+  defaultMonthlyTarget: { type: Number, default: 27000 }, // الهدف الشهري الافتراضي للسيارة
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}, { timestamps: true });
+
 module.exports = {
   FleetVehicle: mongoose.models.FleetVehicle || mongoose.model('FleetVehicle', fleetVehicleSchema),
   FleetDriver: mongoose.models.FleetDriver || mongoose.model('FleetDriver', fleetDriverSchema),
   FleetCustomer: mongoose.models.FleetCustomer || mongoose.model('FleetCustomer', fleetCustomerSchema),
   FleetShipment: mongoose.models.FleetShipment || mongoose.model('FleetShipment', fleetShipmentSchema),
   FleetEvent: mongoose.models.FleetEvent || mongoose.model('FleetEvent', fleetEventSchema),
+  FleetConfig: mongoose.models.FleetConfig || mongoose.model('FleetConfig', fleetConfigSchema),
 };

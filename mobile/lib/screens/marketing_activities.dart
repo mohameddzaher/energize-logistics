@@ -83,25 +83,68 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
     return d == null ? (v ?? '—').toString() : '${d.day}/${d.month}/${d.year}';
   }
 
-  Future<void> _create() async {
-    final title = TextEditingController();
-    final description = TextEditingController();
-    final impressions = TextEditingController();
-    final clicks = TextEditingController();
-    final leads = TextEditingController();
-    String platform = 'instagram';
-    String type = 'post';
-    DateTime date = DateTime.now();
+  Future<void> _delete(Map<String, dynamic> row) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف النشاط', 'Delete activity')),
+        content: Text(tr('حذف هذا النشاط نهائيًا؟', 'Delete this activity permanently?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/marketing/activities/${row['_id']}');
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  // ورقة إنشاء/تعديل نشاط بكامل المقاييس (ظهور/وصول/نقرات/إعجاب/تعليق/مشاركة/عملاء)
+  // + رابط وملاحظات. تعديل ⇒ PUT، جديد ⇒ POST.
+  Future<void> _openSheet({Map<String, dynamic>? row}) async {
+    final isEdit = row != null;
+    final m = row?['metrics'] is Map ? Map<String, dynamic>.from(row!['metrics']) : {};
+    final title = TextEditingController(text: (row?['title'] ?? '').toString());
+    final description = TextEditingController(text: (row?['description'] ?? '').toString());
+    final link = TextEditingController(text: (row?['link'] ?? '').toString());
+    final notes = TextEditingController(text: (row?['notes'] ?? '').toString());
+    String num0(dynamic v) => (v == null || v == 0) ? '' : v.toString();
+    final impressions = TextEditingController(text: num0(m['impressions']));
+    final reach = TextEditingController(text: num0(m['reach']));
+    final clicks = TextEditingController(text: num0(m['clicks']));
+    final likes = TextEditingController(text: num0(m['likes']));
+    final comments = TextEditingController(text: num0(m['comments']));
+    final shares = TextEditingController(text: num0(m['shares']));
+    final leads = TextEditingController(text: num0(m['leads']));
+    String platform = (row?['platform'] ?? 'instagram').toString();
+    String type = (row?['type'] ?? 'post').toString();
+    DateTime date = DateTime.tryParse((row?['date'] ?? '').toString())?.toLocal() ?? DateTime.now();
+
+    Widget numField(TextEditingController c, String ar, String en) => Expanded(
+        child: TextField(controller: c, keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: tr(ar, en), isDense: true)));
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(tr('نشاط تسويقي جديد', 'New activity'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: Text(isEdit ? tr('تعديل النشاط', 'Edit activity') : tr('نشاط تسويقي جديد', 'New activity'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+                if (isEdit)
+                  IconButton(icon: const Icon(Icons.delete_outline, color: T.danger), onPressed: () { Navigator.pop(c); _delete(row); }),
+              ]),
+              const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: () async {
                   final v = await showDatePicker(context: c, initialDate: date, firstDate: DateTime(2023), lastDate: DateTime.now().add(const Duration(days: 30)));
@@ -134,38 +177,49 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
               ]),
               const SizedBox(height: 10),
               TextField(controller: description, maxLines: 2, decoration: InputDecoration(labelText: tr('الوصف', 'Description'))),
+              const SizedBox(height: 12),
+              Text(tr('المقاييس', 'Metrics'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: T.inkSoft)),
+              const SizedBox(height: 6),
+              Row(children: [numField(impressions, 'ظهور', 'Impressions'), const SizedBox(width: 6), numField(reach, 'وصول', 'Reach'), const SizedBox(width: 6), numField(clicks, 'نقرات', 'Clicks')]),
+              const SizedBox(height: 8),
+              Row(children: [numField(likes, 'إعجاب', 'Likes'), const SizedBox(width: 6), numField(comments, 'تعليق', 'Comments'), const SizedBox(width: 6), numField(shares, 'مشاركة', 'Shares')]),
+              const SizedBox(height: 8),
+              Row(children: [numField(leads, 'عملاء محتملون', 'Leads'), const SizedBox(width: 6), const Expanded(child: SizedBox()), const SizedBox(width: 6), const Expanded(child: SizedBox())]),
               const SizedBox(height: 10),
-              Row(children: [
-                Expanded(child: TextField(controller: impressions, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('ظهور', 'Impressions'), isDense: true))),
-                const SizedBox(width: 6),
-                Expanded(child: TextField(controller: clicks, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('نقرات', 'Clicks'), isDense: true))),
-                const SizedBox(width: 6),
-                Expanded(child: TextField(controller: leads, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('عملاء', 'Leads'), isDense: true))),
-              ]),
+              TextField(controller: link, keyboardType: TextInputType.url, decoration: InputDecoration(labelText: tr('الرابط', 'Link'))),
+              const SizedBox(height: 10),
+              TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () async {
+                    num? n(TextEditingController c) => c.text.trim().isEmpty ? null : num.tryParse(c.text.trim());
+                    final body = {
+                      'date': '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+                      'platform': platform, 'type': type,
+                      'title': title.text.trim(),
+                      'description': description.text.trim(),
+                      'link': link.text.trim(),
+                      'notes': notes.text.trim(),
+                      'metrics': {
+                        'impressions': n(impressions) ?? 0, 'reach': n(reach) ?? 0, 'clicks': n(clicks) ?? 0,
+                        'likes': n(likes) ?? 0, 'comments': n(comments) ?? 0, 'shares': n(shares) ?? 0, 'leads': n(leads) ?? 0,
+                      },
+                    };
                     try {
-                      await Api.instance.post('/api/marketing/activities', {
-                        'date': '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-                        'platform': platform, 'type': type,
-                        if (title.text.trim().isNotEmpty) 'title': title.text.trim(),
-                        if (description.text.trim().isNotEmpty) 'description': description.text.trim(),
-                        'metrics': {
-                          'impressions': num.tryParse(impressions.text) ?? 0,
-                          'clicks': num.tryParse(clicks.text) ?? 0,
-                          'leads': num.tryParse(leads.text) ?? 0,
-                        },
-                      });
+                      if (isEdit) {
+                        await Api.instance.put('/api/marketing/activities/${row['_id']}', body);
+                      } else {
+                        await Api.instance.post('/api/marketing/activities', body);
+                      }
                       if (c.mounted) Navigator.pop(c);
                       _load();
                     } catch (e) {
                       if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
                     }
                   },
-                  child: Text(tr('حفظ', 'Save')),
+                  child: Text(isEdit ? tr('حفظ التعديلات', 'Save changes') : tr('حفظ', 'Save')),
                 ),
               ),
             ]),
@@ -187,7 +241,7 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
     return AppScaffold(
       title: Text(tr('أنشطة التسويق', 'Marketing Activities')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _create,
+        onPressed: () => _openSheet(),
         icon: const Icon(Icons.add),
         label: Text(tr('نشاط', 'New')),
       ),
@@ -244,7 +298,9 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
                                 final ty = _actTypes[r['type']];
                                 return FadeSlideIn(
                                   delayMs: (i * 12).clamp(0, 120),
-                                  child: AppCard(
+                                  child: Pressable(
+                                    onTap: () => _openSheet(row: r),
+                                    child: AppCard(
                                     topAccent: T.violet,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
@@ -266,6 +322,7 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
                                         ]),
                                       ],
                                     ]),
+                                  ),
                                   ),
                                 );
                               },

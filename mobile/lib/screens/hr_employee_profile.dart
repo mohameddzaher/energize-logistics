@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -45,6 +46,207 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   }
 
   Map<String, dynamic> get _emp => (_d?['employee'] as Map<String, dynamic>?) ?? {};
+
+  static const _renewables = [
+    ('iqama', 'الإقامة', 'Iqama'), ('passport', 'الجواز', 'Passport'),
+    ('workPermit', 'رخصة العمل', 'Work permit'), ('insurance', 'التأمين', 'Insurance'),
+    ('visa', 'التأشيرة', 'Visa'), ('license', 'رخصة القيادة', 'Driving license'),
+    ('driverCard', 'بطاقة التشغيل', 'Driver card'), ('ajeer', 'أجير', 'Ajeer'),
+  ];
+
+  // تجديد مستند: اختيار النوع + تاريخ انتهاء جديد (+ رقم اختياري) → POST renew.
+  Future<void> _renewDoc() async {
+    String docType = 'iqama';
+    DateTime? newExpiry;
+    final number = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(
+        builder: (c, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('تجديد مستند', 'Renew document'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: docType,
+              decoration: InputDecoration(labelText: tr('نوع المستند', 'Document type')),
+              items: _renewables.map((t) => DropdownMenuItem(value: t.$1, child: Text(tr(t.$2, t.$3)))).toList(),
+              onChanged: (v) => setSheet(() => docType = v ?? 'iqama'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.calendar_month_outlined, size: 18),
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
+              label: Text('${tr('تاريخ الانتهاء الجديد', 'New expiry')}: ${newExpiry == null ? tr('اختر', 'Pick') : newExpiry!.toIso8601String().split('T').first}'),
+              onPressed: () async {
+                final d = await showDatePicker(context: c, initialDate: DateTime.now().add(const Duration(days: 365)), firstDate: DateTime(2020), lastDate: DateTime(2040));
+                if (d != null) setSheet(() => newExpiry = d);
+              },
+            ),
+            const SizedBox(height: 10),
+            TextField(controller: number, decoration: InputDecoration(labelText: tr('رقم المستند (اختياري)', 'Document number (optional)'))),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: newExpiry == null ? null : () => Navigator.pop(c, true),
+              child: Text(tr('تجديد', 'Renew')),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (ok != true || newExpiry == null) return;
+    try {
+      await Api.instance.post('/api/hr/employees/${widget.employeeId}/renew', {
+        'docType': docType,
+        'newExpiry': newExpiry!.toIso8601String().split('T').first,
+        if (number.text.trim().isNotEmpty) 'documentNumber': number.text.trim(),
+      });
+      _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم التجديد', 'Renewed'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  // رفع مستند: اختيار ملف (PDF/صورة/…) → base64 + العنوان والتصنيف → POST.
+  Future<void> _uploadDocument() async {
+    final picked = await pickFileAsDataUrl();
+    if (picked == null || !mounted) return;
+    final title = TextEditingController(text: picked.fileName.replaceAll(RegExp(r'\.[^.]+$'), ''));
+    final category = TextEditingController();
+    DateTime? expiry;
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('رفع مستند', 'Upload document'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Row(children: [
+            const Icon(Icons.insert_drive_file_outlined, size: 18, color: T.navy),
+            const SizedBox(width: 8),
+            Expanded(child: Text(picked.fileName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+            Text('${(picked.sizeBytes / 1024).toStringAsFixed(0)} KB', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+          ]),
+          const SizedBox(height: 12),
+          TextField(controller: title, decoration: InputDecoration(labelText: tr('اسم المستند *', 'Document name *'))),
+          const SizedBox(height: 10),
+          TextField(controller: category, decoration: InputDecoration(labelText: tr('التصنيف', 'Category'))),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.calendar_month_outlined, size: 18),
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
+            label: Text('${tr('تاريخ الانتهاء (اختياري)', 'Expiry (optional)')}: ${expiry == null ? '—' : expiry!.toIso8601String().split('T').first}'),
+            onPressed: () async {
+              final d = await showDatePicker(context: c, initialDate: DateTime.now(), firstDate: DateTime(2015), lastDate: DateTime(2040));
+              if (d != null) setS(() => expiry = d);
+            },
+          ),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('رفع', 'Upload')))),
+        ]),
+      )),
+    );
+    if (ok != true || title.text.trim().isEmpty) return;
+    try {
+      await Api.instance.post('/api/hr/employees/${widget.employeeId}/documents', {
+        'title': title.text.trim(),
+        'fileName': picked.fileName,
+        'dataUrl': picked.dataUrl,
+        if (category.text.trim().isNotEmpty) 'category': category.text.trim(),
+        if (expiry != null) 'expiryDate': expiry!.toIso8601String().split('T').first,
+      });
+      _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم رفع المستند', 'Document uploaded'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _deleteDocument(Map<String, dynamic> doc) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف المستند', 'Delete document')),
+        content: Text(tr('حذف «${doc['title'] ?? doc['fileName']}»؟', 'Delete this document?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try { await Api.instance.delete('/api/hr/documents/${doc['_id']}'); _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+  }
+
+  // إنهاء الخدمة: سبب + تاريخ → POST terminate.
+  Future<void> _terminate() async {
+    final reason = TextEditingController();
+    DateTime when = DateTime.now();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setD) => AlertDialog(
+          title: Text(tr('إنهاء خدمة الموظف', 'End of service')),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.calendar_month_outlined, size: 16),
+              label: Text('${tr('التاريخ', 'Date')}: ${when.toIso8601String().split('T').first}'),
+              onPressed: () async {
+                final d = await showDatePicker(context: c, initialDate: when, firstDate: DateTime(2015), lastDate: DateTime(2035));
+                if (d != null) setD(() => when = d);
+              },
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('إنهاء الخدمة', 'End service'))),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/hr/employees/${widget.employeeId}/terminate', {
+        'reason': reason.text.trim(),
+        'date': when.toIso8601String().split('T').first,
+      });
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  // إعادة تفعيل موظف منتهي الخدمة.
+  Future<void> _reactivate() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('إعادة تفعيل الموظف', 'Reactivate employee')),
+        content: Text(tr('سيعود الموظف إلى حالة «على رأس العمل».', 'The employee returns to active status.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.success), onPressed: () => Navigator.pop(c, true), child: Text(tr('تفعيل', 'Reactivate'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/hr/employees/${widget.employeeId}/reactivate', {});
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
 
   String get _name {
     final ar = (_emp['arabicName'] ?? '').toString();
@@ -184,15 +386,46 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     final leaves = List<Map<String, dynamic>>.from(_d?['leaves'] ?? []);
     final assets = List<Map<String, dynamic>>.from(_d?['assets'] ?? []);
     final documents = List<Map<String, dynamic>>.from(_d?['documents'] ?? []);
+    final renewals = List<Map<String, dynamic>>.from(_d?['renewals'] ?? []);
     final balance = _d?['balance'] as Map<String, dynamic>?;
 
     return DefaultTabController(
-      length: 5,
+      length: 7,
       child: AppScaffold(
         title: Text(_loading ? tr('ملف الموظف', 'Employee') : _name),
         actions: [
           IconButton(icon: const Icon(Icons.post_add_outlined), tooltip: tr('عقد جديد', 'New contract'), onPressed: _loading ? null : _newContract),
           IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('تعديل', 'Edit'), onPressed: _loading ? null : _edit),
+          if (!_loading)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (v) {
+                if (v == 'renew') _renewDoc();
+                if (v == 'upload') _uploadDocument();
+                if (v == 'terminate') _terminate();
+                if (v == 'reactivate') _reactivate();
+              },
+              itemBuilder: (c) => [
+                PopupMenuItem(value: 'renew', child: Row(children: [
+                  const Icon(Icons.autorenew_rounded, size: 18, color: T.info), const SizedBox(width: 10),
+                  Text(tr('تجديد مستند', 'Renew document')),
+                ])),
+                PopupMenuItem(value: 'upload', child: Row(children: [
+                  const Icon(Icons.upload_file_outlined, size: 18, color: T.navy), const SizedBox(width: 10),
+                  Text(tr('رفع مستند', 'Upload document')),
+                ])),
+                if (_emp['employmentStatus'] != 'terminated')
+                  PopupMenuItem(value: 'terminate', child: Row(children: [
+                    const Icon(Icons.person_off_outlined, size: 18, color: T.danger), const SizedBox(width: 10),
+                    Text(tr('إنهاء الخدمة', 'End of service')),
+                  ]))
+                else
+                  PopupMenuItem(value: 'reactivate', child: Row(children: [
+                    const Icon(Icons.restart_alt_rounded, size: 18, color: T.success), const SizedBox(width: 10),
+                    Text(tr('إعادة تفعيل', 'Reactivate')),
+                  ])),
+              ],
+            ),
         ],
         appBarBottom: TabBar(
           isScrollable: true,
@@ -205,6 +438,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
             Tab(text: '${tr('الإجازات', 'Leaves')} (${leaves.length})'),
             Tab(text: '${tr('العهد', 'Custody')} (${assets.length})'),
             Tab(text: '${tr('المستندات', 'Documents')} (${documents.length})'),
+            Tab(text: tr('المركبات', 'Vehicles')),
+            Tab(text: '${tr('السجل', 'History')} (${renewals.length})'),
           ],
         ),
         body: _loading
@@ -338,17 +573,40 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                       );
                     }),
                     // ── المستندات ──
-                    _listTab(documents, Icons.folder_open_outlined, tr('لا توجد مستندات مرفوعة', 'No documents'), (doc) {
+                    _listTab(documents, Icons.folder_open_outlined, tr('لا توجد مستندات — استخدم «رفع مستند» من القائمة', 'No documents — use "Upload document" from the menu'), (doc) {
+                      return Pressable(
+                        onLongPress: () => _deleteDocument(doc),
+                        child: AppCard(
+                          child: Row(children: [
+                            const Icon(Icons.insert_drive_file_outlined, color: T.violet, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text((doc['title'] ?? doc['fileName'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
+                                Text([_date(doc['createdAt']), if ((doc['category'] ?? '').toString().isNotEmpty) doc['category']].join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                              ]),
+                            ),
+                            const Icon(Icons.delete_outline, size: 17, color: T.inkFaint),
+                          ]),
+                        ),
+                      );
+                    }),
+                    // ── المركبات ──
+                    _EmployeeVehiclesTab(employeeId: widget.employeeId),
+                    // ── السجل (التجديدات) ──
+                    _listTab(renewals, Icons.history_rounded, tr('لا يوجد سجل تجديدات', 'No renewal history'), (rn) {
                       return AppCard(
                         child: Row(children: [
-                          const Icon(Icons.insert_drive_file_outlined, color: T.violet, size: 20),
+                          const Icon(Icons.autorenew_rounded, color: T.info, size: 20),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text((doc['title'] ?? doc['fileName'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
-                              Text(_date(doc['createdAt']), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                              Text((rn['docType'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                              Text('${tr('من', 'from')} ${_date(rn['previousExpiry'])} ${tr('إلى', 'to')} ${_date(rn['newExpiry'])}',
+                                  style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                             ]),
                           ),
+                          Text(_date(rn['createdAt']), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
                         ]),
                       );
                     }),
@@ -462,6 +720,105 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// تبويب مركبات الموظف: التفويض الحالي + سجل التفاويض + الحوادث.
+// /api/vehicles/by-employee/:id → { current, authorizations, accidents }
+class _EmployeeVehiclesTab extends StatefulWidget {
+  final String employeeId;
+  const _EmployeeVehiclesTab({required this.employeeId});
+  @override
+  State<_EmployeeVehiclesTab> createState() => _EmployeeVehiclesTabState();
+}
+
+class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with AutomaticKeepAliveClientMixin {
+  Map<String, dynamic>? _d;
+  bool _loading = true;
+  String? _error;
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get('/api/vehicles/by-employee/${widget.employeeId}');
+      if (!mounted) return;
+      setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  String _plate(dynamic v) => v is Map ? (v['plateNumber'] ?? '—').toString() : '—';
+  String _dt(dynamic v) {
+    final x = v != null ? DateTime.tryParse(v.toString())?.toLocal() : null;
+    return x == null ? '—' : '${x.day}/${x.month}/${x.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    if (_loading) return ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 90)]);
+    if (_error != null) return ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); });
+    final current = _d?['current'];
+    final auths = List<Map<String, dynamic>>.from(_d?['authorizations'] ?? []);
+    final accidents = List<Map<String, dynamic>>.from(_d?['accidents'] ?? []);
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(padding: const EdgeInsets.all(14), children: [
+        if (current is Map) AppCard(
+          topAccent: T.success,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('التفويض الحالي', 'Current authorization'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+            const SizedBox(height: 6),
+            Row(children: [
+              const Icon(Icons.local_shipping_outlined, size: 18, color: T.navy),
+              const SizedBox(width: 8),
+              Text(_plate(current['vehicle']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const Spacer(),
+              Chip2(tr('نشط', 'Active'), T.success),
+            ]),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        Text('${tr('سجل التفاويض', 'Authorization history')} (${auths.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+        const SizedBox(height: 8),
+        if (auths.isEmpty) EmptyState(icon: Icons.assignment_ind_outlined, title: tr('لا توجد تفاويض', 'No authorizations')),
+        ...auths.map((a) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: AppCard(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                child: Row(children: [
+                  Expanded(child: Text(_plate(a['vehicle']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                  Text('${_dt(a['startDate'])} → ${a['endDate'] != null ? _dt(a['endDate']) : '…'}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  const SizedBox(width: 8),
+                  Chip2(a['status'] == 'active' ? tr('نشط', 'Active') : tr('منتهٍ', 'Ended'), a['status'] == 'active' ? T.success : T.inkFaint),
+                ]),
+              ),
+            )),
+        if (accidents.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text('${tr('الحوادث', 'Accidents')} (${accidents.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+          const SizedBox(height: 8),
+          ...accidents.map((a) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: AppCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  child: Row(children: [
+                    const Icon(Icons.car_crash_outlined, size: 18, color: T.danger),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_plate(a['vehicle']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                    Text(_dt(a['date']), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  ]),
+                ),
+              )),
+        ],
+        const SizedBox(height: 20),
+      ]),
     );
   }
 }

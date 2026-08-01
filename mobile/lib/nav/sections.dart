@@ -34,6 +34,10 @@ import '../screens/ls2_fleet_assets.dart';
 import '../screens/admin_suite.dart';
 import '../screens/workshop_inventory.dart';
 import '../screens/accounting_suite.dart';
+import '../screens/sales_suite.dart';
+import '../screens/it_recurring.dart';
+import '../screens/executive_overview.dart';
+import '../screens/marketing_report.dart';
 import '../screens/ls2_drivers.dart';
 import '../screens/vehicles_suite.dart';
 import '../screens/marketing_activities.dart';
@@ -180,6 +184,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: marketingDashSpec)),
         AppPage('الحملات', 'Campaigns', Icons.flag_outlined, (c) => ResourceScreen(config: marketingCampaignsCfg)),
         AppPage('الأنشطة', 'Activities', Icons.bolt_outlined, (c) => const MarketingActivitiesScreen()),
+        AppPage('التقرير الدوري', 'Reports', Icons.assessment_outlined, (c) => const MarketingReportScreen()),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'marketing')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'marketing', complaints: true)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
@@ -230,6 +235,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'sales_manager', 'sales_rep', 'operations_manager', 'operations'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: salesDashSpec)),
+        AppPage('الأداء', 'Performance', Icons.leaderboard_outlined, (c) => const SalesPerformanceScreen()),
+        AppPage('خط الأنابيب', 'Pipeline', Icons.view_kanban_outlined, (c) => const SalesPipelineScreen()),
         AppPage('الأهداف', 'Targets', Icons.track_changes_outlined, (c) => ResourceScreen(config: salesTargetsCfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'sales')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'sales', complaints: true)),
@@ -290,6 +297,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: itDashSpec)),
         AppPage('التذاكر والمشكلات', 'Tickets', Icons.confirmation_number_outlined, (c) => ResourceScreen(config: itTicketsCfg)),
+        AppPage('المشاكل المتكررة', 'Recurring', Icons.repeat_rounded, (c) => const ItRecurringScreen()),
         AppPage('عهد الأجهزة', 'Custody', Icons.devices_other_outlined, (c) => const ItCustodyScreen()),
         AppPage('الأنظمة والخدمات', 'Systems', Icons.dns_outlined, (c) => ResourceScreen(config: itSystemsCfg)),
         AppPage('مستودع الأجهزة', 'IT Stock', Icons.inventory_outlined, (c) => ResourceScreen(config: itStockCfg)),
@@ -325,6 +333,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Remote', arTitle: 'العمل عن بُعد', enTitle: 'Remote', icon: Icons.laptop_mac_outlined,
       roles: const [..._admins, 'remote_manager', 'remote_employee'],
       pages: [
+        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const RemoteDashboardScreen()),
         AppPage('الحضور والانصراف', 'Attendance', Icons.fingerprint_outlined, (c) => const RemoteAttendanceScreen()),
         AppPage('الإجازات', 'Leaves', Icons.beach_access_outlined, (c) => const RemoteLeavesScreen()),
         AppPage('المهام', 'Tasks', Icons.task_alt_outlined, (c) => const RemoteTasksScreen()),
@@ -351,7 +360,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Executive', arTitle: 'النظرة التنفيذية', enTitle: 'Executive', icon: Icons.insights_outlined,
       roles: const ['super_admin', 'admin'], managed: false,
       pages: [
-        AppPage('النظرة التنفيذية', 'Overview', Icons.insights_outlined, (c) => const SectionDashScreen(spec: executiveDashSpec)),
+        AppPage('النظرة التنفيذية', 'Overview', Icons.insights_outlined, (c) => const ExecutiveOverviewScreen()),
       ],
     ),
     AppSection(

@@ -54,4 +54,9 @@ vehicleSchema.index({ type: 1 });
 vehicleSchema.index({ branch: 1 });
 vehicleSchema.index({ currentEmployee: 1 });
 
+// Any vehicle write clears the cached vehicles list so edits show immediately.
+const bustVehiclesList = () => { try { require('../utils/ttlCache').clear('vehicles:list'); } catch (e) { /* noop */ } };
+vehicleSchema.post('save', bustVehiclesList);
+vehicleSchema.post(/^find.*[UD]/, bustVehiclesList);
+
 module.exports = mongoose.model('Vehicle', vehicleSchema);

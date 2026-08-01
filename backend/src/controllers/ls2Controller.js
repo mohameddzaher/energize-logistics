@@ -258,7 +258,13 @@ exports.listVehicles = async (req, res) => {
     else if (maintFilter === 'overdue') filter.maintenanceStatus = 'overdue';
     else if (maintFilter === 'due_or_overdue') filter.maintenanceStatus = { $ne: 'ok' };
 
-    let vehicles = (await Ls2Vehicle.find(filter).lean()).map((v) => withMaintenance(v));
+    // Each ls2vehicle doc is heavy (telemetry snapshot + tires[] + sensors), so
+    // the raw fetch costs ~2s. The poller refreshes every 15s, so an 8s cache
+    // keyed by the filter collapses many concurrent LS2-page loads into one query
+    // without ever showing meaningfully-stale data.
+    const cacheKey = `ls2:vehicles:${status || ''}:${alertLevel || ''}:${maintFilter || ''}:${q || ''}`;
+    const rawVehicles = await cache.wrap(cacheKey, 8000, () => Ls2Vehicle.find(filter).lean());
+    let vehicles = rawVehicles.map((v) => withMaintenance(v));
 
     // Optional: attach per-vehicle distance for a period (fleet mileage view).
     const { from, to } = req.query;

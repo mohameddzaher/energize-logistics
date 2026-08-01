@@ -20,6 +20,95 @@ String _d(dynamic v) {
   return d == null ? (v ?? '—').toString() : '${d.day}/${d.month}/${d.year}';
 }
 
+String _foldAr(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
+
+/// منتقي بحث عام: يجلب من endpoint ويعرض قائمة قابلة للبحث، يرجّع العنصر المختار.
+Future<Map<String, dynamic>?> pickFromApi(BuildContext context, {
+  required String endpoint,
+  required String listKey,
+  required String Function(Map<String, dynamic>) label,
+  required String title,
+}) {
+  return showModalBottomSheet<Map<String, dynamic>>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (c) => _ApiPicker(endpoint: endpoint, listKey: listKey, label: label, title: title),
+  );
+}
+
+class _ApiPicker extends StatefulWidget {
+  final String endpoint, listKey, title;
+  final String Function(Map<String, dynamic>) label;
+  const _ApiPicker({required this.endpoint, required this.listKey, required this.label, required this.title});
+  @override
+  State<_ApiPicker> createState() => _ApiPickerState();
+}
+
+class _ApiPickerState extends State<_ApiPicker> {
+  List<Map<String, dynamic>> _rows = [];
+  bool _loading = true;
+  String? _error;
+  String _q = '';
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final sep = widget.endpoint.contains('?') ? '&' : '?';
+      final d = await Api.instance.get('${widget.endpoint}${sep}limit=200');
+      final raw = d is Map ? d[widget.listKey] : d;
+      if (!mounted) return;
+      setState(() { _rows = raw is List ? List<Map<String, dynamic>>.from(raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : []; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _foldAr(_q.trim());
+    final filtered = _rows.where((r) => q.isEmpty || _foldAr(widget.label(r)).contains(q)).toList();
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        maxChildSize: 0.92,
+        builder: (c, scroll) => Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+            child: TextField(
+              autofocus: true,
+              onChanged: (v) => setState(() => _q = v),
+              decoration: InputDecoration(hintText: '${widget.title}…', prefixIcon: const Icon(Icons.search)),
+            ),
+          ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
+                    : filtered.isEmpty
+                        ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج', 'No results'))
+                        : ListView.builder(
+                            controller: scroll,
+                            padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
+                            itemCount: filtered.length,
+                            itemBuilder: (c2, i) => ListTile(
+                              title: Text(widget.label(filtered[i]), style: const TextStyle(fontSize: 14)),
+                              onTap: () => Navigator.pop(c, filtered[i]),
+                            ),
+                          ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
 // ── متابعات التحصيل ─────────────────────────────────────────────────────────
 class CollectionsScreen extends StatefulWidget {
   const CollectionsScreen({super.key});
@@ -99,10 +188,72 @@ class _CollectionsScreenState extends State<CollectionsScreen> {
     }
   }
 
+  // تسجيل متابعة تحصيل جديدة: اختيار العميل + النوع + الملاحظات (+ مبلغ محصّل).
+  Future<void> _logActivity() async {
+    final customer = await pickFromApi(context,
+        endpoint: '/api/customers', listKey: 'customers',
+        label: (r) => (r['companyName'] ?? '').toString(), title: tr('اختر العميل', 'Pick customer'));
+    if (customer == null || !mounted) return;
+    String type = 'call';
+    final notes = TextEditingController();
+    final amount = TextEditingController();
+    const types = [
+      ('call', 'مكالمة', 'Call'), ('visit', 'زيارة', 'Visit'), ('email', 'بريد', 'Email'),
+      ('whatsapp', 'واتساب', 'WhatsApp'), ('promise', 'وعد بالدفع', 'Promise'),
+      ('follow_up', 'متابعة', 'Follow up'), ('note', 'ملاحظة', 'Note'),
+    ];
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${tr('متابعة تحصيل', 'Collection activity')} — ${customer['companyName'] ?? ''}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: type,
+            decoration: InputDecoration(labelText: tr('النوع', 'Type')),
+            items: types.map((t) => DropdownMenuItem(value: t.$1, child: Text(tr(t.$2, t.$3)))).toList(),
+            onChanged: (v) => setS(() => type = v ?? type),
+          ),
+          const SizedBox(height: 10),
+          TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('الملاحظات *', 'Notes *'))),
+          const SizedBox(height: 10),
+          TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المبلغ المحصّل (اختياري)', 'Amount collected (optional)'))),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تسجيل', 'Log')))),
+        ]),
+      )),
+    );
+    if (ok != true) return;
+    if (notes.text.trim().isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('الملاحظات مطلوبة', 'Notes required'))));
+      return;
+    }
+    try {
+      await Api.instance.post('/api/collections', {
+        'customer': customer['_id'],
+        'type': type,
+        'notes': notes.text.trim(),
+        if (amount.text.trim().isNotEmpty) 'amountCollected': num.tryParse(amount.text.trim()),
+      });
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
       title: Text(tr('متابعات التحصيل', 'Collection follow-ups')),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: T.navy, foregroundColor: Colors.white,
+        onPressed: _logActivity,
+        icon: const Icon(Icons.add), label: Text(tr('متابعة', 'Log')),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
@@ -233,10 +384,42 @@ class _DisputesScreenState extends State<DisputesScreen> {
     }
   }
 
+  // فتح نزاع جديد على فاتورة: اختيار الفاتورة + سبب النزاع.
+  Future<void> _openDispute() async {
+    final invoice = await pickFromApi(context,
+        endpoint: '/api/invoices', listKey: 'invoices',
+        label: (r) => '${r['invoiceNumber'] ?? ''} · ${_customerName(r['customer'])}', title: tr('اختر الفاتورة', 'Pick invoice'));
+    if (invoice == null || !mounted) return;
+    final reason = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('${tr('فتح نزاع', 'Open dispute')} — ${invoice['invoiceNumber'] ?? ''}'),
+        content: TextField(controller: reason, autofocus: true, maxLines: 2, decoration: InputDecoration(labelText: tr('سبب النزاع *', 'Reason *'))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('فتح', 'Open'))),
+        ],
+      ),
+    );
+    if (ok != true || reason.text.trim().isEmpty) return;
+    try {
+      await Api.instance.post('/api/disputes', {'invoice': invoice['_id'], 'reason': reason.text.trim()});
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
       title: Text(tr('النزاعات', 'Disputes')),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: T.navy, foregroundColor: Colors.white,
+        onPressed: _openDispute,
+        icon: const Icon(Icons.add), label: Text(tr('نزاع', 'Dispute')),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null

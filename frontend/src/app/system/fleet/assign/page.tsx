@@ -81,6 +81,14 @@ export default function FleetAssignPage() {
     setSaving(false);
   };
 
+  // إسناد سريع لسيارة واحدة مباشرةً — أسهل طريق لتغيير مشرف سيارة بعينها.
+  const quickAssign = async (vehicleId: string, supervisorId: string) => {
+    try {
+      await api.patch(`/api/fleet/vehicles/${vehicleId}/supervisor`, { supervisor: supervisorId || null });
+      load();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+  };
+
   if (!admin) return <div className="text-slate-500 p-8">{ar ? 'هذه الصفحة لمدير القسم فقط.' : 'Section manager only.'}</div>;
   if (loading) return <Spinner />;
 
@@ -173,6 +181,15 @@ export default function FleetAssignPage() {
                   <span className="block text-xs text-slate-600 mt-1 truncate">
                     {(v.drivers || []).length ? (v.drivers || []).map((d) => d.name).join(' · ') : (ar ? 'بدون سائق' : 'No driver')}
                     {v.trailerType ? ` · ${v.trailerType}` : ''}
+                  </span>
+                  {/* إسناد سريع لهذه السيارة وحدها — لا يمرّ عبر التحديد الجماعي. */}
+                  <span className="block mt-2" onClick={(e) => e.preventDefault()}>
+                    <select value={(v as any).supervisor ? String((v as any).supervisor) : ''}
+                      onChange={(e) => quickAssign(v._id, e.target.value)}
+                      className="w-full text-xs px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700">
+                      <option value="">{ar ? '— بدون مشرف —' : '— unassigned —'}</option>
+                      {supervisors.map((s) => <option key={s._id} value={s._id}>{supName(s)}</option>)}
+                    </select>
                   </span>
                 </span>
               </label>

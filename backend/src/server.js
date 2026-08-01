@@ -236,6 +236,16 @@ const autoSeedAdmin = async () => {
   }
 };
 
+// Start listening IMMEDIATELY — do NOT wait on the DB connect + the seven
+// sequential seed/migration round-trips (~10s), which previously left nginx
+// getting connection-refused → a 502 window on every deploy. Mongoose buffers
+// queries until the pool is ready, so DB-backed routes just wait sub-second
+// while /api/health stays up the whole time.
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+});
+
 connectDB().then(async () => {
   await autoSeedAdmin();
   // Seed the default HR leave types once (no-op once they exist).
@@ -255,19 +265,17 @@ connectDB().then(async () => {
   // (project, branch) compound unique index can take over. No-op on fresh installs.
   await migrateB2CSheetIndex();
 
-  server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-
-    // Start scheduled jobs
-    startWalletAutoCloseJob();
-    startB2CSheetSync();
-    startOpsPoll();
-    startOpsCustomerSync();
-    startOpsWorkflowSync();
-    startLs2Poll();
-    startKeepAlive();
-  });
+  // Start scheduled jobs once the DB is ready.
+  startWalletAutoCloseJob();
+  startB2CSheetSync();
+  startOpsPoll();
+  startOpsCustomerSync();
+  startOpsWorkflowSync();
+  startLs2Poll();
+  startKeepAlive();
+  console.log('DB ready — scheduled jobs started');
+}).catch((err) => {
+  console.error('DB initialisation failed:', err.message);
 });
 
 module.exports = { app, server };

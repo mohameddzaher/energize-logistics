@@ -431,12 +431,21 @@ exports.listCustody = async (req, res) => {
       filter.$or = [{ name: r }, { serialNumber: r }, { brand: r }, { model: r }, { specs: r }];
     }
 
-    const items = await Asset.find(filter)
+    const runQuery = () => Asset.find(filter)
       .populate('employee', EMP_FIELDS)
       .populate('assignedBy', 'firstName lastName')
       .sort({ createdAt: -1 })
       .limit(2000)
       .lean();
+    // Cache the common (no-search) load; Asset writes clear 'it:custody' via hooks.
+    let items;
+    if (q && q.trim()) {
+      items = await runQuery();
+    } else {
+      const cache = require('../utils/ttlCache');
+      const ck = `it:custody:${status || ''}:${type || ''}:${employee || ''}`;
+      items = await cache.wrap(ck, 20000, runQuery);
+    }
 
     res.json({ items });
   } catch (error) {

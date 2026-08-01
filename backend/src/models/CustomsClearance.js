@@ -227,6 +227,11 @@ customsClearanceSchema.pre('save', async function (next) {
 
 customsClearanceSchema.statics.STAGES = STAGES;
 
+// Any write clears the cached clearance list so edits/stage-moves show at once.
+const bustCustomsList = () => { try { require('../utils/ttlCache').clear('customs:list'); } catch (e) { /* noop */ } };
+customsClearanceSchema.post('save', bustCustomsList);
+customsClearanceSchema.post(/^find.*[UD]/, bustCustomsList); // findOneAndUpdate / findOneAndDelete / findByIdAndUpdate|Delete
+
 module.exports = mongoose.model('CustomsClearance', customsClearanceSchema);
 module.exports.STAGES = STAGES;
 module.exports.COST_KEYS = COST_KEYS;

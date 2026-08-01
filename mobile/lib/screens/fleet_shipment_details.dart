@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
-import '../ui/doc_pdf.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -48,6 +48,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
   final _location = TextEditingController();
   final _note = TextEditingController();
   bool _busy = false;
+  bool _printing = false;
   late final void Function() _onLive;
 
   static const _quickNotes = [
@@ -117,35 +118,27 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     return '${d.day}/${d.month} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
   }
 
-  // طباعة/مشاركة البوليصة كـ PDF من داخل التطبيق.
+  // طباعة/مشاركة البوليصة — نفس ملف الويب بالضبط: الخادم يولّده على ترويسة
+  // الشركة بالختم (Puppeteer + pdf-lib)، ونطبع البايتات كما هي.
   Future<void> _print(Map<String, dynamic> s) async {
-    final st = _statuses[s['status']];
-    await printDocument(
-      title: tr('بوليصة شحن', 'Shipment waybill'),
-      number: (s['waybillNumber'] ?? '').toString(),
-      subtitle: '${s['fromCity'] ?? ''} ← ${s['toCity'] ?? ''}',
-      rows: [
-        (tr('العميل', 'Customer'), (s['customerName'] ?? '').toString()),
-        (tr('الفرع', 'Branch'), (s['branch'] ?? '').toString()),
-        (tr('من', 'From'), (s['fromCity'] ?? '').toString()),
-        (tr('إلى', 'To'), (s['toCity'] ?? '').toString()),
-        (tr('السيارة (اللوحة)', 'Vehicle (plate)'), (s['vehiclePlate'] ?? '').toString()),
-        (tr('ماركة السيارة', 'Car brand'), (s['vehicleBrand'] ?? '').toString()),
-        (tr('لون السيارة', 'Car color'), (s['vehicleColor'] ?? '').toString()),
-        (tr('نوع النقل', 'Trailer type'), (s['trailerType'] ?? '').toString()),
-        (tr('نوع الإيجار', 'Rent type'), (s['rentType'] ?? '').toString()),
-        (tr('السائق', 'Driver'), (s['driverName'] ?? '').toString()),
-        (tr('هاتف السائق', 'Driver phone'), (s['driverPhone'] ?? '').toString()),
-        (tr('إقامة السائق', 'Driver ID (iqama)'), (s['driverIqama'] ?? '').toString()),
-        (tr('جنسية السائق', 'Driver nationality'), (s['driverNationality'] ?? '').toString()),
-        (tr('سلفة السائق', 'Driver advance'), (s['driverAdvance'] ?? '').toString()),
-        (tr('المشرف', 'Supervisor'), (s['supervisorName'] ?? '').toString()),
-        (tr('تاريخ التحميل', 'Load date'), _dt(s['loadDate']?.toString())),
-        (tr('الوصول المتوقع', 'ETA'), _dt(s['expectedArrival']?.toString())),
-        (tr('الحالة', 'Status'), st != null ? tr(st.$1, st.$2) : (s['status'] ?? '').toString()),
-        (tr('ملاحظات', 'Notes'), (s['notes'] ?? '').toString()),
-      ],
-    );
+    final id = s['_id']?.toString();
+    if (id == null) return;
+    setState(() => _printing = true);
+    try {
+      final bytes = await Api.instance.getBytes('/api/fleet/shipments/$id/waybill.pdf?lang=${Lang.instance.ar ? 'ar' : 'en'}');
+      await Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+        name: 'بوليصة-${s['waybillNumber'] ?? id}',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر توليد البوليصة', 'Could not generate the waybill'))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
   }
 
   String _eventText(Map<String, dynamic> e) {
@@ -177,9 +170,11 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
       actions: [
         if (s != null)
           IconButton(
-            icon: const Icon(Icons.print_outlined),
+            icon: _printing
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.print_outlined),
             tooltip: tr('طباعة / مشاركة', 'Print / share'),
-            onPressed: () => _print(s),
+            onPressed: _printing ? null : () => _print(s),
           ),
       ],
       body: _loading

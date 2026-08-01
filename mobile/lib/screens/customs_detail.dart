@@ -42,6 +42,20 @@ const _stageDoneItems = [
   ('returnInvoiceDate', 'فاتورة الإرجاع', 'Return invoice'),
 ];
 
+const _documentItems = [
+  ('bl', 'البوليصة', 'Bill of lading'),
+  ('commercialInvoice', 'الفاتورة التجارية', 'Commercial invoice'),
+  ('certificateOfOrigin', 'شهادة المنشأ', 'Certificate of origin'),
+  ('packingList', 'بيان التعبئة', 'Packing list'),
+  ('saber', 'شهادة سابر', 'Saber certificate'),
+];
+
+const _agentPaperItems = [
+  ('blStamped', 'البوليصة بختم التخليص + رقم المستورد', 'BL stamped + importer no.'),
+  ('customerAuthorization', 'تفويض العميل للشركة', 'Customer authorization'),
+  ('companyAuthorization', 'تفويض الشركة للمندوب', 'Company authorization'),
+];
+
 const _costItems = [
   ('deliveryOrder', 'إذن التسليم', 'Delivery order'),
   ('customsDuty', 'الرسوم الجمركية', 'Customs duty'),
@@ -116,6 +130,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final stageDone = _m(c['stageDone']);
     final stageDates = _m(c['stageDates']);
     final costs = _m(c['costs']);
+    final documents = _m(c['documents']);
+    final agentPapers = _m(c['agentPapers']);
     final totalCost = _costItems.fold<num>(0, (s, it) => s + ((costs[it.$1] ?? 0) as num));
 
     return AppScaffold(
@@ -222,6 +238,44 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                               subtitle: date.isNotEmpty ? Text(date, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)) : null,
                             );
                           }),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // ── مستندات البوليصة ──
+                    FadeSlideIn(
+                      delayMs: 90,
+                      child: AppCard(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(tr('المستندات', 'Documents'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                          const SizedBox(height: 6),
+                          ..._documentItems.map((it) => CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                                value: documents[it.$1] == true,
+                                onChanged: _saving ? null : (v) => _patch({'documents': {it.$1: v}}, tr('تم التحديث', 'Updated')),
+                                title: Text(tr(it.$2, it.$3), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                              )),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // ── أوراق الوكيل ──
+                    FadeSlideIn(
+                      delayMs: 105,
+                      child: AppCard(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(tr('أوراق الوكيل', 'Agent papers'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                          const SizedBox(height: 6),
+                          ..._agentPaperItems.map((it) => CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                                value: agentPapers[it.$1] == true,
+                                onChanged: _saving ? null : (v) => _patch({'agentPapers': {it.$1: v}}, tr('تم التحديث', 'Updated')),
+                                title: Text(tr(it.$2, it.$3), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                              )),
                         ]),
                       ),
                     ),

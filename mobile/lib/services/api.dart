@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
@@ -98,6 +99,18 @@ class Api {
         ? decoded['message'].toString()
         : 'تعذر تنفيذ الطلب (${res.statusCode})';
     throw ApiException(res.statusCode, msg);
+  }
+
+  // تحميل ملف ثنائي (PDF البوليصة مثلًا) بالمصادقة — يرجّع البايتات كما هي.
+  Future<Uint8List> getBytes(String path, {bool retried = false}) async {
+    final uri = Uri.parse('${AppConfig.apiBase}$path');
+    var res = await http.get(uri, headers: _headers());
+    if (res.statusCode == 401 && !retried) {
+      if (await _refresh()) return getBytes(path, retried: true);
+      throw ApiException(401, 'انتهت الجلسة — سجّل الدخول من جديد');
+    }
+    if (res.statusCode >= 200 && res.statusCode < 300) return res.bodyBytes;
+    throw ApiException(res.statusCode, 'تعذّر تحميل الملف (${res.statusCode})');
   }
 
   Future<dynamic> get(String path) => _request('GET', path);

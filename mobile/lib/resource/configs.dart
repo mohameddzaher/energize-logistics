@@ -14,6 +14,12 @@ import 'resource.dart';
 
 String _s(Map<String, dynamic> r, String k) => (r[k] ?? '').toString();
 
+// حقل علاقة الشركة لسجلات الـ CRM (صفقة/جهة اتصال/مهمة/نشاط) — يربطها بشركة
+// بدل ما تتحفظ يتيمة. يعرض الاسم العربي إن وُجد وإلا الإنجليزي.
+FieldSpec _crmCompanyLookup() => FieldSpec('company', 'الشركة', 'Company',
+    type: FieldType.lookup, lookupEndpoint: '/api/crm/companies', lookupListKey: 'companies',
+    lookupLabel: (r) => _s(r, 'arabicName').isNotEmpty ? _s(r, 'arabicName') : _s(r, 'name'));
+
 // ── إدارة الأسطول ────────────────────────────────────────────────────────────
 final fleetDriversCfg = ResourceConfig(
   arTitle: 'السائقون', enTitle: 'Drivers', icon: Icons.badge_outlined,
@@ -24,19 +30,41 @@ final fleetDriversCfg = ResourceConfig(
   chipsOf: (r) => [
     r['working'] != false ? ('يعمل', T.success) : ('متوقف', T.inkFaint),
     if (r['onSponsorship'] == true) ('على الكفالة', T.info),
+    if (r['vehicle'] is Map) (_s(r['vehicle'] as Map<String, dynamic>, 'plate'), T.navy),
   ],
-  fields: const [
-    FieldSpec('name', 'اسم السائق', 'Name', required: true),
-    FieldSpec('phone', 'رقم الجوال', 'Phone', type: FieldType.phone),
-    FieldSpec('iqama', 'رقم الإقامة', 'Iqama', type: FieldType.number),
-    FieldSpec('nationality', 'الجنسية', 'Nationality'),
-    FieldSpec('working', 'يعمل حاليًا', 'Working', type: FieldType.checkbox),
-    FieldSpec('onSponsorship', 'على الكفالة', 'On sponsorship', type: FieldType.checkbox),
-    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  // تبديل سريع لحالة العمل/الكفالة من قائمة الصف دون فتح النموذج.
+  rowActions: (r) => [
+    ResourceAction(
+      icon: r['working'] != false ? Icons.pause_circle_outline : Icons.play_circle_outline,
+      ar: r['working'] != false ? 'إيقاف عن العمل' : 'إعادة للعمل',
+      en: r['working'] != false ? 'Set not working' : 'Set working',
+      color: r['working'] != false ? T.warn : T.success,
+      request: (row) => ('PUT', '/api/fleet/drivers/${row['_id']}', {'working': !(row['working'] != false)}),
+    ),
+    ResourceAction(
+      icon: Icons.badge_outlined,
+      ar: r['onSponsorship'] == true ? 'إزالة من الكفالة' : 'وضع على الكفالة',
+      en: r['onSponsorship'] == true ? 'Remove sponsorship' : 'Put on sponsorship',
+      color: T.info,
+      request: (row) => ('PUT', '/api/fleet/drivers/${row['_id']}', {'onSponsorship': !(row['onSponsorship'] == true)}),
+    ),
+  ],
+  fields: [
+    const FieldSpec('name', 'اسم السائق', 'Name', required: true),
+    const FieldSpec('phone', 'رقم الجوال', 'Phone', type: FieldType.phone),
+    const FieldSpec('iqama', 'رقم الإقامة', 'Iqama', type: FieldType.number),
+    const FieldSpec('nationality', 'الجنسية', 'Nationality'),
+    FieldSpec('vehicle', 'السيارة', 'Vehicle', type: FieldType.lookup,
+        lookupEndpoint: '/api/fleet/vehicles', lookupListKey: 'vehicles',
+        lookupLabel: (v) => [_s(v, 'plate'), _s(v, 'name')].where((x) => x.isNotEmpty).join(' · ')),
+    const FieldSpec('working', 'يعمل حاليًا', 'Working', type: FieldType.checkbox),
+    const FieldSpec('onSponsorship', 'على الكفالة', 'On sponsorship', type: FieldType.checkbox),
+    const FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
 
 final fleetVehiclesCfg = ResourceConfig(
+  filterField: 'trailerType',
   arTitle: 'سيارات الأسطول', enTitle: 'Fleet Vehicles', icon: Icons.local_shipping_outlined,
   endpoint: '/api/fleet/vehicles', listKey: 'vehicles', liveEvent: 'fleet:updated',
   searchFields: const ['plate', 'name', 'trailerType', 'supervisorName'],
@@ -78,6 +106,7 @@ final fleetCustomersCfg = ResourceConfig(
 
 // ── إدارة العقود ─────────────────────────────────────────────────────────────
 final contractsVendorsCfg = ResourceConfig(
+  filterField: 'vendorType',
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => ContractsVendorProfileScreen(vendorId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
   arTitle: 'سجل موردي 3PL', enTitle: '3PL Vendors', icon: Icons.business_outlined,
   endpoint: '/api/contracts/vendors', listKey: 'vendors',
@@ -122,6 +151,7 @@ final contractsVendorsCfg = ResourceConfig(
 );
 
 final contractsAgreementsCfg = ResourceConfig(
+  filterField: 'status',
   arTitle: 'عقود الأقسام', enTitle: 'Department Contracts', icon: Icons.folder_copy_outlined,
   endpoint: '/api/contracts/agreements', listKey: 'contracts',
   updateMethod: 'PATCH', liveEvent: 'contracts:updated',
@@ -202,20 +232,22 @@ final crmContactsCfg = ResourceConfig(
       ? _s(r, 'arabicName')
       : '${_s(r, 'firstName')} ${_s(r, 'lastName')}'.trim(),
   subtitleOf: (r) => [_s(r, 'title'), _s(r, 'mobile'), _s(r, 'phone')].where((x) => x.isNotEmpty).join(' · '),
-  fields: const [
-    FieldSpec('firstName', 'الاسم الأول', 'First name', required: true),
-    FieldSpec('lastName', 'اسم العائلة', 'Last name'),
-    FieldSpec('arabicName', 'الاسم العربي', 'Arabic name'),
-    FieldSpec('title', 'المسمى الوظيفي', 'Job title'),
-    FieldSpec('mobile', 'الجوال', 'Mobile', type: FieldType.phone),
-    FieldSpec('email', 'البريد الإلكتروني', 'Email', type: FieldType.email),
-    FieldSpec('whatsapp', 'واتساب', 'WhatsApp', type: FieldType.phone),
-    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  fields: [
+    const FieldSpec('firstName', 'الاسم الأول', 'First name', required: true),
+    const FieldSpec('lastName', 'اسم العائلة', 'Last name'),
+    const FieldSpec('arabicName', 'الاسم العربي', 'Arabic name'),
+    const FieldSpec('title', 'المسمى الوظيفي', 'Job title'),
+    const FieldSpec('mobile', 'الجوال', 'Mobile', type: FieldType.phone),
+    const FieldSpec('email', 'البريد الإلكتروني', 'Email', type: FieldType.email),
+    const FieldSpec('whatsapp', 'واتساب', 'WhatsApp', type: FieldType.phone),
+    _crmCompanyLookup(),
+    const FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
 
 // ── تطوير الأعمال ────────────────────────────────────────────────────────────
 final bdOpportunitiesCfg = ResourceConfig(
+  filterField: 'stage',
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => BdOpportunityDetailScreen(opportunityId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
   arTitle: 'الفرص الاستراتيجية', enTitle: 'Opportunities', icon: Icons.explore_outlined,
   endpoint: '/api/business-development/opportunities', listKey: 'opportunities',
@@ -249,16 +281,21 @@ final bdOpportunitiesCfg = ResourceConfig(
       ('high', 'مرتفعة', 'High'), ('medium', 'متوسطة', 'Medium'), ('low', 'منخفضة', 'Low'),
     ]),
     FieldSpec('estimatedValue', 'القيمة التقديرية', 'Estimated value', type: FieldType.number),
+    FieldSpec('probability', 'الاحتمالية %', 'Probability %', type: FieldType.number),
     FieldSpec('partnerName', 'الشريك', 'Partner'),
+    FieldSpec('source', 'المصدر', 'Source'),
     FieldSpec('region', 'المنطقة', 'Region'),
     FieldSpec('city', 'المدينة', 'City'),
     FieldSpec('expectedCloseDate', 'تاريخ الإغلاق المتوقع', 'Expected close', type: FieldType.date),
+    FieldSpec('nextStepDate', 'تاريخ الخطوة التالية', 'Next step date', type: FieldType.date),
     FieldSpec('nextStep', 'الخطوة التالية', 'Next step'),
+    FieldSpec('lostReason', 'سبب الخسارة', 'Lost reason'),
     FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
   ],
 );
 
 final bdPartnersCfg = ResourceConfig(
+  filterField: 'status',
   arTitle: 'الشراكات', enTitle: 'Partners', icon: Icons.handshake_outlined,
   endpoint: '/api/business-development/partners', listKey: 'partners',
   liveEvent: 'bd:updated',
@@ -293,6 +330,7 @@ final bdPartnersCfg = ResourceConfig(
 );
 
 final bdTendersCfg = ResourceConfig(
+  filterField: 'status',
   arTitle: 'المناقصات', enTitle: 'Tenders', icon: Icons.gavel_outlined,
   endpoint: '/api/business-development/tenders', listKey: 'tenders',
   liveEvent: 'bd:updated',
@@ -331,6 +369,7 @@ final bdTendersCfg = ResourceConfig(
 
 // ── التسويق ──────────────────────────────────────────────────────────────────
 final marketingCampaignsCfg = ResourceConfig(
+  filterField: 'status',
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => MarketingCampaignDetailScreen(campaignId: (r['_id'] ?? '').toString(), name: (r['nameAr'] ?? r['name'] ?? '').toString()))),
   arTitle: 'الحملات', enTitle: 'Campaigns', icon: Icons.flag_outlined,
   endpoint: '/api/marketing/campaigns', listKey: 'items',
@@ -386,6 +425,15 @@ final workshopPurchasesCfg = ResourceConfig(
       _ => (_s(r, 'status'), T.inkSoft),
     },
   ],
+  // استلام طلب شراء معلّق → يضيفه للمخزون (نفس زر «سجّل وأضف للمخزون» في الويب).
+  rowActions: (r) => [
+    if (_s(r, 'status') == 'pending')
+      ResourceAction(
+        icon: Icons.inventory_2_outlined, ar: 'استلام للمخزون', en: 'Receive to store', color: T.success,
+        confirmAr: 'تأكيد استلام «${_s(r, 'itemName')}» وإضافته للمخزون؟', confirmEn: 'Receive and add to store?',
+        request: (row) => ('PUT', '/api/workshop/purchases/${row['_id']}/receive', null),
+      ),
+  ],
   fields: const [
     FieldSpec('itemName', 'اسم الصنف', 'Item name', required: true),
     FieldSpec('quantity', 'الكمية', 'Quantity', type: FieldType.number, required: true),
@@ -399,6 +447,7 @@ final workshopPurchasesCfg = ResourceConfig(
 
 // ── إدارة العلاقات: الصفقات والمهام والأنشطة ─────────────────────────────────
 final crmDealsCfg = ResourceConfig(
+  filterField: 'stage',
   arTitle: 'الصفقات', enTitle: 'Deals', icon: Icons.attach_money_outlined,
   endpoint: '/api/crm/deals', listKey: 'deals', liveEvent: 'crm:deal',
   searchFields: const ['title', 'stage', 'source'],
@@ -409,22 +458,24 @@ final crmDealsCfg = ResourceConfig(
     if (r['value'] != null) ('${r['value']} ${_s(r, 'currency')}', T.success),
     if (r['probability'] != null) ('${r['probability']}%', T.inkSoft),
   ],
-  fields: const [
-    FieldSpec('title', 'عنوان الصفقة', 'Title', required: true),
-    FieldSpec('stage', 'المرحلة', 'Stage', type: FieldType.select, options: [
+  fields: [
+    const FieldSpec('title', 'عنوان الصفقة', 'Title', required: true),
+    _crmCompanyLookup(),
+    const FieldSpec('stage', 'المرحلة', 'Stage', type: FieldType.select, options: [
       ('lead', 'عميل محتمل', 'Lead'), ('qualified', 'مؤهلة', 'Qualified'),
       ('proposal', 'عرض مقدم', 'Proposal'), ('negotiation', 'تفاوض', 'Negotiation'),
       ('won', 'مكسوبة', 'Won'), ('lost', 'خاسرة', 'Lost'),
     ]),
-    FieldSpec('value', 'القيمة', 'Value', type: FieldType.number),
-    FieldSpec('probability', 'الاحتمالية %', 'Probability %', type: FieldType.number),
-    FieldSpec('expectedCloseDate', 'تاريخ الإغلاق المتوقع', 'Expected close', type: FieldType.date),
-    FieldSpec('source', 'المصدر', 'Source'),
-    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+    const FieldSpec('value', 'القيمة', 'Value', type: FieldType.number),
+    const FieldSpec('probability', 'الاحتمالية %', 'Probability %', type: FieldType.number),
+    const FieldSpec('expectedCloseDate', 'تاريخ الإغلاق المتوقع', 'Expected close', type: FieldType.date),
+    const FieldSpec('source', 'المصدر', 'Source'),
+    const FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
 
 final crmTasksCfg = ResourceConfig(
+  filterField: 'status',
   arTitle: 'مهام العلاقات', enTitle: 'CRM Tasks', icon: Icons.task_alt_outlined,
   endpoint: '/api/crm/tasks', listKey: 'tasks', liveEvent: 'crm:task',
   searchFields: const ['title', 'status', 'priority'],
@@ -438,20 +489,22 @@ final crmTasksCfg = ResourceConfig(
     },
     if (_s(r, 'dueDate').isNotEmpty) (_s(r, 'dueDate').split('T').first, T.inkSoft),
   ],
-  fields: const [
-    FieldSpec('title', 'العنوان', 'Title', required: true),
-    FieldSpec('description', 'التفاصيل', 'Details', type: FieldType.textarea),
-    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
+  fields: [
+    const FieldSpec('title', 'العنوان', 'Title', required: true),
+    _crmCompanyLookup(),
+    const FieldSpec('description', 'التفاصيل', 'Details', type: FieldType.textarea),
+    const FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
       ('open', 'مفتوحة', 'Open'), ('in_progress', 'قيد التنفيذ', 'In progress'), ('done', 'منجزة', 'Done'),
     ]),
-    FieldSpec('priority', 'الأولوية', 'Priority', type: FieldType.select, options: [
+    const FieldSpec('priority', 'الأولوية', 'Priority', type: FieldType.select, options: [
       ('high', 'مرتفعة', 'High'), ('medium', 'متوسطة', 'Medium'), ('low', 'منخفضة', 'Low'),
     ]),
-    FieldSpec('dueDate', 'تاريخ الاستحقاق', 'Due date', type: FieldType.date),
+    const FieldSpec('dueDate', 'تاريخ الاستحقاق', 'Due date', type: FieldType.date),
   ],
 );
 
 final crmActivitiesCfg = ResourceConfig(
+  filterField: 'type',
   arTitle: 'الأنشطة', enTitle: 'Activities', icon: Icons.history_outlined,
   endpoint: '/api/crm/activities', listKey: 'activities', liveEvent: 'crm:activity',
   searchFields: const ['subject', 'type', 'outcome'],
@@ -461,15 +514,16 @@ final crmActivitiesCfg = ResourceConfig(
     (_s(r, 'type'), T.violet),
     if (_s(r, 'outcome').isNotEmpty) (_s(r, 'outcome'), T.success),
   ],
-  fields: const [
-    FieldSpec('subject', 'الموضوع', 'Subject', required: true),
-    FieldSpec('type', 'النوع', 'Type', type: FieldType.select, options: [
+  fields: [
+    const FieldSpec('subject', 'الموضوع', 'Subject', required: true),
+    _crmCompanyLookup(),
+    const FieldSpec('type', 'النوع', 'Type', type: FieldType.select, options: [
       ('call', 'مكالمة', 'Call'), ('meeting', 'اجتماع', 'Meeting'),
       ('email', 'بريد', 'Email'), ('visit', 'زيارة', 'Visit'), ('whatsapp', 'واتساب', 'WhatsApp'),
     ]),
-    FieldSpec('date', 'التاريخ', 'Date', type: FieldType.date),
-    FieldSpec('outcome', 'النتيجة', 'Outcome'),
-    FieldSpec('body', 'التفاصيل', 'Details', type: FieldType.textarea),
+    const FieldSpec('date', 'التاريخ', 'Date', type: FieldType.date),
+    const FieldSpec('outcome', 'النتيجة', 'Outcome'),
+    const FieldSpec('body', 'التفاصيل', 'Details', type: FieldType.textarea),
   ],
 );
 
@@ -520,6 +574,7 @@ final expenseCategoriesCfg = ResourceConfig(
 
 // ── لوكيشن سوليوشن: الإصلاحات ────────────────────────────────────────────────
 final ls2RepairsCfg = ResourceConfig(
+  filterField: 'status',
   arTitle: 'الإصلاحات', enTitle: 'Repairs', icon: Icons.home_repair_service_outlined,
   endpoint: '/api/ls2/repairs', listKey: 'items', liveEvent: 'ls2:updated', updateMethod: 'PATCH',
   searchFields: const ['description', 'category', 'status', 'plate'],
@@ -603,6 +658,7 @@ final hrLeaveTypesCfg = ResourceConfig(
 
 // ── التخليص الجمركي ──────────────────────────────────────────────────────────
 final customsCfg = ResourceConfig(
+  filterField: 'stage',
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: (r['_id'] ?? '').toString(), ref: (r['refNumber'] ?? '').toString()))),
   arTitle: 'التخليص الجمركي', enTitle: 'Customs Clearance', icon: Icons.directions_boat_outlined,
   endpoint: '/api/customs-clearance', listKey: 'clearances', liveEvent: 'customs:updated',
@@ -662,6 +718,7 @@ final customsCfg = ResourceConfig(
 
 // ── الورشة: طلبات الصيانة ────────────────────────────────────────────────────
 final workshopMaintenanceCfg = ResourceConfig(
+  filterField: 'status',
   arTitle: 'طلبات الصيانة', enTitle: 'Maintenance Requests', icon: Icons.build_circle_outlined,
   endpoint: '/api/workshop/maintenance', listKey: 'requests',
   liveEvent: 'maintenance:updated',
@@ -676,17 +733,39 @@ final workshopMaintenanceCfg = ResourceConfig(
     },
     if (_s(r, 'vehicleType').isNotEmpty) (_s(r, 'vehicleType'), T.navy),
   ],
-  fields: const [
-    FieldSpec('vehicleNumber', 'رقم السيارة', 'Vehicle number', required: true),
-    FieldSpec('vehicleType', 'نوع السيارة', 'Vehicle type'),
-    FieldSpec('driverName', 'اسم السائق', 'Driver'),
-    FieldSpec('technicianName', 'الفني المسؤول', 'Technician'),
-    FieldSpec('notes', 'ملاحظات / الأعطال', 'Notes', type: FieldType.textarea),
+  // بدء الإصلاح / إنهاء الطلب بضغطة (الوصف والفني يُكتبان من نموذج التعديل).
+  rowActions: (r) => [
+    if (_s(r, 'status') != 'completed')
+      ResourceAction(
+        icon: Icons.check_circle_outline, ar: 'إنهاء الطلب', en: 'Complete', color: T.success,
+        confirmAr: 'إنهاء طلب صيانة السيارة «${_s(r, 'vehicleNumber')}»؟', confirmEn: 'Complete this maintenance request?',
+        request: (row) => ('PUT', '/api/workshop/maintenance/${row['_id']}/complete', {
+          if (_s(row, 'workDescription').isNotEmpty) 'workDescription': _s(row, 'workDescription'),
+          if (_s(row, 'technicianName').isNotEmpty) 'technicianName': _s(row, 'technicianName'),
+        }),
+      ),
+    if (_s(r, 'status') == 'new' || _s(r, 'status').isEmpty)
+      ResourceAction(
+        icon: Icons.play_circle_outline, ar: 'بدء الإصلاح', en: 'Start', color: T.info,
+        request: (row) => ('PUT', '/api/workshop/maintenance/${row['_id']}', {'status': 'in_progress'}),
+      ),
+  ],
+  fields: [
+    const FieldSpec('vehicleNumber', 'رقم السيارة', 'Vehicle number', required: true),
+    const FieldSpec('vehicleType', 'نوع السيارة', 'Vehicle type'),
+    const FieldSpec('driverName', 'اسم السائق', 'Driver'),
+    const FieldSpec('technicianName', 'الفني المسؤول', 'Technician'),
+    const FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
+      ('new', 'جديدة', 'New'), ('in_progress', 'قيد الإصلاح', 'In progress'), ('completed', 'مكتملة', 'Completed'),
+    ]),
+    const FieldSpec('workDescription', 'وصف العمل المنجز', 'Work done', type: FieldType.textarea),
+    const FieldSpec('notes', 'ملاحظات / الأعطال', 'Notes', type: FieldType.textarea),
   ],
 );
 
 // ── تقنية المعلومات ──────────────────────────────────────────────────────────
 final itTicketsCfg = ResourceConfig(
+  filterField: 'status',
   arTitle: 'التذاكر والمشكلات', enTitle: 'IT Tickets', icon: Icons.confirmation_number_outlined,
   endpoint: '/api/it/tickets', listKey: 'tickets', liveEvent: 'it:updated',
   searchFields: const ['title', 'requesterName', 'category', 'status', 'device'],
@@ -829,6 +908,7 @@ final shipmentOrdersCustomersCfg = ResourceConfig(
 );
 
 final shipmentOrdersSuppliersCfg = ResourceConfig(
+  filterField: 'type',
   arTitle: 'موردو الشاحنات', enTitle: 'SO Suppliers', icon: Icons.business_outlined,
   endpoint: '/api/shipment-orders/suppliers', listKey: 'suppliers', liveEvent: 'shipmentOrders:fleet',
   searchFields: const ['name', 'phone'],
@@ -885,6 +965,7 @@ final vendorsCfg = ResourceConfig(
 );
 
 final shipmentOrdersFieldsCfg = ResourceConfig(
+  filterField: 'group',
   arTitle: 'إعدادات النموذج', enTitle: 'Form Settings', icon: Icons.tune_outlined,
   endpoint: '/api/shipment-orders/fields', listQuery: 'all=1', listKey: 'fields', liveEvent: 'shipmentOrders:fields',
   searchFields: const ['labelAr', 'labelEn', 'group'],

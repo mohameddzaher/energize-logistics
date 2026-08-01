@@ -1,5 +1,6 @@
 const CustomsClearance = require('../models/CustomsClearance');
 const { recomputeTotals } = require('../models/CustomsClearance');
+const cache = require('../utils/ttlCache');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const { createNotification } = require('../services/notificationService');
@@ -88,7 +89,12 @@ exports.getClearances = async (req, res) => {
     if (month) filter.periodMonth = Number(month);
     if (invoiceStatus) filter['billing.invoiceStatus'] = invoiceStatus;
 
-    let list = await CustomsClearance.find(filter).sort({ createdAt: -1 });
+    // Full clearance docs are chunky (~7ms each) and the list has no page limit,
+    // so 250 docs = ~1.8s. .lean() + a 12s cache keyed by the non-search filter
+    // (search is applied in-memory below) collapses concurrent loads; any write
+    // clears the cache via the model post-hooks.
+    const ck = `customs:list:${branch || ''}:${stage || ''}:${active || ''}:${year || ''}:${month || ''}:${invoiceStatus || ''}`;
+    let list = await cache.wrap(ck, 12000, () => CustomsClearance.find(filter).sort({ createdAt: -1 }).lean());
 
     if (search) {
       const s = search.toLowerCase();

@@ -4,6 +4,7 @@ import '../ui/theme.dart';
 import '../screens/crm_company_profile.dart';
 import '../screens/contracts_vendor_profile.dart';
 import '../screens/customs_detail.dart';
+import '../screens/fleet_customer_profile.dart';
 import '../screens/bd_opportunity_detail.dart';
 import '../screens/marketing_campaign_detail.dart';
 import 'resource.dart';
@@ -91,15 +92,22 @@ final fleetVehiclesCfg = ResourceConfig(
 );
 
 final fleetCustomersCfg = ResourceConfig(
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => FleetCustomerProfileScreen(customerId: (r['_id'] ?? '').toString()))),
   arTitle: 'عملاء الأسطول', enTitle: 'Fleet Customers', icon: Icons.people_outline,
   endpoint: '/api/fleet/customers', listKey: 'customers', liveEvent: 'fleet:customers',
   searchFields: const ['name', 'phone', 'email'],
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => [_s(r, 'phone'), _s(r, 'email')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (r['customerType'] == 'heavy') ('نقل ثقيل', T.violet),
+    if (r['customerType'] == 'branch') ('عميل فروع', T.info),
+  ],
   fields: const [
     FieldSpec('name', 'اسم العميل', 'Name', required: true),
     FieldSpec('phone', 'رقم الجوال', 'Phone', type: FieldType.phone),
     FieldSpec('email', 'البريد الإلكتروني', 'Email', type: FieldType.email),
+    FieldSpec('customerType', 'نوع العميل', 'Customer type', type: FieldType.select,
+        options: [('heavy', 'نقل ثقيل', 'Heavy transport'), ('branch', 'عميل فروع', 'Branch customer')]),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );

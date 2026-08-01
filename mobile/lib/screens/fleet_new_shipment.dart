@@ -35,11 +35,67 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
   DateTime _loadDate = DateTime.now();
   DateTime? _expectedArrival;
   final _notes = TextEditingController();
-  // حقول البوليصة الخاصة بالحمولة:
-  final _rentType = TextEditingController();
-  final _driverAdvance = TextEditingController();
-  final _branch = TextEditingController();
+  // حقول الحمولة/التسعير:
+  final _vehicleRent = TextEditingController();   // إيجار السيارة = دخل القسم
+  final _fullRent = TextEditingController();       // الإيجار كامل (اختياري)
+  final _driverExpense = TextEditingController();  // مصروف السائق
+  Map<String, dynamic>? _rentTypeItem;             // عنصر قائمة نوع الإيجار
+  Map<String, dynamic>? _paymentTypeItem;
+  Map<String, dynamic>? _loadTypeItem;
+  String _customerType = '';                       // heavy / branch
+  String? _branch;
+  bool _fridayBonus = false;
+  List<Map<String, dynamic>> _rentTypes = [], _paymentTypes = [], _loadTypes = [], _branches = [];
+  bool get _isFriday => DateTime.now().weekday == DateTime.friday;
   bool _busy = false;
+
+  String _lkLabel(Map<String, dynamic>? it) => it == null
+      ? ''
+      : (Lang.instance.ar ? (it['nameAr'] ?? it['nameEn']) : (it['nameEn'] ?? it['nameAr'])).toString();
+
+  // الفرق بين الإيجار كامل وإيجار السيارة يذهب لقسم الفروع (سيناريو 3PL).
+  int get _branchShare {
+    final rent = num.tryParse(_vehicleRent.text.trim()) ?? 0;
+    final full = num.tryParse(_fullRent.text.trim()) ?? 0;
+    final diff = full - rent;
+    return diff > 0 ? diff.round() : 0;
+  }
+
+  // زر اختيار (نوع العميل) بشكل شريحة.
+  Widget _segBtn(String label, bool active, VoidCallback onTap) => Pressable(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: active ? T.orange.withValues(alpha: 0.12) : Colors.white,
+            border: Border.all(color: active ? T.orange : const Color(0xFFE2E8F0), width: active ? 1.4 : 1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: active ? T.orange : T.inkFaint)),
+        ),
+      );
+
+  // قائمة مرجعية منسدلة بحث (نوع الإيجار/الدفع/الحمولة) عبر _pickSheet.
+  Widget _lkPicker(String label, Map<String, dynamic>? selected, List<Map<String, dynamic>> items, void Function(Map<String, dynamic>?) onPick) => Pressable(
+        onTap: () async {
+          final v = await _pickSheet<Map<String, dynamic>>(
+            title: label,
+            items: items,
+            label: (x) => _lkLabel(x),
+          );
+          if (v != null) onPick(v);
+        },
+        child: InputDecorator(
+          decoration: InputDecoration(labelText: label, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14)),
+          child: Row(children: [
+            Expanded(child: Text(_lkLabel(selected).isEmpty ? tr('اختر…', 'Select…') : _lkLabel(selected),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: _lkLabel(selected).isEmpty ? T.inkFaint : T.ink))),
+            const Icon(Icons.expand_more, size: 18, color: T.inkFaint),
+          ]),
+        ),
+      );
 
   @override
   void initState() {
@@ -52,11 +108,19 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
       final results = await Future.wait([
         Api.instance.get('/api/fleet/customers'),
         Api.instance.get('/api/fleet/vehicles'),
+        Api.instance.get('/api/lookups?type=fleet_rent_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+        Api.instance.get('/api/lookups?type=fleet_payment_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+        Api.instance.get('/api/lookups?type=fleet_load_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+        Api.instance.get('/api/branches?active=true').catchError((_) => <String, dynamic>{'branches': []}),
       ]);
       if (!mounted) return;
       setState(() {
         _customers = List<Map<String, dynamic>>.from(results[0]['customers'] ?? []);
         _vehicles = List<Map<String, dynamic>>.from(results[1]['vehicles'] ?? []);
+        _rentTypes = List<Map<String, dynamic>>.from(results[2]['items'] ?? []);
+        _paymentTypes = List<Map<String, dynamic>>.from(results[3]['items'] ?? []);
+        _loadTypes = List<Map<String, dynamic>>.from(results[4]['items'] ?? []);
+        _branches = List<Map<String, dynamic>>.from(results[5]['branches'] ?? []);
         _loading = false;
       });
     } catch (e) {
@@ -173,9 +237,15 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         'toCity': _toCity.text.trim(),
         'loadDate': _loadDate.toIso8601String(),
         if (_expectedArrival != null) 'expectedArrival': _expectedArrival!.toUtc().toIso8601String(),
-        if (_rentType.text.trim().isNotEmpty) 'rentType': _rentType.text.trim(),
-        if (_driverAdvance.text.trim().isNotEmpty) 'driverAdvance': _driverAdvance.text.trim(),
-        if (_branch.text.trim().isNotEmpty) 'branch': _branch.text.trim(),
+        if (_rentTypeItem != null) 'rentType': _rentTypeItem!['key'],
+        if (_paymentTypeItem != null) 'paymentType': _paymentTypeItem!['key'],
+        if (_loadTypeItem != null) 'loadType': _loadTypeItem!['key'],
+        if (_vehicleRent.text.trim().isNotEmpty) 'price': num.tryParse(_vehicleRent.text.trim()) ?? 0,
+        if (_fullRent.text.trim().isNotEmpty) 'fullRent': num.tryParse(_fullRent.text.trim()) ?? 0,
+        if (_customerType.isNotEmpty) 'customerType': _customerType,
+        if (_driverExpense.text.trim().isNotEmpty) 'driverExpense': num.tryParse(_driverExpense.text.trim()) ?? 0,
+        if (_fridayBonus) 'fridayBonus': true,
+        if (_branch != null && _branch!.isNotEmpty) 'branch': _branch,
         'notes': _notes.text,
       });
       if (mounted) {
@@ -235,7 +305,11 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                         label: (c) => (c['name'] ?? '').toString(),
                         hint: (c) => (c['phone'] ?? '').toString(),
                       );
-                      if (c != null) setState(() => _customer = c);
+                      if (c != null) { setState(() {
+                        _customer = c;
+                        final ct = (c['customerType'] ?? '').toString();
+                        if (ct.isNotEmpty) { _customerType = ct; }
+                      }); }
                     },
                     child: AppCard(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
@@ -359,16 +433,77 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                // ── بيانات البوليصة (اختياري) ──
-                Text(tr('بيانات البوليصة', 'Waybill data'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                // ── الحمولة والتسعير ──
+                Text(tr('الحمولة والتسعير', 'Load & pricing'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                 const SizedBox(height: 8),
+                // نوع العميل — عملاء النقل الثقيل (عملاء القسم) / عملاء الفروع
+                Text(tr('نوع العميل', 'Customer type'), style: const TextStyle(fontSize: 12.5, color: T.inkFaint, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
                 Row(children: [
-                  Expanded(child: TextField(controller: _rentType, decoration: InputDecoration(labelText: tr('نوع الإيجار', 'Rent type')))),
-                  const SizedBox(width: 10),
-                  Expanded(child: TextField(controller: _driverAdvance, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('سلفة السائق', 'Driver advance')))),
+                  Expanded(child: _segBtn(tr('نقل ثقيل', 'Heavy'), _customerType == 'heavy', () => setState(() => _customerType = 'heavy'))),
+                  const SizedBox(width: 8),
+                  Expanded(child: _segBtn(tr('عملاء الفروع', 'Branch'), _customerType == 'branch', () => setState(() => _customerType = 'branch'))),
                 ]),
                 const SizedBox(height: 10),
-                TextField(controller: _branch, decoration: InputDecoration(labelText: tr('الفرع', 'Branch'))),
+                Row(children: [
+                  Expanded(child: TextField(controller: _vehicleRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('إيجار السيارة', 'Vehicle rent')))),
+                  const SizedBox(width: 10),
+                  Expanded(child: TextField(controller: _fullRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('الإيجار كامل (اختياري)', 'Full rent (optional)')))),
+                ]),
+                if (_branchShare > 0) Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(tr('حصة قسم الفروع من الفرق: $_branchShare', 'Branch dept share of difference: $_branchShare'),
+                      style: const TextStyle(fontSize: 12, color: T.warn, fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(height: 10),
+                // نوع الإيجار / نوع الدفع — قوائم مرجعية قابلة للتعديل
+                Row(children: [
+                  Expanded(child: _lkPicker(tr('نوع الإيجار', 'Rent type'), _rentTypeItem, _rentTypes, (v) => setState(() => _rentTypeItem = v))),
+                  const SizedBox(width: 10),
+                  Expanded(child: _lkPicker(tr('نوع الدفع', 'Payment type'), _paymentTypeItem, _paymentTypes, (v) => setState(() => _paymentTypeItem = v))),
+                ]),
+                const SizedBox(height: 10),
+                _lkPicker(tr('نوع الحمولة', 'Load type'), _loadTypeItem, _loadTypes, (v) => setState(() => _loadTypeItem = v)),
+                const SizedBox(height: 10),
+                // الفرع — من فروع الشركة
+                Pressable(
+                  onTap: () async {
+                    final b = await _pickSheet<Map<String, dynamic>>(
+                      title: tr('اختر الفرع', 'Pick branch'),
+                      items: _branches,
+                      label: (b) => (b['name'] ?? b['nameAr'] ?? b['nameEn'] ?? '').toString(),
+                    );
+                    if (b != null) setState(() => _branch = (b['name'] ?? b['nameAr'] ?? b['nameEn'] ?? '').toString());
+                  },
+                  child: AppCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    child: Row(children: [
+                      const Icon(Icons.store_outlined, color: T.navy, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text((_branch == null || _branch!.isEmpty) ? tr('— الفرع —', '— branch —') : _branch!,
+                          style: TextStyle(fontWeight: FontWeight.w700, color: (_branch == null || _branch!.isEmpty) ? T.inkFaint : T.ink))),
+                      Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, color: T.inkFaint),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(controller: _driverExpense, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('مصروف السائق', 'Driver expense'))),
+                const SizedBox(height: 10),
+                // بونص الجمعة — يضيف مبلغًا لمصروف السائق في يوم الجمعة
+                Pressable(
+                  onTap: () => setState(() => _fridayBonus = !_fridayBonus),
+                  child: AppCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    child: Row(children: [
+                      Icon(_fridayBonus ? Icons.check_circle : Icons.card_giftcard_outlined,
+                          color: _fridayBonus ? T.success : (_isFriday ? T.warn : T.inkFaint), size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(tr('بونص الجمعة للسائق', 'Friday bonus for driver'),
+                          style: TextStyle(fontWeight: FontWeight.w700, color: _fridayBonus ? T.success : T.ink))),
+                      if (_isFriday && !_fridayBonus) Text(tr('اليوم جمعة', "It's Friday"), style: const TextStyle(fontSize: 11.5, color: T.warn, fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ),
                 const SizedBox(height: 10),
                 TextField(controller: _notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
                 const SizedBox(height: 16),

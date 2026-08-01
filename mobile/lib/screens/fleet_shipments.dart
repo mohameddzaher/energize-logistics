@@ -32,11 +32,19 @@ const _statuses = {
 
 class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
   List<Map<String, dynamic>> _rows = [];
+  List<Map<String, dynamic>> _loadTypes = [];
   bool _loading = true;
   String? _error;
   String _q = '';
   String _status = '';
   late final void Function() _onLive;
+
+  String _loadTypeLabel(String? key) {
+    if (key == null || key.isEmpty) return '';
+    final it = _loadTypes.firstWhere((x) => (x['key'] ?? '').toString() == key, orElse: () => const {});
+    if (it.isEmpty) return key;
+    return (Lang.instance.ar ? (it['nameAr'] ?? it['nameEn']) : (it['nameEn'] ?? it['nameAr'])).toString();
+  }
 
   @override
   void initState() {
@@ -55,10 +63,15 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
   Future<void> _load() async {
     try {
       final qs = _status.isEmpty ? '' : '&status=$_status';
-      final d = await Api.instance.get('/api/fleet/shipments?limit=100$qs');
+      final results = await Future.wait([
+        Api.instance.get('/api/fleet/shipments?limit=100$qs'),
+        if (_loadTypes.isEmpty)
+          Api.instance.get('/api/lookups?type=fleet_load_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+      ]);
       if (!mounted) return;
       setState(() {
-        _rows = List<Map<String, dynamic>>.from(d['shipments'] ?? []);
+        _rows = List<Map<String, dynamic>>.from(results[0]['shipments'] ?? []);
+        if (results.length > 1) _loadTypes = List<Map<String, dynamic>>.from(results[1]['items'] ?? []);
         _loading = false;
         _error = null;
       });
@@ -176,6 +189,14 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                                             Chip2(s['vehiclePlate'], T.navy, icon: Icons.local_shipping_outlined),
                                           if ((s['driverName'] ?? '').toString().isNotEmpty)
                                             Chip2(s['driverName'], T.inkSoft, icon: Icons.person_outline),
+                                          if ((num.tryParse((s['price'] ?? '').toString()) ?? 0) > 0)
+                                            Chip2('${tr('إيجار', 'Rent')} ${s['price']}', T.success, icon: Icons.payments_outlined),
+                                          if (s['customerType'] == 'heavy')
+                                            Chip2(tr('نقل ثقيل', 'Heavy'), T.violet, icon: Icons.workspace_premium_outlined),
+                                          if (s['customerType'] == 'branch')
+                                            Chip2(tr('عميل فروع', 'Branch'), T.info, icon: Icons.store_outlined),
+                                          if (_loadTypeLabel((s['loadType'] ?? '').toString()).isNotEmpty)
+                                            Chip2(_loadTypeLabel((s['loadType'] ?? '').toString()), T.inkSoft, icon: Icons.category_outlined),
                                           if ((s['driverPhone'] ?? '').toString().isNotEmpty)
                                             ContactButtons(phone: (s['driverPhone']).toString(), compact: true, size: 17),
                                           if (s['lastContactAt'] != null)

@@ -43,8 +43,16 @@ const _eventMeta = {
 class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen> {
   Map<String, dynamic>? _shipment;
   List<Map<String, dynamic>> _events = [];
+  Map<String, List<Map<String, dynamic>>> _lk = {};
   bool _loading = true;
   String? _error;
+
+  String _lkLabel(String type, String? key) {
+    if (key == null || key.isEmpty) return '';
+    final it = (_lk[type] ?? const []).firstWhere((x) => (x['key'] ?? '').toString() == key, orElse: () => const {});
+    if (it.isEmpty) return key;
+    return (Lang.instance.ar ? (it['nameAr'] ?? it['nameEn']) : (it['nameEn'] ?? it['nameAr'])).toString();
+  }
   final _location = TextEditingController();
   final _note = TextEditingController();
   bool _busy = false;
@@ -72,11 +80,24 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/fleet/shipments/${widget.shipmentId}');
+      final results = await Future.wait([
+        Api.instance.get('/api/fleet/shipments/${widget.shipmentId}'),
+        if (_lk.isEmpty) Api.instance.get('/api/lookups?type=fleet_rent_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+        if (_lk.isEmpty) Api.instance.get('/api/lookups?type=fleet_payment_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+        if (_lk.isEmpty) Api.instance.get('/api/lookups?type=fleet_load_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+      ]);
+      final d = results[0];
       if (!mounted) return;
       setState(() {
         _shipment = d['shipment'] as Map<String, dynamic>?;
         _events = List<Map<String, dynamic>>.from(d['events'] ?? []);
+        if (results.length > 3) {
+          _lk = {
+            'fleet_rent_type': List<Map<String, dynamic>>.from(results[1]['items'] ?? []),
+            'fleet_payment_type': List<Map<String, dynamic>>.from(results[2]['items'] ?? []),
+            'fleet_load_type': List<Map<String, dynamic>>.from(results[3]['items'] ?? []),
+          };
+        }
         _loading = false;
         _error = null;
       });
@@ -213,6 +234,24 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                                 Chip2('${tr('التحميل', 'Load')}: ${_dt(s['loadDate'])}', T.info, icon: Icons.event_outlined),
                               if (s['expectedArrival'] != null)
                                 Chip2('${tr('الوصول المتوقع', 'ETA')}: ${_dt(s['expectedArrival'])}', T.warn, icon: Icons.schedule_outlined),
+                              if ((num.tryParse((s['price'] ?? '').toString()) ?? 0) > 0)
+                                Chip2('${tr('إيجار السيارة', 'Vehicle rent')}: ${s['price']}', T.success, icon: Icons.payments_outlined),
+                              if ((num.tryParse((s['fullRent'] ?? '').toString()) ?? 0) > 0)
+                                Chip2('${tr('الإيجار كامل', 'Full rent')}: ${s['fullRent']}', T.cyan, icon: Icons.account_balance_wallet_outlined),
+                              if (s['customerType'] == 'heavy')
+                                Chip2(tr('نقل ثقيل', 'Heavy'), T.violet, icon: Icons.workspace_premium_outlined),
+                              if (s['customerType'] == 'branch')
+                                Chip2(tr('عميل فروع', 'Branch'), T.info, icon: Icons.store_outlined),
+                              if (_lkLabel('fleet_load_type', (s['loadType'] ?? '').toString()).isNotEmpty)
+                                Chip2(_lkLabel('fleet_load_type', (s['loadType'] ?? '').toString()), T.inkSoft, icon: Icons.category_outlined),
+                              if (_lkLabel('fleet_rent_type', (s['rentType'] ?? '').toString()).isNotEmpty)
+                                Chip2(_lkLabel('fleet_rent_type', (s['rentType'] ?? '').toString()), T.navy, icon: Icons.swap_horiz_outlined),
+                              if (_lkLabel('fleet_payment_type', (s['paymentType'] ?? '').toString()).isNotEmpty)
+                                Chip2(_lkLabel('fleet_payment_type', (s['paymentType'] ?? '').toString()), T.inkSoft, icon: Icons.credit_card_outlined),
+                              if ((num.tryParse((s['driverExpense'] ?? '').toString()) ?? 0) > 0)
+                                Chip2('${tr('مصروف السائق', 'Driver expense')}: ${s['driverExpense']}', T.warn, icon: Icons.account_balance_wallet_outlined),
+                              if ((s['branch'] ?? '').toString().isNotEmpty)
+                                Chip2('${tr('الفرع', 'Branch')}: ${s['branch']}', T.inkSoft, icon: Icons.store_mall_directory_outlined),
                             ]),
                             // اتصال/واتساب على رقم السائق مباشرة من التفاصيل.
                             Builder(builder: (_) {

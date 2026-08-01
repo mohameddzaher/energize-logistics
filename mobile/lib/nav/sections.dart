@@ -7,6 +7,8 @@ import '../screens/my_requests.dart';
 import '../screens/approvals.dart';
 import '../screens/fleet_board.dart';
 import '../screens/fleet_shipments.dart';
+import '../screens/fleet_analytics.dart';
+import '../screens/fleet_settings.dart';
 import '../resource/resource.dart';
 import '../resource/configs.dart';
 import '../screens/contracts_dashboard.dart';
@@ -125,6 +127,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: fleetDashSpec)),
+        AppPage('التحليلات', 'Analytics', Icons.insights_outlined, (c) => const FleetAnalyticsScreen()),
         AppPage('اللوحة الرئيسية', 'Board', Icons.grid_view_rounded, (c) => const FleetBoardScreen()),
         AppPage('الشحنات والمتابعة', 'Shipments', Icons.inventory_2_outlined, (c) => const FleetShipmentsScreen()),
         AppPage('السائقون', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: fleetDriversCfg)),
@@ -133,6 +136,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'fleet')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'fleet', complaints: true)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
+        AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const FleetSettingsScreen()),
       ],
     ),
     AppSection(

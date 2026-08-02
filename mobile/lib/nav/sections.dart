@@ -56,6 +56,8 @@ import '../screens/wallet_dashboard.dart';
 import '../screens/accounting_reports.dart';
 import '../screens/performance_overview.dart';
 import '../screens/reference_data.dart';
+import '../screens/vehicle_registry.dart';
+import '../screens/vehicle_registry_dash.dart';
 import '../screens/settings_screen.dart';
 import '../screens/performance_evaluations.dart';
 
@@ -293,8 +295,12 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Vehicles', arTitle: 'المركبات والتفويضات', enTitle: 'Vehicles & Authorizations', icon: Icons.directions_car_outlined,
       roles: const [..._admins, 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'],
       pages: [
-        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: vehiclesDashSpec)),
-        AppPage('المركبات', 'Vehicles', Icons.directions_car_outlined, (c) => const VehiclesListScreen()),
+        AppPage('تحليلات المركبات', 'Registry Analytics', Icons.insights_outlined, (c) => const VehicleRegistryDashboardScreen()),
+        AppPage('سجل المركبات', 'Vehicle Registry', Icons.directions_car_outlined, (c) => const VehicleRegistryListScreen()),
+        AppPage('تنبيهات المركبات', 'Vehicle Alerts', Icons.notifications_active_outlined, (c) => const VehicleRegistryAlertsScreen()),
+        AppPage('إعدادات التنبيهات', 'Alert Settings', Icons.settings_outlined, (c) => const VehicleRegistrySettingsScreen()),
+        AppPage('لوحة التفويضات', 'Authorizations', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: vehiclesDashSpec)),
+        AppPage('التفويضات', 'Auth. Vehicles', Icons.assignment_ind_outlined, (c) => const VehiclesListScreen()),
         AppPage('الحوادث', 'Accidents', Icons.car_crash_outlined, (c) => const AccidentsListScreen()),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'hr')),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),

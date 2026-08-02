@@ -55,6 +55,7 @@ const procurementRoutes = require('./routes/procurement');
 const lookupRoutes = require('./routes/lookups');
 const customsClearanceRoutes = require('./routes/customsClearance');
 const vehicleRoutes = require('./routes/vehicles');
+const vehicleRegistryRoutes = require('./routes/vehicleRegistry');
 const opsRoutes = require('./routes/ops');
 const shipmentOrderRoutes = require('./routes/shipmentOrders');
 const fleetRoutes = require('./routes/fleet');
@@ -171,6 +172,7 @@ app.use('/api/procurement', authenticate, sectionGate('Procurement'), procuremen
 app.use('/api/lookups', lookupRoutes);
 app.use('/api/customs-clearance', authenticate, sectionGate('Customs'), customsClearanceRoutes);
 app.use('/api/vehicles', authenticate, sectionGate('Vehicles'), vehicleRoutes);
+app.use('/api/vehicle-registry', authenticate, sectionGate('Vehicles'), vehicleRegistryRoutes);
 // /api/ops has ONE public route (POST /webhook, secured by a shared secret in
 // the controller) declared before its internal auth — skip the section gate for
 // it so the external UPL webhook keeps working.

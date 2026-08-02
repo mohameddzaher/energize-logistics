@@ -41,7 +41,6 @@ import '../screens/it_recurring.dart';
 import '../screens/executive_overview.dart';
 import '../screens/marketing_report.dart';
 import '../screens/ls2_drivers.dart';
-import '../screens/vehicles_suite.dart';
 import '../screens/marketing_activities.dart';
 import '../screens/collections_disputes.dart';
 import '../screens/ops_workflows.dart';
@@ -299,11 +298,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('سجل المركبات', 'Vehicle Registry', Icons.directions_car_outlined, (c) => const VehicleRegistryListScreen()),
         AppPage('تنبيهات المركبات', 'Vehicle Alerts', Icons.notifications_active_outlined, (c) => const VehicleRegistryAlertsScreen()),
         AppPage('إعدادات التنبيهات', 'Alert Settings', Icons.settings_outlined, (c) => const VehicleRegistrySettingsScreen()),
-        AppPage('لوحة التفويضات', 'Authorizations', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: vehiclesDashSpec)),
-        AppPage('التفويضات', 'Auth. Vehicles', Icons.assignment_ind_outlined, (c) => const VehiclesListScreen()),
-        AppPage('الحوادث', 'Accidents', Icons.car_crash_outlined, (c) => const AccidentsListScreen()),
-        AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'hr')),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
       ],
     ),
     AppSection(

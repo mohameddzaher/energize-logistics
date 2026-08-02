@@ -48,6 +48,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
   List<Map<String, dynamic>> _rentTypes = [], _paymentTypes = [], _loadTypes = [], _branches = [];
   bool get _isFriday => DateTime.now().weekday == DateTime.friday;
   bool _busy = false;
+  String? _error;
 
   String _lkLabel(Map<String, dynamic>? it) => it == null
       ? ''
@@ -103,8 +104,22 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _newCustomerName.dispose();
+    _newCustomerPhone.dispose();
+    _fromCity.dispose();
+    _toCity.dispose();
+    _notes.dispose();
+    _vehicleRent.dispose();
+    _fullRent.dispose();
+    _driverExpense.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     try {
+      _error = null;
       final results = await Future.wait([
         Api.instance.get('/api/fleet/customers'),
         Api.instance.get('/api/fleet/vehicles'),
@@ -124,7 +139,9 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         _loading = false;
       });
     } catch (e) {
-      if (mounted) setState(() => _loading = false);
+      // العميل والسيارة أساسيان للنموذج — إن فشل جلبهما نعرض إعادة المحاولة
+      // بدل نموذج فارغ صامت.
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -208,7 +225,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
           );
         },
       ),
-    );
+    ).whenComplete(ctrl.dispose);
   }
 
   Future<void> _submit() async {
@@ -290,6 +307,8 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 58), SizedBox(height: 10), Shimmer(height: 58), SizedBox(height: 10), Shimmer(height: 58),
             ])
+          : (_error != null && _customers.isEmpty && _vehicles.isEmpty)
+          ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [

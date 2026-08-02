@@ -61,9 +61,14 @@ const SHIPMENT_EDITABLE = [
 
 // The fleet settings singleton — created on first read with sensible defaults.
 const getFleetConfig = async () => {
-  let cfg = await FleetConfig.findOne({ key: 'fleet' });
-  if (!cfg) cfg = await FleetConfig.create({ key: 'fleet' });
-  return cfg;
+  // Atomic upsert — find-then-create raced on first concurrent access (the key
+  // is unique, so the loser threw E11000 and 500'd). setDefaultsOnInsert fills
+  // fridayBonusAmount/defaultMonthlyTarget from the schema on first insert.
+  return FleetConfig.findOneAndUpdate(
+    { key: 'fleet' },
+    { $setOnInsert: { key: 'fleet' } },
+    { new: true, upsert: true, setDefaultsOnInsert: true },
+  );
 };
 
 // Add the configured Friday bonus to the driver expense when the flag is set.
@@ -1063,6 +1068,14 @@ const _monthIndex = (d) => d.getFullYear() * 12 + d.getMonth();
 exports.getAnalytics = async (req, res) => {
   try {
     const scope = await supervisorVehicleIds(req); // null = no restriction
+    // Every open dashboard/analytics screen refetches on each `fleet:updated`
+    // socket event, so a burst of clients × mutations would each re-run this
+    // full aggregation. A short TTL collapses the herd; emit() clears the
+    // whole `fleet:` prefix on any mutation, so the data never goes stale.
+    const cacheKey = `fleet:analytics:${scope ? String(req.user._id) : 'all'}:${JSON.stringify(req.query || {})}`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) return res.json(cached);
+
     const { from, to, month, q, includeCancelled } = req.query;
     const customerTypes = _multi(req.query.customerType);
     const supervisors = _multi(req.query.supervisor);
@@ -1103,11 +1116,16 @@ exports.getAnalytics = async (req, res) => {
       filter.$and.push({ $or: [{ customerName: rx }, { vehiclePlate: rx }, { driverName: rx }, { fromCity: rx }, { toCity: rx }, { loadType: rx }] });
     }
 
-    const [shipments, vehicles, customers] = await Promise.all([
+    const [shipments, vehicles, customers, cfg] = await Promise.all([
       FleetShipment.find(filter).select('price fullRent customerType trailerType vehicle vehiclePlate driverName driver supervisor supervisorName customer customerName status loadDate createdAt fromCity toCity').lean(),
       FleetVehicle.find(scope ? { _id: { $in: scope } } : {}).select('plate name trailerType monthlyTarget supervisor supervisorName').lean(),
       FleetCustomer.find({}).select('name customerType rating').lean(),
+      getFleetConfig(),
     ]);
+    // Vehicles created before monthlyTarget existed have none — fall back to the
+    // section default so every truck is still measured against a target (this is
+    // exactly the "who hit 27,000" analytic the section asked for).
+    const defaultTarget = Number(cfg.defaultMonthlyTarget) || 0;
 
     // إيجار السيارة (price) = دخل قسم الأسطول. الفرق بين «الإيجار كامل» وإيجار
     // السيارة (عند وجوده) = حصة قسم الفروع — يُعرض منفصلًا، ولا يدخل دخل القسم.
@@ -1137,11 +1155,12 @@ exports.getAnalytics = async (req, res) => {
     }
     const vehiclesOut = [...vById.entries()].map(([id, v]) => {
       const a = vehAgg.get(id) || { trips: 0, income: 0 };
-      const target = (Number(v.monthlyTarget) || 0) * monthsInRange;
+      const monthlyTarget = (Number(v.monthlyTarget) || 0) || defaultTarget;
+      const target = monthlyTarget * monthsInRange;
       return {
         _id: id, plate: v.plate, name: v.name, trailerType: v.trailerType,
         supervisorName: v.supervisorName, trips: a.trips, income: a.income,
-        monthlyTarget: Number(v.monthlyTarget) || 0, periodTarget: target,
+        monthlyTarget, periodTarget: target, target,
         achievedPct: target > 0 ? Math.round((a.income / target) * 100) : null,
         achieved: target > 0 ? a.income >= target : null,
       };
@@ -1194,7 +1213,7 @@ exports.getAnalytics = async (req, res) => {
     }
     const monthlyTrend = [...trendMap.values()];
 
-    res.json({
+    const body = {
       period: { from: start, to: end, monthsInRange },
       totals: {
         totalIncome, totalFullRent, branchShare, tripCount,
@@ -1207,7 +1226,9 @@ exports.getAnalytics = async (req, res) => {
       topDrivers, supervisors: supervisorsOut,
       customers: customersOut, topHeavyCustomers, topBranchCustomers,
       monthlyTrend,
-    });
+    };
+    cache.set(cacheKey, body, 12000);
+    res.json(body);
   } catch (error) {
     console.error('fleet analytics error:', error);
     res.status(500).json({ message: 'Failed to load fleet analytics' });

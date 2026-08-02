@@ -145,6 +145,9 @@ fleetShipmentSchema.index({ createdAt: -1 });
 fleetShipmentSchema.index({ vehicle: 1, status: 1 });
 fleetShipmentSchema.index({ status: 1, createdAt: -1 });
 fleetShipmentSchema.index({ status: 1, lastContactAt: 1 });
+// Analytics filters/sorts by the effective load date (loadDate else createdAt);
+// a loadDate index keeps the income/target aggregation off a collection scan.
+fleetShipmentSchema.index({ loadDate: -1 });
 
 const counterSchema = new mongoose.Schema({ _id: String, seq: Number });
 const FleetCounter = mongoose.models.FleetCounter || mongoose.model('FleetCounter', counterSchema);

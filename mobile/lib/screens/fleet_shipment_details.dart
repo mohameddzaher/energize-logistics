@@ -75,6 +75,8 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
+    _location.dispose();
+    _note.dispose();
     super.dispose();
   }
 
@@ -223,11 +225,11 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                             const SizedBox(height: 10),
                             Wrap(spacing: 6, runSpacing: 6, children: [
                               if ((s['customerName'] ?? '').toString().isNotEmpty)
-                                Chip2(s['customerName'], T.navy, icon: Icons.people_outline),
+                                Chip2(s['customerName'].toString(), T.navy, icon: Icons.people_outline),
                               if ((s['vehiclePlate'] ?? '').toString().isNotEmpty)
-                                Chip2(s['vehiclePlate'], T.cyan, icon: Icons.local_shipping_outlined),
+                                Chip2(s['vehiclePlate'].toString(), T.cyan, icon: Icons.local_shipping_outlined),
                               if ((s['driverName'] ?? '').toString().isNotEmpty)
-                                Chip2(s['driverName'], T.inkSoft, icon: Icons.person_outline),
+                                Chip2(s['driverName'].toString(), T.inkSoft, icon: Icons.person_outline),
                               if ((s['supervisorName'] ?? '').toString().isNotEmpty)
                                 Chip2('${tr('المشرف', 'Supervisor')}: ${s['supervisorName']}', T.violet, icon: Icons.supervisor_account_outlined),
                               if (s['loadDate'] != null)
@@ -268,7 +270,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                             }),
                             if ((s['notes'] ?? '').toString().isNotEmpty) ...[
                               const SizedBox(height: 8),
-                              Text(s['notes'], style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                              Text(s['notes'].toString(), style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                             ],
                             const SizedBox(height: 12),
                             DropdownButtonFormField<String>(

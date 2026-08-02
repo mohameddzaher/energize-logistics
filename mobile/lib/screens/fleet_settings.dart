@@ -31,7 +31,8 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
   void initState() {
     super.initState();
     _load();
-    _onLive = () => _load();
+    // إعادة تحميل بثّية لا تُعيد ملء الحقول — كي لا نمسح تعديلًا جاريًا للمستخدم.
+    _onLive = () => _load(hydrate: false);
     Live.instance.on('fleet:updated', _onLive);
   }
 
@@ -44,7 +45,7 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool hydrate = true}) async {
     try {
       final results = await Future.wait([
         Api.instance.get('/api/fleet/config'),
@@ -53,15 +54,26 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
       if (!mounted) return;
       final cfg = Map<String, dynamic>.from(results[0]['config'] ?? {});
       final veh = List<Map<String, dynamic>>.from(results[1]['vehicles'] ?? []);
-      for (final c in _targets.values) { c.dispose(); }
-      _targets.clear();
-      for (final v in veh) {
-        final id = (v['_id'] ?? '').toString();
-        _targets[id] = TextEditingController(text: (v['monthlyTarget'] ?? '').toString());
+      if (hydrate) {
+        // التحميل الأول: نبني كل الحقول من الخادم.
+        for (final c in _targets.values) { c.dispose(); }
+        _targets.clear();
+        for (final v in veh) {
+          final id = (v['_id'] ?? '').toString();
+          _targets[id] = TextEditingController(text: (v['monthlyTarget'] ?? '').toString());
+        }
+      } else {
+        // بثّ حي: نضيف فقط متحكمات لسيارات جديدة، ونُبقي القيم الجاري تعديلها.
+        for (final v in veh) {
+          final id = (v['_id'] ?? '').toString();
+          _targets.putIfAbsent(id, () => TextEditingController(text: (v['monthlyTarget'] ?? '').toString()));
+        }
       }
       setState(() {
-        _fridayBonus.text = (cfg['fridayBonusAmount'] ?? '').toString();
-        _defaultTarget.text = (cfg['defaultMonthlyTarget'] ?? '').toString();
+        if (hydrate) {
+          _fridayBonus.text = (cfg['fridayBonusAmount'] ?? '').toString();
+          _defaultTarget.text = (cfg['defaultMonthlyTarget'] ?? '').toString();
+        }
         _vehicles = veh;
         _loading = false;
         _error = null;

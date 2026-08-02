@@ -235,8 +235,8 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                                   Text('${s['fromCity'] ?? '—'} ← ${s['toCity'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 6),
                                   Wrap(spacing: 6, runSpacing: 6, children: [
-                                    if ((s['vehiclePlate'] ?? '').toString().isNotEmpty) Chip2(s['vehiclePlate'], T.navy, icon: Icons.local_shipping_outlined),
-                                    if ((s['driverName'] ?? '').toString().isNotEmpty) Chip2(s['driverName'], T.inkSoft, icon: Icons.person_outline),
+                                    if ((s['vehiclePlate'] ?? '').toString().isNotEmpty) Chip2(s['vehiclePlate'].toString(), T.navy, icon: Icons.local_shipping_outlined),
+                                    if ((s['driverName'] ?? '').toString().isNotEmpty) Chip2(s['driverName'].toString(), T.inkSoft, icon: Icons.person_outline),
                                     if (_loadTypeLabel((s['loadType'] ?? '').toString()).isNotEmpty) Chip2(_loadTypeLabel((s['loadType'] ?? '').toString()), T.inkSoft, icon: Icons.category_outlined),
                                     Chip2(_statusLabel(s['status']?.toString()), _statusLabels[s['status']]?.$3 ?? T.inkFaint),
                                     Chip2(_dt(s['loadDate']?.toString() ?? s['createdAt']?.toString()), T.inkFaint, icon: Icons.event_outlined),

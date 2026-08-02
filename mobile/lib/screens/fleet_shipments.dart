@@ -186,9 +186,9 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                                         const SizedBox(height: 6),
                                         Wrap(spacing: 6, runSpacing: 6, children: [
                                           if ((s['vehiclePlate'] ?? '').toString().isNotEmpty)
-                                            Chip2(s['vehiclePlate'], T.navy, icon: Icons.local_shipping_outlined),
+                                            Chip2(s['vehiclePlate'].toString(), T.navy, icon: Icons.local_shipping_outlined),
                                           if ((s['driverName'] ?? '').toString().isNotEmpty)
-                                            Chip2(s['driverName'], T.inkSoft, icon: Icons.person_outline),
+                                            Chip2(s['driverName'].toString(), T.inkSoft, icon: Icons.person_outline),
                                           if ((num.tryParse((s['price'] ?? '').toString()) ?? 0) > 0)
                                             Chip2('${tr('إيجار', 'Rent')} ${s['price']}', T.success, icon: Icons.payments_outlined),
                                           if (s['customerType'] == 'heavy')

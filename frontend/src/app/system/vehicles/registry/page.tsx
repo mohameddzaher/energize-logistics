@@ -35,7 +35,7 @@ export default function VehicleRegistryList() {
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (q.trim()) p.set('q', q.trim());
-    ['sector', 'registrationType', 'brand', 'owner', 'insuranceCompany', 'expiringDoc', 'expiringWithin', 'expiredDoc'].forEach((k) => {
+    ['sector', 'registrationType', 'brand', 'owner', 'insuranceCompany', 'coverageType', 'fuelCardStatus', 'inspectionStatus', 'modelYear', 'expiringDoc', 'expiringWithin', 'expiredDoc', 'missingDoc', 'hasGps'].forEach((k) => {
       const v = sp.get(k); if (v) p.set(k, v);
     });
     p.set('limit', '2000');
@@ -52,8 +52,17 @@ export default function VehicleRegistryList() {
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
-  const activeFilters = ['sector', 'registrationType', 'brand', 'owner', 'insuranceCompany', 'expiringDoc', 'expiredDoc']
+  const FILTER_LABELS: Record<string, [string, string]> = {
+    missingDoc: ['بدون', 'Missing'], expiringDoc: ['قرب انتهاء', 'Expiring'], expiredDoc: ['منتهي', 'Expired'],
+    fuelCardStatus: ['شريحة', 'Fuel card'], hasGps: ['GPS', 'GPS'],
+  };
+  const activeFilters = ['sector', 'registrationType', 'brand', 'owner', 'insuranceCompany', 'coverageType', 'fuelCardStatus', 'inspectionStatus', 'modelYear', 'expiringDoc', 'expiredDoc', 'missingDoc', 'hasGps']
     .map((k) => ({ k, v: sp.get(k) })).filter((x) => x.v);
+  const filterChipText = (k: string, v: string) => {
+    if (k === 'expiringDoc' || k === 'expiredDoc' || k === 'missingDoc') return `${ar ? FILTER_LABELS[k][0] : FILTER_LABELS[k][1]}: ${docLabel(v, ar)}`;
+    if (k === 'hasGps') return ar ? 'مزوّدة بـ GPS' : 'With GPS';
+    return v;
+  };
 
   const del = async (v: VReg) => {
     if (!(await confirm(ar ? `حذف المركبة ${v.plateNumber}؟` : `Delete ${v.plateNumber}?`))) return;
@@ -77,7 +86,7 @@ export default function VehicleRegistryList() {
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? 'ابحث بلوحة/هيكل/مالك/بوليصة…' : 'plate / chassis / owner…'} className="px-3 py-2 rounded-lg border border-slate-200 text-sm w-72 max-w-full" />
         {activeFilters.map((f) => (
           <span key={f.k} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-[#12325c]/10 text-[#12325c] text-xs">
-            {f.k === 'expiringDoc' || f.k === 'expiredDoc' ? docLabel(f.v!, ar) : f.v}
+            {filterChipText(f.k, f.v!)}
             <button onClick={() => { const p = new URLSearchParams(sp.toString()); p.delete(f.k); router.push(`/system/vehicles/registry?${p.toString()}`); }}><X className="w-3 h-3" /></button>
           </span>
         ))}

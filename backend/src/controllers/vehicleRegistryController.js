@@ -75,6 +75,14 @@ function buildFilter(q) {
     const dt = DOC_TYPES.find((x) => x.key === q.expiredDoc);
     if (dt) and.push({ [dt.path]: { $ne: null, $lt: new Date() } });
   }
+  // «بدون مستند»: مركبات ينقصها هذا المستند (لا تاريخ/لا رقم).
+  if (q.missingDoc) {
+    const paths = { insurance: 'insurance.expiryDate', operatingCard: 'operatingCard.cardNumber', vehicleLicense: 'vehicleLicense.expiryDate', inspection: 'inspection.expiryDate', gps: 'gps.deviceId', fuelCard: 'fuelCard.cardNumber' };
+    const p = paths[q.missingDoc];
+    if (p) and.push({ $or: [{ [p]: null }, { [p]: '' }] });
+  }
+  // «لديه GPS»: مركبات عليها جهاز مركّب.
+  if (q.hasGps === '1') and.push({ 'gps.deviceId': { $nin: [null, ''] } });
   if (q.expiryDoc && (q.expiryFrom || q.expiryTo)) {
     const dt = DOC_TYPES.find((x) => x.key === q.expiryDoc);
     if (dt) {

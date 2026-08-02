@@ -85,10 +85,7 @@ const vehicleMasterSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true, index: true },
 }, { timestamps: true });
 
-vehicleMasterSchema.index({ 'insurance.expiryDate': 1 });
-vehicleMasterSchema.index({ 'operatingCard.expiryDate': 1 });
-vehicleMasterSchema.index({ 'vehicleLicense.expiryDate': 1 });
-vehicleMasterSchema.index({ 'inspection.expiryDate': 1 });
+// (تواريخ انتهاء المستندات مفهرسة عبر index:true على حقولها أعلاه.)
 
 // ── إعدادات القسم: عتبات التنبيه لكل مستند ─────────────────────────────────────
 // المستخدم يحدد: أنبهني قبل انتهاء التأمين بـ 60 يوم، بطاقة التشغيل بـ 30 يوم … إلخ.

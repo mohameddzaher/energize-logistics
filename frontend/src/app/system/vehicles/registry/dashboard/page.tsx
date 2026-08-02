@@ -8,7 +8,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
+import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { money, statusColor, statusLabel, docLabel, DOC_TYPES, CHART_COLORS } from '@/lib/vehicleRegistry';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -66,6 +66,11 @@ export default function VehicleRegistryDashboard() {
     Object.entries(extra).forEach(([k, v]) => p.set(k, v));
     router.push(`/system/vehicles/registry?${p.toString()}`);
   };
+  // نقر أي عمود/شريحة في الرسوم يفتح القائمة مفلترة على تلك القيمة.
+  const chartClick = (field: string) => (d: any) => {
+    const k = d?.key ?? d?.payload?.key;
+    if (k && k !== '—') goList({ [field]: String(k) });
+  };
 
   if (loading && !data) return <Spinner />;
   if (!data) return <div className="p-8 text-slate-500">{ar ? 'تعذّر تحميل اللوحة' : 'Failed to load'}</div>;
@@ -117,20 +122,20 @@ export default function VehicleRegistryDashboard() {
         </div>
       </div>
 
-      {/* بطاقات المؤشرات */}
+      {/* بطاقات المؤشرات — كلها قابلة للضغط وتفتح المفلتر المناسب */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        <StatCard label={ar ? 'إجمالي المركبات' : 'Vehicles'} value={t.vehicles} accent="text-[#f37121]" />
-        <button onClick={() => router.push('/system/vehicles/registry/alerts')} className="text-start"><StatCard label={ar ? 'مستندات منتهية' : 'Expired docs'} value={t.expiredTotal} accent="text-red-600" /></button>
-        <button onClick={() => router.push('/system/vehicles/registry/alerts')} className="text-start"><StatCard label={ar ? 'قرب الانتهاء' : 'Expiring soon'} value={t.expiringTotal} accent="text-amber-600" /></button>
-        <StatCard label={ar ? 'إجمالي أقساط التأمين' : 'Total premium'} value={money(t.totalPremium)} accent="text-emerald-600" />
-        <StatCard label={ar ? 'متوسط القسط' : 'Avg premium'} value={money(t.avgPremium)} />
-        <StatCard label={ar ? 'حد الوقود الشهري' : 'Fuel limit'} value={money(t.totalFuelLimit)} accent="text-sky-600" />
-        <StatCard label={ar ? 'شرائح وقود نشطة' : 'Active fuel cards'} value={t.activeFuelCards} />
-        <StatCard label={ar ? 'مزوّدة بـ GPS' : 'With GPS'} value={t.withGps} />
-        <StatCard label={ar ? 'بدون تأمين' : 'No insurance'} value={t.missingInsurance} accent="text-orange-600" />
-        <StatCard label={ar ? 'بدون بطاقة تشغيل' : 'No op. card'} value={t.missingOperatingCard} accent="text-orange-600" />
-        <StatCard label={ar ? 'عدد الماركات' : 'Brands'} value={t.brands} />
-        <StatCard label={ar ? 'عدد المُلّاك' : 'Owners'} value={t.owners} />
+        <ClickStat label={ar ? 'إجمالي المركبات' : 'Vehicles'} value={t.vehicles} accent="text-[#f37121]" onClick={() => goList({})} />
+        <ClickStat label={ar ? 'مستندات منتهية' : 'Expired docs'} value={t.expiredTotal} accent="text-red-600" onClick={() => router.push('/system/vehicles/registry/alerts')} />
+        <ClickStat label={ar ? 'قرب الانتهاء' : 'Expiring soon'} value={t.expiringTotal} accent="text-amber-600" onClick={() => router.push('/system/vehicles/registry/alerts')} />
+        <ClickStat label={ar ? 'إجمالي أقساط التأمين' : 'Total premium'} value={money(t.totalPremium)} accent="text-emerald-600" onClick={() => goList({})} />
+        <ClickStat label={ar ? 'متوسط القسط' : 'Avg premium'} value={money(t.avgPremium)} onClick={() => goList({})} />
+        <ClickStat label={ar ? 'حد الوقود الشهري' : 'Fuel limit'} value={money(t.totalFuelLimit)} accent="text-sky-600" onClick={() => goList({})} />
+        <ClickStat label={ar ? 'شرائح وقود نشطة' : 'Active fuel cards'} value={t.activeFuelCards} onClick={() => goList({ fuelCardStatus: 'نشط' })} />
+        <ClickStat label={ar ? 'مزوّدة بـ GPS' : 'With GPS'} value={t.withGps} onClick={() => goList({ hasGps: '1' })} />
+        <ClickStat label={ar ? 'بدون تأمين' : 'No insurance'} value={t.missingInsurance} accent="text-orange-600" onClick={() => goList({ missingDoc: 'insurance' })} />
+        <ClickStat label={ar ? 'بدون بطاقة تشغيل' : 'No op. card'} value={t.missingOperatingCard} accent="text-orange-600" onClick={() => goList({ missingDoc: 'operatingCard' })} />
+        <ClickStat label={ar ? 'عدد الماركات' : 'Brands'} value={t.brands} onClick={() => goList({})} />
+        <ClickStat label={ar ? 'عدد المُلّاك' : 'Owners'} value={t.owners} onClick={() => goList({})} />
       </div>
 
       {/* عتبات انتهاء المستندات */}
@@ -169,50 +174,59 @@ export default function VehicleRegistryDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChartCard title={ar ? 'حسب القطاع' : 'By sector'}>
           <ResponsiveContainer width="100%" height={260}>
-            <PieChart><Pie data={data.bySector} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={90} label={(e) => `${e.key}: ${e.count}`}>
+            <PieChart><Pie data={data.bySector} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={90} label={(e: any) => `${e.key}: ${e.count}`} onClick={chartClick('sector')} className="cursor-pointer">
               {data.bySector.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}</Pie><Tooltip /></PieChart>
           </ResponsiveContainer>
         </ChartCard>
         <ChartCard title={ar ? 'حسب نوع التسجيل' : 'By registration type'}>
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={data.byRegistrationType}><CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" /><XAxis dataKey="key" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Bar dataKey="count" fill="#12325c" radius={[4, 4, 0, 0]} /></BarChart>
+            <BarChart data={data.byRegistrationType}><CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" /><XAxis dataKey="key" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Bar dataKey="count" fill="#12325c" radius={[4, 4, 0, 0]} onClick={chartClick('registrationType')} className="cursor-pointer" /></BarChart>
           </ResponsiveContainer>
         </ChartCard>
         <ChartCard title={ar ? 'أكثر الماركات' : 'Top brands'}>
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={data.byBrand.slice(0, 10)} layout="vertical"><XAxis type="number" tick={{ fontSize: 11 }} /><YAxis type="category" dataKey="key" tick={{ fontSize: 11 }} width={90} /><Tooltip /><Bar dataKey="count" fill="#f37121" radius={[0, 4, 4, 0]} /></BarChart>
+            <BarChart data={data.byBrand.slice(0, 10)} layout="vertical"><XAxis type="number" tick={{ fontSize: 11 }} /><YAxis type="category" dataKey="key" tick={{ fontSize: 11 }} width={90} /><Tooltip /><Bar dataKey="count" fill="#f37121" radius={[0, 4, 4, 0]} onClick={chartClick('brand')} className="cursor-pointer" /></BarChart>
           </ResponsiveContainer>
         </ChartCard>
         <ChartCard title={ar ? 'أكبر المُلّاك' : 'Top owners'}>
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={data.byOwner.slice(0, 8)} layout="vertical"><XAxis type="number" tick={{ fontSize: 11 }} /><YAxis type="category" dataKey="key" tick={{ fontSize: 10 }} width={130} /><Tooltip /><Bar dataKey="count" fill="#8b5cf6" radius={[0, 4, 4, 0]} /></BarChart>
+            <BarChart data={data.byOwner.slice(0, 8)} layout="vertical"><XAxis type="number" tick={{ fontSize: 11 }} /><YAxis type="category" dataKey="key" tick={{ fontSize: 10 }} width={130} /><Tooltip /><Bar dataKey="count" fill="#8b5cf6" radius={[0, 4, 4, 0]} onClick={chartClick('owner')} className="cursor-pointer" /></BarChart>
           </ResponsiveContainer>
         </ChartCard>
         <ChartCard title={ar ? 'شركات التأمين' : 'Insurance companies'}>
           <ResponsiveContainer width="100%" height={260}>
-            <PieChart><Pie data={data.byInsuranceCompany} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={90} label={(e) => `${e.key}: ${e.count}`}>
+            <PieChart><Pie data={data.byInsuranceCompany} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={90} label={(e: any) => `${e.key}: ${e.count}`} onClick={chartClick('insuranceCompany')} className="cursor-pointer">
               {data.byInsuranceCompany.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}</Pie><Tooltip /><Legend /></PieChart>
           </ResponsiveContainer>
         </ChartCard>
         <ChartCard title={ar ? 'حسب سنة الصنع' : 'By model year'}>
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={[...data.byModelYear].sort((a, b) => a.key.localeCompare(b.key))}><CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" /><XAxis dataKey="key" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Bar dataKey="count" fill="#0ea5e9" radius={[4, 4, 0, 0]} /></BarChart>
+            <BarChart data={[...data.byModelYear].sort((a, b) => a.key.localeCompare(b.key))}><CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" /><XAxis dataKey="key" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip /><Bar dataKey="count" fill="#0ea5e9" radius={[4, 4, 0, 0]} onClick={chartClick('modelYear')} className="cursor-pointer" /></BarChart>
           </ResponsiveContainer>
         </ChartCard>
         <ChartCard title={ar ? 'نوع التغطية' : 'Coverage type'}>
           <ResponsiveContainer width="100%" height={240}>
-            <PieChart><Pie data={data.byCoverageType} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={80} label={(e) => `${e.count}`}>
+            <PieChart><Pie data={data.byCoverageType} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={80} label={(e: any) => `${e.count}`} onClick={chartClick('coverageType')} className="cursor-pointer">
               {data.byCoverageType.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}</Pie><Tooltip /><Legend /></PieChart>
           </ResponsiveContainer>
         </ChartCard>
         <ChartCard title={ar ? 'حالة الفحص' : 'Inspection status'}>
           <ResponsiveContainer width="100%" height={240}>
-            <PieChart><Pie data={data.byInspectionStatus} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={80} label={(e) => `${e.count}`}>
+            <PieChart><Pie data={data.byInspectionStatus} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={80} label={(e: any) => `${e.count}`} onClick={chartClick('inspectionStatus')} className="cursor-pointer">
               {data.byInspectionStatus.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}</Pie><Tooltip /><Legend /></PieChart>
           </ResponsiveContainer>
         </ChartCard>
       </div>
     </div>
+  );
+}
+
+function ClickStat({ label, value, accent, onClick }: { label: string; value: React.ReactNode; accent?: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="text-start rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40 group">
+      <p className="text-slate-500 text-xs font-medium group-hover:text-slate-700">{label}</p>
+      <p className={`text-2xl font-bold mt-1 ${accent || 'text-slate-900'}`}>{value}</p>
+    </button>
   );
 }
 

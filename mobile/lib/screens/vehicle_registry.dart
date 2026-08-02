@@ -53,7 +53,9 @@ String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى'
 // ══════════════════ القائمة ══════════════════
 class VehicleRegistryListScreen extends StatefulWidget {
   final String? sector, expiringDoc, expiredDoc;
-  const VehicleRegistryListScreen({super.key, this.sector, this.expiringDoc, this.expiredDoc});
+  final Map<String, String>? filters; // فلاتر إضافية من كروت اللوحة
+  final String? filterLabel; // شارة توضّح الفلتر المطبّق
+  const VehicleRegistryListScreen({super.key, this.sector, this.expiringDoc, this.expiredDoc, this.filters, this.filterLabel});
   @override
   State<VehicleRegistryListScreen> createState() => _VehicleRegistryListScreenState();
 }
@@ -84,6 +86,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
       if (widget.sector != null) p.add('sector=${Uri.encodeComponent(widget.sector!)}');
       if (widget.expiringDoc != null) { p.add('expiringDoc=${widget.expiringDoc}'); p.add('expiringWithin=60'); }
       if (widget.expiredDoc != null) p.add('expiredDoc=${widget.expiredDoc}');
+      widget.filters?.forEach((k, v) => p.add('$k=${Uri.encodeComponent(v)}'));
       final d = await Api.instance.get('/api/vehicle-registry?${p.join('&')}');
       if (!mounted) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['vehicles'] ?? []); _total = (d['total'] ?? 0) as int; _loading = false; _error = null; });
@@ -105,8 +108,8 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
                     child: TextField(onChanged: (v) => setState(() => _q = v), decoration: InputDecoration(hintText: tr('لوحة / هيكل / مالك…', 'plate / chassis / owner…'), prefixIcon: const Icon(Icons.search))),
                   ),
-                  if (widget.sector != null || widget.expiringDoc != null || widget.expiredDoc != null)
-                    Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Align(alignment: AlignmentDirectional.centerStart, child: Chip2(widget.sector ?? docLabel(widget.expiringDoc ?? widget.expiredDoc ?? ''), T.navy))),
+                  if (widget.filterLabel != null || widget.sector != null || widget.expiringDoc != null || widget.expiredDoc != null)
+                    Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Align(alignment: AlignmentDirectional.centerStart, child: Chip2(widget.filterLabel ?? widget.sector ?? docLabel(widget.expiringDoc ?? widget.expiredDoc ?? ''), T.navy))),
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,

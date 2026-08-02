@@ -83,16 +83,16 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
         crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         childAspectRatio: 1.7, mainAxisSpacing: 8, crossAxisSpacing: 8,
         children: [
-          _tile(tr('إجمالي المركبات', 'Vehicles'), '${t['vehicles'] ?? 0}', T.orange, Icons.directions_car_outlined),
-          _tile(tr('مستندات منتهية', 'Expired docs'), '${t['expiredTotal'] ?? 0}', T.danger, Icons.event_busy_outlined),
-          _tile(tr('قرب الانتهاء', 'Expiring'), '${t['expiringTotal'] ?? 0}', T.warn, Icons.hourglass_bottom_outlined),
-          _tile(tr('إجمالي الأقساط', 'Total premium'), money(t['totalPremium']), T.success, Icons.shield_outlined),
-          _tile(tr('متوسط القسط', 'Avg premium'), money(t['avgPremium']), T.navy, Icons.trending_up_rounded),
-          _tile(tr('حد الوقود', 'Fuel limit'), money(t['totalFuelLimit']), T.cyan, Icons.local_gas_station_outlined),
-          _tile(tr('شرائح نشطة', 'Active cards'), '${t['activeFuelCards'] ?? 0}', T.info, Icons.credit_card_outlined),
-          _tile(tr('بدون تأمين', 'No insurance'), '${t['missingInsurance'] ?? 0}', T.warn, Icons.gpp_bad_outlined),
-          _tile(tr('عدد الماركات', 'Brands'), '${t['brands'] ?? 0}', T.violet, Icons.category_outlined),
-          _tile(tr('عدد المُلّاك', 'Owners'), '${t['owners'] ?? 0}', T.inkSoft, Icons.badge_outlined),
+          _tile(tr('إجمالي المركبات', 'Vehicles'), '${t['vehicles'] ?? 0}', T.orange, Icons.directions_car_outlined, onTap: () => _openList()),
+          _tile(tr('مستندات منتهية', 'Expired docs'), '${t['expiredTotal'] ?? 0}', T.danger, Icons.event_busy_outlined, onTap: () => _openAlerts()),
+          _tile(tr('قرب الانتهاء', 'Expiring'), '${t['expiringTotal'] ?? 0}', T.warn, Icons.hourglass_bottom_outlined, onTap: () => _openAlerts()),
+          _tile(tr('إجمالي الأقساط', 'Total premium'), money(t['totalPremium']), T.success, Icons.shield_outlined, onTap: () => _openList()),
+          _tile(tr('متوسط القسط', 'Avg premium'), money(t['avgPremium']), T.navy, Icons.trending_up_rounded, onTap: () => _openList()),
+          _tile(tr('حد الوقود', 'Fuel limit'), money(t['totalFuelLimit']), T.cyan, Icons.local_gas_station_outlined, onTap: () => _openList()),
+          _tile(tr('شرائح نشطة', 'Active cards'), '${t['activeFuelCards'] ?? 0}', T.info, Icons.credit_card_outlined, onTap: () => _openList(filters: {'fuelCardStatus': 'نشط'}, label: tr('شريحة نشطة', 'Active card'))),
+          _tile(tr('بدون تأمين', 'No insurance'), '${t['missingInsurance'] ?? 0}', T.warn, Icons.gpp_bad_outlined, onTap: () => _openList(filters: {'missingDoc': 'insurance'}, label: tr('بدون تأمين', 'No insurance'))),
+          _tile(tr('عدد الماركات', 'Brands'), '${t['brands'] ?? 0}', T.violet, Icons.category_outlined, onTap: () => _openList()),
+          _tile(tr('عدد المُلّاك', 'Owners'), '${t['owners'] ?? 0}', T.inkSoft, Icons.badge_outlined, onTap: () => _openList()),
         ],
       ),
       const SizedBox(height: 14),
@@ -126,20 +126,20 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
         );
       }),
       const SizedBox(height: 8),
-      _breakdown(tr('حسب القطاع', 'By sector'), sectors),
-      _breakdown(tr('حسب نوع التسجيل', 'By registration type'), List<Map<String, dynamic>>.from(d['byRegistrationType'] ?? [])),
-      _breakdown(tr('أكثر الماركات', 'Top brands'), List<Map<String, dynamic>>.from(d['byBrand'] ?? []), max: 10),
-      _breakdown(tr('أكبر المُلّاك', 'Top owners'), List<Map<String, dynamic>>.from(d['byOwner'] ?? []), max: 8),
-      _breakdown(tr('شركات التأمين', 'Insurance companies'), List<Map<String, dynamic>>.from(d['byInsuranceCompany'] ?? [])),
-      _breakdown(tr('حسب سنة الصنع', 'By model year'), List<Map<String, dynamic>>.from(d['byModelYear'] ?? []), max: 15),
-      _breakdown(tr('حالة الفحص', 'Inspection status'), List<Map<String, dynamic>>.from(d['byInspectionStatus'] ?? [])),
+      _breakdown(tr('حسب القطاع', 'By sector'), sectors, field: 'sector'),
+      _breakdown(tr('حسب نوع التسجيل', 'By registration type'), List<Map<String, dynamic>>.from(d['byRegistrationType'] ?? []), field: 'registrationType'),
+      _breakdown(tr('أكثر الماركات', 'Top brands'), List<Map<String, dynamic>>.from(d['byBrand'] ?? []), max: 10, field: 'brand'),
+      _breakdown(tr('أكبر المُلّاك', 'Top owners'), List<Map<String, dynamic>>.from(d['byOwner'] ?? []), max: 8, field: 'owner'),
+      _breakdown(tr('شركات التأمين', 'Insurance companies'), List<Map<String, dynamic>>.from(d['byInsuranceCompany'] ?? []), field: 'insuranceCompany'),
+      _breakdown(tr('حسب سنة الصنع', 'By model year'), List<Map<String, dynamic>>.from(d['byModelYear'] ?? []), max: 15, field: 'modelYear'),
+      _breakdown(tr('حالة الفحص', 'Inspection status'), List<Map<String, dynamic>>.from(d['byInspectionStatus'] ?? []), field: 'inspectionStatus'),
       const SizedBox(height: 24),
     ]);
   }
 
   Widget _section(String t) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(t, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)));
 
-  Widget _breakdown(String title, List<Map<String, dynamic>> rows, {int max = 20}) {
+  Widget _breakdown(String title, List<Map<String, dynamic>> rows, {int max = 20, String? field}) {
     if (rows.isEmpty) return const SizedBox.shrink();
     final shown = rows.take(max).toList();
     final top = shown.fold<int>(1, (m, r) => ((r['count'] ?? 0) as num).toInt() > m ? ((r['count'] ?? 0) as num).toInt() : m);
@@ -151,10 +151,11 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
           const SizedBox(height: 8),
           ...shown.map((r) {
             final val = ((r['count'] ?? 0) as num).toInt();
-            return Padding(
+            final key = (r['key'] ?? '—').toString();
+            final row = Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
               child: Row(children: [
-                SizedBox(width: 120, child: Text((r['key'] ?? '—').toString(), style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                SizedBox(width: 120, child: Text(key, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
                 Expanded(child: Stack(children: [
                   Container(height: 14, decoration: BoxDecoration(color: T.navy.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(5))),
                   FractionallySizedBox(widthFactor: (val / top).clamp(0.02, 1.0), child: Container(height: 14, decoration: BoxDecoration(color: T.orange.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(5)))),
@@ -163,21 +164,34 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
                 Text('$val', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
               ]),
             );
+            if (field == null || key == '—') return row;
+            return Pressable(onTap: () => _openList(filters: {field: key}, label: key), child: row);
           }),
         ]),
       ),
     );
   }
 
-  Widget _tile(String label, String value, Color color, IconData icon) => AppCard(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)), child: Icon(icon, size: 16, color: color)),
-          const SizedBox(height: 8),
-          FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color, height: 1))),
-          const SizedBox(height: 2),
-          Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
-        ]),
+  void _openList({Map<String, String>? filters, String? label}) => Navigator.push(context,
+      MaterialPageRoute(builder: (_) => VehicleRegistryListScreen(filters: filters, filterLabel: label)));
+  void _openAlerts() => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleRegistryAlertsScreen()));
+
+  Widget _tile(String label, String value, Color color, IconData icon, {VoidCallback? onTap}) => Pressable(
+        onTap: onTap,
+        child: AppCard(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)), child: Icon(icon, size: 16, color: color)),
+              const Spacer(),
+              if (onTap != null) Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, size: 15, color: T.inkFaint),
+            ]),
+            const SizedBox(height: 8),
+            FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color, height: 1))),
+            const SizedBox(height: 2),
+            Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
+          ]),
+        ),
       );
 }
 

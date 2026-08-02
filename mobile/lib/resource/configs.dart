@@ -1009,3 +1009,62 @@ final shipmentOrdersFieldsCfg = ResourceConfig(
     FieldSpec('order', 'الترتيب', 'Order', type: FieldType.number),
   ],
 );
+
+// ── موردو العلاقات (3PL) — CRM Vendors ───────────────────────────────────────
+final crmVendorsCfg = ResourceConfig(
+  arTitle: 'الموردون (3PL)', enTitle: 'CRM Vendors', icon: Icons.local_shipping_outlined,
+  endpoint: '/api/crm-vendors', listKey: 'items', updateMethod: 'PUT', liveEvent: 'crm:updated',
+  searchFields: const ['name', 'energizeRep', 'representative', 'mobile', 'headOffice', 'vendorType'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'vendorType'), _s(r, 'representative'), _s(r, 'mobile')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (_s(r, 'followUpStatus').isNotEmpty) (_s(r, 'followUpStatus'), T.info),
+    if (r['carsCount'] != null) ('${r['carsCount']} ${'سيارة'}', T.navy),
+    if (r['ourSideSigned'] == true && r['vendorSideSigned'] == true) ('موقّع', T.success),
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم المورد', 'Name', required: true),
+    FieldSpec('vendorType', 'النوع', 'Type'),
+    FieldSpec('energizeRep', 'مندوبنا', 'Our rep'),
+    FieldSpec('representative', 'ممثل المورد', 'Their rep'),
+    FieldSpec('mobile', 'الجوال', 'Mobile', type: FieldType.phone),
+    FieldSpec('email', 'البريد', 'Email', type: FieldType.email),
+    FieldSpec('headOffice', 'المقر', 'Head office'),
+    FieldSpec('destinations', 'الوجهات', 'Destinations'),
+    FieldSpec('carsCount', 'عدد السيارات', 'Cars', type: FieldType.number),
+    FieldSpec('followUpStatus', 'حالة المتابعة', 'Follow-up'),
+    FieldSpec('hasPapers', 'لديه أوراق', 'Has papers', type: FieldType.checkbox),
+    FieldSpec('vendorSideSigned', 'وقّع المورد', 'Vendor signed', type: FieldType.checkbox),
+    FieldSpec('ourSideSigned', 'وقّعنا', 'We signed', type: FieldType.checkbox),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+// ── عقود الموظفين — HR Contracts (قراءة؛ الإنشاء يتم من ملف الموظف) ──────────
+final hrContractsCfg = ResourceConfig(
+  arTitle: 'عقود الموظفين', enTitle: 'Employment Contracts', icon: Icons.description_outlined,
+  endpoint: '/api/hr/contracts', listKey: 'contracts', liveEvent: 'hr:updated',
+  canCreate: false, canEdit: false, canDelete: false,
+  searchFields: const ['jobTitle', 'type', 'status'],
+  titleOf: (r) => (r['employee'] is Map ? (r['employee']['arabicName'] ?? r['employee']['englishName'] ?? r['employee']['name']) : null)?.toString() ?? _s(r, 'jobTitle'),
+  subtitleOf: (r) => [_s(r, 'jobTitle'), _s(r, 'type')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), r['status'] == 'active' ? T.success : T.inkFaint),
+    if (r['basicSalary'] != null) ('${r['basicSalary']}', T.navy),
+  ],
+  fields: const [],
+);
+
+// ── سجل التدقيق — Audit Log (قراءة فقط) ─────────────────────────────────────
+final auditCfg = ResourceConfig(
+  arTitle: 'سجل التدقيق', enTitle: 'Audit Log', icon: Icons.fact_check_outlined,
+  endpoint: '/api/audit', listKey: 'logs', liveEvent: '',
+  canCreate: false, canEdit: false, canDelete: false,
+  searchFields: const ['action', 'entity', 'userName'],
+  titleOf: (r) => '${_s(r, 'action')} · ${_s(r, 'entity')}',
+  subtitleOf: (r) => [_s(r, 'userName'), _s(r, 'createdAt').split('T').first].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (_s(r, 'action').isNotEmpty) (_s(r, 'action'), _s(r, 'action') == 'delete' ? T.danger : T.info),
+  ],
+  fields: const [],
+);

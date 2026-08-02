@@ -53,6 +53,9 @@ import '../screens/customs_guide.dart';
 import '../screens/finance_tasks.dart';
 import '../screens/cash_wallet.dart';
 import '../screens/wallet_dashboard.dart';
+import '../screens/accounting_reports.dart';
+import '../screens/performance_overview.dart';
+import '../screens/reference_data.dart';
 import '../screens/settings_screen.dart';
 import '../screens/performance_evaluations.dart';
 
@@ -171,6 +174,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الصفقات', 'Deals', Icons.attach_money_outlined, (c) => ResourceScreen(config: crmDealsCfg)),
         AppPage('مهام العلاقات', 'CRM Tasks', Icons.task_alt_outlined, (c) => ResourceScreen(config: crmTasksCfg)),
         AppPage('الأنشطة', 'Activities', Icons.history_outlined, (c) => ResourceScreen(config: crmActivitiesCfg)),
+        AppPage('الموردون (3PL)', 'Vendors', Icons.local_shipping_outlined, (c) => ResourceScreen(config: crmVendorsCfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'crm')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'crm', complaints: true)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
@@ -224,6 +228,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const HrLeavesScreen()),
         AppPage('طلبات الموظفين', 'Employee Requests', Icons.mark_email_unread_outlined, (c) => const HrRequestsScreen()),
         AppPage('التراخيص والاشتراكات', 'Licenses', Icons.workspace_premium_outlined, (c) => ResourceScreen(config: hrLicensesCfg)),
+        AppPage('عقود الموظفين', 'Contracts', Icons.description_outlined, (c) => ResourceScreen(config: hrContractsCfg)),
         AppPage('أنواع الإجازات', 'Leave Types', Icons.event_note_outlined, (c) => ResourceScreen(config: hrLeaveTypesCfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'hr')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'hr', complaints: true)),
@@ -262,6 +267,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: accountingDashSpec)),
         AppPage('شجرة الحسابات', 'Accounts', Icons.account_tree_outlined, (c) => const AccountsScreen()),
         AppPage('دفتر اليومية', 'Journal', Icons.menu_book_outlined, (c) => const JournalScreen()),
+        AppPage('المدينون', 'Receivables', Icons.call_received_outlined, (c) => const AgingReportScreen(endpoint: '/api/accounting/receivables', arTitle: 'المدينون', enTitle: 'Receivables', partyKey: 'customer', docKey: 'invoice', partyIsCompany: true)),
+        AppPage('الدائنون', 'Payables', Icons.call_made_outlined, (c) => const AgingReportScreen(endpoint: '/api/accounting/payables', arTitle: 'الدائنون', enTitle: 'Payables', partyKey: 'vendor', docKey: 'bill')),
+        AppPage('ميزان المراجعة', 'Trial Balance', Icons.balance_outlined, (c) => const TrialBalanceScreen()),
+        AppPage('قائمة الدخل', 'Profit & Loss', Icons.trending_up_outlined, (c) => const ProfitLossScreen()),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'accounting')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'accounting', complaints: true)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
@@ -369,6 +378,15 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       ],
     ),
     AppSection(
+      key: 'Performance', arTitle: 'تقييم الأداء', enTitle: 'Performance', icon: Icons.military_tech_outlined,
+      roles: const ['super_admin'], managed: false,
+      pages: [
+        AppPage('نظرة كل الأقسام', 'All Departments', Icons.insights_outlined, (c) => const PerformanceOverviewScreen()),
+        AppPage('التقييمات', 'Evaluations', Icons.rate_review_outlined, (c) => const EvaluationsScreen()),
+        AppPage('طلبات التعديل', 'Edit Requests', Icons.inbox_outlined, (c) => const PerformanceEditRequestsScreen()),
+      ],
+    ),
+    AppSection(
       key: 'Executive', arTitle: 'النظرة التنفيذية', enTitle: 'Executive', icon: Icons.insights_outlined,
       roles: const ['super_admin', 'admin'], managed: false,
       pages: [
@@ -383,6 +401,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الصلاحيات', 'Permissions', Icons.lock_person_outlined, (c) => const PermissionsScreen()),
         AppPage('الفروع', 'Branches', Icons.store_mall_directory_outlined, (c) => ResourceScreen(config: branchesCfg)),
         AppPage('فئات المصروفات', 'Expense Categories', Icons.category_outlined, (c) => ResourceScreen(config: expenseCategoriesCfg)),
+        AppPage('سجل التدقيق', 'Audit Log', Icons.fact_check_outlined, (c) => ResourceScreen(config: auditCfg)),
+        AppPage('البيانات المرجعية', 'Reference Data', Icons.list_alt_outlined, (c) => const ReferenceDataScreen()),
       ],
     ),
   ];

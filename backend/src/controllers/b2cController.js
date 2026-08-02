@@ -11,7 +11,7 @@ const cache = require('../utils/ttlCache');
 // Short-lived caches so re-selecting/switching months is instant instead of
 // recomputing the whole dashboard each time. Data changes via sheet-sync/manual
 // entry bust the cache (cache.clear('b2c:')), so staleness is bounded.
-const B2C_DASH_TTL = 60 * 1000;
+const B2C_DASH_TTL = 5 * 60 * 1000; // 5 دقائق — البيانات تُزامَن ببطء، فالكاش يخفي زمن الحساب البارد
 const B2C_LIST_TTL = 60 * 1000;
 const { emitToAll } = require('../websocket/socketManager');
 
@@ -911,177 +911,87 @@ exports.getDashboardSummary = async (req, res) => {
       });
     }
 
-    // Lean query — fetch only the fields we'll actually use. Skip populate (expensive) and
-    // do a batch lookup for rep/project/branch metadata afterwards.
-    const ordersRaw = await B2CDailyOrder.find(filter, {
-      rep: 1, project: 1, branch: 1, dateKey: 1, year: 1, month: 1, day: 1,
-      orders: 1, worked: 1, sourceSheet: 1, sourceRow: 1,
-    }).lean();
-
-    // Collect unique IDs we need to enrich
-    const repIdSet = new Set();
-    const projIdSet = new Set();
-    const branchIdSet = new Set();
-    for (const o of ordersRaw) {
-      if (o.rep) repIdSet.add(String(o.rep));
-      if (o.project) projIdSet.add(String(o.project));
-      if (o.branch) branchIdSet.add(String(o.branch));
-    }
-
-    // Batch-fetch lookups in parallel
+    // ── الأداء: نحسب التجميعات داخل قاعدة البيانات (aggregation) بدل تحميل عشرات
+    // الآلاف من الصفوف إلى Node — التحميل الكامل كان ياخد ~68 ثانية ويجمّد حلقة
+    // الأحداث (single-thread) فيبطّئ النظام كله. الآن الـ DB يجمّع والنتائج صغيرة.
+    const repDefaults = { monthlyTarget: 400, dailyTarget: 15 };
     const [repsList, projsList, branchesList] = await Promise.all([
-      repIdSet.size > 0
-        ? B2CRep.find(
-            { _id: { $in: [...repIdSet] } },
-            'englishName arabicName repId monthlyTarget dailyTarget expectedWorkingDays'
-          ).lean()
-        : [],
-      projIdSet.size > 0
-        ? B2CProject.find(
-            { _id: { $in: [...projIdSet] } },
-            'name code color monthlyTarget dailyTarget'
-          ).lean()
-        : [],
-      branchIdSet.size > 0
-        ? Branch.find(
-            { _id: { $in: [...branchIdSet] } },
-            'name code city'
-          ).lean()
-        : [],
+      B2CRep.find({}, 'englishName arabicName repId monthlyTarget dailyTarget expectedWorkingDays').lean(),
+      B2CProject.find({}, 'name code color monthlyTarget dailyTarget').lean(),
+      Branch.find({}, 'name code city').lean(),
     ]);
-
     const repMap2 = new Map(repsList.map((r) => [String(r._id), r]));
     const projMap2 = new Map(projsList.map((p) => [String(p._id), p]));
     const branchMap2 = new Map(branchesList.map((b) => [String(b._id), b]));
 
-    // Reshape orders so the rest of the function reads them like populated docs
-    const orders = ordersRaw.map((o) => ({
-      ...o,
-      rep: o.rep ? repMap2.get(String(o.rep)) || null : null,
-      project: o.project ? projMap2.get(String(o.project)) || null : null,
-      branch: o.branch ? branchMap2.get(String(o.branch)) || null : null,
-    }));
+    const workedExpr = { $and: [{ $eq: ['$worked', true] }, { $ne: ['$orders', null] }] };
+    const ordersNum = { $ifNull: ['$orders', 0] };
+    const setCount = (arr) => (arr || []).filter((x) => x != null).length;
+    const A = (extra) => B2CDailyOrder.aggregate([{ $match: filter }, ...extra]);
 
-    const totalOrders = orders.reduce((sum, o) => sum + (o.orders || 0), 0);
-    const workingDayEntries = orders.filter((o) => o.worked && o.orders !== null);
-    const totalWorkingDays = workingDayEntries.length;
+    // تجميعات متوازية داخل قاعدة البيانات (أسرع من $facet على هذا العنقود، وكلها
+    // I/O لا تحجب حلقة الأحداث) بدل تحميل عشرات الآلاف من الصفوف إلى Node.
+    const [repAgg, monthAgg, projAgg, branchAgg, dayAgg, dowAgg, repMonthAgg, bestDaysAgg, totalsAgg] = await Promise.all([
+      A([{ $group: { _id: '$rep', totalOrders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, project: { $first: '$project' } } }]),
+      A([{ $group: { _id: { year: '$year', month: '$month' }, totalOrders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } }]),
+      A([{ $group: { _id: '$project', totalOrders: { $sum: ordersNum }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } }]),
+      A([{ $group: { _id: '$branch', totalOrders: { $sum: ordersNum }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } }]),
+      A([{ $group: { _id: '$dateKey', totalOrders: { $sum: ordersNum },
+        worked: { $sum: { $cond: [{ $gt: [ordersNum, 0] }, 1, 0] } },
+        repsActive: { $addToSet: { $cond: [{ $gt: [ordersNum, 0] }, '$rep', null] } },
+        repsNotWorked: { $addToSet: { $cond: [{ $eq: ['$orders', 0] }, '$rep', null] } },
+        repsAboveTarget: { $sum: { $cond: [{ $gte: [ordersNum, repDefaults.dailyTarget] }, 1, 0] } } } }]),
+      A([{ $group: { _id: { $let: { vars: { d: { $dateFromString: { dateString: { $concat: ['$dateKey', 'T00:00:00.000Z'] }, onError: null, onNull: null } } }, in: { $cond: [{ $eq: ['$$d', null] }, -1, { $subtract: [{ $dayOfWeek: '$$d' }, 1] }] } } }, totalOrders: { $sum: ordersNum }, workingCells: { $sum: { $cond: [workedExpr, 1, 0] } } } }]),
+      A([{ $group: { _id: { rep: '$rep', year: '$year', month: '$month' }, orders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } } } }]),
+      B2CDailyOrder.aggregate([{ $match: { ...filter, worked: true, orders: { $gt: 0 } } }, { $sort: { orders: -1 } }, { $limit: 5 }, { $project: { rep: 1, project: 1, dateKey: 1, orders: 1 } }]),
+      A([{ $group: { _id: null, totalOrders: { $sum: ordersNum }, totalWorkingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, totalDaysOff: { $sum: { $cond: [{ $eq: ['$orders', 0] }, 1, 0] } }, totalNoDataDays: { $sum: { $cond: [{ $eq: ['$orders', null] }, 1, 0] } } } }]),
+    ]);
+
+    const tt = totalsAgg[0] || {};
+    const totalOrders = tt.totalOrders || 0;
+    const totalWorkingDays = tt.totalWorkingDays || 0;
     const avgDailyRate = totalWorkingDays > 0 ? totalOrders / totalWorkingDays : 0;
+    const totalDaysOff = tt.totalDaysOff || 0;
+    const totalNoDataDays = tt.totalNoDataDays || 0;
 
-    // By rep
-    const repMap = new Map();
-    orders.forEach((o) => {
-      const id = String(o.rep?._id || 'unknown');
-      if (!repMap.has(id)) {
-        repMap.set(id, {
-          repId: o.rep?._id,
-          englishName: o.rep?.englishName,
-          arabicName: o.rep?.arabicName,
-          monthlyTarget: o.rep?.monthlyTarget || 400,
-          dailyTarget: o.rep?.dailyTarget || 15,
-          totalOrders: 0,
-          workingDays: 0,
-          project: o.project?.name,
-        });
-      }
-      const r = repMap.get(id);
-      if (o.orders !== null) r.totalOrders += (o.orders || 0);
-      if (o.worked && o.orders !== null) r.workingDays += 1;
-    });
-    const byRep = [...repMap.values()].map((r) => ({
-      ...r,
-      dailyRate: r.workingDays > 0 ? r.totalOrders / r.workingDays : 0,
-      // Performance = the rep's actual daily rate vs their daily target,
-      // measured ONLY over days they actually worked. This is robust mid-month
-      // (a half-finished month no longer drags the % down) and fair to reps who
-      // joined partway through — they're judged on their own working days, not
-      // a full-month target they never had the calendar days to reach.
-      performancePercent: r.workingDays > 0 ? (r.totalOrders / (r.workingDays * r.dailyTarget)) * 100 : 0,
-    })).sort((a, b) => b.totalOrders - a.totalOrders);
+    const byRep = repAgg.map((r) => {
+      const meta = repMap2.get(String(r._id)) || {};
+      const dailyTarget = meta.dailyTarget || repDefaults.dailyTarget;
+      return {
+        repId: r._id, englishName: meta.englishName, arabicName: meta.arabicName,
+        monthlyTarget: meta.monthlyTarget || repDefaults.monthlyTarget, dailyTarget,
+        totalOrders: r.totalOrders, workingDays: r.workingDays,
+        project: projMap2.get(String(r.project))?.name,
+        dailyRate: r.workingDays > 0 ? r.totalOrders / r.workingDays : 0,
+        performancePercent: r.workingDays > 0 ? (r.totalOrders / (r.workingDays * dailyTarget)) * 100 : 0,
+      };
+    }).sort((a, b) => b.totalOrders - a.totalOrders);
 
-    // By month
-    const monthMap = new Map();
-    orders.forEach((o) => {
-      const key = `${o.year}-${pad2(o.month)}`;
-      if (!monthMap.has(key)) monthMap.set(key, { key, year: o.year, month: o.month, totalOrders: 0, workingDays: 0, repsActive: new Set() });
-      const m = monthMap.get(key);
-      if (o.orders !== null) m.totalOrders += (o.orders || 0);
-      if (o.worked && o.orders !== null) m.workingDays += 1;
-      // "Active" = actually worked at least one day this month. Reps added to
-      // the sheet but not yet working (all days null/0) don't count.
-      if (o.worked && o.orders !== null) m.repsActive.add(String(o.rep?._id));
-    });
-    const byMonth = [...monthMap.values()].map((m) => ({
-      key: m.key, year: m.year, month: m.month,
-      totalOrders: m.totalOrders, workingDays: m.workingDays,
-      repsActive: m.repsActive.size,
+    const byMonth = monthAgg.map((m) => ({
+      key: `${m._id.year}-${pad2(m._id.month)}`, year: m._id.year, month: m._id.month,
+      totalOrders: m.totalOrders, workingDays: m.workingDays, repsActive: setCount(m.repsActive),
       avgDailyRate: m.workingDays > 0 ? m.totalOrders / m.workingDays : 0,
     })).sort((a, b) => a.key.localeCompare(b.key));
 
-    // By project
-    const projectMap = new Map();
-    orders.forEach((o) => {
-      const id = String(o.project?._id || 'none');
-      if (!projectMap.has(id)) projectMap.set(id, { projectId: o.project?._id, name: o.project?.name || '—', color: o.project?.color, totalOrders: 0, repsActive: new Set() });
-      const p = projectMap.get(id);
-      if (o.orders !== null) p.totalOrders += (o.orders || 0);
-      if (o.worked && o.orders !== null) p.repsActive.add(String(o.rep?._id));
-    });
-    const byProject = [...projectMap.values()].map((p) => ({ ...p, repsActive: p.repsActive.size })).sort((a, b) => b.totalOrders - a.totalOrders);
+    const byProject = projAgg.map((p) => ({
+      projectId: p._id, name: projMap2.get(String(p._id))?.name || '—', color: projMap2.get(String(p._id))?.color,
+      totalOrders: p.totalOrders, repsActive: setCount(p.repsActive),
+    })).sort((a, b) => b.totalOrders - a.totalOrders);
 
-    // By branch
-    const branchMap = new Map();
-    orders.forEach((o) => {
-      const id = String(o.branch?._id || 'none');
-      if (!branchMap.has(id)) branchMap.set(id, { branchId: o.branch?._id, name: o.branch?.name || '—', city: o.branch?.city, totalOrders: 0, repsActive: new Set() });
-      const b = branchMap.get(id);
-      if (o.orders !== null) b.totalOrders += (o.orders || 0);
-      if (o.worked && o.orders !== null) b.repsActive.add(String(o.rep?._id));
-    });
-    const byBranch = [...branchMap.values()].map((b) => ({ ...b, repsActive: b.repsActive.size })).sort((a, b) => b.totalOrders - a.totalOrders);
+    const byBranch = branchAgg.map((b) => ({
+      branchId: b._id, name: branchMap2.get(String(b._id))?.name || '—', city: branchMap2.get(String(b._id))?.city,
+      totalOrders: b.totalOrders, repsActive: setCount(b.repsActive),
+    })).sort((a, b) => b.totalOrders - a.totalOrders);
 
-    // By day (for the trend line + the daily-cards section).
-    // Tracks total orders, active reps, not-worked count, and reps-above-target for color coding.
-    // Semantic: orders > 0 = worked. orders === 0 = took the day off. null = no data yet.
-    const dayMap = new Map();
-    orders.forEach((o) => {
-      if (!dayMap.has(o.dateKey)) {
-        dayMap.set(o.dateKey, {
-          dateKey: o.dateKey,
-          totalOrders: 0,
-          repsActive: new Set(),
-          repsNotWorked: new Set(),
-          worked: 0,
-          targetSum: 0,
-          repsAboveTarget: 0,
-        });
-      }
-      const d = dayMap.get(o.dateKey);
-      const dailyTarget = o.rep?.dailyTarget || 15;
-      if (o.orders !== null) d.totalOrders += (o.orders || 0);
-      const repId = String(o.rep?._id);
-      if ((o.orders ?? 0) > 0) {
-        d.repsActive.add(repId);
-        d.worked += 1;
-        d.targetSum += dailyTarget;
-        if ((o.orders || 0) >= dailyTarget) d.repsAboveTarget += 1;
-      } else if (o.orders === 0) {
-        d.repsNotWorked.add(repId);
-      }
-    });
-    const byDay = [...dayMap.values()].map((d) => ({
-      dateKey: d.dateKey,
-      totalOrders: d.totalOrders,
-      repsActive: d.repsActive.size,
-      repsNotWorked: d.repsNotWorked.size,
-      worked: d.worked,
-      targetSum: d.targetSum,
-      achievementPercent: d.targetSum > 0 ? (d.totalOrders / d.targetSum) * 100 : 0,
-      repsAboveTarget: d.repsAboveTarget,
-    })).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-
-    // Team-wide off-day stats
-    const totalDaysOff = orders.filter((o) => o.orders === 0).length;
-    const totalNoDataDays = orders.filter((o) => o.orders === null || o.orders === undefined).length;
+    const byDay = dayAgg.map((d) => {
+      const targetSum = d.worked * repDefaults.dailyTarget;
+      return {
+        dateKey: d._id, totalOrders: d.totalOrders, repsActive: setCount(d.repsActive),
+        repsNotWorked: setCount(d.repsNotWorked), worked: d.worked, targetSum,
+        achievementPercent: targetSum > 0 ? (d.totalOrders / targetSum) * 100 : 0,
+        repsAboveTarget: d.repsAboveTarget,
+      };
+    }).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 
     // KPIs. Only reps who actually worked at least one day have a measurable
     // performance — reps added to the sheet but not yet working (all days
@@ -1095,34 +1005,19 @@ exports.getDashboardSummary = async (req, res) => {
     const atRiskReps = workedReps.filter((r) => r.performancePercent < 60).length;
     const avgPerformance = workedReps.length > 0 ? workedReps.reduce((s, r) => s + r.performancePercent, 0) / workedReps.length : 0;
 
-    // Day-of-week breakdown (0=Sun..6=Sat)
-    const dowMap = new Map(); // 0..6 -> { totalOrders, count }
-    orders.forEach((o) => {
-      if (o.orders === null || !o.worked) return;
-      const dow = new Date(`${o.dateKey}T00:00:00.000Z`).getUTCDay();
-      if (!dowMap.has(dow)) dowMap.set(dow, { dow, totalOrders: 0, workingCells: 0 });
-      const e = dowMap.get(dow);
-      e.totalOrders += o.orders || 0;
-      e.workingCells += 1;
-    });
+    // Day-of-week breakdown (0=Sun..6=Sat) — من الـ aggregation.
+    const dowMap = new Map(dowAgg.map((d) => [d._id, d]));
     const byDayOfWeek = Array.from({ length: 7 }, (_, i) => {
-      const e = dowMap.get(i) || { dow: i, totalOrders: 0, workingCells: 0 };
+      const e = dowMap.get(i) || { totalOrders: 0, workingCells: 0 };
       return { dow: i, totalOrders: e.totalOrders, workingCells: e.workingCells, avgPerWorker: e.workingCells > 0 ? e.totalOrders / e.workingCells : 0 };
     });
 
-    // Improvers / Decliners — compare each rep's last-month vs first-month avg-per-day
+    // Improvers / Decliners — من تجميع (rep, month) بدل المرور على كل الصفوف.
     const repMonthMap = new Map(); // repId -> { monthKey -> { orders, workingDays } }
-    orders.forEach((o) => {
-      const repId = String(o.rep?._id || '');
+    repMonthAgg.forEach((rm) => {
+      const repId = String(rm._id.rep || '');
       if (!repMonthMap.has(repId)) repMonthMap.set(repId, new Map());
-      const mk = `${o.year}-${pad2(o.month)}`;
-      const inner = repMonthMap.get(repId);
-      if (!inner.has(mk)) inner.set(mk, { orders: 0, workingDays: 0 });
-      const cell = inner.get(mk);
-      if (o.orders !== null) {
-        cell.orders += o.orders || 0;
-        if (o.worked && o.orders !== null) cell.workingDays += 1;
-      }
+      repMonthMap.get(repId).set(`${rm._id.year}-${pad2(rm._id.month)}`, { orders: rm.orders, workingDays: rm.workingDays });
     });
 
     const repTrends = byRep.map((r) => {
@@ -1158,19 +1053,15 @@ exports.getDashboardSummary = async (req, res) => {
     }).filter((r) => r.monthsActive >= 2)
       .sort((a, b) => b.consistency - a.consistency).slice(0, 5);
 
-    // Best single days across all reps
-    const bestSingleDays = orders
-      .filter((o) => o.orders !== null && o.worked)
-      .sort((a, b) => (b.orders || 0) - (a.orders || 0))
-      .slice(0, 5)
-      .map((o) => ({
-        repId: o.rep?._id,
-        englishName: o.rep?.englishName,
-        arabicName: o.rep?.arabicName,
-        dateKey: o.dateKey,
-        orders: o.orders,
-        project: o.project?.name,
-      }));
+    // Best single days across all reps — من الـ aggregation (أعلى 5 صفوف).
+    const bestSingleDays = bestDaysAgg.map((o) => ({
+      repId: o.rep,
+      englishName: repMap2.get(String(o.rep))?.englishName,
+      arabicName: repMap2.get(String(o.rep))?.arabicName,
+      dateKey: o.dateKey,
+      orders: o.orders,
+      project: projMap2.get(String(o.project))?.name,
+    }));
 
     // Most-productive days for the team as a whole (already covered by byDay sorted)
     const topTeamDays = [...byDay].sort((a, b) => b.totalOrders - a.totalOrders).slice(0, 5);

@@ -84,6 +84,7 @@ export default function B2CDashboard() {
   // The latest-month auto-selection happens after data loads (see effect below).
   const [year, setYear] = useState<number | ''>('');
   const [month, setMonth] = useState<number | ''>('');
+  const [showBelow, setShowBelow] = useState(false);
   const [project, setProject] = useState('');
   const [branch, setBranch] = useState('');
   const [rep, setRep] = useState('');
@@ -447,8 +448,56 @@ export default function B2CDashboard() {
             <KpiCard title={T.avgPerformance} value={`${k!.avgPerformance.toFixed(1)}%`} icon={<BarChart3 className="w-5 h-5" />} color={performanceColor(k!.avgPerformance)} />
             <KpiCard title={T.aboveTarget} value={k!.aboveTargetReps} icon={<ArrowUp className="w-5 h-5" />} color="#10b981" />
             <KpiCard title={T.onTrack} value={k!.onTrackReps} icon={<Minus className="w-5 h-5" />} color="#f59e0b" />
-            <KpiCard title={T.belowTarget} value={k!.belowTargetReps} icon={<ArrowDown className="w-5 h-5" />} color="#ef4444" />
+            <KpiCard title={T.belowTarget} value={k!.belowTargetReps} icon={<ArrowDown className="w-5 h-5" />} color="#ef4444" onClick={() => setShowBelow(true)} />
           </div>
+
+          {showBelow && (() => {
+            const arL = lang === 'ar';
+            const below = (dashboard.byRep || []).filter((r) => r.workingDays > 0 && r.performancePercent < 80).sort((a, b) => a.performancePercent - b.performancePercent);
+            const period = year && month ? `${monthLabel(`${year}-${String(month).padStart(2, '0')}`)}` : (arL ? 'كل الفترات المحددة' : 'Selected period');
+            const projAgg: Record<string, number> = {};
+            below.forEach((r) => { const p = r.project || (arL ? 'بدون مشروع' : 'No project'); projAgg[p] = (projAgg[p] || 0) + 1; });
+            return (
+              <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowBelow(false)}>
+                <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[88vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                    <div>
+                      <h3 className="font-bold text-lg text-slate-900">{arL ? 'المناديب دون الهدف' : 'Reps below target'} <span className="text-red-500">({below.length})</span></h3>
+                      <p className="text-xs text-slate-500 mt-0.5">{arL ? 'أداء أقل من 80% من الهدف' : 'Below 80% of target'} · {period}</p>
+                    </div>
+                    <button onClick={() => setShowBelow(false)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+                  </div>
+                  {Object.keys(projAgg).length > 0 && (
+                    <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-1.5">
+                      {Object.entries(projAgg).sort((a, b) => b[1] - a[1]).map(([p, n]) => (
+                        <span key={p} className="px-2.5 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-600">{p}: <b className="text-red-600">{n}</b></span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-900 text-slate-300 text-xs sticky top-0">
+                        <tr>{[arL ? '#' : '#', arL ? 'المندوب' : 'Rep', arL ? 'المشروع' : 'Project', arL ? 'الأداء' : 'Perf.', arL ? 'الطلبات' : 'Orders', arL ? 'أيام العمل' : 'Days'].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {below.map((r, i) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 text-slate-400">{i + 1}</td>
+                            <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap">{arL ? (r.arabicName || r.englishName) : (r.englishName || r.arabicName)}</td>
+                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{r.project || '—'}</td>
+                            <td className="px-3 py-2 font-bold" style={{ color: performanceColor(r.performancePercent) }}>{r.performancePercent.toFixed(0)}%</td>
+                            <td className="px-3 py-2 text-slate-600">{r.totalOrders}</td>
+                            <td className="px-3 py-2 text-slate-500">{r.workingDays}</td>
+                          </tr>
+                        ))}
+                        {below.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">{arL ? 'لا يوجد مناديب دون الهدف 🎉' : 'None below target 🎉'}</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Best/Worst/Capacity */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -708,10 +757,10 @@ export default function B2CDashboard() {
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
-function KpiCard({ title, value, icon, color }: { title: string; value: any; icon: React.ReactNode; color: string }) {
+function KpiCard({ title, value, icon, color, onClick }: { title: string; value: any; icon: React.ReactNode; color: string; onClick?: () => void }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-      className="bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 transition-all shadow-sm">
+    <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} onClick={onClick}
+      className={`bg-white border border-slate-200 rounded-xl p-4 hover:border-slate-300 transition-all shadow-sm ${onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5' : ''}`}>
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className="text-slate-500 text-[11px] font-medium uppercase tracking-wide truncate">{title}</p>

@@ -96,8 +96,8 @@ export default function VehicleRegistryList() {
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
-              <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'القطاع' : 'Sector', ar ? 'النوع' : 'Type', ar ? 'الماركة' : 'Brand', ar ? 'السنة' : 'Year', ar ? 'المالك' : 'Owner', ar ? 'التأمين' : 'Insurance', ar ? 'الحالة' : 'Status', ''].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+            <thead className="bg-slate-900 text-slate-300 text-xs">
+              <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'القطاع' : 'Sector', ar ? 'النوع' : 'Type', ar ? 'الماركة' : 'Brand', ar ? 'السنة' : 'Year', ar ? 'المالك' : 'Owner', ar ? 'التأمين' : 'Insurance', ar ? 'الحالة' : 'Status', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((v) => (

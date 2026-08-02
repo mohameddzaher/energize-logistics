@@ -116,9 +116,6 @@ export default function VehicleRegistryDashboard() {
           {sectorOpts.map((s) => (
             <Chip key={s} active={sectors.includes(s)} onClick={() => toggle(sectors, setSectors, s)}>{s}</Chip>
           ))}
-          {regTypeOpts.slice(0, 8).map((s) => (
-            <Chip key={s} active={regTypes.includes(s)} onClick={() => toggle(regTypes, setRegTypes, s)}>{s}</Chip>
-          ))}
         </div>
       </div>
 
@@ -127,11 +124,9 @@ export default function VehicleRegistryDashboard() {
         <ClickStat label={ar ? 'إجمالي المركبات' : 'Vehicles'} value={t.vehicles} accent="text-[#f37121]" onClick={() => goList({})} />
         <ClickStat label={ar ? 'مستندات منتهية' : 'Expired docs'} value={t.expiredTotal} accent="text-red-600" onClick={() => router.push('/system/vehicles/registry/alerts')} />
         <ClickStat label={ar ? 'قرب الانتهاء' : 'Expiring soon'} value={t.expiringTotal} accent="text-amber-600" onClick={() => router.push('/system/vehicles/registry/alerts')} />
-        <ClickStat label={ar ? 'إجمالي أقساط التأمين' : 'Total premium'} value={money(t.totalPremium)} accent="text-emerald-600" onClick={() => goList({})} />
-        <ClickStat label={ar ? 'متوسط القسط' : 'Avg premium'} value={money(t.avgPremium)} onClick={() => goList({})} />
-        <ClickStat label={ar ? 'حد الوقود الشهري' : 'Fuel limit'} value={money(t.totalFuelLimit)} accent="text-sky-600" onClick={() => goList({})} />
-        <ClickStat label={ar ? 'شرائح وقود نشطة' : 'Active fuel cards'} value={t.activeFuelCards} onClick={() => goList({ fuelCardStatus: 'نشط' })} />
-        <ClickStat label={ar ? 'مزوّدة بـ GPS' : 'With GPS'} value={t.withGps} onClick={() => goList({ hasGps: '1' })} />
+        <ClickStat label={ar ? 'مزوّدة بـ GPS' : 'With GPS'} value={t.withGps} accent="text-emerald-600" onClick={() => goList({ hasGps: '1' })} />
+        <ClickStat label={ar ? 'بدون GPS' : 'Without GPS'} value={Math.max(0, (t.vehicles || 0) - (t.withGps || 0))} accent="text-slate-500" onClick={() => goList({ missingDoc: 'gps' })} />
+        <ClickStat label={ar ? 'شرائح وقود نشطة' : 'Active fuel cards'} value={t.activeFuelCards} accent="text-sky-600" onClick={() => goList({ fuelCardStatus: 'نشط' })} />
         <ClickStat label={ar ? 'بدون تأمين' : 'No insurance'} value={t.missingInsurance} accent="text-orange-600" onClick={() => goList({ missingDoc: 'insurance' })} />
         <ClickStat label={ar ? 'بدون بطاقة تشغيل' : 'No op. card'} value={t.missingOperatingCard} accent="text-orange-600" onClick={() => goList({ missingDoc: 'operatingCard' })} />
         <ClickStat label={ar ? 'عدد الماركات' : 'Brands'} value={t.brands} onClick={() => goList({})} />

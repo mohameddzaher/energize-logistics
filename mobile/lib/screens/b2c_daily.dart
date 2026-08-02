@@ -32,7 +32,7 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
   Future<void> _load() async {
     try {
       final results = await Future.wait([
-        Api.instance.get('/api/b2c/reps'),
+        Api.instance.get('/api/b2c/reps').catchError((_) => <String, dynamic>{}),
         Api.instance.get('/api/b2c/daily-orders?dateFrom=$_dateKey&dateTo=$_dateKey'),
       ]);
       if (!mounted) return;

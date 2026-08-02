@@ -61,7 +61,7 @@ class _ApiPickerState extends State<_ApiPicker> {
       final d = await Api.instance.get('${widget.endpoint}${sep}limit=200');
       final raw = d is Map ? d[widget.listKey] : d;
       if (!mounted) return;
-      setState(() { _rows = raw is List ? List<Map<String, dynamic>>.from(raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : []; _loading = false; });
+      setState(() { _rows = raw is List ? List<Map<String, dynamic>>.from(raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : []; _loading = false; _error = null; });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }

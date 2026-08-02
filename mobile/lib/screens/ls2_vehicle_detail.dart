@@ -778,9 +778,9 @@ class _DistanceFuelTabState extends State<_DistanceFuelTab> {
   Future<void> _load() async {
     try {
       final results = await Future.wait([
-        Api.instance.get('/api/ls2/vehicles/${widget.vehicleId}/mileage'),
+        Api.instance.get('/api/ls2/vehicles/${widget.vehicleId}/mileage').catchError((_) => <String, dynamic>{}),
         Api.instance.get('/api/ls2/vehicles/${widget.vehicleId}/fuel').catchError((_) => <String, dynamic>{}),
-        Api.instance.get('/api/ls2/vehicles/${widget.vehicleId}/history'),
+        Api.instance.get('/api/ls2/vehicles/${widget.vehicleId}/history').catchError((_) => <String, dynamic>{}),
       ]);
       if (!mounted) return;
       setState(() {

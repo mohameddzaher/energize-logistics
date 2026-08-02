@@ -69,8 +69,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     try {
       final results = await Future.wait([
         Api.instance.get('/api/shipment-orders/fields'),
-        Api.instance.get('/api/shipment-orders/customers'),
-        Api.instance.get('/api/shipment-orders/vehicles'),
+        Api.instance.get('/api/shipment-orders/customers').catchError((_) => <String, dynamic>{}),
+        Api.instance.get('/api/shipment-orders/vehicles').catchError((_) => <String, dynamic>{}),
       ]);
       if (!mounted) return;
       setState(() {

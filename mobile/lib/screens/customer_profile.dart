@@ -63,7 +63,7 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     try {
       final results = await Future.wait([
         Api.instance.get('/api/customers?limit=1000').catchError((_) => <String, dynamic>{}),
-        Api.instance.get('/api/invoices?customer=${widget.customerId}&limit=200'),
+        Api.instance.get('/api/invoices?customer=${widget.customerId}&limit=200').catchError((_) => <String, dynamic>{}),
         Api.instance.get('/api/payments/customer/${widget.customerId}').catchError((_) => <String, dynamic>{}),
       ]);
       if (!mounted) return;

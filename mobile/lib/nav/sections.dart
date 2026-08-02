@@ -52,6 +52,7 @@ import '../screens/collectors_performance.dart';
 import '../screens/customs_guide.dart';
 import '../screens/finance_tasks.dart';
 import '../screens/cash_wallet.dart';
+import '../screens/wallet_dashboard.dart';
 import '../screens/settings_screen.dart';
 import '../screens/performance_evaluations.dart';
 
@@ -106,13 +107,20 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المدفوعات', 'Payments', Icons.payments_outlined, (c) => const PaymentsScreen()),
         AppPage('متابعات التحصيل', 'Collections', Icons.task_alt_outlined, (c) => const CollectionsScreen()),
         AppPage('النزاعات', 'Disputes', Icons.gavel_outlined, (c) => const DisputesScreen()),
-        AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen()),
-        AppPage('الموردون', 'Vendors', Icons.store_outlined, (c) => ResourceScreen(config: vendorsCfg)),
         AppPage('تنبيهات الائتمان', 'Credit Alerts', Icons.credit_card_outlined, (c) => const CreditAlertsScreen()),
         AppPage('الفواتير المتأخرة', 'Overdue', Icons.event_busy_outlined, (c) => const OverdueScreen()),
         AppPage('أداء المحصّلين', 'Collectors', Icons.leaderboard_outlined, (c) => const CollectorsPerformanceScreen()),
         AppPage('مهام التحصيل', 'Tasks', Icons.checklist_rtl_outlined, (c) => const FinanceTasksScreen()),
-        AppPage('المحفظة اليومية', 'Cash Wallet', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen()),
+      ],
+    ),
+    AppSection(
+      key: 'Operations', arTitle: 'العمليات', enTitle: 'Operations', icon: Icons.workspaces_outline,
+      roles: const [..._admins, 'employee', 'operations_manager', 'operations', 'moderator'],
+      pages: [
+        AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen()),
+        AppPage('الموردون', 'Vendors', Icons.store_outlined, (c) => ResourceScreen(config: vendorsCfg)),
+        AppPage('العهدة اليومية', 'Cash Wallet', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen()),
+        AppPage('لوحة المحفظة', 'Wallet Dashboard', Icons.pie_chart_outline, (c) => const WalletDashboardScreen()),
       ],
     ),
     AppSection(

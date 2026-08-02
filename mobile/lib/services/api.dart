@@ -56,7 +56,7 @@ class Api {
         Uri.parse('${AppConfig.apiBase}/api/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refreshToken': refresh}),
-      );
+      ).timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) return false;
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final token = body['accessToken'] as String?;
@@ -69,21 +69,30 @@ class Api {
     }
   }
 
+  // مهلة زمنية لكل طلب — على شبكة موبايل بطيئة أو متقطعة، طلب بلا مهلة يعلّق
+  // للأبد فتفضل الشاشة «بتلف». مع المهلة يتحوّل لخطأ يظهر مع زر إعادة المحاولة.
+  static const _timeout = Duration(seconds: 25);
+
   Future<dynamic> _request(String method, String path, {Object? body, bool retried = false}) async {
     final uri = Uri.parse('${AppConfig.apiBase}$path');
     late http.Response res;
     final encoded = body == null ? null : jsonEncode(body);
-    switch (method) {
-      case 'GET':
-        res = await http.get(uri, headers: _headers());
-      case 'POST':
-        res = await http.post(uri, headers: _headers(), body: encoded);
-      case 'PATCH':
-        res = await http.patch(uri, headers: _headers(), body: encoded);
-      case 'PUT':
-        res = await http.put(uri, headers: _headers(), body: encoded);
-      case 'DELETE':
-        res = await http.delete(uri, headers: _headers());
+    try {
+      switch (method) {
+        case 'GET':
+          res = await http.get(uri, headers: _headers()).timeout(_timeout);
+        case 'POST':
+          res = await http.post(uri, headers: _headers(), body: encoded).timeout(_timeout);
+        case 'PATCH':
+          res = await http.patch(uri, headers: _headers(), body: encoded).timeout(_timeout);
+        case 'PUT':
+          res = await http.put(uri, headers: _headers(), body: encoded).timeout(_timeout);
+        case 'DELETE':
+          res = await http.delete(uri, headers: _headers()).timeout(_timeout);
+      }
+    } on Exception {
+      // انقطاع/مهلة/فشل شبكة — رسالة عربية واضحة بدل تعليق الشاشة.
+      throw ApiException(0, 'تعذّر الاتصال بالخادم — تأكد من الإنترنت وأعد المحاولة');
     }
 
     if (res.statusCode == 401 && !retried && !path.startsWith('/api/auth/')) {
@@ -104,7 +113,12 @@ class Api {
   // تحميل ملف ثنائي (PDF البوليصة مثلًا) بالمصادقة — يرجّع البايتات كما هي.
   Future<Uint8List> getBytes(String path, {bool retried = false}) async {
     final uri = Uri.parse('${AppConfig.apiBase}$path');
-    var res = await http.get(uri, headers: _headers());
+    late http.Response res;
+    try {
+      res = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 40));
+    } on Exception {
+      throw ApiException(0, 'تعذّر تحميل الملف — تأكد من الإنترنت وأعد المحاولة');
+    }
     if (res.statusCode == 401 && !retried) {
       if (await _refresh()) return getBytes(path, retried: true);
       throw ApiException(401, 'انتهت الجلسة — سجّل الدخول من جديد');

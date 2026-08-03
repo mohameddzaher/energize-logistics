@@ -526,6 +526,8 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 _chip(sheet, Icons.local_shipping_outlined, status == 'mounted' ? tr('نقل لشاحنة أخرى', 'Transfer') : tr('تركيب على شاحنة', 'Mount'), T.success, () => _mount(t)),
               if (status == 'in_repair')
                 _chip(sheet, Icons.autorenew_rounded, tr('نتيجة التجديد', 'Renewal result'), T.violet, () => _renewalResult(t)),
+              // نقل الحالة — متاح دائمًا لكل الكاوتش (مثلًا: مستعمل صالح ← سكراب/تالف، أو سكراب ← مخزن).
+              _chip(sheet, Icons.swap_horiz_rounded, tr('نقل الحالة', 'Change status'), T.info, () => _changeStatus(t)),
               if (status != 'scrap' && status != 'damaged' && status != 'retired' && status != 'sold')
                 _chip(sheet, Icons.dangerous_outlined, tr('إتلاف/سكراب مباشرة', 'Retire'), T.danger, () => _retire(t)),
               // بيع الفردة (خاصة السكراب — تُباع كخردة).
@@ -978,6 +980,30 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     );
     if (kind == null) return;
     await _post('/api/ls2/assets/tires/${t['_id']}/retire', {'kind': kind}, tr('تم التسجيل', 'Recorded'));
+  }
+
+  // نقل الحالة — أي كاوتش لأي حالة مباشرة (يُفَك تلقائيًا لو كان مركّبًا).
+  Future<void> _changeStatus(Map<String, dynamic> t) async {
+    const opts = [
+      ('spare', 'في المخزن (سليمة)', 'In stock'),
+      ('in_repair', 'تحت التجديد', 'Under renewal'),
+      ('scrap', 'سكراب', 'Scrap'),
+      ('damaged', 'تالفة', 'Damaged'),
+      ('retired', 'معدومة', 'Retired'),
+      ('sold', 'مباعة', 'Sold'),
+    ];
+    final status = await showDialog<String>(
+      context: context,
+      builder: (c) => SimpleDialog(
+        title: Text(tr('نقل الفردة إلى حالة', 'Move tire to status')),
+        children: opts.where((o) => o.$1 != t['status']).map((o) => SimpleDialogOption(
+          onPressed: () => Navigator.pop(c, o.$1),
+          child: Text(tr(o.$2, o.$3)),
+        )).toList(),
+      ),
+    );
+    if (status == null) return;
+    await _post('/api/ls2/assets/tires/${t['_id']}/status', {'status': status}, tr('تم النقل', 'Moved'));
   }
 
   // بيع الفردة (السكراب/التالف يُباع كخردة) — تخرج من المخزون كمباعة.

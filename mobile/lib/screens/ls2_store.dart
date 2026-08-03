@@ -31,11 +31,13 @@ const _statusMeta = {
 class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   List<Map<String, dynamic>> _items = [];
   Map<String, dynamic> _totals = {};
+  List<Map<String, dynamic>> _cats = [];
   List<String> _plates = [];
   bool _loading = true;
   String? _error;
   String _q = '';
   String _statusF = '';
+  String _catF = '';
   late final void Function() _onLive;
 
   @override
@@ -62,6 +64,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
       setState(() {
         _items = List<Map<String, dynamic>>.from(res[0]['items'] ?? []);
         _totals = Map<String, dynamic>.from(res[1]['totals'] ?? {});
+        _cats = List<Map<String, dynamic>>.from(res[1]['byCategory'] ?? []);
         _loading = false; _error = null;
       });
     } catch (e) { if (mounted) setState(() { _loading = false; _error = e.toString(); }); }
@@ -72,7 +75,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final items = _statusF.isEmpty ? _items : _items.where((i) => i['status'] == _statusF).toList();
+    final items = _items.where((i) => (_statusF.isEmpty || i['status'] == _statusF) && (_catF.isEmpty || i['category'] == _catF)).toList();
     return AppScaffold(
       title: Text(tr('مخزن النقل الثقيل', 'Heavy Transport Store')),
       actions: [IconButton(icon: const Icon(Icons.history), tooltip: tr('سجل الحركات', 'Movements'), onPressed: _openLog)],
@@ -105,6 +108,18 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                       if (_statusF.isNotEmpty) Padding(padding: const EdgeInsets.only(right: 6, left: 6), child: InputChip(label: Text(_sLabel(_statusF)), onDeleted: () => setState(() => _statusF = ''))),
                     ]),
                   ),
+                  if (_cats.isNotEmpty)
+                    SizedBox(
+                      height: 38,
+                      child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+                        Padding(padding: const EdgeInsets.only(left: 6), child: FilterChip(selected: _catF.isEmpty, label: Text(tr('الكل', 'All')), onSelected: (_) => setState(() => _catF = ''), labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _catF.isEmpty ? Colors.white : T.navy), selectedColor: T.navy, backgroundColor: T.navy.withValues(alpha: 0.08), side: BorderSide.none, checkmarkColor: Colors.white)),
+                        ..._cats.map((c) {
+                          final k = (c['key'] ?? '').toString();
+                          final sel = _catF == k;
+                          return Padding(padding: const EdgeInsets.only(left: 6), child: FilterChip(selected: sel, label: Text('${Lang.instance.ar ? (c['ar'] ?? k) : k} (${c['count']})'), onSelected: (_) => setState(() => _catF = sel ? '' : k), labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : T.navy), selectedColor: T.navy, backgroundColor: T.navy.withValues(alpha: 0.08), side: BorderSide.none, checkmarkColor: Colors.white));
+                        }),
+                      ]),
+                    ),
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,
@@ -125,8 +140,8 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                         Expanded(child: Text((it['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                         Chip2(_sLabel(st), _sColor(st)),
                                       ]),
-                                      if ((it['category'] ?? '').toString().isNotEmpty || (it['compatibleModels'] as List?)?.isNotEmpty == true)
-                                        Padding(padding: const EdgeInsets.only(top: 2), child: Text([it['category'], ...((it['compatibleModels'] as List?) ?? [])].where((x) => (x ?? '').toString().isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                      if ((it['categoryAr'] ?? it['category'] ?? '').toString().isNotEmpty || (it['compatibleModels'] as List?)?.isNotEmpty == true)
+                                        Padding(padding: const EdgeInsets.only(top: 2), child: Text([it['categoryAr'] ?? it['category'], ...((it['compatibleModels'] as List?) ?? [])].where((x) => (x ?? '').toString().isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis)),
                                       const SizedBox(height: 8),
                                       Row(children: [
                                         Text('${tr('الرصيد', 'Qty')}: ', style: const TextStyle(fontSize: 12, color: T.inkFaint)),

@@ -10,7 +10,8 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import { Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search } from 'lucide-react';
 
-type Item = { _id: string; code?: string; name: string; category?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
+type Item = { _id: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
+type Cat = { key: string; ar: string; count: number };
 type Movement = { _id: string; itemName: string; type: 'in' | 'out'; quantity: number; vehiclePlate?: string; reason?: string; balanceAfter: number; performedByName?: string; createdAt: string };
 
 const money = (n: unknown) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -31,10 +32,14 @@ export default function Ls2StorePage() {
 
   const [items, setItems] = useState<Item[]>([]);
   const [totals, setTotals] = useState<any>(null);
+  const [cats, setCats] = useState<Cat[]>([]);
   const [plates, setPlates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [statusF, setStatusF] = useState('');
+  const [catF, setCatF] = useState('');
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
   const [move, setMove] = useState<{ item: Item; type: 'in' | 'out' } | null>(null);
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [addNew, setAddNew] = useState(false);
@@ -47,7 +52,7 @@ export default function Ls2StorePage() {
         api.get<{ items: Item[] }>(`/api/ls2/store${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`),
         api.get<{ totals: any }>('/api/ls2/store/dashboard'),
       ]);
-      setItems(d.items || []); setTotals(dash.totals);
+      setItems(d.items || []); setTotals(dash.totals); setCats((dash as any).byCategory || []);
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setLoading(false); }
   }, [q, notify]);
 
@@ -61,7 +66,14 @@ export default function Ls2StorePage() {
   useEffect(() => { if (showLog) loadLog(); }, [showLog, loadLog]);
   useSocket('ls2:store', useCallback(() => { if (showLog) loadLog(); }, [showLog, loadLog]));
 
-  const shown = useMemo(() => items.filter((i) => !statusF || i.status === statusF), [items, statusF]);
+  const shown = useMemo(() => items.filter((i) =>
+    (!statusF || i.status === statusF)
+    && (!catF || i.category === catF)
+    && (!priceMin || (i.unitPrice || 0) >= Number(priceMin))
+    && (!priceMax || (i.unitPrice || 0) <= Number(priceMax))
+  ), [items, statusF, catF, priceMin, priceMax]);
+  const anyFilter = statusF || catF || priceMin || priceMax || q;
+  const resetFilters = () => { setStatusF(''); setCatF(''); setPriceMin(''); setPriceMax(''); setQ(''); };
 
   const del = async (it: Item) => {
     if (!(await confirm(ar ? `حذف الصنف «${it.name}»؟` : `Delete "${it.name}"?`))) return;
@@ -88,13 +100,31 @@ export default function Ls2StorePage() {
         <button onClick={() => setStatusF(statusF === 'out' ? '' : 'out')} className="text-start"><StatCard label={ar ? 'نافد' : 'Out of stock'} value={totals?.outOfStock ?? 0} accent="text-red-600" /></button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? 'ابحث بالاسم / الكود / الموديل…' : 'name / code / model…'} className="ps-8 pe-3 py-2 rounded-lg border border-slate-200 text-sm w-72 max-w-full" />
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? 'ابحث بالاسم / الكود / الموديل…' : 'name / code / model…'} className="ps-8 pe-3 py-2 rounded-lg border border-slate-200 text-sm w-64 max-w-full" />
+          </div>
+          <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="px-2 py-2 rounded-lg border border-slate-200 text-sm">
+            <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
+            <option value="ok">{ar ? 'متوفر' : 'In stock'}</option>
+            <option value="low">{ar ? 'منخفض' : 'Low'}</option>
+            <option value="out">{ar ? 'نافد' : 'Out'}</option>
+          </select>
+          <input type="number" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} placeholder={ar ? 'سعر من' : 'price ≥'} className="w-24 px-2 py-2 rounded-lg border border-slate-200 text-sm" />
+          <input type="number" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} placeholder={ar ? 'سعر إلى' : 'price ≤'} className="w-24 px-2 py-2 rounded-lg border border-slate-200 text-sm" />
+          {anyFilter && <button onClick={resetFilters} className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs">{ar ? 'مسح الفلاتر' : 'Reset'} <X className="w-3 h-3" /></button>}
+          <span className="text-xs text-slate-400 ms-auto">{shown.length} {ar ? 'صنف' : 'items'}</span>
         </div>
-        {statusF && <button onClick={() => setStatusF('')} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-[#12325c]/10 text-[#12325c] text-xs">{ar ? STATUS[statusF].ar : STATUS[statusF].en} <X className="w-3 h-3" /></button>}
-        <span className="text-xs text-slate-400">{shown.length} {ar ? 'صنف' : 'items'}</span>
+        {cats.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={() => setCatF('')} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${!catF ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>{ar ? 'الكل' : 'All'}</button>
+            {cats.map((c) => (
+              <button key={c.key} onClick={() => setCatF(catF === c.key ? '' : c.key)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${catF === c.key ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>{ar ? c.ar : c.key} <span className="opacity-60">({c.count})</span></button>
+            ))}
+          </div>
+        )}
       </div>
 
       {showLog && <MovementsLog movements={movements} ar={ar} />}
@@ -112,7 +142,7 @@ export default function Ls2StorePage() {
                     <p className="font-semibold text-slate-800">{it.name}</p>
                     {(it.compatibleModels?.length || it.code) ? <p className="text-[11px] text-slate-400">{it.code}{it.compatibleModels?.length ? ` · ${it.compatibleModels.join('، ')}` : ''}</p> : null}
                   </td>
-                  <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{it.category || '—'}</td>
+                  <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{it.categoryAr || it.category || '—'}</td>
                   <td className="px-3 py-2 font-bold text-slate-800">{it.quantity} <span className="text-[10px] font-normal text-slate-400">{it.unit}</span></td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{money(it.unitPrice)}</td>
                   <td className="px-3 py-2 text-emerald-700 font-semibold whitespace-nowrap">{money(it.value)}</td>

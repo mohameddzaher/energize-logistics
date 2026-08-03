@@ -22,6 +22,7 @@ import {
   Truck, RefreshCw, Search, Plus, Upload, ArrowLeftRight, ArrowDownToLine, Pencil,
   Trash2, History, Radio, CircleDot, Container, ChevronDown, ChevronRight, X, ExternalLink,
   Wrench, Boxes,
+  Repeat,
 } from 'lucide-react';
 
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
@@ -587,21 +588,25 @@ export default function Ls2FleetAssetsPage() {
                                   className="px-2 py-1 rounded-md bg-violet-50 hover:bg-violet-100 text-violet-700 text-[11px] font-medium"
                                 >{ar ? 'نتيجة التجديد' : 'Result'}</button>
                               )}
-                              <button type="button" title={ar ? 'نقل الحالة (مخزن / تجديد / سكراب / تالف …)' : 'Change status'} disabled={busy} onClick={() => setStatusTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
+                              <button type="button" title={ar ? 'نقل الحالة (مخزن / تجديد / سكراب / تالف / معدوم / مباع)' : 'Change status'} disabled={busy} onClick={() => setStatusTire(ti)} className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold inline-flex items-center gap-1"><Repeat className="w-3.5 h-3.5" />{ar ? 'نقل الحالة' : 'Status'}</button>
                               <button type="button" title={t.edit} onClick={() => setEditTire(ti)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
                               {ti.status !== 'in_repair' && ti.status !== 'scrap' && (
                                 <button type="button" title={ar ? 'تالفة / سكراب' : 'Damaged / scrap'} disabled={busy} onClick={() => setRetireTire(ti)} className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                               )}
                             </div>
                           )}
-                          {/* السكراب/التالف يُباع كخردة — أكشن البيع متاح حتى لو الحالة نهائية */}
-                          {admin && (ti.status === 'scrap' || ti.status === 'damaged') && (
+                          {/* الحالات النهائية (سكراب/تالف/معدوم/مباع): نقل الحالة متاح دائمًا (مثلًا رجوع للمخزن) + بيع كخردة */}
+                          {admin && terminal && (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button type="button" title={ar ? 'نقل الحالة' : 'Change status'} disabled={busy} onClick={() => setStatusTire(ti)} className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold inline-flex items-center gap-1"><Repeat className="w-3.5 h-3.5" />{ar ? 'نقل الحالة' : 'Status'}</button>
+                              {(ti.status === 'scrap' || ti.status === 'damaged') && (
+                                <button type="button" disabled={busy} onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }} className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-medium">{ar ? 'بيع كخردة' : 'Sell'}</button>
+                              )}
+                            </div>
+                          )}
+                          {admin && !terminal && (ti.status === 'scrap') && (
                             <div className="flex items-center justify-end">
-                              <button
-                                type="button" disabled={busy}
-                                onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }}
-                                className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-medium"
-                              >{ar ? 'بيع كخردة' : 'Sell'}</button>
+                              <button type="button" disabled={busy} onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }} className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-medium">{ar ? 'بيع كخردة' : 'Sell'}</button>
                             </div>
                           )}
                         </td>

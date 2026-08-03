@@ -4,6 +4,15 @@ const { emitToAll } = require('../websocket/socketManager');
 
 const emit = () => { try { emitToAll('ls2:store', {}); } catch (e) {} cache.clear('ls2store:'); };
 
+// تعريب تصنيفات القطع.
+const CATEGORY_AR = {
+  air_system: 'نظام الهواء', lighting: 'الإضاءة', brakes: 'الفرامل', body_cabin: 'الهيكل والكابينة',
+  uncategorised: 'غير مصنّف', fasteners: 'مسامير وتثبيت', engine: 'المحرك', suspension: 'التعليق (السوست)',
+  electrical: 'الكهرباء', filters: 'الفلاتر', trailer: 'التريلة', fluids_oils: 'الزيوت والسوائل',
+  hvac: 'التكييف', bearings: 'الرمان بلي',
+};
+const catAr = (c) => CATEGORY_AR[c] || c || 'غير مصنّف';
+
 const ITEM_FIELDS = ['code', 'name', 'category', 'groupAr', 'quantity', 'unit', 'unitPrice', 'minQuantity', 'compatibleModels', 'notes'];
 const pick = (body) => { const o = {}; ITEM_FIELDS.forEach((f) => { if (body[f] !== undefined) o[f] = body[f]; }); return o; };
 
@@ -24,7 +33,7 @@ exports.listItems = async (req, res) => {
       filter.$or = [{ name: rx }, { code: rx }, { category: rx }, { compatibleModels: rx }];
     }
     const items = (await Ls2StoreItem.find(filter).sort({ name: 1 }).limit(3000).lean())
-      .map((it) => ({ ...it, status: statusOf(it), value: Math.round((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0) * 100) / 100 }));
+      .map((it) => ({ ...it, categoryAr: catAr(it.category), status: statusOf(it), value: Math.round((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0) * 100) / 100 }));
     if (req.query.status) {
       const body = { items: items.filter((i) => i.status === req.query.status) };
       cache.set(cacheKey, body, 15000);
@@ -52,7 +61,7 @@ exports.dashboard = async (req, res) => {
     }
     const body = {
       totals: { items: items.length, totalUnits, totalValue: Math.round(totalValue), lowStock: low, outOfStock: out },
-      byCategory: Object.entries(byCategory).map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count),
+      byCategory: Object.entries(byCategory).map(([key, count]) => ({ key, ar: catAr(key), count })).sort((a, b) => b.count - a.count),
     };
     cache.set('ls2store:dash', body, 15000);
     res.json(body);

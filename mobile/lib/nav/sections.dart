@@ -60,6 +60,7 @@ import '../screens/vehicle_registry_dash.dart';
 import '../screens/crm_calendar.dart';
 import '../screens/ls2_temperature.dart';
 import '../screens/ls2_settings.dart';
+import '../screens/ls2_store.dart';
 import '../screens/settings_screen.dart';
 import '../screens/performance_evaluations.dart';
 
@@ -250,6 +251,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen()),
         AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg)),
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen()),
+        AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const Ls2StoreScreen()),
         AppPage('السائقون (تتبع)', 'Drivers', Icons.badge_outlined, (c) => const Ls2DriversScreen()),
         AppPage('الحرارة', 'Temperature', Icons.thermostat_outlined, (c) => const Ls2TemperatureScreen()),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const Ls2AlertsScreen()),

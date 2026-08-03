@@ -157,13 +157,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/dashboard', label: L.dashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Main' },
     { href: '/system/overdue', label: L.overdue, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Main' },
     { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'employee', 'moderator'], section: 'Main' },
-    // Customers & Finance
-    { href: '/system/invoices', label: L.invoices, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Customers & Finance' },
-    { href: '/system/payments', label: L.payments, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Customers & Finance' },
-    { href: '/system/collections', label: L.collections, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Customers & Finance' },
-    { href: '/system/collectors', label: L.collectors, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin'], section: 'Customers & Finance' },
-    { href: '/system/tasks', label: L.tasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Customers & Finance' },
-    { href: '/system/disputes', label: L.disputes, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager'], section: 'Customers & Finance' },
     // Operations
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
     { href: '/system/operations/dispatch-sheets', label: L.dispatchSheets, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Operations' },
@@ -266,6 +259,13 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/bd/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
     { href: '/system/bd/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
     { href: '/system/bd/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(BD_ROLES), section: 'Business Development', restrict: true },
+    // Customers & Finance — moved to the bottom (currently unused; kept before Administration)
+    { href: '/system/invoices', label: L.invoices, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Customers & Finance' },
+    { href: '/system/payments', label: L.payments, icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Customers & Finance' },
+    { href: '/system/collections', label: L.collections, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Customers & Finance' },
+    { href: '/system/collectors', label: L.collectors, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin'], section: 'Customers & Finance' },
+    { href: '/system/tasks', label: L.tasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Customers & Finance' },
+    { href: '/system/disputes', label: L.disputes, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager'], section: 'Customers & Finance' },
     // ---- Administration (الشؤون الإدارية / السكرتارية) ----
     { href: '/system/administration', label: lang === 'ar' ? 'لوحة المهام' : 'Task Board', icon: <ClipboardList className="w-5 h-5" />, roles: ADMINISTRATION_ROLES, section: 'Administration' },
     // ---- Contracts (إدارة العقود) ----

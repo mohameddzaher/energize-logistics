@@ -497,7 +497,7 @@ export default function Ls2FleetAssetsPage() {
       {tab === 'tires' && (
         <div className="space-y-3">
           {/* بطاقات الحالة = فلاتر: نقرة تحصر الجدول، نقرة ثانية تلغي الفلتر */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2">
+          <div className="grid grid-cols-3 lg:grid-cols-9 gap-2">
             {([
               { key: '', label: ar ? 'الكل' : 'All', count: tires.length, cls: 'text-slate-700', dot: 'bg-slate-400' },
               { key: 'mounted', label: ar ? 'مركّبة' : 'Mounted', count: tires.filter((x) => x.status === 'mounted').length, cls: 'text-emerald-700', dot: 'bg-emerald-500' },
@@ -562,17 +562,17 @@ export default function Ls2FleetAssetsPage() {
                         <td className="px-4 py-3 text-xs text-slate-600">{ti.positionLabel ? `${ti.positionLabel}${ti.section ? ` · ${ti.section}` : ''}` : '—'}</td>
                         <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${st.cls}`}>{ar ? st.ar : st.en}</span></td>
                         <td className="px-4 py-3">
-                          {admin && !terminal && (
-                            <div className="flex items-center justify-end gap-1.5">
+                          {admin && (
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
                               {/* المخزن/الجديد/المجدّد: فردة غير مركّبة ⇐ زرّ تركيب واضح (مش أيقونة مبهمة) */}
-                              {ti.status === 'spare' && (
+                              {!terminal && ti.status === 'spare' && (
                                 <button type="button" onClick={() => setMoveTire(ti)} className="px-2.5 py-1 rounded-md bg-orange-50 hover:bg-orange-100 text-[#f37121] text-[11px] font-semibold inline-flex items-center gap-1"><ArrowDownToLine className="w-3.5 h-3.5" />{ar ? 'تركيب على شاحنة' : 'Mount on truck'}</button>
                               )}
                               {/* المركّبة: نقل/تبديل مع فردة تانية */}
-                              {ti.status === 'mounted' && (
+                              {!terminal && ti.status === 'mounted' && (
                                 <button type="button" title={ar ? 'نقل / تبديل' : 'Move / swap'} onClick={() => setMoveTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
                               )}
-                              {ti.status === 'mounted' && (
+                              {!terminal && ti.status === 'mounted' && (
                                 /* الإنزال بكل وجهاته (مخزن بنسبة٪ / تجديد / تالفة / سكراب)
                                    + تركيب بديل مكانها — عملية واحدة من مودال واحد. */
                                 <button
@@ -581,32 +581,25 @@ export default function Ls2FleetAssetsPage() {
                                   className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600"
                                 ><ArrowDownToLine className="w-4 h-4" /></button>
                               )}
-                              {ti.status === 'in_repair' && (
+                              {!terminal && ti.status === 'in_repair' && (
                                 <button
                                   type="button" title={ar ? 'نتيجة التجديد: مجدد أو سكراب' : 'Renewal result'} disabled={busy}
                                   onClick={() => setRenewalTire(ti)}
                                   className="px-2 py-1 rounded-md bg-violet-50 hover:bg-violet-100 text-violet-700 text-[11px] font-medium"
                                 >{ar ? 'نتيجة التجديد' : 'Result'}</button>
                               )}
+                              {/* نقل الحالة — متاح دائمًا لكل الحالات (بما فيها النهائية، مثلًا رجوع للمخزن) */}
                               <button type="button" title={ar ? 'نقل الحالة (مخزن / تجديد / سكراب / تالف / معدوم / مباع)' : 'Change status'} disabled={busy} onClick={() => setStatusTire(ti)} className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold inline-flex items-center gap-1"><Repeat className="w-3.5 h-3.5" />{ar ? 'نقل الحالة' : 'Status'}</button>
-                              <button type="button" title={t.edit} onClick={() => setEditTire(ti)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
-                              {ti.status !== 'in_repair' && ti.status !== 'scrap' && (
+                              {/* بيع كخردة — لأي فردة سكراب أو تالفة (مركّبة كانت أو نهائية) */}
+                              {(ti.status === 'scrap' || ti.status === 'damaged') && (
+                                <button type="button" disabled={busy} onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }} className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold inline-flex items-center gap-1"><Boxes className="w-3.5 h-3.5" />{ar ? 'بيع كخردة' : 'Sell'}</button>
+                              )}
+                              {!terminal && (
+                                <button type="button" title={t.edit} onClick={() => setEditTire(ti)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
+                              )}
+                              {!terminal && ti.status !== 'in_repair' && ti.status !== 'scrap' && (
                                 <button type="button" title={ar ? 'تالفة / سكراب' : 'Damaged / scrap'} disabled={busy} onClick={() => setRetireTire(ti)} className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                               )}
-                            </div>
-                          )}
-                          {/* الحالات النهائية (سكراب/تالف/معدوم/مباع): نقل الحالة متاح دائمًا (مثلًا رجوع للمخزن) + بيع كخردة */}
-                          {admin && terminal && (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button type="button" title={ar ? 'نقل الحالة' : 'Change status'} disabled={busy} onClick={() => setStatusTire(ti)} className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold inline-flex items-center gap-1"><Repeat className="w-3.5 h-3.5" />{ar ? 'نقل الحالة' : 'Status'}</button>
-                              {(ti.status === 'scrap' || ti.status === 'damaged') && (
-                                <button type="button" disabled={busy} onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }} className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-medium">{ar ? 'بيع كخردة' : 'Sell'}</button>
-                              )}
-                            </div>
-                          )}
-                          {admin && !terminal && (ti.status === 'scrap') && (
-                            <div className="flex items-center justify-end">
-                              <button type="button" disabled={busy} onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }} className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-medium">{ar ? 'بيع كخردة' : 'Sell'}</button>
                             </div>
                           )}
                         </td>

@@ -475,6 +475,41 @@ exports.retireTire = async (req, res) => {
   }
 };
 
+// POST /assets/tires/:id/status — نقل الفردة بين الحالات مباشرة من المخزن:
+// spare (سليمة/مخزن) / in_repair (تجديد) / scrap / damaged (تالف) / retired / sold.
+// إن كانت مركّبة، تُفَك تلقائيًا من المركبة. body: { status, condition?,
+// conditionPercent?, reason?, notes? }.
+const STATUS_ACTION = { spare: 'to_store', in_repair: 'to_repair', scrap: 'scrapped', damaged: 'damaged', retired: 'retired', sold: 'sold' };
+exports.setTireStatus = async (req, res) => {
+  try {
+    const tire = await Ls2TireAsset.findById(req.params.id);
+    if (!tire) return res.status(404).json({ message: 'Not found' });
+    const { status } = req.body || {};
+    if (!['spare', 'in_repair', 'scrap', 'damaged', 'retired', 'sold'].includes(status)) {
+      return res.status(400).json({ message: 'حالة غير صالحة' });
+    }
+    const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire), status: tire.status };
+    const set = { status };
+    if (['new', 'used', 'renewed'].includes(req.body.condition)) set.condition = req.body.condition;
+    if (req.body.conditionPercent != null && req.body.conditionPercent !== '') set.conditionPercent = Number(req.body.conditionPercent);
+    // مغادرة حالة التركيب → فَكّ من المركبة والموضع.
+    if (tire.status === 'mounted') {
+      Object.assign(set, { plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '', isSpare: false });
+    }
+    tire.set(set);
+    await tire.save();
+    await logEvent(req, {
+      entityType: 'tire', refId: tire._id, label: tire.serial, action: STATUS_ACTION[status] || 'updated',
+      fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
+      reason: req.body?.reason || '', notes: `${from.status} → ${status}${req.body?.notes ? ` · ${req.body.notes}` : ''}`,
+    });
+    if (from.key) await clearSensorNotice(from.key);
+    res.json({ tire });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
 // ---- Trailers --------------------------------------------------------------
 exports.createTrailer = async (req, res) => {
   try {

@@ -56,6 +56,7 @@ router.patch('/assets/tires/:id', ADMIN, assets.updateTire);
 router.post('/assets/tires/:id/move', ADMIN, assets.moveTire);
 router.post('/assets/tires/:id/renewal-result', ADMIN, assets.tireRenewalResult); // مجدد أو سكراب
 router.post('/assets/tires/:id/retire', ADMIN, assets.retireTire);
+router.post('/assets/tires/:id/status', ADMIN, assets.setTireStatus); // نقل بين الحالات
 router.post('/assets/trailers', ADMIN, assets.createTrailer);
 router.post('/assets/trailers/:id/move', ADMIN, assets.moveTrailer);
 router.post('/assets/flatbeds', ADMIN, assets.createFlatbed);

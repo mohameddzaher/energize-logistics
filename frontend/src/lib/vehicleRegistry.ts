@@ -42,9 +42,9 @@ export const docLabel = (key: string, ar: boolean) => {
 
 export const STATUS_META: Record<string, { ar: string; en: string; color: string; bg: string; text: string }> = {
   expired: { ar: 'منتهي', en: 'Expired', color: '#dc2626', bg: 'bg-red-100', text: 'text-red-700' },
-  critical: { ar: 'حرج (≤30 يوم)', en: 'Critical (≤30d)', color: '#ea580c', bg: 'bg-orange-100', text: 'text-orange-700' },
-  warning: { ar: 'تنبيه', en: 'Warning', color: '#ca8a04', bg: 'bg-amber-100', text: 'text-amber-700' },
-  valid: { ar: 'سارٍ', en: 'Valid', color: '#16a34a', bg: 'bg-emerald-100', text: 'text-emerald-700' },
+  critical: { ar: 'حرج', en: 'Critical', color: '#ea580c', bg: 'bg-orange-100', text: 'text-orange-700' },
+  warning: { ar: 'قريب الانتهاء', en: 'Expiring soon', color: '#ca8a04', bg: 'bg-amber-100', text: 'text-amber-700' },
+  valid: { ar: 'ساري', en: 'Valid', color: '#16a34a', bg: 'bg-emerald-100', text: 'text-emerald-700' },
   none: { ar: 'غير مسجّل', en: 'None', color: '#94a3b8', bg: 'bg-slate-100', text: 'text-slate-500' },
 };
 
@@ -53,7 +53,13 @@ export const statusColor = (s: string) => STATUS_META[s]?.color || '#94a3b8';
 
 export const money = (n: unknown) => (Number(n) || 0).toLocaleString('en-US');
 export const fmtDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : '—');
-export const daysText = (n: number | null | undefined, ar: boolean) =>
-  n == null ? '—' : n < 0 ? (ar ? `منذ ${Math.abs(n)} يوم` : `${Math.abs(n)}d ago`) : (ar ? `بعد ${n} يوم` : `in ${n}d`);
+// نص واضح للمدة المتبقية على الانتهاء.
+export const daysText = (n: number | null | undefined, ar: boolean) => {
+  if (n == null) return '—';
+  if (n < 0) return ar ? `انتهى منذ ${Math.abs(n)} يوم` : `expired ${Math.abs(n)}d ago`;
+  if (n === 0) return ar ? 'ينتهي اليوم' : 'expires today';
+  if (n === 1) return ar ? 'باقي يوم واحد' : '1 day left';
+  return ar ? `باقي ${n} يوم` : `${n} days left`;
+};
 
 export const CHART_COLORS = ['#f37121', '#12325c', '#16a34a', '#0ea5e9', '#8b5cf6', '#ec4899', '#ca8a04', '#dc2626', '#14b8a6', '#64748b'];

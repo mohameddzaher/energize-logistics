@@ -178,6 +178,7 @@ export default function Ls2FleetAssetsPage() {
   const [editTire, setEditTire] = useState<TireAsset | null>(null);
   const [renewalTire, setRenewalTire] = useState<TireAsset | null>(null); // نتيجة التجديد: مجدد/سكراب
   const [retireTire, setRetireTire] = useState<TireAsset | null>(null);   // تالفة/سكراب
+  const [statusTire, setStatusTire] = useState<TireAsset | null>(null);   // نقل بين الحالات
   const [addTire, setAddTire] = useState(false);
   const [moveTrailer, setMoveTrailer] = useState<Trailer | null>(null);
   const [addTrailer, setAddTrailer] = useState(false);
@@ -308,6 +309,12 @@ export default function Ls2FleetAssetsPage() {
   const doRetireTire = async (tire: TireAsset, kind: 'damaged' | 'scrap' | 'sold', reason: string) => {
     setBusy(true);
     try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { kind, reason }); await load(); setRetireTire(null); }
+    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+    setBusy(false);
+  };
+  const doSetStatus = async (tire: TireAsset, body: { status: string; condition?: string; conditionPercent?: number | null; reason?: string }) => {
+    setBusy(true);
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/status`, body); await load(); setStatusTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
@@ -580,6 +587,7 @@ export default function Ls2FleetAssetsPage() {
                                   className="px-2 py-1 rounded-md bg-violet-50 hover:bg-violet-100 text-violet-700 text-[11px] font-medium"
                                 >{ar ? 'نتيجة التجديد' : 'Result'}</button>
                               )}
+                              <button type="button" title={ar ? 'نقل الحالة (مخزن / تجديد / سكراب / تالف …)' : 'Change status'} disabled={busy} onClick={() => setStatusTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
                               <button type="button" title={t.edit} onClick={() => setEditTire(ti)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
                               {ti.status !== 'in_repair' && ti.status !== 'scrap' && (
                                 <button type="button" title={ar ? 'تالفة / سكراب' : 'Damaged / scrap'} disabled={busy} onClick={() => setRetireTire(ti)} className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
@@ -821,6 +829,7 @@ export default function Ls2FleetAssetsPage() {
       {downTire && <DismountTireModal tire={downTire} tires={tires} ar={ar} busy={busy} onClose={() => setDownTire(null)} onSubmit={(body) => doMoveTire(downTire, body).then(() => setDownTire(null))} />}
       {renewalTire && <RenewalResultModal tire={renewalTire} ar={ar} busy={busy} onClose={() => setRenewalTire(null)} onSubmit={(result, notes) => doRenewalResult(renewalTire, result, notes)} />}
       {retireTire && <RetireTireModal tire={retireTire} ar={ar} busy={busy} onClose={() => setRetireTire(null)} onSubmit={(kind, reason) => doRetireTire(retireTire, kind, reason)} />}
+      {statusTire && <TireStatusModal tire={statusTire} ar={ar} busy={busy} onClose={() => setStatusTire(null)} onSubmit={(body) => doSetStatus(statusTire, body)} />}
       {(addTire || editTire) && (
         <TireFormModal
           tire={editTire} flatbeds={flatbeds} ar={ar}
@@ -1185,6 +1194,58 @@ function RetireTireModal({ tire, ar, busy, onClose, onSubmit }: {
         <button type="button" disabled={busy || !kind} onClick={() => kind && onSubmit(kind, reason)}
           className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-40">
           {ar ? 'تنفيذ' : 'Confirm'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---- Change tire status (نقل بين الحالات) -----------------------------------
+function TireStatusModal({ tire, ar, busy, onClose, onSubmit }: {
+  tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void;
+  onSubmit: (body: { status: string; conditionPercent?: number | null; reason?: string }) => void;
+}) {
+  const OPTS: { v: string; ar: string; en: string; sub: string; subEn: string; cls: string }[] = [
+    { v: 'spare', ar: 'في المخزن', en: 'In stock', sub: 'سليمة/احتياطي جاهز للتركيب', subEn: 'Usable spare', cls: 'border-amber-400 bg-amber-50' },
+    { v: 'in_repair', ar: 'تحت التجديد', en: 'Under renewal', sub: 'ذهبت للورشة لإعادة التجديد', subEn: 'Sent for renewal', cls: 'border-blue-400 bg-blue-50' },
+    { v: 'scrap', ar: 'سكراب', en: 'Scrap', sub: 'غير صالحة — تُخزَّن حتى تُباع', subEn: 'Unusable — kept to sell', cls: 'border-slate-500 bg-slate-100' },
+    { v: 'damaged', ar: 'تالفة', en: 'Damaged', sub: 'انفجرت/تآكلت — لا يمكن إصلاحها', subEn: 'Blown — unrepairable', cls: 'border-red-400 bg-red-50' },
+    { v: 'retired', ar: 'معدومة', en: 'Retired', sub: 'خارج الخدمة نهائيًا', subEn: 'Out of service', cls: 'border-red-300 bg-red-50' },
+    { v: 'sold', ar: 'مُباعة', en: 'Sold', sub: 'بيعت كخردة', subEn: 'Sold as scrap', cls: 'border-emerald-400 bg-emerald-50' },
+  ];
+  const [status, setStatus] = useState('');
+  const [pct, setPct] = useState<string>(tire.conditionPercent != null ? String(tire.conditionPercent) : '');
+  const [reason, setReason] = useState('');
+  const mounted = tire.status === 'mounted';
+  return (
+    <Modal title={ar ? `نقل الفردة ${tire.serial} إلى حالة أخرى` : `Move ${tire.serial} to another status`} onClose={onClose}>
+      <div className="space-y-2.5">
+        {mounted && <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{ar ? 'هذه الفردة مركّبة حاليًا — سيتم فكّها تلقائيًا من المركبة عند النقل.' : 'This tire is mounted — it will be auto-unmounted.'}</p>}
+        <div className="grid grid-cols-2 gap-2">
+          {OPTS.map((o) => (
+            <label key={o.v} className={`flex items-start gap-2 px-3 py-2 rounded-lg cursor-pointer border text-xs ${status === o.v ? o.cls : 'border-slate-200 hover:bg-slate-50'}`}>
+              <input type="radio" name="tstatus" checked={status === o.v} onChange={() => setStatus(o.v)} className="mt-0.5" />
+              <span>
+                <span className="font-semibold text-slate-800">{ar ? o.ar : o.en}</span>
+                <span className="block text-[10px] text-slate-500">{ar ? o.sub : o.subEn}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {(status === 'spare' || status === 'in_repair') && (
+          <div>
+            <label className={labelCls}>{ar ? 'نسبة الحالة %' : 'Condition %'}</label>
+            <input type="number" min={0} max={100} value={pct} onChange={(e) => setPct(e.target.value)} className={inputCls} placeholder="0–100" />
+          </div>
+        )}
+        <div>
+          <label className={labelCls}>{ar ? 'السبب / ملاحظة' : 'Reason / note'}</label>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
+        </div>
+        <button type="button" disabled={busy || !status}
+          onClick={() => status && onSubmit({ status, conditionPercent: pct === '' ? null : Number(pct), reason })}
+          className="w-full py-2 rounded-lg bg-[#12325c] hover:bg-[#0f2748] text-white text-sm font-medium disabled:opacity-40">
+          {ar ? 'تنفيذ النقل' : 'Confirm'}
         </button>
       </div>
     </Modal>

@@ -21,9 +21,9 @@ String money(dynamic v) {
 
 const _statusMeta = {
   'expired': ('منتهي', 'Expired', T.danger),
-  'critical': ('حرج (≤30)', 'Critical (≤30d)', Color(0xFFEA580C)),
-  'warning': ('تنبيه', 'Warning', Color(0xFFCA8A04)),
-  'valid': ('سارٍ', 'Valid', T.success),
+  'critical': ('حرج', 'Critical', Color(0xFFEA580C)),
+  'warning': ('قريب الانتهاء', 'Expiring soon', Color(0xFFCA8A04)),
+  'valid': ('ساري', 'Valid', T.success),
   'none': ('غير مسجّل', 'None', T.inkFaint),
 };
 Color statusColor(String s) => _statusMeta[s]?.$3 ?? T.inkFaint;
@@ -45,8 +45,10 @@ String fmtDate(dynamic d) {
 String daysText(dynamic n) {
   if (n == null) return '—';
   final v = (n is num) ? n.toInt() : int.tryParse(n.toString()) ?? 0;
-  if (v < 0) return tr('منذ ${-v} يوم', '${-v}d ago');
-  return tr('بعد $v يوم', 'in ${v}d');
+  if (v < 0) return tr('انتهى منذ ${-v} يوم', 'expired ${-v}d ago');
+  if (v == 0) return tr('ينتهي اليوم', 'expires today');
+  if (v == 1) return tr('باقي يوم واحد', '1 day left');
+  return tr('باقي $v يوم', '$v days left');
 }
 String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 

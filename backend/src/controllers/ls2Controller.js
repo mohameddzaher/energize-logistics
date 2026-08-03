@@ -16,7 +16,7 @@ const cfg = require('../config/ls2Config');
 const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
 
-const CACHE_TTL = 5000;
+const CACHE_TTL = 15000; // = دورة التحديث (poll) 15ث — البيانات لا تتغيّر أسرع من كده
 
 function fail(res, error, fallback) {
   const status = error.status >= 400 && error.status < 600 ? error.status : 500;
@@ -263,7 +263,7 @@ exports.listVehicles = async (req, res) => {
     // keyed by the filter collapses many concurrent LS2-page loads into one query
     // without ever showing meaningfully-stale data.
     const cacheKey = `ls2:vehicles:${status || ''}:${alertLevel || ''}:${maintFilter || ''}:${q || ''}`;
-    const rawVehicles = await cache.wrap(cacheKey, 8000, () => Ls2Vehicle.find(filter).lean());
+    const rawVehicles = await cache.wrap(cacheKey, 15000, () => Ls2Vehicle.find(filter).lean());
     let vehicles = rawVehicles.map((v) => withMaintenance(v));
 
     // Optional: attach per-vehicle distance for a period (fleet mileage view).

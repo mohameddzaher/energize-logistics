@@ -19,8 +19,17 @@ const getPath = (obj, path) => path.split('.').reduce((c, p) => (c == null ? c :
 
 const _multi = (v) => (v == null ? [] : (Array.isArray(v) ? v : String(v).split(',')).map((x) => String(x).trim()).filter(Boolean));
 
-const getConfig = async () =>
-  VehicleRegistryConfig.findOneAndUpdate({ key: 'vehicle-registry' }, { $setOnInsert: { key: 'vehicle-registry' } }, { new: true, upsert: true, setDefaultsOnInsert: true }).lean();
+// مخزّن مؤقتًا — كان findOneAndUpdate (كتابة) على كل طلب = بطيء على Atlas المُقيَّد.
+const getConfig = async () => {
+  const hit = cache.get('vreg:config');
+  if (hit !== undefined) return hit;
+  const cfg = await VehicleRegistryConfig.findOneAndUpdate(
+    { key: 'vehicle-registry' }, { $setOnInsert: { key: 'vehicle-registry' } },
+    { new: true, upsert: true, setDefaultsOnInsert: true },
+  ).lean();
+  cache.set('vreg:config', cfg, 60000);
+  return cfg;
+};
 
 // حالة مستند مقابل عتبته: expired / critical(≤30) / warning(≤warnDays) / valid / none
 const docStatus = (date, warnDays) => {
@@ -98,18 +107,27 @@ function buildFilter(q) {
 // ── قائمة المركبات ─────────────────────────────────────────────────────────────
 exports.list = async (req, res) => {
   try {
+    const cacheKey = `vreg:list:${JSON.stringify(req.query || {})}`;
+    const hit = cache.get(cacheKey);
+    if (hit !== undefined) return res.json(hit);
+
     const filter = buildFilter(req.query);
     const limit = Math.min(Number(req.query.limit) || 500, 2000);
     const page = Math.max(Number(req.query.page) || 1, 1);
     const sortBy = req.query.sortBy || 'plateNumber';
     const sortDir = req.query.sortDir === 'desc' ? -1 : 1;
+    // مشروع مختصر — القائمة تحتاج ملخّصًا فقط (التفاصيل الكاملة عبر getOne)؛
+    // يقلّل النقل من ~1.7kb إلى ~0.5kb لكل مركبة على عنقود Atlas المُقيَّد.
+    const LIST_FIELDS = 'plateNumber plateLettersAr chassisNumber serialNumber sectorAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr insurance.companyAr insurance.expiryDate insurance.premiumSar operatingCard.cardNumber operatingCard.expiryDate vehicleLicense.expiryDate inspection.statusAr inspection.expiryDate fuelCard.statusAr fuelCard.cardNumber gps.deviceId gps.expiryDate';
     const [vehicles, total] = await Promise.all([
-      VehicleMaster.find(filter).sort({ [sortBy]: sortDir }).skip((page - 1) * limit).limit(limit).lean(),
+      VehicleMaster.find(filter).select(LIST_FIELDS).sort({ [sortBy]: sortDir }).skip((page - 1) * limit).limit(limit).lean(),
       VehicleMaster.countDocuments(filter),
     ]);
     const cfg = await getConfig();
     const withStatus = vehicles.map((v) => decorate(v, cfg));
-    res.json({ vehicles: withStatus, total, page, pages: Math.ceil(total / limit) });
+    const body = { vehicles: withStatus, total, page, pages: Math.ceil(total / limit) };
+    cache.set(cacheKey, body, 30000);
+    res.json(body);
   } catch (e) { console.error('vreg list', e); res.status(500).json({ message: 'Failed to load vehicles' }); }
 };
 
@@ -181,7 +199,8 @@ exports.dashboard = async (req, res) => {
     if (hit !== undefined) return res.json(hit);
 
     const filter = buildFilter(req.query);
-    const [vehicles, cfg] = await Promise.all([VehicleMaster.find(filter).lean(), getConfig()]);
+    const DASH_FIELDS = 'sectorAr registrationTypeAr brandAr ownerNameAr colorAr tamStatusAr modelYear insurance.companyAr insurance.coverageTypeAr insurance.expiryDate insurance.premiumSar fuelCard.statusAr fuelCard.statusCode fuelCard.limitSar gps.deviceId operatingCard.cardNumber operatingCard.expiryDate vehicleLicense.expiryDate inspection.statusAr inspection.expiryDate';
+    const [vehicles, cfg] = await Promise.all([VehicleMaster.find(filter).select(DASH_FIELDS).lean(), getConfig()]);
 
     const count = (fn) => vehicles.reduce((m, v) => { const k = fn(v) || '—'; m[k] = (m[k] || 0) + 1; return m; }, {});
     const toArr = (obj, extra = {}) => Object.entries(obj).map(([key, value]) => ({ key, count: value, ...(extra[key] || {}) })).sort((a, b) => b.count - a.count);
@@ -253,8 +272,11 @@ exports.dashboard = async (req, res) => {
 // ── التنبيهات: كل مستند خلال عتبته أو منتهي ───────────────────────────────────
 exports.alerts = async (req, res) => {
   try {
+    const hit = cache.get('vreg:alerts');
+    if (hit !== undefined) return res.json(hit);
     const cfg = await getConfig();
-    const vehicles = await VehicleMaster.find({ isActive: { $ne: false } }).lean();
+    const vehicles = await VehicleMaster.find({ isActive: { $ne: false } })
+      .select('plateNumber brandAr modelAr sectorAr ownerNameAr insurance.expiryDate operatingCard.expiryDate vehicleLicense.expiryDate inspection.expiryDate gps.expiryDate').lean();
     const items = [];
     for (const v of vehicles) {
       for (const dt of DOC_TYPES) {
@@ -277,7 +299,9 @@ exports.alerts = async (req, res) => {
     const byStatus = { expired: 0, critical: 0, warning: 0 };
     const byDoc = {};
     for (const it of items) { byStatus[it.status] += 1; byDoc[it.docType] = (byDoc[it.docType] || 0) + 1; }
-    res.json({ items, total: items.length, byStatus, byDoc });
+    const body = { items, total: items.length, byStatus, byDoc };
+    cache.set('vreg:alerts', body, 30000);
+    res.json(body);
   } catch (e) { console.error('vreg alerts', e); res.status(500).json({ message: 'Failed to load alerts' }); }
 };
 

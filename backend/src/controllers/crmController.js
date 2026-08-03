@@ -255,7 +255,7 @@ exports.listCompanies = async (req, res) => {
     } else {
       const cache = require('../utils/ttlCache');
       const ck = `crm:companies:${status || ''}:${type || ''}:${owner || ''}:${minRating || ''}:${tag || ''}`;
-      [companies, total] = await cache.wrap(ck, 20000, runQuery);
+      [companies, total] = await cache.wrap(ck, 30000, runQuery);
     }
     res.json({ companies, total });
   } catch (error) {

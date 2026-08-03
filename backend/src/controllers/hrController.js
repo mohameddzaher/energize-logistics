@@ -1244,7 +1244,7 @@ exports.getDashboard = async (req, res) => {
     const _hit = cache.get(_ck);
     if (_hit !== undefined) return res.json(_hit);
     const _send = res.json.bind(res);
-    res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 12000); return _send(b); };
+    res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 30000); return _send(b); };
     const today = new Date().toISOString().slice(0, 10);
     const in60 = addDays(60);
     const in90 = addDays(90);

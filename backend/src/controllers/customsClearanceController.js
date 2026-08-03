@@ -94,7 +94,9 @@ exports.getClearances = async (req, res) => {
     // (search is applied in-memory below) collapses concurrent loads; any write
     // clears the cache via the model post-hooks.
     const ck = `customs:list:${branch || ''}:${stage || ''}:${active || ''}:${year || ''}:${month || ''}:${invoiceStatus || ''}`;
-    let list = await cache.wrap(ck, 12000, () => CustomsClearance.find(filter).sort({ createdAt: -1 }).lean());
+    // نستبعد الحقول الثقيلة (المستندات المرفقة/سجلّات المراحل) من القائمة —
+    // تُحمَّل عند فتح التخليص فقط. يقلّل النقل بشكل كبير على Atlas المُقيَّد.
+    let list = await cache.wrap(ck, 30000, () => CustomsClearance.find(filter).select('-documents').sort({ createdAt: -1 }).lean());
 
     if (search) {
       const s = search.toLowerCase();

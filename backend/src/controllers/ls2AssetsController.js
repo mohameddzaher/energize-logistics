@@ -17,12 +17,15 @@ const Ls2Vehicle = require('../models/Ls2Vehicle');
 // Shared with the workshop store — see utils/plateKey.js for why.
 const { plateKey, vehiclePlateKey } = require('../utils/plateKey');
 const { emitToAll } = require('../websocket/socketManager');
+const cache = require('../utils/ttlCache');
 
 // Any asset mutation must reach the screens that mirror this registry live (the
 // workshop store, fleet-assets, the vehicle profile). Coalesced so a bulk import
-// broadcasts once, not once per row.
+// broadcasts once, not once per row. Also drops the overview cache so the next
+// load reflects the move immediately (no stale 15s window after a mutation).
 let emitTimer = null;
 function emitAssetsChanged() {
+  cache.clear('ls2assets:');
   if (emitTimer) return;
   emitTimer = setTimeout(() => {
     emitTimer = null;
@@ -67,46 +70,52 @@ async function logEvent(req, data) {
 
 // ---- Overview --------------------------------------------------------------
 // GET /assets/overview — everything the fleet-assets page needs in one call.
+// Cached 20s (cleared instantly on any asset mutation via emitAssetsChanged) so
+// the throttled-Atlas triple-find (the tires set alone is ~260KB) runs once per
+// window instead of on every page load — the page opens warm in ~2ms.
 exports.getOverview = async (req, res) => {
   try {
-    const [flatbeds, trailers, tires] = await Promise.all([
-      Ls2Flatbed.find().sort({ numbering: 1 }).lean(),
-      Ls2Trailer.find().sort({ trailerNumber: 1 }).lean(),
-      Ls2TireAsset.find().sort({ plateKey: 1, positionNumber: 1 }).lean(),
-    ]);
-    // Attach live identity (unitId/driver/odometer) + mounted-tire counts per flatbed.
-    const tiresByPlate = new Map();
-    for (const t of tires) {
-      if (t.status === 'mounted' && t.plateKey) {
-        tiresByPlate.set(t.plateKey, (tiresByPlate.get(t.plateKey) || 0) + 1);
+    const body = await cache.wrap('ls2assets:overview', 20000, async () => {
+      const [flatbeds, trailers, tires] = await Promise.all([
+        Ls2Flatbed.find().sort({ numbering: 1 }).lean(),
+        Ls2Trailer.find().sort({ trailerNumber: 1 }).lean(),
+        Ls2TireAsset.find().sort({ plateKey: 1, positionNumber: 1 }).lean(),
+      ]);
+      // Prime the vehicle map ONCE, then look up per flatbed (no await in loop).
+      await vehicleByKey('');
+      const tiresByPlate = new Map();
+      for (const t of tires) {
+        if (t.status === 'mounted' && t.plateKey) {
+          tiresByPlate.set(t.plateKey, (tiresByPlate.get(t.plateKey) || 0) + 1);
+        }
       }
-    }
-    const out = [];
-    for (const f of flatbeds) {
-      const live = await vehicleByKey(f.plateKey);
-      out.push({
-        ...f,
-        tireCount: tiresByPlate.get(f.plateKey) || 0,
-        unitId: live?.unitId ?? null,
-        driver: live?.driver || '',
-        odometerKm: live?.odometerKm ?? null,
+      const out = flatbeds.map((f) => {
+        const live = vehicleKeyCache.map.get(f.plateKey) || null;
+        return {
+          ...f,
+          tireCount: tiresByPlate.get(f.plateKey) || 0,
+          unitId: live?.unitId ?? null,
+          driver: live?.driver || '',
+          odometerKm: live?.odometerKm ?? null,
+        };
       });
-    }
-    res.json({
-      flatbeds: out,
-      trailers,
-      tires,
-      counts: {
-        flatbeds: flatbeds.length,
-        trailers: trailers.length,
-        tires: tires.length,
-        mounted: tires.filter((t) => t.status === 'mounted').length,
-        spare: tires.filter((t) => t.status === 'spare').length,
-        inRepair: tires.filter((t) => t.status === 'in_repair').length,
-        retired: tires.filter((t) => t.status === 'retired').length,
-        withSensor: tires.filter((t) => t.sensor === 'yes').length,
-      },
+      return {
+        flatbeds: out,
+        trailers,
+        tires,
+        counts: {
+          flatbeds: flatbeds.length,
+          trailers: trailers.length,
+          tires: tires.length,
+          mounted: tires.filter((t) => t.status === 'mounted').length,
+          spare: tires.filter((t) => t.status === 'spare').length,
+          inRepair: tires.filter((t) => t.status === 'in_repair').length,
+          retired: tires.filter((t) => t.status === 'retired').length,
+          withSensor: tires.filter((t) => t.sensor === 'yes').length,
+        },
+      };
     });
+    res.json(body);
   } catch (e) {
     res.status(500).json({ message: e.message });
   }

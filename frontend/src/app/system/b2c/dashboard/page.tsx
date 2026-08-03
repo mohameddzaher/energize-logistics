@@ -45,6 +45,8 @@ interface RepStat {
   dailyRate: number;
   performancePercent: number;
   project?: string;
+  branch?: string;
+  city?: string;
 }
 
 interface Dashboard {
@@ -457,6 +459,15 @@ export default function B2CDashboard() {
             const period = year && month ? `${monthLabel(`${year}-${String(month).padStart(2, '0')}`)}` : (arL ? 'كل الفترات المحددة' : 'Selected period');
             const projAgg: Record<string, number> = {};
             below.forEach((r) => { const p = r.project || (arL ? 'بدون مشروع' : 'No project'); projAgg[p] = (projAgg[p] || 0) + 1; });
+            // تجميع حسب الفرع/المدينة — لمعرفة أين تتركّز المشكلة.
+            const branchAgg: Record<string, { count: number; city?: string; avg: number; sum: number }> = {};
+            below.forEach((r) => {
+              const key = r.branch || (arL ? 'بدون فرع' : 'No branch');
+              if (!branchAgg[key]) branchAgg[key] = { count: 0, city: r.city, avg: 0, sum: 0 };
+              branchAgg[key].count += 1; branchAgg[key].sum += r.performancePercent;
+            });
+            Object.values(branchAgg).forEach((b) => { b.avg = b.count > 0 ? b.sum / b.count : 0; });
+            const branchRows = Object.entries(branchAgg).sort((a, b) => b[1].count - a[1].count);
             return (
               <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowBelow(false)}>
                 <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[88vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -467,30 +478,51 @@ export default function B2CDashboard() {
                     </div>
                     <button onClick={() => setShowBelow(false)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
                   </div>
-                  {Object.keys(projAgg).length > 0 && (
-                    <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-1.5">
-                      {Object.entries(projAgg).sort((a, b) => b[1] - a[1]).map(([p, n]) => (
-                        <span key={p} className="px-2.5 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-600">{p}: <b className="text-red-600">{n}</b></span>
-                      ))}
+                  {/* أين تتركّز المشكلة: الفروع/المدن */}
+                  {branchRows.length > 0 && (
+                    <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
+                      <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-2">{arL ? 'الفروع الأكثر تأثرًا' : 'Most affected branches'}</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {branchRows.map(([b, v]) => (
+                          <div key={b} className="rounded-lg bg-white border border-slate-200 px-3 py-2">
+                            <p className="text-xs font-semibold text-slate-800 truncate" title={b}>{b}</p>
+                            {v.city && <p className="text-[10px] text-slate-400">{v.city}</p>}
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-red-600 font-bold text-sm">{v.count}</span>
+                              <span className="text-[10px]" style={{ color: performanceColor(v.avg) }}>{arL ? 'متوسط' : 'avg'} {v.avg.toFixed(0)}%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {Object.keys(projAgg).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2.5 pt-2.5 border-t border-slate-200">
+                          <span className="text-[11px] text-slate-400 self-center">{arL ? 'حسب المشروع:' : 'By project:'}</span>
+                          {Object.entries(projAgg).sort((a, b) => b[1] - a[1]).map(([p, n]) => (
+                            <span key={p} className="px-2.5 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-600">{p}: <b className="text-red-600">{n}</b></span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="overflow-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-900 text-slate-300 text-xs sticky top-0">
-                        <tr>{[arL ? '#' : '#', arL ? 'المندوب' : 'Rep', arL ? 'المشروع' : 'Project', arL ? 'الأداء' : 'Perf.', arL ? 'الطلبات' : 'Orders', arL ? 'أيام العمل' : 'Days'].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+                        <tr>{['#', arL ? 'المندوب' : 'Rep', arL ? 'الفرع' : 'Branch', arL ? 'المدينة' : 'City', arL ? 'المشروع' : 'Project', arL ? 'الأداء' : 'Perf.', arL ? 'الطلبات' : 'Orders', arL ? 'أيام العمل' : 'Days'].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {below.map((r, i) => (
                           <tr key={i} className="hover:bg-slate-50">
                             <td className="px-3 py-2 text-slate-400">{i + 1}</td>
                             <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap">{arL ? (r.arabicName || r.englishName) : (r.englishName || r.arabicName)}</td>
+                            <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.branch || '—'}</td>
+                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{r.city || '—'}</td>
                             <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{r.project || '—'}</td>
                             <td className="px-3 py-2 font-bold" style={{ color: performanceColor(r.performancePercent) }}>{r.performancePercent.toFixed(0)}%</td>
                             <td className="px-3 py-2 text-slate-600">{r.totalOrders}</td>
                             <td className="px-3 py-2 text-slate-500">{r.workingDays}</td>
                           </tr>
                         ))}
-                        {below.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">{arL ? 'لا يوجد مناديب دون الهدف 🎉' : 'None below target 🎉'}</td></tr>}
+                        {below.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-400">{arL ? 'لا يوجد مناديب دون الهدف 🎉' : 'None below target 🎉'}</td></tr>}
                       </tbody>
                     </table>
                   </div>

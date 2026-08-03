@@ -932,7 +932,7 @@ exports.getDashboardSummary = async (req, res) => {
     // تجميعات متوازية داخل قاعدة البيانات (أسرع من $facet على هذا العنقود، وكلها
     // I/O لا تحجب حلقة الأحداث) بدل تحميل عشرات الآلاف من الصفوف إلى Node.
     const [repAgg, monthAgg, projAgg, branchAgg, dayAgg, dowAgg, repMonthAgg, bestDaysAgg, totalsAgg] = await Promise.all([
-      A([{ $group: { _id: '$rep', totalOrders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, project: { $first: '$project' } } }]),
+      A([{ $group: { _id: '$rep', totalOrders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, project: { $first: '$project' }, branch: { $first: '$branch' } } }]),
       A([{ $group: { _id: { year: '$year', month: '$month' }, totalOrders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } }]),
       A([{ $group: { _id: '$project', totalOrders: { $sum: ordersNum }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } }]),
       A([{ $group: { _id: '$branch', totalOrders: { $sum: ordersNum }, repsActive: { $addToSet: { $cond: [workedExpr, '$rep', null] } } } }]),
@@ -957,11 +957,13 @@ exports.getDashboardSummary = async (req, res) => {
     const byRep = repAgg.map((r) => {
       const meta = repMap2.get(String(r._id)) || {};
       const dailyTarget = meta.dailyTarget || repDefaults.dailyTarget;
+      const br = branchMap2.get(String(r.branch));
       return {
         repId: r._id, englishName: meta.englishName, arabicName: meta.arabicName,
         monthlyTarget: meta.monthlyTarget || repDefaults.monthlyTarget, dailyTarget,
         totalOrders: r.totalOrders, workingDays: r.workingDays,
         project: projMap2.get(String(r.project))?.name,
+        branch: br?.name, city: br?.city,
         dailyRate: r.workingDays > 0 ? r.totalOrders / r.workingDays : 0,
         performancePercent: r.workingDays > 0 ? (r.totalOrders / (r.workingDays * dailyTarget)) * 100 : 0,
       };

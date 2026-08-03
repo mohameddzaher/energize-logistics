@@ -106,25 +106,24 @@ export default function Ls2StorePage() {
             <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? 'ابحث بالاسم / الكود / الموديل…' : 'name / code / model…'} className="ps-8 pe-3 py-2 rounded-lg border border-slate-200 text-sm w-64 max-w-full" />
           </div>
-          <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="px-2 py-2 rounded-lg border border-slate-200 text-sm">
+          <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
             <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
             <option value="ok">{ar ? 'متوفر' : 'In stock'}</option>
             <option value="low">{ar ? 'منخفض' : 'Low'}</option>
             <option value="out">{ar ? 'نافد' : 'Out'}</option>
           </select>
-          <input type="number" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} placeholder={ar ? 'سعر من' : 'price ≥'} className="w-24 px-2 py-2 rounded-lg border border-slate-200 text-sm" />
-          <input type="number" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} placeholder={ar ? 'سعر إلى' : 'price ≤'} className="w-24 px-2 py-2 rounded-lg border border-slate-200 text-sm" />
-          {anyFilter && <button onClick={resetFilters} className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs">{ar ? 'مسح الفلاتر' : 'Reset'} <X className="w-3 h-3" /></button>}
+          <select value={catF} onChange={(e) => setCatF(e.target.value)} className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white max-w-[190px]">
+            <option value="">{ar ? 'كل التصنيفات' : 'All categories'}</option>
+            {cats.map((c) => <option key={c.key} value={c.key}>{(ar ? c.ar : c.key)} ({c.count})</option>)}
+          </select>
+          <div className="flex items-center gap-1">
+            <input type="number" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} placeholder={ar ? 'سعر من' : '≥'} className="w-20 px-2 py-2 rounded-lg border border-slate-200 text-sm" />
+            <span className="text-slate-300">—</span>
+            <input type="number" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} placeholder={ar ? 'إلى' : '≤'} className="w-20 px-2 py-2 rounded-lg border border-slate-200 text-sm" />
+          </div>
+          {anyFilter && <button onClick={resetFilters} className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs">{ar ? 'مسح' : 'Reset'} <X className="w-3 h-3" /></button>}
           <span className="text-xs text-slate-400 ms-auto">{shown.length} {ar ? 'صنف' : 'items'}</span>
         </div>
-        {cats.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            <button onClick={() => setCatF('')} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${!catF ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>{ar ? 'الكل' : 'All'}</button>
-            {cats.map((c) => (
-              <button key={c.key} onClick={() => setCatF(catF === c.key ? '' : c.key)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${catF === c.key ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>{ar ? c.ar : c.key} <span className="opacity-60">({c.count})</span></button>
-            ))}
-          </div>
-        )}
       </div>
 
       {showLog && <MovementsLog movements={movements} ar={ar} />}

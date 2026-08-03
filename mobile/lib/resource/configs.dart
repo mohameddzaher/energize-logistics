@@ -1055,6 +1055,61 @@ final hrContractsCfg = ResourceConfig(
   fields: const [],
 );
 
+// ── مخزون الموارد البشرية — HR Stock ─────────────────────────────────────────
+final hrStockCfg = ResourceConfig(
+  arTitle: 'مخزون الموارد البشرية', enTitle: 'HR Stock', icon: Icons.inventory_2_outlined,
+  endpoint: '/api/hr/stock', listKey: 'items', liveEvent: 'hr:updated',
+  searchFields: const ['name', 'type', 'brand', 'model', 'serialNumber', 'location'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'brand'), _s(r, 'model'), _s(r, 'serialNumber')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (r['quantity'] != null) ('الكمية: ${r['quantity']}', T.navy),
+    if (_s(r, 'condition').isNotEmpty) (_s(r, 'condition'), T.cyan),
+    if (_s(r, 'status') == 'in_stock') ('متوفر', T.success),
+  ],
+  fields: const [
+    FieldSpec('name', 'اسم الصنف', 'Name', required: true),
+    FieldSpec('type', 'النوع', 'Type'),
+    FieldSpec('brand', 'الماركة', 'Brand'),
+    FieldSpec('model', 'الموديل', 'Model'),
+    FieldSpec('serialNumber', 'السيريال', 'Serial'),
+    FieldSpec('quantity', 'الكمية', 'Quantity', type: FieldType.number),
+    FieldSpec('condition', 'الحالة', 'Condition'),
+    FieldSpec('location', 'المكان', 'Location'),
+    FieldSpec('value', 'القيمة', 'Value', type: FieldType.number),
+    FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+);
+
+// ── أوامر شغل المركبات — Workshop Work Orders ───────────────────────────────
+final workshopTasksCfg = ResourceConfig(
+  arTitle: 'أوامر شغل المركبات', enTitle: 'Vehicle Work Orders', icon: Icons.assignment_outlined,
+  endpoint: '/api/workshop/tasks', listKey: 'tasks', liveEvent: 'workshop:updated',
+  searchFields: const ['title', 'vehicleNumber', 'technicianName', 'serviceTypeName'],
+  titleOf: (r) => _s(r, 'title'),
+  subtitleOf: (r) => [_s(r, 'vehicleNumber'), _s(r, 'serviceTypeName'), _s(r, 'technicianName')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (r['status'] == 'completed') ('مكتمل', T.success)
+    else if (r['status'] == 'in_progress') ('جاري', T.warn)
+    else if (r['status'] == 'pending') ('معلّق', T.inkFaint)
+    else if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), T.info),
+    if (r['priority'] == 'high' || r['priority'] == 'urgent') ('عاجل', T.danger),
+    if (_s(r, 'branch').isNotEmpty) (_s(r, 'branch'), T.navy),
+  ],
+  fields: const [
+    FieldSpec('title', 'عنوان الأمر', 'Title', required: true),
+    FieldSpec('vehicleNumber', 'رقم المركبة', 'Vehicle #'),
+    FieldSpec('description', 'الوصف', 'Description', type: FieldType.textarea),
+    FieldSpec('priority', 'الأولوية', 'Priority', type: FieldType.select,
+        options: [('low', 'منخفضة', 'Low'), ('medium', 'متوسطة', 'Medium'), ('high', 'عالية', 'High'), ('urgent', 'عاجلة', 'Urgent')]),
+    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select,
+        options: [('pending', 'معلّق', 'Pending'), ('in_progress', 'جاري', 'In progress'), ('completed', 'مكتمل', 'Completed')]),
+    FieldSpec('technicianName', 'الفني', 'Technician'),
+    FieldSpec('dueDate', 'تاريخ الاستحقاق', 'Due date', type: FieldType.date),
+    FieldSpec('completionNotes', 'ملاحظات الإنجاز', 'Completion notes', type: FieldType.textarea),
+  ],
+);
+
 // ── سجل التدقيق — Audit Log (قراءة فقط) ─────────────────────────────────────
 final auditCfg = ResourceConfig(
   arTitle: 'سجل التدقيق', enTitle: 'Audit Log', icon: Icons.fact_check_outlined,

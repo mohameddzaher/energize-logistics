@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const ls2 = require('../controllers/ls2Controller');
 const assets = require('../controllers/ls2AssetsController');
+const store = require('../controllers/ls2StoreController');
 const ls2reports = require('../controllers/ls2ReportsController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
@@ -57,6 +58,15 @@ router.post('/assets/tires/:id/move', ADMIN, assets.moveTire);
 router.post('/assets/tires/:id/renewal-result', ADMIN, assets.tireRenewalResult); // مجدد أو سكراب
 router.post('/assets/tires/:id/retire', ADMIN, assets.retireTire);
 router.post('/assets/tires/:id/status', ADMIN, assets.setTireStatus); // نقل بين الحالات
+
+// ── مخزن النقل الثقيل (قطع الغيار) — قائمة/CRUD + حركات وارد/صادر + سجل ──────────
+router.get('/store', store.listItems);
+router.get('/store/dashboard', store.dashboard);
+router.get('/store/movements', store.listMovements);
+router.post('/store', ADMIN, store.createItem);
+router.put('/store/:id', ADMIN, store.updateItem);
+router.delete('/store/:id', ADMIN, store.deleteItem);
+router.post('/store/:id/movement', ADMIN, store.addMovement);
 router.post('/assets/trailers', ADMIN, assets.createTrailer);
 router.post('/assets/trailers/:id/move', ADMIN, assets.moveTrailer);
 router.post('/assets/flatbeds', ADMIN, assets.createFlatbed);

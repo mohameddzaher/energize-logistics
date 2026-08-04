@@ -131,8 +131,19 @@ class _MeetingsTab extends StatefulWidget {
   State<_MeetingsTab> createState() => _MeetingsTabState();
 }
 
+/// أوعية البطاقات — نفس مفاتيح الـ bucket اللي السيرفر بيفهمها، ونفس ترتيب الويب.
+const _buckets = [
+  ('', 'كل الاجتماعات', 'All', 'total', T.navy),
+  ('open', 'لسه مفتوحة', 'Open', 'open', T.orange),
+  ('completed', 'مكتملة', 'Completed', 'completed', Color(0xFF0F766E)),
+  ('upcoming', 'قادمة', 'Upcoming', 'upcoming', T.info),
+  ('cancelled', 'ملغاة', 'Cancelled', 'cancelled', T.inkFaint),
+];
+
 class _MeetingsTabState extends State<_MeetingsTab> {
   List<Map<String, dynamic>> _rows = [];
+  Map<String, dynamic> _counts = {};
+  String _bucket = '';
   bool _loading = true;
   String? _error;
 
@@ -141,13 +152,74 @@ class _MeetingsTabState extends State<_MeetingsTab> {
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/business-review/meetings');
+      final d = await Api.instance.get('/api/business-review/meetings${_bucket.isEmpty ? '' : '?bucket=$_bucket'}');
       if (!mounted) return;
-      setState(() { _rows = List<Map<String, dynamic>>.from(d['meetings'] ?? []); _loading = false; _error = null; });
+      setState(() {
+        _rows = List<Map<String, dynamic>>.from(d['meetings'] ?? []);
+        // العدّادات محسوبة على النطاق كله، فهي بتفضل صحيحة وانت واقف على فلتر.
+        if (d['counts'] != null) _counts = Map<String, dynamic>.from(d['counts'] as Map);
+        _loading = false; _error = null;
+      });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e is ApiException ? e.message : e.toString(); });
     }
   }
+
+  /// إقفال الاجتماع — «اكتمل». السيرفر بيرفض لو لسه فيه شغل مفتوح، وبيقول كام.
+  Future<void> _complete(Map<String, dynamic> m) async {
+    final go = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(tr('إقفال الاجتماع؟', 'Close meeting?'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+      content: Text(
+        tr('تحديده كـ«اكتمل» معناه إن كل حاجة اترتّبت على الاجتماع خلصت. هيترفض لو لسه فيه بند أو تكليف مفتوح.',
+           'Completed means everything arising from this meeting is finished. Refused if any action or task is still open.'),
+        style: const TextStyle(fontSize: 12.5, height: 1.5)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F766E)),
+          onPressed: () => Navigator.pop(c, true), child: Text(tr('إقفال', 'Close'))),
+      ],
+    ));
+    if (go != true) return;
+    try {
+      await Api.instance.post('/api/business-review/meetings/${m['_id']}/complete', {});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم إقفال الاجتماع', 'Closed'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+    }
+  }
+
+  Widget _cards() => SizedBox(
+    height: 74,
+    child: ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+      itemCount: _buckets.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 8),
+      itemBuilder: (c, i) {
+        final (key, ar, en, countKey, color) = _buckets[i];
+        final active = _bucket == key;
+        return Pressable(
+          onTap: () { setState(() { _bucket = key; _loading = true; }); _load(); },
+          child: Container(
+            width: 108,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: active ? T.orange : T.line, width: active ? 1.6 : 1),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('${_counts[countKey] ?? 0}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 21, color: color, height: 1)),
+              const SizedBox(height: 4),
+              Text(tr(ar, en), style: const TextStyle(fontSize: 11, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+        );
+      },
+    ),
+  );
 
   /// The formal minutes as a PDF — rendered SERVER-side on the company
   /// letterhead, so what prints from the phone is byte-for-byte what prints
@@ -206,11 +278,32 @@ class _MeetingsTabState extends State<_MeetingsTab> {
                 color: T.orange,
                 tooltip: tr('طباعة المحضر', 'Print minutes'),
               ),
+              if (widget.meta['me']?['canRunMeetings'] == true
+                  && meeting['status'] != 'completed' && meeting['status'] != 'cancelled')
+                IconButton(
+                  onPressed: () { Navigator.pop(c); _complete(meeting); },
+                  icon: const Icon(Icons.lock_outline, size: 20),
+                  color: const Color(0xFF0F766E),
+                  tooltip: tr('إقفال الاجتماع', 'Close meeting'),
+                ),
             ]),
             const SizedBox(height: 4),
             Text('${meeting['refNumber']} · ${_dateTime(meeting['scheduledAt'])}',
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             const SizedBox(height: 10),
+            if (meeting['status'] == 'completed' && (meeting['completedAt'] ?? '').toString().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: const Color(0xFFF0FDFA), borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF99F6E4))),
+                  child: Text(
+                    '${tr('أُقفل', 'Closed')} ${_dateTime(meeting['completedAt'])}'
+                    '${(meeting['completedByName'] ?? '').toString().isEmpty ? '' : ' · ${meeting['completedByName']}'}',
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF0F766E), fontWeight: FontWeight.w700)),
+                ),
+              ),
             Wrap(spacing: 6, runSpacing: 6, children: [
               Chip2(_vocab(widget.meta['meetingStatuses'] as List?, meeting['status']?.toString()).label,
                   _vocab(widget.meta['meetingStatuses'] as List?, meeting['status']?.toString()).color),
@@ -291,12 +384,17 @@ class _MeetingsTabState extends State<_MeetingsTab> {
     }
     if (_error != null) return ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); });
     if (_rows.isEmpty) {
-      return ListView(children: [
-        Padding(padding: const EdgeInsets.only(top: 60),
-            child: EmptyState(icon: Icons.event_note_outlined, title: tr('لا توجد اجتماعات', 'No meetings'))),
+      return Column(children: [
+        _cards(),
+        Expanded(child: ListView(children: [
+          Padding(padding: const EdgeInsets.only(top: 40),
+              child: EmptyState(icon: Icons.event_note_outlined, title: tr('لا توجد اجتماعات', 'No meetings'))),
+        ])),
       ]);
     }
-    return RefreshIndicator(
+    return Column(children: [
+      _cards(),
+      Expanded(child: RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 20),
@@ -333,7 +431,8 @@ class _MeetingsTabState extends State<_MeetingsTab> {
           );
         },
       ),
-    );
+    )),
+    ]);
   }
 }
 

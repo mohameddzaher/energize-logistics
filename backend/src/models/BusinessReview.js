@@ -54,6 +54,12 @@ const brMeetingSchema = new mongoose.Schema({
 
   status: { type: String, enum: MEETING_STATUS_KEYS, default: 'scheduled', index: true },
   heldAt: { type: Date, default: null },
+  // الإقفال: مين قال إن كل حاجة في الاجتماع ده خلصت، وامتى. منفصل عن heldAt
+  // لأن الاجتماع بينعقد في يوم وبيقفل في يوم تاني بعد ما بنوده تخلص.
+  completedAt: { type: Date, default: null },
+  completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  completedByName: { type: String, trim: true, default: '' },
+  completionNote: { type: String, trim: true, default: '' },
 
   // Who was invited, and who actually turned up. Attendance is part of the
   // record: "who wasn't there when this was decided" is a real question, and so

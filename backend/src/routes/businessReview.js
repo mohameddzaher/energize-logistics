@@ -38,6 +38,9 @@ router.get('/meetings', br.listMeetings);
 router.post('/meetings', br.createMeeting);
 router.get('/meetings/:id', br.getMeeting);
 router.put('/meetings/:id', br.updateMeeting);
+// الإقفال مساره لوحده لأنه بيتأكد إن كل شغل الاجتماع خلص قبل ما يقول «اكتمل».
+router.post('/meetings/:id/complete', br.completeMeeting);
+router.post('/meetings/:id/reopen', br.reopenMeeting);
 router.put('/meetings/:id/minutes', br.saveMinutes);
 router.post('/meetings/:id/actions', br.createAction);
 router.delete('/meetings/:id', br.deleteMeeting);

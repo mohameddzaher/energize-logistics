@@ -10,11 +10,18 @@
  * with no minutes text and not even the meeting's reference number.
  *
  * Creates `zz-t-*` users and deletes them. Usage (server running):
- *   BASE=http://localhost:5000 node src/scripts/auditBusinessReviewTiers.js
+ *   node src/scripts/auditBusinessReviewTiers.js --base http://localhost:5599
+ *
+ * NOTE: do NOT point these at :5000 on macOS — AirPlay Receiver owns that port
+ * and answers 403 with an empty body, which reads exactly like a broken access
+ * check. That cost an hour once.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
-const BASE = process.env.BASE || 'http://localhost:5000';
+const argv = process.argv.slice(2);
+const iBase = argv.indexOf('--base');
+const BASE = (iBase >= 0 && argv[iBase + 1] ? argv[iBase + 1]
+  : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
 let pass = 0, fail = 0;
 const ok = (l, c, x = '') => { console.log(`     ${c ? '✓' : '✗ FAIL'} ${l}${x ? '  — ' + x : ''}`); c ? pass++ : fail++; };
 
@@ -25,6 +32,21 @@ async function req(m, p, ck, b) {
 }
 async function login(e) {
   const r = await fetch(`${BASE}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e, password: 'Test@12345' }) });
+  // The login limiter is 30 per 15 minutes and is in-memory. Running the audits
+  // back to back trips it, and the failures that follow look like broken access
+  // control rather than a throttled test. Say so instead of guessing.
+  if (r.status === 429) {
+    console.error('\nRATE LIMITED (429) on login — the auth limiter, not a bug in the app.');
+    console.error('Wait 15 minutes or restart the API (the counter is in-memory), then re-run.');
+    process.exit(2);
+  }
+  if (r.status !== 200) {
+    const why = await r.text().catch(() => '');
+    console.error(`\nLOGIN FAILED for ${e} — http ${r.status}: ${why.slice(0, 200)}`);
+    console.error('headers:', JSON.stringify(Object.fromEntries(r.headers.entries())).slice(0, 400));
+    console.error('Cannot audit access control without a session.');
+    process.exit(2);
+  }
   return (r.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
 }
 // Mirrors the frontend nav rule (lib/businessReview.ts).
@@ -59,6 +81,7 @@ const navFor = (role) => [
     location: 'قاعة الاجتماعات', departments: ['Operations'],
     attendees: [{ user: String(gm._id), isChair: true }, { user: String(sec._id) }, { user: String(ops._id) }],
   });
+  if (!m.body?.meeting) { console.error('FATAL: could not create the meeting —', m.status, JSON.stringify(m.body)); process.exit(1); }
   const M = m.body.meeting._id;
   await req('PUT', `/api/business-review/meetings/${M}/minutes`, C.sec, {
     summary: 'ملخص سري', minutes: [{ heading: 'الأسطول', body: 'كلام الإدارة الداخلي' }],

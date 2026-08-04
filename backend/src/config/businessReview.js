@@ -25,22 +25,38 @@ const { SECTION_KEYS } = require('./sections');
 
 // ── Cadences ────────────────────────────────────────────────────────────────
 const CADENCES = [
+  // اجتماعات يومية بتحصل عادي — ممكن كل يوم وممكن لأ، فهي دورة مش التزام.
+  { key: 'daily', ar: 'يومي', en: 'Daily', days: 1 },
   { key: 'weekly', ar: 'أسبوعي', en: 'Weekly', days: 7 },
   { key: 'monthly', ar: 'شهري', en: 'Monthly', days: 30 },
   { key: 'quarterly', ar: 'ربع سنوي', en: 'Quarterly', days: 91 },
   { key: 'semi_annual', ar: 'نصف سنوي', en: 'Semi-annual', days: 182 },
   { key: 'annual', ar: 'سنوي', en: 'Annual', days: 365 },
   { key: 'ad_hoc', ar: 'استثنائي', en: 'Ad-hoc', days: null },
+  // اجتماع اتعمل في اللحظة من غير جدولة — بيتسجّل عشان قراره ما يضيعش.
+  { key: 'instant', ar: 'لحظي', en: 'Instant', days: null },
 ];
 const CADENCE_KEYS = CADENCES.map((c) => c.key);
 
+// دورة حياة الاجتماع. «انعقد» و«اكتمل» حاجتين مختلفتين خالص:
+//   انعقد  = الاجتماع حصل فعلاً (واقعة).
+//   اكتمل  = الشؤون الإدارية بتقول إن كل حاجة ليها علاقة بالاجتماع خلصت —
+//            كل البنود التنفيذية اتقفلت ومفيش حاجة معلّقة (حُكم).
+// اجتماع ممكن يفضل منعقد شهور والبنود بتاعته لسه شغالة؛ ساعتها هو «انعقد» مش
+// «اكتمل». عشان كده اكتمل مرحلة لوحدها مش مرادف للانعقاد.
 const MEETING_STATUSES = [
   { key: 'scheduled', ar: 'مجدول', en: 'Scheduled', color: '#0ea5e9' },
   { key: 'in_progress', ar: 'منعقد الآن', en: 'In progress', color: '#f59e0b' },
   { key: 'held', ar: 'انعقد', en: 'Held', color: '#16a34a' },
+  { key: 'completed', ar: 'اكتمل', en: 'Completed', color: '#0f766e' },
   { key: 'cancelled', ar: 'ملغي', en: 'Cancelled', color: '#94a3b8' },
 ];
 const MEETING_STATUS_KEYS = MEETING_STATUSES.map((s) => s.key);
+
+// الاجتماع حصل فعلاً (سواء اتقفل ولا لسه) — للعدّادات اللي معناها «انعقد».
+const HELD_MEETING_STATUSES = ['held', 'completed'];
+// لسه مفتوح: فيه شغل ممكن يتعمل عليه. الملغي مش مفتوح ولا مكتمل.
+const OPEN_MEETING_STATUSES = ['scheduled', 'in_progress', 'held'];
 
 const ACTION_STATUSES = [
   { key: 'open', ar: 'لم يبدأ', en: 'Not started', color: '#94a3b8' },
@@ -109,7 +125,7 @@ const meta = () => ({
 
 module.exports = {
   CADENCES, CADENCE_KEYS,
-  MEETING_STATUSES, MEETING_STATUS_KEYS,
+  MEETING_STATUSES, MEETING_STATUS_KEYS, HELD_MEETING_STATUSES, OPEN_MEETING_STATUSES,
   ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES,
   PRIORITIES, PRIORITY_KEYS,
   EXECUTIVE_ROLES, SECRETARY_ROLES, EXTRA_MANAGER_ROLES,

@@ -98,6 +98,11 @@ export interface BrMeeting {
   meetingLink?: string;
   status: string;
   heldAt?: string | null;
+  // «اكتمل» غير «انعقد»: heldAt واقعة، completedAt حُكم من الإدارة إن كل شغل
+  // الاجتماع خلص. الاتنين محفوظين منفصلين عن قصد.
+  completedAt?: string | null;
+  completedByName?: string;
+  completionNote?: string;
   attendees: BrAttendee[];
   agenda: BrAgendaItem[];
   minutes?: BrMinuteItem[];
@@ -143,9 +148,12 @@ export const brDashboard = () => api.get<any>('/api/business-review/dashboard');
 
 export const brMeetings = (q: Record<string, string> = {}) => {
   const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v)).toString();
-  return api.get<{ meetings: BrMeeting[]; canRunMeetings: boolean; participant: boolean }>(
-    `/api/business-review/meetings${qs ? `?${qs}` : ''}`
-  );
+  return api.get<{
+    meetings: BrMeeting[];
+    // محسوبة على النطاق كله مش على الصفحة المفلترة — البطاقة بتوصف الشغل، مش الفلتر.
+    counts?: { total: number; completed: number; open: number; upcoming: number; cancelled: number };
+    canRunMeetings: boolean; participant: boolean;
+  }>(`/api/business-review/meetings${qs ? `?${qs}` : ''}`);
 };
 export const brMeeting = (id: string) =>
   api.get<{ meeting: BrMeeting; actions: BrAction[]; can: { edit: boolean; writeMinutes: boolean; raiseActions: boolean } }>(
@@ -153,6 +161,20 @@ export const brMeeting = (id: string) =>
   );
 export const brCreateMeeting = (body: any) => api.post<{ meeting: BrMeeting }>('/api/business-review/meetings', body);
 export const brUpdateMeeting = (id: string, body: any) => api.put<{ meeting: BrMeeting }>(`/api/business-review/meetings/${id}`, body);
+/** إقفال الاجتماع — السيرفر بيرفض لو لسه فيه بند أو تكليف مفتوح. */
+export const brCompleteMeeting = (id: string, note = '') =>
+  api.post<{ meeting: BrMeeting }>(`/api/business-review/meetings/${id}/complete`, { note });
+export const brReopenMeeting = (id: string) =>
+  api.post<{ meeting: BrMeeting }>(`/api/business-review/meetings/${id}/reopen`, {});
+
+/** أوعية البطاقات — نفس مفاتيح الـ bucket اللي السيرفر بيفهمها. */
+export const MEETING_BUCKETS = [
+  { key: '', ar: 'كل الاجتماعات', en: 'All meetings', countKey: 'total', color: '#0f172a' },
+  { key: 'open', ar: 'لسه مفتوحة', en: 'Still open', countKey: 'open', color: '#f37121' },
+  { key: 'completed', ar: 'مكتملة', en: 'Completed', countKey: 'completed', color: '#0f766e' },
+  { key: 'upcoming', ar: 'قادمة', en: 'Upcoming', countKey: 'upcoming', color: '#0ea5e9' },
+  { key: 'cancelled', ar: 'ملغاة', en: 'Cancelled', countKey: 'cancelled', color: '#94a3b8' },
+] as const;
 export const brSaveMinutes = (id: string, body: any) => api.put<{ meeting: BrMeeting }>(`/api/business-review/meetings/${id}/minutes`, body);
 export const brDeleteMeeting = (id: string) => api.delete(`/api/business-review/meetings/${id}`);
 

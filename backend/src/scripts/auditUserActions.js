@@ -18,12 +18,19 @@
  *
  * Usage (from backend/, with the server running):
  *   node src/server.js &                       # or point BASE at any instance
- *   BASE=http://localhost:5000 node src/scripts/auditUserActions.js
+ *   node src/scripts/auditUserActions.js --base http://localhost:5599
+ *
+ * NOTE: do NOT point these at :5000 on macOS — AirPlay Receiver owns that port
+ * and answers 403 with an empty body, which reads exactly like a broken access
+ * check. That cost an hour once.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
-const BASE = process.env.BASE || process.env.AUDIT_BASE || 'http://localhost:5000';
+const argv = process.argv.slice(2);
+const iBase = argv.indexOf('--base');
+const BASE = (iBase >= 0 && argv[iBase + 1] ? argv[iBase + 1]
+  : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
 let pass = 0; let fail = 0;
 const ok = (label, cond, extra = '') => {
   console.log(`  ${cond ? '\u2713' : '\u2717 FAIL'}  ${label}${extra ? '  \u2014 ' + extra : ''}`);

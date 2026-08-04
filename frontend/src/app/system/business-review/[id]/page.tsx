@@ -16,13 +16,13 @@ import { useSocket } from '@/hooks/useSocket';
 import {
   ArrowRight, CalendarDays, MapPin, Users, FileText, ClipboardList, Plus,
   Loader2, Save, Video, Trash2, UserCheck, UserX, Crown, ScrollText, Clock,
-  CheckCircle2, AlertTriangle, MessageSquare, Printer,
+  CheckCircle2, AlertTriangle, MessageSquare, Printer, Lock, Unlock,
 } from 'lucide-react';
 import { Spinner } from '@/components/hr/HRKit';
 import { StatusPill, ActionCard, PersonSelect, DueBadge, Progress } from '@/components/system/BusinessReviewKit';
 import {
   brMeta, brMeeting, brSaveMinutes, brCreateAction, brUpdateAction, brDelegate,
-  brDeleteAction, brUpdateMeeting, brDeleteMeeting,
+  brDeleteAction, brUpdateMeeting, brDeleteMeeting, brCompleteMeeting, brReopenMeeting,
   type BrMeta, type BrMeeting, type BrAction, type Lang,
   vocabLabel, vocabColor, fmtDate, fmtDateTime, isoDay, tx, deptLabel,
   attendanceLabel, attendanceColor, ATTENDANCE, OPEN_STATUSES,
@@ -52,6 +52,40 @@ export default function MeetingPage() {
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>('record');
   const [printing, setPrinting] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  // إقفال الاجتماع = «اكتمل». السيرفر هو اللي بيتأكد إن كل البنود والتكليفات
+  // اتقفلت، فالواجهة بتوصّل رسالته زي ما هي بدل ما تخمّن الشرط عندها.
+  const completeMeeting = async (m: BrMeeting) => {
+    const ok = await confirm({
+      title: t('Close this meeting?', 'إقفال هذا الاجتماع؟'),
+      message: t(
+        'Marking it Completed says everything arising from this meeting is finished. It is refused if any action or delegated task is still open.',
+        'تحديده كـ«اكتمل» معناه إن كل حاجة اترتّبت على الاجتماع ده خلصت. هيترفض لو لسه فيه بند تنفيذي أو تكليف فرعي مفتوح.'
+      ),
+      confirmLabel: t('Close it', 'إقفال'),
+    });
+    if (!ok) return;
+    setClosing(true);
+    try {
+      const r = await brCompleteMeeting(m._id);
+      setMeeting(r.meeting);
+      notify(t('Meeting closed', 'تم إقفال الاجتماع'), 'success');
+      load();
+    } catch (e: any) { notify(e?.message || t('Could not close it', 'تعذّر الإقفال'), 'error'); }
+    setClosing(false);
+  };
+
+  const reopenMeeting = async (m: BrMeeting) => {
+    setClosing(true);
+    try {
+      const r = await brReopenMeeting(m._id);
+      setMeeting(r.meeting);
+      notify(t('Reopened', 'تم إعادة الفتح'), 'success');
+      load();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+    setClosing(false);
+  };
 
   // The formal minutes, as a PDF — same document the report centre issues, on the
   // company letterhead, with signature lines for the chair and the secretary.
@@ -134,6 +168,14 @@ export default function MeetingPage() {
               )}
               {meeting.scribeName && <span>{t('Minuted by', 'كاتب المحضر')}: {meeting.scribeName}</span>}
             </p>
+            {meeting.status === 'completed' && meeting.completedAt && (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] rounded-lg px-2.5 py-1 bg-teal-50 text-teal-800 border border-teal-200">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {t('Closed', 'أُقفل')} {fmtDateTime(meeting.completedAt)}
+                {meeting.completedByName ? ` · ${meeting.completedByName}` : ''}
+                {meeting.completionNote ? ` · ${meeting.completionNote}` : ''}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => printMinutes(meeting._id)} disabled={printing}
@@ -141,6 +183,20 @@ export default function MeetingPage() {
               {printing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
               {t('Print minutes', 'طباعة المحضر')}
             </button>
+            {can.edit && meeting.status !== 'cancelled' && (
+              meeting.status === 'completed' ? (
+                <button type="button" onClick={() => reopenMeeting(meeting)} disabled={closing}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:border-slate-400 disabled:opacity-60">
+                  <Unlock className="w-3.5 h-3.5" />{t('Reopen', 'إعادة فتح')}
+                </button>
+              ) : (
+                <button type="button" onClick={() => completeMeeting(meeting)} disabled={closing}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-medium disabled:opacity-60">
+                  {closing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+                  {t('Close meeting', 'إقفال الاجتماع')}
+                </button>
+              )
+            )}
             {can.edit && (
               <>
               <select

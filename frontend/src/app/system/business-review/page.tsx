@@ -18,7 +18,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { KpiTile } from '@/components/system/Scorecard';
 import { StatusPill } from '@/components/system/BusinessReviewKit';
 import {
-  brMeta, brMeetings, brCreateMeeting, brDashboard,
+  brMeta, brMeetings, brCreateMeeting, brDashboard, MEETING_BUCKETS,
   type BrMeta, type BrMeeting, type Lang,
   vocabLabel, fmtDateTime, isoDay, tx, deptLabel,
 } from '@/lib/businessReview';
@@ -38,22 +38,26 @@ export default function BusinessReviewPage() {
   const [q, setQ] = useState('');
   const [cadence, setCadence] = useState('');
   const [status, setStatus] = useState('');
+  // الوعاء اللي البطاقات بتوديك عليه — «مكتملة» / «لسه مفتوحة» / «قادمة» / «ملغاة».
+  const [bucket, setBucket] = useState('');
+  const [counts, setCounts] = useState<any>(null);
   const [showNew, setShowNew] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const [m, list, d] = await Promise.all([
         brMeta().catch(() => null),
-        brMeetings({ cadence, status }).catch(() => ({ meetings: [], canRunMeetings: false, participant: false } as any)),
+        brMeetings({ cadence, status, bucket }).catch(() => ({ meetings: [], canRunMeetings: false, participant: false } as any)),
         brDashboard().catch(() => null),
       ]);
       if (m) setMeta(m);
       setMeetings(list.meetings || []);
+      if (list.counts) setCounts(list.counts);
       setParticipant(list.participant !== false);
       setDash(d);
     } catch { /* keep whatever was on screen */ }
     setLoading(false);
-  }, [cadence, status]);
+  }, [cadence, status, bucket]);
   useEffect(() => { load(); }, [load]);
   useSocket('br:meeting', load);
   useSocket('br:action', load);
@@ -161,6 +165,25 @@ export default function BusinessReviewPage() {
         </div>
       )}
 
+      {/* بطاقات بتفلتر — تدوس على «مكتملة» تشوف المكتملة بس. الأرقام محسوبة على
+          كل اجتماعاتك مش على الصفحة المعروضة، فهي بتوصف الشغل مش الفلتر. */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
+        {MEETING_BUCKETS.map((b) => {
+          const active = bucket === b.key;
+          const n = counts ? (counts as any)[b.countKey] ?? 0 : 0;
+          return (
+            <button key={b.key || 'all'} type="button"
+              onClick={() => { setBucket(b.key); setStatus(''); }}
+              className={`text-start rounded-xl border p-3 transition-colors ${
+                active ? 'bg-white border-[#f37121] shadow-sm ring-1 ring-[#f37121]/30' : 'bg-white border-slate-200 hover:border-slate-300'
+              }`}>
+              <span className="block text-2xl font-extrabold leading-none" style={{ color: b.color }}>{n}</span>
+              <span className="block text-[11px] text-slate-500 mt-1.5">{lang === 'ar' ? b.ar : b.en}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute top-1/2 -translate-y-1/2 start-2.5 w-4 h-4 text-slate-400" />
@@ -173,11 +196,17 @@ export default function BusinessReviewPage() {
           <option value="">{t('All cadences', 'كل الدورات')}</option>
           {meta?.cadences.map((c) => <option key={c.key} value={c.key}>{lang === 'ar' ? c.ar : c.en}</option>)}
         </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}
+        <select value={status} onChange={(e) => { setStatus(e.target.value); if (e.target.value) setBucket(''); }}
           className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm text-slate-700">
           <option value="">{t('All statuses', 'كل الحالات')}</option>
           {meta?.meetingStatuses.map((c) => <option key={c.key} value={c.key}>{lang === 'ar' ? c.ar : c.en}</option>)}
         </select>
+        {(bucket || status || cadence) && (
+          <button type="button" onClick={() => { setBucket(''); setStatus(''); setCadence(''); }}
+            className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm text-slate-500 hover:text-slate-800">
+            {t('Clear', 'إلغاء الفلترة')}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">

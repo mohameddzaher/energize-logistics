@@ -25,7 +25,7 @@ const User = require('../models/User');
 require('../models/Employee');
 const {
   isExecutive, isSecretary, canRunMeetings, isParticipant, isManagerRole,
-  OPEN_ACTION_STATUSES, meta,
+  OPEN_ACTION_STATUSES, OPEN_MEETING_STATUSES, HELD_MEETING_STATUSES, meta,
 } = require('../config/businessReview');
 const { createNotification } = require('../services/notificationService');
 const { emitToAll, emitToUser } = require('../websocket/socketManager');
@@ -117,6 +117,15 @@ exports.listMeetings = async (req, res) => {
     const filter = { ...meetingScope(req.user) };
     if (req.query.cadence) filter.cadence = req.query.cadence;
     if (req.query.status) filter.status = req.query.status;
+    // الفلاتر اللي البطاقات بتوديك عليها. «مفتوحة» مش حالة واحدة، فلازم تتفهم هنا
+    // مرة واحدة بدل ما كل واجهة تبني القاعدة عندها وتختلف عن التانية.
+    if (req.query.bucket === 'completed') filter.status = 'completed';
+    if (req.query.bucket === 'open') filter.status = { $in: OPEN_MEETING_STATUSES };
+    if (req.query.bucket === 'cancelled') filter.status = 'cancelled';
+    if (req.query.bucket === 'upcoming') {
+      filter.status = { $in: ['scheduled', 'in_progress'] };
+      filter.scheduledAt = { ...(filter.scheduledAt || {}), $gte: new Date() };
+    }
     if (req.query.from || req.query.to) {
       filter.scheduledAt = {};
       if (req.query.from) filter.scheduledAt.$gte = new Date(`${req.query.from}T00:00:00`);
@@ -144,8 +153,21 @@ exports.listMeetings = async (req, res) => {
       byMeeting.set(k, cur);
     }
 
+    // عدّادات البطاقات — محسوبة على النطاق كله، مش على الصفحة المفلترة. البطاقة
+    // اللي بتقول «مكتملة ٤» لازم تفضل بتقول ٤ وانت واقف على فلتر تاني، وإلا هي
+    // بتوصف الفلتر مش الشغل.
+    const scope = meetingScope(req.user);
+    const [total, completed, open, upcoming, cancelled] = await Promise.all([
+      BrMeeting.countDocuments(scope),
+      BrMeeting.countDocuments({ ...scope, status: 'completed' }),
+      BrMeeting.countDocuments({ ...scope, status: { $in: OPEN_MEETING_STATUSES } }),
+      BrMeeting.countDocuments({ ...scope, status: { $in: ['scheduled', 'in_progress'] }, scheduledAt: { $gte: new Date() } }),
+      BrMeeting.countDocuments({ ...scope, status: 'cancelled' }),
+    ]);
+
     res.json({
       meetings: meetings.map((m) => ({ ...m, actions: byMeeting.get(String(m._id)) || { total: 0, open: 0 } })),
+      counts: { total, completed, open, upcoming, cancelled },
       canRunMeetings: canRunMeetings(req.user),
       participant: true,
     });
@@ -285,12 +307,99 @@ exports.updateMeeting = async (req, res) => {
       meeting.attendees = await buildAttendees(req.body.attendees, meeting.attendees, req.user);
     }
     if (req.body.status === 'held' && !meeting.heldAt) meeting.heldAt = new Date();
+    // «اكتمل» مش قيمة في الليستة زي غيرها — هي إعلان إن كل شغل الاجتماع خلص،
+    // فليها مسار خاص بيتأكد من ده الأول.
+    if (req.body.status === 'completed') {
+      return res.status(400).json({
+        message: 'استخدم زر «إقفال الاجتماع» لتحديده كمكتمل — يتم التأكد أولاً من إغلاق كل البنود التنفيذية',
+        code: 'USE_COMPLETE_ENDPOINT',
+      });
+    }
+    // رجّع اجتماع مكتمل لحالة «انعقد»؟ لازم يمرّ من نفس المسار برضه.
+    if (meeting.isModified('status') && meeting.status !== 'completed') {
+      meeting.completedAt = null; meeting.completedBy = null; meeting.completedByName = ''; meeting.completionNote = '';
+    }
     await meeting.save();
     emit('br:meeting', { id: String(meeting._id) });
     res.json({ meeting });
   } catch (error) {
     console.error('br update meeting error:', error);
     res.status(500).json({ message: 'تعذّر تحديث الاجتماع' });
+  }
+};
+
+/**
+ * إقفال الاجتماع — «اكتمل».
+ *
+ * لازم يكون واضح إن دي حاجة تانية غير «انعقد»: انعقد واقعة (الاجتماع حصل)،
+ * واكتمل حُكم من الشؤون الإدارية إن كل حاجة اترتّبت عليه خلصت. اجتماع ممكن
+ * يفضل «انعقد» شهور وبنوده لسه شغالة.
+ *
+ * وعشان كلمة «اكتمل» تفضل ليها معنى في الفلتر والتقارير، الإقفال بيترفض لو لسه
+ * فيه بنود مفتوحة أو تكليفات فرعية مفتوحة — مع قول العدد بالظبط. مفيش إقفال
+ * على الورق.
+ */
+exports.completeMeeting = async (req, res) => {
+  try {
+    if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can close a meeting');
+    const meeting = await BrMeeting.findById(req.params.id);
+    if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+    if (meeting.status === 'cancelled') {
+      return res.status(400).json({ message: 'الاجتماع ملغي — لا يُقفل' });
+    }
+    if (meeting.status === 'completed') {
+      return res.status(400).json({ message: 'الاجتماع مقفول بالفعل' });
+    }
+
+    const actions = await BrAction.find({ meeting: meeting._id }).select('_id status title').lean();
+    const openActions = actions.filter((a) => OPEN_ACTION_STATUSES.includes(a.status));
+    const openTasks = actions.length
+      ? await BrAssignment.countDocuments({ action: { $in: actions.map((a) => a._id) }, status: { $in: OPEN_ACTION_STATUSES } })
+      : 0;
+
+    if (openActions.length || openTasks) {
+      const bits = [];
+      if (openActions.length) bits.push(`${openActions.length} بند تنفيذي`);
+      if (openTasks) bits.push(`${openTasks} تكليف فرعي`);
+      return res.status(400).json({
+        message: `لا يمكن الإقفال: لسه ${bits.join(' و')} مفتوح. أغلقها أو ألغِها أولاً.`,
+        code: 'OPEN_WORK',
+        openActions: openActions.map((a) => ({ _id: a._id, title: a.title, status: a.status })),
+        openTasks,
+      });
+    }
+
+    meeting.status = 'completed';
+    if (!meeting.heldAt) meeting.heldAt = new Date();   // مينفعش يكتمل من غير ما يكون حصل
+    meeting.completedAt = new Date();
+    meeting.completedBy = req.user._id;
+    meeting.completedByName = fullName(req.user);
+    meeting.completionNote = (req.body.note || '').trim();
+    await meeting.save();
+
+    emit('br:meeting', { id: String(meeting._id) });
+    res.json({ meeting });
+  } catch (error) {
+    console.error('br complete meeting error:', error);
+    res.status(500).json({ message: 'تعذّر إقفال الاجتماع' });
+  }
+};
+
+/** إعادة فتح اجتماع مقفول — لو ظهر شغل جديد بعد الإقفال. */
+exports.reopenMeeting = async (req, res) => {
+  try {
+    if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can reopen a meeting');
+    const meeting = await BrMeeting.findById(req.params.id);
+    if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+    if (meeting.status !== 'completed') return res.status(400).json({ message: 'الاجتماع غير مقفول' });
+    meeting.status = 'held';
+    meeting.completedAt = null; meeting.completedBy = null; meeting.completedByName = ''; meeting.completionNote = '';
+    await meeting.save();
+    emit('br:meeting', { id: String(meeting._id) });
+    res.json({ meeting });
+  } catch (error) {
+    console.error('br reopen meeting error:', error);
+    res.status(500).json({ message: 'تعذّر إعادة فتح الاجتماع' });
   }
 };
 
@@ -761,13 +870,14 @@ exports.getDashboard = async (req, res) => {
           scheduledAt: { $gte: new Date(now.getTime() - 6 * 3600 * 1000) },
         }).select('refNumber title cadence scheduledAt location status').sort({ scheduledAt: 1 }).limit(8).lean(),
         BrMeeting.countDocuments(scope),
-        BrMeeting.countDocuments({ ...scope, status: 'held' }),
+        BrMeeting.countDocuments({ ...scope, status: { $in: HELD_MEETING_STATUSES } }),
         BrMeeting.countDocuments({ ...scope, status: { $in: ['scheduled', 'in_progress'] }, scheduledAt: { $gte: now } }),
       ]);
       payload.upcoming = upcoming;
       // Meeting counts, so the tiles say something true the moment a meeting is
       // scheduled instead of showing zeros until the first action exists.
-      payload.mine.meetings = { total: myMeetings, held: myHeld, upcoming: myUpcoming };
+      const myCompleted = await BrMeeting.countDocuments({ ...scope, status: 'completed' });
+      payload.mine.meetings = { total: myMeetings, held: myHeld, upcoming: myUpcoming, completed: myCompleted };
     }
 
     if (runner) {

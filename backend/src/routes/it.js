@@ -17,6 +17,8 @@ router.get('/dashboard', it.getDashboard);
 // بيرجّع كلمة المرور هو /reveal، وهو بيتسجّل مع كل استخدام.
 router.get('/emails', emails.list);
 router.get('/emails/employees', emails.searchEmployees);   // قبل /emails/:id
+// تصدير بكلمات المرور — نفس صلاحية الكشف، ومسجَّل في سجل التدقيق.
+router.get('/emails/export', authorize(...EDIT_ROLES), emails.exportWithPasswords);
 router.post('/emails', authorize(...EDIT_ROLES), emails.create);
 router.post('/emails/:id/reveal', authorize(...EDIT_ROLES), emails.revealPassword);
 router.put('/emails/:id', authorize(...EDIT_ROLES), emails.update);

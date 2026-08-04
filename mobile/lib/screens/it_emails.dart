@@ -201,12 +201,8 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                                 child: AppCard(
                                   padding: const EdgeInsets.all(12),
                                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Row(children: [
-                                      Expanded(child: Text((r['displayName'] ?? r['email']).toString(),
-                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
-                                      Chip2(r['mailboxType'] == 'functional' ? tr('وظيفي', 'Functional') : tr('شخصي', 'Personal'),
-                                          r['mailboxType'] == 'functional' ? T.violet : T.inkFaint),
-                                    ]),
+                                    Text((r['displayName'] ?? r['email']).toString(),
+                                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
                                     const SizedBox(height: 4),
                                     Text((r['email'] ?? '').toString(),
                                         style: const TextStyle(fontSize: 11.5, color: T.inkSoft, fontFamily: 'monospace'),
@@ -216,9 +212,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                                       Icon(linked ? Icons.link : Icons.link_off, size: 14, color: linked ? T.success : T.warn),
                                       const SizedBox(width: 4),
                                       Expanded(child: Text(
-                                        linked
-                                            ? '${r['employeeName'] ?? ''}${(r['employeeNumber'] ?? '').toString().isEmpty ? '' : ' · #${r['employeeNumber']}'}'
-                                            : tr('غير مربوط بموظف', 'not linked'),
+                                        linked ? (r['employeeName'] ?? '').toString() : tr('غير مربوط بموظف', 'not linked'),
                                         style: TextStyle(fontSize: 11.5, color: linked ? T.inkSoft : T.warn))),
                                       if (hasPw && _canReveal)
                                         TextButton.icon(
@@ -259,6 +253,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
     final notes = TextEditingController(text: (row?['notes'] ?? '').toString());
     String type = (row?['mailboxType'] ?? 'personal').toString();
     String status = (row?['status'] ?? 'active').toString();
+    bool more = false;
     Map<String, dynamic>? emp = row?['employee'] == null
         ? null
         : {'_id': row!['employee'], 'name': row['employeeName'], 'employeeNumber': row['employeeNumber']};
@@ -273,19 +268,20 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
             Text(row == null ? tr('بريد جديد', 'New mailbox') : tr('تعديل بريد', 'Edit mailbox'),
                 style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
             const SizedBox(height: 14),
-            TextField(
-              controller: localPart, textDirection: TextDirection.ltr,
-              decoration: InputDecoration(labelText: tr('اسم البريد', 'Mailbox name'), hintText: 'first.last', suffixText: '@$_domain'),
-            ),
-            const SizedBox(height: 10),
-            // الموظف: بحث حقيقي، القائمة الساكنة مش هتنفع مع مئات الموظفين.
+            // الموظف الأول: الترتيب الذهني هو «مين الموظف ← إيه بريده ← إيه كلمته».
+            // بحث حقيقي، القائمة الساكنة مش هتنفع مع مئات الموظفين.
             Pressable(
               onTap: () async {
                 final picked = await _pickEmployee(c2);
-                if (picked != null) setInner(() => emp = picked['_id'] == null ? null : picked);
+                if (picked != null) {
+                  setInner(() {
+                    emp = picked['_id'] == null ? null : picked;
+                    if (emp != null && name.text.trim().isEmpty) name.text = (emp!['name'] ?? '').toString();
+                  });
+                }
               },
               child: InputDecorator(
-                decoration: InputDecoration(labelText: tr('الموظف (اختياري)', 'Employee (optional)')),
+                decoration: InputDecoration(labelText: tr('الموظف', 'Employee')),
                 child: Text(
                   emp == null ? tr('بدون ربط', 'Not linked')
                       : '${emp!['name']}${(emp!['employeeNumber'] ?? '').toString().isEmpty ? '' : ' · #${emp!['employeeNumber']}'}',
@@ -293,41 +289,54 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            TextField(controller: name, decoration: InputDecoration(labelText: tr('الاسم الظاهر', 'Display name'))),
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: DropdownButtonFormField<String>(
-                initialValue: type,
-                decoration: InputDecoration(labelText: tr('النوع', 'Type')),
-                items: [
-                  DropdownMenuItem(value: 'personal', child: Text(tr('شخصي', 'Personal'))),
-                  DropdownMenuItem(value: 'functional', child: Text(tr('وظيفي', 'Functional'))),
-                ],
-                onChanged: (v) => setInner(() => type = v ?? 'personal'))),
-              const SizedBox(width: 10),
-              Expanded(child: DropdownButtonFormField<String>(
-                initialValue: status,
-                decoration: InputDecoration(labelText: tr('الحالة', 'Status')),
-                items: [
-                  DropdownMenuItem(value: 'active', child: Text(tr('نشط', 'Active'))),
-                  DropdownMenuItem(value: 'suspended', child: Text(tr('موقوف', 'Suspended'))),
-                  DropdownMenuItem(value: 'closed', child: Text(tr('مغلق', 'Closed'))),
-                ],
-                onChanged: (v) => setInner(() => status = v ?? 'active'))),
-            ]),
+            TextField(
+              controller: localPart, textDirection: TextDirection.ltr,
+              decoration: InputDecoration(labelText: tr('اسم البريد', 'Mailbox name'), hintText: 'first.last', suffixText: '@$_domain'),
+            ),
             const SizedBox(height: 10),
             TextField(
               controller: pw, obscureText: true, enabled: _vaultReady, textDirection: TextDirection.ltr,
               decoration: InputDecoration(
                 labelText: row == null ? tr('كلمة المرور', 'Password') : tr('كلمة مرور جديدة (اتركها فارغة للإبقاء)', 'New password (blank keeps current)'),
-                helperText: _vaultReady
-                    ? tr('تُحفظ مشفّرة ولا تظهر إلا بطلب مسجَّل.', 'Stored encrypted; every reveal is recorded.')
-                    : tr('الحفظ موقوف — الخزنة غير مهيأة.', 'Disabled — vault not configured.'),
-                helperMaxLines: 2,
+                helperText: _vaultReady ? null : tr('الحفظ موقوف — الخزنة غير مهيأة.', 'Disabled — vault not configured.'),
               ),
             ),
-            const SizedBox(height: 10),
-            TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+            const SizedBox(height: 6),
+            // الباقي مش بيتكتب كل مرة، فمش لازم ياخد مساحة كل مرة.
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                onPressed: () => setInner(() => more = !more),
+                child: Text(more ? tr('إخفاء الخيارات الإضافية', 'Hide extra options') : tr('خيارات إضافية', 'More options'),
+                    style: const TextStyle(fontSize: 12)),
+              ),
+            ),
+            if (more) ...[
+              TextField(controller: name, decoration: InputDecoration(labelText: tr('الاسم الظاهر', 'Display name'))),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: DropdownButtonFormField<String>(
+                  initialValue: type,
+                  decoration: InputDecoration(labelText: tr('النوع', 'Type')),
+                  items: [
+                    DropdownMenuItem(value: 'personal', child: Text(tr('شخصي', 'Personal'))),
+                    DropdownMenuItem(value: 'functional', child: Text(tr('وظيفي', 'Functional'))),
+                  ],
+                  onChanged: (v) => setInner(() => type = v ?? 'personal'))),
+                const SizedBox(width: 10),
+                Expanded(child: DropdownButtonFormField<String>(
+                  initialValue: status,
+                  decoration: InputDecoration(labelText: tr('الحالة', 'Status')),
+                  items: [
+                    DropdownMenuItem(value: 'active', child: Text(tr('نشط', 'Active'))),
+                    DropdownMenuItem(value: 'suspended', child: Text(tr('موقوف', 'Suspended'))),
+                    DropdownMenuItem(value: 'closed', child: Text(tr('مغلق', 'Closed'))),
+                  ],
+                  onChanged: (v) => setInner(() => status = v ?? 'active'))),
+              ]),
+              const SizedBox(height: 10),
+              TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+            ],
             const SizedBox(height: 16),
             SizedBox(width: double.infinity, child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: T.orange),

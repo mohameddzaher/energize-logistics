@@ -104,6 +104,24 @@ async function login(e, pw = 'Test@12345') {
   const linkedNow = await req('PUT', `/api/it/emails/${solo.body.email._id}`, C.it, { employee: anEmployee ? String(anEmployee._id) : null });
   ok('واتربط بعدين', linkedNow.status === 200 && (!anEmployee || !!linkedNow.body?.email?.employee));
 
+  console.log('\n── التصدير بكلمات المرور: مقفول ومسجَّل ──');
+  const expDenied = await req('GET', '/api/it/emails/export', C.emp);
+  ok('موظف عادي مرفوض', expDenied.status === 403, `http ${expDenied.status}`);
+  const exp = await req('GET', '/api/it/emails/export?q=zz-', C.it);
+  ok('تقنية المعلومات بتصدّر', exp.status === 200, `http ${exp.status}`);
+  const mine = (exp.body?.rows || []).find((r) => r.email.startsWith('zz-test.person'));
+  ok('كلمة المرور الحقيقية في الملف', mine?.password === 'Changed#2026!', mine?.password);
+  ok('مفيش أعمدة النوع/الحالة في التصدير', mine && !('mailboxType' in mine) && !('status' in mine), Object.keys(mine || {}).join(', '));
+  // الخاصية اللي بتهم فعلاً: اللي بيتصدّر هو اللي كان معروض. لو الفلتر اتجاهل،
+  // حد بيصدّر صف واحد كان هياخد كل كلمات المرور — ولذلك المقارنة بالقائمة نفسها.
+  const listSame = await req('GET', '/api/it/emails?q=zz-', C.it);
+  ok('التصدير بيحترم نفس فلتر الشاشة',
+    exp.body?.exported === (listSame.body?.emails || []).length,
+    `تصدير ${exp.body?.exported} · قائمة ${(listSame.body?.emails || []).length}`);
+  const bulkTrail = await AuditLog.findOne({ action: 'export_company_email_passwords' }).sort({ createdAt: -1 }).lean();
+  ok('التصدير اتسجّل بالعدد والفلتر', !!bulkTrail && bulkTrail.changes?.after?.exported === exp.body?.exported,
+    bulkTrail ? `exported=${bulkTrail.changes?.after?.exported} filters=${JSON.stringify(bulkTrail.changes?.after?.filters)}` : 'no entry');
+
   console.log('\n── التكرار مرفوض ──');
   const dup = await req('POST', '/api/it/emails', C.it, { email: 'zz-unlinked' });
   ok('نفس البريد مرتين مرفوض', dup.status === 400, dup.body?.message);

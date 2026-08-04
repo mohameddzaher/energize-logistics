@@ -255,4 +255,62 @@ exports.revealPassword = async (req, res) => {
   }
 };
 
+/**
+ * تصدير القائمة مع كلمات المرور.
+ *
+ * ملف إكسل فيه كلمات مرور بيسيب الخزنة ويقعد على ديسك توب حد وفي مرفقات إيميل،
+ * فده مسار منفصل بنفس صلاحية الكشف، وبيتسجّل في سجل التدقيق **مرة واحدة بعدد
+ * الصناديق** — تصدير ٨٠ كلمة مرور حدث أخطر من عرض واحدة، ولازم يبان كده.
+ *
+ * بيحترم نفس الفلاتر بتاعة الشاشة، عشان اللي اتصدّر هو اللي كان معروض.
+ */
+exports.exportWithPasswords = async (req, res) => {
+  try {
+    if (!canReveal(req.user)) return res.status(403).json({ message: 'غير مصرّح بتصدير كلمات المرور' });
+
+    const filter = {};
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.mailboxType) filter.mailboxType = req.query.mailboxType;
+    if (req.query.linked === 'yes') filter.employee = { $ne: null };
+    if (req.query.linked === 'no') filter.employee = null;
+    if (req.query.q && req.query.q.trim()) {
+      const r = rx(req.query.q);
+      filter.$or = [{ email: r }, { displayName: r }, { employeeName: r }, { employeeNumber: r }, { department: r }, { functionAr: r }];
+    }
+
+    const rows = await CompanyEmail.find(filter).select('+passwordEnc').sort({ displayName: 1, email: 1 }).lean();
+
+    let withPw = 0;
+    const out = rows.map((r) => {
+      let password = '';
+      if (r.passwordEnc) {
+        // صندوق واحد بايظ ما يوقّعش التصدير كله — نعلّم عليه ونكمّل.
+        try { password = vault.decrypt(r.passwordEnc); withPw += 1; }
+        catch (e) { password = '⚠ تعذّر فك التشفير'; }
+      }
+      return {
+        displayName: r.displayName || '',
+        email: r.email,
+        employeeName: r.employeeName || '',
+        department: r.department || '',
+        notes: r.notes || '',
+        password,
+      };
+    });
+
+    logAudit({
+      user: req.user, action: 'export_company_email_passwords', entity: 'CompanyEmail',
+      entityKey: 'bulk',
+      changes: { after: { exported: out.length, withPassword: withPw, filters: req.query } },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    res.json({ rows: out, exported: out.length, withPassword: withPw });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ message: e.message, code: e.code });
+    console.error('company email export', e);
+    res.status(500).json({ message: 'تعذّر تصدير القائمة' });
+  }
+};
+
 module.exports.COMPANY_DOMAIN = COMPANY_DOMAIN;

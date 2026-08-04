@@ -400,3 +400,14 @@ export const deleteCompanyEmail = (id: string) => api.delete(`/api/it/emails/${i
 /** الكشف حدث مسجَّل — مش قراءة عادية. */
 export const revealCompanyEmailPassword = (id: string) =>
   api.post<{ password: string; email: string; revealCount: number }>(`/api/it/emails/${id}/reveal`, {});
+
+/**
+ * تصدير بكلمات المرور. مسار مستقل بنفس صلاحية الكشف ومسجَّل في سجل التدقيق —
+ * ملف إكسل فيه كلمات مرور بيسيب الخزنة ويقعد على ديسك توب حد.
+ */
+export const exportCompanyEmailsWithPasswords = (q: Record<string, string> = {}) => {
+  const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v)).toString();
+  return api.get<{ rows: any[]; exported: number; withPassword: number }>(
+    `/api/it/emails/export${qs ? `?${qs}` : ''}`
+  );
+};

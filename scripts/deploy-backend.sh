@@ -25,6 +25,10 @@ PM2_NAME="energize-api"
 API="https://api.energize-logistics.com"
 SITE="https://energize-logistics.com"
 KEEP_RELEASES=5
+# puppeteer's postinstall tries to fetch a browser and fails on this VPS (no
+# unzip / restricted egress); the app uses the system Chromium instead. Without
+# this, `npm install` exits non-zero and leaves node_modules half-written.
+NPM_ENV="PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SSH=(ssh -i "$VPS_KEY" -o ConnectTimeout=15 "$VPS_HOST")
@@ -38,6 +42,19 @@ note() { printf '  %s%s%s\n' "$c_dim" "$*" "$c_off"; }
 fails=0
 check() { # check <label> <actual> <expected>
   if [[ "$2" == "$3" ]]; then good "$1 ${c_dim}($2)${c_off}"; else bad "$1 — got $2, expected $3"; fails=$((fails+1)); fi
+}
+
+# Give the process a chance to finish booting before judging it. A rollback
+# triggered by an app that simply had not listened yet would be a self-inflicted
+# outage — which is exactly what happened the first time this script ran.
+wait_ready() {
+  local tries=${1:-20}
+  for ((i=1; i<=tries; i++)); do
+    [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$API/api/health")" == "200" ]] && {
+      note "ready after ${i}s"; return 0; }
+    sleep 3
+  done
+  return 1
 }
 
 # ── The health gate ─────────────────────────────────────────────────────────
@@ -96,10 +113,22 @@ rollback() {
   prev=$("${SSH[@]}" "ls -1 $RELEASES 2>/dev/null | sort | tail -1" | tr -d '\r')
   if [[ -z "$prev" ]]; then bad "no saved release to roll back to"; exit 1; fi
   note "restoring $prev"
-  # The backup never contains .env or uploads, so restoring cannot clobber them.
-  "${SSH[@]}" "rsync -a --delete --exclude .env --exclude uploads $RELEASES/$prev/ $APP_DIR/ \
-               && cd $APP_DIR && npm install --omit=dev >/dev/null 2>&1; pm2 restart $PM2_NAME >/dev/null"
-  sleep 8
+  # --exclude node_modules is the one that matters here. The backup deliberately
+  # does not contain node_modules, so a --delete without this exclude DELETES
+  # every installed dependency and the app dies with MODULE_NOT_FOUND. That is
+  # not a hypothetical: it is how this script took production down on its first
+  # run, turning a single failed health check into a real outage. A rollback must
+  # never be able to do more damage than the deploy it is undoing.
+  if ! "${SSH[@]}" "rsync -a --delete --exclude node_modules --exclude .env --exclude uploads $RELEASES/$prev/ $APP_DIR/"; then
+    bad "could not restore the files — the running process is untouched, fix by hand"; exit 1
+  fi
+  # Dependencies only need reinstalling if the restored package.json disagrees
+  # with what is installed; run it, but never restart on a failed install.
+  if ! "${SSH[@]}" "cd $APP_DIR && $NPM_ENV npm install --omit=dev >/tmp/npm-rollback.log 2>&1"; then
+    bad "npm install failed during rollback"; "${SSH[@]}" "tail -15 /tmp/npm-rollback.log"; exit 1
+  fi
+  "${SSH[@]}" "pm2 restart $PM2_NAME >/dev/null"
+  wait_ready 20 || true
   verify && good "rolled back to $prev" || { bad "still unhealthy after rollback — needs a human"; exit 1; }
 }
 
@@ -144,11 +173,19 @@ rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=15" \
   backend/ "$VPS_HOST:$APP_DIR/"
 good "files in place"
 
-"${SSH[@]}" "cd $APP_DIR && npm install --omit=dev >/dev/null 2>&1 && pm2 restart $PM2_NAME >/dev/null"
-good "dependencies installed, $PM2_NAME restarted"
-note "waiting for boot…"; sleep 10
+if ! "${SSH[@]}" "cd $APP_DIR && $NPM_ENV npm install --omit=dev >/tmp/npm-deploy.log 2>&1"; then
+  bad "npm install failed on the server — NOT restarting; the old process is still serving"
+  "${SSH[@]}" "tail -15 /tmp/npm-deploy.log"
+  exit 1
+fi
+good "dependencies installed"
+"${SSH[@]}" "pm2 restart $PM2_NAME >/dev/null"
+good "$PM2_NAME restarted"
 
 # ── Prove it, or put it back ────────────────────────────────────────────────
+note "waiting for the app to come up…"
+wait_ready 20 || note "did not answer within 60s — verifying anyway"
+
 if verify; then
   "${SSH[@]}" "cd $RELEASES && ls -1 | sort | head -n -$KEEP_RELEASES | xargs -r rm -rf"
   say "Deployed $(git rev-parse --short HEAD) — healthy"

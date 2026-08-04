@@ -40,8 +40,17 @@ bad()  { printf '  %s✗%s %s\n' "$c_bad" "$c_off" "$*"; }
 note() { printf '  %s%s%s\n' "$c_dim" "$*" "$c_off"; }
 
 fails=0
+failed_list=""
 check() { # check <label> <actual> <expected>
-  if [[ "$2" == "$3" ]]; then good "$1 ${c_dim}($2)${c_off}"; else bad "$1 — got $2, expected $3"; fails=$((fails+1)); fi
+  if [[ "$2" == "$3" ]]; then
+    good "$1 ${c_dim}($2)${c_off}"
+  else
+    bad "$1 — got $2, expected $3"
+    fails=$((fails+1))
+    # Name the failures again at the end. A rollback that only says "1 check
+    # failed" tells whoever reads the log nothing about what to look at.
+    failed_list="${failed_list}${failed_list:+, }$1 (got $2)"
+  fi
 }
 
 # Give the process a chance to finish booting before judging it. A rollback
@@ -65,6 +74,7 @@ wait_ready() {
 # only remedy it has. Frontend state is reported, never fatal.
 verify() {
   fails=0
+  failed_list=""
   say "Verifying $API"
 
   check "API answers"            "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$API/api/health")" "200"
@@ -113,9 +123,20 @@ verify() {
   # Nothing crash-looping: a restart storm shows as a climbing restart count.
   note "restarts: $("${SSH[@]}" "pm2 jlist" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s).find(x=>x.name==="'"$PM2_NAME"'");console.log(p?p.pm2_env.restart_time:"?")}catch(e){console.log("?")}})')"
 
-  if (( fails )); then bad "$fails check(s) failed"; return 1; fi
+  if (( fails )); then bad "$fails check(s) failed: $failed_list"; return 1; fi
   good "all checks passed"
   return 0
+}
+
+# Verify, and if it fails, verify ONCE more after a pause before believing it.
+# Restarting behind nginx has a ~1s window where everything returns 502 together;
+# a single unlucky sample there would otherwise revert a perfectly good deploy.
+# Rolling back is disruptive, so it needs two opinions, not one.
+verify_twice() {
+  verify && return 0
+  note "re-checking in 10s before rolling back (a restart has a brief 502 window)…"
+  sleep 10
+  verify
 }
 
 rollback() {
@@ -197,7 +218,7 @@ good "$PM2_NAME restarted"
 note "waiting for the app to come up…"
 wait_ready 20 || note "did not answer within 60s — verifying anyway"
 
-if verify; then
+if verify_twice; then
   "${SSH[@]}" "cd $RELEASES && ls -1 | sort | head -n -$KEEP_RELEASES | xargs -r rm -rf"
   say "Deployed $(git rev-parse --short HEAD) — healthy"
   note "previous release kept at $RELEASES/$STAMP"

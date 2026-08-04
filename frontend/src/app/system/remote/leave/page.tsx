@@ -5,7 +5,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { motion } from 'framer-motion';
 import { CalendarCheck, Plus, Check, X, RefreshCw } from 'lucide-react';
-import { isRemoteStaff, LEAVE_TYPES, leaveTypeLabel, STATUS_STYLES, cairoToday } from '@/lib/remote';
+import { isRemoteStaff, LEAVE_TYPES, leaveTypeLabel, STATUS_STYLES, cairoToday, earliestLeaveStart, leaveNeedsNotice, LEAVE_ADVANCE_NOTICE_DAYS } from '@/lib/remote';
 import { getRemoteLeaveTranslations } from '@/lib/translations';
 
 interface Leave {
@@ -65,6 +65,13 @@ export default function RemoteLeavePage() {
     e.preventDefault();
     setErr('');
     if (endDate < startDate) { setErr(tx.endBeforeStart); return; }
+    const minStart = earliestLeaveStart(type);
+    if (startDate < minStart) {
+      setErr(ar
+        ? `يجب تقديم هذا الطلب قبل موعد بدايته بـ ${LEAVE_ADVANCE_NOTICE_DAYS} يومًا على الأقل (أقرب بداية ${minStart}). الطارئة والمرضية معفاة.`
+        : `This request must be filed at least ${LEAVE_ADVANCE_NOTICE_DAYS} days before it starts (earliest ${minStart}). Emergency and sick leave are exempt.`);
+      return;
+    }
     setSubmitting(true);
     try {
       await api.post('/api/remote/leave', { type, startDate, endDate, reason });
@@ -164,18 +171,38 @@ export default function RemoteLeavePage() {
               {err && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-600 text-sm">{err}</div>}
               <div>
                 <label className="block text-slate-700 text-sm mb-1.5">{tx.leaveType}</label>
-                <select aria-label={tx.leaveType} value={type} onChange={(e) => setType(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm">
+                <select
+                  aria-label={tx.leaveType}
+                  value={type}
+                  onChange={(e) => {
+                    const k = e.target.value;
+                    setType(k);
+                    // A planned type must not inherit a date that breaks the rule.
+                    const min = earliestLeaveStart(k);
+                    if (startDate < min) { setStartDate(min); setEndDate(min); }
+                  }}
+                  className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm"
+                >
                   {LEAVE_TYPES.map((t) => <option key={t.key} value={t.key}>{ar ? t.ar : t.en}</option>)}
                 </select>
+                <p className={`text-xs mt-1.5 ${leaveNeedsNotice(type) ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {leaveNeedsNotice(type)
+                    ? (ar
+                      ? `تُقدَّم قبل موعدها بـ ${LEAVE_ADVANCE_NOTICE_DAYS} يومًا على الأقل — أقرب بداية ${earliestLeaveStart(type)}.`
+                      : `Must be requested at least ${LEAVE_ADVANCE_NOTICE_DAYS} days ahead — earliest start ${earliestLeaveStart(type)}.`)
+                    : (ar
+                      ? 'إجازة طارئة/مرضية — معفاة من الإخطار المسبق.'
+                      : 'Emergency / sick leave — exempt from advance notice.')}
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 text-sm mb-1.5">{tx.from}</label>
-                  <input aria-label={tx.from} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required />
+                  <input aria-label={tx.from} type="date" min={earliestLeaveStart(type)} value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required />
                 </div>
                 <div>
                   <label className="block text-slate-700 text-sm mb-1.5">{tx.to}</label>
-                  <input aria-label={tx.to} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required />
+                  <input aria-label={tx.to} type="date" min={startDate || earliestLeaveStart(type)} value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required />
                 </div>
               </div>
               <div>

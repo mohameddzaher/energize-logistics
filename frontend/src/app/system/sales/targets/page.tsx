@@ -28,7 +28,7 @@ export default function SalesTargetsPage() {
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const canEdit = isSalesAdmin(user?.role);
+  const canEdit = isSalesAdmin(user);
 
   const load = useCallback(async () => {
     try { const d = await api.get<{ targets: SalesTarget[] }>(`/api/sales/targets?period=${period}`); setItems(d.targets || []); } catch { /* */ }

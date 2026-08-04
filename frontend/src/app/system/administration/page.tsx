@@ -110,7 +110,8 @@ export default function AdministrationBoardPage() {
   const perms = (user as any)?.permissions;
   const canView = STAFF.includes(role) || canAccessSection(perms, 'Administration');
   const canEdit = STAFF.includes(role) || canEditSection(perms, 'Administration');
-  const canDelete = DELETE_ROLES.includes(role);
+  // Same rule the API applies: a section grant of «تعديل» carries delete too.
+  const canDelete = DELETE_ROLES.includes(role) || canEditSection(perms, 'Administration');
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [assignees, setAssignees] = useState<Assignee[]>([]);

@@ -10,6 +10,8 @@ import api from '@/lib/api';
 import { isCrmStaff, isCrmAdmin } from '@/lib/crm';
 import { Truck, Plus, Edit, Trash2, Eye, Check, X, RefreshCw, Star } from 'lucide-react';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, TextArea, Select, ContactButtons } from '@/components/crm/CrmKit';
+import PortalAccountCard from '@/components/system/PortalAccountCard';
+import ReportButton from '@/components/system/ReportButton';
 
 type Vendor = Record<string, any>;
 interface Options { energizeReps: string[]; followUpStatuses: string[]; vendorTypes: string[]; headOffices: string[] }
@@ -206,6 +208,12 @@ export default function CrmVendorsPage() {
               ))}
             </div>
             {detail.notes && <div><p className="text-slate-400 text-[11px] uppercase tracking-wide mb-1">{t('Notes', 'ملاحظات')}</p><p className="text-slate-800 text-sm bg-slate-50 rounded-lg p-3 whitespace-pre-wrap">{detail.notes}</p></div>}
+            <div className="flex justify-end">
+              <ReportButton subject="vendor" id={detail.name} label={t('Full vendor report', 'التقرير الشامل للمورد')} />
+            </div>
+
+            {/* حساب البوابة — المورد يتابع الحمولات اللي شالها بنفسه */}
+            <PortalAccountCard source="crm_vendor" refId={String(detail._id)} name={detail.name} />
             <div className="flex justify-end"><PrimaryButton onClick={() => { setDetail(null); openEdit(detail); }}><Edit className="w-4 h-4" /> {t('Edit', 'تعديل')}</PrimaryButton></div>
           </div>
         )}

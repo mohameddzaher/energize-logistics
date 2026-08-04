@@ -36,6 +36,10 @@ router.get('/reports/vehicle/:id', ls2reports.getVehicleReport); // ?from&to[&he
 
 // Drivers — km attributed per day to whoever was on the truck that day
 router.get('/drivers', ls2.listDrivers); // ?from&to
+// تقييم أداء السائقين — score from trips / delivery time / loading time / speed.
+// MUST come before /drivers/:driver so "performance" isn't read as a driver name.
+router.get('/drivers/performance', ls2.driverPerformance); // ?from&to[&deep=1]
+router.get('/drivers/performance/:driver', ls2.driverPerformanceDetail); // ?from&to — always deep
 router.get('/drivers/:driver', ls2.getDriver); // ?from&to
 
 // Unscheduled/exceptional repairs (accidents, breakdowns) — ours only, never

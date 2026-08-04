@@ -13,6 +13,8 @@ import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { canViewFleet, canEditFleet, fleetStatusLabel, fmtD, Lang } from '@/lib/fleet';
 import { useFleetLookups } from '@/hooks/useFleetLookups';
 import { UserRound, ArrowRight, Star, FileDown, Phone, Save } from 'lucide-react';
+import PortalAccountCard from '@/components/system/PortalAccountCard';
+import ReportButton from '@/components/system/ReportButton';
 
 type Profile = {
   customer: { _id: string; name: string; phone?: string; email?: string; customerType?: string; rating?: number; notes?: string; routes?: { fromCity: string; toCity: string; price: number | null }[] };
@@ -94,6 +96,13 @@ export default function FleetCustomerProfilePage() {
         <StatCard label={ar ? 'أول رحلة' : 'First trip'} value={data.stats.firstTrip ? fmtD(data.stats.firstTrip) : '—'} />
         <StatCard label={ar ? 'آخر رحلة' : 'Last trip'} value={data.stats.lastTrip ? fmtD(data.stats.lastTrip) : '—'} />
       </div>
+
+      <div className="flex justify-end">
+        <ReportButton subject="customer" id={c.name} label={ar ? 'التقرير الشامل للعميل' : 'Full customer report'} />
+      </div>
+
+      {/* حساب البوابة — العميل يتابع رحلاته وبوالصه بنفسه */}
+      <PortalAccountCard source="fleet_customer" refId={id} name={c.name} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* بيانات العميل + التقييم */}

@@ -23,6 +23,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { homeRouteForRole } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
+import { isBrParticipant, isBrRunner } from '@/lib/businessReview';
 import { SO_EDIT_ROLES as SO_ROLES } from '@/lib/shipmentOrders';
 import { FLEET_EDIT_ROLES as FLEET_ROLES, FLEET_ADMIN_ROLES } from '@/lib/fleet';
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
@@ -34,6 +35,17 @@ import { PERF_STAFF_ROLES } from '@/lib/performance';
 // nav entry offering the link to anyone else is a guaranteed dead-end screen.
 // Intersecting here keeps every section's list in sync with the page's gate.
 const kpiRoles = (roles: string[]) => roles.filter((r) => PERF_STAFF_ROLES.includes(r));
+
+// Mirrors REPORT_ROLES in backend/src/controllers/reportController.js — reports
+// cross sections, so they are gated by role rather than by the section matrix.
+const REPORT_ROLES = [
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator',
+  'operations_manager', 'operations', 'fleet_manager', 'fleet_supervisor',
+  'hr_manager', 'hr_specialist', 'finance_manager', 'accountant',
+  'crm_manager', 'crm_team_lead', 'sales_manager', 'contracts_manager',
+  'customs_manager', 'workshop_manager', 'procurement_manager',
+  'bd_manager', 'marketing_manager', 'administrator',
+];
 import { DialogProvider } from '@/components/system/DialogProvider';
 // Sidebar visibility for the new sections. Managed sections are additionally
 // gated by the per-role permission matrix (canAccessSection).
@@ -69,6 +81,12 @@ interface NavItem {
   // For Remote pages: a remote_employee only sees this if their remoteAccess
   // includes this key. Managers/admins see every remote item regardless.
   remoteKey?: string;
+  // For Portal pages: the partner only sees this link if they have work of at
+  // least one of these service kinds (heavy_transport, customs, finance…).
+  portalService?: string[];
+  // A rule, evaluated against the signed-in user. Used where a frozen role list
+  // would go stale — e.g. Business Review, where "any *_manager" is the rule.
+  visible?: (u: { role?: string | null }) => boolean;
   // Inside a matrix-managed section the roles list is normally IGNORED (the
   // permission matrix decides). `restrict: true` re-applies it as an EXTRA
   // filter for the few items whose own page rejects junior roles anyway
@@ -200,6 +218,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet', label: lang === 'ar' ? 'الحمولات' : 'Shipments', icon: <Truck className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'لوحة التحليلات' : 'Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <UserSquare className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/driver-kpis', label: lang === 'ar' ? 'تقييم السائقين' : 'Driver KPIs', icon: <Target className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/vehicles', label: lang === 'ar' ? 'سياراتنا' : 'Our Vehicles', icon: <Car className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/assign', label: lang === 'ar' ? 'توزيع المشرفين' : 'Assign Supervisors', icon: <UserCog className="w-5 h-5" />, roles: FLEET_ADMIN_ROLES, section: 'Fleet Management', restrict: true },
     { href: '/system/fleet/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Fleet Settings', icon: <Settings className="w-5 h-5" />, roles: FLEET_ADMIN_ROLES, section: 'Fleet Management', restrict: true },
@@ -220,6 +239,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/live', label: lang === 'ar' ? 'الأسطول المباشر' : 'Live Fleet', icon: <Satellite className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/registry', label: lang === 'ar' ? 'سجل الأسطول' : 'Fleet Registry', icon: <ClipboardList className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/drivers', label: lang === 'ar' ? 'السواقين' : 'Drivers', icon: <UserSquare className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
+    { href: '/system/ls2/driver-performance', label: lang === 'ar' ? 'تقييم السواقين' : 'Driver Performance', icon: <Target className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/tires', label: lang === 'ar' ? 'الكاوتش' : 'Tires', icon: <Activity className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/temperature', label: lang === 'ar' ? 'الحرارة' : 'Temperature', icon: <Thermometer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/maintenance', label: lang === 'ar' ? 'الصيانة' : 'Maintenance', icon: <Wrench className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
@@ -269,6 +289,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // ---- Administration (الشؤون الإدارية / السكرتارية) ----
     { href: '/system/administration', label: lang === 'ar' ? 'لوحة المهام' : 'Task Board', icon: <ClipboardList className="w-5 h-5" />, roles: ADMINISTRATION_ROLES, section: 'Administration' },
     // ---- Contracts (إدارة العقود) ----
+    // اجتماعات مراجعة الأعمال — the managers/board forum. `my-tasks` is listed
+    // for EVERY role because ordinary employees receive delegated work there;
+    // the other three pages check their own tier server-side.
+    { href: '/system/business-review', label: lang === 'ar' ? 'اجتماعات المراجعة' : 'Review Meetings', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
+    { href: '/system/business-review/my-actions', label: lang === 'ar' ? 'البنود المسندة إليّ' : 'My Actions', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
+    { href: '/system/business-review/actions', label: lang === 'ar' ? 'سجل المتابعة' : 'Action Register', icon: <ListTodo className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrRunner(u.role) },
+    // Everyone — an ordinary employee's ONLY link into this section.
+    { href: '/system/business-review/my-tasks', label: lang === 'ar' ? 'مهامي من الاجتماعات' : 'My Meeting Tasks', icon: <ListTodo className="w-5 h-5" />, roles: [], section: 'Business Review' },
     { href: '/system/contracts', label: lang === 'ar' ? 'لوحة إدارة العقود' : 'Contracts Dashboard', icon: <FileSignature className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/vendors', label: lang === 'ar' ? 'سجل موردي 3PL' : 'Vendor Register', icon: <Building2 className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/analysis', label: lang === 'ar' ? 'تحليل التشغيل' : 'Utilisation Analysis', icon: <BarChart3 className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
@@ -324,6 +352,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/crm/dashboard', label: L.crmDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
     { href: '/system/crm/companies', label: L.crmCompanies, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
     { href: '/system/crm/vendors', label: lang === 'ar' ? 'الموردين' : 'Vendors', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/customer-kpis', label: lang === 'ar' ? 'مؤشرات العملاء' : 'Customer KPIs', icon: <Gauge className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
+    { href: '/system/crm/vendor-kpis', label: lang === 'ar' ? 'مؤشرات الموردين' : 'Vendor KPIs', icon: <Gauge className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
     { href: '/system/crm/contacts', label: L.crmContacts, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
     { href: '/system/crm/deals', label: L.crmDeals, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
     { href: '/system/crm/tasks', label: L.crmTasks, icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'], section: 'CRM' },
@@ -377,6 +407,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Tools
     // The exec KPI board admits KPI_ROLES (lib/finance.ts) — mirror it exactly.
     { href: '/system/kpis', label: L.kpis, icon: <Gauge className="w-5 h-5" />, roles: ['super_admin', 'admin', 'moderator'], section: 'Tools' },
+    { href: '/system/reports', label: lang === 'ar' ? 'مركز التقارير' : 'Reports', icon: <FileBarChart className="w-5 h-5" />, roles: REPORT_ROLES, section: 'Tools' },
     { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Tools' },
     { href: '/system/settings', label: L.settings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations', 'moderator'], section: 'Tools' },
     // Admin (configuration & oversight — kept near the bottom)
@@ -387,11 +418,27 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/permissions', label: lang === 'ar' ? 'الأدوار والصلاحيات' : 'Roles & Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin'], section: 'Admin' },
     { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'workshop_manager', 'operations_manager'], section: 'Admin' },
-    // Client portal
+    // بوابة العميل / المورد. `portalService` gates a link on the partner ACTUALLY
+    // having work of that kind — a customs-only customer never sees a shipments
+    // tab, and a supplier never sees invoices. Links without it always show.
     { href: '/system/portal', label: L.overview, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
-    { href: '/system/portal/invoices', label: L.myInvoices, icon: <FileText className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
-    { href: '/system/portal/payments', label: L.myPayments, icon: <CreditCard className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
+    { href: '/system/portal/shipments', label: lang === 'ar' ? 'شحناتي' : 'My Shipments', icon: <Truck className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['heavy_transport', 'shipment_orders'] },
+    { href: '/system/portal/customs', label: lang === 'ar' ? 'معاملات التخليص' : 'Customs Files', icon: <Ship className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['customs'] },
+    { href: '/system/portal/invoices', label: L.myInvoices, icon: <FileText className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['finance'] },
+    { href: '/system/portal/payments', label: L.myPayments, icon: <CreditCard className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['finance'] },
   ];
+
+  // Which portal tabs this partner gets. Resolved once per session from what
+  // they actually have with us (see backend portalController.servicesFor).
+  const [portalServices, setPortalServices] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (user?.role !== 'client') { setPortalServices(null); return; }
+    api.get<{ services: { key: string }[] }>('/api/portal/me')
+      .then((m) => setPortalServices((m.services || []).map((x) => x.key)))
+      // On failure show every portal tab rather than locking the partner out of
+      // pages they may well have data on.
+      .catch(() => setPortalServices([]));
+  }, [user?.role, user?._id]);
 
   // Real-time notification updates
   useSocket('notification:new', useCallback(() => {
@@ -418,10 +465,20 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       // Restricted items keep their role list even inside a granted section —
       // the target page rejects other roles, so the link would be a dead-end.
       if (item.restrict && !item.roles.includes(user.role)) return false;
+      // …and a `visible` rule beats a list where the list would go stale.
+      if (item.visible && !item.visible(user)) return false;
       return true;
     }
     // Legacy role-gated sections (Main, Tools, Admin, Self Service, Portal).
     if (!item.roles.includes(user.role)) return false;
+    // Portal links are further narrowed to the services this partner has. While
+    // the lookup is still in flight (null) we show nothing extra rather than
+    // flashing tabs that then disappear.
+    if (item.portalService) {
+      if (portalServices === null) return false;
+      if (!portalServices.length) return true; // unknown → don't hide anything
+      return item.portalService.some((k: string) => portalServices.includes(k));
+    }
     if (item.remoteKey && user.role === 'remote_employee') {
       return Array.isArray(user.remoteAccess) && user.remoteAccess.includes(item.remoteKey);
     }

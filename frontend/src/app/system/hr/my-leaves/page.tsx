@@ -5,8 +5,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { CalendarDays, Plus, Check, X, XCircle } from 'lucide-react';
-import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, today } from '@/lib/hr';
+import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, today, earliestStartDate, daysUntil } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Tabs, StatCard, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyLeavesTranslations } from '@/lib/translations';
 import { exportToExcel } from '@/utils/exportExcel';
@@ -58,8 +58,20 @@ export default function MyLeavesPage() {
     api.get<{ hasTeam: boolean }>('/api/hr/me/team').then((d) => setHasTeam(!!d.hasTeam)).catch(() => {});
   }, []);
 
+  // سياسة الإخطار المسبق — the picked type decides the earliest legal start date.
+  const chosenType = types.find((t) => t._id === form.leaveType) || null;
+  const minStart = earliestStartDate(chosenType);
+  const noticeDays = chosenType?.requiresAdvanceNotice === false ? 0 : (chosenType?.minAdvanceDays ?? 30);
+  const noticeViolated = !!(chosenType && noticeDays > 0 && form.startDate && form.startDate < minStart);
+
   const submit = async () => {
     if (!form.leaveType || !form.startDate || !form.endDate) return;
+    if (noticeViolated) {
+      notify(ar
+        ? `يجب تقديم هذا الطلب قبل موعد بدايته بـ ${noticeDays} يومًا على الأقل — أقرب تاريخ متاح ${minStart}. الإجازة الطارئة والمرضية معفاة.`
+        : `This leave must be requested at least ${noticeDays} days ahead — the earliest available start is ${minStart}. Emergency and sick leave are exempt.`, 'error');
+      return;
+    }
     setSaving(true);
     try { await api.post('/api/hr/me/leaves', form); setShowForm(false); setForm({ leaveType: '', startDate: '', endDate: '', reason: '' }); load(); }
     catch (e: any) { notify(e.message, 'error'); }
@@ -184,14 +196,70 @@ export default function MyLeavesPage() {
       <Modal open={showForm} onClose={() => setShowForm(false)} title={tx.requestLeave}
         footer={<>
           <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
-          <PrimaryButton onClick={submit} disabled={saving || !form.leaveType || !form.startDate || !form.endDate}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.submit}</PrimaryButton>
+          <PrimaryButton onClick={submit} disabled={saving || !form.leaveType || !form.startDate || !form.endDate || noticeViolated}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.submit}</PrimaryButton>
         </>}>
         <div className="space-y-3">
-          <Field label={tx.leaveTypeRequired}><Select value={form.leaveType} onChange={(e) => setForm((f) => ({ ...f, leaveType: e.target.value }))}><option value="">—</option>{types.map((t) => <option key={t._id} value={t._id}>{ar ? t.nameAr : t.nameEn}</option>)}</Select></Field>
+          <Field label={tx.leaveTypeRequired}>
+            <Select
+              value={form.leaveType}
+              onChange={(e) => {
+                const id = e.target.value;
+                const t = types.find((x) => x._id === id) || null;
+                const min = earliestStartDate(t);
+                // Switching to a type with a longer notice must not silently keep
+                // an illegal date sitting in the form.
+                setForm((f) => ({
+                  ...f,
+                  leaveType: id,
+                  startDate: f.startDate && f.startDate < min ? '' : f.startDate,
+                  endDate: f.startDate && f.startDate < min ? '' : f.endDate,
+                }));
+              }}
+            >
+              <option value="">—</option>
+              {types.map((t) => (
+                <option key={t._id} value={t._id}>
+                  {ar ? t.nameAr : t.nameEn}
+                  {t.requiresAdvanceNotice === false ? (ar ? ' — بدون إخطار مسبق' : ' — no notice required') : ` — ${t.minAdvanceDays ?? 30}${ar ? ' يوم مقدّمًا' : 'd notice'}`}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          {/* The rule, stated before they pick a date rather than after they submit. */}
+          {chosenType && (
+            noticeDays > 0 ? (
+              <div className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  {ar
+                    ? `هذه الإجازة تحتاج إخطارًا مسبقًا ${noticeDays} يومًا — أقرب تاريخ بداية متاح ${minStart}.`
+                    : `This leave needs ${noticeDays} days' notice — the earliest start date available is ${minStart}.`}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-2.5">
+                <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  {ar
+                    ? 'إجازة طارئة/مرضية — معفاة من قاعدة الإخطار المسبق ويمكن تقديمها لليوم نفسه.'
+                    : 'Emergency / sick leave — exempt from the advance-notice rule and can start today.'}
+                </span>
+              </div>
+            )
+          )}
+
           <div className="grid grid-cols-2 gap-3">
-            <Field label={tx.fromRequired}><TextInput type="date" value={form.startDate} min={today()} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} /></Field>
-            <Field label={tx.toRequired}><TextInput type="date" value={form.endDate} min={form.startDate || today()} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} /></Field>
+            <Field label={tx.fromRequired}><TextInput type="date" value={form.startDate} min={minStart} disabled={!form.leaveType} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} /></Field>
+            <Field label={tx.toRequired}><TextInput type="date" value={form.endDate} min={form.startDate || minStart} disabled={!form.startDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} /></Field>
           </div>
+          {noticeViolated && (
+            <p className="text-xs text-red-600">
+              {ar
+                ? `التاريخ المختار بعد ${daysUntil(form.startDate)} يوم فقط — القاعدة ${noticeDays} يومًا على الأقل.`
+                : `The chosen date is only ${daysUntil(form.startDate)} day(s) away — the rule is at least ${noticeDays}.`}
+            </p>
+          )}
           <Field label={tx.reasonNotes}><TextArea rows={3} value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} /></Field>
           {balance && <p className="text-xs text-slate-500">{`${tx.availableBalancePrefix} ${balance.available} ${tx.daysWord}`}</p>}
         </div>

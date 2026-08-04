@@ -11,10 +11,15 @@ export const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sale
 export const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'sales_manager'];
 export const KPI_ROLES = ['super_admin', 'admin', 'moderator'];
 
+// View AND act must both honour the permission matrix. Only the *Staff halves
+// did, so a role the super admin granted «تعديل» on Accounting or Sales could
+// open the section and then found every action hidden — while the API would
+// have accepted the call (rbac lets a section grant through). Pass the whole
+// user, not user.role: only the object carries the grants.
 export const isFinanceStaff = (u: RoleOrUser) => FINANCE_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Accounting');
-export const isFinanceAdmin = (r?: string | null) => !!r && FINANCE_ADMIN_ROLES.includes(r);
+export const isFinanceAdmin = (u: RoleOrUser) => FINANCE_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Accounting');
 export const isSalesStaff = (u: RoleOrUser) => SALES_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Sales');
-export const isSalesAdmin = (r?: string | null) => !!r && SALES_ADMIN_ROLES.includes(r);
+export const isSalesAdmin = (u: RoleOrUser) => SALES_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Sales');
 export const isKpiViewer = (r?: string | null) => !!r && KPI_ROLES.includes(r);
 
 // ── Types ────────────────────────────────────────────────────────────────────

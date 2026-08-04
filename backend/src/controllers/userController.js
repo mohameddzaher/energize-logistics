@@ -24,10 +24,15 @@ const syncEmployeeLink = async (employeeId, userId) => {
 
 exports.getUsers = async (req, res) => {
   try {
-    const { role, isActive, search, branch } = req.query;
+    const { role, isActive, search, branch, accountType } = req.query;
     const filter = {};
 
     if (role) filter.role = role;
+    if (accountType) {
+      // Accounts created before accountType existed have no field at all — they
+      // are staff by definition, so "employee" must include the absent case.
+      filter.accountType = accountType === 'employee' ? { $in: ['employee', null] } : accountType;
+    }
     if (isActive !== undefined) filter.isActive = isActive === 'true';
     if (branch) filter.branch = branch;
     if (search) {
@@ -71,13 +76,70 @@ exports.suggestManager = async (req, res) => {
   }
 };
 
+// A user can be one of OUR PEOPLE or an outside partner. When the creator picks
+// customer/vendor, the account is forced onto the external `client` role and
+// stamped with the register row it represents — that pairing is what the portal
+// reads, and letting the two drift apart would produce a login that can see
+// nothing (or, worse, an outsider on a staff role).
+const { REGISTER_BY_KEY } = require('../config/partnerRegisters');
+const { nameKey } = require('../utils/nameKey');
+
+async function resolvePartnerInput(partner, accountType) {
+  if (!['customer', 'vendor'].includes(accountType)) return null;
+  if (!partner || !partner.source || !partner.refId) {
+    const err = new Error('اختر العميل أو المورد المرتبط بهذا الحساب');
+    err.status = 400;
+    throw err;
+  }
+  const reg = REGISTER_BY_KEY[partner.source];
+  if (!reg) {
+    const err = new Error('سجل غير معروف');
+    err.status = 400;
+    throw err;
+  }
+  if (reg.kind !== accountType) {
+    const err = new Error(`السجل المختار خاص بـ${reg.kind === 'vendor' ? 'الموردين' : 'العملاء'}`);
+    err.status = 400;
+    throw err;
+  }
+  const { resolvePartner } = require('./partnerController');
+  const resolved = await resolvePartner(partner.source, String(partner.refId));
+  if (!resolved) {
+    const err = new Error('لم يتم العثور على هذا العميل/المورد');
+    err.status = 400;
+    throw err;
+  }
+  return {
+    source: partner.source,
+    refId: String(partner.refId),
+    name: resolved.name,
+    nameKey: nameKey(resolved.name),
+    kind: reg.kind,
+  };
+}
+
 exports.createUser = async (req, res) => {
   try {
-    const { email, password, firstName, lastName, role, linkedCustomer, assignedCustomers, collectionTarget, branch, assignedProjects, assignedBranches, manager, remoteAccess, linkedEmployee } = req.body;
+    const { email, password, firstName, lastName, linkedCustomer, assignedCustomers, collectionTarget, branch, assignedProjects, assignedBranches, manager, remoteAccess, linkedEmployee } = req.body;
+    const accountType = ['customer', 'vendor'].includes(req.body.accountType) ? req.body.accountType : 'employee';
+    // Partner accounts always carry the external `client` role, whatever the
+    // form sent — the role list is the staff list.
+    const role = accountType === 'employee' ? req.body.role : 'client';
 
     const existing = await User.findOne({ email });
     if (existing) {
       return res.status(400).json({ message: 'Email already registered' });
+    }
+
+    let partner = null;
+    try {
+      partner = await resolvePartnerInput(req.body.partner, accountType);
+    } catch (e) {
+      return res.status(e.status || 400).json({ message: e.message });
+    }
+    if (partner) {
+      const clash = await User.findOne({ 'partner.source': partner.source, 'partner.refId': partner.refId }).lean();
+      if (clash) return res.status(400).json({ message: `يوجد حساب بالفعل لهذا السجل: ${clash.email}` });
     }
 
     // Org chart: if no manager was chosen, auto-suggest one by walking up the
@@ -97,7 +159,11 @@ exports.createUser = async (req, res) => {
       firstName,
       lastName,
       role,
-      linkedCustomer,
+      accountType,
+      partner: partner || undefined,
+      // The finance register IS the legacy `linkedCustomer` pointer — keep it in
+      // sync so the pre-existing portal endpoints keep resolving.
+      linkedCustomer: partner && partner.source === 'customer' ? partner.refId : linkedCustomer,
       assignedCustomers,
       collectionTarget,
       branch: branch || undefined,
@@ -147,11 +213,73 @@ exports.updateUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const before = { firstName: user.firstName, lastName: user.lastName, role: user.role };
+    const before = { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email };
+
+    // Account type / partner link. Switching an account between staff and partner
+    // rewrites BOTH sides at once so the pair can never drift apart.
+    if (req.body.accountType !== undefined) {
+      const nextType = ['customer', 'vendor'].includes(req.body.accountType) ? req.body.accountType : 'employee';
+      if (nextType === 'employee') {
+        user.accountType = 'employee';
+        user.partner = undefined;
+      } else {
+        let partner;
+        try {
+          partner = await resolvePartnerInput(
+            req.body.partner || { source: user.partner?.source, refId: user.partner?.refId },
+            nextType
+          );
+        } catch (e) {
+          return res.status(e.status || 400).json({ message: e.message });
+        }
+        const clash = await User.findOne({
+          'partner.source': partner.source, 'partner.refId': partner.refId, _id: { $ne: user._id },
+        }).lean();
+        if (clash) return res.status(400).json({ message: `يوجد حساب بالفعل لهذا السجل: ${clash.email}` });
+        user.accountType = nextType;
+        user.partner = partner;
+        user.role = 'client';
+        if (partner.source === 'customer') user.linkedCustomer = partner.refId;
+      }
+    }
+
+    // Email is the login identifier, so changing it has to be exact: normalise
+    // it the same way the schema does, and refuse a duplicate rather than let
+    // the unique index throw a 500. Like `password` below, this used to be sent
+    // by the form and silently ignored.
+    if (req.body.email !== undefined) {
+      const email = String(req.body.email).trim().toLowerCase();
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        return res.status(400).json({ message: 'بريد إلكتروني غير صالح | A valid email is required' });
+      }
+      if (email !== user.email) {
+        const taken = await User.findOne({ email, _id: { $ne: user._id } }).select('_id').lean();
+        if (taken) {
+          return res.status(400).json({ message: 'هذا البريد مستخدم بالفعل | This email is already registered' });
+        }
+        user.email = email;
+      }
+    }
+
+    // The edit form offers a password field and SENDS it. This used to be
+    // ignored silently: the request returned 200, the modal closed, and the
+    // password was unchanged — so the admin handed out a password that never
+    // worked. Honour it here, with the same minimum the schema enforces.
+    if (req.body.password) {
+      if (String(req.body.password).length < 8) {
+        return res.status(400).json({ message: 'كلمة المرور 8 أحرف على الأقل | Password must be at least 8 characters' });
+      }
+      user.password = req.body.password; // hashed by the pre-save hook
+      // A password change must end every live session on the old one.
+      user.refreshTokens = [];
+      user.refreshToken = undefined;
+    }
 
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
-    if (role) user.role = role;
+    // A partner login stays on the external `client` role no matter what the
+    // form sends; only staff accounts take a role from the picker.
+    if (role && user.accountType === 'employee') user.role = role;
     if (linkedEmployee !== undefined) {
       user.linkedEmployee = linkedEmployee || null;
       await syncEmployeeLink(linkedEmployee || null, user._id);
@@ -203,7 +331,11 @@ exports.updateUser = async (req, res) => {
       action: 'update_user',
       entity: 'User',
       entityId: user._id,
-      changes: { before, after: { firstName: user.firstName, lastName: user.lastName, role: user.role } },
+      changes: {
+        before,
+        after: { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email },
+        passwordChanged: !!req.body.password || undefined,
+      },
       ipAddress: req.ip,
     });
 
@@ -287,14 +419,22 @@ exports.lockUser = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   try {
     const { newPassword } = req.body;
+    if (!newPassword || String(newPassword).length < 8) {
+      return res.status(400).json({ message: 'كلمة المرور 8 أحرف على الأقل | Password must be at least 8 characters' });
+    }
     const user = await User.findById(req.params.id);
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    user.password = newPassword;
+    user.password = newPassword; // hashed by the pre-save hook
+    // Resetting someone's password must sign them out everywhere — otherwise a
+    // session opened with the OLD password keeps working after the reset.
+    user.refreshTokens = [];
+    user.refreshToken = undefined;
     await user.save();
+    invalidateUserCache(user._id);
 
     await logAudit({
       user: req.user._id,

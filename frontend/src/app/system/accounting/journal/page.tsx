@@ -30,7 +30,7 @@ export default function JournalPage() {
   const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState<{ date: string; memo: string; lines: any[] }>({ date: today(), memo: '', lines: [emptyLine(), emptyLine()] });
 
-  const canDelete = isFinanceAdmin(user?.role);
+  const canDelete = isFinanceAdmin(user);
 
   const load = useCallback(async () => {
     try {

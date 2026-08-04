@@ -49,6 +49,21 @@ const leaveRequestSchema = new mongoose.Schema(
       requested: Number,
       remainingAfter: Number,
     },
+
+    // Advance-notice policy snapshot (سياسة الإخطار المسبق). `daysAhead` is how
+    // many days before the start date this was actually filed; `requiredDays` is
+    // what the leave type demanded. A request that fails the rule is rejected at
+    // creation UNLESS HR overrode it — then `overridden` records who and why, so
+    // the exception is visible on the request forever.
+    advanceNotice: {
+      required: { type: Boolean, default: false },
+      requiredDays: { type: Number, default: 0 },
+      daysAhead: { type: Number, default: 0 },
+      satisfied: { type: Boolean, default: true },
+      overridden: { type: Boolean, default: false },
+      overriddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      overrideReason: { type: String, trim: true, default: '' },
+    },
   },
   { timestamps: true }
 );

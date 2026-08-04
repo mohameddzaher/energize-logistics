@@ -20,6 +20,9 @@ const { startOpsPoll } = require('./jobs/opsPoll');
 const { startOpsCustomerSync } = require('./services/opsCustomerSyncService');
 const { startOpsWorkflowSync } = require('./services/opsWorkflowSyncService');
 const { startLs2Poll } = require('./jobs/ls2Poll');
+// Pre-computes Wialon trip metrics off-hours so driver/vehicle reports are instant.
+const { startLs2TripWarm } = require('./jobs/ls2TripWarm');
+const { startBusinessReviewSweep } = require('./jobs/businessReviewSweep');
 const { startKeepAlive } = require('./jobs/keepAlive');
 
 // Route imports
@@ -69,6 +72,15 @@ const businessDevelopmentRoutes = require('./routes/businessDevelopment');
 const itRoutes = require('./routes/it');
 const adminTaskRoutes = require('./routes/adminTasks');
 const contractsRoutes = require('./routes/contracts');
+// حسابات العملاء والموردين + بوابتهم — partner account provisioning (staff side)
+// and the partner-facing portal (client side).
+const partnerRoutes = require('./routes/partners');
+const portalRoutes = require('./routes/portal');
+// مركز التقارير — cross-section PDF reports (vehicle, driver, customer, vendor,
+// employee, department). Deliberately not section-gated; see routes/reports.js.
+const reportRoutes = require('./routes/reports');
+// اجتماعات مراجعة الأعمال — the managers/board forum + its action register.
+const businessReviewRoutes = require('./routes/businessReview');
 
 // Safety net: never let a single bad request/promise take down the whole
 // process. Before this, an unhandled rejection (e.g. express-rate-limit's
@@ -195,6 +207,12 @@ app.use('/api/business-development', authenticate, sectionGate('Business Develop
 app.use('/api/it', authenticate, sectionGate('Software & IT'), itRoutes);
 app.use('/api/admin-tasks', authenticate, sectionGate('Administration'), adminTaskRoutes);
 app.use('/api/contracts', authenticate, sectionGate('Contracts'), contractsRoutes);
+// Not section-gated: /api/partners is used from every section's customer profile
+// page, and /api/portal belongs to outside partners who have no section at all.
+app.use('/api/partners', partnerRoutes);
+app.use('/api/portal', portalRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/business-review', authenticate, sectionGate('Business Review'), businessReviewRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -251,8 +269,10 @@ server.listen(PORT, () => {
 connectDB().then(async () => {
   await autoSeedAdmin();
   // Seed the default HR leave types once (no-op once they exist).
-  const { ensureDefaultLeaveTypes } = require('./config/hrDefaults');
+  const { ensureDefaultLeaveTypes, ensureLeavePolicyDefaults } = require('./config/hrDefaults');
   await ensureDefaultLeaveTypes();
+  // Backfill the advance-notice policy onto pre-existing leave types.
+  await ensureLeavePolicyDefaults();
   // Seed the default chart of accounts once (no-op once they exist).
   const { ensureDefaultAccounts } = require('./config/accountingDefaults');
   await ensureDefaultAccounts();
@@ -274,6 +294,8 @@ connectDB().then(async () => {
   startOpsCustomerSync();
   startOpsWorkflowSync();
   startLs2Poll();
+  startLs2TripWarm();
+  startBusinessReviewSweep();
   startKeepAlive();
   console.log('DB ready — scheduled jobs started');
 }).catch((err) => {

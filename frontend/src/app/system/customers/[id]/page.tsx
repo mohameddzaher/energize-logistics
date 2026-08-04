@@ -14,6 +14,8 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
+import PortalAccountCard from '@/components/system/PortalAccountCard';
+import ReportButton from '@/components/system/ReportButton';
 import { useLanguage } from '@/context/LanguageContext';
 import { getCustomersTranslations, getCustomersIdExtraTranslations } from '@/lib/translations';
 
@@ -822,6 +824,14 @@ export default function CustomerDetailPage() {
           )}
         </div>
       </motion.div>
+
+      {/* التقرير الشامل — كل ما نفّذناه لهذا العميل عبر كل الأقسام في ملف PDF */}
+      <div className="flex justify-end">
+        <ReportButton subject="customer" id={customer.companyName} label={lang === 'ar' ? 'التقرير الشامل للعميل' : 'Full customer report'} />
+      </div>
+
+      {/* حساب البوابة — العميل يتابع فواتيره وشحناته بنفسه */}
+      <PortalAccountCard source="customer" refId={String(customer._id)} name={customer.companyName} />
 
       {/* Summary Cards */}
       {summary && (

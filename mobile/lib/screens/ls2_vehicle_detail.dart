@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'reports.dart';
 import 'ls2_vehicle_assets.dart';
 
 /// تفاصيل المركبة (لوكيشن سوليوشن) — خمس تبويبات كما في الويب:
@@ -112,6 +113,14 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
             icon: const Icon(Icons.map_outlined, color: Colors.white),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2TrackMapScreen(
               vehicleId: int.tryParse(widget.vehicleId) ?? 0, plate: widget.plate))),
+          ),
+          IconButton(
+            tooltip: tr('التقرير الشامل (PDF)', 'Full report (PDF)'),
+            icon: const Icon(Icons.assessment_outlined, color: Colors.white),
+            // `u<unitId>` — the reporting engine accepts a unit id, a fleet id,
+            // a folded plate key or a raw plate, so no caller has to re-derive it.
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReportsScreen(
+              subject: 'vehicle', entityId: 'u${widget.vehicleId}', entityName: widget.plate))),
           ),
           IconButton(
             tooltip: tr('أصول المركبة (الكاوتشات)', 'Vehicle assets (tires)'),

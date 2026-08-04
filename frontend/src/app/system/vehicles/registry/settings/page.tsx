@@ -10,6 +10,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { RegConfig, DOC_TYPES } from '@/lib/vehicleRegistry';
 import { Settings, Save, BellRing } from 'lucide-react';
+import { canEditSection } from '@/lib/sections';
 
 const ADMIN_ROLES = ['super_admin', 'admin', 'hr_manager'];
 
@@ -18,7 +19,7 @@ export default function VehicleRegistrySettings() {
   const ar = lang === 'ar';
   const { user } = useAuth();
   const { notify } = useDialog();
-  const canEdit = user && ADMIN_ROLES.includes(user.role);
+  const canEdit = !!user && (ADMIN_ROLES.includes(user.role) || canEditSection((user as any)?.permissions, 'Vehicles'));
   const [cfg, setCfg] = useState<RegConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

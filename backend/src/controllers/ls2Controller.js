@@ -1041,6 +1041,180 @@ exports.getDriver = async (req, res) => {
   }
 };
 
+// ---- Driver performance (تقييم أداء السائقين) ------------------------------
+// Scores every driver on what the trucks reported: عدد الرحلات, مدة الوصول,
+// مدة التحميل, أيام العمل, المسافة and الالتزام بالسرعة. See
+// services/ls2DriverPerformance.js for the weights and why they are what they are.
+const perf = require('../services/ls2DriverPerformance');
+
+const periodDayCount = (from, to) =>
+  Math.max(1, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1);
+
+const speedLimit = async () => {
+  try {
+    const s = await Ls2Settings.getOrCreate();
+    return Number(s?.thresholds?.speedMaxKmh) || cfg.DEFAULT_THRESHOLDS.speedMaxKmh;
+  } catch (e) {
+    return cfg.DEFAULT_THRESHOLDS.speedMaxKmh;
+  }
+};
+
+// Whole-fleet scorecard. `?deep=1` additionally runs the per-truck trip report so
+// the trip/loading/speed components are real instead of omitted — that is one
+// upstream report per truck, so it stays opt-in and is cached for 30 minutes.
+exports.driverPerformance = async (req, res) => {
+  try {
+    const today = cairoDate();
+    const to = req.query.to || today;
+    const from = req.query.from || `${today.slice(0, 7)}-01`;
+    if (from > to) return res.status(400).json({ message: 'from must be on or before to' });
+    const deep = req.query.deep === '1' || req.query.deep === 'true';
+
+    const key = `ls2:drvperf:list:${from}:${to}:${deep ? 'deep' : 'basic'}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return res.json(hit);
+
+    const [{ stats }, vehicles, limit] = await Promise.all([
+      driverStats(from, to),
+      Ls2Vehicle.find({}).select('unitId plate driver').lean(),
+      speedLimit(),
+    ]);
+    const plateOf = new Map(vehicles.map((v) => [v.unitId, v.plate]));
+    const periodDays = periodDayCount(from, to);
+
+    // Every driver we know: seen in the period, or sitting on a truck right now.
+    const names = new Set([...stats.keys()]);
+    for (const v of vehicles) if (v.driver) names.add(v.driver);
+    const currentOf = new Map();
+    for (const v of vehicles) if (v.driver) currentOf.set(v.driver, { unitId: v.unitId, plate: v.plate });
+
+    const items = [];
+    for (const name of names) {
+      const s = stats.get(name);
+      const units = s ? [...s.units.keys()] : (currentOf.has(name) ? [currentOf.get(name).unitId] : []);
+      let deepMetrics = null;
+      if (deep && units.length) {
+        try { ({ merged: deepMetrics } = await perf.deepForDriver(units, from, to)); } catch (e) { deepMetrics = null; }
+      }
+      const km = s ? s.km : 0;
+      const activeDays = s ? s.days.size : 0;
+      const scored = perf.scoreDriver({ km, activeDays, periodDays, deep: deepMetrics, speedLimitKmh: limit });
+      items.push({
+        driver: name,
+        km: perf.round(km, 1),
+        activeDays,
+        periodDays,
+        vehicleCount: units.length,
+        vehicles: s ? [...s.units.entries()].map(([unitId, k]) => ({ unitId, plate: plateOf.get(unitId) || '', km: k })) : [],
+        currentVehicle: currentOf.get(name) || null,
+        trips: deepMetrics ? deepMetrics.tripCount : null,
+        avgTripHours: deepMetrics && deepMetrics.tripCount
+          ? perf.round((deepMetrics.totalDriveSec / deepMetrics.tripCount) / 3600, 1) : null,
+        avgLoadingHours: deepMetrics && deepMetrics.stopCount
+          ? perf.round((deepMetrics.totalStopSec / deepMetrics.stopCount) / 3600, 1) : null,
+        maxSpeed: deepMetrics ? perf.round(deepMetrics.maxSpeed, 0) : null,
+        ...scored,
+      });
+    }
+    items.sort((a, b) => b.score - a.score || b.km - a.km);
+
+    const avg = items.length ? perf.round(items.reduce((s, d) => s + d.score, 0) / items.length, 0) : 0;
+    const payload = {
+      from, to, periodDays, depth: deep ? 'deep' : 'basic',
+      speedLimitKmh: limit,
+      weights: perf.WEIGHTS,
+      targets: perf.TARGETS,
+      bands: perf.BANDS,
+      summary: {
+        drivers: items.length,
+        averageScore: avg,
+        // Banded counts are only meaningful once the full model has run — a
+        // basic pass measured two metrics, not six.
+        excellent: deep ? items.filter((d) => d.score >= 90).length : null,
+        weak: deep ? items.filter((d) => d.score < 45).length : null,
+        provisional: !deep,
+        activeDrivers: items.filter((d) => d.activeDays > 0).length,
+        idleDrivers: items.filter((d) => d.activeDays === 0).length,
+        totalKm: perf.round(items.reduce((s, d) => s + d.km, 0), 0),
+        totalTrips: items.reduce((s, d) => s + (d.trips || 0), 0),
+      },
+      items,
+    };
+    // Deep runs are expensive; basic ones are cheap but hit on every page load.
+    cache.set(key, payload, deep ? 30 * 60 * 1000 : 60 * 1000);
+    res.json(payload);
+  } catch (error) {
+    fail(res, error, 'Failed to load driver performance');
+  }
+};
+
+// One driver's full scorecard — always deep, plus the trips and turnarounds behind it.
+exports.driverPerformanceDetail = async (req, res) => {
+  try {
+    const name = decodeURIComponent(req.params.driver || '');
+    if (!name) return res.status(400).json({ message: 'Driver is required' });
+    const today = cairoDate();
+    const to = req.query.to || today;
+    const from = req.query.from || `${today.slice(0, 7)}-01`;
+    if (from > to) return res.status(400).json({ message: 'from must be on or before to' });
+
+    const [{ stats }, vehicles, history, limit] = await Promise.all([
+      driverStats(from, to),
+      Ls2Vehicle.find({}).select('unitId plate driver odometerKm').lean(),
+      Ls2DriverAssignment.find({ driver: name }).sort({ from: -1 }).limit(100).lean(),
+      speedLimit(),
+    ]);
+    const plateOf = new Map(vehicles.map((v) => [v.unitId, v.plate]));
+    const s = stats.get(name);
+    const current = vehicles.find((v) => v.driver === name) || null;
+    const units = s ? [...s.units.keys()] : (current ? [current.unitId] : []);
+
+    const { merged, perUnit } = units.length
+      ? await perf.deepForDriver(units, from, to)
+      : { merged: null, perUnit: [] };
+
+    const km = s ? s.km : 0;
+    const activeDays = s ? s.days.size : 0;
+    const periodDays = periodDayCount(from, to);
+    const scored = perf.scoreDriver({ km, activeDays, periodDays, deep: merged, speedLimitKmh: limit });
+
+    // The actual trips + turnarounds, newest first, so the card can show the story.
+    const trips = perUnit.flatMap((u) => (u.trips || []).map((t) => ({ ...t, unitId: u.unitId, plate: plateOf.get(u.unitId) || '' })))
+      .sort((a, b) => String(b.beginTime || '').localeCompare(String(a.beginTime || '')))
+      .slice(0, 200);
+    const stops = perUnit.flatMap((u) => (u.stops || []).map((t) => ({ ...t, unitId: u.unitId, plate: plateOf.get(u.unitId) || '' })))
+      .sort((a, b) => (b.durationSec || 0) - (a.durationSec || 0))
+      .slice(0, 100);
+
+    res.json({
+      from, to, periodDays, driver: name,
+      km: perf.round(km, 1),
+      activeDays,
+      speedLimitKmh: limit,
+      currentVehicle: current ? { unitId: current.unitId, plate: current.plate, odometerKm: current.odometerKm } : null,
+      vehicles: s ? [...s.units.entries()].map(([unitId, k]) => ({ unitId, plate: plateOf.get(unitId) || '', km: k })).sort((a, b) => b.km - a.km) : [],
+      metrics: merged ? {
+        tripCount: merged.tripCount,
+        totalKm: merged.totalKm,
+        drivingHours: perf.secToHours(merged.totalDriveSec),
+        avgTripHours: merged.tripCount ? perf.round((merged.totalDriveSec / merged.tripCount) / 3600, 1) : 0,
+        avgTripKm: merged.tripCount ? perf.round(merged.totalKm / merged.tripCount, 1) : 0,
+        stopCount: merged.stopCount,
+        loadingHours: perf.secToHours(merged.totalStopSec),
+        avgLoadingHours: merged.stopCount ? perf.round((merged.totalStopSec / merged.stopCount) / 3600, 1) : 0,
+        longestLoadingHours: perf.secToHours(merged.longestStopSec),
+        maxSpeed: perf.round(merged.maxSpeed, 0),
+      } : null,
+      ...scored,
+      trips,
+      stops,
+      history: history.map((h) => ({ unitId: h.unitId, plate: h.plate || plateOf.get(h.unitId) || '', from: h.from, to: h.to })),
+    });
+  } catch (error) {
+    fail(res, error, 'Failed to load driver performance');
+  }
+};
+
 // ---- Update editable per-vehicle metadata (manual — e.g. tire brand/type) ---
 exports.updateVehicleMeta = async (req, res) => {
   try {

@@ -160,13 +160,27 @@ exports.getOne = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'Failed to load vehicle' }); }
 };
 
+// A bad field is the user's problem to fix, not a server fault: say WHICH field
+// and return 400. These used to fall into the generic 500 handler below, so the
+// form showed "Failed to create vehicle" with no idea what was wrong.
+const badInput = (e, res) => {
+  if (e.code === 11000) { res.status(400).json({ message: 'رقم اللوحة أو الهيكل مكرر' }); return true; }
+  if (e.name === 'ValidationError') {
+    const first = Object.values(e.errors || {})[0];
+    res.status(400).json({ message: first?.message || 'بيانات غير صالحة' });
+    return true;
+  }
+  if (e.name === 'CastError') { res.status(400).json({ message: `قيمة غير صالحة للحقل «${e.path}»` }); return true; }
+  return false;
+};
+
 exports.create = async (req, res) => {
   try {
     const v = await VehicleMaster.create({ ...req.body, isActive: true });
     emit('vreg:updated', {});
     res.status(201).json({ vehicle: v });
   } catch (e) {
-    if (e.code === 11000) return res.status(400).json({ message: 'رقم اللوحة أو الهيكل مكرر' });
+    if (badInput(e, res)) return;
     res.status(500).json({ message: 'Failed to create vehicle' });
   }
 };
@@ -178,7 +192,7 @@ exports.update = async (req, res) => {
     emit('vreg:updated', {});
     res.json({ vehicle: v });
   } catch (e) {
-    if (e.code === 11000) return res.status(400).json({ message: 'رقم اللوحة أو الهيكل مكرر' });
+    if (badInput(e, res)) return;
     res.status(500).json({ message: 'Failed to update vehicle' });
   }
 };

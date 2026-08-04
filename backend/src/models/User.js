@@ -23,6 +23,27 @@ const userSchema = new mongoose.Schema(
       enum: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'remote_employee', 'remote_manager', 'hr_manager', 'hr_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'finance_manager', 'accountant', 'sales_manager', 'sales_rep', 'procurement_manager', 'customs_manager', 'customs_officer', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager', 'bd_specialist', 'fleet_manager', 'fleet_supervisor', 'administrator', 'contracts_manager'],
       required: true,
     },
+    // Is this login one of OUR PEOPLE, or an outside partner (customer/supplier)?
+    // Employees are the default and behave exactly as before. A partner account
+    // carries `role: 'client'` for RBAC (it is the existing external-user role)
+    // and this field is what tells a customer portal apart from a vendor portal.
+    accountType: {
+      type: String,
+      enum: ['employee', 'customer', 'vendor'],
+      default: 'employee',
+    },
+    // Which register row this partner login represents. `source` is a key from
+    // config/partnerRegisters.js; `refId` is that row's _id — except for virtual
+    // registers (customs customers exist only as typed names) where it is the
+    // folded name. `nameKey` is stored so every section's data can be joined to
+    // this partner by name without recomputing it on each portal request.
+    partner: {
+      source: { type: String, trim: true, default: '' },
+      refId: { type: String, trim: true, default: '' },
+      name: { type: String, trim: true, default: '' },
+      nameKey: { type: String, trim: true, default: '', index: true },
+      kind: { type: String, enum: ['customer', 'vendor', ''], default: '' },
+    },
     // Remote (work-from-home) section: which pages a remote_employee can open.
     // Subset of REMOTE_PAGES. Ignored for every other role (managers see all).
     remoteAccess: {
@@ -93,6 +114,9 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1, role: 1 });
 userSchema.index({ branch: 1 });
+// "Does this customer already have a login?" is asked once per row on the
+// partner picker and once per profile page — both resolve through this.
+userSchema.index({ 'partner.source': 1, 'partner.refId': 1 });
 
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();

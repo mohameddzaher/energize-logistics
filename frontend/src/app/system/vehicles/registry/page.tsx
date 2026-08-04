@@ -10,6 +10,7 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { VReg, statusColor, statusLabel, docLabel, DOC_TYPES, fmtDate, money, daysText } from '@/lib/vehicleRegistry';
+import { canEditSection } from '@/lib/sections';
 import { Car, Plus, Edit, Trash2, BarChart3, BellRing, X, Save, RotateCcw } from 'lucide-react';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
@@ -22,8 +23,12 @@ export default function VehicleRegistryList() {
   const router = useRouter();
   const sp = useSearchParams();
   const { notify, confirm } = useDialog();
-  const canEdit = user && EDIT_ROLES.includes(user.role);
-  const canDelete = user && ADMIN_ROLES.includes(user.role);
+  // A grant of «تعديل» on المركبات has to bring the actions with it — the API
+  // already accepts the calls (rbac lets a section grant through), so hiding the
+  // buttons only made the section look read-only to people who aren't.
+  const grant = canEditSection((user as any)?.permissions, 'Vehicles');
+  const canEdit = !!user && (EDIT_ROLES.includes(user.role) || grant);
+  const canDelete = !!user && (ADMIN_ROLES.includes(user.role) || grant);
 
   const [rows, setRows] = useState<VReg[]>([]);
   const [total, setTotal] = useState(0);

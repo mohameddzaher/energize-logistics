@@ -189,6 +189,11 @@ exports.logout = async (req, res) => {
 exports.changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
+    // Guard here as well as in the route: a length rule that lives in only one
+    // place drifts, and when it drifts the user gets a 500 instead of an answer.
+    if (!newPassword || String(newPassword).length < 8) {
+      return res.status(400).json({ message: 'كلمة المرور 8 أحرف على الأقل | New password must be at least 8 characters' });
+    }
     const user = await User.findById(req.user._id).select('+password');
 
     if (!user) {
@@ -197,11 +202,20 @@ exports.changePassword = async (req, res) => {
 
     const isMatch = await user.comparePassword(currentPassword);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Current password is incorrect' });
+      return res.status(400).json({ message: 'كلمة المرور الحالية غير صحيحة | Current password is incorrect' });
+    }
+    if (await user.comparePassword(newPassword)) {
+      return res.status(400).json({ message: 'كلمة المرور الجديدة مطابقة للحالية | The new password is the same as the current one' });
     }
 
     user.password = newPassword;
+    // Changing your own password signs out your OTHER devices but keeps you
+    // signed in here — that is the point of changing it when you fear it leaked.
+    const current = req.cookies?.refreshToken;
+    user.refreshTokens = current ? [current] : [];
+    if (!current) user.refreshToken = undefined;
     await user.save();
+    invalidateUserCache(user._id);
 
     await logAudit({
       user: req.user._id,

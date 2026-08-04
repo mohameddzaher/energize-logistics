@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -75,11 +77,18 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The API lets a «تعديل» grant on Location Solutions through and refuses a
+    // «عرض» one — offer the write actions on exactly that line, so a read-only
+    // user isn't handed buttons that 403.
+    final auth = context.watch<AuthProvider>();
+    final canEdit = const ['super_admin', 'admin', 'it_manager', 'operations_manager',
+      'operations', 'workshop_manager', 'workshop_employee', 'moderator'].contains(auth.role)
+        || auth.canEditSection('Location Solutions');
     final items = _items.where((i) => (_statusF.isEmpty || i['status'] == _statusF) && (_catF.isEmpty || i['category'] == _catF)).toList();
     return AppScaffold(
       title: Text(tr('مخزن النقل الثقيل', 'Heavy Transport Store')),
       actions: [IconButton(icon: const Icon(Icons.history), tooltip: tr('سجل الحركات', 'Movements'), onPressed: _openLog)],
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: !canEdit ? null : FloatingActionButton.extended(
         backgroundColor: const Color(0xFF12325C), foregroundColor: Colors.white,
         icon: const Icon(Icons.add), label: Text(tr('صنف', 'Item')), onPressed: () => _openItemForm(null),
       ),
@@ -151,6 +160,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                         Text(_money(it['value']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: T.success)),
                                         const Spacer(),
                                       ]),
+                                      if (canEdit) ...[
                                       const SizedBox(height: 8),
                                       Row(children: [
                                         Expanded(child: OutlinedButton.icon(
@@ -165,6 +175,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                           onPressed: () => _openMovement(it, 'out'),
                                         )),
                                       ]),
+                                      ],
                                     ]),
                                   ),
                                 );

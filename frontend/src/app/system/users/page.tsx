@@ -31,7 +31,26 @@ interface UserRecord {
   assignedBranches?: { _id: string; name: string; code?: string; city?: string }[];
   manager?: { _id: string; firstName: string; lastName: string; email: string; role: string };
   linkedEmployee?: { _id: string; firstName: string; lastName: string; employeeNumber?: string; iqamaNumber?: string; jobTitle?: string };
+  // Staff vs outside partner. Accounts created before this field existed have
+  // none — they are staff, so `undefined` reads as 'employee' everywhere below.
+  accountType?: 'employee' | 'customer' | 'vendor';
+  partner?: { source: string; refId: string; name: string; kind: string };
   createdAt: string;
+}
+
+// One row of the unified customer/supplier picker — every register in the
+// company, flattened, with the register's own name beside each row.
+interface PartnerOption {
+  source: string;
+  kind: 'customer' | 'vendor';
+  refId: string;
+  name: string;
+  registerAr: string;
+  registerEn: string;
+  detail: string;
+  email: string;
+  phone: string;
+  account: { _id: string; email: string } | null;
 }
 
 interface Customer {
@@ -139,7 +158,18 @@ export default function UsersPage() {
     manager: '',
     remoteAccess: [] as string[],
     linkedEmployee: '',
+    // 'employee' = one of our people; 'customer'/'vendor' = an outside partner
+    // whose login opens the portal instead of the system.
+    accountType: 'employee' as 'employee' | 'customer' | 'vendor',
+    partnerSource: '',
+    partnerRefId: '',
   });
+
+  // Partner picker
+  const [partners, setPartners] = useState<PartnerOption[]>([]);
+  const [partnerQuery, setPartnerQuery] = useState('');
+  const [partnersLoading, setPartnersLoading] = useState(false);
+  const [partnerLabel, setPartnerLabel] = useState('');
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -188,6 +218,25 @@ export default function UsersPage() {
     }
   };
 
+  // The unified customer/supplier list. Refetched whenever the kind or the
+  // search text changes — every register is searched server-side at once.
+  const fetchPartners = useCallback(async (kind: 'customer' | 'vendor', q: string) => {
+    setPartnersLoading(true);
+    try {
+      const d = await api.get<{ items: PartnerOption[] }>(`/api/partners?kind=${kind}${q ? `&q=${encodeURIComponent(q)}` : ''}&limit=400`);
+      setPartners(d.items || []);
+    } catch {
+      setPartners([]);
+    }
+    setPartnersLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (formData.accountType === 'employee') return;
+    const t = setTimeout(() => fetchPartners(formData.accountType as 'customer' | 'vendor', partnerQuery.trim()), 250);
+    return () => clearTimeout(t);
+  }, [formData.accountType, partnerQuery, fetchPartners]);
+
   const fetchBranches = async () => {
     try {
       const data = await api.get<any>('/api/branches?active=true');
@@ -233,7 +282,8 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '' });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', accountType: 'employee', partnerSource: '', partnerRefId: '' });
+    setPartnerLabel(''); setPartnerQuery(''); setPartners([]);
     setEmpSearch(''); setEmpResults([]); setLinkedEmployeeLabel('');
     setFormError('');
     setShowFormPassword(false);
@@ -252,7 +302,18 @@ export default function UsersPage() {
         firstName: formData.firstName,
         lastName: formData.lastName,
         role: formData.role,
+        accountType: formData.accountType,
       };
+      // A partner account carries its register link and nothing staff-specific;
+      // the backend forces it onto the external `client` role.
+      if (formData.accountType !== 'employee') {
+        if (!formData.partnerRefId) throw new Error(lang === 'ar' ? 'اختر العميل أو المورد المرتبط بهذا الحساب' : 'Pick the customer or supplier this account belongs to');
+        payload.partner = { source: formData.partnerSource, refId: formData.partnerRefId };
+        await api.post('/api/users', payload);
+        setShowCreateModal(false);
+        fetchUsers();
+        return;
+      }
       if (formData.role === 'client' && formData.linkedCustomer) {
         payload.linkedCustomer = formData.linkedCustomer;
       }
@@ -304,7 +365,12 @@ export default function UsersPage() {
       manager: u.manager?._id || '',
       remoteAccess: u.remoteAccess && u.remoteAccess.length ? u.remoteAccess : REMOTE_PAGE_OPTIONS.map((p) => p.key),
       linkedEmployee: u.linkedEmployee?._id || '',
+      accountType: u.accountType || (u.role === 'client' ? 'customer' : 'employee'),
+      partnerSource: u.partner?.source || (u.role === 'client' && u.linkedCustomer ? 'customer' : ''),
+      partnerRefId: u.partner?.refId || (u.role === 'client' && u.linkedCustomer ? u.linkedCustomer._id : ''),
     });
+    setPartnerLabel(u.partner?.name || u.linkedCustomer?.companyName || '');
+    setPartnerQuery('');
     setEmpSearch(''); setEmpResults([]);
     setLinkedEmployeeLabel(u.linkedEmployee ? `${u.linkedEmployee.firstName} ${u.linkedEmployee.lastName}${u.linkedEmployee.iqamaNumber ? ` (${u.linkedEmployee.iqamaNumber})` : ''}` : '');
     setFormError('');
@@ -325,8 +391,18 @@ export default function UsersPage() {
         firstName: formData.firstName,
         lastName: formData.lastName,
         role: formData.role,
+        accountType: formData.accountType,
       };
       if (formData.password) payload.password = formData.password;
+      if (formData.accountType !== 'employee') {
+        if (!formData.partnerRefId) throw new Error(lang === 'ar' ? 'اختر العميل أو المورد المرتبط بهذا الحساب' : 'Pick the customer or supplier this account belongs to');
+        payload.partner = { source: formData.partnerSource, refId: formData.partnerRefId };
+        await api.put(`/api/users/${selectedUser._id}`, payload);
+        setShowEditModal(false);
+        setSelectedUser(null);
+        fetchUsers();
+        return;
+      }
       if (formData.role === 'client' && formData.linkedCustomer) {
         payload.linkedCustomer = formData.linkedCustomer;
       }
@@ -532,6 +608,20 @@ export default function UsersPage() {
       key: 'role',
       label: T.role,
       render: (_: any, row: UserRecord) => {
+        // A partner login's "role" is meaningless to a reader — what matters is
+        // WHICH customer or supplier it is. Show that instead.
+        const partnerName = row.partner?.name || row.linkedCustomer?.companyName;
+        if (row.accountType === 'customer' || row.accountType === 'vendor' || row.role === 'client') {
+          const isVendor = row.accountType === 'vendor';
+          return (
+            <div>
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${isVendor ? 'bg-teal-500/20 text-teal-700' : 'bg-orange-500/20 text-orange-600'}`}>
+                {isVendor ? (lang === 'ar' ? 'مورد' : 'Supplier') : (lang === 'ar' ? 'عميل' : 'Customer')}
+              </span>
+              {partnerName && <p className="text-slate-500 text-[11px] mt-0.5 truncate max-w-[180px]">{partnerName}</p>}
+            </div>
+          );
+        }
         const config = roleConfig[row.role] || roleConfig.employee;
         return (
           <span className={`px-2 py-0.5 rounded text-xs font-medium ${config.bg} ${config.text}`}>
@@ -605,6 +695,9 @@ export default function UsersPage() {
       <div>
         <label className="block text-slate-700 text-sm font-medium mb-1.5">
           {T.password}
+          <span className="text-slate-400 text-xs font-normal ms-2">
+            {isEdit ? txx.leaveBlankToKeep : txx.min8Chars}
+          </span>
         </label>
         <div className="relative">
           <input
@@ -613,7 +706,8 @@ export default function UsersPage() {
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
             className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pe-10"
             {...(!isEdit ? { required: true } : {})}
-            minLength={6}
+            minLength={8}
+            placeholder={isEdit ? txx.leaveBlankToKeep : undefined}
           />
           <button
             type="button"
@@ -625,6 +719,116 @@ export default function UsersPage() {
           </button>
         </div>
       </div>
+      {/* نوع المستخدم — موظف عندنا، أم عميل/مورد من برّه.
+          Picking a partner swaps the whole rest of the form: no role, no
+          manager, no employee link — just WHICH customer or supplier this
+          login belongs to. */}
+      <div>
+        <label className="block text-slate-700 text-sm font-medium mb-1.5">
+          {lang === 'ar' ? 'نوع المستخدم' : 'User type'}
+        </label>
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            { key: 'employee', ar: 'موظف', en: 'Employee', hint: lang === 'ar' ? 'يدخل النظام' : 'Uses the system' },
+            { key: 'customer', ar: 'عميل', en: 'Customer', hint: lang === 'ar' ? 'بوابة العميل' : 'Customer portal' },
+            { key: 'vendor', ar: 'مورد', en: 'Supplier', hint: lang === 'ar' ? 'بوابة المورد' : 'Supplier portal' },
+          ] as const).map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              onClick={() => {
+                setFormData((prev) => ({
+                  ...prev,
+                  accountType: o.key,
+                  role: o.key === 'employee' ? (prev.role === 'client' ? 'employee' : prev.role) : 'client',
+                  partnerSource: '', partnerRefId: '',
+                  linkedCustomer: '', assignedCustomers: [], assignedProjects: [], assignedBranches: [],
+                  manager: '', linkedEmployee: '', branch: '',
+                }));
+                setPartnerLabel(''); setPartnerQuery('');
+              }}
+              className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                formData.accountType === o.key
+                  ? 'bg-[#f37121] text-white border-[#f37121]'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <span className="block">{lang === 'ar' ? o.ar : o.en}</span>
+              <span className={`block text-[10px] font-normal ${formData.accountType === o.key ? 'text-white/80' : 'text-slate-400'}`}>{o.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Partner picker — every customer/supplier register in one dropdown, each
+          row labelled with the register it came from ("عميل تخليص جمركي"…). */}
+      {formData.accountType !== 'employee' && (
+        <div>
+          <label className="block text-slate-700 text-sm font-medium mb-1.5">
+            {formData.accountType === 'vendor'
+              ? (lang === 'ar' ? 'المورد المرتبط *' : 'Linked supplier *')
+              : (lang === 'ar' ? 'العميل المرتبط *' : 'Linked customer *')}
+          </label>
+          {formData.partnerRefId ? (
+            <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg bg-slate-50 border border-[#f37121]/40">
+              <span className="text-slate-900 text-sm">{partnerLabel}</span>
+              <button
+                type="button"
+                onClick={() => { setFormData({ ...formData, partnerSource: '', partnerRefId: '' }); setPartnerLabel(''); }}
+                className="text-slate-500 hover:text-red-600 text-xs"
+              >
+                {lang === 'ar' ? 'تغيير' : 'Change'}
+              </button>
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={partnerQuery}
+                onChange={(e) => setPartnerQuery(e.target.value)}
+                placeholder={lang === 'ar' ? 'ابحث بالاسم…' : 'Search by name…'}
+                className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+              />
+              <div className="mt-1 max-h-56 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg divide-y divide-slate-200">
+                {partnersLoading && <p className="px-3 py-2.5 text-slate-400 text-xs">{lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…'}</p>}
+                {!partnersLoading && partners.length === 0 && (
+                  <p className="px-3 py-2.5 text-slate-400 text-xs">{lang === 'ar' ? 'لا توجد نتائج' : 'No matches'}</p>
+                )}
+                {partners.slice(0, 200).map((o) => (
+                  <button
+                    key={`${o.source}|${o.refId}`}
+                    type="button"
+                    disabled={!!o.account && o.account._id !== selectedUser?._id}
+                    onClick={() => {
+                      setFormData({ ...formData, partnerSource: o.source, partnerRefId: o.refId });
+                      setPartnerLabel(`${o.name} — ${lang === 'ar' ? o.registerAr : o.registerEn}`);
+                      if (!formData.firstName) setFormData((prev) => ({ ...prev, partnerSource: o.source, partnerRefId: o.refId, firstName: o.name }));
+                      if (o.email && !formData.email) setFormData((prev) => ({ ...prev, partnerSource: o.source, partnerRefId: o.refId, email: o.email }));
+                    }}
+                    className="w-full text-start px-3 py-2 hover:bg-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="text-slate-900">{o.name}</span>
+                    <span className="text-[#f37121] text-xs ms-2">{lang === 'ar' ? o.registerAr : o.registerEn}</span>
+                    {o.detail && <span className="text-slate-400 text-xs ms-2">· {o.detail}</span>}
+                    {o.account && (
+                      <span className="block text-[10px] text-red-500 mt-0.5">
+                        {lang === 'ar' ? `له حساب بالفعل: ${o.account.email}` : `Already has a login: ${o.account.email}`}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <p className="text-slate-400 text-[11px] mt-1">
+                {lang === 'ar'
+                  ? 'القائمة تجمع كل سجلات العملاء والموردين في الشركة — بجانب كل اسم القسم اللي هو مسجّل فيه.'
+                  : 'This list merges every customer/supplier register in the company — each row shows which one it came from.'}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {formData.accountType === 'employee' && (
       <div>
         <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.role}</label>
         <select
@@ -643,11 +847,12 @@ export default function UsersPage() {
           }}
           className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
         >
-          {Object.entries(roleLabels).map(([value, label]) => (
+          {Object.entries(roleLabels).filter(([value]) => value !== 'client').map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
           ))}
         </select>
       </div>
+      )}
 
       {/* Direct manager — org chart. Hidden for top roles (super_admin/admin are
           the CEO/COO — they have no manager) and roles with their own pickers
@@ -738,8 +943,9 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Client-specific: linked customer */}
-      {formData.role === 'client' && (
+      {/* Legacy client-specific picker — only reachable for accounts still on the
+          old shape. New partner accounts use the picker above. */}
+      {formData.accountType === 'employee' && formData.role === 'client' && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.linkedCustomer}</label>
           <select
@@ -1218,7 +1424,7 @@ export default function UsersPage() {
                         onChange={(e) => setNewPassword(e.target.value)}
                         className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 pe-10"
                         required
-                        minLength={6}
+                        minLength={8}
                         placeholder={txx.newPasswordPlaceholder}
                       />
                       <button

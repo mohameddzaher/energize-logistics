@@ -22,7 +22,7 @@ router.post(
   authorize('super_admin'),
   [
     body('email').isEmail().normalizeEmail(),
-    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    body('password').isLength({ min: 8 }).withMessage('كلمة المرور 8 أحرف على الأقل | Password must be at least 8 characters'),
     body('firstName').notEmpty().trim(),
     body('lastName').notEmpty().trim(),
     body('role').isIn(VALID_ROLES).withMessage('Role is invalid'),
@@ -37,7 +37,10 @@ router.post('/:id/lock', authorize('super_admin'), userController.lockUser);
 router.post(
   '/:id/reset-password',
   authorize('super_admin'),
-  [body('newPassword').isLength({ min: 8 })],
+  // Say what is actually wrong. The bare isLength() produced "New Password is
+  // invalid", which tells an admin nothing about the rule they just broke.
+  [body('newPassword').isLength({ min: 8 })
+    .withMessage('كلمة المرور 8 أحرف على الأقل | Password must be at least 8 characters')],
   validate,
   userController.resetPassword
 );

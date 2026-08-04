@@ -1265,3 +1265,225 @@ exports.getCustomerProfile = async (req, res) => {
     res.status(500).json({ message: 'Failed to load customer profile' });
   }
 };
+
+// ── تقييم أداء السائقين — driver KPIs from the shipments they actually ran ────
+//
+// The Location Solutions section scores drivers on TELEMETRY (how they drive).
+// This scores them on the BUSINESS side of the same work: how many loads they
+// carried, what those loads earned, whether they arrived instead of going late,
+// how much they cost, and whether the follow-up calls on their trips happened.
+// The two are complementary — same person, different question.
+const DRIVER_KPI_WEIGHTS = {
+  trips: 30,       // عدد الحمولات
+  income: 25,      // الدخل المحقق
+  onTime: 25,      // نسبة الوصول في الموعد (بدل «متأخر»)
+  completion: 10,  // نسبة الحمولات المكتملة (بدل الملغاة)
+  followUp: 10,    // انتظام متابعة السائق (كل 3 ساعات)
+};
+const DRIVER_KPI_BANDS = [
+  { min: 90, key: 'excellent', ar: 'ممتاز', en: 'Excellent', color: '#16a34a' },
+  { min: 75, key: 'very_good', ar: 'جيد جدًا', en: 'Very good', color: '#22c55e' },
+  { min: 60, key: 'good', ar: 'جيد', en: 'Good', color: '#eab308' },
+  { min: 45, key: 'fair', ar: 'مقبول', en: 'Fair', color: '#f97316' },
+  { min: 0, key: 'weak', ar: 'ضعيف', en: 'Needs improvement', color: '#ef4444' },
+];
+// Statuses that mean the load reached its end successfully, and the one that
+// means it did not arrive when it should have.
+const DONE_STATUSES = ['arrived', 'bond_sent', 'bond_received', 'invoiced'];
+const FOLLOWUP_TARGET_HOURS = 3; // the section's follow-up cadence
+
+exports.getDriverKpis = async (req, res) => {
+  try {
+    const scope = await supervisorVehicleIds(req);
+    const cacheKey = `fleet:driverkpis:${scope ? String(req.user._id) : 'all'}:${JSON.stringify(req.query || {})}`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) return res.json(cached);
+
+    const { from, to, month } = req.query;
+    let start, end;
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      start = new Date(`${month}-01T00:00:00`);
+      end = new Date(start); end.setMonth(end.getMonth() + 1);
+    } else {
+      const now = new Date();
+      start = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1);
+      end = to ? new Date(new Date(to).getTime() + 86400000) : new Date(now.getTime() + 86400000);
+    }
+    const monthsInRange = Math.max(1, _monthIndex(new Date(end.getTime() - 1)) - _monthIndex(start) + 1);
+
+    const inRange = {
+      $or: [
+        { loadDate: { $gte: start, $lt: end } },
+        { $and: [{ loadDate: null }, { createdAt: { $gte: start, $lt: end } }] },
+      ],
+    };
+    const filter = { $and: [inRange] };
+    if (scope) filter.$and.push({ vehicle: { $in: scope } });
+
+    const [shipments, drivers, cfg] = await Promise.all([
+      FleetShipment.find(filter)
+        .select('_id waybillNumber driver driverName secondDriver secondDriverName vehiclePlate price fullRent driverExpense status loadDate createdAt lastContactAt expectedArrival customerName fromCity toCity')
+        .lean(),
+      FleetDriver.find(scope ? { $or: [{ vehicle: { $in: scope } }, { vehicle: null }] } : {})
+        .populate('vehicle', 'plate name')
+        .lean(),
+      getFleetConfig(),
+    ]);
+
+    // Follow-up compliance needs the call log, and only for in-flight loads that
+    // were actually meant to be followed up.
+    const ids = shipments.map((s) => s._id);
+    const followUps = ids.length
+      ? await FleetEvent.find({ shipment: { $in: ids }, type: 'followup' }).select('shipment createdAt').lean()
+      : [];
+    const followUpCount = new Map();
+    for (const f of followUps) {
+      const k = String(f.shipment);
+      followUpCount.set(k, (followUpCount.get(k) || 0) + 1);
+    }
+
+    // Aggregate per driver. A load with a second driver counts for BOTH of them —
+    // they shared the wheel, so they share the credit and the on-time record.
+    const agg = new Map();
+    const bump = (id, name, s, share) => {
+      const key = id ? String(id) : `name:${name || '—'}`;
+      if (!agg.has(key)) {
+        agg.set(key, {
+          _id: id ? String(id) : null, name: name || '—',
+          trips: 0, income: 0, fullRent: 0, expense: 0,
+          done: 0, late: 0, cancelled: 0, inFlight: 0,
+          followUpsDone: 0, followUpsExpected: 0,
+          shared: 0, lastTrip: null, firstTrip: null,
+        });
+      }
+      const a = agg.get(key);
+      a.trips += 1;
+      if (share) a.shared += 1;
+      a.income += Number(s.price) || 0;
+      a.fullRent += Number(s.fullRent) || 0;
+      a.expense += Number(s.driverExpense) || 0;
+      if (s.status === 'cancelled') a.cancelled += 1;
+      else if (s.status === 'late') a.late += 1;
+      else if (DONE_STATUSES.includes(s.status)) a.done += 1;
+      else a.inFlight += 1;
+
+      // Follow-up expectation: one call per FOLLOWUP_TARGET_HOURS from the load
+      // date until the trip ended (or now, for a live one), capped so a forgotten
+      // open shipment can't produce an absurd denominator.
+      if (s.status !== 'cancelled') {
+        const startedAt = new Date(s.loadDate || s.createdAt);
+        const endedAt = DONE_STATUSES.includes(s.status) ? new Date(s.lastContactAt || s.loadDate || s.createdAt) : new Date();
+        const hours = Math.max(0, (endedAt - startedAt) / 3600000);
+        const expected = Math.min(24, Math.max(1, Math.round(hours / FOLLOWUP_TARGET_HOURS)));
+        a.followUpsExpected += expected;
+        a.followUpsDone += Math.min(expected, followUpCount.get(String(s._id)) || 0);
+      }
+
+      const eff = s.loadDate || s.createdAt;
+      if (eff && (!a.lastTrip || eff > a.lastTrip)) a.lastTrip = eff;
+      if (eff && (!a.firstTrip || eff < a.firstTrip)) a.firstTrip = eff;
+    };
+
+    for (const s of shipments) {
+      const hasSecond = !!(s.secondDriver || s.secondDriverName);
+      bump(s.driver, s.driverName, s, hasSecond);
+      if (hasSecond) bump(s.secondDriver, s.secondDriverName, s, true);
+    }
+
+    // Benchmarks: a driver is scored against the fleet's own best, not an
+    // invented number — "top of your peers" is the only fair target here.
+    const rows = [...agg.values()];
+    const maxTrips = Math.max(1, ...rows.map((r) => r.trips));
+    const maxIncome = Math.max(1, ...rows.map((r) => r.income));
+
+    const dById = new Map(drivers.map((d) => [String(d._id), d]));
+    const clamp01 = (n) => Math.max(0, Math.min(1, Number(n) || 0));
+    const r0 = (n) => Math.round(Number(n) || 0);
+
+    const items = rows.map((a) => {
+      const d = a._id ? dById.get(a._id) : null;
+      const finished = a.done + a.late;
+      const onTimeRate = finished ? a.done / finished : null;
+      const completionRate = a.trips ? 1 - a.cancelled / a.trips : 1;
+      const followUpRate = a.followUpsExpected ? a.followUpsDone / a.followUpsExpected : null;
+
+      const breakdown = [
+        { key: 'trips', ar: 'عدد الحمولات', en: 'Loads carried', weight: DRIVER_KPI_WEIGHTS.trips, value: r0(clamp01(a.trips / maxTrips) * 100), detail: { trips: a.trips, best: maxTrips } },
+        { key: 'income', ar: 'الدخل المحقق', en: 'Income generated', weight: DRIVER_KPI_WEIGHTS.income, value: r0(clamp01(a.income / maxIncome) * 100), detail: { income: r0(a.income), best: r0(maxIncome) } },
+        { key: 'onTime', ar: 'الوصول في الموعد', en: 'On-time arrival', weight: DRIVER_KPI_WEIGHTS.onTime, value: r0(clamp01(onTimeRate == null ? 0.7 : onTimeRate) * 100), detail: { done: a.done, late: a.late, rate: onTimeRate == null ? null : r0(onTimeRate * 100) } },
+        { key: 'completion', ar: 'إتمام الحمولات', en: 'Completion', weight: DRIVER_KPI_WEIGHTS.completion, value: r0(clamp01(completionRate) * 100), detail: { cancelled: a.cancelled, trips: a.trips } },
+        { key: 'followUp', ar: 'انتظام المتابعة', en: 'Follow-up discipline', weight: DRIVER_KPI_WEIGHTS.followUp, value: r0(clamp01(followUpRate == null ? 0.7 : followUpRate) * 100), detail: { done: a.followUpsDone, expected: a.followUpsExpected, everyHours: FOLLOWUP_TARGET_HOURS } },
+      ];
+      const totalWeight = breakdown.reduce((s, b) => s + b.weight, 0);
+      const score = r0(breakdown.reduce((s, b) => s + (b.value / 100) * b.weight, 0) * (100 / totalWeight));
+      const band = DRIVER_KPI_BANDS.find((b) => score >= b.min) || DRIVER_KPI_BANDS[DRIVER_KPI_BANDS.length - 1];
+
+      return {
+        _id: a._id, name: a.name,
+        phone: d?.phone || '', iqama: d?.iqama || '', nationality: d?.nationality || '',
+        working: d ? d.working !== false : null,
+        offReason: d?.offReason || '',
+        onSponsorship: d ? d.onSponsorship !== false : null,
+        vehicle: d?.vehicle ? { _id: String(d.vehicle._id), plate: d.vehicle.plate, name: d.vehicle.name } : null,
+        trips: a.trips, sharedTrips: a.shared,
+        income: r0(a.income), fullRent: r0(a.fullRent), expense: r0(a.expense),
+        net: r0(a.income - a.expense),
+        avgTripIncome: a.trips ? r0(a.income / a.trips) : 0,
+        tripsPerMonth: Math.round((a.trips / monthsInRange) * 10) / 10,
+        done: a.done, late: a.late, cancelled: a.cancelled, inFlight: a.inFlight,
+        onTimeRate: onTimeRate == null ? null : r0(onTimeRate * 100),
+        completionRate: r0(completionRate * 100),
+        followUpRate: followUpRate == null ? null : r0(followUpRate * 100),
+        followUpsDone: a.followUpsDone, followUpsExpected: a.followUpsExpected,
+        firstTrip: a.firstTrip, lastTrip: a.lastTrip,
+        score, band: band.key, bandAr: band.ar, bandEn: band.en, bandColor: band.color,
+        breakdown,
+      };
+    });
+
+    // Drivers on the books who carried nothing in the period still belong on the
+    // list — "who did no work this month" is half the point of the page.
+    const seen = new Set(items.map((i) => i._id).filter(Boolean));
+    for (const d of drivers) {
+      if (seen.has(String(d._id)) || d.isActive === false) continue;
+      items.push({
+        _id: String(d._id), name: d.name, phone: d.phone || '', iqama: d.iqama || '',
+        nationality: d.nationality || '', working: d.working !== false, offReason: d.offReason || '',
+        onSponsorship: d.onSponsorship !== false,
+        vehicle: d.vehicle ? { _id: String(d.vehicle._id), plate: d.vehicle.plate, name: d.vehicle.name } : null,
+        trips: 0, sharedTrips: 0, income: 0, fullRent: 0, expense: 0, net: 0, avgTripIncome: 0, tripsPerMonth: 0,
+        done: 0, late: 0, cancelled: 0, inFlight: 0,
+        onTimeRate: null, completionRate: 100, followUpRate: null, followUpsDone: 0, followUpsExpected: 0,
+        firstTrip: null, lastTrip: null,
+        score: 0, band: 'weak', bandAr: 'ضعيف', bandEn: 'Needs improvement', bandColor: '#ef4444',
+        breakdown: [], noActivity: true,
+      });
+    }
+
+    items.sort((a, b) => b.score - a.score || b.income - a.income);
+    const active = items.filter((i) => i.trips > 0);
+    const body = {
+      period: { from: start, to: end, monthsInRange },
+      weights: DRIVER_KPI_WEIGHTS,
+      bands: DRIVER_KPI_BANDS,
+      followUpTargetHours: FOLLOWUP_TARGET_HOURS,
+      fridayBonusAmount: Number(cfg.fridayBonusAmount) || 0,
+      summary: {
+        drivers: items.length,
+        activeDrivers: active.length,
+        idleDrivers: items.length - active.length,
+        totalTrips: items.reduce((s, i) => s + i.trips, 0),
+        totalIncome: items.reduce((s, i) => s + i.income, 0),
+        totalExpense: items.reduce((s, i) => s + i.expense, 0),
+        averageScore: active.length ? Math.round(active.reduce((s, i) => s + i.score, 0) / active.length) : 0,
+        lateTrips: items.reduce((s, i) => s + i.late, 0),
+      },
+      items,
+    };
+    cache.set(cacheKey, body, 12000);
+    res.json(body);
+  } catch (error) {
+    console.error('fleet driver KPIs error:', error);
+    res.status(500).json({ message: 'Failed to load driver KPIs' });
+  }
+};

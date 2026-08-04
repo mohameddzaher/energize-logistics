@@ -2,7 +2,75 @@
 // department owns the whole system technically, so they are never gated.
 const FULL_ACCESS_ROLES = ['super_admin', 'it_manager', 'it_specialist'];
 
+
+/**
+ * Human names for the role keys. The keys are snake_case identifiers; anything
+ * a person READS (a printed report, a notification, an export) must go through
+ * here or an Arabic document ends up saying "operations_manager".
+ *
+ * Unknown roles are not an error — a role added to the enum tomorrow is
+ * title-cased into something readable rather than leaking the raw key.
+ */
+const ROLE_LABELS_AR = {
+  super_admin: 'مدير النظام', admin: 'الإدارة العليا', employee: 'موظف',
+  operations_manager: 'مدير العمليات', operations: 'موظف عمليات', moderator: 'مشرف',
+  client: 'عميل',
+  workshop_manager: 'مدير الورشة', workshop_employee: 'فني ورشة', purchasing: 'مشتريات',
+  b2c_head: 'رئيس قطاع الأفراد', b2c_project_manager: 'مدير مشروع - أفراد',
+  remote_employee: 'موظف عن بُعد', remote_manager: 'مدير العمل عن بُعد',
+  hr_manager: 'مدير الموارد البشرية', hr_specialist: 'أخصائي موارد بشرية',
+  crm_manager: 'مدير العلاقات', crm_team_lead: 'قائد فريق العلاقات',
+  crm_specialist: 'أخصائي علاقات', crm_agent: 'مندوب علاقات',
+  finance_manager: 'المدير المالي', accountant: 'محاسب',
+  sales_manager: 'مدير المبيعات', sales_rep: 'مندوب مبيعات',
+  procurement_manager: 'مدير المشتريات',
+  customs_manager: 'مدير التخليص الجمركي', customs_officer: 'مخلّص جمركي',
+  it_manager: 'مدير تقنية المعلومات', it_specialist: 'أخصائي تقنية المعلومات',
+  marketing_manager: 'مدير التسويق', marketing_specialist: 'أخصائي تسويق',
+  bd_manager: 'مدير تطوير الأعمال', bd_specialist: 'أخصائي تطوير الأعمال',
+  fleet_manager: 'مدير الأسطول', fleet_supervisor: 'مشرف الأسطول',
+  administrator: 'الشؤون الإدارية', contracts_manager: 'مدير العقود',
+};
+
+const titleCase = (k) => String(k || '').split('_').filter(Boolean)
+  .map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+/** Print-ready name for a role key, in either language. */
+const roleLabel = (key, lang = 'ar') => {
+  if (!key) return '';
+  return lang === 'en' ? titleCase(key) : (ROLE_LABELS_AR[key] || titleCase(key));
+};
+
+
+/**
+ * Status vocabularies that get PRINTED. Same keys as the fleet board, the
+ * shipment-orders trial and the ops mirror — kept here so a server-rendered
+ * document never shows a bare "loading" or "active" in an Arabic page.
+ */
+const SHIPMENT_STATUS_AR = {
+  requesting: 'قيد الطلب', loading: 'جاري التحميل', uploaded: 'تم التحميل',
+  on_way: 'في الطريق', arrived: 'وصلت', bond_sent: 'أُرسل السند',
+  bond_received: 'استُلم السند', late: 'متأخرة', invoiced: 'تمت الفوترة',
+  cancelled: 'ملغاة',
+};
+
+const EMPLOYMENT_STATUS_AR = {
+  active: 'على رأس العمل', on_leave: 'في إجازة',
+  suspended: 'موقوف', terminated: 'منتهية خدمته',
+};
+
+/** Print-ready status, in either language; unknown keys degrade readably. */
+const statusLabel = (map, key, lang = 'ar') => {
+  if (!key) return '';
+  return lang === 'en' ? titleCase(key) : (map[key] || titleCase(key));
+};
+
 module.exports = {
+  SHIPMENT_STATUS_AR,
+  EMPLOYMENT_STATUS_AR,
+  statusLabel,
+  ROLE_LABELS_AR,
+  roleLabel,
   FULL_ACCESS_ROLES,
   ROLES: {
     SUPER_ADMIN: 'super_admin',
@@ -158,7 +226,11 @@ module.exports = {
   // super_admin see all of them.
   REMOTE_PAGES: ['attendance', 'dashboard', 'leave', 'chat', 'tasks', 'report', 'announcements'],
 
-  REMOTE_LEAVE_TYPES: ['annual', 'sick', 'personal', 'unpaid', 'other'],
+  REMOTE_LEAVE_TYPES: ['annual', 'sick', 'emergency', 'personal', 'unpaid', 'other'],
+  // Remote leave kinds you cannot plan — exempt from the advance-notice rule.
+  REMOTE_LEAVE_NO_NOTICE: ['sick', 'emergency'],
+  // Company rule: a planned leave must be requested this many days ahead.
+  LEAVE_ADVANCE_NOTICE_DAYS: 30,
 
   CREDIT_TERMS: [15, 30, 45, 60],
 

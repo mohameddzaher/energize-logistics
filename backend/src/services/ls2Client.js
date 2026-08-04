@@ -241,7 +241,25 @@ async function loadMessages(unitId, timeFrom, timeTo, count = 5000) {
  * @param {number} objectId     unit id (or group id) to report on
  * @param {number} from,to      epoch seconds
  */
-async function execReport(templateId, objectId, from, to, { resourceId = cfg.REPORTS.RESOURCE_ID, tableIndex = 0, maxRows = 5000 } = {}) {
+// Wialon computes a report into ONE server-side slot per session, so the
+// cleanup → exec → get_rows → cleanup sequence is not re-entrant: two callers
+// running at once interleave and each wipes the other's result, handing back
+// somebody else's rows. Every report therefore queues on this chain — reports
+// are seconds long and infrequent, so serialising them costs far less than the
+// wrong data would.
+let reportChain = Promise.resolve();
+function serialiseReport(fn) {
+  const run = reportChain.then(fn, fn);
+  // Keep the chain alive after a failure, and don't leak the rejection.
+  reportChain = run.then(() => {}, () => {});
+  return run;
+}
+
+async function execReport(templateId, objectId, from, to, opts = {}) {
+  return serialiseReport(() => execReportUnsafe(templateId, objectId, from, to, opts));
+}
+
+async function execReportUnsafe(templateId, objectId, from, to, { resourceId = cfg.REPORTS.RESOURCE_ID, tableIndex = 0, maxRows = 5000 } = {}) {
   // Clear any stale slot first (ignore errors — nothing to clean is fine).
   try { await call('report/cleanup_result', {}); } catch (e) { /* noop */ }
   const exec = await call('report/exec_report', {

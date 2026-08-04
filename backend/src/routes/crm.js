@@ -54,4 +54,10 @@ router.put('/deals/:id', crm.updateDeal);
 router.patch('/deals/:id/move', crm.moveDeal);
 router.delete('/deals/:id', crm.deleteDeal);
 
+// مؤشرات الأداء — customer and vendor scorecards. Read-only: they join finance,
+// fleet, shipment-orders and customs data onto each CRM row (see crmKpiController).
+const crmKpi = require('../controllers/crmKpiController');
+router.get('/kpis/customers', crmKpi.getCustomerKpis); // ?from&to
+router.get('/kpis/vendors', crmKpi.getVendorKpis);     // ?from&to
+
 module.exports = router;

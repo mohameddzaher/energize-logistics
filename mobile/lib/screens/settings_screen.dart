@@ -137,7 +137,7 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(controller: current, obscureText: true, decoration: InputDecoration(labelText: tr('كلمة المرور الحالية *', 'Current password *'))),
             const SizedBox(height: 10),
-            TextField(controller: next, obscureText: true, decoration: InputDecoration(labelText: tr('كلمة المرور الجديدة * (٦ أحرف على الأقل)', 'New password * (min 6)'))),
+            TextField(controller: next, obscureText: true, decoration: InputDecoration(labelText: tr('كلمة المرور الجديدة * (٨ أحرف على الأقل)', 'New password * (min 8)'))),
             const SizedBox(height: 10),
             TextField(controller: confirm, obscureText: true, decoration: InputDecoration(labelText: tr('تأكيد كلمة المرور *', 'Confirm password *'))),
             const SizedBox(height: 14),
@@ -145,8 +145,10 @@ class SettingsScreen extends StatelessWidget {
               width: double.infinity,
               child: FilledButton(
                 onPressed: () async {
-                  if (next.text.length < 6) {
-                    ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('كلمة المرور قصيرة', 'Password too short'))));
+                  // Must match the server's minimum (8) — see routes/auth.js.
+                  if (next.text.length < 8) {
+                    ScaffoldMessenger.of(c).showSnackBar(SnackBar(
+                      content: Text(tr('كلمة المرور 8 أحرف على الأقل', 'Password must be at least 8 characters'))));
                     return;
                   }
                   if (next.text != confirm.text) {

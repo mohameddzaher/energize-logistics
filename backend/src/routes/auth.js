@@ -36,7 +36,11 @@ router.post(
   authenticate,
   [
     body('currentPassword').notEmpty().withMessage('Current password is required'),
-    body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters'),
+    // MUST match User.schema's minlength (8). When this said 6, a 7-character
+    // password passed validation, then failed on save — and the user just saw
+    // "Failed to change password" with no idea why.
+    body('newPassword').isLength({ min: 8 })
+      .withMessage('كلمة المرور 8 أحرف على الأقل | New password must be at least 8 characters'),
   ],
   validate,
   authController.changePassword

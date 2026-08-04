@@ -20,6 +20,7 @@ import {
 import {
   Spinner, Badge, SmallBadge, Tabs, StatCard, Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2,
 } from '@/components/hr/HRKit';
+import ReportButton from '@/components/system/ReportButton';
 import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import ContractFormModal from '@/components/hr/ContractFormModal';
 import { getHrEmployeesIdTranslations } from '@/lib/translations';
@@ -133,6 +134,7 @@ export default function EmployeeProfilePage() {
         {/* Quick actions (staff only) */}
         {staff && (
           <div className="flex flex-wrap items-center gap-2">
+            <ReportButton subject="employee" id={String(e._id)} label={ar ? 'تقرير الموظف' : 'Employee report'} />
             <ActionBtn onClick={() => setShowEdit(true)} icon={<Edit className="w-4 h-4" />} label={ar ? 'تعديل' : 'Edit'} primary />
             <ActionBtn onClick={() => setShowRenew(true)} icon={<RefreshCw className="w-4 h-4" />} label={ar ? 'تجديد مستند' : 'Renew Doc'} />
             {terminated

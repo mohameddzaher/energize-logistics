@@ -63,6 +63,10 @@ import '../screens/ls2_settings.dart';
 import '../screens/ls2_store.dart';
 import '../screens/settings_screen.dart';
 import '../screens/performance_evaluations.dart';
+import '../screens/scorecards.dart';
+import '../screens/reports.dart';
+import '../screens/business_review.dart';
+import '../screens/portal.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -132,6 +136,20 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('مهام التحصيل', 'Tasks', Icons.checklist_rtl_outlined, (c) => const FinanceTasksScreen()),
       ],
     ),
+    // اجتماعات مراجعة الأعمال — the managers/board forum. Broad `roles` because
+    // ordinary employees open it too, for work delegated to them; the screen
+    // itself shows only the tabs their tier qualifies for.
+    AppSection(
+      key: 'Business Review', arTitle: 'مراجعة الأعمال', enTitle: 'Business Review', icon: Icons.event_note_outlined,
+      // No static role list on purpose: the section is `managed`, and the
+      // permission matrix grants it to EVERY staff role (see the backend's
+      // `defaultAllRoles`). A hand-written list here would go stale the moment a
+      // role is added — which is exactly how 14 roles got locked out on the web.
+      roles: const [],
+      pages: [
+        AppPage('مراجعة الأعمال', 'Business Review', Icons.event_note_outlined, (c) => const BusinessReviewScreen()),
+      ],
+    ),
     AppSection(
       key: 'Administration', arTitle: 'الشؤون الإدارية', enTitle: 'Administration', icon: Icons.dashboard_customize_outlined,
       roles: const [..._admins, 'administrator', 'bd_manager'],
@@ -148,6 +166,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة الرئيسية', 'Board', Icons.grid_view_rounded, (c) => const FleetBoardScreen()),
         AppPage('الشحنات والمتابعة', 'Shipments', Icons.inventory_2_outlined, (c) => const FleetShipmentsScreen()),
         AppPage('السائقون', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: fleetDriversCfg)),
+        AppPage('تقييم السائقين', 'Driver KPIs', Icons.speed_outlined, (c) => const FleetDriverKpisScreen()),
         AppPage('السيارات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: fleetVehiclesCfg)),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: fleetCustomersCfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'fleet')),
@@ -182,6 +201,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الأنشطة', 'Activities', Icons.history_outlined, (c) => ResourceScreen(config: crmActivitiesCfg)),
         AppPage('التقويم', 'Calendar', Icons.calendar_month_outlined, (c) => const CrmCalendarScreen()),
         AppPage('الموردون (3PL)', 'Vendors', Icons.local_shipping_outlined, (c) => ResourceScreen(config: crmVendorsCfg)),
+        AppPage('مؤشرات العملاء', 'Customer KPIs', Icons.leaderboard_outlined, (c) => const CrmKpisScreen(kind: 'customers')),
+        AppPage('مؤشرات الموردين', 'Vendor KPIs', Icons.insights_outlined, (c) => const CrmKpisScreen(kind: 'vendors')),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'crm')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'crm', complaints: true)),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen()),
@@ -254,6 +275,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen()),
         AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const Ls2StoreScreen()),
         AppPage('السائقون (تتبع)', 'Drivers', Icons.badge_outlined, (c) => const Ls2DriversScreen()),
+        AppPage('تقييم السواقين', 'Driver Performance', Icons.speed_outlined, (c) => const Ls2DriverPerformanceScreen()),
         AppPage('الحرارة', 'Temperature', Icons.thermostat_outlined, (c) => const Ls2TemperatureScreen()),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const Ls2AlertsScreen()),
         AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const Ls2SettingsScreen()),
@@ -416,15 +438,36 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('البيانات المرجعية', 'Reference Data', Icons.list_alt_outlined, (c) => const ReferenceDataScreen()),
       ],
     ),
+    // بوابة العميل/المورد — outside partners. `client` is the external role, and
+    // it appears in NO other section, so a partner's drawer is just this.
+    AppSection(
+      key: 'Portal', arTitle: 'بوابتي', enTitle: 'My Portal', icon: Icons.storefront_outlined,
+      roles: const ['client'], managed: false,
+      pages: [
+        AppPage('بوابتي', 'My Portal', Icons.storefront_outlined, (c) => const PortalScreen()),
+      ],
+    ),
   ];
 
+  // A partner sees ONLY their portal — never a staff section, whatever the
+  // permission matrix happens to say about their role.
+  if (role == 'client') return all.where((s) => s.key == 'Portal').toList();
   return all.where(allowed).toList();
 }
 
-/// Self-service — every signed-in employee, no gating.
-List<AppPage> selfServicePages(bool hasTeam) => [
+/// Self-service — every signed-in EMPLOYEE, no gating. Partner (client) logins
+/// have no employee profile behind them, so callers pass `isPartner: true` and
+/// get only the two pages that make sense for an outsider.
+List<AppPage> selfServicePages(bool hasTeam, {bool isPartner = false}) => isPartner
+    ? [
       AppPage('ملفي', 'My Profile', Icons.account_circle_outlined, (c) => const MyProfileScreen()),
       AppPage('الإشعارات', 'Notifications', Icons.notifications_outlined, (c) => const NotificationsScreen()),
+      AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const SettingsScreen()),
+    ]
+    : [
+      AppPage('ملفي', 'My Profile', Icons.account_circle_outlined, (c) => const MyProfileScreen()),
+      AppPage('الإشعارات', 'Notifications', Icons.notifications_outlined, (c) => const NotificationsScreen()),
+      AppPage('مركز التقارير', 'Reports', Icons.assessment_outlined, (c) => const ReportsScreen()),
       AppPage('إجازاتي', 'My Leaves', Icons.beach_access_outlined, (c) => const MyLeavesScreen()),
       AppPage('طلباتي', 'My Requests', Icons.description_outlined, (c) => const MyRequestsScreen()),
       if (hasTeam) AppPage('موافقات فريقي', 'Team Approvals', Icons.fact_check_outlined, (c) => const ApprovalsScreen()),

@@ -9,6 +9,11 @@ const auditLogSchema = new mongoose.Schema({
   action: { type: String, required: true },
   entity: { type: String, required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId },
+  // Not everything auditable is keyed by an ObjectId — a role permission change
+  // is identified by the role NAME. Those used to be written into entityId and
+  // silently thrown away by the cast, so the most security-relevant action in
+  // the system (changing who can reach what) left no trail at all.
+  entityKey: { type: String, trim: true, default: '' },
   // Fully Mixed on purpose: callers log either { before, after } diffs or a
   // flat summary object ({ waybillNumber, customerName }). The old
   // { before, after }-only shape silently DROPPED every flat summary at write
@@ -19,6 +24,7 @@ const auditLogSchema = new mongoose.Schema({
 });
 
 auditLogSchema.index({ entity: 1, entityId: 1 });
+auditLogSchema.index({ entity: 1, entityKey: 1 });
 auditLogSchema.index({ entity: 1, createdAt: -1 }); // filtered audit views sort by recency
 auditLogSchema.index({ user: 1 });
 auditLogSchema.index({ createdAt: -1 });

@@ -9,13 +9,14 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import { Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search } from 'lucide-react';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import { isLs2Staff, isLs2Admin, type Lang } from '@/lib/ls2';
 
 type Item = { _id: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
 type Cat = { key: string; ar: string; count: number };
 type Movement = { _id: string; itemName: string; type: 'in' | 'out'; quantity: number; vehiclePlate?: string; reason?: string; balanceAfter: number; performedByName?: string; createdAt: string };
 
 const money = (n: unknown) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
-const LS2_STORE_ADMIN = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'operations', 'workshop_manager', 'workshop_employee', 'moderator'];
 
 const STATUS: Record<string, { ar: string; en: string; cls: string }> = {
   ok: { ar: 'متوفر', en: 'In stock', cls: 'bg-emerald-100 text-emerald-700' },
@@ -28,7 +29,12 @@ export default function Ls2StorePage() {
   const ar = lang === 'ar';
   const { user } = useAuth();
   const { notify, confirm } = useDialog();
-  const canEdit = user && LS2_STORE_ADMIN.includes(user.role);
+  // Gate on the SECTION, not on a hand-written role list. A role the super admin
+  // grants «تعديل» on Location Solutions gets وارد/صادر/تعديل/حذف here without a
+  // code change — which is what the permissions page promises and what the API
+  // already honours (rbac lets a section grant through). The old list silently
+  // broke that promise: the section opened, the actions stayed hidden.
+  const canEdit = isLs2Admin(user);
 
   const [items, setItems] = useState<Item[]>([]);
   const [totals, setTotals] = useState<any>(null);
@@ -80,6 +86,33 @@ export default function Ls2StorePage() {
     try { await api.delete(`/api/ls2/store/${it._id}`); notify(ar ? 'تم الحذف' : 'Deleted', 'success'); load(); } catch (e: any) { notify(e?.message, 'error'); }
   };
 
+  // Same Excel export every other Location Solutions page offers — the store was
+  // the only one without one.
+  const itemCols: ExportColumn[] = [
+    { header: ar ? 'الكود' : 'Code', key: 'code', width: 14 },
+    { header: ar ? 'الصنف' : 'Item', key: 'name', width: 34 },
+    { header: ar ? 'التصنيف' : 'Category', key: 'categoryAr', transform: (v, r) => v || r.category || '', width: 18 },
+    { header: ar ? 'الرصيد' : 'Qty', key: 'quantity', width: 10 },
+    { header: ar ? 'الوحدة' : 'Unit', key: 'unit', width: 10 },
+    { header: ar ? 'الحد الأدنى' : 'Min qty', key: 'minQuantity', width: 11 },
+    { header: ar ? 'سعر الوحدة' : 'Unit price', key: 'unitPrice', width: 13 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 13 },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => (ar ? STATUS[v]?.ar : STATUS[v]?.en) || v, width: 12 },
+    { header: ar ? 'الموديلات المتوافقة' : 'Compatible models', key: 'compatibleModels', transform: (v) => (v || []).join('، '), width: 30 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 30 },
+  ];
+  const movementCols: ExportColumn[] = [
+    { header: ar ? 'التاريخ' : 'Date', key: 'createdAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : ''), width: 18 },
+    { header: ar ? 'الصنف' : 'Item', key: 'itemName', width: 34 },
+    { header: ar ? 'الحركة' : 'Type', key: 'type', transform: (v) => (ar ? (v === 'in' ? 'وارد' : 'صادر') : (v === 'in' ? 'In' : 'Out')), width: 10 },
+    { header: ar ? 'الكمية' : 'Qty', key: 'quantity', width: 10 },
+    { header: ar ? 'المركبة' : 'Vehicle', key: 'vehiclePlate', width: 14 },
+    { header: ar ? 'السبب' : 'Reason', key: 'reason', width: 30 },
+    { header: ar ? 'الرصيد بعدها' : 'Balance after', key: 'balanceAfter', width: 14 },
+    { header: ar ? 'بواسطة' : 'By', key: 'performedByName', width: 20 },
+  ];
+
+  if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرّح' : 'Not authorized'}</div>;
   if (loading && !items.length) return <Spinner />;
 
   return (
@@ -87,6 +120,14 @@ export default function Ls2StorePage() {
       <PageHeader icon={<Boxes className="w-5 h-5" />} title={ar ? 'مخزن النقل الثقيل' : 'Heavy Transport Store'} subtitle={ar ? 'قطع الغيار — الرصيد والحركات' : 'Spare parts — stock & movements'}>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowLog((s) => !s)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm ${showLog ? 'bg-[#12325c] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}><History className="w-4 h-4" /> {ar ? 'سجل الحركات' : 'Movements'}</button>
+          <ExportMenu
+            fileName="ls2-store" lang={lang as Lang}
+            options={[
+              { key: 'shown', label: ar ? 'المعروض حاليًا (بعد الفلتر)' : 'Current view (filtered)', sheets: [{ name: ar ? 'المخزن' : 'Store', rows: shown, columns: itemCols }] },
+              { key: 'all', label: ar ? 'كل الأصناف' : 'All items', sheets: [{ name: ar ? 'المخزن' : 'Store', rows: items, columns: itemCols }] },
+              { key: 'movements', label: ar ? 'سجل الحركات' : 'Movements log', sheets: [{ name: ar ? 'الحركات' : 'Movements', rows: movements, columns: movementCols }], disabled: !movements.length },
+            ]}
+          />
           {canEdit && <button onClick={() => setAddNew(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'صنف جديد' : 'Add item'}</button>}
         </div>
       </PageHeader>

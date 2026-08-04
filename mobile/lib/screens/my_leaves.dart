@@ -207,8 +207,37 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
   final _reason = TextEditingController();
   bool _busy = false;
 
+  /// سياسة الإخطار المسبق — planned leave must be requested a month ahead; the
+  /// kinds you cannot plan (مرضية/طارئة) carry requiresAdvanceNotice:false and
+  /// may start today. The backend enforces this; the sheet just refuses to let
+  /// the employee pick a date that would be rejected.
+  Map<String, dynamic>? get _chosen {
+    for (final t in widget.types) {
+      if (t['_id'].toString() == _type) return t;
+    }
+    return null;
+  }
+
+  bool get _needsNotice => (_chosen?['requiresAdvanceNotice'] ?? true) != false;
+  int get _noticeDays => _needsNotice ? ((_chosen?['minAdvanceDays'] ?? 30) as num).toInt() : 0;
+  DateTime get _minStart {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return _needsNotice ? today.add(Duration(days: _noticeDays)) : today;
+  }
+
+  bool get _noticeViolated => _start != null && _start!.isBefore(_minStart);
+
   Future<void> _save() async {
     if (_type.isEmpty || _start == null || _end == null || _busy) return;
+    if (_noticeViolated) {
+      final min = _minStart;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(
+        'يجب تقديم هذا الطلب قبل موعد بدايته بـ $_noticeDays يومًا على الأقل — أقرب بداية ${min.day}/${min.month}/${min.year}. الطارئة والمرضية معفاة.',
+        'This leave needs $_noticeDays days\' notice — earliest start ${min.day}/${min.month}/${min.year}. Emergency and sick leave are exempt.',
+      ))));
+      return;
+    }
     setState(() => _busy = true);
     try {
       await Api.instance.post('/api/hr/me/leaves', {
@@ -226,12 +255,18 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
     }
   }
 
-  Future<DateTime?> _pick(DateTime? initial) => showDatePicker(
-        context: context,
-        initialDate: initial ?? DateTime.now(),
-        firstDate: DateTime.now().subtract(const Duration(days: 30)),
-        lastDate: DateTime.now().add(const Duration(days: 365)),
-      );
+  Future<DateTime?> _pick(DateTime? initial) {
+    final min = _minStart;
+    final seed = (initial != null && !initial.isBefore(min)) ? initial : min;
+    return showDatePicker(
+      context: context,
+      initialDate: seed,
+      // The picker cannot even offer an illegal date — the rule is enforced by
+      // the calendar, not by an error message after the fact.
+      firstDate: min,
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -250,20 +285,51 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
             items: widget.types
                 .map((t) => DropdownMenuItem(value: t['_id'].toString(), child: Text(t['nameAr'] ?? t['nameEn'] ?? '')))
                 .toList(),
-            onChanged: (v) => setState(() => _type = v ?? ''),
+            onChanged: (v) => setState(() {
+              _type = v ?? '';
+              // Switching to a type with a longer notice must clear a date that
+              // is now illegal rather than silently keeping it.
+              if (_start != null && _start!.isBefore(_minStart)) { _start = null; _end = null; }
+            }),
           ),
+          if (_type.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _needsNotice ? const Color(0xFFFEF3C7) : const Color(0xFFD1FAE5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(children: [
+                Icon(_needsNotice ? Icons.schedule_rounded : Icons.verified_outlined,
+                    size: 16, color: _needsNotice ? const Color(0xFF92400E) : const Color(0xFF065F46)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _needsNotice
+                        ? tr('تحتاج إخطارًا مسبقًا $_noticeDays يومًا — أقرب بداية ${_minStart.day}/${_minStart.month}/${_minStart.year}.',
+                            'Needs $_noticeDays days\' notice — earliest start ${_minStart.day}/${_minStart.month}/${_minStart.year}.')
+                        : tr('إجازة طارئة/مرضية — معفاة من الإخطار المسبق.',
+                            'Emergency / sick leave — exempt from advance notice.'),
+                    style: TextStyle(fontSize: 11.5, color: _needsNotice ? const Color(0xFF92400E) : const Color(0xFF065F46)),
+                  ),
+                ),
+              ]),
+            ),
+          ],
           const SizedBox(height: 10),
           Row(children: [
             Expanded(
               child: OutlinedButton(
-                onPressed: () async { final d = await _pick(_start); if (d != null) setState(() => _start = d); },
+                onPressed: _type.isEmpty ? null : () async { final d = await _pick(_start); if (d != null) setState(() { _start = d; if (_end != null && _end!.isBefore(d)) _end = d; }); },
                 child: Text('${tr('من', 'From')}: ${fmt(_start)}'),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton(
-                onPressed: () async { final d = await _pick(_end ?? _start); if (d != null) setState(() => _end = d); },
+                onPressed: _type.isEmpty || _start == null ? null : () async { final d = await _pick(_end ?? _start); if (d != null) setState(() => _end = d); },
                 child: Text('${tr('إلى', 'To')}: ${fmt(_end)}'),
               ),
             ),
@@ -272,7 +338,7 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
           TextField(controller: _reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
           const SizedBox(height: 14),
           FilledButton(
-            onPressed: _busy || _type.isEmpty || _start == null || _end == null ? null : _save,
+            onPressed: _busy || _type.isEmpty || _start == null || _end == null || _noticeViolated ? null : _save,
             child: _busy
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : Text(tr('إرسال الطلب', 'Submit')),

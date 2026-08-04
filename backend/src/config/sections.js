@@ -80,6 +80,21 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'it_specialist'],
   },
   {
+    // اجتماعات مراجعة الأعمال — the standing forum between the department heads
+    // and the board. Broad by default because ORDINARY employees also open it,
+    // to see work delegated to them; the controller is what separates a manager's
+    // view from an employee's, not this list.
+    key: 'Business Review',
+    apiPrefixes: ['/api/business-review'],
+    // EVERY staff role by default. A hand-written list here locked 14 roles out
+    // of their OWN delegated tasks — and would lock out every role added after
+    // it was written. `defaultAllRoles` means "anyone who isn't an outside
+    // partner", which stays true however the org grows. The controller is what
+    // separates a manager's view from an employee's, not this.
+    defaultAllRoles: true,
+    defaultRoles: [],
+  },
+  {
     // الشؤون الإدارية (السكرتارية) — the shared office task board.
     key: 'Administration',
     apiPrefixes: ['/api/admin-tasks'],
@@ -139,6 +154,41 @@ const SECTIONS = [
 ];
 
 const SECTION_KEYS = SECTIONS.map((s) => s.key);
+
+// Arabic names for the section keys. The keys themselves are English because
+// they are identifiers; anything PRINTED or shown to a user needs this. The
+// frontend has its own copy for the sidebar — this one exists so server-rendered
+// output (PDF reports, notifications) isn't the only place in an Arabic system
+// that says "Software & IT".
+const SECTION_LABELS_AR = {
+  'Customers & Finance': 'العملاء والمالية',
+  'Operations': 'العمليات',
+  'Operations Platform': 'منصة الأوبريشن',
+  'Shipment Orders': 'طلبات الشحنات',
+  'Fleet Management': 'إدارة الأسطول',
+  'Customs': 'التخليص الجمركي',
+  'Vehicles': 'المركبات والتفاويض',
+  'Location Solutions': 'لوكيشن سوليوشن',
+  'Marketing': 'التسويق',
+  'Business Development': 'تطوير الأعمال',
+  'Software & IT': 'تقنية المعلومات',
+  'Administration': 'الشؤون الإدارية',
+  'Business Review': 'مراجعة الأعمال',
+  'Contracts': 'إدارة العقود',
+  'B2C': 'قطاع الأفراد',
+  'Workshop': 'الورشة',
+  'Remote': 'العمل عن بُعد',
+  'HR': 'الموارد البشرية',
+  'CRM': 'إدارة العلاقات',
+  'Sales': 'المبيعات',
+  'Accounting': 'المحاسبة',
+  'Procurement': 'المشتريات',
+  'Executive': 'الإدارة العليا',
+};
+
+/** Print-ready name for a section key, in either language. */
+const sectionLabel = (key, lang = 'ar') =>
+  (lang === 'en' ? key : (SECTION_LABELS_AR[key] || key));
 const ACCESS_LEVELS = ['none', 'view', 'edit'];
 
 // Every assignable role (super_admin is implicit-all and excluded from editing).
@@ -164,7 +214,14 @@ const defaultAccess = (role, sectionKey) => {
   if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
   const s = getSection(sectionKey);
   if (!s) return 'none';
+  // A section marked `defaultAllRoles` is open to all STAFF by default — only
+  // `client` (an outside partner, who has the portal instead) is excluded. This
+  // is how a section stays reachable by roles that don't exist yet.
+  if (s.defaultAllRoles) return role === 'client' ? 'none' : 'edit';
   return s.defaultRoles.includes(role) ? 'edit' : 'none';
 };
 
-module.exports = { SECTIONS, SECTION_KEYS, ACCESS_LEVELS, ALL_ROLES, getSection, defaultAccess };
+module.exports = {
+  SECTIONS, SECTION_KEYS, ACCESS_LEVELS, ALL_ROLES, getSection, defaultAccess,
+  SECTION_LABELS_AR, sectionLabel,
+};

@@ -18,6 +18,11 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     return a == 'view' || a == 'edit';
   }
 
+  /// May create/update/delete in this section. The API draws the same line
+  /// (rbac.js: 'view' passes reads only), so a screen that offers a write
+  /// action to a view-only user is offering a button that will 403.
+  bool canEditSection(String section) => permissions[section] == 'edit';
+
   /// App start: if a refresh token survives in the keychain, restore the
   /// session silently (loadTokens + /me does the refresh dance if needed).
   Future<void> bootstrap() async {

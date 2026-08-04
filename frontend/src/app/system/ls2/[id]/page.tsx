@@ -17,6 +17,7 @@ import {
 import { downloadVehicleReport } from '@/lib/vehicleReport';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import ReportButton from '@/components/system/ReportButton';
 import RangePicker from '@/components/ls2/RangePicker';
 import {
   ls2Text, isLs2Staff, isLs2Admin, severityStyle, statusStyle, maintStyle, alertTypeLabel, alertMessage, tireTempColor, tirePressColor, coolantColor,
@@ -165,6 +166,8 @@ export default function Ls2VehicleDetailPage() {
           {pdfBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
           {lang === 'ar' ? 'تحميل تقرير PDF' : 'Download PDF Report'}
         </button>
+        {/* التقرير الشامل — telemetry + maintenance + loads + income in one PDF */}
+        <ReportButton subject="vehicle" id={`u${v.unitId}`} label={lang === 'ar' ? 'التقرير الشامل' : 'Full report'} />
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
       </PageHeader>
 

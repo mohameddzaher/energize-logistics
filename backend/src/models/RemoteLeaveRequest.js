@@ -4,7 +4,7 @@ const remoteLeaveRequestSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     manager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    type: { type: String, enum: ['annual', 'sick', 'personal', 'unpaid', 'other'], default: 'annual' },
+    type: { type: String, enum: ['annual', 'sick', 'emergency', 'personal', 'unpaid', 'other'], default: 'annual' },
     startDate: { type: String, required: true }, // YYYY-MM-DD
     endDate: { type: String, required: true }, // YYYY-MM-DD
     days: { type: Number, default: 1 },

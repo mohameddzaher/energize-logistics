@@ -603,7 +603,7 @@ exports.updateLeaveType = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const lt = await LeaveType.findById(req.params.id);
     if (!lt) return res.status(404).json({ message: 'Leave type not found' });
-    ['nameEn', 'nameAr', 'paid', 'affectsBalance', 'color', 'active'].forEach((f) => {
+    ['nameEn', 'nameAr', 'paid', 'affectsBalance', 'color', 'active', 'requiresAdvanceNotice', 'minAdvanceDays'].forEach((f) => {
       if (req.body[f] !== undefined) lt[f] = req.body[f];
     });
     await lt.save();
@@ -688,6 +688,37 @@ exports.listTeamLeaves = async (req, res) => {
   }
 };
 
+// ── Advance-notice policy (سياسة الإخطار المسبق) ─────────────────────────────
+// Planned leave must be filed a month ahead: nobody asks on Sunday to travel on
+// Tuesday. Types marked `requiresAdvanceNotice: false` (مرضية / طارئة / وفاة /
+// وضع) are exempt by design — you cannot plan an emergency.
+//
+// Today is taken as a plain YYYY-MM-DD so a request filed at 23:00 counts the
+// same as one filed at 08:00 the same day.
+const todayKey = () => new Date().toISOString().slice(0, 10);
+const DAY_MS = 86400000;
+const daysUntil = (dateStr) =>
+  Math.round((Date.parse(`${String(dateStr).slice(0, 10)}T00:00:00Z`) - Date.parse(`${todayKey()}T00:00:00Z`)) / DAY_MS);
+
+// Evaluate the policy for one (leaveType, startDate). Returns the snapshot that
+// gets stored on the request plus a ready-to-send bilingual refusal message.
+const evaluateAdvanceNotice = (leaveType, startDate) => {
+  const required = leaveType.requiresAdvanceNotice !== false;
+  const requiredDays = required ? Number(leaveType.minAdvanceDays ?? 30) : 0;
+  const daysAhead = daysUntil(startDate);
+  const satisfied = !required || daysAhead >= requiredDays;
+  return {
+    required,
+    requiredDays,
+    daysAhead,
+    satisfied,
+    message: satisfied ? '' : `يجب تقديم طلب «${leaveType.nameAr}» قبل موعد بدايتها بـ ${requiredDays} يومًا على الأقل. `
+      + `تاريخ البداية المطلوب بعد ${daysAhead} يوم فقط. `
+      + `الإجازات الطارئة والمرضية معفاة من هذه القاعدة.`
+      + ` | "${leaveType.nameEn}" must be requested at least ${requiredDays} day(s) before it starts; this one starts in ${daysAhead} day(s). Emergency and sick leave are exempt.`,
+  };
+};
+
 exports.createMyLeave = async (req, res) => {
   try {
     const employeeId = await ensureSelfEmployee(req);
@@ -698,6 +729,18 @@ exports.createMyLeave = async (req, res) => {
     if (!leaveType || !startDate || !endDate) return res.status(400).json({ message: 'Leave type and dates are required' });
     const lt = await LeaveType.findById(leaveType).lean();
     if (!lt) return res.status(400).json({ message: 'Invalid leave type' });
+
+    // Advance-notice rule. HR staff may override it for a genuine exception —
+    // the override (who + why) is stamped on the request and shown to reviewers.
+    const notice = evaluateAdvanceNotice(lt, startDate);
+    const wantsOverride = req.body.policyOverride === true && hrStaffReq(req);
+    if (!notice.satisfied && !wantsOverride) {
+      return res.status(400).json({
+        message: notice.message,
+        code: 'ADVANCE_NOTICE_REQUIRED',
+        policy: { requiredDays: notice.requiredDays, daysAhead: notice.daysAhead, leaveType: lt.code },
+      });
+    }
 
     const days = leaveDays(startDate, endDate);
     const { balance } = await computeEmployeeBalance(req.user.linkedEmployee);
@@ -727,6 +770,15 @@ exports.createMyLeave = async (req, res) => {
         accrued: balance.accrued,
         requested: days,
         remainingAfter: lt.affectsBalance ? Math.round((balance.available - days) * 100) / 100 : balance.available,
+      },
+      advanceNotice: {
+        required: notice.required,
+        requiredDays: notice.requiredDays,
+        daysAhead: notice.daysAhead,
+        satisfied: notice.satisfied,
+        overridden: !notice.satisfied,
+        overriddenBy: notice.satisfied ? undefined : req.user._id,
+        overrideReason: notice.satisfied ? '' : String(req.body.overrideReason || '').trim().slice(0, 300),
       },
     });
 

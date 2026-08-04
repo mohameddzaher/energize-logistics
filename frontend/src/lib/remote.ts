@@ -41,13 +41,31 @@ export const fmtDateTime = (date?: string | Date | null) => {
 export const cairoToday = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date());
 
-export const LEAVE_TYPES: { key: string; en: string; ar: string }[] = [
+// `noNotice` marks the kinds you cannot plan — they are exempt from the
+// advance-notice rule and can be filed for today. Mirrors REMOTE_LEAVE_NO_NOTICE
+// on the backend, which is what actually enforces it.
+export const LEAVE_TYPES: { key: string; en: string; ar: string; noNotice?: boolean }[] = [
   { key: 'annual', en: 'Annual', ar: 'سنوية' },
-  { key: 'sick', en: 'Sick', ar: 'مرضية' },
+  { key: 'sick', en: 'Sick', ar: 'مرضية', noNotice: true },
+  { key: 'emergency', en: 'Emergency', ar: 'طارئة', noNotice: true },
   { key: 'personal', en: 'Personal', ar: 'شخصية' },
   { key: 'unpaid', en: 'Unpaid', ar: 'بدون راتب' },
   { key: 'other', en: 'Other', ar: 'أخرى' },
 ];
+
+// The company rule: a planned leave is requested a month ahead.
+export const LEAVE_ADVANCE_NOTICE_DAYS = 30;
+
+export const leaveNeedsNotice = (key: string) =>
+  !(LEAVE_TYPES.find((t) => t.key === key)?.noNotice);
+
+/** Earliest legal start date (YYYY-MM-DD) for a remote leave of this kind. */
+export const earliestLeaveStart = (key: string) => {
+  if (!leaveNeedsNotice(key)) return cairoToday();
+  const d = new Date();
+  d.setDate(d.getDate() + LEAVE_ADVANCE_NOTICE_DAYS);
+  return d.toISOString().slice(0, 10);
+};
 
 export const leaveTypeLabel = (key: string, lang: 'en' | 'ar') =>
   (LEAVE_TYPES.find((t) => t.key === key) || { en: key, ar: key })[lang];

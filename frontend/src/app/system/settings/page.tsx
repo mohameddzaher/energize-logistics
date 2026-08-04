@@ -64,7 +64,9 @@ export default function SettingsPage() {
       setPwError(T.fillAllFields);
       return;
     }
-    if (newPassword.length < 6) {
+    // Must match the server (8) — telling the user 6 is fine and then having the
+    // request rejected is worse than not validating at all.
+    if (newPassword.length < 8) {
       setPwError(T.passwordMinLength);
       return;
     }

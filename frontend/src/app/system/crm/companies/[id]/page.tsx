@@ -8,6 +8,8 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { getCRMTranslations } from '@/lib/translations';
 import { ArrowLeft, Building2, Plus, Trash2, Star, Phone, MapPin, Pencil } from 'lucide-react';
+import PortalAccountCard from '@/components/system/PortalAccountCard';
+import ReportButton from '@/components/system/ReportButton';
 import {
   isCrmStaff, isCrmAdmin, CrmCompany, CrmContact, CrmActivity, CrmTask, CrmDeal, CrmOptions,
   COMPANY_STATUS_STYLE, DEAL_STATUS_STYLE, TASK_STATUS_STYLE, PRIORITY_STYLE, optLabel,
@@ -182,6 +184,13 @@ export default function CrmCompanyDetailPage() {
       {/* Overview */}
       {tab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* حساب البوابة — إنشاء إيميل وباسورد للعميل من ملفه مباشرة */}
+          <div className="lg:col-span-2 flex justify-end">
+            <ReportButton subject="customer" id={company.name} label={ar ? 'التقرير الشامل للعميل' : 'Full customer report'} />
+          </div>
+          <div className="lg:col-span-2">
+            <PortalAccountCard source="crm_company" refId={String(company._id)} name={company.name} />
+          </div>
           <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-2 text-sm shadow-sm">
             <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-2">{T.details}</h3>
             <Row label={T.owner} value={userName(company.owner)} />

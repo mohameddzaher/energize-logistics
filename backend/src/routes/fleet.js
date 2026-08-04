@@ -51,6 +51,10 @@ router.delete('/customers/:id', authorize(...ADMIN_ROLES), fleet.deleteCustomer)
 // Dashboard + rich analytics
 router.get('/dashboard', fleet.getDashboard);
 router.get('/analytics', fleet.getAnalytics);
+// تقييم أداء السائقين — the business-side driver scorecard (loads, income,
+// on-time arrival, follow-up discipline). Telemetry-side scoring lives in
+// /api/ls2/drivers/performance.
+router.get('/driver-kpis', fleet.getDriverKpis); // ?from&to | ?month=YYYY-MM
 
 // Section settings (Friday bonus amount, default monthly target)
 router.get('/config', fleet.getConfig);

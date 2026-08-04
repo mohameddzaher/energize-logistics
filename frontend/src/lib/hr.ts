@@ -71,7 +71,22 @@ export interface Contract {
 export interface LeaveType {
   _id: string; code: string; nameEn: string; nameAr: string;
   paid: boolean; affectsBalance: boolean; color?: string; active: boolean;
+  // سياسة الإخطار المسبق: planned leave must be requested this many days before
+  // it starts. Sick/emergency types carry requiresAdvanceNotice: false.
+  requiresAdvanceNotice?: boolean;
+  minAdvanceDays?: number;
 }
+
+// The earliest start date a given leave type may be requested for, as YYYY-MM-DD.
+// Types exempt from the notice rule can start today.
+export function earliestStartDate(t?: LeaveType | null): string {
+  if (!t || t.requiresAdvanceNotice === false) return today();
+  const days = t.minAdvanceDays ?? 30;
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 
 export interface LeaveBalance { entitlement: number; daysElapsed: number; accrued: number; taken: number; available: number; }
 

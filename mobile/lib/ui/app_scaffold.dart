@@ -132,7 +132,7 @@ class AppSearchDelegate extends SearchDelegate<void> {
   List<(String, AppPage)> _matches() {
     final q = _fold(query.trim());
     final List<(String, AppPage)> out = [];
-    for (final p in selfServicePages(true)) {
+    for (final p in selfServicePages(true, isPartner: auth.role == 'client')) {
       if (q.isEmpty || _fold(p.title).contains(q)) out.add((tr('الخدمة الذاتية', 'Self Service'), p));
     }
     for (final s in sectionsFor(auth)) {
@@ -230,7 +230,8 @@ class _AppDrawerState extends State<AppDrawer> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final sections = sectionsFor(auth);
-    final selfPages = selfServicePages(true); // موافقات فريقي تظهر؛ الشاشة نفسها تتحقق
+    // موافقات فريقي تظهر؛ الشاشة نفسها تتحقق. الشريك (client) ليس موظفًا فلا يرى إجازات/طلبات.
+    final selfPages = selfServicePages(true, isPartner: auth.role == 'client');
 
     void go(WidgetBuilder b) {
       Navigator.pop(context); // اقفل الدرج

@@ -200,6 +200,24 @@ exports.createLeave = async (req, res) => {
     if (!startDate || !endDate) {
       return res.status(400).json({ message: 'Start and end dates are required' });
     }
+    // Same advance-notice rule as the HR section: a planned leave is requested a
+    // month ahead; sick and emergency leave are exempt because you cannot plan them.
+    const { REMOTE_LEAVE_NO_NOTICE, LEAVE_ADVANCE_NOTICE_DAYS } = require('../config/constants');
+    const kind = type || 'annual';
+    if (!REMOTE_LEAVE_NO_NOTICE.includes(kind)) {
+      const today = new Date().toISOString().slice(0, 10);
+      const daysAhead = Math.round(
+        (Date.parse(`${String(startDate).slice(0, 10)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000
+      );
+      if (daysAhead < LEAVE_ADVANCE_NOTICE_DAYS) {
+        return res.status(400).json({
+          code: 'ADVANCE_NOTICE_REQUIRED',
+          policy: { requiredDays: LEAVE_ADVANCE_NOTICE_DAYS, daysAhead, leaveType: kind },
+          message: `يجب تقديم طلب الإجازة قبل موعد بدايتها بـ ${LEAVE_ADVANCE_NOTICE_DAYS} يومًا على الأقل (المتبقي ${daysAhead} يوم). الإجازة المرضية والطارئة معفاة.`
+            + ` | Leave must be requested at least ${LEAVE_ADVANCE_NOTICE_DAYS} days before it starts (this one starts in ${daysAhead}). Sick and emergency leave are exempt.`,
+        });
+      }
+    }
     const leave = await RemoteLeaveRequest.create({
       user: req.user._id,
       manager: req.user.manager || undefined,

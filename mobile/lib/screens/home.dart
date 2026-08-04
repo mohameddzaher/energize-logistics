@@ -12,6 +12,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'my_profile.dart';
 import 'admin_suite.dart' show NotificationsScreen;
+import 'portal.dart';
 
 /// The app shell: burger drawer with EVERY section the signed-in user can
 /// open (same gating as the web sidebar), and an animated dashboard home.
@@ -87,6 +88,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadStats() async {
     _loadInsight();
     final auth = context.read<AuthProvider>();
+    // A partner (client) login has no employee profile behind it — every HR
+    // self-service endpoint would 403. Skip them entirely instead of firing
+    // four requests that can only fail.
+    if (auth.role == 'client') {
+      if (mounted) setState(() => _statsLoading = false);
+      return;
+    }
     try {
       final results = await Future.wait([
         Api.instance.get('/api/hr/me/team').catchError((_) => {}),
@@ -137,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final sections = sectionsFor(auth);
-    final selfPages = selfServicePages(_hasTeam);
+    final selfPages = selfServicePages(_hasTeam, isPartner: auth.role == 'client');
 
     return Scaffold(
       appBar: AppBar(
@@ -219,8 +227,30 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 20),
             ],
 
-            // ── مؤشراتي الشخصية ──
-            if (_statsLoading)
+            // ── مؤشراتي الشخصية (للموظفين فقط) ──
+            if (auth.role == 'client')
+              FadeSlideIn(
+                delayMs: 80,
+                child: Pressable(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PortalScreen())),
+                  child: AppCard(
+                    topAccent: T.orange,
+                    child: Row(children: [
+                      const Icon(Icons.storefront_outlined, size: 26, color: T.orange),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(tr('بوابتي', 'My Portal'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                          Text(tr('شحناتي وبوالصي وفواتيري', 'My shipments, waybills and invoices'),
+                              style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                        ]),
+                      ),
+                      const Icon(Icons.chevron_right_rounded, color: T.inkFaint),
+                    ]),
+                  ),
+                ),
+              )
+            else if (_statsLoading)
               const Row(children: [
                 Expanded(child: Shimmer(height: 92)), SizedBox(width: 10), Expanded(child: Shimmer(height: 92)),
               ])

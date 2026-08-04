@@ -32,7 +32,7 @@ export default function ChartOfAccountsPage() {
   const [saving, setSaving] = useState(false);
   const [ledger, setLedger] = useState<{ account: ChartAccount; rows: any[]; closingBalance: number } | null>(null);
 
-  const canDelete = isFinanceAdmin(user?.role);
+  const canDelete = isFinanceAdmin(user);
 
   const load = useCallback(async () => {
     try {

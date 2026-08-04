@@ -60,6 +60,9 @@ wait_ready() {
 # ── The health gate ─────────────────────────────────────────────────────────
 # Everything a user needs in order for the app to actually work, not just to
 # return bytes. Used after a deploy AND on its own via --check.
+#
+# Only BACKEND facts may fail this gate, because rolling the backend back is the
+# only remedy it has. Frontend state is reported, never fatal.
 verify() {
   fails=0
   say "Verifying $API"
@@ -91,13 +94,21 @@ verify() {
   check ".env present" "$("${SSH[@]}" "test -f $APP_DIR/.env && echo yes || echo NO" 2>/dev/null | tr -d '\r')" "yes"
   check "uploads kept" "$("${SSH[@]}" "test -d $APP_DIR/uploads && echo yes || echo NO" 2>/dev/null | tr -d '\r')" "yes"
 
-  # The site itself. Netlify deploys separately, but "production is fine" is not
-  # true if the frontend is serving a stale bundle or 404ing its own routes.
-  check "site answers"          "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/")" "200"
-  check "site route: reports"   "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/system/reports")" "200"
-  # Control: a path that does not exist MUST 404, otherwise the two checks above
-  # prove nothing (a catch-all would answer 200 for anything).
-  check "site 404s unknown path" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/system/zzz-no-such-page")" "404"
+  # The site is REPORTED but does not gate the backend. Netlify deploys on its own
+  # schedule, and a push that lands here mid-rebuild made a perfectly good API
+  # deploy "fail" and roll itself back — for a frontend blip that rolling the API
+  # back could not possibly fix. Report it; let a human judge it.
+  local site_root site_route site_404
+  site_root=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/")
+  site_route=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/system/reports")
+  # Control: a path that does not exist MUST 404, or the two above prove nothing.
+  site_404=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/system/zzz-no-such-page")
+  if [[ "$site_root" == "200" && "$site_route" == "200" && "$site_404" == "404" ]]; then
+    good "site healthy ${c_dim}(Netlify — informational)${c_off}"
+  else
+    printf '  %s!%s site: / =%s, /system/reports =%s, unknown-path =%s (want 200/200/404)\n' "$c_bad" "$c_off" "$site_root" "$site_route" "$site_404"
+    note "informational only — Netlify may be mid-rebuild; not rolling the API back for this"
+  fi
 
   # Nothing crash-looping: a restart storm shows as a climbing restart count.
   note "restarts: $("${SSH[@]}" "pm2 jlist" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s).find(x=>x.name==="'"$PM2_NAME"'");console.log(p?p.pm2_env.restart_time:"?")}catch(e){console.log("?")}})')"

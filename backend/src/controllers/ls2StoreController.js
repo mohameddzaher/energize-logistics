@@ -1,6 +1,7 @@
 const { Ls2StoreItem, Ls2StoreMovement } = require('../models/Ls2Store');
 const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
+const logAudit = require('../utils/auditLogger');
 
 const emit = () => { try { emitToAll('ls2:store', {}); } catch (e) {} cache.clear('ls2store:'); };
 
@@ -114,6 +115,85 @@ exports.addMovement = async (req, res) => {
   } catch (e) { console.error('ls2 store movement', e); res.status(500).json({ message: 'Failed to record movement' }); }
 };
 
+// ── التراجع عن حركة ───────────────────────────────────────────────────────────
+//
+// قرار الإدارة المالية: الحركة اللي اتسجّلت متتعدّلش. مفيش endpoint بيغيّر كمية
+// أو نوع حركة قائمة، وده مقصود — لو الموظف يقدر يرجع يظبط اللي عمله، السجل
+// بيبقى رأيه في اللي حصل مش اللي حصل.
+//
+// الغلط بيتصحّح بالتراجع: حركة معاكسة بنفس الكمية، مربوطة بالأصلية
+// (reversalOf)، بسبب إجباري وباسم اللي عملها. الأصلية بتفضل في السجل مشطوبة،
+// فالمراجع بيشوف الغلطة والتصحيح مش النتيجة النهائية بس. لو الكمية الصح مختلفة،
+// بيتسجّل بعدها حركة جديدة عادية — وديه كمان بتبان باسم صاحبها.
+
+const actor = (req) => ({
+  performedBy: req.user?._id,
+  performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
+});
+
+/** أثر الحركة على الرصيد: وارد يزوّد، صادر ينقّص. */
+const effectOf = (type, qty) => (type === 'in' ? +qty : -qty);
+
+/** الحركة دي ينفع يتراجع عنها؟ */
+const guard = (mv) => {
+  if (mv.reversed) return 'تم التراجع عن هذه الحركة من قبل';
+  if (mv.reversalOf) return 'هذه حركة تراجع — لا يمكن التراجع عنها؛ سجّل حركة جديدة بدلاً من ذلك';
+  return null;
+};
+
+exports.reverseMovement = async (req, res) => {
+  try {
+    const mv = await Ls2StoreMovement.findById(req.params.movementId);
+    if (!mv) return res.status(404).json({ message: 'الحركة غير موجودة' });
+    const blocked = guard(mv);
+    if (blocked) return res.status(400).json({ message: blocked });
+
+    const item = await Ls2StoreItem.findById(mv.item);
+    if (!item) return res.status(404).json({ message: 'الصنف غير موجود' });
+
+    // التراجع عن «وارد» بيشيل كمية من المخزن — لو اتصرفت خلاص مينفعش.
+    const after = item.quantity - effectOf(mv.type, mv.quantity);
+    if (after < 0) {
+      return res.status(400).json({
+        message: `لا يمكن التراجع: العملية تحتاج سحب ${mv.quantity} ${item.unit} والرصيد الحالي ${item.quantity} فقط. سجّل وارد أولاً ثم أعد المحاولة.`,
+      });
+    }
+
+    const who = actor(req);
+    const reason = (req.body.reason || '').trim();
+    // بدون سبب مكتوب، التراجع بيبقى تعديل صامت بخطوة زيادة — وده بالظبط اللي
+    // القاعدة موجودة عشانه.
+    if (reason.length < 3) {
+      return res.status(400).json({ message: 'اكتب سبب التراجع — يُسجَّل في السجل باسمك' });
+    }
+    item.quantity = after;
+    await item.save();
+
+    const rev = await Ls2StoreMovement.create({
+      item: item._id, itemName: item.name,
+      type: mv.type === 'in' ? 'out' : 'in', quantity: mv.quantity,
+      vehiclePlate: mv.vehiclePlate,
+      reason: `تراجع عن ${mv.type === 'in' ? 'وارد' : 'صادر'} ${mv.quantity} — ${reason}`,
+      balanceAfter: after, reversalOf: mv._id, ...who,
+    });
+
+    mv.reversed = true;
+    mv.reversedAt = new Date();
+    mv.reversedBy = who.performedBy;
+    mv.reversedByName = who.performedByName;
+    mv.reversalReason = reason;
+    await mv.save();
+
+    logAudit({
+      user: req.user, action: 'reverse_store_movement', entity: 'Ls2StoreMovement', entityId: mv._id,
+      changes: { after: { item: item.name, type: mv.type, quantity: mv.quantity, reason } }, ipAddress: req.ip,
+    }).catch(() => {});
+
+    emit();
+    res.json({ item, movement: mv, reversal: rev });
+  } catch (e) { console.error('ls2 store reverse', e); res.status(500).json({ message: 'تعذّر التراجع عن الحركة' }); }
+};
+
 // ── سجل الحركات ───────────────────────────────────────────────────────────────
 exports.listMovements = async (req, res) => {
   try {
@@ -122,6 +202,19 @@ exports.listMovements = async (req, res) => {
     if (req.query.type) filter.type = req.query.type;
     const limit = Math.min(Number(req.query.limit) || 200, 1000);
     const movements = await Ls2StoreMovement.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
-    res.json({ movements });
+    // الواجهة محتاجة تعرف: ده ينفع يترجع فيه؟ وده تراجع عن إيه؟ من غير ما تعيد
+    // بناء القاعدة دي في مكانين.
+    const byId = new Map(movements.map((m) => [String(m._id), m]));
+    res.json({
+      movements: movements.map((m) => ({
+        ...m,
+        canReverse: !m.reversed && !m.reversalOf,
+        isReversal: !!m.reversalOf,
+        // لقطة صغيرة من الحركة الأصلية لو كانت لسه في نفس الصفحة.
+        originalRef: m.reversalOf
+          ? (() => { const o = byId.get(String(m.reversalOf)); return o ? { type: o.type, quantity: o.quantity, at: o.createdAt } : null; })()
+          : null,
+      })),
+    });
   } catch (e) { res.status(500).json({ message: 'Failed to load movements' }); }
 };

@@ -8,13 +8,20 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
-import { Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search } from 'lucide-react';
+import { Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search, Undo2 } from 'lucide-react';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { isLs2Staff, isLs2Admin, type Lang } from '@/lib/ls2';
 
 type Item = { _id: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
 type Cat = { key: string; ar: string; count: number };
-type Movement = { _id: string; itemName: string; type: 'in' | 'out'; quantity: number; vehiclePlate?: string; reason?: string; balanceAfter: number; performedByName?: string; createdAt: string };
+type Movement = {
+  _id: string; item: string; itemName: string; type: 'in' | 'out'; quantity: number;
+  vehiclePlate?: string; reason?: string; balanceAfter: number; performedByName?: string; createdAt: string;
+  // التراجع — السيرفر هو اللي بيقرر الحركة دي ينفع يترجع فيها ولا لأ، فالواجهة
+  // ما تعيدش بناء القاعدة دي عندها.
+  reversed?: boolean; reversedByName?: string; reversalReason?: string;
+  canReverse?: boolean; isReversal?: boolean;
+};
 
 const money = (n: unknown) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
@@ -167,7 +174,7 @@ export default function Ls2StorePage() {
         </div>
       </div>
 
-      {showLog && <MovementsLog movements={movements} ar={ar} />}
+      {showLog && <MovementsLog movements={movements} ar={ar} canEdit={!!canEdit} plates={plates} onChanged={() => { loadLog(); load(); }} />}
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -217,28 +224,110 @@ export default function Ls2StorePage() {
   );
 }
 
-function MovementsLog({ movements, ar }: { movements: Movement[]; ar: boolean }) {
+// سجل الحركات — ومن هنا بالظبط بيتم التراجع أو التصحيح.
+//
+// الحركة الملغية بتفضل ظاهرة ومشطوبة، مش بتختفي: الرصيد اتغيّر فعلاً وقتها،
+// وإخفاء السطر معناه إن اللي بيراجع المخزن مش هيفهم الرقم جه منين.
+function MovementsLog({ movements, ar, canEdit, plates, onChanged }: {
+  movements: Movement[]; ar: boolean; canEdit: boolean; plates: string[]; onChanged: () => void;
+}) {
+  const [undoing, setUndoing] = useState<Movement | null>(null);
+
+  const head = [ar ? 'التاريخ' : 'Date', ar ? 'الصنف' : 'Item', ar ? 'الحركة' : 'Type', ar ? 'الكمية' : 'Qty',
+    ar ? 'العربية' : 'Vehicle', ar ? 'الرصيد بعدها' : 'Balance', ar ? 'بواسطة' : 'By', ''];
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 font-bold text-sm text-slate-800">{ar ? 'سجل الحركات' : 'Movement log'} ({movements.length})</div>
-      <div className="overflow-x-auto max-h-80 overflow-y-auto">
+      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 font-bold text-sm text-slate-800 flex items-center justify-between gap-2">
+        <span>{ar ? 'سجل الحركات' : 'Movement log'} ({movements.length})</span>
+        {canEdit && <span className="text-[11px] font-normal text-slate-400">{ar ? 'الحركة المسجّلة لا تُعدَّل — الغلط يتصحّح بتراجع مسجَّل باسمك' : 'A recorded movement is never edited — mistakes are reversed, on the record'}</span>}
+      </div>
+      <div className="overflow-x-auto max-h-96 overflow-y-auto">
         <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-slate-500 text-xs sticky top-0"><tr>{[ar ? 'التاريخ' : 'Date', ar ? 'الصنف' : 'Item', ar ? 'الحركة' : 'Type', ar ? 'الكمية' : 'Qty', ar ? 'العربية' : 'Vehicle', ar ? 'الرصيد بعدها' : 'Balance', ar ? 'بواسطة' : 'By'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
+          <thead className="bg-slate-100 text-slate-500 text-xs sticky top-0"><tr>{head.map((h, i) => <th key={i} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">
             {movements.map((m) => (
-              <tr key={m._id} className="hover:bg-slate-50">
+              <tr key={m._id} className={`hover:bg-slate-50 ${m.reversed ? 'bg-slate-50/60 text-slate-400' : ''}`}>
                 <td className="px-3 py-1.5 text-slate-400 whitespace-nowrap text-xs">{new Date(m.createdAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
-                <td className="px-3 py-1.5 font-medium text-slate-700">{m.itemName}</td>
-                <td className="px-3 py-1.5"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${m.type === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-[#f37121]'}`}>{m.type === 'in' ? (ar ? 'وارد' : 'In') : (ar ? 'صادر' : 'Out')}</span></td>
-                <td className="px-3 py-1.5 font-bold" style={{ color: m.type === 'in' ? '#059669' : '#f37121' }}>{m.type === 'in' ? '+' : '−'}{m.quantity}</td>
+                <td className="px-3 py-1.5 font-medium text-slate-700">
+                  <span className={m.reversed ? 'line-through' : ''}>{m.itemName}</span>
+                  <span className="block text-[10px] leading-tight">
+                    {m.reversed && <span className="text-red-500">{ar ? 'مُلغاة' : 'reversed'}{m.reversedByName ? ` · ${m.reversedByName}` : ''}</span>}
+                    {m.isReversal && <span className="text-amber-600">{ar ? 'حركة تراجع' : 'reversal entry'}</span>}
+                    {m.reversed && m.reversalReason && <span className="block text-slate-400">{m.reversalReason}</span>}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${m.reversed ? 'bg-slate-200 text-slate-500' : m.type === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-[#f37121]'}`}>{m.type === 'in' ? (ar ? 'وارد' : 'In') : (ar ? 'صادر' : 'Out')}</span></td>
+                <td className={`px-3 py-1.5 font-bold ${m.reversed ? 'line-through' : ''}`} style={{ color: m.reversed ? '#94a3b8' : m.type === 'in' ? '#059669' : '#f37121' }}>{m.type === 'in' ? '+' : '−'}{m.quantity}</td>
                 <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">{m.vehiclePlate || '—'}</td>
                 <td className="px-3 py-1.5 text-slate-600">{m.balanceAfter}</td>
                 <td className="px-3 py-1.5 text-slate-400 text-xs">{m.performedByName || '—'}</td>
+                <td className="px-3 py-1.5">
+                  {canEdit && m.canReverse && (
+                    <button type="button" onClick={() => setUndoing(m)}
+                      title={ar ? 'التراجع عن الحركة' : 'Reverse'}
+                      className="px-2 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-600 text-[11px] font-semibold inline-flex items-center gap-1">
+                      <Undo2 className="w-3.5 h-3.5" />{ar ? 'تراجع' : 'Undo'}
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
-            {movements.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">{ar ? 'لا حركات بعد' : 'No movements'}</td></tr>}
+            {movements.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-400">{ar ? 'لا حركات بعد' : 'No movements'}</td></tr>}
           </tbody>
         </table>
+      </div>
+      {undoing && <ReverseModal m={undoing} ar={ar} onClose={() => setUndoing(null)} onDone={() => { setUndoing(null); onChanged(); }} />}
+    </div>
+  );
+}
+
+// التراجع عن حركة. مفيش حقول تتعدّل هنا عن قصد — السبب بس، وهو إجباري.
+// لو الكمية الصح مختلفة، بيتراجع عن الغلط وبعدين يسجّل حركة جديدة عادية؛
+// الاتنين بيبانوا باسم صاحبهم بدل ما رقم واحد يتغيّر في الخفا.
+function ReverseModal({ m, ar, onClose, onDone }: { m: Movement; ar: boolean; onClose: () => void; onDone: () => void }) {
+  const { notify } = useDialog();
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (reason.trim().length < 3) { notify(ar ? 'اكتب سبب التراجع' : 'A reason is required', 'error'); return; }
+    setBusy(true);
+    try {
+      await api.post(`/api/ls2/store/movements/${m._id}/reverse`, { reason: reason.trim() });
+      notify(ar ? 'تم التراجع ورجع الرصيد' : 'Reversed', 'success');
+      onDone();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-bold text-lg text-red-600">{ar ? 'التراجع عن الحركة' : 'Reverse movement'}</h3>
+          <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
+        </div>
+        <p className="text-sm text-slate-500 mb-4">
+          {m.itemName} · <b>{m.type === 'in' ? (ar ? 'وارد' : 'In') : (ar ? 'صادر' : 'Out')} {m.quantity}</b>
+          {m.vehiclePlate ? ` · ${m.vehiclePlate}` : ''} · {new Date(m.createdAt).toLocaleDateString('en-GB')}
+          {m.performedByName ? ` · ${m.performedByName}` : ''}
+        </p>
+
+        <label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'سبب التراجع' : 'Reason'} *</label>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} autoFocus
+          placeholder={ar ? 'مثال: اتسجّلت على العربية الغلط' : 'e.g. recorded against the wrong vehicle'}
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+
+        <p className="mt-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-slate-50 text-slate-500">
+          {ar
+            ? 'الحركة الأصلية مش هتتعدّل ولا هتتمسح — هتفضل في السجل مشطوبة، وهتتسجّل جنبها حركة معاكسة باسمك وسببك، والرصيد يرجع زي ما كان. لو الكمية الصح مختلفة، سجّل حركة جديدة بعد التراجع.'
+            : 'The original is neither edited nor deleted — it stays in the log, struck through, with an opposite entry recorded under your name and reason. If the right quantity differs, record a fresh movement afterwards.'}
+        </p>
+
+        <button onClick={submit} disabled={busy || reason.trim().length < 3}
+          className="w-full mt-3 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-50">
+          {busy ? (ar ? 'جارٍ التنفيذ…' : 'Working…') : (ar ? 'تأكيد التراجع' : 'Confirm reversal')}
+        </button>
       </div>
     </div>
   );

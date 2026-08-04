@@ -292,15 +292,73 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
 
+  // ── التراجع عن حركة ──
+  // الحركة المسجّلة متتعدّلش (قرار الإدارة المالية) — الغلط بيتصحّح بحركة معاكسة
+  // بسبب مكتوب، والاتنين يفضلوا في السجل. مفيش شاشة تعديل هنا عن قصد.
+  Future<bool> _reverse(Map<String, dynamic> m) async {
+    final reason = TextEditingController();
+    final isIn = m['type'] == 'in';
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(builder: (c2, setInner) => AlertDialog(
+        title: Text(tr('التراجع عن الحركة', 'Reverse movement'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${m['itemName']} · ${isIn ? tr('وارد', 'In') : tr('صادر', 'Out')} ${m['quantity']}'
+              '${(m['performedByName'] ?? '').toString().isEmpty ? '' : ' · ${m['performedByName']}'}',
+              style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: reason, autofocus: true, maxLines: 2,
+            onChanged: (_) => setInner(() {}),
+            decoration: InputDecoration(
+              labelText: tr('سبب التراجع *', 'Reason *'),
+              hintText: tr('مثال: اتسجّلت على العربية الغلط', 'e.g. wrong vehicle'),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            tr('الحركة الأصلية مش هتتعدّل ولا هتتمسح — هتفضل في السجل، وهتتسجّل جنبها حركة معاكسة باسمك وسببك.',
+               'The original is neither edited nor deleted — an opposite entry is recorded under your name and reason.'),
+            style: const TextStyle(fontSize: 11, color: T.inkFaint, height: 1.45)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c2, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: T.danger),
+            onPressed: reason.text.trim().length < 3 ? null : () => Navigator.pop(c2, true),
+            child: Text(tr('تأكيد التراجع', 'Confirm')),
+          ),
+        ],
+      )),
+    );
+    if (go != true) return false;
+    try {
+      await Api.instance.post('/api/ls2/store/movements/${m['_id']}/reverse', {'reason': reason.text.trim()});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم التراجع ورجع الرصيد', 'Reversed'))));
+      _load();
+      return true;
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+      return false;
+    }
+  }
+
   // ── سجل الحركات ──
   Future<void> _openLog() async {
     List<Map<String, dynamic>> movs = [];
-    try { final d = await Api.instance.get('/api/ls2/store/movements?limit=300'); movs = List<Map<String, dynamic>>.from(d['movements'] ?? []); } catch (_) {}
+    Future<void> fetch() async {
+      try { final d = await Api.instance.get('/api/ls2/store/movements?limit=300'); movs = List<Map<String, dynamic>>.from(d['movements'] ?? []); } catch (_) {}
+    }
+    await fetch();
     if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    final canEdit = const ['super_admin', 'admin', 'it_manager', 'operations_manager',
+      'operations', 'workshop_manager', 'workshop_employee', 'moderator'].contains(auth.role)
+        || auth.canEditSection('Location Solutions');
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (c) => DraggableScrollableSheet(
+      builder: (c) => StatefulBuilder(builder: (c0, setSheet) => DraggableScrollableSheet(
         expand: false, initialChildSize: 0.8, maxChildSize: 0.95,
         builder: (c2, scroll) => Column(children: [
           Padding(padding: const EdgeInsets.all(16), child: Text('${tr('سجل الحركات', 'Movement log')} (${movs.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
@@ -311,22 +369,45 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                   itemCount: movs.length, separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (c3, i) {
                     final m = movs[i]; final isIn = m['type'] == 'in';
+                    final reversed = m['reversed'] == true;
+                    final isReversal = m['isReversal'] == true;
                     final dt = DateTime.tryParse((m['createdAt'] ?? '').toString())?.toLocal();
+                    final tint = reversed ? T.inkFaint : (isIn ? T.success : T.orange);
                     return ListTile(
                       dense: true,
-                      leading: CircleAvatar(radius: 16, backgroundColor: (isIn ? T.success : T.orange).withValues(alpha: 0.12), child: Icon(isIn ? Icons.south : Icons.north, size: 15, color: isIn ? T.success : T.orange)),
-                      title: Text((m['itemName'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                      subtitle: Text([
-                        '${isIn ? '+' : '−'}${m['quantity']}',
-                        if ((m['vehiclePlate'] ?? '').toString().isNotEmpty) '${tr('عربية', 'vehicle')} ${m['vehiclePlate']}',
-                        if ((m['reason'] ?? '').toString().isNotEmpty) m['reason'].toString(),
-                      ].join(' · '), style: const TextStyle(fontSize: 11.5)),
-                      trailing: Text(dt == null ? '' : '${dt.day}/${dt.month} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                      leading: CircleAvatar(radius: 16, backgroundColor: tint.withValues(alpha: 0.12), child: Icon(isIn ? Icons.south : Icons.north, size: 15, color: tint)),
+                      title: Text((m['itemName'] ?? '').toString(), style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13,
+                        color: reversed ? T.inkFaint : T.ink,
+                        decoration: reversed ? TextDecoration.lineThrough : null)),
+                      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text([
+                          '${isIn ? '+' : '−'}${m['quantity']}',
+                          if ((m['vehiclePlate'] ?? '').toString().isNotEmpty) '${tr('عربية', 'vehicle')} ${m['vehiclePlate']}',
+                          if ((m['reason'] ?? '').toString().isNotEmpty) m['reason'].toString(),
+                        ].join(' · '), style: const TextStyle(fontSize: 11.5)),
+                        if (reversed)
+                          Text(tr('مُلغاة', 'reversed') + ((m['reversedByName'] ?? '').toString().isEmpty ? '' : ' · ${m['reversedByName']}'),
+                              style: const TextStyle(fontSize: 10.5, color: T.danger, fontWeight: FontWeight.w700)),
+                        if (isReversal)
+                          Text(tr('حركة تراجع', 'reversal entry'), style: const TextStyle(fontSize: 10.5, color: T.warn, fontWeight: FontWeight.w700)),
+                      ]),
+                      trailing: canEdit && m['canReverse'] == true
+                          ? TextButton.icon(
+                              onPressed: () async {
+                                final done = await _reverse(m);
+                                if (done) { await fetch(); setSheet(() {}); }
+                              },
+                              style: TextButton.styleFrom(foregroundColor: T.danger, padding: const EdgeInsets.symmetric(horizontal: 6)),
+                              icon: const Icon(Icons.undo, size: 15),
+                              label: Text(tr('تراجع', 'Undo'), style: const TextStyle(fontSize: 11.5)),
+                            )
+                          : Text(dt == null ? '' : '${dt.day}/${dt.month} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
                     );
                   },
                 )),
         ]),
-      ),
+      )),
     );
   }
 }

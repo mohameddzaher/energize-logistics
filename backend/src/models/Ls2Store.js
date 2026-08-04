@@ -30,6 +30,17 @@ const storeMovementSchema = new mongoose.Schema({
   balanceAfter: { type: Number, default: 0 },                 // الرصيد بعد الحركة
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   performedByName: { type: String, default: '' },
+
+  // ── التراجع ───────────────────────────────────────────────────────────────
+  // الحركة المسجّلة لا تُعدَّل ولا تُمسح — قرار الإدارة المالية. الغلط بيتصحّح
+  // بحركة معاكسة مربوطة بالأصلية، والاتنين يفضلوا ظاهرين في السجل باسم اللي
+  // عملهم وتاريخهم. مفيش أي مسار في الـ API بيغيّر كمية أو نوع حركة اتسجّلت.
+  reversed: { type: Boolean, default: false, index: true },   // اتّرجع عنها
+  reversedAt: { type: Date, default: null },
+  reversedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  reversedByName: { type: String, default: '' },
+  reversalReason: { type: String, default: '' },              // إجباري وقت التراجع
+  reversalOf: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2StoreMovement', default: null, index: true }, // ديه الحركة المعاكسة لِـ
 }, { timestamps: true });
 storeMovementSchema.index({ createdAt: -1 });
 

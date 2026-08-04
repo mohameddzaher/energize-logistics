@@ -71,6 +71,9 @@ router.post('/store', ADMIN, store.createItem);
 router.put('/store/:id', ADMIN, store.updateItem);
 router.delete('/store/:id', ADMIN, store.deleteItem);
 router.post('/store/:id/movement', ADMIN, store.addMovement);
+// التراجع عن حركة — بيكتب حركة معاكسة، مش بيمسح ولا بيعدّل سطر. مفيش PUT/PATCH
+// على الحركات عن قصد: الحركة المسجّلة لا تُعدَّل (قرار الإدارة المالية).
+router.post('/store/movements/:movementId/reverse', ADMIN, store.reverseMovement);
 router.post('/assets/trailers', ADMIN, assets.createTrailer);
 router.post('/assets/trailers/:id/move', ADMIN, assets.moveTrailer);
 router.post('/assets/flatbeds', ADMIN, assets.createFlatbed);

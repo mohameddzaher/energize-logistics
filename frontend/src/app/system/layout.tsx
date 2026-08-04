@@ -16,7 +16,7 @@ import {
   Calculator, Scale, BookOpen, Gauge, Ship, ScrollText,
   Activity, Car, UserSquare, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck, PackageSearch, SlidersHorizontal,
   Thermometer, Satellite, Crown, Container, FileBarChart,
-  Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid,
+  Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail,
   FileSignature, PhoneCall,
 } from 'lucide-react';
 import api from '@/lib/api';
@@ -312,6 +312,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/it/custody', label: lang === 'ar' ? 'العهد والأجهزة' : 'IT Custody', icon: <Laptop className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/stock', label: lang === 'ar' ? 'المستودع' : 'IT Stock', icon: <Boxes className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/systems', label: lang === 'ar' ? 'الأنظمة والخدمات' : 'Systems & Services', icon: <Server className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
+    { href: '/system/it/emails', label: lang === 'ar' ? 'بريد الشركة' : 'Company Email', icon: <Mail className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ClipboardList className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(IT_ROLES), section: 'Software & IT', restrict: true },

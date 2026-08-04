@@ -1,3 +1,4 @@
+import api from '@/lib/api';
 import { canAccessSection, canEditSection } from '@/lib/sections';
 // Shared types, labels and formatters for the Software & IT section pages.
 
@@ -344,3 +345,58 @@ export const idOf = (v: any): string => (!v ? '' : typeof v === 'string' ? v : v
 type UserLike = { role?: string | null; permissions?: Record<string, 'none' | 'view' | 'edit'> } | null | undefined;
 export const canViewIt = (u: UserLike) => isItStaff(u?.role) || canAccessSection(u?.permissions, 'Software & IT');
 export const canEditIt = (u: UserLike) => isItAdmin(u?.role) || canEditSection(u?.permissions, 'Software & IT');
+
+
+// ── بريد الشركة (@energize-logistics.com) ───────────────────────────────────
+// صناديق بريد على هوستنجر — مش حسابات الدخول للسيستم. كلمة المرور بترجع من
+// endpoint الكشف بس، ومع كل كشف بيتسجّل مين وامتى.
+export interface CompanyEmail {
+  _id: string;
+  email: string;
+  localPart?: string;
+  domain?: string;
+  displayName?: string;
+  employee?: string | null;
+  employeeNumber?: string;
+  employeeName?: string;
+  department?: string;
+  mailboxType: 'personal' | 'functional';
+  functionAr?: string;
+  status: 'active' | 'suspended' | 'closed';
+  passwordSetAt?: string | null;
+  passwordSetByName?: string;
+  lastRevealedAt?: string | null;
+  lastRevealedByName?: string;
+  revealCount?: number;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface EmailEmployee {
+  _id: string; name: string; employeeNumber: string; department: string; jobTitle: string; inactive?: boolean;
+}
+
+export const COMPANY_DOMAIN = 'energize-logistics.com';
+
+export const MAILBOX_STATUS: Record<string, { ar: string; en: string; cls: string }> = {
+  active: { ar: 'نشط', en: 'Active', cls: 'bg-emerald-100 text-emerald-700' },
+  suspended: { ar: 'موقوف', en: 'Suspended', cls: 'bg-amber-100 text-amber-700' },
+  closed: { ar: 'مغلق', en: 'Closed', cls: 'bg-slate-200 text-slate-600' },
+};
+
+export const listCompanyEmails = (q: Record<string, string> = {}) => {
+  const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v)).toString();
+  return api.get<{
+    emails: CompanyEmail[];
+    counts: { total: number; active: number; personal: number; functional: number; linked: number; unlinked: number; withPassword: number; withoutPassword: number };
+    vaultReady: boolean; canReveal: boolean; companyDomain: string;
+  }>(`/api/it/emails${qs ? `?${qs}` : ''}`);
+};
+export const searchEmailEmployees = (q: string) =>
+  api.get<{ employees: EmailEmployee[] }>(`/api/it/emails/employees${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+export const createCompanyEmail = (body: any) => api.post<{ email: CompanyEmail }>('/api/it/emails', body);
+export const updateCompanyEmail = (id: string, body: any) => api.put<{ email: CompanyEmail }>(`/api/it/emails/${id}`, body);
+export const deleteCompanyEmail = (id: string) => api.delete(`/api/it/emails/${id}`);
+/** الكشف حدث مسجَّل — مش قراءة عادية. */
+export const revealCompanyEmailPassword = (id: string) =>
+  api.post<{ password: string; email: string; revealCount: number }>(`/api/it/emails/${id}/reveal`, {});

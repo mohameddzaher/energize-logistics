@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const it = require('../controllers/itController');
+const emails = require('../controllers/companyEmailController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
@@ -10,6 +11,16 @@ router.use(authenticate);
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
 router.get('/dashboard', it.getDashboard);
+
+// ── بريد الشركة (@energize-logistics.com) ───────────────────────────────────
+// صناديق البريد على هوستنجر — مش حسابات الدخول للسيستم. المسار الوحيد اللي
+// بيرجّع كلمة المرور هو /reveal، وهو بيتسجّل مع كل استخدام.
+router.get('/emails', emails.list);
+router.get('/emails/employees', emails.searchEmployees);   // قبل /emails/:id
+router.post('/emails', authorize(...EDIT_ROLES), emails.create);
+router.post('/emails/:id/reveal', authorize(...EDIT_ROLES), emails.revealPassword);
+router.put('/emails/:id', authorize(...EDIT_ROLES), emails.update);
+router.delete('/emails/:id', authorize(...EDIT_ROLES), emails.remove);
 
 // ── Tickets ─────────────────────────────────────────────────────────────────
 // /tickets/recurring MUST be declared before /tickets/:id, otherwise the param

@@ -25,6 +25,7 @@ import '../screens/hr_inbox.dart';
 import '../screens/ls2_alerts.dart';
 import '../screens/shipment_orders.dart';
 import '../screens/it_custody.dart';
+import '../screens/it_emails.dart';
 import '../screens/procurement.dart';
 import '../screens/section_dash.dart';
 import '../screens/dash_specs.dart';
@@ -354,6 +355,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المشاكل المتكررة', 'Recurring', Icons.repeat_rounded, (c) => const ItRecurringScreen()),
         AppPage('عهد الأجهزة', 'Custody', Icons.devices_other_outlined, (c) => const ItCustodyScreen()),
         AppPage('الأنظمة والخدمات', 'Systems', Icons.dns_outlined, (c) => ResourceScreen(config: itSystemsCfg)),
+        AppPage('بريد الشركة', 'Company Email', Icons.mail_outline, (c) => const ItEmailsScreen()),
         AppPage('مستودع الأجهزة', 'IT Stock', Icons.inventory_outlined, (c) => ResourceScreen(config: itStockCfg)),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'it')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'it', complaints: true)),

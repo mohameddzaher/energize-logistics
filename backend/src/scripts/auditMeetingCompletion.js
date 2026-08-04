@@ -85,7 +85,9 @@ async function login(e) {
   ok('الإقفال نجح', done.status === 200 && done.body?.meeting?.status === 'completed', `http ${done.status}`);
   const closed = await BrMeeting.findById(m._id).lean();
   ok('اتسجّل مين قفله وامتى', !!closed.completedAt && closed.completedByName.includes('أسماء'), closed.completedByName);
-  ok('و«انعقد» فضل محفوظ في خانته المنفصلة', !!closed.heldAt && String(closed.heldAt) !== String(closed.completedAt));
+  // المهم إن الاتنين حقلين منفصلين والإقفال ما مسحش «انعقد» — مش إن الوقتين
+  // مختلفين، لأن اجتماع بيتقفل نفس اللحظة اللي اتحدد فيها إنه انعقد ده وضع سليم.
+  ok('و«انعقد» فضل محفوظ في خانته المنفصلة', !!closed.heldAt && !!closed.completedAt);
 
   console.log('\n── مينفعش يتقفل من الدروب-ليست العادية ──');
   const m2 = await newMeeting('zz-محاولة التفاف');
@@ -114,6 +116,7 @@ async function login(e) {
   ok('إعادة الفتح نجحت', re.status === 200 && re.body?.meeting?.status === 'held', `http ${re.status}`);
   const after = await BrMeeting.findById(m._id).lean();
   ok('بيانات الإقفال اتمسحت', !after.completedAt && !after.completedByName);
+  ok('و«انعقد» ما اتمسحش معاها — دليل إنهم مستقلين', !!after.heldAt);
 
   const ids = (await BrMeeting.find({ title: { $regex: '^zz-' } }).select('_id').lean()).map((x) => x._id);
   const acts = (await BrAction.find({ meeting: { $in: ids } }).select('_id').lean()).map((x) => x._id);

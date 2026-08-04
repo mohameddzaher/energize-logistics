@@ -2,7 +2,8 @@
  * auditStoreMovements — حركات مخزن النقل الثقيل: التراجع، والقاعدة اللي بيقوم
  * عليها.
  *
- *   node src/scripts/auditStoreMovements.js        (server on :5599)
+ *   node src/scripts/auditStoreMovements.js
+ *   node src/scripts/auditStoreMovements.js --base http://127.0.0.1:5001
  *
  * القاعدة (قرار الإدارة المالية): الحركة اللي اتسجّلت لا تُعدَّل ولا تُمسح. مفيش
  * PUT/PATCH/DELETE على الحركات — السكربت ده بيتأكد إنهم كلهم مرفوضين، وإن
@@ -12,7 +13,9 @@
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
-const BASE = 'http://localhost:5599';
+const argv = process.argv.slice(2);
+const iBase = argv.indexOf('--base');
+const BASE = (iBase >= 0 && argv[iBase + 1] ? argv[iBase + 1] : 'http://localhost:5599').replace(/\/$/, '');
 let pass = 0, fail = 0;
 const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x ? '  — ' + x : ''}`); c ? pass++ : fail++; };
 async function req(m, p, ck, b) {

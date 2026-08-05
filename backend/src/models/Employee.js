@@ -139,6 +139,13 @@ const employeeSchema = new mongoose.Schema(
     // بتتشال أوتوماتيك أول ما الحقل يتملي (pre-save تحت).
     fieldStatus: { type: Map, of: String, default: {} },
 
+    // هل ده سجل موارد بشرية أصلاً؟
+    // إنشاء حساب دخول بيعمل سجل موظف تلقائي (utils/ensureSelfEmployee) — وده
+    // **مش موظف**. يوزر على السيستم ≠ موظف؛ بيبقى موظف لما يتربط بسجل حقيقي.
+    // بيتعلّم false للسجلات دي فتخرج من عدّادات القسم وتفضل موجودة عشان الحساب
+    // المربوط بيها يفضل شغّال.
+    isHrRecord: { type: Boolean, default: true, index: true },
+
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

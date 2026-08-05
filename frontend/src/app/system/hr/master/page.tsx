@@ -17,6 +17,7 @@ import {
   getHrOverview, STATUS_META, STATE_META, statusLabel, stateLabel,
   type HrOverview, type GroupCard, type FieldCard,
 } from '@/lib/hrMaster';
+import api from '@/lib/api';
 
 export default function HrMasterPage() {
   const { lang, isRTL } = useLanguage();
@@ -26,12 +27,21 @@ export default function HrMasterPage() {
   const { notify } = useDialog();
 
   const [d, setD] = useState<HrOverview | null>(null);
+  // الجزء التشغيلي (إجازات، طلبات، عهد، تراخيص) جاي من داشبورد الموارد البشرية
+  // القديمة — الصفحة دي بقت المكان الوحيد، فما ينفعش نسيب حاجة وراها.
+  const [ops, setOps] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [onlyActive, setOnlyActive] = useState(true);
 
   const load = useCallback(async () => {
-    try { setD(await getHrOverview(onlyActive ? { status: 'active' } : {})); }
-    catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+    try {
+      const [o, op] = await Promise.all([
+        getHrOverview(onlyActive ? { status: 'active' } : {}),
+        api.get<any>('/api/hr/dashboard').catch(() => null),
+      ]);
+      setD(o);
+      if (op) setOps(op);
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setLoading(false);
   }, [onlyActive, notify]);
   useEffect(() => { load(); }, [load]);
@@ -78,6 +88,24 @@ export default function HrMasterPage() {
         <Big label={t('خارج المملكة', 'Outside kingdom')} value={d.totals.outsideKingdom} c="#64748b" />
         <Big label={t('عمل حر', 'Freelancers')} value={d.totals.freelancers} c="#0f172a" />
       </div>
+
+      {/* الشغل اليومي — كان في الداشبورد القديمة، وبقى هنا مع الباقي */}
+      {ops?.summary && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          <Big label={t('إجازات قيد المراجعة', 'Leaves pending')} value={ops.summary.pendingLeaves} c="#0ea5e9"
+            onClick={() => router.push('/system/hr/leaves')} />
+          <Big label={t('طلبات مفتوحة', 'Open requests')} value={ops.summary.openRequests} c="#8b5cf6"
+            onClick={() => router.push('/system/hr/requests')} />
+          <Big label={t('عهد بعهدة الموظفين', 'Assets held')} value={ops.summary.assignedAssets} c="#0f172a"
+            onClick={() => router.push('/system/hr/custody')} />
+          <Big label={t('التراخيص والاشتراكات', 'Licences')} value={ops.summary.licensesTotal} c="#64748b"
+            onClick={() => router.push('/system/hr/licenses')} />
+          <Big label={t('تراخيص تنتهي خلال ٦٠ يوم', 'Licences due 60d')} value={ops.summary.licensesExpiringCount} c="#f59e0b"
+            onClick={() => router.push('/system/hr/licenses')} />
+          <Big label={t('تراخيص منتهية', 'Licences expired')} value={ops.summary.licensesExpiredCount} c="#dc2626"
+            onClick={() => router.push('/system/hr/licenses')} />
+        </div>
+      )}
 
       {/* ابدأ من هنا — أكتر البيانات نقصًا */}
       {!!d.topRequired.length && (

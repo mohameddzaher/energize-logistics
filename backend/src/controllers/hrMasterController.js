@@ -30,7 +30,8 @@ const statusOf = (emp, fieldKey) => {
 const ALERT = { warnDays: 60, criticalDays: 30 };
 
 function buildFilter(q) {
-  const f = {};
+  // سجلات حسابات الدخول التلقائية مش موظفين — بتخرج من كل عدّاد وكل قايمة هنا.
+  const f = { isHrRecord: { $ne: false } };
   if (q.status === 'active') f.employmentStatus = 'active';
   if (q.status === 'inactive') f.employmentStatus = { $ne: 'active' };
   for (const k of ['department', 'branchName', 'project', 'nationality', 'workStatusText', 'bank', 'licenseType', 'insuranceCompany', 'directManagerName', 'iqamaProfession', 'idType', 'gender', 'driverCardStatus', 'insuranceClass', 'contractStatusText', 'systemStatus']) {

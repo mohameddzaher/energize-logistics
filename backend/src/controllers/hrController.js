@@ -1275,16 +1275,17 @@ const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); retur
 
 // Build an "expiring documents" feed across every dated field on the employee so
 // HR sees ONE list of everything about to lapse (iqama, passport, license ...).
-const EXPIRY_DOCS = [
-  { field: 'iqamaExpiry', type: 'iqama', en: 'Iqama', ar: 'الإقامة' },
-  { field: 'passportExpiry', type: 'passport', en: 'Passport', ar: 'الجواز' },
-  { field: 'workPermitExpiry', type: 'workPermit', en: 'Work Permit', ar: 'رخصة العمل' },
-  { field: 'insuranceExpiry', type: 'insurance', en: 'Insurance', ar: 'التأمين' },
-  { field: 'visaExpiry', type: 'visa', en: 'Visa', ar: 'التأشيرة' },
-  { field: 'licenseExpiry', type: 'license', en: 'Driving License', ar: 'رخصة القيادة' },
-  { field: 'driverCardExpiry', type: 'driverCard', en: 'Driver Card', ar: 'كارت السائق' },
-  { field: 'ajeerExpiry', type: 'ajeer', en: 'Ajeer', ar: 'أجير' },
-];
+// المستندات دي **مصدرها config/hrFields** — نفس السبعة اللي في الماستر النهائي.
+// كانت مكتوبة بالإيد وفيها حقول (التأشيرة، رخصة العمل، أجير) مش في الماستر
+// أصلاً، وبياناتها بايتة من استيرادات قديمة — فكانت الداشبورد بتعرض أكتر من ١٠٠
+// «تأشيرة منتهية» لناس محدش سألهم عن تأشيرة.
+const EXPIRY_DOCS = require('../config/hrFields').DOCUMENT_GROUPS.map((g) => ({
+  field: g.expiryField, type: g.key, en: g.en, ar: g.ar,
+}));
+
+// سجلات حسابات الدخول التلقائية مش موظفين — بتخرج من كل عدّاد.
+// من غير الشرط ده الداشبورد كانت بتقول ٤٣٧ موظف والماستر بيقول ٣٧٨.
+const HR_ONLY = { isHrRecord: { $ne: false } };
 
 exports.getDashboard = async (req, res) => {
   try {
@@ -1307,23 +1308,23 @@ exports.getDashboard = async (req, res) => {
       byStatusAgg, byDeptAgg, byProjectAgg, byNationalityAgg, recentHiresRaw, docFieldEmployees,
       licensesAll,
     ] = await Promise.all([
-      Employee.countDocuments({}),
-      Employee.countDocuments({ employmentStatus: 'active' }),
-      Employee.countDocuments({ employmentStatus: 'on_leave' }),
-      Employee.countDocuments({ employmentStatus: 'suspended' }),
-      Employee.countDocuments({ employmentStatus: 'terminated' }),
+      Employee.countDocuments(HR_ONLY),
+      Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'active' }),
+      Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'on_leave' }),
+      Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'suspended' }),
+      Employee.countDocuments({ ...HR_ONLY, employmentStatus: 'terminated' }),
       LeaveRequest.countDocuments({ status: { $in: ['pending_manager', 'pending_hr'] } }),
       HRRequest.countDocuments({ status: { $in: ['open', 'in_progress'] } }),
       // Employee-held custody only — IT store items are `in_stock`/employee null.
       Asset.countDocuments({ status: 'assigned', employee: { $ne: null } }),
       Contract.find({ status: 'active', endDate: { $gte: today, $lte: in90 } }).populate('employee', 'firstName lastName arabicName').sort({ endDate: 1 }).limit(50).lean(),
-      Employee.aggregate([{ $group: { _id: '$employmentStatus', count: { $sum: 1 } } }]),
-      Employee.aggregate([{ $match: { department: { $nin: [null, ''] } } }, { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
-      Employee.aggregate([{ $match: { project: { $nin: [null, ''] } } }, { $group: { _id: '$project', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
-      Employee.aggregate([{ $match: { nationality: { $nin: [null, ''] } } }, { $group: { _id: '$nationality', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
-      Employee.find({ hireDate: { $nin: [null, ''] } }).select('firstName lastName arabicName jobTitle hireDate').sort({ hireDate: -1 }).limit(8).lean(),
+      Employee.aggregate([{ $match: HR_ONLY }, { $group: { _id: '$employmentStatus', count: { $sum: 1 } } }]),
+      Employee.aggregate([{ $match: { ...HR_ONLY, department: { $nin: [null, ''] } } }, { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
+      Employee.aggregate([{ $match: { ...HR_ONLY, project: { $nin: [null, ''] } } }, { $group: { _id: '$project', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 }]),
+      Employee.aggregate([{ $match: { ...HR_ONLY, nationality: { $nin: [null, ''] } } }, { $group: { _id: '$nationality', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 }]),
+      Employee.find({ ...HR_ONLY, hireDate: { $nin: [null, ''] } }).select('firstName lastName arabicName jobTitle hireDate').sort({ hireDate: -1 }).limit(8).lean(),
       // Pull only the fields we scan for expiry, for the whole active-ish workforce.
-      Employee.find({ employmentStatus: { $ne: 'terminated' } })
+      Employee.find({ ...HR_ONLY, employmentStatus: { $ne: 'terminated' } })
         .select('firstName lastName arabicName iqamaNumber ' + EXPIRY_DOCS.map((d) => d.field).join(' '))
         .limit(5000).lean(),
       // Company licenses & subscriptions — few rows, pull all and compute in JS.

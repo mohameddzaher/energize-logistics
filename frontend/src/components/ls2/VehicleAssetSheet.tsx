@@ -88,9 +88,12 @@ export default function VehicleAssetSheet({ plate, ar, onClose, admin = false, b
       && (!s || `${r.title} ${r.detail} ${r.by || ''} ${r.notes || ''}`.toLowerCase().includes(s)));
   }, [rows, kind, q]);
 
-  const head = (tires || []).filter((x) => !x.isSpare && !/تيدر|تريل/.test(x.section || ''));
-  const trailer = (tires || []).filter((x) => !x.isSpare && /تيدر|تريل/.test(x.section || ''));
-  const spare = (tires || []).filter((x) => x.isSpare);
+  // نفس قاعدة السيرفر: القسم هو المرجع والعلَم مشتق منه. لو الاتنين اختلفوا
+  // لأي سبب، الشاشة تفضل تعرض التقسيمة الصح بدل ما تقول «رأس ٧ · استبن ١».
+  const isSpareTire = (x: Tire) => x.isSpare || /استبن/.test(x.section || '');
+  const head = (tires || []).filter((x) => !isSpareTire(x) && !/تيدر|تريل/.test(x.section || ''));
+  const trailer = (tires || []).filter((x) => !isSpareTire(x) && /تيدر|تريل/.test(x.section || ''));
+  const spare = (tires || []).filter(isSpareTire);
 
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-3" onClick={onClose}>

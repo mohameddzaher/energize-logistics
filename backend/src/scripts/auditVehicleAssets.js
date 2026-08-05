@@ -86,9 +86,10 @@ const req = async (p, ck) => {
       const incomplete = tires.filter((x) => !x.serial || x.positionNumber == null);
       ok(`${sample.plate}: كل الـ${tires.length} إطار ليهم سيريال وموقع`, incomplete.length === 0,
         incomplete.map((x) => x.serial || '(بدون سيريال)').join(' | '));
-      const heads = tires.filter((x) => !x.isSpare && !/تيدر|تريل/.test(x.section || '')).length;
-      const trl = tires.filter((x) => !x.isSpare && /تيدر|تريل/.test(x.section || '')).length;
-      const sp = tires.filter((x) => x.isSpare).length;
+      const isSp = (x) => x.isSpare || /استبن/.test(x.section || '');
+      const heads = tires.filter((x) => !isSp(x) && !/تيدر|تريل/.test(x.section || '')).length;
+      const trl = tires.filter((x) => !isSp(x) && /تيدر|تريل/.test(x.section || '')).length;
+      const sp = tires.filter(isSp).length;
       ok(`${sample.plate}: التقسيمة ٦ رأس · ٦ تيدر · ٢ استبن`, heads === 6 && trl === 6 && sp === 2,
         `رأس ${heads} · تيدر ${trl} · استبن ${sp}`);
     }
@@ -237,6 +238,18 @@ const req = async (p, ck) => {
       { $group: { _id: '$serial', n: { $sum: 1 } } }, { $match: { n: { $gt: 1 } } }, { $limit: 5 },
     ]);
     ok('مفيش سيريال متكرّر', dupes.length === 0, dupes.map((d) => d._id).join(' | '));
+
+    // العلَم والقسم ما ينفعش يختلفوا — الموديل بيشتق العلَم، فلو ده فشل يبقى
+    // الشاشة هتعدّ غلط من غير ما حد ياخد باله.
+    const drift = await Ls2TireAsset.find({
+      $or: [
+        { status: 'mounted', section: /استبن/, isSpare: { $ne: true } },
+        { isSpare: true, section: { $not: /استبن/ } },
+        { isSpare: true, status: { $ne: 'mounted' } },
+      ],
+    }).select('serial section isSpare status').limit(5).lean();
+    ok('علَم الاستبن مطابق للقسم في كل الفردات', drift.length === 0,
+      drift.map((d) => `${d.serial}: ${d.section}/${d.isSpare}/${d.status}`).join(' | '));
 
     // مفيش موقع واحد عليه إطارين في نفس العربية
     const clash = await Ls2TireAsset.aggregate([

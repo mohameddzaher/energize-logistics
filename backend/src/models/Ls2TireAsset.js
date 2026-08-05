@@ -50,4 +50,18 @@ const ls2TireAssetSchema = new mongoose.Schema({
 
 ls2TireAssetSchema.index({ plateKey: 1, positionNumber: 1 });
 
+// `isSpare` and `section` must never disagree: the section text comes from the
+// workshop sheet, the flag is what every screen filters and counts on. They
+// drifted once — 47 tires sat in section «الاستبن» with the flag unset, so a
+// vehicle whose real layout is 6 head / 6 trailer / 2 spare rendered as
+// «رأس ٧ · استبن ١». Deriving the flag here means no caller can reintroduce it:
+// mount, swap, import and manual edit all go through save().
+//
+// Only a MOUNTED tire can be the spare — a tire on the shelf is not «الاستبن»
+// of anything, it is stock.
+ls2TireAssetSchema.pre('save', function deriveIsSpare(next) {
+  this.isSpare = this.status === 'mounted' && /استبن/.test(String(this.section || ''));
+  next();
+});
+
 module.exports = mongoose.models.Ls2TireAsset || mongoose.model('Ls2TireAsset', ls2TireAssetSchema);

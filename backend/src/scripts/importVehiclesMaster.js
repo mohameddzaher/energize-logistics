@@ -33,6 +33,8 @@ const s = (v) => (v === null || v === undefined ? '' : String(v).trim());
 
   // ── المركبات ───────────────────────────────────────────────────────────────
   let created = 0; let updated = 0;
+  const replated = [];
+  const seenIds = new Set();
   const plateToId = new Map();
   const keyToId = new Map();
 
@@ -99,22 +101,37 @@ const s = (v) => (v === null || v === undefined ? '' : String(v).trim());
     };
 
     if (DRY) { created++; continue; }
-    const existing = await VehicleMaster.findOne({ plateNumber: doc.plateNumber });
+    // ── الهوية: رقم الهيكل الأول، اللوحة بعده ────────────────────────────────
+    // اللوحة **مش** هوية ثابتة — بتتغيّر. لو دوّرنا باللوحة بس، أول عربية
+    // تتغيّر لوحتها بتتعمل تاني كسجل جديد وتفضل القديمة معلّقة كأنها اتشالت من
+    // الشيت. حصل فعلاً: شيفروليه سيلفرادو اتنقلت من «ب ح ع 3414» لـ«س ه ر 505»
+    // فبقى عندنا نسختين لنفس العربية. رقم الهيكل هو اللي ما بيتغيّرش.
+    let existing = doc.chassisNumber ? await VehicleMaster.findOne({ chassisNumber: doc.chassisNumber }) : null;
+    if (existing && existing.plateNumber !== doc.plateNumber) {
+      replated.push({ from: existing.plateNumber, to: doc.plateNumber, chassis: doc.chassisNumber });
+    }
+    if (!existing) existing = await VehicleMaster.findOne({ plateNumber: doc.plateNumber });
     if (existing) {
       // renewals مش في `doc` أصلاً، فـ Object.assign مش هيلمسها — وده المقصود.
       Object.assign(existing, doc);
       await existing.save();
       updated++;
+      seenIds.add(String(existing._id));
       plateToId.set(doc.plateNumber, existing._id);
       keyToId.set(doc.plateKey, existing._id);
     } else {
       const made = await VehicleMaster.create(doc);
       created++;
+      seenIds.add(String(made._id));
       plateToId.set(doc.plateNumber, made._id);
       keyToId.set(doc.plateKey, made._id);
     }
   }
   console.log(`المركبات: ${created} جديدة · ${updated} محدَّثة`);
+  if (replated.length) {
+    console.log(`\n↻ ${replated.length} مركبة اتغيّرت لوحتها (اتعرفت برقم الهيكل، مش سجل جديد):`);
+    replated.forEach((r) => console.log(`    ${r.from}  →  ${r.to}    ${r.chassis}`));
+  }
 
   // ── الحوادث/المطالبات ──────────────────────────────────────────────────────
   let cNew = 0; let cUpd = 0; let linked = 0;
@@ -173,12 +190,13 @@ const s = (v) => (v === null || v === undefined ? '' : String(v).trim());
   // مركبات موجودة عندنا ومش في الملف الجديد. **مش بنمسحها** — الشيت ممكن يكون
   // ناقص، ومسح مركبة حقيقية أسوأ بكتير من إننا نقولها. بنطبعها عشان حد يقرّر.
   if (!DRY) {
-    const inFile = new Set(src.vehicles.map((v) => s(v.plate_number)));
-    const orphans = (await VehicleMaster.find({ isActive: true }).select('plateNumber sectorAr brandAr').lean())
-      .filter((v) => !inFile.has(v.plateNumber));
+    // المقارنة بالـ id مش باللوحة: المركبة اللي اتغيّرت لوحتها اتحدّثت فعلاً،
+    // فمقارنة باللوحة القديمة كانت هتقول عليها «مش في الملف» وهي فيه.
+    const orphans = (await VehicleMaster.find({ isActive: true }).select('plateNumber sectorAr brandAr chassisNumber').lean())
+      .filter((v) => !seenIds.has(String(v._id)));
     if (orphans.length) {
       console.log(`\n⚠ ${orphans.length} مركبة عندنا مش موجودة في الملف الجديد (اتسابت زي ما هي):`);
-      orphans.forEach((o) => console.log(`    ${o.plateNumber}  ${o.sectorAr || '—'}  ${o.brandAr || '—'}`));
+      orphans.forEach((o) => console.log(`    ${o.plateNumber}  ${o.sectorAr || '—'}  ${o.brandAr || '—'}  ${o.chassisNumber || ''}`));
     }
   }
 

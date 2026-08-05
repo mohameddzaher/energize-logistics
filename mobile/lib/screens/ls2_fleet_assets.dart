@@ -107,6 +107,10 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       if (_filter.isNotEmpty) {
         if (_filter == 'new' || _filter == 'renewed') {
           if (t['condition'] != _filter) return false;
+        } else if (_filter == 'unmounted') {
+          // أي فردة مش على عربية دلوقتي — مخزن أو تجديد أو سكراب أو تالفة أو
+          // مباعة. غير «المستودع» اللي هي المتاحة للتركيب بس.
+          if (t['status'] == 'mounted') return false;
         } else if (t['status'] != _filter) {
           return false;
         }
@@ -119,6 +123,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final filterCards = [
       ('', tr('الكل', 'All'), tires.length, T.navy),
       ('mounted', tr('مركّبة', 'Mounted'), counts['mounted'] ?? 0, T.success),
+      ('unmounted', tr('غير مركّبة', 'Unmounted'), tires.where((t) => t['status'] != 'mounted').length, T.warn),
       ('spare', tr('المستودع', 'Store'), counts['spare'] ?? 0, T.info),
       ('new', tr('الجديد', 'New'), tires.where((t) => t['condition'] == 'new').length, T.success),
       ('in_repair', tr('تحت التجديد', 'Renewing'), counts['inRepair'] ?? 0, T.warn),

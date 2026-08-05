@@ -171,6 +171,53 @@ const req = async (p, ck) => {
       ok(`«${p}» و«${digits}» نفس العربية`, a === b, `${a} مقابل ${b}`);
     }
 
+    // ═══ الأكشنز من جوّه ملف العربية = نفسها من جدول الكاوتش ═════════════════
+    // الشاشتين بينادوا **نفس** المسارات. التيست بيعمل دورة كاملة على فردة
+    // حقيقية من العربية — إنزال للمخزن، ثم رجوع لنفس مكانها — ويتأكد إن العدد
+    // على العربية نقص وزاد، وإن التاريخ سجّل الحركتين. لو الشيت كان بينادي
+    // مسار تاني أو ما بيعملش refresh، الرقم هنا كان هيفضل مكانه.
+    console.log('\n── الأكشنز من ملف العربية (نفس مسارات جدول الكاوتش) ──');
+    const vt = complete[0];
+    const before14 = ((await req(`/api/ls2/assets/vehicle/${encodeURIComponent(vt.plate)}`, ck)).body?.tires) || [];
+    const victim = before14.find((x) => x.isSpare) || before14[0];
+    const post = async (path, body) => {
+      const r = await fetch(`${BASE}${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: ck },
+        body: JSON.stringify(body),
+      });
+      let j = null; try { j = await r.json(); } catch { /* not json */ }
+      return { status: r.status, body: j };
+    };
+
+    const down = await post(`/api/ls2/assets/tires/${victim._id}/move`, {
+      toPlate: null, destination: 'store', conditionPercent: 80, reason: 'تيست تدقيق',
+    });
+    ok(`إنزال ${victim.serial} من ${vt.plate}`, down.status === 200, `HTTP ${down.status} ${JSON.stringify(down.body || {}).slice(0, 90)}`);
+    const mid = ((await req(`/api/ls2/assets/vehicle/${encodeURIComponent(vt.plate)}`, ck)).body?.tires) || [];
+    ok(`العدد نقص فورًا ${before14.length} → ${mid.length}`, mid.length === before14.length - 1);
+    const midHist = (await req(`/api/ls2/assets/vehicle/${encodeURIComponent(vt.plate)}/history`, ck)).body;
+    ok('الحركة اتسجّلت في تاريخ العربية',
+      (midHist?.rows || []).some((r) => r.kind === 'tire' && String(r.title).includes(victim.serial)));
+
+    // ورجوع لنفس مكانه بالظبط
+    const up = await post(`/api/ls2/assets/tires/${victim._id}/move`, {
+      toPlate: vt.plate, positionNumber: victim.positionNumber,
+      positionLabel: victim.positionLabel, section: victim.section,
+      isSpare: victim.isSpare, reason: 'رجوع بعد التيست',
+    });
+    ok(`رجوع ${victim.serial} لمكانه`, up.status === 200, `HTTP ${up.status} ${JSON.stringify(up.body || {}).slice(0, 90)}`);
+    const after14 = ((await req(`/api/ls2/assets/vehicle/${encodeURIComponent(vt.plate)}`, ck)).body?.tires) || [];
+    ok(`العدد رجع ${after14.length}/${FULL}`, after14.length === before14.length);
+    const backTire = after14.find((x) => x.serial === victim.serial);
+    ok('رجع لنفس الموقع والقسم',
+      backTire && backTire.positionNumber === victim.positionNumber && backTire.section === victim.section,
+      backTire ? `موقع ${backTire.positionNumber} · ${backTire.section}` : 'مش موجود');
+
+    // والعدّاد على النظرة الشاملة (اللي الزرار بيقراه) اتحدّث برضه
+    const ov2 = await req('/api/ls2/assets/overview', ck);
+    const f2 = (ov2.body?.flatbeds || []).find((f) => f.plateKey === vt.plateKey);
+    ok(`الرقم على الزرار رجع ${f2?.tireCount}/${FULL}`, (f2?.tireCount || 0) === before14.length);
+
     // ═══ الاستيراد سجّل التاريخ ══════════════════════════════════════════════
     console.log('\n── الاستيراد الأخير سجّل الحركة ──');
     const newTrucks = require('../data/masters/newtrucks.json');

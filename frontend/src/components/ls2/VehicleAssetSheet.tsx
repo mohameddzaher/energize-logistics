@@ -12,9 +12,10 @@
 // المصدر: /assets/vehicle/:plate للكاوتش الحالي، و/history للخط الزمني المدموج.
 // الاتنين بيتحمّلوا مع بعض عشان التبديل بين التبويبين ما يستناش الشبكة.
 import { useEffect, useState, useMemo } from 'react';
-import { X, CircleDot, Wrench, Boxes, CalendarCheck, Search, ExternalLink } from 'lucide-react';
+import { X, CircleDot, Wrench, Boxes, CalendarCheck, Search } from 'lucide-react';
 import api from '@/lib/api';
 import { fmtDateTime } from '@/lib/ls2';
+import TireActions, { type TireActionHandlers } from './TireActions';
 
 type Tire = {
   _id: string; serial: string; tireNumber: string; type: string; size: string;
@@ -51,7 +52,12 @@ const TIRE_STATUS: Record<string, { ar: string; en: string; cls: string }> = {
 
 const FULL = 14;
 
-export default function VehicleAssetSheet({ plate, ar, onClose }: { plate: string; ar: boolean; onClose: () => void }) {
+export default function VehicleAssetSheet({ plate, ar, onClose, admin = false, busy = false, actions, refreshKey = 0 }: {
+  plate: string; ar: boolean; onClose: () => void;
+  // الأفعال جاية من الصفحة زي ما هي — نفس المودالات ونفس الـ API. الشيت ما
+  // بيعرفش يعمل حاجة بنفسه، فمستحيل يختلف سلوكه عن جدول الكاوتش.
+  admin?: boolean; busy?: boolean; actions?: TireActionHandlers; refreshKey?: number;
+}) {
   const t = (a: string, e: string) => (ar ? a : e);
   const [tab, setTab] = useState<'tires' | 'history'>('tires');
   const [tires, setTires] = useState<Tire[] | null>(null);
@@ -74,7 +80,7 @@ export default function VehicleAssetSheet({ plate, ar, onClose }: { plate: strin
       setCounts(h?.counts || {});
     })();
     return () => { alive = false; };
-  }, [plate]);
+  }, [plate, refreshKey]);
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -87,7 +93,7 @@ export default function VehicleAssetSheet({ plate, ar, onClose }: { plate: strin
   const spare = (tires || []).filter((x) => x.isSpare);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3" onClick={onClose}>
+    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-3" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
           <div>
@@ -132,7 +138,8 @@ export default function VehicleAssetSheet({ plate, ar, onClose }: { plate: strin
                     <table className="w-full text-sm">
                       <thead className="bg-slate-900 text-slate-200 text-[12.5px]">
                         <tr>{[t('الموقع', 'Pos.'), t('السيريال', 'Serial'), t('نمرة الإطار', 'Tag no.'), t('النوع', 'Brand'),
-                          t('القسم', 'Section'), t('سينسور', 'Sensor'), t('الحالة', 'Status'), t('ملاحظات', 'Notes')].map((h) => (
+                          t('القسم', 'Section'), t('سينسور', 'Sensor'), t('الحالة', 'Status'), t('ملاحظات', 'Notes'),
+                          ...(admin && actions ? [t('إجراءات', 'Actions')] : [])].map((h) => (
                           <th key={h} className="px-3 py-2.5 text-center font-bold whitespace-nowrap">{h}</th>
                         ))}</tr>
                       </thead>
@@ -155,6 +162,11 @@ export default function VehicleAssetSheet({ plate, ar, onClose }: { plate: strin
                               <td className="px-3 py-2 whitespace-nowrap"><span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${se.cls}`}>{ar ? se.ar : se.en}</span></td>
                               <td className="px-3 py-2 whitespace-nowrap"><span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${st.cls}`}>{ar ? st.ar : st.en}</span></td>
                               <td className="px-3 py-2 text-slate-700 text-[12px]">{x.notes || '—'}</td>
+                              {admin && actions && (
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <TireActions tire={x} ar={ar} busy={busy} admin={admin} on={actions} compact />
+                                </td>
+                              )}
                             </tr>
                           );
                         })}

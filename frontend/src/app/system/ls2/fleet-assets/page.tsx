@@ -30,6 +30,7 @@ import { ls2Text, isLs2Staff, isLs2Admin, fmtNum, fmtDateTime, type Lang } from 
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import SearchSelect from '@/components/ls2/SearchSelect';
 import VehicleAssetSheet from '@/components/ls2/VehicleAssetSheet';
+import TireActions, { type TireActionHandlers } from '@/components/ls2/TireActions';
 
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
@@ -172,10 +173,13 @@ export default function Ls2FleetAssetsPage() {
   const [busy, setBusy] = useState(false);
 
   // بطاقات الحالة أعلى تبويب الكاوتشات تعمل كفلاتر — نقرة تحصر الجدول فيها.
-  const [tireFilter, setTireFilter] = useState<'' | 'mounted' | 'store' | 'new' | 'renewed' | 'in_repair' | 'scrap' | 'damaged' | 'sold'>('');
+  const [tireFilter, setTireFilter] = useState<'' | 'mounted' | 'unmounted' | 'store' | 'new' | 'renewed' | 'in_repair' | 'scrap' | 'damaged' | 'sold'>('');
 
   // ملف أصول عربية واحدة (الكاوتش + التاريخ) — بيتفتح من رقم الكاوتش في الجدول
   const [sheetPlate, setSheetPlate] = useState<string | null>(null);
+  // بيتزوّد بعد أي عملية أو أي تحديث حي، فالشيت المفتوح يعيد تحميل نفسه بدل
+  // ما يفضل شايف الحالة القديمة بعد ما المستخدم غيّرها من جوّاه.
+  const [refreshKey, setRefreshKey] = useState(0);
   // Modals
   const [moveTire, setMoveTire] = useState<TireAsset | null>(null);
   const [downTire, setDownTire] = useState<TireAsset | null>(null); // إنزال: مخزن/تجديد/تالفة/سكراب + بديل
@@ -208,6 +212,7 @@ export default function Ls2FleetAssetsPage() {
   // تصل فورًا وتلقائيًا عبر السوكت، فتُحدَّث القوائم والسجل والسينسورات بلا تحديث يدوي.
   useSocket('ls2:updated', useCallback(() => {
     load();
+    setRefreshKey((k) => k + 1);   // والشيت المفتوح كمان
     if (tab === 'history') loadEvents();
     if (tab === 'sensors') loadSensors();
   }, [load, loadEvents, loadSensors, tab]));
@@ -227,6 +232,10 @@ export default function Ls2FleetAssetsPage() {
   const matchesTireFilter = useCallback((ti: TireAsset) => {
     switch (tireFilter) {
       case 'mounted': return ti.status === 'mounted';
+      // «غير مركّبة» = أي فردة مش على عربية دلوقتي، مهما كانت حالتها: مخزن،
+      // تحت التجديد، سكراب، تالفة، مباعة. مش نفس «في المخزن» — دي المتاحة
+      // للتركيب بس، وفردة تحت التجديد مش متاحة رغم إنها برضه غير مركّبة.
+      case 'unmounted': return ti.status !== 'mounted';
       case 'store': return ti.status === 'spare';
       case 'new': return ti.status === 'spare' && (ti.condition || 'used') === 'new';
       case 'renewed': return ti.condition === 'renewed';
@@ -304,33 +313,47 @@ export default function Ls2FleetAssetsPage() {
   };
 
   // ---- Mutations -------------------------------------------------------------
+  const tireActions: TireActionHandlers = {
+    onMove: (t) => setMoveTire(t as TireAsset),
+    onDismount: (t) => setDownTire(t as TireAsset),
+    onRenewal: (t) => setRenewalTire(t as TireAsset),
+    onStatus: (t) => setStatusTire(t as TireAsset),
+    onEdit: (t) => setEditTire(t as TireAsset),
+    onRetire: (t) => setRetireTire(t as TireAsset),
+    onSell: async (t) => {
+      if (await confirm(ar ? `تسجيل بيع الفردة ${t.serial} كخردة؟` : `Sell ${t.serial} as scrap?`)) {
+        doRetireTire(t as TireAsset, 'sold', '');
+      }
+    },
+  };
+
   const doMoveTire = async (tire: TireAsset, body: any) => {
     setBusy(true);
-    try { await api.post(`/api/ls2/assets/tires/${tire._id}/move`, body); await load(); setMoveTire(null); }
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/move`, body); await load(); setRefreshKey((k) => k + 1); setMoveTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
   const doRetireTire = async (tire: TireAsset, kind: 'damaged' | 'scrap' | 'sold', reason: string) => {
     setBusy(true);
-    try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { kind, reason }); await load(); setRetireTire(null); }
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { kind, reason }); await load(); setRefreshKey((k) => k + 1); setRetireTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
   const doSetStatus = async (tire: TireAsset, body: { status: string; condition?: string; conditionPercent?: number | null; reason?: string }) => {
     setBusy(true);
-    try { await api.post(`/api/ls2/assets/tires/${tire._id}/status`, body); await load(); setStatusTire(null); }
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/status`, body); await load(); setRefreshKey((k) => k + 1); setStatusTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
   const doRenewalResult = async (tire: TireAsset, result: 'renewed' | 'scrap', notes: string) => {
     setBusy(true);
-    try { await api.post(`/api/ls2/assets/tires/${tire._id}/renewal-result`, { result, notes }); await load(); setRenewalTire(null); }
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/renewal-result`, { result, notes }); await load(); setRefreshKey((k) => k + 1); setRenewalTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
   const doMoveTrailer = async (trailer: Trailer, body: any) => {
     setBusy(true);
-    try { await api.post(`/api/ls2/assets/trailers/${trailer._id}/move`, body); await load(); setMoveTrailer(null); }
+    try { await api.post(`/api/ls2/assets/trailers/${trailer._id}/move`, body); await load(); setRefreshKey((k) => k + 1); setMoveTrailer(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
@@ -511,10 +534,11 @@ export default function Ls2FleetAssetsPage() {
       {tab === 'tires' && (
         <div className="space-y-3">
           {/* بطاقات الحالة = فلاتر: نقرة تحصر الجدول، نقرة ثانية تلغي الفلتر */}
-          <div className="grid grid-cols-3 lg:grid-cols-9 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10 gap-2">
             {([
               { key: '', label: ar ? 'الكل' : 'All', count: tires.length, cls: 'text-slate-700', dot: 'bg-slate-400' },
               { key: 'mounted', label: ar ? 'مركّبة' : 'Mounted', count: tires.filter((x) => x.status === 'mounted').length, cls: 'text-emerald-700', dot: 'bg-emerald-500' },
+              { key: 'unmounted', label: ar ? 'غير مركّبة' : 'Unmounted', count: tires.filter((x) => x.status !== 'mounted').length, cls: 'text-amber-700', dot: 'bg-amber-500' },
               { key: 'store', label: ar ? 'في المخزن' : 'In store', count: tires.filter((x) => x.status === 'spare').length, cls: 'text-blue-700', dot: 'bg-blue-500' },
               { key: 'new', label: ar ? 'الجديد' : 'New', count: tires.filter((x) => x.status === 'spare' && (x.condition || 'used') === 'new').length, cls: 'text-sky-700', dot: 'bg-sky-500' },
               { key: 'in_repair', label: ar ? 'تحت التجديد' : 'Renewing', count: tires.filter((x) => x.status === 'in_repair').length, cls: 'text-violet-700', dot: 'bg-violet-500' },
@@ -576,46 +600,7 @@ export default function Ls2FleetAssetsPage() {
                         <td className="px-4 py-3 text-xs text-slate-600">{ti.positionLabel ? `${ti.positionLabel}${ti.section ? ` · ${ti.section}` : ''}` : '—'}</td>
                         <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${st.cls}`}>{ar ? st.ar : st.en}</span></td>
                         <td className="px-4 py-3">
-                          {admin && (
-                            <div className="flex flex-wrap items-center justify-end gap-1.5">
-                              {/* المخزن/الجديد/المجدّد: فردة غير مركّبة ⇐ زرّ تركيب واضح (مش أيقونة مبهمة) */}
-                              {!terminal && ti.status === 'spare' && (
-                                <button type="button" onClick={() => setMoveTire(ti)} className="px-2.5 py-1 rounded-md bg-orange-50 hover:bg-orange-100 text-[#f37121] text-[11px] font-semibold inline-flex items-center gap-1"><ArrowDownToLine className="w-3.5 h-3.5" />{ar ? 'تركيب على شاحنة' : 'Mount on truck'}</button>
-                              )}
-                              {/* المركّبة: نقل/تبديل مع فردة تانية */}
-                              {!terminal && ti.status === 'mounted' && (
-                                <button type="button" title={ar ? 'نقل / تبديل' : 'Move / swap'} onClick={() => setMoveTire(ti)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600"><ArrowLeftRight className="w-4 h-4" /></button>
-                              )}
-                              {!terminal && ti.status === 'mounted' && (
-                                /* الإنزال بكل وجهاته (مخزن بنسبة٪ / تجديد / تالفة / سكراب)
-                                   + تركيب بديل مكانها — عملية واحدة من مودال واحد. */
-                                <button
-                                  type="button" title={ar ? 'إنزال (مخزن / تجديد / تالفة / سكراب) + بديل' : 'Dismount + optional replacement'} disabled={busy}
-                                  onClick={() => setDownTire(ti)}
-                                  className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600"
-                                ><ArrowDownToLine className="w-4 h-4" /></button>
-                              )}
-                              {!terminal && ti.status === 'in_repair' && (
-                                <button
-                                  type="button" title={ar ? 'نتيجة التجديد: مجدد أو سكراب' : 'Renewal result'} disabled={busy}
-                                  onClick={() => setRenewalTire(ti)}
-                                  className="px-2 py-1 rounded-md bg-violet-50 hover:bg-violet-100 text-violet-700 text-[11px] font-medium"
-                                >{ar ? 'نتيجة التجديد' : 'Result'}</button>
-                              )}
-                              {/* نقل الحالة — متاح دائمًا لكل الحالات (بما فيها النهائية، مثلًا رجوع للمخزن) */}
-                              <button type="button" title={ar ? 'نقل الحالة (مخزن / تجديد / سكراب / تالف / معدوم / مباع)' : 'Change status'} disabled={busy} onClick={() => setStatusTire(ti)} className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold inline-flex items-center gap-1"><Repeat className="w-3.5 h-3.5" />{ar ? 'نقل الحالة' : 'Status'}</button>
-                              {/* بيع كخردة — لأي فردة سكراب أو تالفة (مركّبة كانت أو نهائية) */}
-                              {(ti.status === 'scrap' || ti.status === 'damaged') && (
-                                <button type="button" disabled={busy} onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }} className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold inline-flex items-center gap-1"><Boxes className="w-3.5 h-3.5" />{ar ? 'بيع كخردة' : 'Sell'}</button>
-                              )}
-                              {!terminal && (
-                                <button type="button" title={t.edit} onClick={() => setEditTire(ti)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
-                              )}
-                              {!terminal && ti.status !== 'in_repair' && ti.status !== 'scrap' && (
-                                <button type="button" title={ar ? 'تالفة / سكراب' : 'Damaged / scrap'} disabled={busy} onClick={() => setRetireTire(ti)} className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                              )}
-                            </div>
-                          )}
+                          <TireActions tire={ti} ar={ar} busy={busy} admin={admin} on={tireActions} />
                         </td>
                       </tr>
                     );
@@ -837,7 +822,13 @@ export default function Ls2FleetAssetsPage() {
       )}
 
       {/* ---- Modals ---------------------------------------------------------- */}
-      {sheetPlate && <VehicleAssetSheet plate={sheetPlate} ar={ar} onClose={() => setSheetPlate(null)} />}
+      {sheetPlate && (
+        <VehicleAssetSheet
+          plate={sheetPlate} ar={ar} admin={admin} busy={busy}
+          actions={tireActions} refreshKey={refreshKey}
+          onClose={() => setSheetPlate(null)}
+        />
+      )}
       {moveTire && <MoveTireModal tire={moveTire} flatbeds={flatbeds} tires={tires} ar={ar} busy={busy} onClose={() => setMoveTire(null)} onSubmit={(body) => doMoveTire(moveTire, body)} />}
       {downTire && <DismountTireModal tire={downTire} tires={tires} ar={ar} busy={busy} onClose={() => setDownTire(null)} onSubmit={(body) => doMoveTire(downTire, body).then(() => setDownTire(null))} />}
       {renewalTire && <RenewalResultModal tire={renewalTire} ar={ar} busy={busy} onClose={() => setRenewalTire(null)} onSubmit={(result, notes) => doRenewalResult(renewalTire, result, notes)} />}
@@ -847,7 +838,7 @@ export default function Ls2FleetAssetsPage() {
         <TireFormModal
           tire={editTire} flatbeds={flatbeds} ar={ar}
           onClose={() => { setAddTire(false); setEditTire(null); }}
-          onSaved={() => { setAddTire(false); setEditTire(null); load(); }}
+          onSaved={() => { setAddTire(false); setEditTire(null); load(); setRefreshKey((k) => k + 1); }}
         />
       )}
       {moveTrailer && <MoveTrailerModal trailer={moveTrailer} flatbeds={flatbeds} ar={ar} busy={busy} onClose={() => setMoveTrailer(null)} onSubmit={(body) => doMoveTrailer(moveTrailer, body)} />}

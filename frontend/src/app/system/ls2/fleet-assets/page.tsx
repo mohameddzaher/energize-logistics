@@ -902,6 +902,10 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
   const [swap, setSwap] = useState(false);
   const [secondId, setSecondId] = useState('');
   const [reason, setReason] = useState('');
+  // الاستبن هو الموقع الوحيد اللي مسموح يفضل فاضي — العربية بتمشي من غيره.
+  // أي موقع تاني لازم يتملي، فالبديل إجباري (أو تبديل متبادل).
+  const spareSlot = tire.isSpare || /استبن/.test(tire.section || '');
+  const needsReplacement = !spareSlot;
   // Is the chosen replacement a tire mounted on ANOTHER truck? Only then can we
   // offer a two-way swap (this tire takes the replacement's old slot over there)
   // OR backfill the replacement's slot with a third tire (store / another truck).
@@ -936,10 +940,22 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
           </div>
         )}
         <div>
-          <label className={labelCls}>{ar ? 'فردة بديلة تُركَّب مكانها (اختياري)' : 'Replacement mounted in its place (optional)'}</label>
-          <SearchSelect value={replacementId} onChange={setReplacementId} options={[{ value: '', label: ar ? '— دون بديل —' : '— none —' }, ...spareOptions(tires, tire, ar)]} ar={ar}
-            placeholder={ar ? '— دون بديل —' : '— none —'} searchPlaceholder={ar ? 'ابحث بالسيريال أو الرقم…' : 'Search serial / number…'} />
-          <p className="text-[11px] text-slate-400 mt-1">{ar ? 'من المخزن، أو فردة مركّبة على مركبة أخرى (تُنقل تلقائيًا).' : 'From store, or a tire mounted on another truck (auto-transferred).'}</p>
+          <label className={labelCls}>
+            {needsReplacement
+              ? (ar ? 'فردة بديلة تُركَّب مكانها (إلزامي)' : 'Replacement mounted in its place (required)')
+              : (ar ? 'فردة بديلة تُركَّب مكانها (اختياري — الاستبن)' : 'Replacement (optional — spare slot)')}
+          </label>
+          <SearchSelect value={replacementId} onChange={setReplacementId}
+            options={[...(needsReplacement ? [] : [{ value: '', label: ar ? '— دون بديل —' : '— none —' }]), ...spareOptions(tires, tire, ar)]} ar={ar}
+            placeholder={needsReplacement ? (ar ? 'اختر الفردة البديلة' : 'Choose the replacement') : (ar ? '— دون بديل —' : '— none —')}
+            searchPlaceholder={ar ? 'ابحث بالسيريال أو الرقم…' : 'Search serial / number…'} />
+          <p className="text-[11px] text-slate-600 mt-1">{ar ? 'من المخزن، أو فردة مركّبة على مركبة أخرى (تُنقل تلقائيًا).' : 'From store, or a tire mounted on another truck (auto-transferred).'}</p>
+          {needsReplacement && !replacementId && !(swap && canSwap) && (
+            <p className="text-[11.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1.5 font-medium">
+              {ar ? `الموقع «${tire.positionLabel || tire.positionNumber}» ما ينفعش يفضل فاضي — اختر فردة تتركب مكانها أو اعمل تبديل.`
+                  : `Position «${tire.positionLabel || tire.positionNumber}» cannot be left empty — pick a replacement or swap.`}
+            </p>
+          )}
           {canSwap && (
             <label className="flex items-start gap-2 mt-2 px-3 py-2 rounded-lg cursor-pointer border border-amber-200 bg-amber-50/60">
               <input type="checkbox" checked={swap} onChange={(e) => { setSwap(e.target.checked); if (e.target.checked) setSecondId(''); }} className="mt-0.5 accent-amber-600" />
@@ -973,7 +989,9 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
         </div>
         <button
           type="button"
-          disabled={busy || (!(swap && canSwap) && !destination) || (!!replacementId && isHeadSection(tire.section) && tires.find((x) => x._id === replacementId)?.condition === 'renewed')}
+          disabled={busy || (!(swap && canSwap) && !destination)
+            || (needsReplacement && !replacementId && !(swap && canSwap))
+            || (!!replacementId && isHeadSection(tire.section) && tires.find((x) => x._id === replacementId)?.condition === 'renewed')}
           onClick={() => onSubmit(
             swap && canSwap
               ? { toPlate: null, destination: 'swap', replacementTireId: replacementId, reason }
@@ -989,6 +1007,7 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
           {swap && canSwap
             ? (ar ? `تبديل الفردتين بين المركبتين` : 'Swap the two tires')
             : !destination ? (ar ? 'اختر وجهة الفردة أولًا' : 'Choose a destination first')
+            : needsReplacement && !replacementId ? (ar ? 'اختر الفردة البديلة أولًا' : 'Choose the replacement first')
             : replacementId ? (ar ? 'تنفيذ الإنزال وتركيب البديل' : 'Dismount & mount replacement')
             : (ar ? 'تنفيذ الإنزال' : 'Dismount')}
         </button>

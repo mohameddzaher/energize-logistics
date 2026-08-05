@@ -560,6 +560,10 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
 
   // فك: إلى المستودع (بنسبة حالة) أو التجديد أو التالف أو السكراب مباشرة.
   Future<void> _dismount(Map<String, dynamic> t) async {
+    // الاستبن هو الموقع الوحيد اللي مسموح يفضل فاضي — العربية بتمشي من غيره.
+    // أي موقع تاني لازم يتملي، فالبديل إجباري (أو تبديل متبادل).
+    final needsReplacement = t['status'] == 'mounted'
+        && !(t['isSpare'] == true || (t['section'] ?? '').toString().contains('استبن'));
     String destination = 'store';
     final percent = TextEditingController();
     final reason = TextEditingController();
@@ -597,7 +601,11 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
               // فردة بديلة تُركَّب مكانها — من المخزن أو مسحوبة من مركبة أخرى.
               if (mounted) ...[
                 const SizedBox(height: 12),
-                Text(tr('فردة بديلة تُركَّب مكانها (اختياري)', 'Replacement in its place (optional)'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                Text(
+                    needsReplacement
+                        ? tr('فردة بديلة تُركَّب مكانها (إلزامي)', 'Replacement in its place (required)')
+                        : tr('فردة بديلة تُركَّب مكانها (اختياري — الاستبن)', 'Replacement (optional — spare slot)'),
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
@@ -613,6 +621,16 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 ),
                 const SizedBox(height: 3),
                 Text(tr('من المخزن، أو فردة مركّبة على مركبة أخرى (تُنقل تلقائيًا).', 'From store, or a tire on another truck (auto-transferred).'), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                if (needsReplacement && replacement == null)
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(color: T.warn.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(10)),
+                    child: Text(
+                      tr('الموقع «${t['positionLabel'] ?? t['positionNumber'] ?? ''}» ما ينفعش يفضل فاضي — اختر فردة تتركب مكانها أو اعمل تبديل.',
+                         'This position cannot be left empty — pick a replacement or swap.'),
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: T.warn)),
+                  ),
                 // تبديل متبادل: هذه الفردة تُركَّب مكان البديلة على عربيتها.
                 if (replacement != null && replacement!['status'] == 'mounted') ...[
                   Container(
@@ -655,7 +673,15 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 ],
               ],
               const SizedBox(height: 14),
-              SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(swap ? tr('تبديل الفردتين', 'Swap the tires') : tr('فك', 'Dismount')))),
+              SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                      onPressed: (needsReplacement && replacement == null) ? null : () => Navigator.pop(c, true),
+                      child: Text(swap
+                          ? tr('تبديل الفردتين', 'Swap the tires')
+                          : (needsReplacement && replacement == null)
+                              ? tr('اختر الفردة البديلة أولًا', 'Choose the replacement first')
+                              : tr('فك', 'Dismount')))),
             ]),
           ),
         ),

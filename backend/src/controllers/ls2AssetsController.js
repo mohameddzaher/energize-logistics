@@ -362,6 +362,29 @@ exports.moveTire = async (req, res) => {
     if (replacementTireId && String(replacementTireId) === String(tire._id)) {
       return res.status(400).json({ message: 'الفردة البديلة هي نفسها الفردة المُنزَلة' });
     }
+
+    // ── قاعدة الشغل: الموقع ما بيفضلش فاضي ────────────────────────────────────
+    // فردة ما بتنزلش من على عربية إلا لما حاجة تتركب مكانها أو تتبدّل بيها.
+    // العربية بتمشي على ١٤ فردة؛ سلوت فاضي يا إما شغل ما اتسجّلش يا إما عربية
+    // نزلت الطريق ناقصة. الاتنين لازم يبانوا وقت الحركة نفسها، مش في جرد بعد
+    // شهر — ساعتها محدش فاكر الفردة راحت فين ولا مين نزّلها.
+    //
+    // مسموح من غير بديل في حالة واحدة بس: الاستبن. الاستبن مش موقع شغّال —
+    // العربية بتمشي من غيره فعلاً، وأول ما يتركّب في مكان فردة فقعت، مكانه
+    // بيفضل فاضي لحد ما يتشتري واحد جديد. منع ده كان هيمنع تسجيل الواقع.
+    const spareSlot = vacated && (vacated.isSpare || /استبن/.test(String(vacated.section || '')));
+    if (vacated && !toPlate && !replacementTireId && !spareSlot) {
+      return res.status(400).json({
+        code: 'REPLACEMENT_REQUIRED',
+        message: `الموقع «${vacated.positionLabel || vacated.positionNumber}» على ${vacated.plate} `
+          + 'ما ينفعش يفضل فاضي — اختر الفردة اللي هتتركب مكانها، أو اعمل تبديل مع فردة تانية.',
+        vacating: {
+          plate: vacated.plate, positionNumber: vacated.positionNumber,
+          positionLabel: vacated.positionLabel, section: vacated.section,
+        },
+      });
+    }
+
     const when = date ? new Date(date) : new Date();
 
     // ── التبديل المتبادل بين عربيتين ──────────────────────────────────────────
@@ -552,11 +575,30 @@ exports.tireRenewalResult = async (req, res) => {
 
 // POST /assets/tires/:id/retire — terminal states outside the renewal loop.
 // kind: 'damaged' (تالف — لا وجود لها) | 'scrap' (سكراب للبيع) | default legacy 'retired'.
+// الموقع ما بيفضلش فاضي: أي مسار بينزّل فردة من على عربية لازم يعدّي من هنا.
+// الاستبن وحده مستثنى — العربية بتمشي من غيره فعلاً (شوف الشرح في /move).
+function blockEmptySlot(tire, replacementTireId) {
+  if (tire.status !== 'mounted' || !tire.plateKey) return null;
+  if (replacementTireId) return null;
+  if (tire.isSpare || /استبن/.test(String(tire.section || ''))) return null;
+  return {
+    code: 'REPLACEMENT_REQUIRED',
+    message: `الفردة مركّبة في «${tire.positionLabel || tire.positionNumber}» على ${tire.plate} — `
+      + 'نزّلها من «إنزال + بديل» واختر الفردة اللي هتتركب مكانها. الموقع ما ينفعش يفضل فاضي.',
+    vacating: {
+      plate: tire.plate, positionNumber: tire.positionNumber,
+      positionLabel: tire.positionLabel, section: tire.section,
+    },
+  };
+}
+
 exports.retireTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
     const kind = ['damaged', 'scrap', 'sold'].includes(req.body?.kind) ? req.body.kind : 'retired';
+    const blocked = blockEmptySlot(tire, req.body?.replacementTireId);
+    if (blocked) return res.status(400).json(blocked);
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
     tire.set({ status: kind, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '', isSpare: false });
     await tire.save();
@@ -586,6 +628,8 @@ exports.setTireStatus = async (req, res) => {
     if (!['spare', 'in_repair', 'scrap', 'damaged', 'retired', 'sold'].includes(status)) {
       return res.status(400).json({ message: 'حالة غير صالحة' });
     }
+    const blocked = blockEmptySlot(tire, req.body?.replacementTireId);
+    if (blocked) return res.status(400).json(blocked);
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire), status: tire.status };
     const set = { status };
     if (['new', 'used', 'renewed'].includes(req.body.condition)) set.condition = req.body.condition;

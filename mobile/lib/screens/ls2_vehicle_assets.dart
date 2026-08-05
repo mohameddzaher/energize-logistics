@@ -31,6 +31,7 @@ String _d(dynamic v) {
 
 class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
   Map<String, dynamic>? _d0;
+  Map<String, dynamic>? _hist;
   bool _loading = true;
   String? _error;
   late final void Function() _onLive;
@@ -51,13 +52,32 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/ls2/assets/vehicle/${Uri.encodeComponent(widget.plate)}');
+      final p = Uri.encodeComponent(widget.plate);
+      // الأصول والخط الزمني مع بعض. الخط الزمني بيلم الكاوتش وقطع الغيار
+      // والإصلاحات والصيانة في مكان واحد — نفس اللي على الموقع بالظبط.
+      final results = await Future.wait([
+        Api.instance.get('/api/ls2/assets/vehicle/$p'),
+        Api.instance.get('/api/ls2/assets/vehicle/$p/history').catchError((_) => <String, dynamic>{}),
+      ]);
       if (!mounted) return;
-      setState(() { _d0 = Map<String, dynamic>.from(d); _loading = false; _error = null; });
+      setState(() {
+        _d0 = Map<String, dynamic>.from(results[0]);
+        _hist = results[1] is Map ? Map<String, dynamic>.from(results[1]) : null;
+        _loading = false; _error = null;
+      });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
   }
+
+  // فلتر نوع الحركة في الخط الزمني — فاضي = الكل
+  String _kind = '';
+  static const _kinds = {
+    'tire': ('كاوتش', 'Tires', T.orange),
+    'part': ('قطع غيار', 'Parts', T.cyan),
+    'repair': ('إصلاح', 'Repairs', T.danger),
+    'service': ('صيانة', 'Service', T.success),
+  };
 
   bool _isHead(dynamic section) => (section ?? '').toString().contains('راس') || (section ?? '').toString().toLowerCase().contains('head');
 
@@ -67,6 +87,9 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
     final flatbed = _d0?['flatbed'] is Map ? Map<String, dynamic>.from(_d0!['flatbed']) : null;
     final trailer = _d0?['trailer'] is Map ? Map<String, dynamic>.from(_d0!['trailer']) : null;
     final events = _l(_d0?['events']);
+    final histAll = _l(_hist?['rows']);
+    final hist = _kind.isEmpty ? histAll : histAll.where((r) => r['kind'] == _kind).toList();
+    final histCounts = _hist?['counts'] is Map ? Map<String, dynamic>.from(_hist!['counts']) : <String, dynamic>{};
     final spares = tires.where((t) => t['isSpare'] == true).toList();
     final onWheels = tires.where((t) => t['isSpare'] != true).toList();
     final head = onWheels.where((t) => _isHead(t['section'])).toList();
@@ -127,41 +150,74 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                     ],
                     if (tires.isEmpty)
                       Padding(padding: const EdgeInsets.only(top: 30), child: EmptyState(icon: Icons.tire_repair_outlined, title: tr('لا توجد كاوتشات مسجّلة على هذه المركبة', 'No tires registered on this vehicle'))),
-                    // سجل الأحداث
-                    if (events.isNotEmpty) ...[
+                    // الخط الزمني المدموج: كاوتش + قطع غيار + إصلاح + صيانة
+                    if (histAll.isNotEmpty) ...[
                       const SizedBox(height: 14),
-                      _sectionTitle(tr('سجل الأصول', 'Asset history'), events.length),
+                      _sectionTitle(tr('تاريخ المركبة', 'Vehicle history'), histAll.length),
                       const SizedBox(height: 6),
-                      ...events.take(20).map((e) {
-                        final act = {
-                          'mounted': (tr('تركيب', 'Mounted'), T.success),
-                          'transferred': (tr('نقل', 'Transferred'), T.navy),
-                          'removed': (tr('إزالة', 'Removed'), T.warn),
-                          'renewed': (tr('تجديد', 'Renewed'), T.violet),
-                          'scrapped': (tr('سكراب', 'Scrapped'), T.inkFaint),
-                          'damaged': (tr('تلف', 'Damaged'), T.danger),
-                        }[e['action']] ?? ((e['action'] ?? '—').toString(), T.inkFaint);
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          _kindChip('', tr('الكل', 'All'), histAll.length, T.navy),
+                          ..._kinds.entries.where((e) => (histCounts[e.key] ?? 0) > 0).map(
+                            (e) => _kindChip(e.key, tr(e.value.$1, e.value.$2), histCounts[e.key] ?? 0, e.value.$3)),
+                        ]),
+                      ),
+                      const SizedBox(height: 8),
+                      ...hist.take(60).map((r) {
+                        final k = _kinds[r['kind']];
+                        final c = k?.$3 ?? T.inkFaint;
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
+                          padding: const EdgeInsets.only(bottom: 6),
                           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Container(margin: const EdgeInsets.only(top: 4), width: 9, height: 9, decoration: BoxDecoration(color: act.$2, shape: BoxShape.circle)),
+                            Container(margin: const EdgeInsets.only(top: 4), width: 9, height: 9,
+                                decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text('${act.$1} · ${e['label'] ?? ''}${(e['toPlate'] ?? '').toString().isNotEmpty ? ' → ${e['toPlate']}' : ''}${(e['fromPlate'] ?? '').toString().isNotEmpty && e['action'] != 'mounted' ? ' (${tr('من', 'from')} ${e['fromPlate']})' : ''}',
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-                                Text('${_d(e['date'])}${(e['reason'] ?? '').toString().isNotEmpty ? ' · ${e['reason']}' : ''}', style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                Row(children: [
+                                  Expanded(child: Text('${r['title'] ?? ''}',
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                  const SizedBox(width: 6),
+                                  Text(_d(r['date']), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                                ]),
+                                if ((r['detail'] ?? '').toString().isNotEmpty)
+                                  Text('${r['detail']}', style: const TextStyle(fontSize: 11.5), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                if ((r['notes'] ?? '').toString().isNotEmpty || (r['by'] ?? '').toString().isNotEmpty)
+                                  Text([r['by'], r['notes']].where((x) => (x ?? '').toString().isNotEmpty).join(' · '),
+                                      style: const TextStyle(fontSize: 10.5, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis),
                               ]),
                             ),
                           ]),
                         );
                       }),
+                    ] else if (events.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      _sectionTitle(tr('سجل الأصول', 'Asset history'), events.length),
                     ],
                     const SizedBox(height: 20),
                   ]),
                 ),
     );
   }
+
+  Widget _kindChip(String k, String label, int n, Color c) => Padding(
+        padding: const EdgeInsetsDirectional.only(end: 6),
+        child: Pressable(
+          onTap: () => setState(() => _kind = _kind == k ? '' : k),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: _kind == k ? c : c.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Text('$label $n', style: TextStyle(
+              fontSize: 11.5, fontWeight: FontWeight.w700,
+              color: _kind == k ? Colors.white : c)),
+          ),
+        ),
+      );
 
   Widget _sectionTitle(String t, int n) => Row(children: [
         Text(t, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),

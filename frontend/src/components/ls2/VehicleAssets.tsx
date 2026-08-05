@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { CircleDot, Container, History, ExternalLink } from 'lucide-react';
 import api from '@/lib/api';
 import { fmtDateTime, plateDigitsKey, type Lang } from '@/lib/ls2';
+import VehicleAssetSheet from './VehicleAssetSheet';
 
 interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; reason: string; notes: string; performedByName: string }
@@ -22,6 +23,9 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
   const ar = lang === 'ar';
   const [data, setData] = useState<Payload | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  // القسم ده بيعرض حركة الأصول بس. الملف الكامل (الكاوتش ببياناته + قطع الغيار
+  // المصروفة + الإصلاحات + الصيانة في خط زمني واحد) بيتفتح من هنا.
+  const [sheet, setSheet] = useState(false);
 
   const load = useCallback(async () => {
     if (!plate) return;
@@ -40,12 +44,19 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
         </h3>
         {/* The registry stores bare plate digits — searching the raw Wialon
             string ("ق ن ر 2708") there finds nothing. Link by the shared key. */}
-        <Link
-          href={`/system/ls2/fleet-assets?tab=tires&q=${encodeURIComponent(plateDigitsKey(plate))}`}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-xs font-medium"
-        >
-          <ExternalLink className="w-3.5 h-3.5" /> {ar ? 'استبدال / نقل كاوتش أو تيدر' : 'Replace / move tire or trailer'}
-        </Link>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" onClick={() => setSheet(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#12325c] text-white hover:bg-[#0e2547] text-xs font-medium">
+            <History className="w-3.5 h-3.5" />
+            {ar ? `الكاوتش (${data.tires.length}/14) وتاريخ العربية` : `Tires (${data.tires.length}/14) & full history`}
+          </button>
+          <Link
+            href={`/system/ls2/fleet-assets?tab=tires&q=${encodeURIComponent(plateDigitsKey(plate))}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-xs font-medium"
+          >
+            <ExternalLink className="w-3.5 h-3.5" /> {ar ? 'استبدال / نقل كاوتش أو تيدر' : 'Replace / move tire or trailer'}
+          </Link>
+        </div>
       </div>
 
       {/* Identity chips */}
@@ -121,6 +132,8 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
           )}
         </div>
       )}
+
+      {sheet && <VehicleAssetSheet plate={plate!} ar={ar} onClose={() => setSheet(false)} />}
     </div>
   );
 }

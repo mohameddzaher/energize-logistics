@@ -29,6 +29,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ls2Text, isLs2Staff, isLs2Admin, fmtNum, fmtDateTime, type Lang } from '@/lib/ls2';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import SearchSelect from '@/components/ls2/SearchSelect';
+import VehicleAssetSheet from '@/components/ls2/VehicleAssetSheet';
 
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
@@ -173,6 +174,8 @@ export default function Ls2FleetAssetsPage() {
   // بطاقات الحالة أعلى تبويب الكاوتشات تعمل كفلاتر — نقرة تحصر الجدول فيها.
   const [tireFilter, setTireFilter] = useState<'' | 'mounted' | 'store' | 'new' | 'renewed' | 'in_repair' | 'scrap' | 'damaged' | 'sold'>('');
 
+  // ملف أصول عربية واحدة (الكاوتش + التاريخ) — بيتفتح من رقم الكاوتش في الجدول
+  const [sheetPlate, setSheetPlate] = useState<string | null>(null);
   // Modals
   const [moveTire, setMoveTire] = useState<TireAsset | null>(null);
   const [downTire, setDownTire] = useState<TireAsset | null>(null); // إنزال: مخزن/تجديد/تالفة/سكراب + بديل
@@ -422,7 +425,18 @@ export default function Ls2FleetAssetsPage() {
                         : <span className="text-slate-300 text-xs">—</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{f.driver || '—'}</td>
-                    <td className="px-4 py-3 text-end tabular-nums text-slate-700">{f.tireCount || 0}</td>
+                    {/* الرقم ده كان مجرد عدد — بقى مدخل. الضغط عليه بيفتح الكاوتش
+                        نفسه ببياناته وتاريخ العربية كله في مكان واحد. */}
+                    <td className="px-4 py-3 text-end">
+                      <button type="button" onClick={() => setSheetPlate(f.plate)}
+                        title={ar ? 'اعرض الكاوتش والتاريخ' : 'Show tires & history'}
+                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[13px] font-bold tabular-nums border transition
+                          ${(f.tireCount || 0) >= 14 ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                            : (f.tireCount || 0) > 0 ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+                        {f.tireCount || 0}/14
+                      </button>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
                         {f.unitId != null && (
@@ -823,6 +837,7 @@ export default function Ls2FleetAssetsPage() {
       )}
 
       {/* ---- Modals ---------------------------------------------------------- */}
+      {sheetPlate && <VehicleAssetSheet plate={sheetPlate} ar={ar} onClose={() => setSheetPlate(null)} />}
       {moveTire && <MoveTireModal tire={moveTire} flatbeds={flatbeds} tires={tires} ar={ar} busy={busy} onClose={() => setMoveTire(null)} onSubmit={(body) => doMoveTire(moveTire, body)} />}
       {downTire && <DismountTireModal tire={downTire} tires={tires} ar={ar} busy={busy} onClose={() => setDownTire(null)} onSubmit={(body) => doMoveTire(downTire, body).then(() => setDownTire(null))} />}
       {renewalTire && <RenewalResultModal tire={renewalTire} ar={ar} busy={busy} onClose={() => setRenewalTire(null)} onSubmit={(result, notes) => doRenewalResult(renewalTire, result, notes)} />}

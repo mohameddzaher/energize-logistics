@@ -121,6 +121,95 @@ exports.getOverview = async (req, res) => {
   }
 };
 
+// GET /assets/vehicle/:plate/history — كل حاجة حصلت للعربية دي، في خط زمني واحد.
+//
+// السؤال اللي بيرد عليه: «العربية دي عملت فيها إيه؟». الإجابة كانت متفرّقة على
+// خمس مجموعات مختلفة — حركة الكاوتش في سجل الأصول، صادر مخزن LS2، صرف مخزن
+// الورشة، الإصلاحات، والصيانة الدورية — وكل واحدة ليها شاشتها. اللي بيدوّر على
+// «الكاوتش اتغيّر إمتى وإيه القطع اللي اتركبت بعده» كان بيفتح خمس شاشات ويرتّب
+// بنفسه.
+//
+// الدمج هنا مش عرض تاني للبيانات: هو الترتيب الزمني نفسه. كل صف بيقول `kind`
+// عشان الشاشة تعرف تفلتر (كاوتش / قطع غيار / إصلاح / صيانة)، والمصدر بيفضل
+// مكتوب فـ اللي عايز يفتح الأصل يعرف يروح فين.
+//
+// الربط بالعربية: plateKey لسجل الأصول (المفتاح الموحّد)، والباقي بيتخزّن رقم
+// اللوحة كنص حر زي ما الورشة بتكتبه — فبنطابق بالمفتاح المستخرج منه، مش
+// بالنص، وإلا «5010» و«أ ص ر 5010» يبقوا عربيتين.
+exports.getVehicleHistory = async (req, res) => {
+  try {
+    const key = plateKey(req.params.plate);
+    if (!key) return res.status(400).json({ message: 'Bad plate' });
+
+    const { Ls2StoreMovement } = require('../models/Ls2Store');
+    const InventoryIssue = require('../models/InventoryIssue');
+    const Ls2Repair = require('../models/Ls2Repair');
+    const Ls2ServiceLog = require('../models/Ls2ServiceLog');
+
+    const [tireEvents, storeOut, issues, repairs, services] = await Promise.all([
+      Ls2AssetEvent.find({ $or: [{ fromPlateKey: key }, { toPlateKey: key }] }).sort({ date: -1 }).limit(500).lean(),
+      Ls2StoreMovement.find({ vehiclePlate: { $nin: ['', null] } }).sort({ createdAt: -1 }).limit(3000).lean(),
+      InventoryIssue.find({ vehicleNumber: { $nin: ['', null] } }).sort({ date: -1 }).limit(3000).lean(),
+      Ls2Repair.find({ plate: { $nin: ['', null] } }).sort({ date: -1 }).limit(1000).lean(),
+      Ls2ServiceLog.find({ plate: { $nin: ['', null] } }).sort({ date: -1 }).limit(1000).lean(),
+    ]);
+
+    const mine = (v) => plateKey(v) === key;
+    const rows = [];
+
+    for (const e of tireEvents) {
+      rows.push({
+        kind: e.entityType === 'tire' ? 'tire' : 'asset',
+        date: e.date, action: e.action, label: e.label,
+        title: e.entityType === 'tire' ? `كاوتش ${e.label}` : `${e.entityType} ${e.label}`,
+        detail: [e.fromPosition && `من ${e.fromPlate || 'مخزن'} ${e.fromPosition}`,
+          e.toPosition && `إلى ${e.toPlate || 'مخزن'} ${e.toPosition}`].filter(Boolean).join('  ←  '),
+        odometerKm: e.odometerKm, by: e.performedByName, notes: e.notes,
+        source: 'assets', refId: e.refId,
+      });
+    }
+    for (const m of storeOut.filter((x) => mine(x.vehiclePlate))) {
+      rows.push({
+        kind: 'part', date: m.createdAt, action: m.type === 'out' ? 'صرف' : 'وارد',
+        title: m.itemName, detail: `${m.type === 'out' ? 'صادر' : 'وارد'} ${m.quantity}`,
+        by: m.performedByName, notes: [m.reason, m.reversed ? 'اتّرجع عنها' : ''].filter(Boolean).join(' · '),
+        reversed: !!m.reversed, source: 'ls2-store', refId: m._id,
+      });
+    }
+    for (const i of issues.filter((x) => mine(x.vehicleNumber))) {
+      rows.push({
+        kind: 'part', date: i.date ? new Date(i.date) : i.createdAt, action: 'صرف',
+        title: i.itemName, detail: [i.quantity && `${i.quantity} ${i.unit || ''}`.trim(), i.fitLocation].filter(Boolean).join(' · '),
+        by: i.issuedByName || i.performedByName || '', notes: i.notes || '',
+        source: 'workshop-store', refId: i._id,
+      });
+    }
+    for (const r of repairs.filter((x) => mine(x.plate))) {
+      rows.push({
+        kind: 'repair', date: r.date || r.createdAt, action: r.status, title: r.title,
+        detail: [r.workshop, r.partsReplaced].filter(Boolean).join(' · '),
+        odometerKm: r.odometerKm ?? null, by: r.performedByName, notes: r.description || '',
+        source: 'repairs', refId: r._id,
+      });
+    }
+    for (const s of services.filter((x) => mine(x.plate))) {
+      rows.push({
+        kind: 'service', date: s.serviceDate || s.date || s.createdAt, action: s.action,
+        title: s.intervalName || s.serviceType || 'صيانة',
+        detail: (s.items || []).filter((x) => x.status === 'done').map((x) => x.labelAr || x.label).slice(0, 6).join(' · '),
+        odometerKm: s.odometerKm ?? null, by: s.performedByName, notes: s.notes || '',
+        source: 'maintenance', refId: s._id,
+      });
+    }
+
+    rows.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    const counts = rows.reduce((acc, r) => { acc[r.kind] = (acc[r.kind] || 0) + 1; return acc; }, {});
+    res.json({ plate: req.params.plate, plateKey: key, counts, total: rows.length, rows: rows.slice(0, 800) });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
 // GET /assets/vehicle/:plate — current tires + trailer + history for one truck.
 exports.getVehicleAssets = async (req, res) => {
   try {

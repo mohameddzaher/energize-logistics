@@ -307,7 +307,10 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                             Wrap(spacing: 6, runSpacing: 6, children: [
                               if ((f['brand'] ?? '').toString().isNotEmpty) Chip2('${f['brand']}', T.inkFaint, icon: Icons.factory_outlined),
                               if ((f['batch'] ?? '').toString().isNotEmpty) Chip2('${f['batch']}', T.violet),
-                              Chip2('${f['tireCount'] ?? 0} ${tr('كاوتش', 'tires')}', T.success, icon: Icons.circle_outlined),
+                              // ١٤ هو الطقم الكامل — اللون بيقول على طول مين ناقص
+                              Chip2('${f['tireCount'] ?? 0}/14 ${tr('كاوتش', 'tires')}',
+                                  (f['tireCount'] ?? 0) >= 14 ? T.success : (f['tireCount'] ?? 0) > 0 ? T.warn : T.inkFaint,
+                                  icon: Icons.circle_outlined),
                               if ((f['currentTrailerNumber'] ?? '').toString().isNotEmpty) Chip2('${tr('تيدر', 'Trailer')} ${f['currentTrailerNumber']}', T.cyan, icon: Icons.rv_hookup_outlined),
                               if ((f['driver'] ?? '').toString().isNotEmpty) Chip2('${f['driver']}', T.info, icon: Icons.person_outline),
                               if (f['odometerKm'] != null) Chip2('${f['odometerKm']} ${tr('كم', 'km')}', T.inkFaint, icon: Icons.speed_outlined),

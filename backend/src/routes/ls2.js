@@ -55,6 +55,8 @@ router.get('/assets/overview', assets.getOverview);
 router.get('/assets/events', assets.listEvents);
 router.get('/assets/sensor-check', assets.sensorCheck);
 router.get('/assets/vehicle/:plate', assets.getVehicleAssets);
+// خط زمني واحد للعربية: كاوتش + قطع غيار + إصلاحات + صيانة
+router.get('/assets/vehicle/:plate/history', assets.getVehicleHistory);
 router.post('/assets/import', ADMIN, assets.importAssets); // workshop JSON, idempotent
 router.post('/assets/tires', ADMIN, assets.createTire);
 router.patch('/assets/tires/:id', ADMIN, assets.updateTire);

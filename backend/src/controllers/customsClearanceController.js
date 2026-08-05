@@ -118,6 +118,9 @@ exports.getClearance = async (req, res) => {
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
     res.json({ clearance });
   } catch (error) {
+    // معرّف مش صالح = «مش موجود»، مش عطل سيرفر. رابط قديم أو مقطوع كان بيرجع
+    // 500 وكأن السيستم واقع.
+    if (error.name === 'CastError') return res.status(404).json({ message: 'Clearance not found' });
     res.status(500).json({ message: 'Failed to load clearance' });
   }
 };

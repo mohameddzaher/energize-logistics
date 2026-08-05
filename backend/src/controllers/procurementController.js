@@ -12,7 +12,7 @@ const { emitToUser, emitToAll } = require('../websocket/socketManager');
 const { grantedBySection } = require('../utils/sectionAccess');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
-const STAFF = ['super_admin', 'admin', 'procurement_manager', 'purchasing'];
+const STAFF = ['super_admin', 'admin', 'procurement_manager', 'procurement_staff'];
 const MANAGERS = ['super_admin', 'admin', 'procurement_manager'];
 const isStaff = (u) => STAFF.includes(u.role);
 // A role the super_admin granted this section to counts as staff too —

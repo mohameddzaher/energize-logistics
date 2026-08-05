@@ -12,9 +12,9 @@ router.post('/google-sheet/webhook', b2cController.googleSheetWebhook);
 router.use(authenticate);
 
 // Project managers currently have the same access as heads.
-const READ = ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'];
-const WRITE = ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'];
-const ADMIN_WRITE = ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'];
+const READ = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
+const WRITE = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
+const ADMIN_WRITE = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
 
 // Projects
 router.get('/projects', authorize(...READ), b2cController.getProjects);

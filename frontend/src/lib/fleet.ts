@@ -165,7 +165,7 @@ export const foldAr = (x: string) => x.toLowerCase()
 // permissions matrix (backend rbac honours an 'edit' grant even on admin
 // routes, so the UI must too). Pass the USER: only it carries the grants.
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
-export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
 export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
 // حالة البطاقة على اللوحة الرئيسية — تُحسب تلقائيًا في الخادم.

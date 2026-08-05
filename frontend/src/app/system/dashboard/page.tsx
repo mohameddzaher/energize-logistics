@@ -29,13 +29,13 @@ type CachedPeriod = { dashboard: any; aging: any; dso: any; performance: any; ti
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // ─── Role helpers ────────────────────────────────────────────
-type Role = 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client';
+type Role = 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations_staff' | 'moderator' | 'client';
 
 function getRoleFlags(role?: string) {
   const isAdmin = role === 'super_admin' || role === 'admin';
   const isEmployee = role === 'employee';
   const isOpsManager = role === 'operations_manager';
-  const isOps = role === 'operations';
+  const isOps = role === 'operations_staff';
   const isModerator = role === 'moderator';
 
   return {

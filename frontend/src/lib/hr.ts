@@ -16,8 +16,8 @@ export const isHRStaff = (u: RoleOrUser) => HR_STAFF_ROLES.includes(roleOf(u)) |
 // and approving their team's leave when they manage others). Everyone with a
 // login except external clients.
 export const HR_SELF_SERVICE_ROLES = [
-  'super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator',
-  'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager',
+  'super_admin', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator',
+  'workshop_manager', 'workshop_employee', 'procurement_staff', 'b2c_manager', 'b2c_project_lead',
   'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager',
 ];
 

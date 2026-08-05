@@ -24,7 +24,7 @@ import { getWorkshopStoreTranslations } from '@/lib/translations';
 // the add/edit/approve/delete CRUD has exactly ONE implementation.
 import { InventoryPanel } from '@/components/workshop/InventoryPanel';
 
-const STAFF = ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'purchasing'];
+const STAFF = ['super_admin', 'it_manager', 'it_specialist', 'workshop_manager', 'workshop_employee', 'procurement_staff'];
 
 interface StoreTire {
   _id: string; serial: string; tireNumber?: string; type?: string; sensor?: string;

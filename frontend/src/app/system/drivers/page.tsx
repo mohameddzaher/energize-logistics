@@ -32,7 +32,7 @@ export default function DriversPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
-  const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(user?.role || '');
+  const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '');
   const { lang } = useLanguage();
   const T = getDriversTranslations(lang);
   const txx = getDriversExtraTranslations(lang);

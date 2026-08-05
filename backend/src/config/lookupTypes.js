@@ -13,7 +13,7 @@ const assetDefaults = require('./assetDefaults');
 // Roles that can manage every lookup regardless of module.
 const BASE_WRITE_ROLES = ['super_admin', 'admin'];
 
-const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations'];
+const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations_staff'];
 const REGISTRY = [
   // ── إدارة الأسطول — قوائم منسدلة قابلة للتعديل ────────────────────────────
   {
@@ -58,7 +58,7 @@ const REGISTRY = [
     module: 'procurement',
     nameEn: 'Procurement Categories',
     nameAr: 'فئات المشتريات',
-    roles: ['procurement_manager', 'purchasing'],
+    roles: ['procurement_manager', 'procurement_staff'],
     seed: procurementDefaults.CATEGORIES,
   },
   {
@@ -66,7 +66,7 @@ const REGISTRY = [
     module: 'procurement',
     nameEn: 'Vendor Categories',
     nameAr: 'فئات الموردين',
-    roles: ['procurement_manager', 'purchasing', 'operations_manager', 'operations'],
+    roles: ['procurement_manager', 'procurement_staff', 'operations_manager', 'operations_staff'],
     seed: [
       { key: 'spare_parts', nameEn: 'Spare Parts', nameAr: 'قطع غيار' },
       { key: 'fuel', nameEn: 'Fuel', nameAr: 'وقود' },

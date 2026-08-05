@@ -20,7 +20,9 @@ const userSchema = new mongoose.Schema(
     lastName: { type: String, required: true, trim: true },
     role: {
       type: String,
-      enum: ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client', 'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager', 'remote_employee', 'remote_manager', 'hr_manager', 'hr_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'finance_manager', 'accountant', 'sales_manager', 'sales_rep', 'procurement_manager', 'customs_manager', 'customs_officer', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager', 'bd_specialist', 'fleet_manager', 'fleet_supervisor', 'administrator', 'contracts_manager'],
+      // مصدرها الوحيد config/roles.js — كل قسم له مدير وموظف، والملف ده بيتحقق
+      // من القاعدة وقت التحميل. إضافة دور هناك بتوصل هنا لوحدها.
+      enum: require('../config/roles').ALL_ROLES,
       required: true,
     },
     // Is this login one of OUR PEOPLE, or an outside partner (customer/supplier)?

@@ -120,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool _canSeeBoard(AuthProvider auth) =>
-      const ['super_admin', 'admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'].contains(auth.role) ||
+      const ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'].contains(auth.role) ||
       auth.canAccessSection('Administration');
 
   String _greeting() {

@@ -11,26 +11,9 @@ const FULL_ACCESS_ROLES = ['super_admin', 'it_manager', 'it_specialist'];
  * Unknown roles are not an error — a role added to the enum tomorrow is
  * title-cased into something readable rather than leaking the raw key.
  */
-const ROLE_LABELS_AR = {
-  super_admin: 'مدير النظام', admin: 'الإدارة العليا', employee: 'موظف',
-  operations_manager: 'مدير العمليات', operations: 'موظف عمليات', moderator: 'مشرف',
-  client: 'عميل',
-  workshop_manager: 'مدير الورشة', workshop_employee: 'فني ورشة', purchasing: 'مشتريات',
-  b2c_head: 'رئيس قطاع الأفراد', b2c_project_manager: 'مدير مشروع - أفراد',
-  remote_employee: 'موظف عن بُعد', remote_manager: 'مدير العمل عن بُعد',
-  hr_manager: 'مدير الموارد البشرية', hr_specialist: 'أخصائي موارد بشرية',
-  crm_manager: 'مدير العلاقات', crm_team_lead: 'قائد فريق العلاقات',
-  crm_specialist: 'أخصائي علاقات', crm_agent: 'مندوب علاقات',
-  finance_manager: 'المدير المالي', accountant: 'محاسب',
-  sales_manager: 'مدير المبيعات', sales_rep: 'مندوب مبيعات',
-  procurement_manager: 'مدير المشتريات',
-  customs_manager: 'مدير التخليص الجمركي', customs_officer: 'مخلّص جمركي',
-  it_manager: 'مدير تقنية المعلومات', it_specialist: 'أخصائي تقنية المعلومات',
-  marketing_manager: 'مدير التسويق', marketing_specialist: 'أخصائي تسويق',
-  bd_manager: 'مدير تطوير الأعمال', bd_specialist: 'أخصائي تطوير الأعمال',
-  fleet_manager: 'مدير الأسطول', fleet_supervisor: 'مشرف الأسطول',
-  administrator: 'الشؤون الإدارية', contracts_manager: 'مدير العقود',
-};
+// أسماء الأدوار مصدرها config/roles.js — الملف اللي بيعرّف الهيكل الوظيفي كله.
+// كانت متكرّرة هنا، فدور جديد كان لازم يتكتب في مكانين وينسى في واحد.
+const { LABELS_AR: ROLE_LABELS_AR, LABELS_EN: ROLE_LABELS_EN } = require('./roles');
 
 const titleCase = (k) => String(k || '').split('_').filter(Boolean)
   .map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -38,7 +21,8 @@ const titleCase = (k) => String(k || '').split('_').filter(Boolean)
 /** Print-ready name for a role key, in either language. */
 const roleLabel = (key, lang = 'ar') => {
   if (!key) return '';
-  return lang === 'en' ? titleCase(key) : (ROLE_LABELS_AR[key] || titleCase(key));
+  const map = lang === 'en' ? ROLE_LABELS_EN : ROLE_LABELS_AR;
+  return map[key] || titleCase(key);
 };
 
 
@@ -70,6 +54,7 @@ module.exports = {
   EMPLOYMENT_STATUS_AR,
   statusLabel,
   ROLE_LABELS_AR,
+  ROLE_LABELS_EN,
   roleLabel,
   FULL_ACCESS_ROLES,
   ROLES: {
@@ -80,7 +65,7 @@ module.exports = {
     CLIENT: 'client',
     WORKSHOP_MANAGER: 'workshop_manager',
     WORKSHOP_EMPLOYEE: 'workshop_employee',
-    PURCHASING: 'purchasing',
+    PURCHASING: 'procurement_staff',
     REMOTE_EMPLOYEE: 'remote_employee',
     REMOTE_MANAGER: 'remote_manager',
     HR_MANAGER: 'hr_manager',
@@ -102,7 +87,7 @@ module.exports = {
     MARKETING_SPECIALIST: 'marketing_specialist',
     BD_MANAGER: 'bd_manager',
     BD_SPECIALIST: 'bd_specialist',
-    ADMINISTRATOR: 'administrator',
+    ADMINISTRATOR: 'administration_staff',
     CONTRACTS_MANAGER: 'contracts_manager',
   },
 
@@ -110,45 +95,23 @@ module.exports = {
   // manager when creating a user (the actual manager user is resolved at runtime
   // — see utils/orgChart.js). Top roles map to null (they have no manager).
   // This is a suggestion, never a hard requirement.
-  ROLE_HIERARCHY: {
-    super_admin: null,            // CEO / COO — top of the tree
-    admin: 'super_admin',
-    moderator: 'admin',
-    employee: 'admin',
-    operations_manager: 'admin',
-    operations: 'operations_manager',
-    workshop_manager: 'admin',
-    workshop_employee: 'workshop_manager',
-    purchasing: 'workshop_manager',
-    b2c_head: 'admin',
-    b2c_project_manager: 'b2c_head',
-    hr_manager: 'admin',
-    hr_specialist: 'hr_manager',
-    crm_manager: 'admin',
-    crm_team_lead: 'crm_manager',
-    crm_specialist: 'crm_team_lead',
-    crm_agent: 'crm_team_lead',
-    finance_manager: 'admin',
-    accountant: 'finance_manager',
-    sales_manager: 'admin',
-    sales_rep: 'sales_manager',
-    procurement_manager: 'admin',
-    remote_manager: 'admin',
-    remote_employee: 'remote_manager',
-    customs_manager: 'admin',
-    customs_officer: 'customs_manager',
-    it_manager: 'admin',
-    fleet_manager: 'admin',
-    fleet_supervisor: 'fleet_manager',
-    it_specialist: 'it_manager',
-    marketing_manager: 'admin',
-    marketing_specialist: 'marketing_manager',
-    bd_manager: 'admin',
-    bd_specialist: 'bd_manager',
-    administrator: 'admin', // السكرتارية تتبع الإدارة مباشرة
-    contracts_manager: 'admin',
-    client: null,
-  },
+  // مين بيتبع مين — **مشتقّة** من config/roles.js مش مكتوبة بالإيد:
+  //   موظف القسم  → مدير قسمه
+  //   مدير القسم  → الإدارة العليا (admin)
+  // القائمة اليدوية اللي كانت هنا فضلت شايلة مفاتيح قديمة بعد إعادة التسمية،
+  // وده بالظبط اللي بيخلّي موظف جديد يطلع من غير مدير. اقتراح مش إلزام —
+  // utils/orgChart.js بيحلّ المدير الفعلي وقت التشغيل.
+  ROLE_HIERARCHY: (() => {
+    const R = require('./roles');
+    const h = { super_admin: null, admin: 'super_admin', moderator: 'admin', employee: 'admin', client: null };
+    for (const s of R.SECTION_ROLES) {
+      h[s.manager.key] = 'admin';
+      for (const st of s.staff) h[st.key] = s.manager.key;
+    }
+    // السكرتارية بتتبع الإدارة العليا مباشرة، مش مدير قسمها.
+    h.administration_staff = 'admin';
+    return h;
+  })(),
 
   // Roles that can access the Accounting section.
   MARKETING_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator', 'bd_manager'],
@@ -156,16 +119,16 @@ module.exports = {
   BD_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'],
   BD_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist'],
   // قسم الشؤون الإدارية (السكرتارية) — the office task board.
-  ADMINISTRATION_STAFF_ROLES: ['super_admin', 'admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'],
+  ADMINISTRATION_STAFF_ROLES: ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'],
   IT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],
   IT_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager'],
   FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'finance_manager', 'accountant'],
   // Roles that can access the Sales section (+ the operations team — they need
   // visibility across CRM/Sales for the 3PL workflow).
-  SALES_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'],
+  SALES_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'],
   // Roles that can access the Procurement section. Reuses the existing
   // `purchasing` role (officer level) and adds a procurement_manager.
-  PROCUREMENT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'procurement_manager', 'purchasing'],
+  PROCUREMENT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'procurement_manager', 'procurement_staff'],
 
   // Roles that can see/manage the HR back-office (employees, contracts, all
   // leaves/requests, custody, leave types). Everyone else only gets the HR
@@ -176,7 +139,7 @@ module.exports = {
   // activities, calendar). Tiered: crm_manager (full) > crm_team_lead (delete /
   // reassign) > crm_specialist (write, no delete) > crm_agent (entry level).
   // crm_manager + crm_team_lead are the "admin" tier (delete + privileged ops).
-  CRM_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'],
+  CRM_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'],
   CRM_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead'],
 
   // Roles that can access the Customs Clearance section (التخليص الجمركى).
@@ -189,8 +152,8 @@ module.exports = {
   // dashboards. The admin tier alone can create/update/delete (writes proxied
   // through to UPL).
   OPS_PLATFORM_STAFF_ROLES: [
-    'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations',
-    'workshop_manager', 'workshop_employee', 'purchasing',
+    'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
+    'workshop_manager', 'workshop_employee', 'procurement_staff',
     'hr_manager', 'hr_specialist',
     'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
     'finance_manager', 'accountant',
@@ -207,13 +170,13 @@ module.exports = {
   // (super_admin, admin, operations_manager, workshop_manager) can acknowledge
   // alerts, mark vehicles serviced and tune the alert thresholds.
   LS2_STAFF_ROLES: [
-    'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations',
-    'workshop_manager', 'workshop_employee', 'purchasing',
+    'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
+    'workshop_manager', 'workshop_employee', 'procurement_staff',
   ],
   LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager'],
   // Core roles that see the section in their sidebar (others can still reach the
   // data via direct link / embeds but it isn't pinned to their nav).
-  LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
+  LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'workshop_manager', 'moderator'],
 
   // Roles that can access the Vehicles & Authorizations section (المركبات
   // والتفاويض): super admin + HR + Accounting. Delete ops are further limited to

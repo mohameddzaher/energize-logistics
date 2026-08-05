@@ -11,7 +11,7 @@ router.use(authenticate);
 // All workflow-related roles. Finance/collections staff (finance_manager,
 // accountant) are included so they can open the operations page, see the
 // financial columns, and tick the accounting-review checkbox.
-const allWorkflowRoles = ['super_admin', 'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'finance_manager', 'accountant'];
+const allWorkflowRoles = ['super_admin', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'finance_manager', 'accountant'];
 
 // List & export
 router.get('/export', authorize(...allWorkflowRoles), workflowController.exportWorkflows);

@@ -12,7 +12,7 @@
 // Resolver errors fail OPEN (fall through to legacy authorize) to avoid locking
 // users out on a transient DB issue.
 const { getOverride } = require('../utils/permissions');
-const { getSection } = require('../config/sections');
+const { getSection, defaultAccess } = require('../config/sections');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -39,8 +39,19 @@ const sectionGate = (sectionKey) => {
       if (FULL_ACCESS_ROLES.includes(req.user.role)) { req.sectionAccess = 'edit'; return next(); }
       if (exempt && exempt(req)) return next();
 
-      const access = await getOverride(req.user.role, sectionKey); // 'none'|'view'|'edit'|null
-      if (access == null) return next(); // no override → legacy authorize decides
+      let access = await getOverride(req.user.role, sectionKey); // 'none'|'view'|'edit'|null
+      if (access == null) {
+        // مفيش override محفوظ → نستعمل الوصول الافتراضي للقسم. ده اللي بيخلّي
+        // «مدير القسم وموظفوه ليهم قسمهم» (config/roles.js) تشتغل فعلاً على الـ
+        // API، مش تفضل تزيّن الشريط الجانبي بس: من غيره كان الدور الجديد يفتح
+        // القسم في القائمة وياخد 403 من كل endpoint جواه.
+        const fallback = defaultAccess(req.user.role, sectionKey);
+        // **زيادة بس، مش تضييق**: لو الافتراضي 'none' ما بنرفضش هنا — سايبين
+        // قوائم authorize القديمة تقرّر زي ما كانت. كده مفيش حد بيخسر وصول
+        // كان عنده.
+        if (fallback === 'none') return next();
+        access = fallback;
+      }
 
       if (access === 'none') {
         return res.status(403).json({ message: 'No access to this section', code: 'SECTION_FORBIDDEN' });

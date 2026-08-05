@@ -12,7 +12,7 @@ const B2CWalletEntry = require('../models/B2CWalletEntry');
 const User = require('../models/User');
 const { emitToUser } = require('../websocket/socketManager');
 
-const MANAGER_ROLES = ['super_admin', 'admin', 'b2c_head'];
+const MANAGER_ROLES = ['super_admin', 'admin', 'b2c_manager'];
 const isManager = (u) => u && MANAGER_ROLES.includes(u.role);
 
 async function balanceOf(pmId) {
@@ -33,7 +33,7 @@ const endOfDay = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? `${d}T23:59:59.
 // GET /managers — every project manager + their balance (managers only).
 exports.managers = async (req, res) => {
   try {
-    const pms = await User.find({ role: 'b2c_project_manager', isActive: true }).select('firstName lastName email').sort({ firstName: 1 }).lean();
+    const pms = await User.find({ role: 'b2c_project_lead', isActive: true }).select('firstName lastName email').sort({ firstName: 1 }).lean();
     const withBal = await Promise.all(pms.map(async (p) => ({ ...p, ...(await balanceOf(p._id)) })));
     res.json({ managers: withBal });
   } catch (e) {
@@ -89,7 +89,7 @@ exports.create = async (req, res) => {
     let projectManager = String(req.body.projectManager || '');
     if (isManager(req.user)) {
       if (!projectManager) return res.status(400).json({ message: 'projectManager is required' });
-      const pm = await User.findOne({ _id: projectManager, role: 'b2c_project_manager' }).select('_id').lean();
+      const pm = await User.findOne({ _id: projectManager, role: 'b2c_project_lead' }).select('_id').lean();
       if (!pm) return res.status(400).json({ message: 'Invalid project manager' });
     } else {
       projectManager = String(req.user._id); // PMs always post to their own wallet

@@ -1449,7 +1449,7 @@ const deleteMaintenanceType = async (req, res) => {
 const getWorkshopUsers = async (req, res) => {
   try {
     const users = await User.find({
-      role: { $in: ['workshop_manager', 'workshop_employee', 'purchasing'] },
+      role: { $in: ['workshop_manager', 'workshop_employee', 'procurement_staff'] },
       isActive: true,
     })
       .select('firstName lastName email role')

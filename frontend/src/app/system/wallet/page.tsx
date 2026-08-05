@@ -88,7 +88,7 @@ const getTodayStr = () => {
 export default function WalletPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
-  const isManager = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(user?.role || '');
+  const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '');
   const isReadOnly = user?.role === 'moderator';
   const isSuperAdmin = user?.role === 'super_admin';
   const isOpsManager = user?.role === 'operations_manager';
@@ -196,7 +196,7 @@ export default function WalletPage() {
     setBranchUsers([]);
     setSelectedUser('');
     api.get<any>(`/api/users?branch=${selectedBranch}`).then((data) => {
-      const users = (data.users || data || []).filter((u: any) => ['operations', 'operations_manager'].includes(u.role));
+      const users = (data.users || data || []).filter((u: any) => ['operations_staff', 'operations_manager'].includes(u.role));
       setBranchUsers(users);
       if (users.length > 0) setSelectedUser(users[0]._id);
       else setSelectedUser('');

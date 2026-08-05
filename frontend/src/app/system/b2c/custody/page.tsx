@@ -13,7 +13,7 @@ import { Wallet, Plus, ArrowDownCircle, ArrowUpCircle, Edit, Trash2, Check, Load
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, TextArea, Select, StatCard } from '@/components/hr/HRKit';
 import { canEditSection } from '@/lib/sections';
 
-const MANAGER_ROLES = ['super_admin', 'admin', 'b2c_head'];
+const MANAGER_ROLES = ['super_admin', 'admin', 'b2c_manager'];
 type Entry = Record<string, any>;
 type Manager = Record<string, any>;
 type Wallet2 = { entries: Entry[]; balance: number; totalIn: number; totalOut: number; periodIn: number; periodOut: number; periodBalance: number; filtered: boolean };
@@ -118,7 +118,7 @@ export default function B2CCustodyPage() {
   const setRange = (from: string, to: string) => { setWFrom(from); setWTo(to); };
   const anyFilter = !!(wFrom || wTo || wDebounced);
 
-  if (!isManager && user?.role !== 'b2c_project_manager') return <div className="text-slate-500 p-8">{t('Not authorized', 'لا تملك صلاحية')}</div>;
+  if (!isManager && user?.role !== 'b2c_project_lead') return <div className="text-slate-500 p-8">{t('Not authorized', 'لا تملك صلاحية')}</div>;
   if (!loaded) return <Spinner />;
 
   const selectedManager = managers.find((m) => String(m._id) === selectedPM);

@@ -14,8 +14,8 @@ export type Lang = 'ar' | 'en';
 // `_manager` is a meeting participant today, with no edit here. The server is
 // still the authority — this only decides which sidebar links are worth showing.
 const BR_EXECUTIVE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator'];
-const BR_SECRETARY_ROLES = ['administrator'];
-const BR_EXTRA_MANAGER_ROLES = ['b2c_head', 'operations', 'moderator'];
+const BR_SECRETARY_ROLES = ['administration_staff'];
+const BR_EXTRA_MANAGER_ROLES = ['b2c_manager', 'operations_staff', 'moderator'];
 
 /** Runs the forum: schedules meetings, writes minutes, raises actions. */
 export const isBrRunner = (role?: string | null) =>

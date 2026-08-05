@@ -6,7 +6,7 @@ const authorize = require('../middleware/rbac');
 
 // إدارة الأسطول — our own trucks. fleet_manager runs the section;
 // fleet_supervisor works his ASSIGNED trucks only (scoped in the controller).
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
 const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
 router.use(authenticate);

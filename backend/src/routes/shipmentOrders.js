@@ -6,7 +6,7 @@ const authorize = require('../middleware/rbac');
 
 // The shipment-orders trial section. Independent of /api/ops by design — see
 // the ShipmentOrder model header.
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'];
 const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 
 router.use(authenticate);

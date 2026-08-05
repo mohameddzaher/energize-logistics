@@ -128,7 +128,7 @@ export default function WorkshopPurchasesPage() {
 
   // Role list OR a permissions-matrix EDIT grant on Workshop (the backend
   // rbac honours the grant, so hiding the button here just strands the user).
-  const canCreate = user && (['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'].includes(user.role)
+  const canCreate = user && (['super_admin', 'workshop_manager', 'workshop_employee', 'procurement_staff'].includes(user.role)
     || canEditSection((user as any)?.permissions, 'Workshop'));
   const submitCreate = async () => {
     if (!createForm.itemName.trim()) return;

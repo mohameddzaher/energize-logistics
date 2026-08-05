@@ -8,7 +8,7 @@ const { grantedBySection } = require('../utils/sectionAccess');
 const { createNotification } = require('../services/notificationService');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
-const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'];
+const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
 const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'sales_manager'];
 const isStaff = (u) => SALES_STAFF_ROLES.includes(u.role);
 // A role the super_admin granted this section to counts as staff too —

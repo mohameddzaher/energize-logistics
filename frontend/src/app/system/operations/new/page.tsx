@@ -82,9 +82,9 @@ const SECTIONS = [
 
 // Role -> editable section IDs
 const ROLE_EDITABLE: Record<string, string[]> = {
-  super_admin: ['application', 'operations', 'manual_moderator', 'collections'],
+  super_admin: ['application', 'operations_staff', 'manual_moderator', 'collections'],
   moderator: ['application', 'manual_moderator'],
-  operations_manager: ['operations'],
+  operations_manager: ['operations_staff'],
   operations: ['application'],
   admin: ['collections'],
   employee: ['collections'],

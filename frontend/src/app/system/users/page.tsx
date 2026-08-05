@@ -12,13 +12,16 @@ import {
   Trash2, Edit, MoreVertical, Shield, AlertTriangle, Eye, EyeOff, Download
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { ALL_ROLE_DEFS, rolesGroupedBySection } from '@/lib/roles';
+import { getSectionLabel } from '@/lib/translations';
 
 interface UserRecord {
   _id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: 'super_admin' | 'admin' | 'employee' | 'operations_manager' | 'operations' | 'moderator' | 'client' | 'workshop_manager' | 'workshop_employee' | 'purchasing' | 'b2c_head' | 'b2c_project_manager' | 'remote_employee' | 'remote_manager' | 'hr_manager' | 'hr_specialist' | 'crm_manager' | 'crm_team_lead' | 'crm_specialist' | 'crm_agent' | 'finance_manager' | 'accountant' | 'sales_manager' | 'sales_rep' | 'procurement_manager' | 'customs_manager' | 'customs_officer' | 'it_manager' | 'it_specialist' | 'marketing_manager' | 'marketing_specialist' | 'bd_manager' | 'bd_specialist' | 'fleet_manager' | 'fleet_supervisor' | 'administrator' | 'contracts_manager';
+  // الأدوار معرّفة في lib/roles.ts المولَّد — قائمة يدوية هنا كانت هتقدم.
+  role: string;
   branch?: { _id: string; name: string };
   remoteAccess?: string[];
   status?: 'active' | 'locked' | 'inactive';
@@ -323,10 +326,10 @@ export default function UsersPage() {
       if (formData.branch) {
         payload.branch = formData.branch;
       }
-      if (formData.role === 'b2c_project_manager' || formData.role === 'b2c_head') {
+      if (formData.role === 'b2c_project_lead' || formData.role === 'b2c_manager') {
         payload.assignedProjects = formData.assignedProjects;
         payload.assignedBranches = formData.assignedBranches;
-        if (formData.role === 'b2c_project_manager' && formData.manager) {
+        if (formData.role === 'b2c_project_lead' && formData.manager) {
           payload.manager = formData.manager;
         }
       }
@@ -410,7 +413,7 @@ export default function UsersPage() {
         payload.assignedCustomers = formData.assignedCustomers;
       }
       payload.branch = formData.branch || null;
-      if (formData.role === 'b2c_project_manager' || formData.role === 'b2c_head') {
+      if (formData.role === 'b2c_project_lead' || formData.role === 'b2c_manager') {
         payload.assignedProjects = formData.assignedProjects;
         payload.assignedBranches = formData.assignedBranches;
         payload.manager = formData.manager || null;
@@ -857,7 +860,7 @@ export default function UsersPage() {
       {/* Direct manager — org chart. Hidden for top roles (super_admin/admin are
           the CEO/COO — they have no manager) and roles with their own pickers
           below. Optional everywhere; the system auto-suggests one by role. */}
-      {!['client', 'super_admin', 'admin', 'b2c_project_manager', 'remote_employee'].includes(formData.role) && (
+      {!['client', 'super_admin', 'admin', 'b2c_project_lead', 'remote_employee'].includes(formData.role) && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">
             {lang === 'ar' ? 'المدير المباشر' : 'Direct Manager'}
@@ -926,7 +929,7 @@ export default function UsersPage() {
       )}
 
       {/* Branch assignment for operations and workshop roles */}
-      {['operations', 'operations_manager', 'workshop_manager', 'workshop_employee', 'purchasing'].includes(formData.role) && (
+      {['operations_staff', 'operations_manager', 'workshop_manager', 'workshop_employee', 'procurement_staff'].includes(formData.role) && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.branch} *</label>
           <select
@@ -962,12 +965,12 @@ export default function UsersPage() {
       )}
 
       {/* B2C-specific: assigned projects + assigned branches + manager */}
-      {(formData.role === 'b2c_head' || formData.role === 'b2c_project_manager') && (
+      {(formData.role === 'b2c_manager' || formData.role === 'b2c_project_lead') && (
         <>
           <div>
             <label className="block text-slate-700 text-sm font-medium mb-1.5">
               {lang === 'ar' ? 'المشاريع المعينة' : 'Assigned Projects'} ({formData.assignedProjects.length})
-              {formData.role === 'b2c_head' && (
+              {formData.role === 'b2c_manager' && (
                 <span className="text-slate-500 text-xs font-normal ms-2">
                   {lang === 'ar' ? '(اختياري — له صلاحية كل المشاريع)' : '(optional — has access to all)'}
                 </span>
@@ -1013,7 +1016,7 @@ export default function UsersPage() {
               )}
             </div>
           </div>
-          {formData.role === 'b2c_project_manager' && (
+          {formData.role === 'b2c_project_lead' && (
             <div>
               <label className="block text-slate-700 text-sm font-medium mb-1.5">
                 {lang === 'ar' ? 'المدير المباشر (B2C Head)' : 'Direct Manager (B2C Head)'}

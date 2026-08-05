@@ -11,7 +11,7 @@ import '../ui/widgets.dart';
 /// عهد المشاريع (B2C) — دفتر عهدة لكل مدير مشروع: رصيد جارٍ = مجموع الوارد
 /// ناقص الصادر. المديرون يختارون المندوب أولًا؛ المندوب يرى عهدته مباشرة.
 
-const _walletManagerRoles = {'super_admin', 'admin', 'b2c_head'};
+const _walletManagerRoles = {'super_admin', 'admin', 'b2c_manager'};
 
 String _money(dynamic v) {
   final n = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;

@@ -56,7 +56,7 @@ async function syncOnce() {
           $setOnInsert: {
             status: 'active',
             type: 'customer',
-            tags: ['operations', u.user_type].filter(Boolean),
+            tags: ['operations_staff', u.user_type].filter(Boolean),
           },
         },
         upsert: true,

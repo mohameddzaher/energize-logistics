@@ -43,7 +43,7 @@ exports.listTasks = async (req, res) => {
 exports.listAssignees = async (req, res) => {
   try {
     const users = await User.find({
-      role: 'administrator',
+      role: 'administration_staff',
       status: { $ne: 'inactive' },
     }).select('firstName lastName email role').sort({ firstName: 1 }).lean();
     res.json({

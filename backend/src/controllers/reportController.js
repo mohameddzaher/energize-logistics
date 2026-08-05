@@ -20,11 +20,11 @@ const cache = require('../utils/ttlCache');
 // never reach them — they have the portal, which is scoped to themselves.
 const REPORT_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator',
-  'operations_manager', 'operations', 'fleet_manager', 'fleet_supervisor',
+  'operations_manager', 'operations_staff', 'fleet_manager', 'fleet_supervisor',
   'hr_manager', 'hr_specialist', 'finance_manager', 'accountant',
   'crm_manager', 'crm_team_lead', 'sales_manager', 'contracts_manager',
   'customs_manager', 'workshop_manager', 'procurement_manager',
-  'bd_manager', 'marketing_manager', 'administrator',
+  'bd_manager', 'marketing_manager', 'administration_staff',
 ];
 
 // Some subjects are more sensitive than the section they sit in: an employee

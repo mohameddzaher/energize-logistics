@@ -21,7 +21,7 @@ import {
 import { useDialog } from '@/components/system/DialogProvider';
 
 // ── Access ──────────────────────────────────────────────────────────────────
-const STAFF = ['super_admin', 'admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'];
+const STAFF = ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'];
 const DELETE_ROLES = ['super_admin', 'admin', 'bd_manager', 'it_manager'];
 
 // الكحلي — the navy the whole page keys off.

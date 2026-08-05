@@ -40,7 +40,7 @@ const _clusters = <_Cluster>[
     ('فواتير متأخرة', 'Overdue invoices', 'overdueCount', false),
     ('عملاء نشطين', 'Active customers', 'customerCount', false),
   ]),
-  _Cluster('العمليات', 'Operations', Icons.local_shipping_outlined, T.orange, 'overview', 'operations', [
+  _Cluster('العمليات', 'Operations', Icons.local_shipping_outlined, T.orange, 'overview', 'operations_staff', [
     ('إجمالي الشحنات', 'Total shipments', 'total', false),
     ('هذا الشهر', 'This month', 'thisMonth', false),
     ('الشهر الماضي', 'Last month', 'lastMonth', false),

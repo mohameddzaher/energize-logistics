@@ -12,12 +12,12 @@ export type Lang = 'en' | 'ar';
 
 // Mirror of backend LS2_*_ROLES (config/constants.js).
 export const LS2_STAFF_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations',
-  'workshop_manager', 'workshop_employee', 'purchasing',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
+  'workshop_manager', 'workshop_employee', 'procurement_staff',
 ];
 export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager'];
 // Roles that see the section pinned in their sidebar.
-export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'workshop_manager', 'moderator'];
+export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'workshop_manager', 'moderator'];
 export const isLs2Staff = (u: RoleOrUser) => LS2_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Location Solutions');
 export const isLs2Admin = (u: RoleOrUser) => LS2_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Location Solutions');
 

@@ -82,11 +82,20 @@ const EXECUTIVE_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'admin', 'moderator']
 
 // The secretariat: runs the meetings, writes the minutes, records the actions.
 // asmaa@energize.com sits here via the `administrator` role.
-const SECRETARY_ROLES = ['administrator'];
+// الشؤون الإدارية: بتجدول الاجتماعات وتكتب المحاضر وتسجّل البنود — المدير
+// والموظف الاتنين، لأن الشغل ده بيتعمل فعلاً على المستويين.
+const SECRETARY_ROLES = ['administration_manager', 'administration_staff'];
 
 // Department heads whose role key does NOT end in `_manager`. Everything that
 // does end in `_manager` is picked up automatically — that is the whole point.
-const EXTRA_MANAGER_ROLES = ['b2c_head', 'operations', 'moderator'];
+// بعد ما اتظبط الهيكل الوظيفي (config/roles.js) كل مدير قسم بقى اسمه بينتهي
+// بـ `_manager`، فالقائمة دي فضيت تقريبًا. فاضل `moderator` وهو دور إشرافي عام
+// مش تبع قسم.
+//
+// اللي كان هنا وطلع غلط: `operations_staff` (كان اسمه `operations`) كان بيتحسب
+// مدير وهو موظف، و`b2c_project_manager` كان بينتهي بـ `_manager` فكان بيتحسب
+// مدير كمان. الاتنين اتظبطوا من الأساس بدل ما يتعالجوا باستثناءات هنا.
+const EXTRA_MANAGER_ROLES = ['moderator'];
 
 /** Is this role a department head who belongs in the room? */
 const isManagerRole = (role) => {

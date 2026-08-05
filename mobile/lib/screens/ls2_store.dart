@@ -82,7 +82,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     // user isn't handed buttons that 403.
     final auth = context.watch<AuthProvider>();
     final canEdit = const ['super_admin', 'admin', 'it_manager', 'operations_manager',
-      'operations', 'workshop_manager', 'workshop_employee', 'moderator'].contains(auth.role)
+      'operations_staff', 'workshop_manager', 'workshop_employee', 'moderator'].contains(auth.role)
         || auth.canEditSection('Location Solutions');
     final items = _items.where((i) => (_statusF.isEmpty || i['status'] == _statusF) && (_catF.isEmpty || i['category'] == _catF)).toList();
     return AppScaffold(
@@ -353,7 +353,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     if (!mounted) return;
     final auth = context.read<AuthProvider>();
     final canEdit = const ['super_admin', 'admin', 'it_manager', 'operations_manager',
-      'operations', 'workshop_manager', 'workshop_employee', 'moderator'].contains(auth.role)
+      'operations_staff', 'workshop_manager', 'workshop_employee', 'moderator'].contains(auth.role)
         || auth.canEditSection('Location Solutions');
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,

@@ -6,7 +6,7 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const validate = require('../middleware/validate');
 
-const walletRoles = ['super_admin', 'admin', 'operations_manager', 'operations'];
+const walletRoles = ['super_admin', 'admin', 'operations_manager', 'operations_staff'];
 const walletReadRoles = [...walletRoles, 'moderator'];
 const managerRoles = ['super_admin', 'admin', 'operations_manager'];
 

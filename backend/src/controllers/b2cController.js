@@ -22,9 +22,9 @@ const { emitToAll } = require('../websocket/socketManager');
 const pad2 = (n) => String(n).padStart(2, '0');
 const buildDateKey = (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`;
 
-const isB2CHead = (user) => user?.role === 'b2c_head' || user?.role === 'super_admin' || user?.role === 'admin';
+const isB2CHead = (user) => user?.role === 'b2c_manager' || user?.role === 'super_admin' || user?.role === 'admin';
 // Project managers currently have the same visibility/permissions as heads.
-const isB2CMember = (user) => isB2CHead(user) || user?.role === 'b2c_project_manager';
+const isB2CMember = (user) => isB2CHead(user) || user?.role === 'b2c_project_lead';
 
 // Build a scope filter. Project managers are treated as full-access for now —
 // the assignedProjects/assignedBranches plumbing is kept on the User model so we

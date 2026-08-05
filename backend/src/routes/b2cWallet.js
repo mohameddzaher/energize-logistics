@@ -8,7 +8,7 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const c = require('../controllers/b2cWalletController');
 
-const ALL = ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'];
+const ALL = ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'];
 
 router.use(authenticate);
 router.use(authorize(...ALL));

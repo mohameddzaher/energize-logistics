@@ -51,7 +51,7 @@ interface Payload {
   items: DriverKpi[];
 }
 
-const FLEET_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+const FLEET_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
 const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
 export default function FleetDriverKpisPage() {

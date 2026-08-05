@@ -50,8 +50,8 @@ async function login(e) {
   return (r.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
 }
 // Mirrors the frontend nav rule (lib/businessReview.ts).
-const isRunner = (r) => ['super_admin','admin','it_manager','it_specialist','moderator','administrator'].includes(r);
-const isParticipant = (r) => isRunner(r) || ['b2c_head','operations','moderator'].includes(r) || /_manager$/.test(r);
+const isRunner = (r) => ['super_admin','admin','it_manager','it_specialist','moderator','administration_staff'].includes(r);
+const isParticipant = (r) => isRunner(r) || ['b2c_manager','operations_staff','moderator'].includes(r) || /_manager$/.test(r);
 const navFor = (role) => [
   isParticipant(role) && 'اجتماعات المراجعة',
   isParticipant(role) && 'البنود المسندة إليّ',
@@ -68,7 +68,7 @@ const navFor = (role) => [
   const mk = (k, role) => User.create({ email: `zz-t-${k}@example.invalid`, password: 'Test@12345', firstName: k, lastName: 'T', role });
 
   const gm  = await mk('gm', 'admin');            // مدير الشركة
-  const sec = await mk('sec', 'administrator');   // السكرتارية
+  const sec = await mk('sec', 'administration_staff');   // السكرتارية
   const ops = await mk('ops', 'operations_manager'); // مدير قسم (حاضر)
   const hr  = await mk('hr', 'hr_manager');       // مدير قسم (غائب عن الاجتماع)
   const emp = await mk('emp', 'employee');        // موظف

@@ -33,7 +33,7 @@ async function login(e) {
   const { BrMeeting, BrAction, BrAssignment } = require('../models/BusinessReview');
   await User.deleteMany({ email: { $regex: '^zz-cm' } });
   const mk = (f, r) => User.create({ email: `zz-cm-${r}@example.invalid`, password: 'Test@12345', firstName: f, lastName: 'ت', role: r });
-  const sec = await mk('أسماء', 'administrator');
+  const sec = await mk('أسماء', 'administration_staff');
   const gm = await mk('محمد', 'admin');
   const ops = await mk('الكادي', 'operations_manager');
   const emp = await mk('خالد', 'employee');

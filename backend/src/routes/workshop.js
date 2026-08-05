@@ -6,8 +6,8 @@ const authorize = require('../middleware/rbac');
 
 const workshopRoles = ['super_admin', 'workshop_manager', 'workshop_employee'];
 const managerRoles = ['super_admin', 'workshop_manager'];
-const purchasingRoles = ['super_admin', 'workshop_manager', 'purchasing'];
-const allWorkshopRoles = ['super_admin', 'workshop_manager', 'workshop_employee', 'purchasing'];
+const purchasingRoles = ['super_admin', 'workshop_manager', 'procurement_staff'];
+const allWorkshopRoles = ['super_admin', 'workshop_manager', 'workshop_employee', 'procurement_staff'];
 
 router.use(authenticate);
 

@@ -28,26 +28,26 @@ const SECTIONS = [
   {
     key: 'Operations',
     apiPrefixes: ['/api/wallet'],
-    defaultRoles: ['admin', 'it_manager', 'employee', 'operations_manager', 'operations', 'moderator', 'procurement_manager', 'purchasing'],
+    defaultRoles: ['admin', 'it_manager', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff'],
   },
   {
     key: 'Operations Platform',
     apiPrefixes: ['/api/ops'],
-    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations', 'moderator', 'employee'],
+    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations_staff', 'moderator', 'employee'],
   },
   {
     // Trial: shipments created natively instead of on the external UPL system.
     // Independent from Operations Platform on purpose.
     key: 'Shipment Orders',
     apiPrefixes: ['/api/shipment-orders'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'],
   },
   {
     // Our own trucks — booking, drivers, follow-up calls. Sibling of the
     // Shipment Orders trial (that one books supplier trucks).
     key: 'Fleet Management',
     apiPrefixes: ['/api/fleet'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'],
   },
   {
     key: 'Customs',
@@ -62,7 +62,7 @@ const SECTIONS = [
   {
     key: 'Location Solutions',
     apiPrefixes: ['/api/ls2'],
-    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
+    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations_staff', 'workshop_manager', 'moderator'],
   },
   {
     key: 'Marketing',
@@ -98,7 +98,7 @@ const SECTIONS = [
     // الشؤون الإدارية (السكرتارية) — the shared office task board.
     key: 'Administration',
     apiPrefixes: ['/api/admin-tasks'],
-    defaultRoles: ['admin', 'administrator', 'bd_manager', 'it_manager', 'it_specialist'],
+    defaultRoles: ['admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'],
   },
   {
     // إدارة العقود — 3PL vendor contracts + analysis, other departments' contracts.
@@ -109,12 +109,12 @@ const SECTIONS = [
   {
     key: 'B2C',
     apiPrefixes: ['/api/b2c', '/api/b2c-wallet'],
-    defaultRoles: ['admin', 'it_manager', 'b2c_head', 'b2c_project_manager'],
+    defaultRoles: ['admin', 'it_manager', 'b2c_manager', 'b2c_project_lead'],
   },
   {
     key: 'Workshop',
     apiPrefixes: ['/api/workshop'],
-    defaultRoles: ['workshop_manager', 'workshop_employee', 'purchasing'],
+    defaultRoles: ['workshop_manager', 'workshop_employee', 'procurement_staff'],
   },
   {
     key: 'Remote',
@@ -134,12 +134,12 @@ const SECTIONS = [
   {
     key: 'CRM',
     apiPrefixes: ['/api/crm', '/api/crm-vendors'],
-    defaultRoles: ['admin', 'it_manager', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'],
+    defaultRoles: ['admin', 'it_manager', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'],
   },
   {
     key: 'Sales',
     apiPrefixes: ['/api/sales'],
-    defaultRoles: ['admin', 'it_manager', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'],
+    defaultRoles: ['admin', 'it_manager', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'],
   },
   {
     key: 'Accounting',
@@ -149,7 +149,7 @@ const SECTIONS = [
   {
     key: 'Procurement',
     apiPrefixes: ['/api/procurement'],
-    defaultRoles: ['admin', 'it_manager', 'procurement_manager', 'purchasing'],
+    defaultRoles: ['admin', 'it_manager', 'procurement_manager', 'procurement_staff'],
   },
 ];
 
@@ -191,18 +191,10 @@ const sectionLabel = (key, lang = 'ar') =>
   (lang === 'en' ? key : (SECTION_LABELS_AR[key] || key));
 const ACCESS_LEVELS = ['none', 'view', 'edit'];
 
-// Every assignable role (super_admin is implicit-all and excluded from editing).
-const ALL_ROLES = [
-  'admin', 'employee', 'operations_manager', 'operations', 'moderator', 'client',
-  'workshop_manager', 'workshop_employee', 'purchasing', 'b2c_head', 'b2c_project_manager',
-  'remote_employee', 'remote_manager', 'hr_manager', 'hr_specialist',
-  'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
-  'finance_manager', 'accountant', 'sales_manager', 'sales_rep',
-  'procurement_manager', 'customs_manager', 'customs_officer',
-  'it_manager', 'it_specialist',
-  'marketing_manager', 'marketing_specialist', 'bd_manager', 'bd_specialist',
-  'fleet_manager', 'fleet_supervisor', 'administrator', 'contracts_manager',
-];
+// كل دور ينفع يتعيّن لمستخدم (super_admin ليه كل حاجة ضمنيًا فمستثنى من
+// التعديل). مصدرها config/roles.js — كانت مكتوبة بالإيد فكانت بتفضل ناقصة دور
+// أو اتنين بعد أي إضافة.
+const ALL_ROLES = require('./roles').ALL_ROLES.filter((r) => r !== 'super_admin');
 
 const getSection = (key) => SECTIONS.find((s) => s.key === key);
 
@@ -214,12 +206,21 @@ const defaultAccess = (role, sectionKey) => {
   if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
   const s = getSection(sectionKey);
   if (!s) return 'none';
+  // مدير القسم وموظفوه بياخدوا قسمهم كامل، دايمًا. القاعدة دي فوق قوائم
+  // defaultRoles المكتوبة بالإيد: القوائم دي اتكتبت واحدة واحدة وكان بيتنسى
+  // منها ناس، وده اللي خلّى أقسام تفتح لناس والأزرار جواها مخفية عنهم.
+  if (require('./roles').rolesOfSection(sectionKey).includes(role)) return 'edit';
   // A section marked `defaultAllRoles` is open to all STAFF by default — only
   // `client` (an outside partner, who has the portal instead) is excluded. This
   // is how a section stays reachable by roles that don't exist yet.
   if (s.defaultAllRoles) return role === 'client' ? 'none' : 'edit';
   return s.defaultRoles.includes(role) ? 'edit' : 'none';
 };
+
+// كل قسم لازم يكون له مدير وموظف في config/roles.js. الفحص هنا لأن ده المكان
+// اللي القايمتين معروفين فيه — «مراجعة الأعمال» مستثناة عن قصد: هي منتدى بيقعد
+// فيه مديرو كل الأقسام، مش قسم له فريق.
+require('./roles').assertRolesCoverSections(SECTION_KEYS, ['Business Review']);
 
 module.exports = {
   SECTIONS, SECTION_KEYS, ACCESS_LEVELS, ALL_ROLES, getSection, defaultAccess,

@@ -112,7 +112,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
   final all = <AppSection>[
     AppSection(
       key: 'Operations', arTitle: 'العمليات', enTitle: 'Operations', icon: Icons.workspaces_outline,
-      roles: const [..._admins, 'employee', 'operations_manager', 'operations', 'moderator'],
+      roles: const [..._admins, 'employee', 'operations_manager', 'operations_staff', 'moderator'],
       pages: [
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen()),
         AppPage('الموردون', 'Vendors', Icons.store_outlined, (c) => ResourceScreen(config: vendorsCfg)),
@@ -153,14 +153,14 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Administration', arTitle: 'الشؤون الإدارية', enTitle: 'Administration', icon: Icons.dashboard_customize_outlined,
-      roles: const [..._admins, 'administrator', 'bd_manager'],
+      roles: const [..._admins, 'administration_staff', 'bd_manager'],
       pages: [
         AppPage('لوحة المهام', 'Task Board', Icons.view_kanban_outlined, (c) => const TasksBoardScreen()),
       ],
     ),
     AppSection(
       key: 'Fleet Management', arTitle: 'إدارة الأسطول', enTitle: 'Fleet Management', icon: Icons.local_shipping_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations', 'moderator', 'fleet_manager', 'fleet_supervisor'],
+      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: fleetDashSpec)),
         AppPage('التحليلات', 'Analytics', Icons.insights_outlined, (c) => const FleetAnalyticsScreen()),
@@ -192,7 +192,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'CRM', arTitle: 'إدارة العلاقات', enTitle: 'CRM', icon: Icons.handshake_outlined,
-      roles: const [..._admins, 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations'],
+      roles: const [..._admins, 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: crmDashSpec)),
         AppPage('الشركات', 'Companies', Icons.apartment_outlined, (c) => ResourceScreen(config: crmCompaniesCfg)),
@@ -237,7 +237,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Workshop', arTitle: 'الورشة', enTitle: 'Workshop', icon: Icons.handyman_outlined,
-      roles: const [..._admins, 'workshop_manager', 'workshop_employee', 'purchasing'],
+      roles: const [..._admins, 'workshop_manager', 'workshop_employee', 'procurement_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: workshopDashSpec)),
         AppPage('مستودع الورشة', 'Store', Icons.inventory_outlined, (c) => const WorkshopInventoryScreen()),
@@ -268,7 +268,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Location Solutions', arTitle: 'لوكيشن سوليوشن', enTitle: 'Location Solutions', icon: Icons.gps_fixed_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations', 'workshop_manager', 'moderator'],
+      roles: const [..._admins, 'operations_manager', 'operations_staff', 'workshop_manager', 'moderator'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const Ls2DashboardScreen()),
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen()),
@@ -284,7 +284,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Sales', arTitle: 'المبيعات', enTitle: 'Sales', icon: Icons.trending_up_outlined,
-      roles: const [..._admins, 'sales_manager', 'sales_rep', 'operations_manager', 'operations'],
+      roles: const [..._admins, 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: salesDashSpec)),
         AppPage('الأداء', 'Performance', Icons.leaderboard_outlined, (c) => const SalesPerformanceScreen()),
@@ -364,7 +364,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Operations Platform', arTitle: 'منصة العمليات', enTitle: 'Operations Platform', icon: Icons.hub_outlined,
-      roles: const [..._admins, 'moderator', 'employee', 'operations_manager', 'operations', 'workshop_manager', 'workshop_employee', 'purchasing', 'hr_manager', 'hr_specialist'],
+      roles: const [..._admins, 'moderator', 'employee', 'operations_manager', 'operations_staff', 'workshop_manager', 'workshop_employee', 'procurement_staff', 'hr_manager', 'hr_specialist'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const OpsDashboardScreen()),
         for (final cfg in opsResources)
@@ -376,7 +376,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Shipment Orders', arTitle: 'طلبات الشحنات', enTitle: 'Shipment Orders', icon: Icons.assignment_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations', 'moderator'],
+      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator'],
       pages: [
         AppPage('الشحنات', 'Orders', Icons.assignment_outlined, (c) => const ShipmentOrdersScreen()),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: shipmentOrdersCustomersCfg)),
@@ -402,7 +402,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'B2C', arTitle: 'B2C', enTitle: 'B2C', icon: Icons.storefront_outlined,
       // الباك يخدم داتا B2C لـ super_admin/admin + رؤوس B2C فقط؛ فمنستعرضهاش لـ IT
       // (كانوا بيشوفوا القسم ببيانات صفر) — نطابق النطاق تمامًا.
-      roles: const ['super_admin', 'admin', 'b2c_head', 'b2c_project_manager'],
+      roles: const ['super_admin', 'admin', 'b2c_manager', 'b2c_project_lead'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: b2cDashSpec)),
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg)),

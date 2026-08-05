@@ -7,7 +7,7 @@ export type Lang = 'en' | 'ar';
 
 export const FINANCE_STAFF_ROLES = ['super_admin', 'admin', 'finance_manager', 'accountant'];
 export const FINANCE_ADMIN_ROLES = ['super_admin', 'admin', 'finance_manager'];
-export const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations'];
+export const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
 export const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'sales_manager'];
 export const KPI_ROLES = ['super_admin', 'admin', 'moderator'];
 

@@ -152,7 +152,7 @@ exports.getDailyWallet = async (req, res) => {
     const userId = req.query.userId || req.user._id;
 
     // Operations users can only see their own wallet
-    if (req.user.role === 'operations' && userId.toString() !== req.user._id.toString()) {
+    if (req.user.role === 'operations_staff' && userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Cannot view other wallets' });
     }
 
@@ -218,7 +218,7 @@ exports.addTransaction = async (req, res) => {
 
     // Check if day is closed (only managers can add to closed days)
     const wallet = await getOrCreateWallet(req.user._id, req.user.branch, txDate);
-    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(req.user.role);
+    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet.isClosed && !isManager) {
       return res.status(400).json({ message: 'Day is closed. Contact manager to reopen.' });
@@ -419,7 +419,7 @@ exports.deleteTransaction = async (req, res) => {
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
 
     const wallet = await DailyWallet.findById(transaction.wallet);
-    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(req.user.role);
+    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
       return res.status(400).json({ message: 'Day is closed' });
@@ -504,7 +504,7 @@ exports.updateTransaction = async (req, res) => {
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
 
     const wallet = await DailyWallet.findById(transaction.wallet);
-    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations'].includes(req.user.role);
+    const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
       return res.status(400).json({ message: 'Day is closed' });
@@ -1006,7 +1006,7 @@ exports.getWalletHistory = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
 
-    if (req.user.role === 'operations' && userId.toString() !== req.user._id.toString()) {
+    if (req.user.role === 'operations_staff' && userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Cannot view other wallets' });
     }
 
@@ -1046,7 +1046,7 @@ exports.getUserWalletRange = async (req, res) => {
     if (!dateFrom || !dateTo) {
       return res.status(400).json({ message: 'dateFrom and dateTo are required' });
     }
-    if (req.user.role === 'operations' && userId.toString() !== req.user._id.toString()) {
+    if (req.user.role === 'operations_staff' && userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Cannot view other wallets' });
     }
 

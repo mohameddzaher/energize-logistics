@@ -34,7 +34,7 @@ export default function RepsPerformancePage() {
   const { user } = useAuth();
   const T = getB2CTranslations(lang);
   const tx = getB2cRepsPerformanceTranslations(lang);
-  const canCleanup = user && ['super_admin', 'admin', 'b2c_head'].includes(user.role);
+  const canCleanup = user && ['super_admin', 'admin', 'b2c_manager'].includes(user.role);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);

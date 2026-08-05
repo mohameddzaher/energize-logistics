@@ -5,6 +5,7 @@
 #   ./scripts/deploy-backend.sh              deploy
 #   ./scripts/deploy-backend.sh --check      verify what is live now, change nothing
 #   ./scripts/deploy-backend.sh --rollback   go back to the previous release
+#   ./scripts/deploy-backend.sh --diff       are the files on the VPS identical?
 #
 # Why this exists: both production incidents in this project came from a deploy
 # that "succeeded".
@@ -104,6 +105,20 @@ verify() {
   check ".env present" "$("${SSH[@]}" "test -f $APP_DIR/.env && echo yes || echo NO" 2>/dev/null | tr -d '\r')" "yes"
   check "uploads kept" "$("${SSH[@]}" "test -d $APP_DIR/uploads && echo yes || echo NO" 2>/dev/null | tr -d '\r')" "yes"
 
+  # أنهي كوميت شغّال هناك، ومطابق للي عندك ولا لأ.
+  local live_commit here_commit
+  live_commit=$("${SSH[@]}" "cat $APP_DIR/.deployed-commit 2>/dev/null" | tr -d '\r')
+  here_commit=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo '')
+  if [[ -z "$live_commit" ]]; then
+    note "commit: البرودكشن مش مختوم (اتنشر قبل ما الختم يتضاف) — قارن بـ --diff"
+  elif [[ "$live_commit" == "$here_commit" ]]; then
+    good "commit ${c_dim}($(git -C "$ROOT" rev-parse --short HEAD)) — مطابق للي عندك${c_off}"
+  else
+    printf '  %s!%s commit: البرودكشن على %s وإنت على %s\n' "$c_bad" "$c_off" \
+      "${live_commit:0:8}" "${here_commit:0:8}"
+    note "informational — انشر لو ده مش مقصود"
+  fi
+
   # The site is REPORTED but does not gate the backend. Netlify deploys on its own
   # schedule, and a push that lands here mid-rebuild made a perfectly good API
   # deploy "fail" and roll itself back — for a frontend blip that rolling the API
@@ -164,11 +179,30 @@ rollback() {
   verify && good "rolled back to $prev" || { bad "still unhealthy after rollback — needs a human"; exit 1; }
 }
 
+# هل الملفات اللي على السيرفر هي نفسها اللي عندي؟ الختم بيقول الكوميت، وده
+# بيقول الملفات — والاتنين مش نفس السؤال: ممكن حد يعدّل ملف على السيرفر بإيده.
+diff_source() {
+  say "Comparing $ROOT/backend/src with $APP_DIR/src"
+  local here there
+  here=$(cd "$ROOT/backend" && find src -type f -name '*.js' | sort | xargs shasum | shasum | cut -d' ' -f1)
+  there=$("${SSH[@]}" "cd $APP_DIR && find src -type f -name '*.js' | sort | xargs shasum | shasum | cut -d' ' -f1" | tr -d '\r')
+  printf '  local      %s\n  production %s\n' "$here" "$there"
+  if [[ "$here" == "$there" ]]; then good "identical"; return 0; fi
+  bad "the files differ"
+  note "listing the first differences…"
+  "${SSH[@]}" "cd $APP_DIR && find src -type f -name '*.js' | sort | xargs shasum" | tr -d '\r' | sort -k2 > /tmp/.energize-there
+  (cd "$ROOT/backend" && find src -type f -name '*.js' | sort | xargs shasum) | sort -k2 > /tmp/.energize-here
+  diff /tmp/.energize-here /tmp/.energize-there | head -20
+  rm -f /tmp/.energize-here /tmp/.energize-there
+  return 1
+}
+
 case "${1:-deploy}" in
   --check)    verify; exit $?;;
   --rollback) rollback; exit 0;;
+  --diff)     diff_source; exit $?;;
   deploy|"")  ;;
-  *) echo "usage: $0 [--check|--rollback]"; exit 2;;
+  *) echo "usage: $0 [--check|--rollback|--diff]"; exit 2;;
 esac
 
 # ── Pre-flight ──────────────────────────────────────────────────────────────
@@ -219,6 +253,10 @@ note "waiting for the app to come up…"
 wait_ready 20 || note "did not answer within 60s — verifying anyway"
 
 if verify_twice; then
+  # اختم الكوميت اللي اتنشر. من غير الختم ده، السؤال «البرودكشن شغّال على أنهي
+  # نسخة؟» مالوش إجابة إلا بمقارنة الملفات ملف ملف — وده اللي حصل فعلًا لما
+  # اتسأل السؤال. الختم بيتقرا في --check.
+  "${SSH[@]}" "printf '%s\n' '$(git rev-parse HEAD)' > $APP_DIR/.deployed-commit"
   "${SSH[@]}" "cd $RELEASES && ls -1 | sort | head -n -$KEEP_RELEASES | xargs -r rm -rf"
   say "Deployed $(git rev-parse --short HEAD) — healthy"
   note "previous release kept at $RELEASES/$STAMP"

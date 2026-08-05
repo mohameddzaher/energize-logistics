@@ -1,8 +1,9 @@
 /**
  * auditSectionRoleAccess — مدير كل قسم وموظفه بيوصلوا لـ API قسمهم فعلاً؟
  *
- *   node src/scripts/auditSectionRoleAccess.js        النص الأول
- *   node src/scripts/auditSectionRoleAccess.js --b    النص التاني
+ *   node src/scripts/auditSectionRoleAccess.js                      النص الأول
+ *   node src/scripts/auditSectionRoleAccess.js --b                  النص التاني
+ *   node src/scripts/auditSectionRoleAccess.js --base http://…      بيئة تانية
  *
  * بيعمل مستخدم مؤقت لكل دور وبيجرّب endpoint حقيقي من قسمه. المهم إن الرد
  * **مش 401/403** — الحالة الفعلية (200 أو حتى 404 لو الداتا فاضية) مش مهمة.
@@ -14,7 +15,9 @@
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
-const BASE = 'http://localhost:5599';
+const argv = process.argv.slice(2);
+const iB = argv.indexOf('--base');
+const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
 let pass=0, fail=0;
 const ok=(l,c,x='')=>{console.log(`  ${c?'✓':'✗ FAIL'}  ${l}${x?'  — '+x:''}`);c?pass++:fail++;};
 async function login(e){const r=await fetch(`${BASE}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:'Test@12345'})});

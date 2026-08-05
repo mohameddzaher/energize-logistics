@@ -1,17 +1,17 @@
-const { VehicleMaster, VehicleRegistryConfig } = require('../models/VehicleMaster');
+const { VehicleMaster, VehicleRegistryConfig, CorporatePolicy } = require('../models/VehicleMaster');
+const VehicleClaim = require('../models/VehicleClaim');
+const VDOC = require('../config/vehicleDocuments');
+const logAudit = require('../utils/auditLogger');
 const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
 
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} cache.clear('vreg:'); };
 
 // المستندات ذات تاريخ الانتهاء — المفتاح ← مسار التاريخ + الاسم.
-const DOC_TYPES = [
-  { key: 'insurance', ar: 'التأمين', en: 'Insurance', path: 'insurance.expiryDate' },
-  { key: 'operatingCard', ar: 'بطاقة التشغيل', en: 'Operating Card', path: 'operatingCard.expiryDate' },
-  { key: 'vehicleLicense', ar: 'رخصة السير', en: 'Vehicle License', path: 'vehicleLicense.expiryDate' },
-  { key: 'inspection', ar: 'الفحص', en: 'Inspection', path: 'inspection.expiryDate' },
-  { key: 'gps', ar: 'اشتراك GPS', en: 'GPS', path: 'gps.expiryDate' },
-];
+// تعريف واحد للمستندات — config/vehicleDocuments.js. كان فيه نسخة تانية هنا
+// بتحسب الحالة من غير ما تعرف «غير مطلوب»، فعربية مش محتاجة فحص كانت بتتحسب
+// ناقصة فحص.
+const DOC_TYPES = VDOC.DOCUMENTS;
 
 const DAY = 86400000;
 const daysUntil = (date) => (date ? Math.floor((new Date(date).getTime() - Date.now()) / DAY) : null);
@@ -32,13 +32,10 @@ const getConfig = async () => {
 };
 
 // حالة مستند مقابل عتبته: expired / critical(≤30) / warning(≤warnDays) / valid / none
-const docStatus = (date, warnDays) => {
-  const dr = daysUntil(date);
-  if (dr === null) return { status: 'none', days: null };
-  if (dr < 0) return { status: 'expired', days: dr };
-  if (dr <= 30) return { status: 'critical', days: dr };
-  if (dr <= (warnDays || 60)) return { status: 'warning', days: dr };
-  return { status: 'valid', days: dr };
+// غلاف رفيع حوالين VDOC.stateOf عشان الكود القديم يفضل شغّال بنفس شكل الرد.
+const docStatus = (date, alert, statusCode = '') => {
+  const { state, days } = VDOC.stateOf(date, statusCode, alert || {});
+  return { status: state === 'not_applicable' ? 'not_required' : state === 'missing' ? 'none' : state, days };
 };
 
 // يبني فلتر Mongo من الـ query (متعدد القيم + بحث + نطاق سنة).
@@ -134,14 +131,12 @@ exports.list = async (req, res) => {
 // يضيف حالة كل مستند + أقرب انتهاء + أدنى حالة للمركبة.
 function decorate(v, cfg) {
   const a = cfg.alerts || {};
-  const docs = {
-    insurance: docStatus(v.insurance?.expiryDate, a.insurance?.warnDays),
-    operatingCard: docStatus(v.operatingCard?.expiryDate, a.operatingCard?.warnDays),
-    vehicleLicense: docStatus(v.vehicleLicense?.expiryDate, a.vehicleLicense?.warnDays),
-    inspection: docStatus(v.inspection?.expiryDate, a.inspection?.warnDays),
-    gps: docStatus(v.gps?.expiryDate, a.gps?.warnDays),
-  };
-  const order = { expired: 0, critical: 1, warning: 2, valid: 3, none: 4 };
+  const docs = {};
+  for (const dt of DOC_TYPES) {
+    docs[dt.key] = docStatus(getPath(v, dt.path), a[dt.key], getPath(v, dt.statusPath));
+  }
+  // «غير مطلوب» مش أسوأ من «ساري» — هي مش مشكلة أصلاً، فآخر الترتيب.
+  const order = { expired: 0, critical: 1, warning: 2, valid: 3, none: 4, not_required: 5 };
   let worst = 'valid'; let worstDays = null;
   for (const [k, s] of Object.entries(docs)) {
     if (k === 'gps' && !a.gps?.enabled) continue;
@@ -213,7 +208,15 @@ exports.dashboard = async (req, res) => {
     if (hit !== undefined) return res.json(hit);
 
     const filter = buildFilter(req.query);
-    const DASH_FIELDS = 'sectorAr registrationTypeAr brandAr ownerNameAr colorAr tamStatusAr modelYear insurance.companyAr insurance.coverageTypeAr insurance.expiryDate insurance.premiumSar fuelCard.statusAr fuelCard.statusCode fuelCard.limitSar gps.deviceId operatingCard.cardNumber operatingCard.expiryDate vehicleLicense.expiryDate inspection.statusAr inspection.expiryDate';
+    const DASH_FIELDS = [
+      'plateNumber sectorAr registrationTypeAr brandAr modelAr ownerNameAr colorAr tamStatusAr modelYear accidentCount',
+      'insurance.companyAr insurance.coverageTypeAr insurance.expiryDate insurance.premiumSar insurance.statusCode insurance.policyNumber',
+      'fuelCard.provider fuelCard.statusAr fuelCard.statusCode fuelCard.consumptionTypeAr fuelCard.limitSar fuelCard.limitStatus fuelCard.cardNumber',
+      'gps.deviceModel gps.provider gps.status gps.statusCode gps.expiryDate gps.serialImei',
+      'operatingCard.cardNumber operatingCard.expiryDate operatingCard.statusCode',
+      'vehicleLicense.expiryDate vehicleLicense.statusCode',
+      'inspection.statusAr inspection.statusCode inspection.expiryDate',
+    ].join(' ');
     const [vehicles, cfg] = await Promise.all([VehicleMaster.find(filter).select(DASH_FIELDS).lean(), getConfig()]);
 
     const count = (fn) => vehicles.reduce((m, v) => { const k = fn(v) || '—'; m[k] = (m[k] || 0) + 1; return m; }, {});
@@ -241,9 +244,9 @@ exports.dashboard = async (req, res) => {
     // حالة المستندات (buckets) لكل نوع
     const docBuckets = {};
     for (const dt of DOC_TYPES) {
-      const b = { expired: 0, critical: 0, warning: 0, valid: 0, none: 0 };
-      const warnDays = cfg.alerts?.[dt.key]?.warnDays;
-      for (const v of vehicles) b[docStatus(getPath(v, dt.path), warnDays).status] += 1;
+      const b = { expired: 0, critical: 0, warning: 0, valid: 0, none: 0, not_required: 0 };
+      const alert = cfg.alerts?.[dt.key];
+      for (const v of vehicles) b[docStatus(getPath(v, dt.path), alert, getPath(v, dt.statusPath)).status] += 1;
       docBuckets[dt.key] = b;
     }
 
@@ -298,7 +301,7 @@ exports.alerts = async (req, res) => {
         if (!conf?.enabled) continue;
         const date = getPath(v, dt.path);
         if (!date) continue;
-        const st = docStatus(date, conf.warnDays);
+        const st = docStatus(date, conf, getPath(v, dt.statusPath));
         if (st.status === 'expired' || st.status === 'critical' || st.status === 'warning') {
           items.push({
             vehicleId: v._id, plateNumber: v.plateNumber, brandAr: v.brandAr, modelAr: v.modelAr,
@@ -326,12 +329,364 @@ exports.getSettings = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
   try {
+    // بننضّف اللي جاي: أي مستند معروف بس، وأرقام موجبة، و«حرج» مايبقاش أكبر من
+    // «تنبيه» — لو حصل، التنبيه البرتقالي كان هيختفي خالص وما حدش هيلاحظ.
+    const incoming = req.body.alerts || {};
+    const keys = [...VDOC.DOC_KEYS, 'corporatePolicy'];
+    const clean = {};
+    const problems = [];
+    for (const k of keys) {
+      const a = incoming[k];
+      if (!a) continue;
+      const warn = Math.max(0, Math.min(3650, Number(a.warnDays)));
+      const crit = Math.max(0, Math.min(3650, Number(a.criticalDays)));
+      if (!Number.isFinite(warn) || !Number.isFinite(crit)) { problems.push(k); continue; }
+      clean[k] = {
+        enabled: a.enabled !== false,
+        warnDays: warn,
+        criticalDays: Math.min(crit, warn),   // الحرج جوّه التنبيه دايمًا
+      };
+    }
+    if (problems.length) return res.status(400).json({ message: `قيم غير صحيحة في: ${problems.join(', ')}` });
+
     const cfg = await VehicleRegistryConfig.findOneAndUpdate(
       { key: 'vehicle-registry' },
-      { $set: { alerts: req.body.alerts, updatedBy: req.user?._id }, $setOnInsert: { key: 'vehicle-registry' } },
+      { $set: { alerts: clean, updatedBy: req.user?._id }, $setOnInsert: { key: 'vehicle-registry' } },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     ).lean();
+
+    logAudit({
+      user: req.user, action: 'update_vehicle_alert_settings', entity: 'VehicleRegistryConfig',
+      entityKey: 'vehicle-registry', changes: { after: clean }, ipAddress: req.ip,
+    }).catch(() => {});
+
     emit('vreg:updated', {});
     res.json({ config: { alerts: cfg.alerts } });
   } catch (e) { res.status(500).json({ message: 'Failed to save settings' }); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  نظرة شاملة — كارت لكل عمود، وكله قابل للضغط
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * كل عمود في الماستر بيطلع كارت: التوزيع بقيمه، وكام «مطلوب» و«غير مطلوب»
+ * و«لا يوجد». الفكرة إن صاحب الشركة يبص مرة واحدة ويعرف كل حاجة، وأي رقم
+ * يدوس عليه يوديه على الصفحة المفلترة عليه — عشان كده كل مجموعة بترجع معاها
+ * `filter` جاهز تبعته للـ list.
+ */
+exports.overview = async (req, res) => {
+  try {
+    const key = `vreg:overview:${JSON.stringify(req.query || {})}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return res.json(hit);
+
+    const filter = buildFilter(req.query);
+    const [vehicles, cfg, claims, policies] = await Promise.all([
+      VehicleMaster.find(filter).lean(),
+      getConfig(),
+      VehicleClaim.find({ isActive: true }).lean(),
+      CorporatePolicy.find({ isActive: true }).lean(),
+    ]);
+
+    // توزيع عمود: القيمة → العدد، مرتّبة، ومع كل قيمة الفلتر اللي بيوصّلها.
+    const group = (field, valueOf) => {
+      const m = new Map();
+      for (const v of vehicles) {
+        const raw = valueOf(v);
+        const k = raw === null || raw === undefined || raw === '' ? '—' : String(raw);
+        m.set(k, (m.get(k) || 0) + 1);
+      }
+      return [...m.entries()]
+        .map(([value, count]) => ({ value, count, filter: { [field]: value === '—' ? '' : value } }))
+        .sort((a, b) => b.count - a.count);
+    };
+
+    // بطاقات التصنيف — عمود بعمود.
+    const breakdowns = [
+      { key: 'sector', ar: 'القطاع', en: 'Sector', field: 'sectorAr', items: group('sectorAr', (v) => v.sectorAr) },
+      { key: 'registrationType', ar: 'نوع التسجيل', en: 'Registration type', field: 'registrationTypeAr', items: group('registrationTypeAr', (v) => v.registrationTypeAr) },
+      { key: 'brand', ar: 'الماركة', en: 'Brand', field: 'brandAr', items: group('brandAr', (v) => v.brandAr) },
+      { key: 'model', ar: 'الموديل', en: 'Model', field: 'modelAr', items: group('modelAr', (v) => v.modelAr) },
+      { key: 'modelYear', ar: 'سنة الصنع', en: 'Model year', field: 'modelYear', items: group('modelYear', (v) => v.modelYear) },
+      { key: 'color', ar: 'اللون', en: 'Colour', field: 'colorAr', items: group('colorAr', (v) => v.colorAr) },
+      { key: 'owner', ar: 'المالك', en: 'Owner', field: 'ownerNameAr', items: group('ownerNameAr', (v) => v.ownerNameAr) },
+      { key: 'tamStatus', ar: 'حالة تم', en: 'TAM status', field: 'tamStatusAr', items: group('tamStatusAr', (v) => v.tamStatusAr) },
+      { key: 'insuranceCompany', ar: 'شركة التأمين', en: 'Insurer', field: 'insurance.companyAr', items: group('insurance.companyAr', (v) => v.insurance?.companyAr) },
+      { key: 'coverageType', ar: 'نوع التغطية', en: 'Coverage', field: 'insurance.coverageTypeAr', items: group('insurance.coverageTypeAr', (v) => v.insurance?.coverageTypeAr) },
+      { key: 'fuelCardStatus', ar: 'حالة شريحة الوقود', en: 'Fuel card', field: 'fuelCard.statusAr', items: group('fuelCard.statusAr', (v) => v.fuelCard?.statusAr) },
+      { key: 'fuelConsumption', ar: 'نوع الاستهلاك', en: 'Consumption', field: 'fuelCard.consumptionTypeAr', items: group('fuelCard.consumptionTypeAr', (v) => v.fuelCard?.consumptionTypeAr) },
+      { key: 'gpsStatus', ar: 'حالة جهاز التتبّع', en: 'GPS status', field: 'gps.status', items: group('gps.status', (v) => v.gps?.status) },
+      { key: 'gpsProvider', ar: 'مزوّد التتبّع', en: 'GPS provider', field: 'gps.provider', items: group('gps.provider', (v) => v.gps?.provider) },
+      { key: 'gpsDevice', ar: 'موديل جهاز التتبّع', en: 'GPS device', field: 'gps.deviceModel', items: group('gps.deviceModel', (v) => v.gps?.deviceModel) },
+      { key: 'inspectionStatus', ar: 'حالة الفحص', en: 'Inspection', field: 'inspection.statusAr', items: group('inspection.statusAr', (v) => v.inspection?.statusAr) },
+    ];
+
+    // بطاقة لكل مستند: الحالات المحسوبة + الحالات الإدارية (مطلوب/غير مطلوب/لا يوجد).
+    const documents = DOC_TYPES.map((dt) => {
+      const states = { valid: 0, warning: 0, critical: 0, expired: 0, missing: 0, not_applicable: 0 };
+      const statuses = {};
+      let nearest = null;
+      for (const v of vehicles) {
+        const st = VDOC.stateOf(getPath(v, dt.path), getPath(v, dt.statusPath), cfg.alerts?.[dt.key]);
+        states[st.state] += 1;
+        const sc = getPath(v, dt.statusPath) || '';
+        statuses[sc] = (statuses[sc] || 0) + 1;
+        if (st.days != null && st.days >= 0 && (nearest === null || st.days < nearest)) nearest = st.days;
+      }
+      return {
+        key: dt.key, ar: dt.ar, en: dt.en, icon: dt.icon,
+        alert: cfg.alerts?.[dt.key] || {},
+        states,
+        // بالاسم زي ما هو في الإكسل: مطلوب / غير مطلوب / لا يوجد / لدى البنك …
+        statuses: Object.entries(statuses)
+          .map(([code, count]) => ({ code, ar: VDOC.statusLabel(code, 'ar'), en: VDOC.statusLabel(code, 'en'), count }))
+          .sort((a, b) => b.count - a.count),
+        needsAttention: states.expired + states.critical + states.warning,
+        nearestDays: nearest,
+      };
+    });
+
+    // أرقام فوق.
+    const totals = {
+      vehicles: vehicles.length,
+      insuredPremiumSar: Math.round(vehicles.reduce((t, v) => t + (Number(v.insurance?.premiumSar) || 0), 0)),
+      withGps: vehicles.filter((v) => v.gps?.serialImei || v.gps?.deviceModel).length,
+      activeFuelCards: vehicles.filter((v) => v.fuelCard?.statusCode === 'active').length,
+      withAccidents: vehicles.filter((v) => (v.accidentCount || 0) > 0).length,
+      needsAttention: documents.reduce((t, d) => t + d.needsAttention, 0),
+    };
+
+    // الحوادث والمطالبات — الفلوس هي السؤال.
+    const openClaims = claims.filter((c) => c.statusCode !== 'closed');
+    const claimTotals = {
+      total: claims.length,
+      open: openClaims.length,
+      estimatedSar: Math.round(claims.reduce((t, c) => t + (Number(c.claim?.estimatedAmountSar) || 0), 0)),
+      expectedRecoverySar: Math.round(claims.reduce((t, c) => t + (Number(c.claim?.expectedRecoverySar) || 0), 0)),
+      ourFault: claims.filter((c) => (c.faultPercent || 0) >= 50).length,
+      byInsurer: [...claims.reduce((m, c) => m.set(c.claim?.insurerAr || '—', (m.get(c.claim?.insurerAr || '—') || 0) + 1), new Map())]
+        .map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count),
+    };
+
+    // وثائق الشركة — انتهاؤها بيوقّف الشغل كله مش عربية واحدة.
+    const corporate = policies.map((p) => {
+      const st = VDOC.stateOf(p.expiryDate, '', cfg.alerts?.corporatePolicy);
+      return { _id: p._id, scopeAr: p.scopeAr, companyAr: p.companyAr, expiryDate: p.expiryDate,
+        premiumSar: p.premiumSar, policyNumbers: p.policyNumbers, state: st.state, days: st.days };
+    }).sort((a, b) => (a.days ?? 1e9) - (b.days ?? 1e9));
+
+    const body = { totals, breakdowns, documents, claims: claimTotals, corporate, alerts: cfg.alerts || {} };
+    cache.set(key, body, 20000);
+    res.json(body);
+  } catch (e) {
+    console.error('vreg overview', e);
+    res.status(500).json({ message: 'تعذّر تحميل نظرة المركبات' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  الانتهاءات — بفلتر مرن: «وريني اللي هينتهي خلال كام يوم»
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * GET /expiring?doc=insurance&withinDays=30
+ *   doc         مستند واحد أو أكتر (مفصولين بفاصلة)، فاضي = كلهم
+ *   withinDays  أي رقم يكتبه المستخدم — مش قايمة ثابتة (٣٠/٦٠/٩٠)
+ *   includeExpired=0  يخفي المنتهي بالفعل
+ *   state       فلتر إضافي على الحالة المحسوبة
+ * بيرجّع صف لكل (مركبة × مستند)، مرتّب بالأقرب انتهاءً.
+ */
+exports.expiring = async (req, res) => {
+  try {
+    const withinDays = req.query.withinDays === '' || req.query.withinDays == null
+      ? null : Math.max(0, Number(req.query.withinDays) || 0);
+    const wanted = _multi(req.query.doc);
+    const docs = wanted.length ? DOC_TYPES.filter((d) => wanted.includes(d.key)) : DOC_TYPES;
+    const includeExpired = req.query.includeExpired !== '0';
+    const states = _multi(req.query.state);
+
+    const [vehicles, cfg] = await Promise.all([
+      VehicleMaster.find(buildFilter(req.query)).lean(),
+      getConfig(),
+    ]);
+
+    const rows = [];
+    for (const v of vehicles) {
+      for (const dt of docs) {
+        const expiry = getPath(v, dt.path);
+        const statusCode = getPath(v, dt.statusPath) || '';
+        const st = VDOC.stateOf(expiry, statusCode, cfg.alerts?.[dt.key]);
+        // «غير مطلوب» مش بينتهي، و«بدون تاريخ» ملهاش مكان في شاشة انتهاءات.
+        if (st.state === 'not_applicable' || st.state === 'missing') continue;
+        if (!includeExpired && st.state === 'expired') continue;
+        if (states.length && !states.includes(st.state)) continue;
+        // المنتهي بالفعل بيفضل ظاهر مهما كانت المدة — هو أصلاً فات الميعاد.
+        if (withinDays !== null && st.days > withinDays) continue;
+        rows.push({
+          vehicleId: v._id, plateNumber: v.plateNumber, brandAr: v.brandAr, modelAr: v.modelAr,
+          sectorAr: v.sectorAr, ownerNameAr: v.ownerNameAr, modelYear: v.modelYear,
+          docKey: dt.key, docAr: dt.ar, docEn: dt.en,
+          expiryDate: expiry, daysRemaining: st.days, state: st.state, statusCode,
+          reference: dt.key === 'insurance' ? v.insurance?.policyNumber
+            : dt.key === 'operatingCard' ? v.operatingCard?.cardNumber
+              : dt.key === 'gps' ? v.gps?.serialImei : '',
+          company: dt.key === 'insurance' ? v.insurance?.companyAr : dt.key === 'gps' ? v.gps?.provider : '',
+        });
+      }
+    }
+    rows.sort((a, b) => (a.daysRemaining ?? 1e9) - (b.daysRemaining ?? 1e9));
+
+    // ملخّص بيتحسب على نفس الصفوف، فالرقم اللي فوق دايمًا بيوصف اللي تحت.
+    const summary = { total: rows.length, expired: 0, critical: 0, warning: 0, valid: 0 };
+    const byDoc = {};
+    for (const r of rows) {
+      summary[r.state] = (summary[r.state] || 0) + 1;
+      byDoc[r.docKey] = (byDoc[r.docKey] || 0) + 1;
+    }
+    res.json({
+      rows: rows.slice(0, 2000),
+      summary,
+      byDoc: DOC_TYPES.map((d) => ({ key: d.key, ar: d.ar, en: d.en, count: byDoc[d.key] || 0 })),
+      withinDays, docs: DOC_TYPES.map((d) => ({ key: d.key, ar: d.ar, en: d.en })),
+    });
+  } catch (e) {
+    console.error('vreg expiring', e);
+    res.status(500).json({ message: 'تعذّر تحميل الانتهاءات' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  التجديد
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * POST /:id/renew  { document, newExpiry, cost?, reference?, note? }
+ *
+ * بيحدّث تاريخ الانتهاء **وبيقيّد التجديد في السجل** بالتاريخ القديم والجديد
+ * ومين عمله. من غير السجل، «جدّدناها امتى وبكام؟» مالهاش إجابة بعد أول تجديد.
+ * وبيشيل حالة «لا يوجد/مطلوب» تلقائيًا — بقى فيه تاريخ خلاص.
+ */
+exports.renew = async (req, res) => {
+  try {
+    const doc = VDOC.getDoc(req.body.document);
+    if (!doc) return res.status(400).json({ message: 'نوع المستند غير معروف' });
+    const newExpiry = req.body.newExpiry ? new Date(req.body.newExpiry) : null;
+    if (!newExpiry || isNaN(newExpiry)) return res.status(400).json({ message: 'أدخل تاريخ الانتهاء الجديد' });
+
+    const v = await VehicleMaster.findById(req.params.id);
+    if (!v) return res.status(404).json({ message: 'المركبة غير موجودة' });
+
+    const [block, field] = doc.path.split('.');
+    const previous = v[block]?.[field] || null;
+    // تجديد لتاريخ فات معناه غالبًا غلطة كتابة — نوقفه بدل ما يتسجّل ويلخبط.
+    if (newExpiry < new Date(new Date().setHours(0, 0, 0, 0))) {
+      return res.status(400).json({ message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' });
+    }
+
+    v[block][field] = newExpiry;
+    const [sBlock, sField] = doc.statusPath.split('.');
+    if (v[sBlock] && ['none', 'required', 'unknown', ''].includes(v[sBlock][sField])) v[sBlock][sField] = '';
+    // المستندات اللي اتحفظت قبل ما الحقل ده يتضاف مش هيكون عندها المصفوفة أصلاً.
+    if (!Array.isArray(v.renewals)) v.renewals = [];
+    v.renewals.push({
+      document: doc.key, previousExpiry: previous, newExpiry,
+      cost: req.body.cost != null && req.body.cost !== '' ? Number(req.body.cost) : null,
+      reference: String(req.body.reference || '').trim(),
+      note: String(req.body.note || '').trim(),
+      byName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim(),
+    });
+    await v.save();
+
+    logAudit({
+      user: req.user, action: 'renew_vehicle_document', entity: 'VehicleMaster', entityId: v._id,
+      changes: { before: { [doc.key]: previous }, after: { [doc.key]: newExpiry } }, ipAddress: req.ip,
+    }).catch(() => {});
+
+    emit('vreg:updated', {});
+    const cfg = await getConfig();
+    res.json({ vehicle: decorate(v.toObject(), cfg) });
+  } catch (e) {
+    console.error('vreg renew', e);
+    res.status(500).json({ message: 'تعذّر تسجيل التجديد' });
+  }
+};
+
+// ── الحوادث والمطالبات ──────────────────────────────────────────────────────
+exports.listClaims = async (req, res) => {
+  try {
+    const f = { isActive: true };
+    if (req.query.status) f.statusCode = req.query.status;
+    if (req.query.insurer) f['claim.insurerAr'] = req.query.insurer;
+    if (req.query.vehicleId) f.vehicle = req.query.vehicleId;
+    if (req.query.q && req.query.q.trim()) {
+      const rx = new RegExp(req.query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      f.$or = [{ vehiclePlate: rx }, { accidentNumber: rx }, { counterpartyNameAr: rx }, { 'claim.insurerAr': rx }, { incidentSubjectAr: rx }];
+    }
+    const rows = await VehicleClaim.find(f).sort({ accidentDate: -1 }).limit(500).lean();
+    const money = (k) => Math.round(rows.reduce((t, r) => t + (Number(r.claim?.[k]) || 0), 0));
+    res.json({
+      claims: rows,
+      totals: {
+        total: rows.length,
+        open: rows.filter((r) => r.statusCode !== 'closed').length,
+        estimatedSar: money('estimatedAmountSar'),
+        expectedRecoverySar: money('expectedRecoverySar'),
+        gapSar: money('recoveryGapSar'),
+        // «مر عليها كام يوم من غير رد من التأمين» — ده اللي بيكشف المطالبة النايمة.
+        stale: rows.filter((r) => r.statusCode !== 'closed' && r.claim?.lastInsurerUpdateDate
+          && VDOC.daysLeft(r.claim.lastInsurerUpdateDate) < -30).length,
+      },
+    });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل الحوادث' }); }
+};
+
+// ── وثائق التأمين على مستوى الشركة ──────────────────────────────────────────
+exports.listCorporatePolicies = async (req, res) => {
+  try {
+    const [rows, cfg] = await Promise.all([
+      CorporatePolicy.find({ isActive: true }).sort({ expiryDate: 1 }).lean(),
+      getConfig(),
+    ]);
+    res.json({
+      policies: rows.map((p) => {
+        const st = VDOC.stateOf(p.expiryDate, '', cfg.alerts?.corporatePolicy);
+        return { ...p, state: st.state, daysRemaining: st.days };
+      }),
+    });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل وثائق الشركة' }); }
+};
+
+exports.renewCorporatePolicy = async (req, res) => {
+  try {
+    const newExpiry = req.body.newExpiry ? new Date(req.body.newExpiry) : null;
+    if (!newExpiry || isNaN(newExpiry)) return res.status(400).json({ message: 'أدخل تاريخ الانتهاء الجديد' });
+    const p = await CorporatePolicy.findById(req.params.id);
+    if (!p) return res.status(404).json({ message: 'الوثيقة غير موجودة' });
+    const previous = p.expiryDate;
+    p.expiryDate = newExpiry;
+    if (!Array.isArray(p.renewals)) p.renewals = [];
+    p.renewals.push({
+      previousExpiry: previous, newExpiry,
+      cost: req.body.cost != null && req.body.cost !== '' ? Number(req.body.cost) : null,
+      reference: String(req.body.reference || '').trim(),
+      note: String(req.body.note || '').trim(),
+      byName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim(),
+    });
+    await p.save();
+    logAudit({
+      user: req.user, action: 'renew_corporate_policy', entity: 'CorporatePolicy', entityId: p._id,
+      changes: { before: { expiry: previous }, after: { expiry: newExpiry } }, ipAddress: req.ip,
+    }).catch(() => {});
+    emit('vreg:updated', {});
+    res.json({ policy: p });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تسجيل التجديد' }); }
+};
+
+/** تعريف المستندات — الواجهة بتبني منه الفلاتر والإعدادات بدل ما تكرّرها. */
+exports.documentTypes = async (req, res) => {
+  const cfg = await getConfig();
+  res.json({
+    documents: DOC_TYPES.map((d) => ({ key: d.key, ar: d.ar, en: d.en, icon: d.icon, alert: cfg.alerts?.[d.key] || {} })),
+    corporatePolicyAlert: cfg.alerts?.corporatePolicy || {},
+    states: VDOC.STATE_LABELS,
+    statuses: VDOC.STATUS_LABELS,
+  });
 };

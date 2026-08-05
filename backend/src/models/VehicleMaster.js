@@ -9,6 +9,9 @@ const vehicleMasterSchema = new mongoose.Schema({
 
   // الهوية
   plateNumber: { type: String, required: true, unique: true, trim: true, index: true },
+  // اللوحة بعد توحيد الهمزات وإزالة المسافات — مفتاح الربط بالحوادث، لأن نفس
+  // اللوحة بتتكتب «أ س ي» و«ا س ي» في ملفات مختلفة.
+  plateKey: { type: String, default: '', index: true },
   plateLettersAr: { type: String, default: '' },
   plateDigits: { type: String, default: '' },
   chassisNumber: { type: String, trim: true, index: true },
@@ -31,7 +34,14 @@ const vehicleMasterSchema = new mongoose.Schema({
   tamStatusAr: { type: String, default: '' },
   tamStatusCode: { type: String, default: '' }, // owner / user / none
 
-  // التأمين
+  // ── المستندات ذات تاريخ انتهاء ────────────────────────────────────────────
+  // كل مستند له، غير التاريخ، حالتين مختلفتين تمامًا وبيتخلط بينهم:
+  //   `statusCode`   ليه مفيش تاريخ؟  none | required | not_required | unknown |
+  //                  held_by_third_party  — ده وضع إداري بيتسجّل يدويًا.
+  //   `documentState` التاريخ ده معناه إيه دلوقتي؟ valid | warning | critical |
+  //                  expired | missing | not_applicable — **محسوبة** من التاريخ
+  //                  وعتبة التنبيه، مش مخزّنة، لأنها بتتغيّر كل يوم لوحدها.
+  // «غير مطلوب» مش نقص بيانات — دي حالة سليمة، ولازم تتعدّ لوحدها.
   insurance: {
     policyNumber: { type: String, default: '' },
     companyAr: { type: String, default: '', index: true },
@@ -40,6 +50,7 @@ const vehicleMasterSchema = new mongoose.Schema({
     expiryDate: { type: Date, default: null, index: true },
     premiumSar: { type: Number, default: null },
     status: { type: String, default: '' },
+    statusCode: { type: String, default: '', index: true },
   },
 
   // شريحة الوقود (بترو اب)
@@ -57,29 +68,50 @@ const vehicleMasterSchema = new mongoose.Schema({
   // GPS (الهيكل موجود، البيانات غالبًا فاضية)
   gps: {
     deviceId: { type: String, default: '' },
+    deviceModel: { type: String, default: '' },
     simNumber: { type: String, default: '' },
-    provider: { type: String, default: '' },
+    serialImei: { type: String, default: '' },
+    provider: { type: String, default: '', index: true },
     status: { type: String, default: '' },
-    expiryDate: { type: Date, default: null },
+    statusCode: { type: String, default: '', index: true }, // active/inactive/required/not_required/stolen
+    expiryDate: { type: Date, default: null, index: true }, // انتهاء الاشتراك
   },
 
   // بطاقة التشغيل
   operatingCard: {
     cardNumber: { type: String, default: '' },
     expiryDate: { type: Date, default: null, index: true },
+    statusCode: { type: String, default: '', index: true },
   },
 
   // رخصة السير
   vehicleLicense: {
     expiryDate: { type: Date, default: null, index: true },
+    statusCode: { type: String, default: '', index: true },
   },
 
   // الفحص الدوري
   inspection: {
     statusAr: { type: String, default: '' },
-    statusCode: { type: String, default: '' }, // passed / none / …
+    statusCode: { type: String, default: '', index: true }, // passed / none / with_bank / …
     expiryDate: { type: Date, default: null, index: true },
   },
+
+  // ── سجل التجديدات ─────────────────────────────────────────────────────────
+  // «جدّدتها لغاية امتى وبكام؟» سؤال بيتسأل كتير، والإجابة لازم تفضل موجودة حتى
+  // بعد التجديد اللي بعده. كل تجديد بيتقيّد هنا بالتاريخ القديم والجديد ومين عمله.
+  renewals: [{
+    document: { type: String, required: true },   // insurance | operatingCard | …
+    previousExpiry: { type: Date, default: null },
+    newExpiry: { type: Date, required: true },
+    cost: { type: Number, default: null },
+    reference: { type: String, default: '' },     // رقم الوثيقة/الإيصال الجديد
+    note: { type: String, default: '' },
+    at: { type: Date, default: Date.now },
+    byName: { type: String, default: '' },
+  }],
+
+  accidentCount: { type: Number, default: 0, index: true },
 
   notesAr: { type: String, default: '' },
   isActive: { type: Boolean, default: true, index: true },
@@ -91,17 +123,47 @@ const vehicleMasterSchema = new mongoose.Schema({
 // المستخدم يحدد: أنبهني قبل انتهاء التأمين بـ 60 يوم، بطاقة التشغيل بـ 30 يوم … إلخ.
 const vehicleRegistryConfigSchema = new mongoose.Schema({
   key: { type: String, default: 'vehicle-registry', unique: true },
+  // عتبة التنبيه لكل مستند: «نبّهني قبل انتهاء التأمين بـ ٦٠ يوم». المستخدم
+  // بيغيّرها من صفحة الإعدادات، و`critical` هي العتبة الحمرا اللي بعدها الموضوع
+  // مستعجل مش تنبيه.
   alerts: {
-    insurance: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 } },
-    operatingCard: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 } },
-    vehicleLicense: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 } },
-    inspection: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 } },
-    gps: { enabled: { type: Boolean, default: false }, warnDays: { type: Number, default: 30 } },
+    insurance: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 }, criticalDays: { type: Number, default: 15 } },
+    operatingCard: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 } },
+    vehicleLicense: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 } },
+    inspection: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 } },
+    gps: { enabled: { type: Boolean, default: false }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 } },
+    corporatePolicy: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 }, criticalDays: { type: Number, default: 30 } },
   },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}, { timestamps: true });
+
+// ── وثائق التأمين على مستوى الشركة ──────────────────────────────────────────
+// مش مربوطة بمركبة (تأمين بضائع، خيانة أمانة). ليها تاريخ انتهاء زي أي مستند
+// تاني، فبتظهر في نفس شاشة الانتهاءات — انتهاؤها بيوقّف الشغل كله مش عربية.
+const corporatePolicySchema = new mongoose.Schema({
+  scopeAr: { type: String, default: '', index: true },
+  policyholderAr: { type: String, default: '' },
+  policyNumbers: { type: [String], default: [] },
+  companyAr: { type: String, default: '' },
+  expiryDate: { type: Date, default: null, index: true },
+  premiumSar: { type: Number, default: null },
+  statusAr: { type: String, default: '' },
+  statusCode: { type: String, default: '' },
+  notesAr: { type: String, default: '' },
+  renewals: [{
+    previousExpiry: { type: Date, default: null },
+    newExpiry: { type: Date, required: true },
+    cost: { type: Number, default: null },
+    reference: { type: String, default: '' },
+    note: { type: String, default: '' },
+    at: { type: Date, default: Date.now },
+    byName: { type: String, default: '' },
+  }],
+  isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
 module.exports = {
   VehicleMaster: mongoose.models.VehicleMaster || mongoose.model('VehicleMaster', vehicleMasterSchema),
   VehicleRegistryConfig: mongoose.models.VehicleRegistryConfig || mongoose.model('VehicleRegistryConfig', vehicleRegistryConfigSchema),
+  CorporatePolicy: mongoose.models.CorporatePolicy || mongoose.model('CorporatePolicy', corporatePolicySchema),
 };

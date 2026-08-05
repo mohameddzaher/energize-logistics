@@ -1,3 +1,4 @@
+import api from '@/lib/api';
 // أنواع ومساعدات سجل المركبات (Vehicle Registry) — يقابل /api/vehicle-registry.
 export type DocStatus = { status: 'expired' | 'critical' | 'warning' | 'valid' | 'none'; days: number | null };
 
@@ -25,7 +26,7 @@ export type AlertItem = {
   docType: string; docAr: string; docEn: string; expiryDate: string; daysRemaining: number; status: 'expired' | 'critical' | 'warning';
 };
 
-export type RegConfig = { alerts: Record<string, { enabled: boolean; warnDays: number }> };
+export type RegConfig = { alerts: Record<string, { enabled: boolean; warnDays: number; criticalDays: number }> };
 
 export const DOC_TYPES = [
   { key: 'insurance', ar: 'التأمين', en: 'Insurance', datePath: (v: VReg) => v.insurance?.expiryDate },
@@ -63,3 +64,77 @@ export const daysText = (n: number | null | undefined, ar: boolean) => {
 };
 
 export const CHART_COLORS = ['#f37121', '#12325c', '#16a34a', '#0ea5e9', '#8b5cf6', '#ec4899', '#ca8a04', '#dc2626', '#14b8a6', '#64748b'];
+
+
+// ── النظرة الشاملة ──────────────────────────────────────────────────────────
+// كل كارت بيرجع معاه `filter` جاهز — الواجهة بتبعته زي ما هو لصفحة القائمة بدل
+// ما تبني الفلتر عندها وتختلف عن السيرفر في معنى «العمود ده فاضي».
+export interface BreakdownItem { value: string; count: number; filter: Record<string, string> }
+export interface Breakdown { key: string; ar: string; en: string; field: string; items: BreakdownItem[] }
+
+export interface DocCard {
+  key: string; ar: string; en: string; icon: string;
+  alert: { enabled?: boolean; warnDays?: number; criticalDays?: number };
+  states: Record<'valid' | 'warning' | 'critical' | 'expired' | 'missing' | 'not_applicable', number>;
+  statuses: { code: string; ar: string; en: string; count: number }[];
+  needsAttention: number;
+  nearestDays: number | null;
+}
+
+export interface VehicleOverview {
+  totals: { vehicles: number; insuredPremiumSar: number; withGps: number; activeFuelCards: number; withAccidents: number; needsAttention: number };
+  breakdowns: Breakdown[];
+  documents: DocCard[];
+  claims: { total: number; open: number; estimatedSar: number; expectedRecoverySar: number; ourFault: number; byInsurer: { value: string; count: number }[] };
+  corporate: { _id: string; scopeAr: string; companyAr: string; expiryDate: string; premiumSar: number; policyNumbers: string[]; state: string; days: number | null }[];
+  alerts: Record<string, any>;
+}
+
+export interface ExpiringRow {
+  vehicleId: string; plateNumber: string; brandAr: string; modelAr: string; sectorAr: string;
+  ownerNameAr: string; modelYear: number | null;
+  docKey: string; docAr: string; docEn: string;
+  expiryDate: string | null; daysRemaining: number | null; state: string; statusCode: string;
+  reference?: string; company?: string;
+}
+
+export const STATE_META: Record<string, { ar: string; en: string; color: string; bg: string }> = {
+  valid: { ar: 'ساري', en: 'Valid', color: '#16a34a', bg: 'bg-emerald-100 text-emerald-700' },
+  warning: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
+  critical: { ar: 'ينتهي قريبًا جدًا', en: 'Critical', color: '#ea580c', bg: 'bg-orange-100 text-orange-700' },
+  expired: { ar: 'منتهي', en: 'Expired', color: '#dc2626', bg: 'bg-red-100 text-red-700' },
+  missing: { ar: 'بدون تاريخ', en: 'No date', color: '#94a3b8', bg: 'bg-slate-100 text-slate-600' },
+  not_applicable: { ar: 'غير مطلوب', en: 'Not applicable', color: '#64748b', bg: 'bg-slate-100 text-slate-500' },
+};
+export const stateLabel = (s: string, ar: boolean) => (STATE_META[s] ? (ar ? STATE_META[s].ar : STATE_META[s].en) : s);
+
+const qs = (q: Record<string, string | number | undefined>) =>
+  new URLSearchParams(Object.entries(q).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, String(v)])).toString();
+
+export const getOverview = (q: Record<string, string> = {}) =>
+  api.get<VehicleOverview>(`/api/vehicle-registry/overview${qs(q) ? `?${qs(q)}` : ''}`);
+
+export const getExpiring = (q: Record<string, string | number | undefined> = {}) =>
+  api.get<{
+    rows: ExpiringRow[];
+    summary: Record<string, number>;
+    byDoc: { key: string; ar: string; en: string; count: number }[];
+    withinDays: number | null;
+    docs: { key: string; ar: string; en: string }[];
+  }>(`/api/vehicle-registry/expiring${qs(q) ? `?${qs(q)}` : ''}`);
+
+export const renewDocument = (vehicleId: string, body: { document: string; newExpiry: string; cost?: number | null; reference?: string; note?: string }) =>
+  api.post<{ vehicle: VReg }>(`/api/vehicle-registry/${vehicleId}/renew`, body);
+
+export const getClaims = (q: Record<string, string> = {}) =>
+  api.get<{ claims: any[]; totals: { total: number; open: number; estimatedSar: number; expectedRecoverySar: number; gapSar: number; stale: number } }>(
+    `/api/vehicle-registry/claims${qs(q) ? `?${qs(q)}` : ''}`);
+
+export const getCorporatePolicies = () =>
+  api.get<{ policies: any[] }>('/api/vehicle-registry/corporate-policies');
+export const renewCorporatePolicy = (id: string, body: any) =>
+  api.post(`/api/vehicle-registry/corporate-policies/${id}/renew`, body);
+
+export const getDocumentTypes = () =>
+  api.get<{ documents: { key: string; ar: string; en: string; icon: string; alert: any }[]; corporatePolicyAlert: any; states: any; statuses: any }>(
+    '/api/vehicle-registry/document-types');

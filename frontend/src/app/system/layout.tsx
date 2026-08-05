@@ -17,6 +17,7 @@ import {
   Activity, Car, UserSquare, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck, PackageSearch, SlidersHorizontal,
   Thermometer, Satellite, Crown, Container, FileBarChart,
   Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail,
+  CalendarClock, TriangleAlert,
   FileSignature, PhoneCall,
 } from 'lucide-react';
 import api from '@/lib/api';
@@ -230,9 +231,13 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/guide', label: L.customsGuide, icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     // Vehicles & Authorizations (المركبات والتفاويض) — super admin + HR + Accounting
-    { href: '/system/vehicles/registry/dashboard', label: lang === 'ar' ? 'تحليلات المركبات' : 'Registry Analytics', icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
-    { href: '/system/vehicles/registry', label: lang === 'ar' ? 'سجل المركبات' : 'Vehicle Registry', icon: <Car className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
-    { href: '/system/vehicles/registry/alerts', label: lang === 'ar' ? 'تنبيهات المركبات' : 'Vehicle Alerts', icon: <Bell className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/overview', label: lang === 'ar' ? 'نظرة شاملة' : 'Overview', icon: <LayoutGrid className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/expiring', label: lang === 'ar' ? 'الانتهاءات والتجديد' : 'Expiries & Renewals', icon: <CalendarClock className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/claims', label: lang === 'ar' ? 'الحوادث والمطالبات' : 'Accidents & Claims', icon: <TriangleAlert className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/corporate', label: lang === 'ar' ? 'وثائق تأمين الشركة' : 'Company Policies', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/dashboard', label: lang === 'ar' ? 'تحليلات المركبات' : 'Registry Analytics', icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry', label: lang === 'ar' ? 'سجل المركبات' : 'Vehicle Registry', icon: <Car className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/alerts', label: lang === 'ar' ? 'تنبيهات المركبات' : 'Vehicle Alerts', icon: <Bell className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/settings', label: lang === 'ar' ? 'إعدادات التنبيهات' : 'Alert Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager'], section: 'Vehicles', restrict: true },
     // Location Solutions (لوكيشن سوليوشن) — live Wialon GPS/telemetry mirror
     { href: '/system/ls2', label: lang === 'ar' ? 'لوحة التتبّع' : 'Telemetry Dashboard', icon: <Gauge className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },

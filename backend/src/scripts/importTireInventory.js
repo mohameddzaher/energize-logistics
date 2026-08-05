@@ -38,6 +38,29 @@ async function main() {
   const rows = Array.isArray(raw) ? raw : (raw.records || raw.rows || raw.data || []);
   console.log(`${path.basename(file)}: ${rows.length} إطار${DRY ? '   (تجربة)' : ''}`);
 
+  // ── فردة واحدة ما تكونش على عربيتين ────────────────────────────────────────
+  // ملف «2 trucks.json» جه فيه ٦ سيريالات مكتوبة مرتين، مرة على كل عربية وفي
+  // نفس المواقع. لو الاستيراد بلعها، آخر صف كان هيكسب والفردة كانت هتتنقل من
+  // عربية لعربية من غير ما حد يعرف — والصف اللي خسر كان هيسيب مكانه فاضي.
+  // الصفوف دي بتتوقف هنا ويتطبعوا: التعارض ده محتاج بني آدم يقرّر فيه (السكربت
+  // fixTireVehicleMixup بيحلّه بنمرة الإطار لما البلوكات تكون واضحة).
+  const seen = new Map();
+  const clashes = [];
+  for (const r of rows) {
+    const sn = String(r.serial || '').trim();
+    if (!sn) continue;
+    if (seen.has(sn) && seen.get(sn).vehicle_plate !== r.vehicle_plate) clashes.push([seen.get(sn), r]);
+    else seen.set(sn, r);
+  }
+  if (clashes.length) {
+    console.log(`\n⚠ ${clashes.length} سيريال مكتوب على أكتر من عربية — الصفوف دي **ما اتستوردتش**:`);
+    clashes.forEach(([a, b]) => console.log(`     ${a.serial.padEnd(14)}`
+      + `${String(a.vehicle_plate).padEnd(13)} موقع ${String(a.position_number).padStart(2)} نمرة ${a.tire_number}`
+      + `   ⟷   ${String(b.vehicle_plate).padEnd(13)} موقع ${String(b.position_number).padStart(2)} نمرة ${b.tire_number}`));
+    console.log('     فردة واحدة ما تكونش على عربيتين — راجع الشيت، أو شغّل fixTireVehicleMixup.\n');
+  }
+  const clashed = new Set(clashes.flat().map((r) => String(r.serial)));
+
   // تجميع حسب المركبة.
   const byPlate = new Map();
   for (const r of rows) {
@@ -73,7 +96,7 @@ async function main() {
     // الكاوتش.
     for (const t of v.tires) {
       const serial = String(t.serial || '').trim();
-      if (!serial) continue;
+      if (!serial || clashed.has(serial)) continue;
       const sensor = t.tpms_sensor === true ? 'yes' : t.tpms_sensor === false ? 'no' : 'unknown';
       const noteBits = [t.side, t.axis != null ? `محور ${t.axis}` : '', t.odometer_km ? `عداد ${t.odometer_km}` : '']
         .filter(Boolean).join(' · ');

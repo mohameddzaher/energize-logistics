@@ -157,7 +157,13 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                                         Expanded(
                                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                             Text(_name(e), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                            Text([e['jobTitle'], e['department']].where((x) => (x ?? '').toString().isNotEmpty).join(' · '),
+                                            // رقم الهوية أول حاجة تحت الاسم — ده اللي بيتسيرش
+                                            // بيه، ونفس ترتيب جداول الموقع بالظبط.
+                                            Text([
+                                              (e['idType'] == 'national_id' ? e['nationalId'] : e['iqamaNumber']),
+                                              e['jobTitle'],
+                                              e['department'],
+                                            ].where((x) => (x ?? '').toString().isNotEmpty).join(' · '),
                                                 style: const TextStyle(fontSize: 11.5, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
                                           ]),
                                         ),

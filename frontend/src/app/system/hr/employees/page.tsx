@@ -103,7 +103,7 @@ export default function HREmployeesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <th className="text-start font-semibold px-4 py-3">{tx.thName}</th>
+              <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.thName}</th>
               <th className="text-start font-semibold px-4 py-3">{tx.thEmpNumber}</th>
               <th className="text-start font-semibold px-4 py-3">{tx.thJobTitle}</th>
               <th className="text-start font-semibold px-4 py-3">{tx.thIqamaId}</th>
@@ -117,7 +117,8 @@ export default function HREmployeesPage() {
               <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noEmployees}</td></tr>
             ) : employees.map((e) => (
               <tr key={e._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/hr/employees/${e._id}`)}>
-                <td className="px-4 py-3 text-slate-900 font-medium">{empName(e, lang)}<div className="text-xs text-slate-700">{e.email || ''}</div></td>
+                {/* سطر واحد — الإيميل كان تحت الاسم فبيطوّل الصف من غير داعي */}
+                <td className="px-4 py-3 text-slate-900 font-semibold whitespace-nowrap">{empName(e, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">{e.employeeNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{e.jobTitle || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{e.idType === 'national_id' ? (e.nationalId || '—') : (e.iqamaNumber || '—')}</td>

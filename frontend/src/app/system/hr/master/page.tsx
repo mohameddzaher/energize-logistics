@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
+import MasterNav from '@/components/hr/MasterNav';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
   Users, CalendarClock, ChevronLeft, TriangleAlert, ClipboardList, Search,
@@ -31,7 +32,7 @@ export default function HrMasterPage() {
   // القديمة — الصفحة دي بقت المكان الوحيد، فما ينفعش نسيب حاجة وراها.
   const [ops, setOps] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [onlyActive, setOnlyActive] = useState(true);
+  const [onlyActive, setOnlyActive] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +59,7 @@ export default function HrMasterPage() {
 
   return (
     <div className="space-y-5 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
+      <MasterNav />
       <PageHeader
         icon={<Users className="w-5 h-5" />}
         title={t('نظرة الموارد البشرية الشاملة', 'HR Overview')}
@@ -69,6 +71,11 @@ export default function HrMasterPage() {
             <input type="checkbox" checked={onlyActive} onChange={(e) => setOnlyActive(e.target.checked)} className="accent-[#f37121]" />
             {t('على رأس العمل فقط', 'Active only')}
           </label>
+          {onlyActive && d?.totals?.filtered != null && (
+            <span className="text-[11.5px] text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+              {t(`الأرقام محسوبة على ${d.totals.filtered} موظف`, `Counts over ${d.totals.filtered} employees`)}
+            </span>
+          )}
           <button onClick={() => router.push('/system/hr/master/expiring')}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm">
             <CalendarClock className="w-4 h-4" /> {t('الانتهاءات', 'Expiries')}
@@ -77,9 +84,13 @@ export default function HrMasterPage() {
       </PageHeader>
 
       {/* الأرقام الكبيرة */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9 gap-2.5">
+        {/* التلاتة دول عدد الملف الوظيفي نفسه — ما بيتحركوش مع الفلتر، عشان
+            «الموظفون» يفضل معناه عدد الموظفين. الباقي محسوب على المعروض. */}
         <Big label={t('الموظفون', 'Employees')} value={d.totals.employees} c="#f37121" />
-        <Big label={t('على رأس العمل', 'Active')} value={d.totals.active} c="#16a34a" />
+        <Big label={t('على رأس العمل', 'Active')} value={d.totals.active} c="#16a34a"
+          onClick={() => setOnlyActive(true)} />
+        <Big label={t('مش على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8" />
         <Big label={t('بيانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626" />
         <Big label={t('ينتهي قريبًا', 'Expiring soon')} value={d.totals.expiringSoon} c="#ea580c"
           onClick={() => router.push('/system/hr/master/expiring')} />

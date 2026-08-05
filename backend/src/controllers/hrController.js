@@ -89,7 +89,7 @@ exports.listEmployees = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     const { q, status } = req.query;
-    const filter = {};
+    const filter = { isHrRecord: { $ne: false } };
     if (status) filter.employmentStatus = status;
     if (q && q.trim()) {
       const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');

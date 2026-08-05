@@ -35,7 +35,7 @@ const GENDER = { 'ذكر': 'male', 'أنثى': 'female', 'انثى': 'female' };
   const src = require(path.join(__dirname, '..', 'data', 'masters', 'hr_master_final.json'));
   console.log(`المصدر: ${src.employees.length} موظف · ${src.meta.column_count} عمود${DRY ? '   (تجربة)' : ''}\n`);
 
-  let created = 0; let updated = 0; let keptEdits = 0;
+  let created = 0; let updated = 0; let keptEdits = 0; let cleared = 0;
   const failures = [];
   const statusTally = {};
 
@@ -112,6 +112,7 @@ const GENDER = { 'ذكر': 'male', 'أنثى': 'female', 'انثى': 'female' };
       licenseExpiry: d(dl.expiry_date),
 
       notes: s(e.notes_ar),
+      inCurrentMaster: true,   // الصف ده في الماستر الحالي
     };
 
     // ── حالة كل حقل ──────────────────────────────────────────────────────────
@@ -146,21 +147,28 @@ const GENDER = { 'ذكر': 'male', 'أنثى': 'female', 'انثى': 'female' };
 
     try {
     if (existing) {
-      // شغل الموارد البشرية أحدث من الشيت: لو الحقل مملي عندنا والملف بيقول
-      // «مطلوب» أو جايبه فاضي، بنسيب اللي عندنا.
+      // ── القاعدة اللي اتصلحت ────────────────────────────────────────────────
+      // الماستر لما يقول «مطلوب» يبقى معناه الحقل **فاضي فعلاً**، والقيمة اللي
+      // عندنا بايتة من استيراد قديم ولازم تتمسح. كانت القاعدة القديمة بتحافظ
+      // على أي قيمة موجودة، فطلع عندنا موظف الماستر بيقول إن إقامته «مطلوبة»
+      // وإحنا بنعرض تاريخ ٢٠٠٥ ونقول «متأخر ٧٨٦٢ يوم». ٧٥٠ حقل كانوا كده.
+      //
+      // خانة فاضية من غير حالة حاجة تانية: دي ممكن تكون الشيت مش شايلها، فبنسيب
+      // اللي عندنا. الفرق إن «مطلوب» **تصريح** إن الحقل ناقص، مش سكوت.
+      const requiredNow = new Set(Object.keys(st).filter((k) => st[k] === 'required').map((k) => k.replace(/Status$/, '')));
       for (const [k, v] of Object.entries(doc)) {
+        if (requiredNow.has(k)) {
+          if (filled(existing[k])) cleared++;
+          existing[k] = (v === null || typeof v === 'object') ? null : (typeof v === 'boolean' ? v : '');
+          continue;
+        }
         const incomingEmpty = !filled(v);
         const weHaveIt = filled(existing[k]);
         if (incomingEmpty && weHaveIt) { keptEdits++; continue; }
         existing[k] = v;
       }
       existing.fieldStatus = existing.fieldStatus || new Map();
-      for (const [k, v] of Object.entries(st)) {
-        const fieldKey = k.replace(/Status$/, '');
-        // ما نرجّعش «مطلوب» على حقل الموارد البشرية ملّته خلاص.
-        if (v === 'required' && filled(existing[fieldKey])) { keptEdits++; continue; }
-        existing.fieldStatus.set(k, v);
-      }
+      for (const [k, v] of Object.entries(st)) existing.fieldStatus.set(k, v);
       await existing.save();
       updated++;
     } else {
@@ -178,7 +186,8 @@ const GENDER = { 'ذكر': 'male', 'أنثى': 'female', 'انثى': 'female' };
 
   console.log(`الموظفون: ${created} جديد · ${updated} محدَّث${failures.length ? ` · ${failures.length} فشل` : ''}`);
   if (failures.length) { console.log('\nصفوف فشلت:'); failures.forEach((f) => console.log('    ' + f)); }
-  if (keptEdits) console.log(`حقول اتسابت زي ما هي (الموارد البشرية ملّتها والشيت لسه بيقول مطلوب): ${keptEdits}`);
+  if (cleared) console.log(`حقول بايتة اتمسحت (الماستر بيقول «مطلوب»): ${cleared}`);
+  if (keptEdits) console.log(`حقول اتسابت زي ما هي (الشيت مش شايلها ومفيش حالة): ${keptEdits}`);
   console.log(`\nحالات الحقول في الملف: ${Object.entries(statusTally).map(([k, v]) => `${H.statusLabel(k)} ${v}`).join(' · ')}`);
 
   if (!DRY) {

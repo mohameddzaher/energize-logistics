@@ -870,7 +870,7 @@ exports.assignFromStock = async (req, res) => {
 // roles, so IT gets this read-only minimal projection instead.
 exports.listEmployees = async (req, res) => {
   try {
-    const filter = {};
+    const filter = { isHrRecord: { $ne: false } };   // من غير سجلات الأرشيف
     if (req.query.q && req.query.q.trim()) {
       const r = rx(req.query.q);
       filter.$or = [{ firstName: r }, { lastName: r }, { arabicName: r }, { employeeNumber: r }, { iqamaNumber: r }];

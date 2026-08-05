@@ -34,6 +34,13 @@ async function ensureSelfEmployee(user) {
       user: user._id,
       directManager: (user.manager && (user.manager._id || user.manager)) || undefined,
       createdBy: user._id,
+      // مهم: ده **مش موظف**. حساب دخول اتعمله ملف خدمة ذاتية عشان يقدر يطلب
+      // إجازة، وخلاص. الموظفين الحقيقيين مصدرهم الماستر وحده. من غير السطر ده
+      // كل حساب جديد كان بيزوّد «عدد الموظفين» واحد — رقم الموارد البشرية كان
+      // بيتحرك من غير ما حد يتعيّن. الموارد البشرية تقدر تربط الحساب بسجل
+      // حقيقي، وساعتها الحقيقي هو اللي بيتعدّ.
+      isHrRecord: false,
+      inCurrentMaster: false,
     });
   }
   await User.updateOne({ _id: user._id }, { linkedEmployee: emp._id });

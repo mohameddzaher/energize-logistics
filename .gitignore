@@ -64,3 +64,6 @@ INFRASTRUCTURE.md
 
 # Employee/customs master spreadsheets — contain PII (IBANs, national IDs). Kept local + on the server only.
 backend/src/data/masters/
+
+# نسخ إعادة بناء الموارد البشرية — فيها بيانات موظفين، تفضل محليًا
+backend/backups/

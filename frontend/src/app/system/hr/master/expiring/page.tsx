@@ -12,8 +12,9 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { CalendarClock, ArrowRight } from 'lucide-react';
+import { CalendarClock } from 'lucide-react';
 import { getHrExpiring, STATE_META, stateLabel, fmtDate, daysText } from '@/lib/hrMaster';
+import MasterNav from '@/components/hr/MasterNav';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
 
@@ -48,6 +49,7 @@ function ExpiringInner() {
   const cols: ExportColumn[] = [
     { header: t('الرقم الوظيفي', 'Employee no.'), key: 'employeeNumber', width: 14 },
     { header: t('الاسم', 'Name'), key: 'name', width: 30 },
+    { header: t('رقم الهوية', 'ID number'), key: 'iqamaNumber', width: 16 },
     { header: t('المستند', 'Document'), key: 'docAr', width: 18 },
     { header: t('ينتهي في', 'Expires'), key: 'expiryDate', transform: (v) => fmtDate(v), width: 14 },
     { header: t('المتبقي', 'Days left'), key: 'daysRemaining', width: 12 },
@@ -59,10 +61,7 @@ function ExpiringInner() {
 
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
-      <button onClick={() => router.push('/system/hr/master')}
-        className="inline-flex items-center gap-1.5 text-slate-500 text-sm hover:text-slate-900">
-        <ArrowRight className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />{t('النظرة الشاملة', 'Overview')}
-      </button>
+      <MasterNav />
 
       <PageHeader icon={<CalendarClock className="w-5 h-5" />}
         title={t('انتهاءات مستندات الموظفين', 'Employee document expiries')}
@@ -79,10 +78,10 @@ function ExpiringInner() {
           <span className="text-sm text-slate-500">{t('يوم', 'days')}</span>
           {QUICK.map((n) => (
             <button key={n} onClick={() => setWithin(String(n))}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${within === String(n) ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>{n}</button>
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${within === String(n) ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'}`}>{n}</button>
           ))}
           <button onClick={() => setWithin('')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${within === '' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}>
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${within === '' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>
             {t('الكل', 'All')}
           </button>
           <label className="inline-flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer ms-auto">
@@ -93,7 +92,7 @@ function ExpiringInner() {
         <div className="flex flex-wrap gap-1.5 pt-1 border-t border-slate-100">
           {(d?.byDoc || []).map((x) => (
             <button key={x.key} onClick={() => setDoc(doc === x.key ? '' : x.key)}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border ${doc === x.key ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border ${doc === x.key ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'}`}>
               {ar ? x.ar : x.en} <b>{x.count}</b>
             </button>
           ))}
@@ -105,7 +104,7 @@ function ExpiringInner() {
           <button key={k} onClick={() => setState(state === k ? '' : k)}
             className={`text-start bg-white border rounded-xl p-3 shadow-sm ${state === k ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : 'border-slate-200 hover:border-slate-300'}`}>
             <p className="text-2xl font-extrabold leading-none" style={{ color: STATE_META[k].color }}>{d?.summary?.[k] ?? 0}</p>
-            <p className="text-[11px] text-slate-500 mt-1.5">{stateLabel(k, ar)}</p>
+            <p className="text-[11.5px] text-slate-600 mt-1.5 font-medium">{stateLabel(k, ar)}</p>
           </button>
         ))}
         <div className="bg-slate-900 rounded-xl p-3 text-white">
@@ -118,7 +117,8 @@ function ExpiringInner() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
-              <tr>{[t('الموظف', 'Employee'), t('المستند', 'Document'), t('ينتهي في', 'Expires'),
+              <tr>{[t('الرقم الوظيفي', 'Emp. no.'), t('الموظف', 'Employee'), t('رقم الهوية', 'ID number'),
+                t('المستند', 'Document'), t('ينتهي في', 'Expires'),
                 t('المتبقي', 'Left'), t('الحالة', 'State'), t('القسم', 'Department')].map((h, i) => (
                 <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>
               ))}</tr>
@@ -128,21 +128,23 @@ function ExpiringInner() {
                 const m = STATE_META[r.state] || STATE_META.valid;
                 return (
                   <tr key={`${r.employeeId}-${r.docKey}`} className="hover:bg-slate-50 text-center">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.employeeNumber || '—'}</td>
                     <td className="px-3 py-2.5">
                       <button onClick={() => router.push(`/system/hr/employees/${r.employeeId}`)}
-                        className="font-semibold text-slate-800 hover:text-[#f37121]">{r.name}</button>
-                      {r.employeeNumber && <p className="text-[10px] text-slate-400">{r.employeeNumber}</p>}
+                        className="font-semibold text-slate-900 hover:text-[#f37121] text-[13.5px] whitespace-nowrap">{r.name}</button>
                     </td>
+                    {/* رقم الهوية — ده اللي القسم بيسيرش بيه */}
+                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.iqamaNumber || '—'}</td>
                     <td className="px-3 py-2.5">
                       <button onClick={() => router.push(`/system/hr/master/${r.docKey}`)}
-                        className="text-slate-600 hover:text-[#f37121]">{ar ? r.docAr : r.docEn}</button>
+                        className="text-slate-800 hover:text-[#f37121] text-[13px] whitespace-nowrap font-medium">{ar ? r.docAr : r.docEn}</button>
                     </td>
-                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(r.expiryDate)}</td>
+                    <td className="px-3 py-2.5 text-slate-800 text-[13px] whitespace-nowrap tabular-nums">{fmtDate(r.expiryDate)}</td>
                     <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: m.color }}>{daysText(r.daysRemaining, ar)}</td>
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${m.bg}`}>{stateLabel(r.state, ar)}</span>
                     </td>
-                    <td className="px-3 py-2.5 text-slate-500 text-[12px]">{r.department || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-700 text-[13px] whitespace-nowrap">{r.department || '—'}</td>
                   </tr>
                 );
               })}

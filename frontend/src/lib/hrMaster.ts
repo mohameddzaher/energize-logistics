@@ -21,7 +21,9 @@ export interface GroupCard {
   expiryField?: string; needsAttention?: number; nearestDays?: number | null;
 }
 export interface HrOverview {
-  totals: { employees: number; active: number; required: number; expiringSoon: number; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number };
+  // employees/active/notActive = الملف الوظيفي كله (ما بيتأثروش بالفلتر)،
+  // وfiltered = اللي الفلتر الحالي بيعرضه واللي الأرقام التانية محسوبة عليه.
+  totals: { employees: number; active: number; notActive: number; filtered: number; required: number; expiringSoon: number; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number };
   groups: GroupCard[];
   topRequired: (FieldCard & { groupAr: string; groupKey: string })[];
   alert: { warnDays: number; criticalDays: number };

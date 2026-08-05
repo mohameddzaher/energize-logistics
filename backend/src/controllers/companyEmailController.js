@@ -69,7 +69,7 @@ exports.list = async (req, res) => {
 /** موظفو الموارد البشرية للربط — نفس بحث بقية الأقسام. */
 exports.searchEmployees = async (req, res) => {
   try {
-    const filter = {};
+    const filter = { isHrRecord: { $ne: false } };   // من غير سجلات الأرشيف
     if (req.query.q && req.query.q.trim()) {
       const r = rx(req.query.q);
       filter.$or = [{ firstName: r }, { lastName: r }, { arabicName: r }, { employeeNumber: r }, { department: r }];

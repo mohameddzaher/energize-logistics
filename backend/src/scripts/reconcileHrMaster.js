@@ -77,13 +77,13 @@ const nameKey = (s) => String(s || '').replace(/[\s‎‏؜]/g, '').replace(/[أ
   dropped.forEach((x) => console.log(`     ${(x.arabicName || `${x.firstName} ${x.lastName}`).slice(0, 34).padEnd(36)}#${x.employeeNumber || '—'}`));
   if (!DRY && dropped.length) {
     await Employee.updateMany({ _id: { $in: dropped.map((x) => x._id) } },
-      { $set: { employmentStatus: 'terminated', isHrRecord: true, terminationReason: 'خارج حسب قائمة الماستر الرسمية (dropped_since_previous)' } });
+      { $set: { employmentStatus: 'terminated', isHrRecord: true, inCurrentMaster: false, terminationReason: 'خارج حسب قائمة الماستر الرسمية (dropped_since_previous)' } });
   }
 
   console.log(`\n① سجلات حسابات دخول — مش موظفين: ${stubs.length}`);
   stubs.forEach((s) => console.log(`     ${(s.arabicName || `${s.firstName} ${s.lastName}`).slice(0, 34)}`));
   if (!DRY && stubs.length) {
-    await Employee.updateMany({ _id: { $in: stubs.map((s) => s._id) } }, { $set: { isHrRecord: false } });
+    await Employee.updateMany({ _id: { $in: stubs.map((s) => s._id) } }, { $set: { isHrRecord: false, inCurrentMaster: false } });
   }
 
   console.log(`\n② رقمهم اتغيّر في الماستر — بيتحدّثوا منه: ${renumbered.length}`);
@@ -105,7 +105,7 @@ const nameKey = (s) => String(s || '').replace(/[\s‎‏؜]/g, '').replace(/[أ
   if (!DRY && gone.length) {
     await Employee.updateMany(
       { _id: { $in: gone.map((g) => g._id) } },
-      { $set: { employmentStatus: 'terminated', isHrRecord: true, terminationReason: 'غير موجود في الماستر النهائي (استنتاج — يحتاج تأكيد)' } },
+      { $set: { employmentStatus: 'terminated', isHrRecord: true, inCurrentMaster: false, terminationReason: 'غير موجود في الماستر النهائي (استنتاج — يحتاج تأكيد)' } },
     );
   }
 

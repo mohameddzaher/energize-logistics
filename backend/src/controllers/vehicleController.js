@@ -46,7 +46,7 @@ const syncVehiclePointers = async (vehicleId) => {
 exports.searchEmployees = async (req, res) => {
   try {
     const { q } = req.query;
-    const filter = {};
+    const filter = { isHrRecord: { $ne: false } };   // من غير سجلات الأرشيف
     if (q && q.trim()) {
       const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [

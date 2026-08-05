@@ -32,6 +32,10 @@ const ALERT = { warnDays: 60, criticalDays: 30 };
 function buildFilter(q) {
   // سجلات حسابات الدخول التلقائية مش موظفين — بتخرج من كل عدّاد وكل قايمة هنا.
   const f = { isHrRecord: { $ne: false } };
+  // النطاق الافتراضي = **الملف الوظيفي الحالي** (٣٧٨ صف الماستر). اللي خرج قبل
+  // كده سجله محفوظ كتاريخ ومش بيتعدّ مع الموظفين، وإلا «عدد الموظفين» بيبقى
+  // رقم مالوش معنى. `scope=all` بيرجّع كل حاجة بالتاريخ.
+  if (q.scope !== 'all') f.inCurrentMaster = true;
   if (q.status === 'active') f.employmentStatus = 'active';
   if (q.status === 'inactive') f.employmentStatus = { $ne: 'active' };
   for (const k of ['department', 'branchName', 'project', 'nationality', 'workStatusText', 'bank', 'licenseType', 'insuranceCompany', 'directManagerName', 'iqamaProfession', 'idType', 'gender', 'driverCardStatus', 'insuranceClass', 'contractStatusText', 'systemStatus']) {
@@ -106,9 +110,23 @@ exports.overview = async (req, res) => {
       return out;
     });
 
+    // «الموظفون» و«على رأس العمل» = عدد الملف الوظيفي نفسه، مش المفلتر. لو
+    // اترتبطوا بالفلتر، أول ما حد يدوس «على رأس العمل فقط» يبقى «الموظفون ٣٢١»
+    // — والليبل بيكدب. عدد الموظفين حقيقة تانية غير اللي إنت شايفه دلوقتي،
+    // فبيتحسب من الملف كله لوحده.
+    const rosterFilter = { isHrRecord: { $ne: false } };
+    if (req.query.scope !== 'all') rosterFilter.inCurrentMaster = true;
+    const [rosterTotal, rosterActive] = await Promise.all([
+      Employee.countDocuments(rosterFilter),
+      Employee.countDocuments({ ...rosterFilter, employmentStatus: 'active' }),
+    ]);
+
     const totals = {
-      employees: employees.length,
-      active: employees.filter((e) => e.employmentStatus === 'active').length,
+      employees: rosterTotal,
+      active: rosterActive,
+      notActive: rosterTotal - rosterActive,
+      // اللي الفلتر الحالي بيعرضه — الأرقام اللي تحت كلها محسوبة عليه.
+      filtered: employees.length,
       required: groups.reduce((n, g) => n + g.required, 0),
       expiringSoon: groups.reduce((n, g) => n + (g.needsAttention || 0), 0),
       outsideKingdom: employees.filter((e) => e.isOutsideKingdom).length,
@@ -148,14 +166,20 @@ exports.records = async (req, res) => {
     if (!g) return res.status(404).json({ message: 'المجموعة غير معروفة' });
 
     const employees = await Employee.find(buildFilter(req.query))
-      .select(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'department', 'branchName', 'project',
-        'employmentStatus', 'workStatusText', 'fieldStatus', ...g.fields.map((f) => f.key)].join(' '))
+      // iqamaNumber بيرجع دايمًا حتى لو مش من حقول المجموعة — كل جدول في القسم
+      // لازم يعرض الموظف وجنبه رقم هويته، ده اللي الناس بتدوّر بيه.
+      .select([...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
+        'department', 'branchName', 'project', 'employmentStatus', 'workStatusText', 'fieldStatus',
+        ...g.fields.map((f) => f.key)])].join(' '))
       .lean();
 
     const field = req.query.field || '';
     const wantStatus = req.query.status || '';
     const wantState = req.query.state || '';
     const withinDays = req.query.withinDays === '' || req.query.withinDays == null ? null : Number(req.query.withinDays);
+    // «ينتهي خلال ٣٠ يوم» كان بيرجّع المنتهي من سنة كمان، لأن -٣٦٥ أصغر من ٣٠.
+    // المنتهي حاجة تانية خالص، فبقى اختيار صريح بدل ما يتلبّس على الفلتر.
+    const includeExpired = req.query.includeExpired !== '0';
 
     let rows = employees.map((e) => {
       const values = {};
@@ -167,6 +191,7 @@ exports.records = async (req, res) => {
       return {
         _id: e._id,
         employeeNumber: e.employeeNumber, name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
+        iqamaNumber: e.iqamaNumber || '',
         department: e.department, branchName: e.branchName, project: e.project,
         workStatusText: e.workStatusText, employmentStatus: e.employmentStatus,
         values, statuses,
@@ -180,7 +205,8 @@ exports.records = async (req, res) => {
     else if (wantStatus) rows = rows.filter((r) => g.fields.some((f) => r.statuses[f.key] === wantStatus));
     if (wantState) rows = rows.filter((r) => r.state === wantState);
     if (withinDays !== null && g.document) {
-      rows = rows.filter((r) => r.daysRemaining != null && r.daysRemaining <= withinDays);
+      rows = rows.filter((r) => r.daysRemaining != null && r.daysRemaining <= withinDays
+        && (includeExpired || r.daysRemaining >= 0));
     }
 
     // الترتيب: بالأقرب انتهاءً افتراضيًا للمستندات، وبالاسم لغيرها.
@@ -291,7 +317,8 @@ exports.expiring = async (req, res) => {
     const wantState = req.query.state || '';
 
     const employees = await Employee.find(buildFilter(req.query))
-      .select(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'department', 'branchName', 'fieldStatus',
+      .select(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
+        'department', 'branchName', 'fieldStatus',
         ...H.DOCUMENT_GROUPS.map((g) => g.expiryField)].join(' '))
       .lean();
 
@@ -307,6 +334,7 @@ exports.expiring = async (req, res) => {
         rows.push({
           employeeId: e._id, employeeNumber: e.employeeNumber,
           name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
+          iqamaNumber: e.iqamaNumber || '',
           department: e.department, branchName: e.branchName,
           docKey: g.key, docAr: g.ar, docEn: g.en, expiryField: g.expiryField,
           expiryDate: e[g.expiryField], daysRemaining: st.days, state: st.state,

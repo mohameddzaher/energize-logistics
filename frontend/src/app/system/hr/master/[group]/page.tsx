@@ -16,12 +16,13 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { ArrowRight, Search, Check, X, Pencil, ArrowUpDown } from 'lucide-react';
+import { Search, Check, X, Pencil, ArrowUpDown } from 'lucide-react';
 import {
   getHrRecords, updateEmployeeFields, STATUS_META, STATE_META, statusLabel, stateLabel,
   fmtDate, daysText, type RecordRow, type FieldDef,
 } from '@/lib/hrMaster';
 import { canEditSection } from '@/lib/sections';
+import MasterNav from '@/components/hr/MasterNav';
 
 const QUICK = [30, 60, 90, 180];
 
@@ -44,6 +45,9 @@ function GroupInner() {
   const [status, setStatus] = useState(sp?.get('status') || '');
   const [state, setState] = useState(sp?.get('state') || '');
   const [within, setWithin] = useState(sp?.get('withinDays') || '');
+  // «ينتهي خلال ٣٠ يوم» ماكانش بيستثني المنتهي من سنة — فكان بيطلع معاه ويبوّظ
+  // الرقم. الاختيار بقى صريح للمستخدم زي شاشة المركبات.
+  const [includeExpired, setIncludeExpired] = useState(true);
   const [sort, setSort] = useState('');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
   const [d, setD] = useState<Awaited<ReturnType<typeof getHrRecords>> | null>(null);
@@ -53,13 +57,14 @@ function GroupInner() {
     try {
       setD(await getHrRecords(group, {
         q: q.trim(), field, status, state, withinDays: within, sort, dir,
+        includeExpired: includeExpired ? '1' : '0',
         // فلاتر القيم الجاية من كروت النظرة الشاملة (القسم، الجنسية…)
         ...Object.fromEntries([...(sp?.entries() || [])].filter(([k]) =>
           !['field', 'status', 'state', 'withinDays'].includes(k))),
       }));
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setLoading(false);
-  }, [group, q, field, status, state, within, sort, dir, sp, notify]);
+  }, [group, q, field, status, state, within, includeExpired, sort, dir, sp, notify]);
 
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
@@ -72,6 +77,7 @@ function GroupInner() {
   const cols: ExportColumn[] = [
     { header: t('الرقم الوظيفي', 'Employee no.'), key: 'employeeNumber', width: 14 },
     { header: t('الاسم', 'Name'), key: 'name', width: 30 },
+    { header: t('رقم الهوية', 'ID number'), key: 'iqamaNumber', width: 16 },
     { header: t('القسم', 'Department'), key: 'department', width: 18 },
     ...g.fields.map((f) => ({
       header: ar ? f.ar : f.en, key: 'values',
@@ -92,10 +98,7 @@ function GroupInner() {
 
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
-      <button onClick={() => router.push('/system/hr/master')}
-        className="inline-flex items-center gap-1.5 text-slate-500 text-sm hover:text-slate-900">
-        <ArrowRight className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />{t('النظرة الشاملة', 'Overview')}
-      </button>
+      <MasterNav />
 
       <PageHeader icon={<Pencil className="w-5 h-5" />} title={ar ? g.ar : g.en}
         subtitle={t('اضغط أي خانة ناقصة واملأها من هنا مباشرة', 'Click any missing cell and fill it right here')}>
@@ -109,7 +112,7 @@ function GroupInner() {
           const s = d.summary[f.key] || {};
           return (
             <div key={f.key} className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 shadow-sm">
-              <p className="text-[12px] font-semibold text-slate-700 mb-1.5">{ar ? f.ar : f.en}</p>
+              <p className="text-[12.5px] font-bold text-slate-800 mb-1.5">{ar ? f.ar : f.en}</p>
               <div className="flex flex-wrap gap-1">
                 {(['required', 'not_required', 'filled', 'none'] as const).map((k) => (s[k] > 0) && (
                   <button key={k}
@@ -132,7 +135,7 @@ function GroupInner() {
             <button key={k} onClick={() => setState(state === k ? '' : k)}
               className={`text-start bg-white border rounded-xl p-3 shadow-sm ${state === k ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : 'border-slate-200 hover:border-slate-300'}`}>
               <p className="text-xl font-extrabold leading-none" style={{ color: STATE_META[k].color }}>{d.summary.states[k]}</p>
-              <p className="text-[10.5px] text-slate-500 mt-1.5 leading-tight">{stateLabel(k, ar)}</p>
+              <p className="text-[11px] text-slate-600 mt-1.5 leading-tight font-medium">{stateLabel(k, ar)}</p>
             </button>
           ))}
         </div>
@@ -155,22 +158,26 @@ function GroupInner() {
         </select>
         {g.document && (
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-500">{t('ينتهي خلال', 'Within')}</span>
+            <span className="text-xs text-slate-700 font-medium whitespace-nowrap">{t('ينتهي خلال', 'Within')}</span>
             <input type="number" min={0} value={within} onChange={(e) => setWithin(e.target.value)}
               className="w-20 px-2 py-2 rounded-lg border border-slate-200 text-sm text-center" />
             {QUICK.map((n) => (
               <button key={n} onClick={() => setWithin(String(n))}
-                className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border ${within === String(n) ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200'}`}>{n}</button>
+                className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border ${within === String(n) ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-700 border-slate-200'}`}>{n}</button>
             ))}
+            <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+              <input type="checkbox" checked={includeExpired} onChange={(e) => setIncludeExpired(e.target.checked)} className="accent-[#f37121]" />
+              {t('مع المنتهي', 'incl. expired')}
+            </label>
           </div>
         )}
         {(q || field || status || state || within) && (
           <button onClick={() => { setQ(''); setField(''); setStatus(''); setState(''); setWithin(''); }}
-            className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm text-slate-500 hover:text-slate-800">
+            className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:text-slate-900">
             {t('إلغاء الفلترة', 'Clear')}
           </button>
         )}
-        <span className="text-xs text-slate-400 ms-auto">{rows.length} {t('موظف', 'people')}</span>
+        <span className="text-[12.5px] font-semibold text-slate-700 ms-auto whitespace-nowrap">{rows.length} {t('موظف', 'people')}</span>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -179,8 +186,18 @@ function GroupInner() {
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
                 <th className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                  <button onClick={() => toggleSort('employeeNumber')} className="inline-flex items-center gap-1 hover:text-white">
+                    {t('الرقم الوظيفي', 'Emp. no.')}<ArrowUpDown className="w-3 h-3 opacity-60" />
+                  </button>
+                </th>
+                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">
                   <button onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 hover:text-white">
                     {t('الموظف', 'Employee')}<ArrowUpDown className="w-3 h-3 opacity-60" />
+                  </button>
+                </th>
+                <th className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                  <button onClick={() => toggleSort('iqamaNumber')} className="inline-flex items-center gap-1 hover:text-white">
+                    {t('رقم الهوية', 'ID number')}<ArrowUpDown className="w-3 h-3 opacity-60" />
                   </button>
                 </th>
                 <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('القسم', 'Department')}</th>
@@ -206,7 +223,7 @@ function GroupInner() {
                   canEdit={canEdit} onSaved={load} notify={notify} router={router} />
               ))}
               {!rows.length && (
-                <tr><td colSpan={g.fields.length + 3} className="px-3 py-12 text-center text-slate-400">
+                <tr><td colSpan={g.fields.length + (g.document ? 5 : 4)} className="px-3 py-12 text-center text-slate-500">
                   {t('لا نتائج بالفلاتر دي', 'Nothing matches these filters')}
                 </td></tr>
               )}
@@ -223,12 +240,14 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router }: any)
   const m = r.state ? STATE_META[r.state] : null;
   return (
     <tr className="hover:bg-slate-50 text-center align-middle">
+      <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.employeeNumber || '—'}</td>
       <td className="px-3 py-2.5">
         <button onClick={() => router.push(`/system/hr/employees/${r._id}`)}
-          className="font-semibold text-slate-800 hover:text-[#f37121]">{r.name}</button>
-        {r.employeeNumber && <p className="text-[10px] text-slate-400">{r.employeeNumber}</p>}
+          className="font-semibold text-slate-900 hover:text-[#f37121] text-[13.5px] whitespace-nowrap">{r.name}</button>
       </td>
-      <td className="px-3 py-2.5 text-slate-500 text-[12px]">{r.department || '—'}</td>
+      {/* رقم الهوية — أكتر حاجة بيتسيرش بيها، فليها عمودها في كل جدول */}
+      <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.iqamaNumber || '—'}</td>
+      <td className="px-3 py-2.5 text-slate-700 text-[13px] whitespace-nowrap">{r.department || '—'}</td>
       {fields.map((f: FieldDef) => (
         <td key={f.key} className="px-3 py-2.5">
           <Cell r={r} f={f} ar={ar} t={t} canEdit={canEdit} onSaved={onSaved} notify={notify} />
@@ -236,7 +255,7 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router }: any)
       ))}
       {isDoc && (
         <td className="px-3 py-2.5 whitespace-nowrap font-bold" style={{ color: m?.color }}>
-          {r.daysRemaining == null ? <span className="text-slate-300">—</span> : daysText(r.daysRemaining, ar)}
+          {r.daysRemaining == null ? <span className="text-slate-500">—</span> : daysText(r.daysRemaining, ar)}
         </td>
       )}
     </tr>
@@ -275,7 +294,7 @@ function Cell({ r, f, ar, t, canEdit, onSaved, notify }: any) {
           onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
           className="w-32 px-2 py-1 rounded border border-[#f37121] text-[12px] text-center" />
         <button onClick={save} disabled={busy} className="p-1 rounded bg-emerald-50 text-emerald-700"><Check className="w-3.5 h-3.5" /></button>
-        <button onClick={() => setEditing(false)} className="p-1 rounded text-slate-400"><X className="w-3.5 h-3.5" /></button>
+        <button onClick={() => setEditing(false)} className="p-1 rounded text-slate-600 hover:text-slate-900"><X className="w-3.5 h-3.5" /></button>
       </span>
     );
   }
@@ -289,12 +308,21 @@ function Cell({ r, f, ar, t, canEdit, onSaved, notify }: any) {
       </button>
     );
   }
+  // «غير مطلوب» برضه بيتفتح للكتابة — الملف بيقول إنها ما بتنطبقش، لكن لو
+  // الواقع اتغيّر (الموظف طلّع الرخصة) لازم تتكتب من نفس المكان من غير ما حد
+  // يخرج من الجدول.
   if (st === 'not_required' || st === 'none' || st === 'cash_payroll') {
-    return <span className={`px-2 py-0.5 rounded-full text-[11px] ${STATUS_META[st].bg}`}>{statusLabel(st, ar)}</span>;
+    return (
+      <button onClick={start} disabled={!canEdit}
+        className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_META[st].bg} ${canEdit ? 'hover:ring-1 hover:ring-slate-400' : ''}`}
+        title={canEdit ? (ar ? 'اضغط للكتابة' : 'Click to fill') : ''}>
+        {statusLabel(st, ar)}
+      </button>
+    );
   }
   return (
     <button onClick={start} disabled={!canEdit}
-      className="text-[12px] text-slate-700 hover:text-[#f37121] disabled:hover:text-slate-700">
+      className="text-[13px] text-slate-900 hover:text-[#f37121] disabled:hover:text-slate-900 whitespace-nowrap">
       {f.type === 'date' ? fmtDate(raw) : (raw || '—')}
     </button>
   );

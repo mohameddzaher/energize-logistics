@@ -146,6 +146,12 @@ const employeeSchema = new mongoose.Schema(
     // المربوط بيها يفضل شغّال.
     isHrRecord: { type: Boolean, default: true, index: true },
 
+    // هل الموظف ده في ملف الماستر الحالي؟
+    // ٣٧٨ صف في الماستر = الملف الوظيفي الحالي (منهم ٣٢١ على رأس العمل والباقي
+    // إجازة/خروج نهائي/لا يعمل). واللي مش فيه خرج قبل كده وسجله محفوظ كتاريخ.
+    // الفرق ده لازم يفضل واضح، وإلا «عدد الموظفين» بيبقى رقم مالوش معنى.
+    inCurrentMaster: { type: Boolean, default: false, index: true },
+
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

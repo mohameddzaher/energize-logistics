@@ -342,6 +342,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/remote/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'remote_manager']), section: 'Remote', restrict: true },
     // HR (back-office — staff only)
     { href: '/system/hr/dashboard', label: L.hrDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/master', label: lang === 'ar' ? 'نظرة شاملة' : 'HR Overview', icon: <LayoutGrid className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
+    { href: '/system/hr/master/expiring', label: lang === 'ar' ? 'انتهاءات المستندات' : 'Document Expiries', icon: <CalendarClock className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/employees', label: L.hrEmployees, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/contracts', label: L.hrContracts, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/leaves', label: L.hrLeaves, icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },

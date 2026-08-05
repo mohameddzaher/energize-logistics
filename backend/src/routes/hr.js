@@ -1,12 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const hr = require('../controllers/hrController');
+const hrm = require('../controllers/hrMasterController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
 const STAFF = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'];
 
 router.use(authenticate);
+
+// ── ماستر الموارد البشرية: النظرة الشاملة وصفحات كل مجموعة ──────────────────
+// كارت لكل عمود بعدّادات «مطلوب / غير مطلوب / مملي»، وكل رقم بيفتح الناس اللي
+// وراه. الملء بيتم من نفس المكان أو من صفحة الموظف — الاتنين بيعدّوا على نفس
+// الـ endpoint فحالة «مطلوب» بتتشال بنفس الطريقة.
+router.get('/master/overview', hrm.overview);
+router.get('/master/field-config', hrm.fieldConfig);
+router.get('/master/expiring', hrm.expiring);
+router.get('/master/records/:group', hrm.records);
+router.patch('/master/employees/:id/fields', authorize(...STAFF), hrm.updateFields);
 
 // ── Self-service (any authenticated user) ────────────────────────────────────
 // Defined first so they aren't shadowed by the staff :id routes below.

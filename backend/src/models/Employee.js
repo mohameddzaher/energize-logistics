@@ -115,6 +115,30 @@ const employeeSchema = new mongoose.Schema(
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // login account, optional
     directManager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
+    // ── حقول ماستر الموارد البشرية v2.0 ────────────────────────────────────
+    companyEmail: { type: String, trim: true, default: '' },
+    employerNumber: { type: String, trim: true, default: '' },
+    directManagerName: { type: String, trim: true, default: '' }, // لقطة الاسم من الماستر
+    // `branch` فوق هي ObjectId لسجل الفرع. الماستر بيدّي اسم الفرع نصًا («جدة»)
+    // ومش دايمًا ليه سجل عندنا، فبيتخزّن هنا. الاتنين مش بديل لبعض.
+    branchName: { type: String, trim: true, default: '', index: true },
+    isOutsideKingdom: { type: Boolean, default: false, index: true },
+    isFreelancer: { type: Boolean, default: false, index: true },
+    iqamaIssueDate: { type: Date, default: null },
+    iqamaExpiryHijri: { type: String, trim: true, default: '' },
+    contractOccupation: { type: String, trim: true, default: '' },
+    insuranceClass: { type: String, trim: true, default: '' },
+    healthCertNumber: { type: String, trim: true, default: '' },
+    healthCertExpiry: { type: Date, default: null, index: true },
+
+    // ── حالة كل حقل: مطلوب / غير مطلوب / لا يوجد ───────────────────────────
+    // Map مفتوحة عشان إضافة حقل في config/hrFields.js ما تحتاجش تعديل هنا.
+    // «مطلوب» معناها ناقص ولازم التيم يجمّعه، و«غير مطلوب» معناها مش بينطبق
+    // على الموظف ده — الاتنين لازم يفضلوا مفصولين، وإلا قايمة شغل الموارد
+    // البشرية بتبقى فيها ناس مالهمش دعوة.
+    // بتتشال أوتوماتيك أول ما الحقل يتملي (pre-save تحت).
+    fieldStatus: { type: Map, of: String, default: {} },
+
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
@@ -122,6 +146,26 @@ const employeeSchema = new mongoose.Schema(
 );
 
 // Search & filter indexes. Search is by name / iqama / employee number / phone.
+/**
+ * أول ما حقل يتملي، حالته «مطلوب» بتتشال لوحدها.
+ *
+ * ده اللي بيخلّي عدّاد «مطلوب» في الداشبورد صادق: من غيره، الموارد البشرية
+ * تملي البيانات والرقم يفضل مكانه، فيفضلوا بيدوّروا على شغل خلص. القرار إنه
+ * يحصل هنا مش في الكونترولر عشان يشتغل مهما كان مصدر التعديل — الشاشة، أو
+ * الاستيراد، أو أي سكربت.
+ */
+employeeSchema.pre('save', function clearSatisfiedStatuses(next) {
+  if (!this.fieldStatus || typeof this.fieldStatus.forEach !== 'function') return next();
+  const filled = (v) => !(v === null || v === undefined || v === '' || (v instanceof Date && isNaN(v)));
+  for (const [statusKey, code] of [...this.fieldStatus.entries()]) {
+    // «غير مطلوب» قرار إداري — مش بيتشال لمجرد إن حد كتب حاجة.
+    if (code !== 'required') continue;
+    const fieldKey = statusKey.replace(/Status$/, '');
+    if (filled(this.get(fieldKey))) this.fieldStatus.delete(statusKey);
+  }
+  next();
+});
+
 employeeSchema.index({ firstName: 1, lastName: 1 });
 employeeSchema.index({ iqamaNumber: 1 });
 employeeSchema.index({ nationalId: 1 });

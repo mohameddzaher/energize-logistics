@@ -8,9 +8,13 @@
  * تتغيّر لوحتها كان بيتعمل لها سجل جديد وتفضل القديمة معلّقة. الاستيراد اتظبط
  * (بقى بيدوّر برقم الهيكل الأول)، والسكربت ده بينضّف اللي حصل قبل الإصلاح.
  *
- * الدمج **مش مسح**: أي حقل فاضي في السجل الجديد وموجود في القديم بيتنقل، وأي
- * تجديدات أو حوادث مربوطة بالقديم بتتحوّل للجديد. بعد كده بس بيتشال القديم.
- * مسح السجل القديم على طول كان هيضيّع بيانات زي رقم شريحة الوقود والملاحظات.
+ * الدمج بينقل **اللي الشيت ما بيعرفوش بس**: التجديدات (بني آدم كتبها من الشاشة)
+ * والحوادث المربوطة. أي حقل تاني بييجي من الماستر أصلاً، والماستر هو المرجع.
+ *
+ * ليه ما بننقلش باقي الحقول: جرّبنا، وطلع غلط. الشيت الجديد لسيلفرادو «س ه ر
+ * 505» بيقول شريحة الوقود **«لا يوجد»** صراحةً — مش خانة فاضية. لو نقلنا رقم
+ * الشريحة من السجل القديم كنا هنرجّع بيانات الماستر شالها عن قصد. اللي بيختلف
+ * بيتطبع عشان بني آدم يقرّر، وما بيتنقلش لوحده.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -55,26 +59,27 @@ const BLOCKS = {
 
     for (const old of drop) {
       console.log(`  يُدمج ويُشال: ${old.plateNumber}  (آخر تحديث ${new Date(old.updatedAt).toISOString().slice(0, 10)})`);
-      const patch = {};
-
+      // بيانات كانت في السجل القديم ومش في الجديد — **بتتطبع بس**. الماستر
+      // بيقول إيه الصح، وإحنا مش بنخمّن بدله.
+      const differs = [];
       for (const f of SCALARS) {
-        if (isEmpty(keep[f]) && !isEmpty(old[f])) { patch[f] = old[f]; console.log(`      ← ${f}: ${old[f]}`); movedFields++; }
+        if (isEmpty(keep[f]) && !isEmpty(old[f])) differs.push(`${f}: ${old[f]}`);
       }
       for (const [block, fields] of Object.entries(BLOCKS)) {
         for (const f of fields) {
-          if (isEmpty(keep[block]?.[f]) && !isEmpty(old[block]?.[f])) {
-            patch[`${block}.${f}`] = old[block][f];
-            console.log(`      ← ${block}.${f}: ${old[block][f]}`);
-            movedFields++;
-          }
+          if (isEmpty(keep[block]?.[f]) && !isEmpty(old[block]?.[f])) differs.push(`${block}.${f}: ${old[block][f]}`);
         }
+      }
+      if (differs.length) {
+        console.log(`      ⓘ كان في السجل القديم ومش في الماستر الجديد (للعلم — مش هيتنقل):`);
+        differs.forEach((x) => console.log(`          ${x}`));
+        movedFields += differs.length;
       }
       // التجديدات شغل بني آدم — بتتنقل كلها، مش بشرط الفاضي.
       const oldRenewals = old.renewals || [];
       if (oldRenewals.length) { console.log(`      ← ${oldRenewals.length} سجل تجديد`); }
 
       if (!DRY) {
-        if (Object.keys(patch).length) await VehicleMaster.updateOne({ _id: keep._id }, { $set: patch });
         if (oldRenewals.length) await VehicleMaster.updateOne({ _id: keep._id }, { $push: { renewals: { $each: oldRenewals } } });
         const r = await VehicleClaim.updateMany({ vehicle: old._id }, { $set: { vehicle: keep._id } });
         movedClaims += r.modifiedCount || 0;
@@ -86,7 +91,7 @@ const BLOCKS = {
     console.log('');
   }
 
-  console.log(`${merged} سجل مكرّر اتدمج · ${movedFields} حقل اتنقل · ${movedClaims} حادث اتحوّل`);
+  console.log(`${merged} سجل مكرّر اتشال · ${movedFields} حقل اختلف (اتطبع للعلم) · ${movedClaims} حادث اتحوّل`);
   if (!DRY) {
     const left = await VehicleMaster.aggregate([
       { $match: { chassisNumber: { $nin: ['', null] } } },

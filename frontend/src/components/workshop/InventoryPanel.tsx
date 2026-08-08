@@ -3,12 +3,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import BulkIssueModal from './BulkIssueModal';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package, Loader2, X, Plus, Pencil, Trash2, AlertCircle,
   ChevronLeft, ChevronRight, Download, Search, AlertTriangle,
-  Check, XCircle, ArrowUpRight, History, Undo2,
+  Check, XCircle, ArrowUpRight, History, Undo2, Layers,
 } from 'lucide-react';
 import { exportToExcel, fmt } from '@/utils/exportExcel';
 import { getWorkshopInventoryTranslations } from '@/lib/translations';
@@ -141,6 +142,8 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
     setRenewSaving(false);
   };
   const [issueSaving, setIssueSaving] = useState(false);
+  // الصرف المجمّع — أمين المخزن بيصرف أصناف كتير في اليوم، والدخول على صنف صنف بطيء.
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [issues, setIssues] = useState<IssueRow[]>([]);
   const [issuesTotal, setIssuesTotal] = useState(0);
   const [issuesPage, setIssuesPage] = useState(1);
@@ -388,6 +391,11 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
             <t.icon className="w-4 h-4" /> {t.label}
           </button>
         ))}
+        <button type="button" onClick={() => setBulkOpen(true)}
+          className="ms-auto mb-1 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#12325c] hover:bg-[#0e2547] text-white text-[13px] font-semibold">
+          <Layers className="w-4 h-4" />
+          {lang === 'ar' ? 'صرف عدة أصناف' : 'Issue multiple'}
+        </button>
       </div>
 
       {view === 'stock' && (<>
@@ -977,6 +985,14 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
         )}
       </AnimatePresence>
 
+      {bulkOpen && (
+        <BulkIssueModal
+          ar={lang === 'ar'}
+          notify={notify}
+          onClose={() => setBulkOpen(false)}
+          onDone={() => { fetchItems(); if (view === 'issues') fetchIssues(); }}
+        />
+      )}
     </div>
   );
 }

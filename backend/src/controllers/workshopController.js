@@ -1254,7 +1254,8 @@ const searchInventory = async (req, res) => {
       approvalStatus: 'approved',
       $or: [{ name: regex }, { code: regex }],
     })
-      .select('name code quantity _id')
+      // الوحدة بترجع كمان — شاشة الصرف المجمّع بتعرض «٤ لتر» مش «٤» وبس.
+      .select('name code quantity unit _id')
       .limit(20)
       .lean();
 
@@ -1591,6 +1592,130 @@ const deleteInventoryIssue = async (req, res) => {
 // The only exit from a line's تحت التجديد bucket: the shop either brought the
 // parts back usable (renewed → back onto the usable shelf count) or ruled them
 // سكراب (kept, to be sold — not usable stock).
+// POST /inventory/issue-bulk — صرف كذا صنف في عملية واحدة.
+//
+// أمين المخزن بيصرف أصناف كتير في اليوم، ودخوله على صنف صنف بطيء. الشاشة بقت
+// تاخد جدول أسطر، والاندبوينت ده بينفّذها مرة واحدة.
+//
+// **الكل أو لا شيء.** لو سطر واحد رصيده مش كافي أو صنفه مش موجود، العملية كلها
+// بترفض وبترجّع الأخطاء بأرقام أسطرها. الصرف اللي نصّه عدّى أسوأ من اللي اترفض
+// كله: المخزن بيبقى غلط وأمين المخزن مش عارف أنهي سطر نزل وأنهي لأ، فيعيد
+// الصرف كله ويطلع بدل مرتين. فالتحقق بيتعمل على **كل** الأسطر الأول، وبعدين
+// الحفظ.
+//
+// وصنف واحد متكرّر في أكتر من سطر بيتجمّع قبل التحقق — تلات أسطر × ٢ من نفس
+// الصنف لازم تتقاس على ٦، مش كل سطر لوحده على ٢ والرصيد ٤.
+const issueInventoryBulk = async (req, res) => {
+  try {
+    const { lines, vehicleNumber = '', date, notes = '' } = req.body || {};
+    if (!Array.isArray(lines) || !lines.length) {
+      return res.status(400).json({ message: 'مفيش أسطر للصرف' });
+    }
+    if (lines.length > 200) {
+      return res.status(400).json({ message: 'أقصى ٢٠٠ سطر في المرة الواحدة' });
+    }
+
+    const when = date || new Date().toISOString().slice(0, 10);
+    const errors = [];
+    const prepared = [];
+
+    // ① نجمّع المطلوب لكل صنف عبر كل الأسطر قبل ما نقارن بالرصيد.
+    const wanted = new Map();
+    lines.forEach((l, i) => {
+      const id = String(l.item || l.itemId || '');
+      // من غير Math.max هنا عن قصد: الكمية بتتقرا زي ما هي وبعدين تتفحص.
+      // لو ضبّطناها لواحد قبل الفحص، اللي بيكتب صفر بياخد قطعة اتصرفت من غير
+      // ما حد يقوله — والمخزن ينقص بحاجة محدش طلبها.
+      const qty = Number(l.quantity);
+      if (!id) { errors.push({ line: i + 1, message: 'الصنف مش محدد' }); return; }
+      if (!Number.isInteger(qty) || qty < 1) {
+        errors.push({ line: i + 1, message: `الكمية «${l.quantity}» مش صالحة — لازم رقم صحيح ١ على الأقل` });
+        return;
+      }
+      if (!['damaged', 'under_renewal', 'none'].includes(l.replacedFate)) {
+        errors.push({ line: i + 1, message: 'حدد مصير القطعة المستبدلة: تالفة، أو تحت التجديد، أو لا توجد' });
+        return;
+      }
+      wanted.set(id, (wanted.get(id) || 0) + qty);
+      prepared.push({ line: i + 1, id, qty, raw: l });
+    });
+
+    // ② الأصناف موجودة ورصيدها يكفي **المجموع**.
+    const items = new Map();
+    if (wanted.size) {
+      const found = await InventoryItem.find({ _id: { $in: [...wanted.keys()] } });
+      found.forEach((it) => items.set(String(it._id), it));
+    }
+    for (const [id, total] of wanted) {
+      const it = items.get(id);
+      const at = prepared.filter((p) => p.id === id).map((p) => p.line).join('، ');
+      if (!it || it.isActive === false) { errors.push({ line: at, message: 'الصنف مش موجود' }); continue; }
+      const have = Number(it.quantity) || 0;
+      if (have < total) {
+        errors.push({ line: at, message: `${it.name}: الرصيد ${have} والمطلوب ${total}` });
+      }
+    }
+
+    if (errors.length) {
+      // مفيش حاجة اتغيّرت — الرفض قبل أي حفظ.
+      return res.status(400).json({ message: 'العملية اترفضت — مفيش أي سطر اتنفّذ', errors });
+    }
+
+    // ③ التنفيذ.
+    const issues = [];
+    for (const p of prepared) {
+      const it = items.get(p.id);
+      it.quantity = (Number(it.quantity) || 0) - p.qty;
+      if (p.raw.replacedFate === 'under_renewal') {
+        it.underRenewalQty = (Number(it.underRenewalQty) || 0) + p.qty;
+      }
+      issues.push({
+        item: it._id,
+        itemName: it.name,
+        itemCode: it.code,
+        quantity: p.qty,
+        vehicleNumber: String(p.raw.vehicleNumber ?? vehicleNumber ?? '').trim(),
+        fitLocation: ['head', 'flatbed', 'trailer'].includes(p.raw.fitLocation) ? p.raw.fitLocation : '',
+        notes: String(p.raw.notes ?? notes ?? '').trim(),
+        date: p.raw.date || when,
+        replacedFate: p.raw.replacedFate,
+        issuedBy: req.user._id,
+      });
+    }
+    for (const it of items.values()) await it.save();
+    const created = await InventoryIssue.insertMany(issues);
+
+    emitToAll('inventory:updated', { bulk: true, count: created.length });
+
+    await logAudit({
+      user: req.user,
+      action: 'issue',
+      entity: 'InventoryItem',
+      entityId: null,
+      changes: {
+        bulk: true,
+        lines: created.length,
+        totalQty: created.reduce((n, x) => n + x.quantity, 0),
+        vehicles: [...new Set(created.map((x) => x.vehicleNumber).filter(Boolean))],
+      },
+      ipAddress: req.ip,
+    });
+
+    res.status(201).json({
+      issues: created,
+      items: [...items.values()],
+      summary: {
+        lines: created.length,
+        totalQty: created.reduce((n, x) => n + x.quantity, 0),
+        distinctItems: items.size,
+      },
+    });
+  } catch (error) {
+    console.error('Error issuing inventory in bulk:', error);
+    res.status(500).json({ message: 'تعذّر تنفيذ الصرف' });
+  }
+};
+
 const inventoryRenewalResult = async (req, res) => {
   try {
     const { result, quantity } = req.body || {};
@@ -1753,6 +1878,7 @@ module.exports = {
   getWorkshopStore,
   getInventory,
   issueInventoryItem,
+  issueInventoryBulk,
   inventoryRenewalResult,
   listInventoryIssues,
   deleteInventoryIssue,

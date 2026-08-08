@@ -22,6 +22,9 @@ router.get('/store', authorize(...allWorkshopRoles), workshopController.getWorks
 // /inventory/:id so "issues" is never swallowed as an id.
 router.get('/inventory/issues', authorize(...allWorkshopRoles), workshopController.listInventoryIssues);
 router.post('/inventory/:id/issue', authorize(...allWorkshopRoles), workshopController.issueInventoryItem);
+// صرف كذا صنف مرة واحدة — لازم يتسجّل **قبل** /inventory/:id عشان «issue-bulk»
+// ما يتفهمش على إنه معرّف صنف.
+router.post('/inventory/issue-bulk', authorize(...allWorkshopRoles), workshopController.issueInventoryBulk);
 router.post('/inventory/:id/renewal-result', authorize(...allWorkshopRoles), workshopController.inventoryRenewalResult); // مجدد أو سكراب
 router.delete('/inventory/issues/:id', authorize(...managerRoles), workshopController.deleteInventoryIssue);
 

@@ -1,4 +1,5 @@
 # Energize Logistics — خريطة النظام الكاملة
+
 ## System Blueprint — sections, pages, workflows & mechanics
 
 > الملف ده مكتوب عشان يتاخد **كوبي/بيست** لمشروع تاني: كل قسم فيه صفحاته، وبيحصل
@@ -15,21 +16,22 @@
 
 # ٠. الأرقام في سطر واحد — At a glance
 
-| | |
-|---|---|
-| الأقسام المُدارة بالصلاحيات · Managed sections | **٢٢** |
-| صفحات `/system` · Pages | **٢٥٤** |
-| مدخل في القايمة الجانبية · Nav entries | **٢٢٤** |
-| الأدوار · Roles | **٤٩** (٥ عامة + ٢١ مدير قسم + ٢٣ موظف قسم — إدارة العلاقات وحدها عندها ٤ مستويات) |
-| مسارات الـAPI · API route groups | **٥١** |
-| الواجهة · Frontend | Next.js (App Router) + TypeScript + Tailwind |
-| الخلفية · Backend | Express + MongoDB (Mongoose) + Socket.IO |
-| الموبايل · Mobile | Flutter (نفس الـAPI بـ Bearer token) |
-| اللغات · Languages | عربي/إنجليزي كامل + RTL |
+|                                                |                                                                                    |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| الأقسام المُدارة بالصلاحيات · Managed sections | **٢٢**                                                                             |
+| صفحات `/system` · Pages                        | **٢٥٤**                                                                            |
+| مدخل في القايمة الجانبية · Nav entries         | **٢٢٤**                                                                            |
+| الأدوار · Roles                                | **٤٩** (٥ عامة + ٢١ مدير قسم + ٢٣ موظف قسم — إدارة العلاقات وحدها عندها ٤ مستويات) |
+| مسارات الـAPI · API route groups               | **٥١**                                                                             |
+| الواجهة · Frontend                             | Next.js (App Router) + TypeScript + Tailwind                                       |
+| الخلفية · Backend                              | Express + MongoDB (Mongoose) + Socket.IO                                           |
+| الموبايل · Mobile                              | Flutter (نفس الـAPI بـ Bearer token)                                               |
+| اللغات · Languages                             | عربي/إنجليزي كامل + RTL                                                            |
 
 ---
 
 # ١. الأساسات — الحاجات اللي كل قسم بيقف عليها
+
 ## Foundations — the mechanics every section reuses
 
 دي أهم جزء لو هتنقل الفكرة لمشروع تاني. الـ٢٢ قسم **مش ٢٢ تطبيق**؛ دول ٢٢ استعمال
@@ -58,7 +60,7 @@ middleware/sectionGate.js →  بيتركّب على apiPrefixes بتاع كل �
   حرفيًا). `assertRolesCoverSections()` بترمي خطأ وقت الإقلاع لو قسم ناقصه دور.
 
 **التصميم اللي يتنقل:** خلي القسم **مفتوح بالكامل بكل أكشناته** لأي حد اتفتح له،
-والفرق بين المدير والموظف يكون في *نطاق الرؤية* (بيشوف مين) مش في *الأزرار*.
+والفرق بين المدير والموظف يكون في _نطاق الرؤية_ (بيشوف مين) مش في _الأزرار_.
 
 ### ١.٢ المهام والشكاوى لكل قسم · Per-section Tasks & Complaints
 
@@ -109,6 +111,7 @@ middleware/sectionGate.js →  بيتركّب على apiPrefixes بتاع كل �
 JSON مرجعي واحد وسكربت استيراد **idempotent**: تشغّله عشر مرات يطلّع نفس النتيجة.
 
 قواعد اتعلمناها بالغلط:
+
 - **اربط بالمعرّف الثابت، مش بالرقم المتسلسل.** الرقم الوظيفي بيتعاد استخدامه لموظف
   تاني، ورقم اللوحة بيتغيّر والشاسيه لأ. اربط برقم الهوية / الشاسيه / السيريال.
 - **«مطلوب» تصريح مش سكوت.** لو الشيت قال «الحقل ده ناقص»، امسح القيمة القديمة
@@ -124,6 +127,7 @@ JSON مرجعي واحد وسكربت استيراد **idempotent**: تشغّل�
 اختبار وهمية) وبيطبع «نجح كذا · فشل كذا».
 
 قواعد التدقيق:
+
 - مستخدمو الاختبار بيبدأوا بـ`zz-` وبيتمسحوا في الآخر.
 - التيست اللي بيكتب لازم يكتب على **داتا بتاعته** (عربية اختبار بيعملها ويمسحها)،
   عمره ما يلمس سجل شغّال.
@@ -134,11 +138,13 @@ JSON مرجعي واحد وسكربت استيراد **idempotent**: تشغّل�
 ---
 
 # ٢. الأقسام — Sections
+
 ## كل قسم: صفحاته، بيحصل فيه إيه، والورك فلو
 
 ---
 
 ## ٢.١ الموارد البشرية · HR
+
 `/api/hr` — الأدوار: `hr_manager` / `hr_specialist`
 
 ### الصفحات
@@ -241,25 +247,29 @@ JSON مرجعي واحد وسكربت استيراد **idempotent**: تشغّل�
 ---
 
 ## ٢.٢ لوكيشن سوليوشن (النقل الثقيل) · Location Solutions
+
 `/api/ls2` — الأدوار: `location_manager` / `location_staff`
 
 ### الصفحات
-| الصفحة | بيحصل فيها إيه |
-|---|---|
-| `/system/ls2` | لوحة التتبّع |
-| `/system/ls2/live` | الأسطول المباشر على الخريطة (تكامل GPS) |
-| `/system/ls2/registry` | سجل الأسطول |
-| `/system/ls2/drivers` · `/driver-performance` | السواقين وتقييمهم من بيانات التليمتري |
-| `/system/ls2/tires` | ضغط وحرارة الكاوتش الحيّة من الحساسات |
-| `/system/ls2/temperature` | حرارة المبرّد |
-| `/system/ls2/maintenance` | الصيانة الدورية بالكيلومترات |
-| `/system/ls2/fleet-assets` | **السطحات والتيدرات وفردات الكاوتش** (سجل الورشة) |
-| `/system/ls2/store` | مخزن النقل الثقيل |
-| `/system/ls2/repairs` | الصيانة الاستثنائية |
-| `/system/ls2/alerts` · `/reports` · `/settings` · `/kpis` | |
+
+| الصفحة                                                    | بيحصل فيها إيه                                    |
+| --------------------------------------------------------- | ------------------------------------------------- |
+| `/system/ls2`                                             | لوحة التتبّع                                      |
+| `/system/ls2/live`                                        | الأسطول المباشر على الخريطة (تكامل GPS)           |
+| `/system/ls2/registry`                                    | سجل الأسطول                                       |
+| `/system/ls2/drivers` · `/driver-performance`             | السواقين وتقييمهم من بيانات التليمتري             |
+| `/system/ls2/tires`                                       | ضغط وحرارة الكاوتش الحيّة من الحساسات             |
+| `/system/ls2/temperature`                                 | حرارة المبرّد                                     |
+| `/system/ls2/maintenance`                                 | الصيانة الدورية بالكيلومترات                      |
+| `/system/ls2/fleet-assets`                                | **السطحات والتيدرات وفردات الكاوتش** (سجل الورشة) |
+| `/system/ls2/store`                                       | مخزن النقل الثقيل                                 |
+| `/system/ls2/repairs`                                     | الصيانة الاستثنائية                               |
+| `/system/ls2/alerts` · `/reports` · `/settings` · `/kpis` |                                                   |
 
 ### الفكرة المعمارية المهمة
+
 فيه **مصدرين مختلفين تمامًا** لنفس العربية، وخلطهم غلط:
+
 - **البثّ الحيّ (GPS/telemetry):** بيعرف الحساسات — ضغط، حرارة، سرعة، عدّاد.
   ما بيعرفش **أنهي فردة** (بالسيريال) قاعدة على الموقع ٩.
 - **سجل الأصول (الورشة):** بيعرف كل فردة بسيريالها وتاريخها. ما بيعرفش الضغط.
@@ -319,21 +329,23 @@ GET /assets/vehicle/:plate/history
 ---
 
 ## ٢.٣ إدارة الأسطول · Fleet Management
+
 `/api/fleet` — الأدوار: `fleet_manager` / `fleet_supervisor`
 
 عربياتنا إحنا (مقابل «طلبات الشحنات» اللي بتحجز عربيات موردين).
 
-| الصفحة | بيحصل فيها إيه |
-|---|---|
-| `/system/fleet/board` | لوحة تشغيل بأعمدة الحالات |
-| `/system/fleet` | الحمولات |
-| `/system/fleet/dashboard` | التحليلات |
-| `/system/fleet/drivers` · `/driver-kpis` | السواقين وتقييمهم |
-| `/system/fleet/vehicles` | سياراتنا |
-| `/system/fleet/assign` | توزيع المشرفين |
-| `/system/fleet/customers` · `/settings` | |
+| الصفحة                                   | بيحصل فيها إيه            |
+| ---------------------------------------- | ------------------------- |
+| `/system/fleet/board`                    | لوحة تشغيل بأعمدة الحالات |
+| `/system/fleet`                          | الحمولات                  |
+| `/system/fleet/dashboard`                | التحليلات                 |
+| `/system/fleet/drivers` · `/driver-kpis` | السواقين وتقييمهم         |
+| `/system/fleet/vehicles`                 | سياراتنا                  |
+| `/system/fleet/assign`                   | توزيع المشرفين            |
+| `/system/fleet/customers` · `/settings`  |                           |
 
 ### الورك فلو ⑤: حمولة من الطلب للفاتورة
+
 ```
 requesting → loading → uploaded → on_way → arrived
                                               ├→ bond_sent → bond_received → invoiced
@@ -352,11 +364,13 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.٤ التخليص الجمركي · Customs
+
 `/api/customs-clearance` — الأدوار: `customs_manager` / `customs_officer`
 
 `/system/customs` (خط الأنابيب) · `/system/customs/guide` (دليل الإجراءات)
 
 ### الورك فلو ⑥: معاملة تخليص — ١١ مرحلة
+
 ```
  ١) papers_received         استلام الأوراق
  ٢) declaration_paid        طباعة البيان الجمركي وسداده
@@ -377,20 +391,22 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.٥ المركبات والتفاويض · Vehicles
+
 `/api/vehicles` — الأدوار: `vehicles_manager` / `vehicles_staff`
 
-| الصفحة | بيحصل فيها إيه |
-|---|---|
-| `/system/vehicles/registry/overview` | كارت لكل عمود بعدّاده |
-| `/system/vehicles/registry` | سجل المركبات |
-| `/system/vehicles/registry/expiring` | الانتهاءات والتجديد |
-| `/system/vehicles/registry/claims` | الحوادث والمطالبات |
-| `/system/vehicles/registry/corporate` | وثائق تأمين الشركة |
-| `/system/vehicles/registry/alerts` | التنبيهات |
-| `/system/vehicles/registry/settings` | **مدة التنبيه لكل نوع مستند** |
-| `/system/vehicles/registry/dashboard` | التحليلات |
+| الصفحة                                | بيحصل فيها إيه                |
+| ------------------------------------- | ----------------------------- |
+| `/system/vehicles/registry/overview`  | كارت لكل عمود بعدّاده         |
+| `/system/vehicles/registry`           | سجل المركبات                  |
+| `/system/vehicles/registry/expiring`  | الانتهاءات والتجديد           |
+| `/system/vehicles/registry/claims`    | الحوادث والمطالبات            |
+| `/system/vehicles/registry/corporate` | وثائق تأمين الشركة            |
+| `/system/vehicles/registry/alerts`    | التنبيهات                     |
+| `/system/vehicles/registry/settings`  | **مدة التنبيه لكل نوع مستند** |
+| `/system/vehicles/registry/dashboard` | التحليلات                     |
 
 ### الورك فلو ⑦: التفويض (من يقود أي عربية)
+
 ```
 تعيين → نقل لموظف تاني → سحب
 كل خطوة بتتسجّل بتاريخها، والتاريخ بيظهر في تبويب داخل ملف الموظف نفسه
@@ -406,6 +422,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.٦ الورشة · Workshop
+
 `/api/workshop` — الأدوار: `workshop_manager` / `workshop_employee`
 
 `/system/workshop/store` (المستودع) · `/system/workshop` · `/system/workshop/purchases`
@@ -416,16 +433,19 @@ requesting → loading → uploaded → on_way → arrived
 
 **قاعدة أمان:** الحركة المسجّلة **ما بتتعدّلش وما بتتمسحش**. الغلط بيتصحّح
 بحركة معاكسة مربوطة بالأصلية، والاتنين يفضلوا ظاهرين باسم اللي عملهم وتاريخهم.
+
 > السبب: «طالما الموظف عمل حاجة مينفعش يعدّل — للأمان والسيكيوريتي».
 
 ---
 
 ## ٢.٧ المشتريات · Procurement
+
 `/api/procurement` — `procurement_manager` / `procurement_staff`
 
 `/dashboard` · `/requests` · `/orders` · `/bills`
 
 ### الورك فلو ⑧
+
 ```
 طلب شراء:   draft → pending_approval → approved → ordered
                                     └→ rejected
@@ -437,6 +457,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.٨ المحاسبة · Accounting
+
 `/api/accounting` — `finance_manager` / `accountant`
 
 `/dashboard` · `/accounts` (شجرة الحسابات) · `/journal` (القيود) ·
@@ -446,6 +467,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.٩ إدارة العلاقات · CRM
+
 `/api/crm` + `/api/crm-vendors` — `crm_manager` / `crm_team_lead` / `crm_specialist` / `crm_agent`
 
 `/dashboard` · `/companies` · `/vendors` (موردي 3PL) · `/contacts` · `/deals` ·
@@ -457,6 +479,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١٠ المبيعات · Sales
+
 `/api/sales` — `sales_manager` / `sales_rep`
 
 `/dashboard` · `/pipeline` · `/targets` (المستهدفات) · `/performance`
@@ -464,6 +487,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١١ التسويق · Marketing
+
 `/api/marketing` — `marketing_manager` / `marketing_specialist`
 
 `/system/marketing` · `/campaigns` · `/activities` · `/reports`
@@ -471,6 +495,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١٢ تطوير الأعمال · Business Development
+
 `/api/business-development` — `bd_manager` / `bd_specialist`
 
 `/system/bd` · `/opportunities` · `/partners` · `/tenders` (المناقصات)
@@ -478,6 +503,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١٣ تقنية المعلومات · Software & IT
+
 `/api/it` — `it_manager` / `it_specialist`
 
 `/system/it` · `/tickets` · `/recurring` (المشكلات المتكررة) · `/custody` (العهد
@@ -492,6 +518,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١٤ العقود · Contracts
+
 `/api/contracts` — `contracts_manager` / `contracts_staff`
 
 `/system/contracts` · `/vendors` (سجل موردي 3PL) · `/analysis` (تحليل التشغيل
@@ -503,6 +530,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١٥ منصة الأوبريشن · Operations Platform
+
 `/api/ops` — `ops_platform_manager` / `ops_platform_staff`
 
 مرآة حيّة لنظام عمليات ميداني خارجي. ١٧ صفحة: الشحنات، السائقون، المركبات،
@@ -514,6 +542,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١٦ طلبات الشحنات · Shipment Orders
+
 `/api/shipment-orders` — `shipment_orders_manager` / `shipment_orders_staff`
 
 `/system/shipment-orders` · `/chat` (مساعد إنشاء) · `/customers` ·
@@ -526,6 +555,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١٧ قطاع الأفراد · B2C
+
 `/api/b2c` + `/api/b2c-wallet` — `b2c_manager` / `b2c_project_lead`
 
 `/dashboard` · `/reps-performance` · `/daily-entry` · `/reps` · `/projects` ·
@@ -537,6 +567,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١٨ العمل عن بُعد · Remote
+
 `/api/remote` — `remote_manager` / `remote_employee`
 
 `/attendance` (الحضور) · `/dashboard` · `/leave` · `/chat` · `/tasks` ·
@@ -547,6 +578,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.١٩ الشؤون الإدارية (السكرتارية) · Administration
+
 `/api/admin-tasks` — `administration_manager` / `administration_staff`
 
 `/system/administration` — **شاشة واحدة** بلوحة على طريقة Trello.
@@ -554,12 +586,14 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.٢٠ مراجعة الأعمال · Business Review
+
 `/api/business-review` — الأدوار: كل مديري الأقسام
 
 `/system/business-review` (الاجتماعات) · `/my-actions` (البنود المسندة إليّ) ·
 `/actions` (سجل المتابعة) · `/my-tasks`
 
 ### الورك فلو ⑨: اجتماع من الدعوة للإقفال
+
 ```
 دورية الاجتماع: يومي / لحظي / أسبوعي / شهري / ربع سنوي
 
@@ -573,6 +607,7 @@ requesting → loading → uploaded → on_way → arrived
 ```
 
 ### الرؤية — مفروضة بالتصميم مش بالفلترة
+
 ```
 تنفيذي (مدير عام / admin / IT)  →  كل اجتماع، كل محضر، كل بند، كل تكليف
 سكرتارية (administrator)        →  نفس ده، وهي اللي بتكتب المحاضر وترفع البنود
@@ -586,12 +621,14 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.٢١ تقييم الأداء · Performance / KPI
+
 `/api/performance`
 
 `/system/performance` (تقييم مديري الأقسام) · `/overview` (نظرة كل الأقسام) ·
 `/requests` (طلبات تعديل التقييم) · `/settings` (إعداد المؤشرات)
 
 ### الورك فلو ⑩
+
 ```
 مؤشرات موزونة → درجة مرجّحة (×٢٠) → فئة → مكافأة في المرتّبات
 
@@ -607,6 +644,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 ## ٢.٢٢ العملاء والمالية · Customers & Finance
+
 `/api/invoices` `/api/payments` `/api/collections` `/api/disputes`
 
 `/system/invoices` · `/payments` · `/collections` · `/collectors` · `/tasks` ·
@@ -617,16 +655,19 @@ requesting → loading → uploaded → on_way → arrived
 # ٣. الأقسام الخدمية — Cross-cutting
 
 ## ٣.١ الإدارة · Admin
+
 `/system/users` (المستخدمون) · `/system/permissions` (**الأدوار والصلاحيات**) ·
 `/system/branches` · `/system/expense-categories` ·
 `/system/settings/reference-data` (القوائم المرجعية) · `/system/audit` (سجل
 التدقيق) · `/system/complaints`
 
 ## ٣.٢ الأدوات · Tools
+
 `/system/reports` (مركز التقارير) · `/system/kpis` · `/system/assistant` ·
 `/system/settings`
 
 ## ٣.٣ النظرة التنفيذية · Executive Overview
+
 `/system/executive` — لـsuper_admin بس. بتنادي **داشبورد كل قسم بنفسه** وتجمّع
 النتايج في كروت مجمّعة قابلة للضغط + رسوم بيانية، حيّة.
 
@@ -634,6 +675,7 @@ requesting → loading → uploaded → on_way → arrived
 > الاندبوينتات اللي الأقسام بتستعملها — كده الرقم فوق دايمًا = الرقم جوه.
 
 ## ٣.٤ بوابة الشركاء · Partner Portal
+
 `/api/partners` (الإدارة) + `/api/portal` (البوابة نفسها)
 
 `/system/portal` · `/shipments` (شحناتي) · `/customs` (معاملات التخليص) ·
@@ -654,6 +696,7 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 # ٤. الترابط بين الأقسام — Cross-section flows
+
 ## الحاجات اللي بتعدّي من قسم لقسم
 
 ```
@@ -705,9 +748,11 @@ requesting → loading → uploaded → on_way → arrived
 ---
 
 # ٥. القواعد اللي اتدفع تمنها — Hard-won rules
+
 ## دي الحاجات اللي لو نقلتها لمشروع تاني هتوفّر عليك نفس الأخطاء
 
 ### داتا
+
 1. **اربط بالمعرّف الثابت مش بالمتسلسل.** الرقم الوظيفي بيتعاد استخدامه، ورقم
    اللوحة بيتغيّر. استعمل رقم الهوية / الشاسيه / السيريال.
 2. **«ناقص» تصريح مش سكوت.** فرّق بين «الحقل ده مطلوب وناقص» و«لا ينطبق» و«الشيت
@@ -720,6 +765,7 @@ requesting → loading → uploaded → on_way → arrived
    هيتوه من الباب اللي نسيته.
 
 ### واجهة
+
 6. **الليبل ما يكدبش.** «عدد الموظفين» ما يتحركش مع فلتر؛ لو الرقم مفلتر اكتبه.
 7. **الرقم مدخل مش زينة.** أي عدّاد على الشاشة لازم يفتح الصفوف اللي وراه.
 8. **الأزرار تعريف واحد.** لو نفس الأكشن في مكانين، اعمله مكوّن — النسخ معناه
@@ -727,6 +773,7 @@ requesting → loading → uploaded → on_way → arrived
 9. **سطر واحد للصف**، والنص واضح مش رمادي فاتح، والجدول يـscroll أفقيًا لوحده.
 
 ### خلفية
+
 10. **افرض القاعدة في السيرفر** عشان تسري على الويب والموبايل وأي مسار تاني —
     والواجهة تقول القاعدة **قبل** ما السيرفر يرفض.
 11. **اقفل كل الأبواب مش باب واحد.** قاعدة «الموقع ما يفضلش فاضي» لازم تتحط على
@@ -735,6 +782,7 @@ requesting → loading → uploaded → on_way → arrived
 13. **الحساب في مكان واحد** عشان المعاينة والمحفوظ والـPDF ما يختلفوش.
 
 ### تشغيل
+
 14. **الديبلوي مش خلص لما الملفات توصل، خلص لما الحاجة تشتغل.** افحص: المسارات
     بترد 401 مش 404، السوكت 101، هيدر الـCORS، الـ.env والمرفقات عاشوا، ومسار
     وهمي بيرد 404 (وإلا الفحوصات فوق مالهاش معنى).
@@ -789,4 +837,4 @@ Express/MongoDB + Socket.IO)، بنفس الآلية دي:
 
 ---
 
-*مقروء من الكود بتاريخ ٢٠٢٦-٠٨-٠٥ · Generated from the live codebase*
+_مقروء من الكود بتاريخ ٢٠٢٦-٠٨-٠٥ · Generated from the live codebase_

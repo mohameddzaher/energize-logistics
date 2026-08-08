@@ -33,7 +33,14 @@ const broadcastWork = (section, modelName) => {
 };
 
 // Sections that may own tasks/complaints (mirror of the frontend SECTIONS list).
-const SECTIONS = ['crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'workshop', 'customs', 'marketing', 'bd', 'it', 'fleet', 'contracts', 'vehicles'];
+// كل قسم له موظفين له مهام وشكاوى. مراجعة الأعمال مش هنا عن قصد: مالهاش أدوار
+// خاصة بيها — دي منتدى بين مديري الأقسام، و«مهامي» عندها معناها بنود الاجتماعات
+// اللي بتتقرا من مجموعة تانية خالص.
+const SECTIONS = [
+  'crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'workshop', 'customs',
+  'marketing', 'bd', 'it', 'fleet', 'contracts', 'vehicles',
+  'finance', 'operations', 'shipment-orders', 'ls2', 'administration', 'b2c', 'remote',
+];
 
 const isSuper = (u) => u && u.role === 'super_admin';
 const sameId = (a, b) => a && b && String(a) === String(b);

@@ -46,9 +46,10 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
 
   const sum = {
     flatbeds: 0, trailers: 0, tires: 0, moved: 0, unchanged: 0,
-    fakeFlatbedsRemoved: 0, backfilled: 0, events: 0,
+    fakeFlatbedsRemoved: 0, backfilled: 0, events: 0, keptUserMoves: 0,
   };
   const notes = [];
+  const userMoves = [];
 
   // ── ① التيدرات الواقفة: TR1/TR2/TR3 كانوا سطحات وهمية ─────────────────────
   console.log('── التيدرات الواقفة ──');
@@ -126,6 +127,31 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
           notes: [S(t.side), odo ? `عداد ${odo}` : ''].filter(Boolean).join(' · '),
         };
         const existing = await Ls2TireAsset.findOne({ serial });
+
+        // ── الشيت ما يدوسش على شغل بني آدم ──────────────────────────────────
+        // الجرد لقطة من ورق؛ اللي اتعمل من الشاشة بعد كده حصل على الأرض بإيد
+        // حد شايف العربية. لو الاتنين اختلفوا في **مكان** الفردة، اللي اتعمل
+        // من الشاشة هو الصح — الشيت بيتقدّم بس في البيانات اللي محدش لمسها
+        // (النوع، النمرة، السينسور).
+        //
+        // «حد لمسها» = فيه حركة على الفردة دي بعد تاريخ الجرد، مش من استيراد.
+        if (existing) {
+          const touched = await Ls2AssetEvent.findOne({
+            refId: existing._id,
+            date: { $gt: at },
+            notes: { $ne: 'استيراد جرد الورشة' },
+          }).sort({ date: -1 }).lean();
+          if (touched && String(existing.plateKey || '') !== String(fields.plateKey || '')) {
+            existing.set({
+              tireNumber: fields.tireNumber, type: fields.type, sensor: fields.sensor,
+            });
+            await existing.save();
+            sum.keptUserMoves = (sum.keptUserMoves || 0) + 1;
+            userMoves.push(`${serial}: الشيت بيقول ${plate || 'تيدر ' + tNum} — وموظف نقلها لـ${existing.plate || 'المخزن'} يوم ${new Date(touched.date).toISOString().slice(0, 10)}`);
+            continue;
+          }
+        }
+
         if (!existing) {
           const made = await Ls2TireAsset.create({ serial, ...fields });
           sum.tires++;
@@ -179,6 +205,10 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
   }
 
   console.log(`\nالنتيجة: ${JSON.stringify(sum)}`);
+  if (userMoves.length) {
+    console.log(`\nاتساب زي ما هو — شغل موظف أحدث من الشيت (${userMoves.length}):`);
+    userMoves.forEach((n) => console.log('   ' + n));
+  }
   if (notes.length) { console.log('\nملاحظات:'); notes.forEach((n) => console.log('   ' + n)); }
 
   if (!DRY) {

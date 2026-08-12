@@ -70,7 +70,7 @@ async function main() {
     byPlate.get(plate).tires.push(r);
   }
 
-  const summary = { flatbeds: 0, trailers: 0, tiresNew: 0, tiresMoved: 0, tiresUnchanged: 0, events: 0 };
+  const summary = { flatbeds: 0, trailers: 0, tiresNew: 0, tiresMoved: 0, tiresUnchanged: 0, events: 0, keptUserMoves: 0 };
   const moves = [];
 
   for (const [plate, v] of byPlate) {
@@ -126,6 +126,22 @@ async function main() {
       };
 
       const existing = await Ls2TireAsset.findOne({ serial });
+
+      // الشيت ما يدوسش على شغل بني آدم: لو فيه حركة على الفردة بعد تاريخ الجرد
+      // من غير استيراد، يبقى حد نقلها وهو شايفها — ومكانها ده هو الصح. الشيت
+      // بيحدّث بياناتها الوصفية بس.
+      if (existing) {
+        const touched = await Ls2AssetEvent.findOne({
+          refId: existing._id, date: { $gt: at }, notes: { $ne: 'استيراد جرد الورشة' },
+        }).lean();
+        if (touched && String(existing.plateKey || '') !== String(key || '')) {
+          existing.set({ tireNumber: fields.tireNumber, type: fields.type, sensor: fields.sensor });
+          await existing.save();
+          summary.keptUserMoves = (summary.keptUserMoves || 0) + 1;
+          continue;
+        }
+      }
+
       if (!existing) {
         if (!DRY) await Ls2TireAsset.create({ serial, ...fields });
         summary.tiresNew++;

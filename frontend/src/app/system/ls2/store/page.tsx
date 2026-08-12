@@ -54,6 +54,13 @@ export default function Ls2StorePage() {
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
   const [move, setMove] = useState<{ item: Item; type: 'in' | 'out' } | null>(null);
+  // تحديد أكتر من صنف وصادر واحد عليهم — الصنف بينزل منه قطعة واحدة.
+  // الاختيار بالـ _id مش بالصف، عشان يفضل شغّال لو الفلتر اتغيّر بعد الاختيار.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkOut, setBulkOut] = useState(false);
+  const togglePick = (id: string) => setPicked((p) => {
+    const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n;
+  });
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [addNew, setAddNew] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -180,11 +187,33 @@ export default function Ls2StorePage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs">
-              <tr>{[ar ? 'الصنف' : 'Item', ar ? 'التصنيف' : 'Category', ar ? 'الرصيد' : 'Qty', ar ? 'السعر' : 'Price', ar ? 'القيمة' : 'Value', ar ? 'الحالة' : 'Status', ar ? 'حركة' : 'Move', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+              <tr>
+                {canEdit && (
+                  <th className="px-3 py-2.5 w-9">
+                    <input type="checkbox" className="accent-[#f37121]"
+                      title={ar ? 'اختيار كل المعروض' : 'Select all shown'}
+                      checked={shown.length > 0 && shown.every((x) => picked.has(x._id))}
+                      onChange={(e) => setPicked((p) => {
+                        const n = new Set(p);
+                        shown.forEach((x) => (e.target.checked ? n.add(x._id) : n.delete(x._id)));
+                        return n;
+                      })} />
+                  </th>
+                )}
+                {[ar ? 'الصنف' : 'Item', ar ? 'التصنيف' : 'Category', ar ? 'الرصيد' : 'Qty', ar ? 'السعر' : 'Price', ar ? 'القيمة' : 'Value', ar ? 'الحالة' : 'Status', ar ? 'حركة' : 'Move', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shown.map((it) => (
-                <tr key={it._id} className="hover:bg-slate-50">
+                <tr key={it._id} className={picked.has(it._id) ? 'bg-orange-50/70' : 'hover:bg-slate-50'}>
+                  {canEdit && (
+                    <td className="px-3 py-2">
+                      <input type="checkbox" className="accent-[#f37121]"
+                        disabled={it.quantity < 1}
+                        title={it.quantity < 1 ? (ar ? 'الرصيد صفر' : 'No stock') : ''}
+                        checked={picked.has(it._id)} onChange={() => togglePick(it._id)} />
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     <p className="font-semibold text-slate-800">{it.name}</p>
                     {(it.compatibleModels?.length || it.code) ? <p className="text-[11px] text-slate-400">{it.code}{it.compatibleModels?.length ? ` · ${it.compatibleModels.join('، ')}` : ''}</p> : null}
@@ -218,7 +247,35 @@ export default function Ls2StorePage() {
         </div>
       </div>
 
+      {/* شريط الاختيار — بيبان بس لما يكون فيه صنف متحدّد */}
+      {canEdit && picked.size > 0 && (
+        <div className="sticky bottom-3 z-20 mx-auto max-w-3xl rounded-2xl border border-[#f37121]/40 bg-white shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-bold text-slate-900">
+            {ar ? `${picked.size} صنف متحدّد` : `${picked.size} selected`}
+          </span>
+          <span className="text-[12px] text-slate-600">
+            {ar ? 'الصادر بينزل قطعة واحدة من كل صنف' : 'One unit is issued from each'}
+          </span>
+          <button onClick={() => setPicked(new Set())}
+            className="text-[12.5px] text-slate-600 hover:text-slate-900 underline">
+            {ar ? 'إلغاء الاختيار' : 'Clear'}
+          </button>
+          <button onClick={() => setBulkOut(true)}
+            className="ms-auto px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-semibold inline-flex items-center gap-1.5">
+            <ArrowUpFromLine className="w-4 h-4" />
+            {ar ? `صادر للمتحدّد (${picked.size})` : `Issue selected (${picked.size})`}
+          </button>
+        </div>
+      )}
+
       {move && <MovementModal move={move} plates={plates} ar={ar} onClose={() => setMove(null)} onDone={() => { setMove(null); load(); }} />}
+      {bulkOut && (
+        <BulkOutModal
+          items={items.filter((x) => picked.has(x._id))} plates={plates} ar={ar}
+          onClose={() => setBulkOut(false)}
+          onDone={() => { setBulkOut(false); setPicked(new Set()); load(); }}
+        />
+      )}
       {(addNew || editItem) && <ItemFormModal item={editItem} ar={ar} onClose={() => { setAddNew(false); setEditItem(null); }} onSaved={() => { setAddNew(false); setEditItem(null); load(); }} />}
     </div>
   );
@@ -328,6 +385,114 @@ function ReverseModal({ m, ar, onClose, onDone }: { m: Movement; ar: boolean; on
           className="w-full mt-3 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-50">
           {busy ? (ar ? 'جارٍ التنفيذ…' : 'Working…') : (ar ? 'تأكيد التراجع' : 'Confirm reversal')}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// صادر لأكتر من صنف مرة واحدة — **نفس** إنبوتس الصادر المفرد (العربية والسبب)،
+// بس بتتطبّق على كل اللي اتحدّد. الصنف بينزل منه قطعة واحدة؛ اللي عايز كميات
+// مختلفة بيستعمل الصادر المفرد، والحركتين بيدخلوا نفس السجل بنفس الشكل.
+function BulkOutModal({ items, plates, ar, onClose, onDone }: {
+  items: Item[]; plates: string[]; ar: boolean; onClose: () => void; onDone: () => void;
+}) {
+  const { notify } = useDialog();
+  const [plate, setPlate] = useState('');
+  const [reason, setReason] = useState('');
+  const [each, setEach] = useState('1');
+  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const t = (a: string, e: string) => (ar ? a : e);
+  const per = Math.max(1, Number(each) || 1);
+  const short = items.filter((i) => i.quantity < per);
+
+  const submit = async () => {
+    setErrors({}); setBusy(true);
+    try {
+      const r = await api.post<any>('/api/ls2/store/bulk-out', {
+        items: items.map((i) => i._id), quantityEach: per,
+        vehiclePlate: plate.trim(), reason: reason.trim(),
+      });
+      notify(t(`اتسجّل صادر ${r?.summary?.items ?? items.length} صنف · ${r?.summary?.totalQty ?? items.length} قطعة`,
+        `Issued ${r?.summary?.items ?? items.length} items · ${r?.summary?.totalQty ?? items.length} units`), 'success');
+      onDone();
+    } catch (e: any) {
+      // الرفض بيبقى كامل — بنعلّم الأصناف اللي رصيدها مش كافي بدل رسالة عامة.
+      const errs = e?.data?.errors || e?.errors;
+      if (Array.isArray(errs) && errs.length) {
+        const map: Record<string, string> = {};
+        errs.forEach((x: any) => { if (x.id) map[String(x.id)] = x.message; });
+        setErrors(map);
+        notify(t('العملية اترفضت بالكامل — مفيش أي صنف اتصرف', 'Rejected in full — nothing was issued'), 'error');
+      } else notify(e?.message || 'Failed', 'error');
+    } finally { setBusy(false); }
+  };
+
+  const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-1">
+          <h3 className="font-bold text-lg text-[#f37121]">{t('صادر لعدة أصناف', 'Issue multiple items')}</h3>
+          <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
+        </div>
+        <p className="px-5 text-sm text-slate-600 mb-3">
+          {t(`${items.length} صنف متحدّد · قطعة واحدة من كل صنف`, `${items.length} items · one unit each`)}
+        </p>
+
+        <div className="px-5 space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">{t('صادرة على عربية', 'Out to vehicle')}</label>
+            <input list="ls2-plates-bulk" value={plate} onChange={(e) => setPlate(e.target.value)} className={inp}
+              placeholder={t('اختر أو اكتب اللوحة…', 'pick or type plate…')} autoFocus />
+            <datalist id="ls2-plates-bulk">{plates.map((p) => <option key={p} value={p} />)}</datalist>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">{t('ملاحظة / سبب', 'Reason')}</label>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} className={inp} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              {t('الكمية من كل صنف', 'Quantity from each')}
+            </label>
+            <input type="number" min={1} value={each} onChange={(e) => setEach(e.target.value)} className={`${inp} w-28`} />
+            <p className="text-[11px] text-slate-600 mt-1">
+              {t('الافتراضي قطعة واحدة — غيّرها لو كل الأصناف نازل منها نفس العدد.',
+                 'Default is one — change it only if every item takes the same count.')}
+            </p>
+          </div>
+        </div>
+
+        <div className="px-5 mt-3 flex-1 overflow-y-auto">
+          <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+            {items.map((i) => {
+              const bad = errors[i._id] || (i.quantity < per ? t(`الرصيد ${i.quantity} والمطلوب ${per}`, `Stock ${i.quantity}, need ${per}`) : '');
+              return (
+                <div key={i._id} className={`px-3 py-2 flex items-center gap-2 ${bad ? 'bg-rose-50' : ''}`}>
+                  <span className="flex-1 text-[13px] text-slate-900 truncate">{i.name}</span>
+                  <span className={`text-[12px] font-bold tabular-nums ${bad ? 'text-rose-700' : 'text-emerald-700'}`}>
+                    {i.quantity} {i.unit}
+                  </span>
+                  <span className="text-[12px] text-slate-600">→ {Math.max(0, i.quantity - per)}</span>
+                </div>
+              );
+            })}
+          </div>
+          {short.length > 0 && (
+            <p className="text-[12px] text-rose-700 font-semibold mt-2">
+              {t(`${short.length} صنف رصيده مش كافي — العملية كلها هترفض`, `${short.length} items short — the whole issue will be rejected`)}
+            </p>
+          )}
+        </div>
+
+        <div className="px-5 py-4">
+          <button onClick={submit} disabled={busy || !items.length || short.length > 0}
+            className="w-full py-2.5 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-semibold disabled:opacity-40">
+            {busy ? t('جارٍ التسجيل…', 'Recording…')
+              : short.length > 0 ? t('فيه أصناف رصيدها مش كافي', 'Some items are short')
+              : t(`تسجيل الصادر (${items.length} صنف)`, `Record issue (${items.length} items)`)}
+          </button>
+        </div>
       </div>
     </div>
   );

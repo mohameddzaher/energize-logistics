@@ -115,6 +115,76 @@ exports.addMovement = async (req, res) => {
   } catch (e) { console.error('ls2 store movement', e); res.status(500).json({ message: 'Failed to record movement' }); }
 };
 
+// ── صادر لأكتر من صنف مرة واحدة ───────────────────────────────────────────────
+//
+// الطلب: «أعمل سيليكت لأكتر من صنف، وأقول الصادر ده على أنهي عربية، ويتسجّل على
+// كل اللي عملتله سيليكت». نفس الإنبوتس بتاعة الصادر المفرد بالظبط، بس بتتطبّق
+// على المجموعة.
+//
+// **قطعة واحدة من كل صنف.** ده اللي اتطلب صراحةً: الصنف اللي فيه كمية بينزل منه
+// عدد ١. اللي عايز كميات مختلفة بيستعمل الصادر المفرد — والحركتين بيدخلوا نفس
+// السجل بنفس الشكل، فالمراجع مش هيفرّق بينهم.
+//
+// **الكل أو لا شيء.** لو صنف واحد رصيده صفر، العملية كلها بترفض بقايمة بأسماء
+// الأصناف الناقصة. صادر نصّه اتنفّذ بيخلّي المخزن غلط واللي عمله مش عارف أنهي
+// صنف نزل، فيعيده كله ويطلع بدل مرتين.
+const actor = (req) => ({
+  performedBy: req.user?._id,
+  performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
+});
+
+exports.addBulkOut = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!ids.length) return res.status(400).json({ message: 'اختر صنف واحد على الأقل' });
+    if (ids.length > 300) return res.status(400).json({ message: 'أقصى ٣٠٠ صنف في المرة الواحدة' });
+
+    // قطعة واحدة من كل صنف — إلا لو اتبعت رقم صريح (الافتراضي ١).
+    const per = Math.max(1, Number(req.body?.quantityEach) || 1);
+    const vehiclePlate = (req.body?.vehiclePlate || '').trim();
+    const reason = (req.body?.reason || '').trim();
+
+    const uniq = [...new Set(ids.map(String))];
+    const items = await Ls2StoreItem.find({ _id: { $in: uniq } });
+    const found = new Map(items.map((i) => [String(i._id), i]));
+
+    const errors = [];
+    for (const id of uniq) {
+      const it = found.get(id);
+      if (!it) { errors.push({ id, message: 'الصنف مش موجود' }); continue; }
+      if ((Number(it.quantity) || 0) < per) {
+        errors.push({ id, name: it.name, message: `${it.name}: الرصيد ${it.quantity} والمطلوب ${per}` });
+      }
+    }
+    if (errors.length) {
+      // مفيش حاجة اتغيّرت — الرفض قبل أي حفظ.
+      return res.status(400).json({ message: 'العملية اترفضت — مفيش أي صنف اتصرف', errors });
+    }
+
+    const movements = [];
+    for (const id of uniq) {
+      const it = found.get(id);
+      it.quantity -= per;
+      await it.save();
+      movements.push({
+        item: it._id, itemName: it.name, type: 'out', quantity: per,
+        vehiclePlate, reason, balanceAfter: it.quantity, ...actor(req),
+      });
+    }
+    const created = await Ls2StoreMovement.insertMany(movements);
+
+    emit();
+    res.status(201).json({
+      movements: created,
+      items: [...found.values()],
+      summary: { items: uniq.length, quantityEach: per, totalQty: uniq.length * per, vehiclePlate },
+    });
+  } catch (e) {
+    console.error('ls2 store bulk out', e);
+    res.status(500).json({ message: 'تعذّر تسجيل الصادر' });
+  }
+};
+
 // ── التراجع عن حركة ───────────────────────────────────────────────────────────
 //
 // قرار الإدارة المالية: الحركة اللي اتسجّلت متتعدّلش. مفيش endpoint بيغيّر كمية
@@ -125,11 +195,6 @@ exports.addMovement = async (req, res) => {
 // (reversalOf)، بسبب إجباري وباسم اللي عملها. الأصلية بتفضل في السجل مشطوبة،
 // فالمراجع بيشوف الغلطة والتصحيح مش النتيجة النهائية بس. لو الكمية الصح مختلفة،
 // بيتسجّل بعدها حركة جديدة عادية — وديه كمان بتبان باسم صاحبها.
-
-const actor = (req) => ({
-  performedBy: req.user?._id,
-  performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
-});
 
 /** أثر الحركة على الرصيد: وارد يزوّد، صادر ينقّص. */
 const effectOf = (type, qty) => (type === 'in' ? +qty : -qty);

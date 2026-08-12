@@ -11,6 +11,7 @@ import api from '@/lib/api';
 import { Activity, RefreshCw, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { ls2Text, isLs2Staff, tireTempColor, type Lang, type Vehicle, type Tire } from '@/lib/ls2';
 
 export default function Ls2TiresPage() {
@@ -20,7 +21,8 @@ export default function Ls2TiresPage() {
   const t = ls2Text(lang as Lang);
   const [items, setItems] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [problemsOnly, setProblemsOnly] = useState(false);
+  const [problemsOnly, setProblemsOnly] = useState('');
+  const [q, setQ] = useState('');
   const [expanded, setExpanded] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -30,13 +32,22 @@ export default function Ls2TiresPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
 
-  const rows = useMemo(() => {
-    let r = [...items];
-    if (problemsOnly) r = r.filter((v) => (v.maxTireTempC != null && v.maxTireTempC >= 75) || (v.minTirePressurePsi != null && v.minTirePressurePsi < 90) || v.tireFaults > 0);
-    return r.sort((a, b) => (b.maxTireTempC || 0) - (a.maxTireTempC || 0));
-  }, [items, problemsOnly]);
-
   const ar = lang === 'ar';
+  // «المشاكل فقط» كانت تلات مشاكل مخلوطة في تبديل واحد، فاللي بيدوّر على الحرارة
+  // بيلاقي معاها الضغط والأعطال. بقى كل واحدة شريحة لوحدها بعددها.
+  const HOT = (v: any) => v.maxTireTempC != null && v.maxTireTempC >= 75;
+  const LOW = (v: any) => v.minTirePressurePsi != null && v.minTirePressurePsi < 90;
+  const TIRE_CHIPS: Chip[] = useMemo(() => [
+    { key: '', label: ar ? 'الكل' : 'All' },
+    { key: 'any', label: ar ? 'فيها مشكلة' : 'Any problem', tone: 'amber', test: (v: any) => HOT(v) || LOW(v) || v.tireFaults > 0 },
+    { key: 'hot', label: ar ? 'حرارة عالية' : 'Hot', tone: 'red', test: HOT },
+    { key: 'low', label: ar ? 'ضغط منخفض' : 'Low pressure', tone: 'sky', test: LOW },
+    { key: 'faults', label: ar ? 'أعطال حساسات' : 'Sensor faults', tone: 'violet', test: (v: any) => v.tireFaults > 0 },
+    { key: 'ok', label: ar ? 'سليمة' : 'Healthy', tone: 'green', test: (v: any) => !HOT(v) && !LOW(v) && !(v.tireFaults > 0) },
+  ], [ar]);
+  const tSearch = useCallback((v: any) => [v.plate, v.name, v.driver], []);
+  const tF = useChipFilter(items, TIRE_CHIPS, problemsOnly, q, tSearch);
+  const rows = useMemo(() => [...tF.shown].sort((a: any, b: any) => (b.maxTireTempC || 0) - (a.maxTireTempC || 0)), [tF.shown]);
   const flattenTires = (list: Vehicle[]) => list.flatMap((v) => (v.tires || []).map((tire) => ({ plate: v.plate || v.name, driver: v.driver, axle: tire.axle, position: tire.position, tempC: tire.tempC, pressurePsi: tire.pressurePsi, fault: tire.fault })));
   const tireColumns: ExportColumn[] = [
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', transform: (v) => v ?? '' },
@@ -73,10 +84,14 @@ export default function Ls2TiresPage() {
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Activity className="w-5 h-5" />} title={t.tires} subtitle={lang === 'ar' ? `${rows.length} مركبة · اضغط على مركبة لفتح صفحتها الكاملة` : `${rows.length} vehicles · click a vehicle to open its full page`}>
-        <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={problemsOnly} onChange={(e) => setProblemsOnly(e.target.checked)} /> {lang === 'ar' ? 'المشاكل فقط' : 'Problems only'}</label>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
         <ExportMenu fileName="ls2-tires" lang={lang as Lang} options={exportOptions} />
       </PageHeader>
+
+      <FilterBar
+        chips={TIRE_CHIPS} counts={tF.counts} active={problemsOnly} onChange={setProblemsOnly}
+        query={q} onQuery={setQ} placeholder={ar ? 'لوحة أو سائق…' : 'Plate or driver…'}
+        shown={rows.length} total={items.length} ar={ar} />
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">

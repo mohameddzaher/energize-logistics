@@ -12,6 +12,7 @@ import { UserSquare, Search, FileDown, Loader2, ChevronRight, ChevronDown, Refre
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { ls2Text, isLs2Staff, fmtNum, thisMonthToDate, type Lang, type DateRange } from '@/lib/ls2';
 import { downloadDriverReport } from '@/lib/driverReport';
 
@@ -49,11 +50,19 @@ export default function Ls2DriversPage() {
   }, [range.from, range.to]);
   useEffect(() => { load(); }, [load]);
 
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return items;
-    return items.filter((d) => `${d.driver} ${d.currentVehicle?.plate || ''}`.toLowerCase().includes(s));
-  }, [items, q]);
+  // السواقين: مين ماشي على عربية دلوقتي، ومين اتنقل بين أكتر من عربية في الفترة،
+  // ومين ما مشيش خالص — دي الأسئلة اللي بتتسأل على الكشف ده.
+  const [dFilter, setDFilter] = useState('');
+  const DRIVER_CHIPS: Chip[] = useMemo(() => [
+    { key: '', label: ar ? 'الكل' : 'All' },
+    { key: 'onVehicle', label: ar ? 'على عربية دلوقتي' : 'On a vehicle now', tone: 'green', test: (d: any) => !!d.currentVehicle },
+    { key: 'noVehicle', label: ar ? 'من غير عربية' : 'No vehicle', tone: 'amber', test: (d: any) => !d.currentVehicle },
+    { key: 'multi', label: ar ? 'اتنقل بين أكتر من عربية' : 'Moved between vehicles', tone: 'violet', test: (d: any) => (d.vehicleCount || 0) > 1 },
+    { key: 'idle', label: ar ? 'ما مشيش في الفترة' : 'No distance', tone: 'slate', test: (d: any) => !(d.km > 0) },
+  ], [ar]);
+  const dSearch = useCallback((d: any) => [d.driver, d.currentVehicle?.plate, ...(d.vehicles || []).map((v: any) => v.plate)], []);
+  const dF = useChipFilter(items, DRIVER_CHIPS, dFilter, q, dSearch);
+  const filtered = dF.shown;
 
   const toggle = (k: string) => setOpen((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
@@ -101,13 +110,10 @@ export default function Ls2DriversPage() {
 
       <RangePicker value={range} onChange={setRange} lang={lang as Lang} labelFrom={t.from} labelTo={t.to} />
 
-      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
-        <div className="relative">
-          <Search className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400`} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tx('Search driver or plate…', 'بحث بالسائق أو اللوحة…')}
-            className={`w-full ${isRTL ? 'pr-10 pl-3' : 'pl-10 pr-3'} py-2 rounded-lg border border-slate-200 text-sm`} />
-        </div>
-      </div>
+      <FilterBar
+        chips={DRIVER_CHIPS} counts={dF.counts} active={dFilter} onChange={setDFilter}
+        query={q} onQuery={setQ} placeholder={tx('Search driver or plate…', 'بحث بالسائق أو اللوحة…')}
+        shown={filtered.length} total={items.length} ar={ar} />
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">

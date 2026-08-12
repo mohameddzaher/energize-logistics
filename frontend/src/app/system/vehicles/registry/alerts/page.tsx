@@ -2,6 +2,7 @@
 // تنبيهات المركبات — كل مستند منتهٍ أو قارب الانتهاء (حسب العتبات المضبوطة في
 // الإعدادات)، مرتبة بالأقرب انتهاءً، وكل بند يفتح تفاصيل المركبة.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -19,6 +20,7 @@ export default function VehicleRegistryAlerts() {
   const [loading, setLoading] = useState(true);
   const [doc, setDoc] = useState('');
   const [status, setStatus] = useState('');
+  const [q, setQ] = useState('');
 
   const load = useCallback(async () => {
     try { setData(await api.get('/api/vehicle-registry/alerts')); } catch { /* keep */ } finally { setLoading(false); }
@@ -26,7 +28,21 @@ export default function VehicleRegistryAlerts() {
   useEffect(() => { load(); }, [load]);
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
-  const items = useMemo(() => (data?.items || []).filter((i) => (!doc || i.docType === doc) && (!status || i.status === status)), [data, doc, status]);
+  // الحالة (منتهي/حرج/تحذير) بتتفلتر من الكروت الكبيرة فوق. الشرايح دي لنوع
+  // المستند + البحث + «تنبيهه متقفول» — دي الفئة اللي كانت بتختفي في صمت.
+  const byStatus = useMemo(() => (data?.items || []).filter((i) => (!status || i.status === status)), [data, status]);
+  const DOC_CHIPS: Chip[] = useMemo(() => [
+    { key: '', label: ar ? 'كل المستندات' : 'All documents' },
+    ...DOC_TYPES.map((d) => ({
+      key: d.key, label: ar ? d.ar : d.en, tone: 'blue' as const,
+      test: (i: any) => i.docType === d.key,
+    })),
+    { key: 'muted', label: ar ? 'تنبيهه متقفول' : 'Alert muted', tone: 'slate' as const,
+      test: (i: any) => i.alertEnabled === false },
+  ], [ar]);
+  const aSearch = useCallback((i: any) => [i.plateNumber, i.brandAr, i.modelAr, i.sectorAr, i.ownerNameAr, i.docAr], []);
+  const aF = useChipFilter(byStatus, DOC_CHIPS, doc, q, aSearch);
+  const items = aF.shown;
 
   if (loading) return <Spinner />;
   const bs = data?.byStatus || {};
@@ -46,12 +62,10 @@ export default function VehicleRegistryAlerts() {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        <button onClick={() => setDoc('')} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${!doc ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200'}`}>{ar ? 'الكل' : 'All'}</button>
-        {DOC_TYPES.map((d) => (data?.byDoc?.[d.key] ? (
-          <button key={d.key} onClick={() => setDoc(doc === d.key ? '' : d.key)} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${doc === d.key ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200'}`}>{ar ? d.ar : d.en} ({data?.byDoc?.[d.key]})</button>
-        ) : null))}
-      </div>
+      <FilterBar
+        chips={DOC_CHIPS} counts={aF.counts} active={doc} onChange={setDoc}
+        query={q} onQuery={setQ} placeholder={ar ? 'لوحة · مالك · قطاع…' : 'Plate · owner · sector…'}
+        shown={items.length} total={byStatus.length} ar={ar} />
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">

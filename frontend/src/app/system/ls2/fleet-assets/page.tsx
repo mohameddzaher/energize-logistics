@@ -31,6 +31,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import SearchSelect from '@/components/ls2/SearchSelect';
 import VehicleAssetSheet from '@/components/ls2/VehicleAssetSheet';
 import TireActions, { type TireActionHandlers } from '@/components/ls2/TireActions';
+import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null }
@@ -227,8 +228,31 @@ export default function Ls2FleetAssetsPage() {
     .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/ـ/g, '')
     .replace(/[ً-ْ]/g, '')
     .toLowerCase().trim();
-  const fFlatbeds = useMemo(() => !q ? flatbeds : flatbeds.filter((f) => [f.plate, f.batch, f.brand, f.currentTrailerNumber, f.numbering, f.driver].some((x) => norm(x).includes(norm(q)))), [flatbeds, q]);
-  const fTrailers = useMemo(() => !q ? trailers : trailers.filter((tr) => [tr.trailerNumber, tr.currentPlate, tr.status].some((x) => norm(x).includes(norm(q)))), [trailers, q]);
+  // السطحات: الأسئلة اللي بتتسأل على الشاشة دي — مين ناقص كاوتش، ومين ماشي
+  // من غير تيدر، ومين لسه ما اتجردش أصلاً.
+  const [flatbedFilter, setFlatbedFilter] = useState('');
+  const FLATBED_CHIPS: Chip[] = useMemo(() => [
+    { key: '', label: ar ? 'الكل' : 'All' },
+    { key: 'full', label: ar ? 'كاوتشها مكتمل (14)' : 'Full set (14)', tone: 'green', test: (f: any) => (f.tireCount || 0) >= 14 },
+    { key: 'short', label: ar ? 'ناقصة كاوتش' : 'Short of tires', tone: 'amber', test: (f: any) => (f.tireCount || 0) > 0 && (f.tireCount || 0) < 14 },
+    { key: 'none', label: ar ? 'ما اتجردتش' : 'Not inventoried', tone: 'red', test: (f: any) => !(f.tireCount || 0) },
+    { key: 'noTrailer', label: ar ? 'من غير تيدر' : 'No trailer', tone: 'violet', test: (f: any) => !f.currentTrailerNumber },
+    { key: 'noGps', label: ar ? 'مش على التتبّع' : 'Not on GPS', tone: 'slate', test: (f: any) => f.unitId == null },
+  ], [ar]);
+  const flatbedSearch = useCallback((f: any) => [f.plate, f.batch, f.brand, f.currentTrailerNumber, f.numbering, f.driver], []);
+  const flatbedF = useChipFilter(flatbeds, FLATBED_CHIPS, flatbedFilter, q, flatbedSearch);
+  const fFlatbeds = flatbedF.shown;
+  // التيدرات: السؤال اليومي «مين واقف ومين مركّب» ماكانش ليه فلتر — بحث نصّي وبس.
+  const [trailerFilter, setTrailerFilter] = useState('');
+  const TRAILER_CHIPS: Chip[] = useMemo(() => [
+    { key: '', label: ar ? 'الكل' : 'All' },
+    { key: 'mounted', label: ar ? 'مركّبة على عربية' : 'On a vehicle', tone: 'green', test: (x: any) => !!x.currentPlate },
+    { key: 'free', label: ar ? 'واقفة (غير مركّبة)' : 'Standing (unhitched)', tone: 'amber', test: (x: any) => !x.currentPlate && x.status !== 'retired' },
+    { key: 'retired', label: ar ? 'خارج الخدمة' : 'Retired', tone: 'slate', test: (x: any) => x.status === 'retired' },
+  ], [ar]);
+  const trailerSearch = useCallback((x: any) => [x.trailerNumber, x.currentPlate, x.status, x.notes], []);
+  const trailerF = useChipFilter(trailers, TRAILER_CHIPS, trailerFilter, q, trailerSearch);
+  const fTrailers = trailerF.shown;
   const matchesTireFilter = useCallback((ti: TireAsset) => {
     switch (tireFilter) {
       case 'mounted': return ti.status === 'mounted';
@@ -420,6 +444,12 @@ export default function Ls2FleetAssetsPage() {
 
       {/* ---- Flatbeds -------------------------------------------------------- */}
       {tab === 'flatbeds' && (
+        <div className="space-y-3">
+        <FilterBar
+          chips={FLATBED_CHIPS} counts={flatbedF.counts} active={flatbedFilter}
+          onChange={setFlatbedFilter} query={q} onQuery={setQ}
+          placeholder={ar ? 'لوحة · دفعة · سائق · تيدر…' : 'Plate · batch · driver · trailer…'}
+          shown={fFlatbeds.length} total={flatbeds.length} ar={ar} />
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -477,11 +507,17 @@ export default function Ls2FleetAssetsPage() {
             </table>
           </div>
         </div>
+        </div>
       )}
 
       {/* ---- Trailers -------------------------------------------------------- */}
       {tab === 'trailers' && (
         <div className="space-y-3">
+          <FilterBar
+            chips={TRAILER_CHIPS} counts={trailerF.counts} active={trailerFilter}
+            onChange={setTrailerFilter} query={q} onQuery={setQ}
+            placeholder={ar ? 'رقم التيدر أو اللوحة…' : 'Trailer no. or plate…'}
+            shown={fTrailers.length} total={trailers.length} ar={ar} />
           {admin && (
             <button type="button" onClick={() => setAddTrailer(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-[#f37121] text-slate-700 text-sm">
               <Plus className="w-4 h-4 text-[#f37121]" /> {ar ? 'إضافة تيدر' : 'Add trailer'}

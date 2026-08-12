@@ -1383,7 +1383,12 @@ function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
 }) {
   const [toPlate, setToPlate] = useState('');
   const [reason, setReason] = useState('');
+  // التيدر اللي على العربية المستقبِلة لازم يروح مكان محدّد — زي الداخل ⇐ الخارج
+  // بتاع الكاوتش بالظبط. من غير الاختيار ده، تيدر بيختفي من غير ما حد يقول راح فين.
+  const [displacedTo, setDisplacedTo] = useState<'standing' | 'swap'>('standing');
   const target = flatbeds.find((f) => f.plate === toPlate);
+  const occupied = !!target?.currentTrailerNumber;
+  const canSwap = occupied && !!trailer.currentPlate;
   return (
     <Modal title={ar ? `نقل التيدر ${trailer.trailerNumber}` : `Move trailer ${trailer.trailerNumber}`} onClose={onClose}>
       <div className="space-y-3">
@@ -1394,19 +1399,51 @@ function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
             options={flatbedOptions(flatbeds.filter((f) => f.plate !== trailer.currentPlate), ar)} ar={ar}
             placeholder={ar ? '— اختر السطحة —' : '— choose flatbed —'} searchPlaceholder={ar ? 'ابحث برقم السطحة…' : 'Search flatbed…'} />
         </div>
-        {target?.currentTrailerNumber && (
-          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            {ar
-              ? `السطحة دي عليها حاليًا تيدر ${target.currentTrailerNumber} — هيتنزل تلقائيًا ويتسجّل في التاريخ.`
-              : `That flatbed currently carries trailer ${target.currentTrailerNumber} — it will be unhitched automatically (logged).`}
-          </p>
+        <p className="text-[11.5px] text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          {ar ? 'التيدر بيتنقل بكاوتشه — كل فردة عليه بتتنقل معاه وبتتسجّل في التاريخ.'
+              : 'The trailer moves with its tires — each one is carried and logged.'}
+        </p>
+        {occupied && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
+            <p className="text-xs text-amber-800 font-semibold">
+              {ar ? `السطحة دي عليها التيدر ${target!.currentTrailerNumber} — يروح فين؟`
+                  : `That flatbed carries trailer ${target!.currentTrailerNumber} — where does it go?`}
+            </p>
+            {([
+              { key: 'standing' as const, ar: 'يقف لوحده بكاوتشه (من غير عربية)', en: 'Stands alone with its tires' },
+              { key: 'swap' as const,
+                ar: `يروح مكان التيدر ${trailer.trailerNumber} على ${trailer.currentPlate || '—'} (تبديل كامل)`,
+                en: `Takes trailer ${trailer.trailerNumber}'s place on ${trailer.currentPlate || '—'} (full swap)` },
+            ]).map((o) => (
+              <label key={o.key}
+                className={`flex items-start gap-2 px-2 py-1.5 rounded-md border cursor-pointer ${
+                  o.key === 'swap' && !canSwap ? 'opacity-40 cursor-not-allowed border-transparent'
+                    : displacedTo === o.key ? 'bg-white border-[#f37121]' : 'border-transparent hover:bg-white/70'}`}>
+                <input type="radio" name="displacedTo" className="mt-0.5 accent-[#f37121]"
+                  disabled={o.key === 'swap' && !canSwap}
+                  checked={displacedTo === o.key} onChange={() => setDisplacedTo(o.key)} />
+                <span className="text-[11.5px] text-slate-800 font-medium">{ar ? o.ar : o.en}</span>
+              </label>
+            ))}
+            {!canSwap && (
+              <p className="text-[11px] text-amber-700">
+                {ar ? `التبديل متاح لما التيدر ${trailer.trailerNumber} يكون على عربية — هو دلوقتي واقف لوحده.`
+                    : `Swap needs trailer ${trailer.trailerNumber} to be on a vehicle — it is standing alone.`}
+              </p>
+            )}
+          </div>
         )}
         <div>
           <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
           <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
         </div>
-        <button type="button" disabled={busy || !toPlate} onClick={() => onSubmit({ toPlate, reason })} className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
-          {ar ? 'تنفيذ النقل' : 'Move'}
+        <button type="button" disabled={busy || !toPlate}
+          onClick={() => onSubmit({ toPlate, reason, displacedTo })}
+          className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
+          {!toPlate ? (ar ? 'اختر السطحة' : 'Choose a flatbed')
+            : occupied && displacedTo === 'swap' ? (ar ? `تبديل التيدرين` : 'Swap the two trailers')
+            : occupied ? (ar ? `نقل ${trailer.trailerNumber} وإيقاف ${target!.currentTrailerNumber}` : 'Move & stand the other down')
+            : (ar ? 'تنفيذ النقل' : 'Move')}
         </button>
       </div>
     </Modal>

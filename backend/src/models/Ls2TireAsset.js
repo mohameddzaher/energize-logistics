@@ -41,6 +41,16 @@ const ls2TireAssetSchema = new mongoose.Schema({
   positionNumber: { type: Number, default: null },    // 1..14
   positionLabel: { type: String, default: '' },       // "اطار 3 خارجي يمين"
   section: { type: String, default: '' },             // الرأس / المحور الخلفي للرأس / التيدر / الاستبن
+  // أي تيدر الفردة دي عليه — لإطارات قسم التيدر بس.
+  //
+  // الفردة اللي على التيدر بتمشي مع **التيدر**، مش مع العربية. من غير الحقل ده
+  // كانت متخزّنة بلوحة العربية وبس، فأول ما التيدر ينتقل لعربية تانية كاوتشه
+  // يفضل مسجّل على العربية القديمة: القديمة تبقى ١٤ إطار وفيهم ٦ مش عليها،
+  // والجديدة ٨ — والاتنين غلط ومحدش واخد باله. ٣٤٢ إطار كانوا كده.
+  //
+  // ولما التيدر يبقى واقف لوحده (مش مركّب على عربية)، الفردة تفضل `mounted`
+  // ومعاها رقم التيدر و plate فاضية — هي فعلًا مركّبة، بس على حاجة مش مجرورة.
+  trailerNumber: { type: String, default: null, index: true },
   // Is this mounted tire serving as the truck's SPARE (الاستبن)? A first-class
   // flag (not just text) so the workshop can see at a glance which tire is the
   // spare — surfaced everywhere. Cleared automatically when the tire leaves a truck.

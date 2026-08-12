@@ -677,50 +677,133 @@ exports.createTrailer = async (req, res) => {
 };
 
 // POST /assets/trailers/:id/move — hitch to another flatbed (or unhitch: toPlate null).
+// ── نقل التيدر ─────────────────────────────────────────────────────────────
+// التيدر بيتنقل **بكاوتشه**. مش تفصيلة: الفردة اللي على التيدر بتمشي معاه فعليًا
+// على الأرض، فلو السجل نقل التيدر وساب الكاوتش، العربية القديمة تفضل مسجّل عليها
+// ١٤ إطار وفيهم ٦ مش عليها والجديدة ٨ — والاتنين غلط ومحدش واخد باله.
+//
+// والعربية بتشيل تيدر واحد. فلو التيدر الجديد رايح على عربية عليها تيدر، التيدر
+// القديم **لازم يروح مكان محدّد** — نفس قاعدة الداخل ⇐ الخارج بتاعة الكاوتش:
+//
+//   displacedTo: 'standing'  التيدر القديم ينزل ويقف لوحده (بكاوتشه)
+//   displacedTo: 'swap'      يروح العربية اللي التيدر الجديد سابها (تبديل كامل)
+//
+// وكل الحالات دي بتشتغل مع التيدرات الواقفة برضه: تجيب تيدر واقف وتركّبه، واللي
+// كان مكانه يقف؛ أو تبدّل تيدرين بين عربيتين؛ أو تبدّل مركّب بواقف.
+//
+// body: { toPlate | null, displacedTo: 'standing'|'swap', reason, notes, date }
+
+/** ينقل كاوتش تيدر معيّن للوحة جديدة (أو يفضّيها لو التيدر وقف)، ويسجّل كل فردة. */
+async function carryTrailerTires(req, trailer, toPlate, toKey, when, odometerKm, reason) {
+  const tires = await Ls2TireAsset.find({ trailerNumber: trailer.trailerNumber, status: 'mounted' });
+  for (const ti of tires) {
+    const from = { plate: ti.plate, key: ti.plateKey, pos: posLabel(ti) };
+    if (String(from.key || '') === String(toKey || '')) continue;
+    ti.set({ plate: toPlate || null, plateKey: toKey || null });
+    await ti.save();
+    await logEvent(req, {
+      entityType: 'tire', refId: ti._id, label: ti.serial, action: 'transferred',
+      fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
+      toPlate: toPlate || null, toPlateKey: toKey || null,
+      toPosition: toPlate ? posLabel(ti) : `تيدر ${trailer.trailerNumber} (واقف)`,
+      date: when, odometerKm: odometerKm ?? null,
+      // «مشيت مع التيدر» بيتكتب دايمًا: ده سبب الحركة الحقيقي. سبب المستخدم
+      // بيتزوّد عليه، ما بيستبدلوش — وإلا الفردة تبان اتنقلت لوحدها.
+      reason: [`مشيت مع التيدر ${trailer.trailerNumber}`, reason].filter(Boolean).join(' — '),
+    });
+  }
+  return tires.length;
+}
+
+/** يحطّ التيدر على لوحة (أو ينزّله) ويحدّث السطحة، من غير أحداث الكاوتش. */
+async function seatTrailer(trailer, plate, key) {
+  trailer.set({
+    currentPlate: plate || null,
+    currentPlateKey: key || null,
+    status: plate ? 'active' : 'spare',
+  });
+  await trailer.save();
+  if (key) await Ls2Flatbed.updateOne({ plateKey: key }, { currentTrailerNumber: trailer.trailerNumber });
+}
+
 exports.moveTrailer = async (req, res) => {
   try {
     const trailer = await Ls2Trailer.findById(req.params.id);
     if (!trailer) return res.status(404).json({ message: 'Not found' });
-    const { toPlate = null, reason = '', notes = '', date } = req.body;
+    const { toPlate = null, reason = '', notes = '', date, displacedTo = 'standing' } = req.body;
     const when = date ? new Date(date) : new Date();
     const from = { plate: trailer.currentPlate, key: trailer.currentPlateKey };
-    if (from.key) await Ls2Flatbed.updateOne({ plateKey: from.key }, { currentTrailerNumber: null });
+    const toKey = toPlate ? plateKey(toPlate) : null;
 
-    if (toPlate) {
-      const toKey = plateKey(toPlate);
-      // A flatbed carries one trailer: whoever is on the target becomes spare.
-      const occupant = await Ls2Trailer.findOne({ currentPlateKey: toKey, _id: { $ne: trailer._id } });
-      if (occupant) {
-        occupant.set({ currentPlate: null, currentPlateKey: null, status: 'spare' });
-        await occupant.save();
-        await logEvent(req, {
-          entityType: 'trailer', refId: occupant._id, label: occupant.trailerNumber, action: 'removed',
-          fromPlate: toPlate, fromPlateKey: toKey, date: when,
-          reason: reason || `أُنزل لتركيب التيدر ${trailer.trailerNumber} مكانه`,
-        });
-      }
-      const live = await vehicleByKey(toKey);
-      trailer.set({ currentPlate: toPlate, currentPlateKey: toKey, status: 'active' });
-      await trailer.save();
-      await Ls2Flatbed.updateOne({ plateKey: toKey }, { currentTrailerNumber: trailer.trailerNumber });
-      await logEvent(req, {
-        entityType: 'trailer', refId: trailer._id, label: trailer.trailerNumber,
-        action: from.key ? 'transferred' : 'mounted',
-        fromPlate: from.plate, fromPlateKey: from.key,
-        toPlate, toPlateKey: toKey, date: when,
-        odometerKm: live?.odometerKm ?? null, reason, notes,
-      });
-    } else {
-      trailer.set({ currentPlate: null, currentPlateKey: null, status: 'spare' });
-      await trailer.save();
-      await logEvent(req, {
-        entityType: 'trailer', refId: trailer._id, label: trailer.trailerNumber, action: 'removed',
-        fromPlate: from.plate, fromPlateKey: from.key, date: when, reason, notes,
+    if (toKey && toKey === from.key) {
+      return res.status(400).json({ message: 'التيدر مركّب على العربية دي أصلًا' });
+    }
+
+    // العربية اللي رايح لها موجودة؟ من غير الفحص ده التيدر بيتعلّق على لوحة
+    // مالهاش سطحة — وده اللي حصل فعلاً مع تيدر ٢٧ لما اتنقل على سطحة وهمية.
+    if (toKey && !(await Ls2Flatbed.findOne({ plateKey: toKey }))) {
+      return res.status(400).json({ message: `مفيش سطحة باللوحة «${toPlate}»` });
+    }
+
+    const occupant = toKey
+      ? await Ls2Trailer.findOne({ currentPlateKey: toKey, _id: { $ne: trailer._id } })
+      : null;
+
+    if (occupant && !['standing', 'swap'].includes(displacedTo)) {
+      return res.status(400).json({
+        code: 'DISPLACED_TRAILER_FATE_REQUIRED',
+        message: `العربية عليها التيدر ${occupant.trailerNumber} — حدد يروح فين: يقف لوحده، ولا ياخد مكان التيدر ده؟`,
+        occupant: { _id: occupant._id, trailerNumber: occupant.trailerNumber },
       });
     }
-    // Trailer sensors travel with the trailer — recording its move is a review.
-    await clearSensorNotice(from.key, toPlate ? plateKey(toPlate) : null);
-    res.json({ trailer });
+    if (occupant && displacedTo === 'swap' && !from.key) {
+      return res.status(400).json({
+        message: `التبديل محتاج التيدر ${trailer.trailerNumber} يكون على عربية — هو واقف لوحده، فاختر إن ${occupant.trailerNumber} يقف لوحده`,
+      });
+    }
+
+    const live = toKey ? await vehicleByKey(toKey) : null;
+    let moved = 0; let occupantMoved = 0;
+
+    // ① نفضّي العربية القديمة من التيدر ده
+    if (from.key) await Ls2Flatbed.updateOne({ plateKey: from.key }, { currentTrailerNumber: null });
+
+    // ② التيدر اللي على العربية المستقبِلة يروح مكانه المحدّد — **بكاوتشه**
+    if (occupant) {
+      const dest = displacedTo === 'swap' ? { plate: from.plate, key: from.key } : { plate: null, key: null };
+      await seatTrailer(occupant, dest.plate, dest.key);
+      await logEvent(req, {
+        entityType: 'trailer', refId: occupant._id, label: occupant.trailerNumber,
+        action: dest.key ? 'transferred' : 'removed',
+        fromPlate: toPlate, fromPlateKey: toKey,
+        toPlate: dest.plate, toPlateKey: dest.key, date: when,
+        reason: reason || (dest.key
+          ? `تبديل مع التيدر ${trailer.trailerNumber}`
+          : `نزل ووقف لوحده لتركيب التيدر ${trailer.trailerNumber} مكانه`),
+      });
+      const occLive = dest.key ? await vehicleByKey(dest.key) : null;
+      occupantMoved = await carryTrailerTires(req, occupant, dest.plate, dest.key, when,
+        occLive?.odometerKm, reason || `مشيت مع التيدر ${occupant.trailerNumber}`);
+    }
+
+    // ③ التيدر نفسه
+    await seatTrailer(trailer, toPlate, toKey);
+    await logEvent(req, {
+      entityType: 'trailer', refId: trailer._id, label: trailer.trailerNumber,
+      action: toKey ? (from.key ? 'transferred' : 'mounted') : 'removed',
+      fromPlate: from.plate, fromPlateKey: from.key,
+      toPlate: toPlate || null, toPlateKey: toKey, date: when,
+      odometerKm: live?.odometerKm ?? null, reason, notes,
+    });
+    moved = await carryTrailerTires(req, trailer, toPlate, toKey, when, live?.odometerKm, reason);
+
+    await clearSensorNotice(from.key, toKey);
+    emitAssetsChanged();
+    res.json({
+      trailer,
+      tiresMoved: moved,
+      displaced: occupant ? { trailerNumber: occupant.trailerNumber, to: displacedTo, tiresMoved: occupantMoved } : null,
+    });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }

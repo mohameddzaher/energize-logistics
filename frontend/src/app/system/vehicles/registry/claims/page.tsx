@@ -11,8 +11,12 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { TriangleAlert, Search, ArrowRight, Clock } from 'lucide-react';
-import { getClaims, money, fmtDate } from '@/lib/vehicleRegistry';
+import { TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import {
+  getClaims, money, fmtDate, canEditVehicles, canAdminVehicles,
+  createClaim, updateClaim, deleteClaim,
+} from '@/lib/vehicleRegistry';
 
 function ClaimsInner() {
   const { lang, isRTL } = useLanguage();
@@ -20,7 +24,12 @@ function ClaimsInner() {
   const t = (a: string, e: string) => (ar ? a : e);
   const router = useRouter();
   const sp = useSearchParams();
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
+  const { user } = useAuth();
+  const canEdit = canEditVehicles(user);
+  const canDelete = canAdminVehicles(user);
+  // null = مقفول · {} = حادث جديد · سجل = تعديل
+  const [form, setForm] = useState<any | null>(null);
 
   const [q, setQ] = useState('');
   const [status, setStatus] = useState(sp?.get('status') || '');
@@ -62,8 +71,16 @@ function ClaimsInner() {
         title={t('الحوادث والمطالبات التأمينية', 'Accidents & Insurance Claims')}
         subtitle={t('متابعة المطالبة من الحادث لحد الاسترداد', 'From the accident to the money back')}
       >
-        <ExportMenu fileName="vehicle-claims" lang={lang as 'ar' | 'en'}
-          options={[{ key: 'all', label: t('تصدير', 'Export'), sheets: [{ name: t('الحوادث', 'Claims'), rows, columns: cols }] }]} />
+        <div className="flex items-center gap-2">
+          {canEdit && (
+            <button onClick={() => setForm({})}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-semibold">
+              <Plus className="w-4 h-4" />{t('تسجيل حادث', 'New accident')}
+            </button>
+          )}
+          <ExportMenu fileName="vehicle-claims" lang={lang as 'ar' | 'en'}
+            options={[{ key: 'all', label: t('تصدير', 'Export'), sheets: [{ name: t('الحوادث', 'Claims'), rows, columns: cols }] }]} />
+        </div>
       </PageHeader>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -96,7 +113,8 @@ function ClaimsInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>{[t('اللوحة', 'Plate'), t('التاريخ', 'Date'), t('نسبة الخطأ', 'Fault'), t('شركة التأمين', 'Insurer'),
-                t('المقدَّر', 'Estimated'), t('متوقع استرداده', 'Recovery'), t('الحالة', 'Status'), t('آخر رد', 'Last reply')].map((h, i) => (
+                t('المقدَّر', 'Estimated'), t('متوقع استرداده', 'Recovery'), t('الحالة', 'Status'), t('آخر رد', 'Last reply'),
+                ...(canEdit ? [t('إجراءات', 'Actions')] : [])].map((h, i) => (
                 <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>
               ))}</tr>
             </thead>
@@ -138,14 +156,39 @@ function ClaimsInner() {
                         </span>
                       )}
                     </td>
+                    {canEdit && (
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => setForm(r)} title={t('تعديل', 'Edit')}
+                            className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          {canDelete && (
+                            <button title={t('حذف', 'Delete')}
+                              onClick={async () => {
+                                if (!(await confirm(t(
+                                  `حذف الحادث ${r.accidentNumber || r.claimId || ''}؟ هيتشال من القوايم والتقارير.`,
+                                  `Delete accident ${r.accidentNumber || r.claimId || ''}?`)))) return;
+                                try { await deleteClaim(r._id); notify(t('اتشال', 'Deleted'), 'success'); load(); }
+                                catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+                              }}
+                              className="p-1.5 rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-50">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
-              {!rows.length && <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">{t('لا توجد حوادث', 'No claims')}</td></tr>}
+              {!rows.length && <tr><td colSpan={canEdit ? 9 : 8} className="px-3 py-12 text-center text-slate-500">{t('لا توجد حوادث', 'No claims')}</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
+
+      {form && <ClaimForm claim={form} ar={ar} onClose={() => setForm(null)} onSaved={() => { setForm(null); load(); }} />}
     </div>
   );
 }
@@ -155,6 +198,144 @@ function Stat({ label, value, c }: { label: string; value: any; c: string }) {
     <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
       <p className="text-2xl font-extrabold leading-none" style={{ color: c }}>{value}</p>
       <p className="text-[11px] text-slate-500 mt-1.5 leading-tight">{label}</p>
+    </div>
+  );
+}
+
+// ── تسجيل / تعديل حادث ───────────────────────────────────────────────────────
+// الحقول اللي بتتكتب بالإيد بس. فجوة الاسترداد محسوبة على السيرفر (المقدَّر ناقص
+// المتوقع)، فما بتتكتبش هنا — عشان الشاشة والتقرير ما يقولوش حاجتين مختلفتين.
+function ClaimForm({ claim, ar, onClose, onSaved }: {
+  claim: any; ar: boolean; onClose: () => void; onSaved: () => void;
+}) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { notify } = useDialog();
+  const isNew = !claim?._id;
+  const d = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : '');
+  const [f, setF] = useState({
+    vehiclePlate: claim?.vehiclePlate || '',
+    incidentSubjectAr: claim?.incidentSubjectAr || '',
+    accidentDate: d(claim?.accidentDate),
+    accidentNumber: claim?.accidentNumber || '',
+    counterpartyNameAr: claim?.counterpartyNameAr || '',
+    faultPercent: claim?.faultPercent ?? '',
+    reportedViaAr: claim?.reportedViaAr || '',
+    statusCode: claim?.statusCode || 'pending',
+    statusAr: claim?.statusAr || '',
+    insurerAr: claim?.claim?.insurerAr || '',
+    claimNumber: claim?.claim?.claimNumber || '',
+    estimatedAmountSar: claim?.claim?.estimatedAmountSar ?? '',
+    expectedRecoverySar: claim?.claim?.expectedRecoverySar ?? '',
+    lastInsurerUpdateDate: d(claim?.claim?.lastInsurerUpdateDate),
+    notesAr: claim?.claim?.notesAr || '',
+  });
+  const set = (k: string, v: any) => setF((x) => ({ ...x, [k]: v }));
+  const [busy, setBusy] = useState(false);
+  const num = (v: any) => (v === '' || v == null ? null : Number(v));
+  const gap = num(f.estimatedAmountSar) != null && num(f.expectedRecoverySar) != null
+    ? Number(f.estimatedAmountSar) - Number(f.expectedRecoverySar) : null;
+
+  const save = async () => {
+    if (!f.vehiclePlate.trim() && !f.incidentSubjectAr.trim()) {
+      notify(t('اكتب اللوحة أو موضوع الواقعة', 'Enter the plate or the subject'), 'error'); return;
+    }
+    setBusy(true);
+    try {
+      const body = {
+        vehiclePlate: f.vehiclePlate.trim(),
+        incidentSubjectAr: f.incidentSubjectAr.trim(),
+        isVehicleIncident: !!f.vehiclePlate.trim(),
+        accidentDate: f.accidentDate || null,
+        accidentNumber: f.accidentNumber.trim(),
+        counterpartyNameAr: f.counterpartyNameAr.trim(),
+        faultPercent: num(f.faultPercent),
+        reportedViaAr: f.reportedViaAr.trim(),
+        statusCode: f.statusCode,
+        statusAr: f.statusAr.trim() || (f.statusCode === 'closed' ? 'مقفولة' : 'قيد المتابعة'),
+        claim: {
+          insurerAr: f.insurerAr.trim(),
+          claimNumber: f.claimNumber.trim(),
+          estimatedAmountSar: num(f.estimatedAmountSar),
+          expectedRecoverySar: num(f.expectedRecoverySar),
+          lastInsurerUpdateDate: f.lastInsurerUpdateDate || null,
+          notesAr: f.notesAr.trim(),
+        },
+      };
+      if (isNew) await createClaim(body); else await updateClaim(claim._id, body);
+      notify(t(isNew ? 'اتسجّل الحادث' : 'اتعدّل', isNew ? 'Accident recorded' : 'Updated'), 'success');
+      onSaved();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
+  };
+
+  const inp = 'w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:border-[#f37121]';
+  const lbl = 'block text-[11.5px] font-semibold text-slate-700 mb-1';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-start justify-center p-3 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-3xl my-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
+          <h3 className="font-bold text-slate-900">
+            {isNew ? t('تسجيل حادث جديد', 'New accident') : t(`تعديل ${claim.accidentNumber || claim.claimId}`, `Edit ${claim.accidentNumber || claim.claimId}`)}
+          </h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div><label className={lbl}>{t('لوحة المركبة', 'Plate')}</label>
+              <input value={f.vehiclePlate} onChange={(e) => set('vehiclePlate', e.target.value)} className={inp} placeholder="5010" /></div>
+            <div><label className={lbl}>{t('موضوع الواقعة (لو مش مركبة)', 'Subject (if not a vehicle)')}</label>
+              <input value={f.incidentSubjectAr} onChange={(e) => set('incidentSubjectAr', e.target.value)} className={inp} /></div>
+            <div><label className={lbl}>{t('تاريخ الحادث', 'Accident date')}</label>
+              <input type="date" value={f.accidentDate} onChange={(e) => set('accidentDate', e.target.value)} className={inp} /></div>
+            <div><label className={lbl}>{t('رقم الحادث', 'Accident no.')}</label>
+              <input value={f.accidentNumber} onChange={(e) => set('accidentNumber', e.target.value)} className={inp} /></div>
+            <div><label className={lbl}>{t('الطرف الآخر', 'Counterparty')}</label>
+              <input value={f.counterpartyNameAr} onChange={(e) => set('counterpartyNameAr', e.target.value)} className={inp} /></div>
+            <div><label className={lbl}>{t('نسبة الخطأ علينا %', 'Our fault %')}</label>
+              <input type="number" min={0} max={100} value={f.faultPercent} onChange={(e) => set('faultPercent', e.target.value)} className={inp} /></div>
+            <div><label className={lbl}>{t('تم الإبلاغ عبر', 'Reported via')}</label>
+              <input value={f.reportedViaAr} onChange={(e) => set('reportedViaAr', e.target.value)} className={inp} placeholder="نجم" /></div>
+            <div><label className={lbl}>{t('الحالة', 'Status')}</label>
+              <select value={f.statusCode} onChange={(e) => set('statusCode', e.target.value)} className={inp}>
+                <option value="pending">{t('قيد المتابعة', 'Pending')}</option>
+                <option value="closed">{t('مقفولة', 'Closed')}</option>
+              </select></div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 p-3">
+            <p className="text-[12.5px] font-bold text-slate-800 mb-2">{t('المطالبة التأمينية', 'Insurance claim')}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div><label className={lbl}>{t('شركة التأمين', 'Insurer')}</label>
+                <input value={f.insurerAr} onChange={(e) => set('insurerAr', e.target.value)} className={inp} /></div>
+              <div><label className={lbl}>{t('رقم المطالبة', 'Claim no.')}</label>
+                <input value={f.claimNumber} onChange={(e) => set('claimNumber', e.target.value)} className={inp} /></div>
+              <div><label className={lbl}>{t('آخر رد من التأمين', 'Last insurer reply')}</label>
+                <input type="date" value={f.lastInsurerUpdateDate} onChange={(e) => set('lastInsurerUpdateDate', e.target.value)} className={inp} /></div>
+              <div><label className={lbl}>{t('المبلغ المقدَّر', 'Estimated (SAR)')}</label>
+                <input type="number" value={f.estimatedAmountSar} onChange={(e) => set('estimatedAmountSar', e.target.value)} className={inp} /></div>
+              <div><label className={lbl}>{t('المتوقع استرداده', 'Expected recovery')}</label>
+                <input type="number" value={f.expectedRecoverySar} onChange={(e) => set('expectedRecoverySar', e.target.value)} className={inp} /></div>
+              <div>
+                <label className={lbl}>{t('الفجوة (محسوبة)', 'Gap (computed)')}</label>
+                <div className={`${inp} bg-slate-50 font-bold ${gap && gap > 0 ? 'text-rose-700' : 'text-slate-700'}`}>
+                  {gap == null ? '—' : money(gap)}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className={lbl}>{t('ملاحظات', 'Notes')}</label>
+              <textarea rows={2} value={f.notesAr} onChange={(e) => set('notesAr', e.target.value)} className={inp} />
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-3.5 border-t border-slate-200">
+          <button onClick={save} disabled={busy}
+            className="w-full py-2.5 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-semibold disabled:opacity-40">
+            {busy ? t('جارٍ الحفظ…', 'Saving…') : isNew ? t('تسجيل الحادث', 'Record accident') : t('حفظ التعديل', 'Save')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

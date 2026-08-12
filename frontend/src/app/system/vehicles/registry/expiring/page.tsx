@@ -11,9 +11,10 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { CalendarClock, RefreshCw, X, Check, ArrowRight } from 'lucide-react';
+import { CalendarClock, RefreshCw, X, Check, ArrowRight, CalendarCheck } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import {
-  getExpiring, renewDocument, STATE_META, stateLabel, fmtDate, daysText,
+  getExpiring, renewDocument, renewBulk, canEditVehicles, STATE_META, stateLabel, fmtDate, daysText,
   type ExpiringRow,
 } from '@/lib/vehicleRegistry';
 
@@ -32,6 +33,13 @@ function ExpiringInner() {
   const [state, setState] = useState(sp?.get('state') || '');
   const [includeExpired, setIncludeExpired] = useState(sp?.get('includeExpired') !== '0');
   const [d, setD] = useState<Awaited<ReturnType<typeof getExpiring>> | null>(null);
+  const { user } = useAuth();
+  const canEdit = canEditVehicles(user);
+  // تجديد أكتر من مستند بنفس التاريخ. المفتاح مركّب (مركبة+مستند) لأن نفس
+  // المركبة ممكن يكون عندها أكتر من مستند بينتهي — واحد يتجدّد والتاني لأ.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState(false);
+  const rowKey = (r: any) => `${r.vehicleId}:${r.docKey}`;
   const [loading, setLoading] = useState(true);
   const [renewing, setRenewing] = useState<ExpiringRow | null>(null);
 
@@ -158,7 +166,20 @@ function ExpiringInner() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
-              <tr>{[t('اللوحة', 'Plate'), t('المستند', 'Document'), t('ينتهي في', 'Expires'),
+              <tr>
+                {canEdit && (
+                  <th className="px-3 py-3 w-9">
+                    <input type="checkbox" className="accent-[#f37121]"
+                      title={t('اختيار كل المعروض', 'Select all shown')}
+                      checked={rows.length > 0 && rows.every((x) => picked.has(rowKey(x)))}
+                      onChange={(e) => setPicked((p) => {
+                        const n = new Set(p);
+                        rows.forEach((x) => (e.target.checked ? n.add(rowKey(x)) : n.delete(rowKey(x))));
+                        return n;
+                      })} />
+                  </th>
+                )}
+                {[t('اللوحة', 'Plate'), t('المستند', 'Document'), t('ينتهي في', 'Expires'),
                 t('المتبقي', 'Left'), t('الحالة', 'State'), t('القطاع', 'Sector'), t('المالك', 'Owner'), ''].map((h, i) => (
                 <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>
               ))}</tr>
@@ -167,7 +188,19 @@ function ExpiringInner() {
               {rows.map((r) => {
                 const m = STATE_META[r.state] || STATE_META.valid;
                 return (
-                  <tr key={`${r.vehicleId}-${r.docKey}`} className="hover:bg-slate-50 text-center">
+                  <tr key={`${r.vehicleId}-${r.docKey}`}
+                    className={picked.has(rowKey(r)) ? 'bg-orange-50/70 text-center' : 'hover:bg-slate-50 text-center'}>
+                    {canEdit && (
+                      <td className="px-3 py-2.5">
+                        <input type="checkbox" className="accent-[#f37121]"
+                          checked={picked.has(rowKey(r))}
+                          onChange={() => setPicked((p) => {
+                            const n = new Set(p); const k = rowKey(r);
+                            if (n.has(k)) n.delete(k); else n.add(k);
+                            return n;
+                          })} />
+                      </td>
+                    )}
                     <td className="px-3 py-2.5">
                       <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicleId}`)}
                         className="font-semibold text-slate-800 hover:text-[#f37121]">{r.plateNumber}</button>
@@ -190,7 +223,7 @@ function ExpiringInner() {
                 );
               })}
               {!rows.length && (
-                <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">
+                <tr><td colSpan={canEdit ? 9 : 8} className="px-3 py-12 text-center text-slate-500">
                   {t('مفيش حاجة هتنتهي في المدة دي', 'Nothing expires in this window')}
                 </td></tr>
               )}
@@ -198,6 +231,31 @@ function ExpiringInner() {
           </table>
         </div>
       </div>
+
+      {/* شريط الاختيار — بيبان بس لما يكون فيه سطر متحدّد */}
+      {canEdit && picked.size > 0 && (
+        <div className="sticky bottom-3 z-20 mx-auto max-w-3xl rounded-2xl border border-[#f37121]/40 bg-white shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-bold text-slate-900">
+            {t(`${picked.size} مستند متحدّد`, `${picked.size} selected`)}
+          </span>
+          <button onClick={() => setPicked(new Set())} className="text-[12.5px] text-slate-600 hover:text-slate-900 underline">
+            {t('إلغاء الاختيار', 'Clear')}
+          </button>
+          <button onClick={() => setBulk(true)}
+            className="ms-auto px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold inline-flex items-center gap-1.5">
+            <CalendarCheck className="w-4 h-4" />
+            {t(`تجديدهم بتاريخ واحد (${picked.size})`, `Renew all to one date (${picked.size})`)}
+          </button>
+        </div>
+      )}
+
+      {bulk && (
+        <BulkRenewModal
+          rows={rows.filter((r) => picked.has(rowKey(r)))} ar={ar}
+          onClose={() => setBulk(false)}
+          onDone={() => { setBulk(false); setPicked(new Set()); load(); }}
+        />
+      )}
 
       {renewing && (
         <RenewModal row={renewing} ar={ar} t={t} onClose={() => setRenewing(null)}
@@ -274,6 +332,102 @@ function RenewModal({ row, ar, t, onClose, onDone, notify }: any) {
           className="w-full mt-3 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2">
           <Check className="w-4 h-4" />{busy ? t('جارٍ الحفظ…', 'Saving…') : t('تأكيد التجديد', 'Confirm renewal')}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── تجديد أكتر من مستند بنفس التاريخ ─────────────────────────────────────────
+// «النهاردة عندي تجديد ١٥١ كارت تشغيل كلهم انتهاءهم في يوم واحد» — فبدل ما يفتح
+// مركبة مركبة، يختار ويقول التاريخ مرة واحدة.
+//
+// السيرفر بيرفض العملية كلها لو سطر واحد غلط: تجديد نصّه اتنفّذ على ١٥١ مركبة
+// كارثة — مفيش حد هيعرف مين اتجدّد ومين لأ.
+function BulkRenewModal({ rows, ar, onClose, onDone }: {
+  rows: any[]; ar: boolean; onClose: () => void; onDone: () => void;
+}) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { notify } = useDialog();
+  const [when, setWhen] = useState('');
+  const [reference, setReference] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const past = !!when && when < today;
+  // نفس المستند على أكتر من مركبة شائع؛ بنعرض التقسيمة عشان يتأكد إنه اختار صح.
+  const byDoc = rows.reduce((m: Record<string, number>, r) => {
+    const k = ar ? r.docAr : r.docEn; m[k] = (m[k] || 0) + 1; return m;
+  }, {});
+
+  const save = async () => {
+    setErrors([]); setBusy(true);
+    try {
+      const r = await renewBulk({
+        items: rows.map((x) => ({ vehicle: x.vehicleId, document: x.docKey })),
+        newExpiry: when, reference: reference.trim(), note: note.trim(),
+      });
+      notify(t(`اتجدّد ${r?.summary?.count ?? rows.length} مستند على ${r?.summary?.vehicles ?? '—'} مركبة`,
+        `Renewed ${r?.summary?.count ?? rows.length} documents`), 'success');
+      onDone();
+    } catch (e: any) {
+      const errs = e?.data?.errors || e?.errors;
+      if (Array.isArray(errs) && errs.length) {
+        setErrors(errs.map((x: any) => `${t('سطر', 'line')} ${x.line}: ${x.message}`));
+        notify(t('العملية اترفضت بالكامل — مفيش مركبة اتجدّدت', 'Rejected in full — nothing renewed'), 'error');
+      } else notify(e?.message || 'Failed', 'error');
+    } finally { setBusy(false); }
+  };
+
+  const inp = 'w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:border-[#f37121]';
+  const lbl = 'block text-[11.5px] font-semibold text-slate-700 mb-1';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
+          <h3 className="font-bold text-slate-900">{t('تجديد جماعي', 'Bulk renewal')}</h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-[12.5px] text-slate-700">
+            {t(`${rows.length} مستند هيتجدّدوا لنفس التاريخ`, `${rows.length} documents will get the same date`)}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(byDoc).map(([k, n]) => (
+              <span key={k} className="px-2 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11.5px] font-semibold">{k} {n}</span>
+            ))}
+          </div>
+          <div>
+            <label className={lbl}>{t('تاريخ الانتهاء الجديد', 'New expiry date')} *</label>
+            <input type="date" min={today} value={when} onChange={(e) => setWhen(e.target.value)} className={inp} autoFocus />
+            {past && <p className="text-[11.5px] text-rose-700 font-semibold mt-1">
+              {t('التاريخ في الماضي — راجعه', 'That date is in the past')}</p>}
+          </div>
+          <div>
+            <label className={lbl}>{t('رقم مرجعي (اختياري)', 'Reference (optional)')}</label>
+            <input value={reference} onChange={(e) => setReference(e.target.value)} className={inp} />
+          </div>
+          <div>
+            <label className={lbl}>{t('ملاحظة (اختياري)', 'Note (optional)')}</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} className={inp} />
+          </div>
+          {errors.length > 0 && (
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-2.5 max-h-32 overflow-y-auto">
+              {errors.map((x, i) => <p key={i} className="text-[11.5px] text-rose-800">{x}</p>)}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3.5 border-t border-slate-200">
+          <button onClick={save} disabled={busy || !when || past}
+            className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-40">
+            {busy ? t('جارٍ التجديد…', 'Renewing…')
+              : !when ? t('اختر التاريخ أولًا', 'Pick the date first')
+              : t(`تجديد ${rows.length} مستند`, `Renew ${rows.length} documents`)}
+          </button>
+        </div>
       </div>
     </div>
   );

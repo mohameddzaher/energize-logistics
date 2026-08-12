@@ -4,6 +4,8 @@ const VDOC = require('../config/vehicleDocuments');
 const logAudit = require('../utils/auditLogger');
 const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
+// نفس مفتاح اللوحة اللي القسم كله بيوصل بيه — «5010» و«أ ص ر 5010» عربية واحدة.
+const { plateKey } = require('../utils/plateKey');
 
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} cache.clear('vreg:'); };
 
@@ -291,32 +293,34 @@ exports.alerts = async (req, res) => {
   try {
     const hit = cache.get('vreg:alerts');
     if (hit !== undefined) return res.json(hit);
-    const cfg = await getConfig();
-    const vehicles = await VehicleMaster.find({ isActive: { $ne: false } })
-      .select('plateNumber brandAr modelAr sectorAr ownerNameAr insurance.expiryDate operatingCard.expiryDate vehicleLicense.expiryDate inspection.expiryDate gps.expiryDate').lean();
-    const items = [];
-    for (const v of vehicles) {
-      for (const dt of DOC_TYPES) {
-        const conf = cfg.alerts?.[dt.key];
-        if (!conf?.enabled) continue;
-        const date = getPath(v, dt.path);
-        if (!date) continue;
-        const st = docStatus(date, conf, getPath(v, dt.statusPath));
-        if (st.status === 'expired' || st.status === 'critical' || st.status === 'warning') {
-          items.push({
-            vehicleId: v._id, plateNumber: v.plateNumber, brandAr: v.brandAr, modelAr: v.modelAr,
-            sectorAr: v.sectorAr, ownerNameAr: v.ownerNameAr,
-            docType: dt.key, docAr: dt.ar, docEn: dt.en,
-            expiryDate: date, daysRemaining: st.days, status: st.status,
-          });
-        }
-      }
-    }
+
+    // **نفس** حساب شاشة الانتهاءات — التنبيهات مجرد فلتر عليه، مش حساب تاني.
+    // كانت بدالة مختلفة، فالأرقام كانت بتختلف بين الشاشتين على نفس الداتا.
+    const all = await buildExpiryRows({});
+    const ALERT_STATES = ['expired', 'critical', 'warning'];
+
+    const items = all
+      .filter((r) => ALERT_STATES.includes(r.state))
+      .map((r) => ({
+        vehicleId: r.vehicleId, plateNumber: r.plateNumber, brandAr: r.brandAr, modelAr: r.modelAr,
+        sectorAr: r.sectorAr, ownerNameAr: r.ownerNameAr,
+        docType: r.docKey, docAr: r.docAr, docEn: r.docEn,
+        expiryDate: r.expiryDate, daysRemaining: r.daysRemaining, status: r.state,
+        // المستند اللي تنبيهه متقفول بيفضل ظاهر ومعلّم — قبل كده كان بيختفي
+        // في صمت، فمستند منتهي فعلاً ما يبانش هنا وهو بايِن في الانتهاءات.
+        alertEnabled: r.alertEnabled,
+      }));
+
     items.sort((a, b) => (a.daysRemaining ?? 0) - (b.daysRemaining ?? 0));
     const byStatus = { expired: 0, critical: 0, warning: 0 };
     const byDoc = {};
     for (const it of items) { byStatus[it.status] += 1; byDoc[it.docType] = (byDoc[it.docType] || 0) + 1; }
-    const body = { items, total: items.length, byStatus, byDoc };
+    const muted = items.filter((i) => !i.alertEnabled).length;
+    const body = {
+      items, total: items.length, byStatus, byDoc,
+      // عشان الشاشة تقدر تقول «منهم كذا تنبيههم متقفول من الإعدادات».
+      mutedCount: muted,
+    };
     cache.set('vreg:alerts', body, 30000);
     res.json(body);
   } catch (e) { console.error('vreg alerts', e); res.status(500).json({ message: 'Failed to load alerts' }); }
@@ -495,26 +499,59 @@ exports.overview = async (req, res) => {
  *   state       فلتر إضافي على الحالة المحسوبة
  * بيرجّع صف لكل (مركبة × مستند)، مرتّب بالأقرب انتهاءً.
  */
+// ── مصدر واحد لحالة كل مستند ────────────────────────────────────────────────
+//
+// «الانتهاءات والتجديد» و«تنبيهات المركبات» بيردوا على نفس السؤال: أنهي مستند
+// قرب أو خلص؟ وكانوا محسوبين بدالتين مختلفتين وفلترين مختلفين، فالأرقام كانت
+// بتختلف — والمستخدم شاف ده بنفسه («الأرقام فيهم مش زي بعض»). أسوأ فرق: شاشة
+// التنبيهات كانت بتسقط أي نوع مستند تنبيهه متقفول من الإعدادات **في صمت**، فمستند
+// منتهي فعلاً ما كانش بيظهر فيها وهو ظاهر في الانتهاءات.
+//
+// الدالة دي بقت المصدر الوحيد، والشاشتين بيبنوا منها. لو المستقبل عايز يفرّق
+// بينهم، بيفرّق في **الفلتر** مش في **الحساب**.
+async function buildExpiryRows(query = {}) {
+  const [vehicles, cfg] = await Promise.all([
+    VehicleMaster.find(buildFilter(query)).lean(),
+    getConfig(),
+  ]);
+  const rows = [];
+  for (const v of vehicles) {
+    for (const dt of DOC_TYPES) {
+      const expiry = getPath(v, dt.path);
+      const statusCode = getPath(v, dt.statusPath) || '';
+      const st = VDOC.stateOf(expiry, statusCode, cfg.alerts?.[dt.key]);
+      rows.push({
+        vehicleId: v._id, plateNumber: v.plateNumber, brandAr: v.brandAr, modelAr: v.modelAr,
+        sectorAr: v.sectorAr, ownerNameAr: v.ownerNameAr, modelYear: v.modelYear,
+        docKey: dt.key, docAr: dt.ar, docEn: dt.en,
+        expiryDate: expiry, daysRemaining: st.days, state: st.state, statusCode,
+        // التنبيه متفعّل للنوع ده؟ بيترجّع مع الصف بدل ما الصف يختفي في صمت.
+        alertEnabled: cfg.alerts?.[dt.key]?.enabled !== false,
+        reference: dt.key === 'insurance' ? v.insurance?.policyNumber
+          : dt.key === 'operatingCard' ? v.operatingCard?.cardNumber
+            : dt.key === 'gps' ? v.gps?.serialImei : '',
+        company: dt.key === 'insurance' ? v.insurance?.companyAr : dt.key === 'gps' ? v.gps?.provider : '',
+      });
+    }
+  }
+  return rows;
+}
+
 exports.expiring = async (req, res) => {
   try {
     const withinDays = req.query.withinDays === '' || req.query.withinDays == null
       ? null : Math.max(0, Number(req.query.withinDays) || 0);
     const wanted = _multi(req.query.doc);
-    const docs = wanted.length ? DOC_TYPES.filter((d) => wanted.includes(d.key)) : DOC_TYPES;
     const includeExpired = req.query.includeExpired !== '0';
     const states = _multi(req.query.state);
 
-    const [vehicles, cfg] = await Promise.all([
-      VehicleMaster.find(buildFilter(req.query)).lean(),
-      getConfig(),
-    ]);
-
+    const all = await buildExpiryRows(req.query);
     const rows = [];
-    for (const v of vehicles) {
-      for (const dt of docs) {
-        const expiry = getPath(v, dt.path);
-        const statusCode = getPath(v, dt.statusPath) || '';
-        const st = VDOC.stateOf(expiry, statusCode, cfg.alerts?.[dt.key]);
+    for (const r of all) {
+      const st = { state: r.state, days: r.daysRemaining };
+      const dt = { key: r.docKey };
+      if (wanted.length && !wanted.includes(dt.key)) continue;
+      {
         // «غير مطلوب» مش بينتهي، و«بدون تاريخ» ملهاش مكان في شاشة انتهاءات.
         if (st.state === 'not_applicable' || st.state === 'missing') continue;
         if (!includeExpired && st.state === 'expired') continue;
@@ -522,14 +559,7 @@ exports.expiring = async (req, res) => {
         // المنتهي بالفعل بيفضل ظاهر مهما كانت المدة — هو أصلاً فات الميعاد.
         if (withinDays !== null && st.days > withinDays) continue;
         rows.push({
-          vehicleId: v._id, plateNumber: v.plateNumber, brandAr: v.brandAr, modelAr: v.modelAr,
-          sectorAr: v.sectorAr, ownerNameAr: v.ownerNameAr, modelYear: v.modelYear,
-          docKey: dt.key, docAr: dt.ar, docEn: dt.en,
-          expiryDate: expiry, daysRemaining: st.days, state: st.state, statusCode,
-          reference: dt.key === 'insurance' ? v.insurance?.policyNumber
-            : dt.key === 'operatingCard' ? v.operatingCard?.cardNumber
-              : dt.key === 'gps' ? v.gps?.serialImei : '',
-          company: dt.key === 'insurance' ? v.insurance?.companyAr : dt.key === 'gps' ? v.gps?.provider : '',
+          ...r,
         });
       }
     }
@@ -609,7 +639,171 @@ exports.renew = async (req, res) => {
   }
 };
 
+// ── تجديد أكتر من مستند مرة واحدة ────────────────────────────────────────────
+//
+// الطلب: «النهاردة عندي تجديد ١٥١ كارت تشغيل كلهم انتهاءهم في يوم واحد» — فبدل
+// ما يفتح مركبة مركبة، يعمل سيليكت ويقول التاريخ مرة واحدة.
+//
+// كل سطر بيمرّ على **نفس** منطق التجديد المفرد: نفس التحقق، ونفس القيد في سجل
+// المركبة، ونفس التاريخ. مش مسار تاني — عشان التجديد الجماعي والمفرد ما يختلفوش
+// في حاجة، والمراجع يلاقي نفس القيد في الحالتين.
+//
+// **الكل أو لا شيء**: لو سطر واحد غلط، مفيش مركبة واحدة بتتجدّد. تجديد نصّه
+// اتنفّذ على ١٥١ مركبة كارثة — مفيش حد هيعرف مين اتجدّد ومين لأ.
+exports.renewBulk = async (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) return res.status(400).json({ message: 'اختر مركبة واحدة على الأقل' });
+    if (items.length > 500) return res.status(400).json({ message: 'أقصى ٥٠٠ سطر في المرة الواحدة' });
+
+    const shared = req.body?.newExpiry ? new Date(req.body.newExpiry) : null;
+    const today = new Date(new Date().setHours(0, 0, 0, 0));
+    const errors = [];
+    const prepared = [];
+
+    // ① التحقق على الكل قبل أي حفظ
+    for (const [i, row] of items.entries()) {
+      const doc = VDOC.getDoc(row.document);
+      if (!doc) { errors.push({ line: i + 1, message: `نوع المستند «${row.document}» غير معروف` }); continue; }
+      const when = row.newExpiry ? new Date(row.newExpiry) : shared;
+      if (!when || isNaN(when)) { errors.push({ line: i + 1, message: 'أدخل تاريخ الانتهاء الجديد' }); continue; }
+      if (when < today) { errors.push({ line: i + 1, message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' }); continue; }
+      const v = await VehicleMaster.findById(row.vehicle || row.id);
+      if (!v) { errors.push({ line: i + 1, message: 'المركبة غير موجودة' }); continue; }
+      prepared.push({ v, doc, when, row });
+    }
+    if (errors.length) {
+      return res.status(400).json({ message: 'العملية اترفضت — مفيش أي مركبة اتجدّدت', errors });
+    }
+
+    // ② التنفيذ — نفس خطوات التجديد المفرد بالظبط
+    const byName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
+    const done = [];
+    for (const { v, doc, when, row } of prepared) {
+      const [block, field] = doc.path.split('.');
+      const previous = v[block]?.[field] || null;
+      v[block][field] = when;
+      const [sBlock, sField] = doc.statusPath.split('.');
+      if (v[sBlock] && ['none', 'required', 'unknown', ''].includes(v[sBlock][sField])) v[sBlock][sField] = '';
+      if (!Array.isArray(v.renewals)) v.renewals = [];
+      v.renewals.push({
+        document: doc.key, previousExpiry: previous, newExpiry: when,
+        cost: row.cost != null && row.cost !== '' ? Number(row.cost) : null,
+        reference: String(row.reference || req.body.reference || '').trim(),
+        note: String(row.note || req.body.note || '').trim(),
+        byName,
+      });
+      await v.save();
+      done.push({ vehicle: v._id, plate: v.plateNumber, document: doc.key, previousExpiry: previous, newExpiry: when });
+    }
+
+    logAudit({
+      user: req.user, action: 'renew_vehicle_document', entity: 'VehicleMaster', entityId: null,
+      changes: { bulk: true, count: done.length, newExpiry: shared, documents: [...new Set(done.map((d) => d.document))] },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    emit('vreg:updated', {});
+    res.json({
+      renewed: done,
+      summary: { count: done.length, vehicles: new Set(done.map((d) => String(d.vehicle))).size },
+    });
+  } catch (e) {
+    console.error('vreg renewBulk', e);
+    res.status(500).json({ message: 'تعذّر تسجيل التجديد' });
+  }
+};
+
 // ── الحوادث والمطالبات ──────────────────────────────────────────────────────
+// الحادث بيتسجّل ويتعدّل ويتقفل من الشاشة. كان بيتقرا بس — يعني الجرد الأول
+// اتحمّل من الشيت وخلاص، وأي حادث بعده مالوش مكان يتكتب فيه.
+//
+// الحقول الحسابية (فجوة الاسترداد) بتتحسب هنا مش في الواجهة، عشان الشاشة
+// والتقرير وأي مسار تاني ما يختلفوش.
+const CLAIM_FIELDS = [
+  'isVehicleIncident', 'incidentSubjectAr', 'vehiclePlate', 'vehicle',
+  'vehicleSectorAr', 'vehicleTypeAr', 'vehicleCategoryAr', 'vehicleBrandAr', 'ownerRegistrationAr',
+  'counterpartyNameAr', 'counterpartyNationalId', 'faultRatio', 'faultPercent',
+  'accidentDate', 'reportedViaAr', 'reportedViaCode', 'accidentNumber', 'reportOrEstimateNumber',
+  'statusAr', 'statusCode',
+];
+const CLAIM_SUB = ['insurerAr', 'claimNumber', 'claimNumberStatus', 'notesAr',
+  'lastNoteDate', 'lastInsurerUpdateDate', 'estimatedAmountSar', 'expectedRecoverySar'];
+
+/** يبني/يحدّث المستند من الجسم، وبيحسب الفجوة. */
+function applyClaim(doc, body) {
+  for (const k of CLAIM_FIELDS) if (body[k] !== undefined) doc[k] = body[k] === '' ? doc[k] : body[k];
+  const sub = body.claim || {};
+  doc.claim = doc.claim || {};
+  for (const k of CLAIM_SUB) if (sub[k] !== undefined) doc.claim[k] = sub[k];
+  // الفجوة = المقدَّر − المتوقع استرداده. محسوبة، مش متكتوبة — عشان ما تتناقضش.
+  const est = Number(doc.claim.estimatedAmountSar);
+  const rec = Number(doc.claim.expectedRecoverySar);
+  doc.claim.recoveryGapSar = Number.isFinite(est) && Number.isFinite(rec) ? Math.round(est - rec) : null;
+  if (doc.vehiclePlate) doc.vehiclePlateKey = plateKey(doc.vehiclePlate);
+  return doc;
+}
+
+exports.createClaim = async (req, res) => {
+  try {
+    if (!req.body?.accidentDate && !req.body?.incidentSubjectAr && !req.body?.vehiclePlate) {
+      return res.status(400).json({ message: 'اكتب على الأقل المركبة أو موضوع الواقعة أو تاريخها' });
+    }
+    // الرقم بيتولّد هنا: لو اتساب للمستخدم هيتكرّر أو يتساب فاضي.
+    const last = await VehicleClaim.findOne({ claimId: /^ACC-/ }).sort({ claimId: -1 }).select('claimId').lean();
+    const n = last ? (Number(String(last.claimId).replace('ACC-', '')) || 0) + 1 : 1;
+    const doc = applyClaim(new VehicleClaim({ claimId: `ACC-${String(n).padStart(3, '0')}` }), req.body);
+    if (!doc.statusCode) { doc.statusCode = 'pending'; doc.statusAr = doc.statusAr || 'قيد المتابعة'; }
+    await doc.save();
+    await syncAccidentCount(doc.vehiclePlateKey);
+    emit('vreg:updated', {});
+    res.status(201).json({ claim: doc });
+  } catch (e) {
+    console.error('vreg createClaim', e);
+    res.status(500).json({ message: 'تعذّر تسجيل الحادث' });
+  }
+};
+
+exports.updateClaim = async (req, res) => {
+  try {
+    const doc = await VehicleClaim.findById(req.params.id);
+    if (!doc || doc.isActive === false) return res.status(404).json({ message: 'الحادث غير موجود' });
+    const oldKey = doc.vehiclePlateKey;
+    applyClaim(doc, req.body);
+    await doc.save();
+    await syncAccidentCount(oldKey);
+    if (doc.vehiclePlateKey !== oldKey) await syncAccidentCount(doc.vehiclePlateKey);
+    emit('vreg:updated', {});
+    res.json({ claim: doc });
+  } catch (e) {
+    console.error('vreg updateClaim', e);
+    res.status(500).json({ message: 'تعذّر تعديل الحادث' });
+  }
+};
+
+exports.deleteClaim = async (req, res) => {
+  try {
+    const doc = await VehicleClaim.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'الحادث غير موجود' });
+    // حذف ناعم: المطالبة سجل مالي، والمسح النهائي بيضيّع تاريخها.
+    doc.isActive = false;
+    await doc.save();
+    await syncAccidentCount(doc.vehiclePlateKey);
+    emit('vreg:updated', {});
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('vreg deleteClaim', e);
+    res.status(500).json({ message: 'تعذّر حذف الحادث' });
+  }
+};
+
+/** عدّاد حوادث المركبة = عدد مطالباتها الفعّالة. محسوب، مش مكتوب بالإيد. */
+async function syncAccidentCount(key) {
+  if (!key) return;
+  const n = await VehicleClaim.countDocuments({ vehiclePlateKey: key, isActive: true });
+  await VehicleMaster.updateMany({ plateKey: key }, { $set: { accidentCount: n } });
+}
+
 exports.listClaims = async (req, res) => {
   try {
     const f = { isActive: true };

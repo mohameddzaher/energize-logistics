@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { canEditSection } from '@/lib/sections';
 // أنواع ومساعدات سجل المركبات (Vehicle Registry) — يقابل /api/vehicle-registry.
 export type DocStatus = { status: 'expired' | 'critical' | 'warning' | 'valid' | 'none'; days: number | null };
 
@@ -138,3 +139,33 @@ export const renewCorporatePolicy = (id: string, body: any) =>
 export const getDocumentTypes = () =>
   api.get<{ documents: { key: string; ar: string; en: string; icon: string; alert: any }[]; corporatePolicyAlert: any; states: any; statuses: any }>(
     '/api/vehicle-registry/document-types');
+
+// ── مين يقدر يعدّل في القسم ──────────────────────────────────────────────────
+//
+// سؤال واحد، إجابة واحدة، في مكان واحد. كل صفحة كانت بتكتب قايمة أدوارها بنفسها،
+// فأدوار القسم نفسه (vehicles_manager / vehicles_staff) كانوا ناقصين من بعضها —
+// صاحب القسم يفتح صفحة الحوادث ويلاقيها للقراءة بس. القوايم المتفرّقة دي بتفضل
+// تفرق مع بعضها كل ما دور جديد يتضاف.
+const EDIT_ROLES = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
+  'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
+const ADMIN_ROLES = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
+
+/** يقدر ينشئ ويعدّل (مركبات، تجديدات، حوادث). */
+export const canEditVehicles = (user: any): boolean =>
+  !!user && (EDIT_ROLES.includes(user.role) || canEditSection(user?.permissions, 'Vehicles'));
+
+/** يقدر يحذف ويغيّر إعدادات التنبيهات. */
+export const canAdminVehicles = (user: any): boolean =>
+  !!user && (ADMIN_ROLES.includes(user.role) || (user.role !== 'client' && canEditSection(user?.permissions, 'Vehicles')));
+
+// ── الحوادث: إنشاء وتعديل وحذف ───────────────────────────────────────────────
+export const createClaim = (body: any) => api.post<{ claim: any }>('/api/vehicle-registry/claims', body);
+export const updateClaim = (id: string, body: any) => api.put<{ claim: any }>(`/api/vehicle-registry/claims/${id}`, body);
+export const deleteClaim = (id: string) => api.delete(`/api/vehicle-registry/claims/${id}`);
+
+// ── تجديد أكتر من مستند بنفس التاريخ ─────────────────────────────────────────
+export const renewBulk = (body: {
+  items: { vehicle: string; document: string }[];
+  newExpiry: string; reference?: string; note?: string;
+}) => api.post<{ renewed: any[]; summary: { count: number; vehicles: number } }>(
+  '/api/vehicle-registry/renew-bulk', body);

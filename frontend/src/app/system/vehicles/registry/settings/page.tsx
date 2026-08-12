@@ -10,16 +10,16 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { RegConfig, DOC_TYPES } from '@/lib/vehicleRegistry';
 import { Settings, Save, BellRing } from 'lucide-react';
-import { canEditSection } from '@/lib/sections';
+import { canAdminVehicles } from '@/lib/vehicleRegistry';
+import { useSocket } from '@/hooks/useSocket';
 
-const ADMIN_ROLES = ['super_admin', 'admin', 'hr_manager'];
 
 export default function VehicleRegistrySettings() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { user } = useAuth();
   const { notify } = useDialog();
-  const canEdit = !!user && (ADMIN_ROLES.includes(user.role) || canEditSection((user as any)?.permissions, 'Vehicles'));
+  const canEdit = canAdminVehicles(user);
   const [cfg, setCfg] = useState<RegConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -29,6 +29,8 @@ export default function VehicleRegistrySettings() {
     catch { /* keep */ } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+  // آخر صفحة في القسم كانت مش بتسمع — دلوقتي كلهم على نفس الحدث.
+  useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
 
   const setDoc = (key: string, patch: Partial<{ enabled: boolean; warnDays: number; criticalDays: number }>) =>
     setCfg((p) => p ? { ...p, alerts: { ...p.alerts, [key]: { ...p.alerts[key], ...patch } } } : p);

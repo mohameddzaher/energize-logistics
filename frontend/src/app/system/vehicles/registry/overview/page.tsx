@@ -78,14 +78,38 @@ export default function VehiclesOverviewPage() {
       </PageHeader>
 
       {/* ① الأرقام الكبيرة */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <Big label={t('إجمالي المركبات', 'Vehicles')} value={d.totals.vehicles} accent="#f37121" onClick={() => openList({})} />
         <Big label={t('يحتاج متابعة', 'Needs attention')} value={d.totals.needsAttention} accent="#dc2626" onClick={() => openExpiring({ withinDays: 60 })} />
         <Big label={t('أقساط التأمين (ر.س)', 'Premiums (SAR)')} value={money(d.totals.insuredPremiumSar)} accent="#16a34a" />
         <Big label={t('عليها جهاز تتبّع', 'With GPS')} value={d.totals.withGps} accent="#0ea5e9" />
         <Big label={t('شرائح وقود نشطة', 'Active fuel cards')} value={d.totals.activeFuelCards} accent="#8b5cf6" />
         <Big label={t('مركبات لها حوادث', 'With accidents')} value={d.totals.withAccidents} accent="#ea580c" onClick={() => router.push('/system/vehicles/registry/claims')} />
+        <Big label={t('ناقصة لمنصّة لوجستي', 'Logisti gaps')} value={d.totals.withLogistiGaps} accent="#7c3aed"
+          onClick={() => openList({ logistiGaps: '1' })} />
       </div>
+
+      {/* نواقص منصّة لوجستي — شرطًا شرطًا، والضغط يفتح المركبات التي ينقصها */}
+      {!!d.logistiGaps?.length && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-slate-800">
+            {t(`نواقص منصّة لوجستي — ${d.totals.withLogistiGaps} مركبة · ${d.totals.logistiGapItems} بندًا`,
+               `Logisti platform gaps — ${d.totals.withLogistiGaps} vehicles · ${d.totals.logistiGapItems} items`)}
+          </h2>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+            {d.logistiGaps.map((g) => (
+              <button key={g.value} onClick={() => openList(g.filter)}
+                className="w-full text-start px-4 py-2.5 flex items-center gap-3 hover:bg-violet-50/60 transition">
+                <span className="w-11 shrink-0 text-center px-1.5 py-0.5 rounded-lg bg-violet-100 text-violet-800 text-[12.5px] font-bold tabular-nums">
+                  {g.count}
+                </span>
+                <span className="flex-1 text-[13px] text-slate-800">{g.value}</span>
+                <span className="text-[11.5px] text-slate-500">{t('اعرض المركبات', 'Show vehicles')}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ② المستندات — الجزء اللي بيوجع */}
       <section className="space-y-2">

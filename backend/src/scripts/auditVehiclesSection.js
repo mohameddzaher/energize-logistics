@@ -111,6 +111,57 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok(`المستندات اللي تنبيهها متقفول بتبان ومعلّمة (${alerts?.mutedCount ?? 0})`,
       typeof alerts?.mutedCount === 'number');
 
+    // ═══ ③أ ملفات القسم المستوردة تطابق الملف ═══════════════════════════════
+    console.log('\n── مطابقة الاستيراد للملف ──');
+    const fs = require('fs');
+    const dir = require('path').join(__dirname, '..', 'data', 'masters', 'vehicles files');
+    const has = fs.existsSync(dir);
+    if (!has) ok('مجلّد vehicles files موجود', false, dir);
+    else {
+      const vf = JSON.parse(fs.readFileSync(`${dir}/vehicles.json`, 'utf8'));
+      const af = JSON.parse(fs.readFileSync(`${dir}/accidents.json`, 'utf8'));
+      const pf = JSON.parse(fs.readFileSync(`${dir}/general_insurance.json`, 'utf8'));
+      const ov = (await call('GET', '/api/vehicle-registry/overview')).body;
+
+      ok(`عدد المركبات ${ov?.totals?.vehicles} = ${vf.statistics.total_vehicles} (الملف)`,
+        ov?.totals?.vehicles === vf.statistics.total_vehicles);
+      ok(`مركبات بنواقص لوجستي ${ov?.totals?.withLogistiGaps} = ${vf.statistics.with_logisti_platform_gaps}`,
+        ov?.totals?.withLogistiGaps === vf.statistics.with_logisti_platform_gaps);
+      const gapItems = vf.vehicles.reduce((t, v) => t + (v.logisti_platform_missing_data || []).length, 0);
+      ok(`بنود ناقصة ${ov?.totals?.logistiGapItems} = ${gapItems}`, ov?.totals?.logistiGapItems === gapItems);
+      ok(`الشروط الناقصة مسرودة (${(ov?.logistiGaps || []).length})`, (ov?.logistiGaps || []).length > 0);
+      ok('ومجموع تكراراتها = عدد البنود',
+        (ov?.logistiGaps || []).reduce((t, g) => t + g.count, 0) === gapItems);
+
+      const cl = (await call('GET', '/api/vehicle-registry/claims')).body;
+      ok(`الحوادث ${cl?.totals?.total} = ${af.accidents.length} (الملف)`, cl?.totals?.total === af.accidents.length);
+      const co = (await call('GET', '/api/vehicle-registry/corporate-policies')).body;
+      ok(`وثائق الشركة ${(co?.policies || []).length} = ${pf.policies.length}`,
+        (co?.policies || []).length === pf.policies.length);
+
+      // البطاقات الجديدة موجودة وتطابق إحصاءات الملف
+      const bd = Object.fromEntries((ov?.breakdowns || []).map((b) => [b.key, b]));
+      for (const k of ['department', 'city', 'possession', 'gpsDeviceStatus']) {
+        ok(`بطاقة «${bd[k]?.ar || k}» موجودة (${(bd[k]?.items || []).length} قيمة)`, !!bd[k] && bd[k].items.length > 0);
+      }
+      const cityCard = bd.city?.items || [];
+      const fileCities = vf.statistics.by_city || {};
+      const jeddah = cityCard.find((x) => x.value === 'جدة')?.count;
+      ok(`جدة ${jeddah} = ${fileCities['جدة']} (الملف)`, jeddah === fileCities['جدة']);
+
+      // الفلاتر الجديدة ترجّع نفس العدد
+      const gapList = (await call('GET', '/api/vehicle-registry?logistiGaps=1&limit=500')).body;
+      ok(`فلتر «بنواقص» يرجّع ${gapList?.total} = ${vf.statistics.with_logisti_platform_gaps}`,
+        gapList?.total === vf.statistics.with_logisti_platform_gaps);
+      const one = (ov?.logistiGaps || [])[0];
+      if (one) {
+        const byItem = (await call('GET', `/api/vehicle-registry?logistiGap=${encodeURIComponent(one.value)}&limit=500`)).body;
+        ok(`فلتر شرط بعينه: ${byItem?.total} = ${one.count}`, byItem?.total === one.count, one.value.slice(0, 40));
+      }
+      const byCity = (await call('GET', '/api/vehicle-registry?city=' + encodeURIComponent('جدة') + '&limit=500')).body;
+      ok(`فلتر المدينة: ${byCity?.total} = ${fileCities['جدة']}`, byCity?.total === fileCities['جدة']);
+    }
+
     // ═══ ③ التجديد الجماعي ══════════════════════════════════════════════════
     console.log('\n── تجديد أكتر من مستند بنفس التاريخ ──');
     const v1 = await VehicleMaster.create({ plateNumber: 'ZZV 1', plateKey: 'ZZV1', operatingCard: { expiryDate: new Date('2026-01-01') } });

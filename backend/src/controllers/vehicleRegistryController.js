@@ -4,8 +4,10 @@ const VDOC = require('../config/vehicleDocuments');
 const logAudit = require('../utils/auditLogger');
 const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
-// نفس مفتاح اللوحة اللي القسم كله بيوصل بيه — «5010» و«أ ص ر 5010» عربية واحدة.
-const { plateKey } = require('../utils/plateKey');
+// مفتاح **سجل المركبات** (حروف + أرقام)، لا مفتاح الأرقام الذي يستعمله النقل
+// الثقيل. الأرقام وحدها تتصادم هنا: «ل أ 1080» دراجة و«أ ص ر 1080» تريلا —
+// ومفتاح الأرقام يقيّد حادثة الدراجة على التريلا. التفصيل في utils/plateKey.
+const { registryPlateKey: plateKey } = require('../utils/plateKey');
 
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} cache.clear('vreg:'); };
 
@@ -47,6 +49,8 @@ function buildFilter(q) {
   // كل الفلاتر بالاسم العربي (نفس ما تعرضه التوزيعات) — أبسط وأوضح.
   const map = {
     sector: 'sectorAr', registrationType: 'registrationTypeAr', brand: 'brandAr',
+    department: 'departmentAr', city: 'cityAr', possession: 'possessionStatusAr',
+    gpsDeviceStatus: 'gps.deviceStatusAr',
     owner: 'ownerNameAr', insuranceCompany: 'insurance.companyAr',
     coverageType: 'insurance.coverageTypeAr', fuelCardStatus: 'fuelCard.statusAr',
     inspectionStatus: 'inspection.statusAr', tamStatus: 'tamStatusAr', color: 'colorAr',
@@ -57,6 +61,13 @@ function buildFilter(q) {
     const vals = _multi(q[qk]);
     if (vals.length) and.push({ [field]: { $in: vals } });
   }
+  // نواقص منصّة لوجستي: «أرِني المركبات التي ينقصها شرط» و«أرِني من ينقصه هذا
+  // الشرط بعينه» — سؤالان مختلفان، وكلاهما قائمة عمل.
+  if (q.logistiGaps === '1') and.push({ 'logistiGaps.0': { $exists: true } });
+  if (q.logistiGaps === '0') and.push({ 'logistiGaps.0': { $exists: false } });
+  const gapItems = _multi(q.logistiGap);
+  if (gapItems.length) and.push({ logistiGaps: { $in: gapItems } });
+
   const years = _multi(q.modelYear).map(Number).filter((x) => !Number.isNaN(x));
   if (years.length) and.push({ modelYear: { $in: years } });
   if (q.yearFrom || q.yearTo) {
@@ -117,7 +128,11 @@ exports.list = async (req, res) => {
     const sortDir = req.query.sortDir === 'desc' ? -1 : 1;
     // مشروع مختصر — القائمة تحتاج ملخّصًا فقط (التفاصيل الكاملة عبر getOne)؛
     // يقلّل النقل من ~1.7kb إلى ~0.5kb لكل مركبة على عنقود Atlas المُقيَّد.
-    const LIST_FIELDS = 'plateNumber plateLettersAr chassisNumber serialNumber sectorAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr insurance.companyAr insurance.expiryDate insurance.premiumSar operatingCard.cardNumber operatingCard.expiryDate vehicleLicense.expiryDate inspection.statusAr inspection.expiryDate fuelCard.statusAr fuelCard.cardNumber gps.deviceId gps.expiryDate';
+    const LIST_FIELDS = 'plateNumber plateLettersAr chassisNumber serialNumber sectorAr departmentAr cityAr'
+      + ' possessionStatusAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr authorizedPerson logistiGaps'
+      + ' insurance.companyAr insurance.expiryDate insurance.premiumSar operatingCard.cardNumber operatingCard.expiryDate'
+      + ' vehicleLicense.expiryDate inspection.statusAr inspection.expiryDate fuelCard.statusAr fuelCard.cardNumber'
+      + ' fuelCard.plateOnInvoiceAr gps.deviceId gps.deviceModel gps.deviceStatusAr gps.expiryDate accidentCount';
     const [vehicles, total] = await Promise.all([
       VehicleMaster.find(filter).select(LIST_FIELDS).sort({ [sortBy]: sortDir }).skip((page - 1) * limit).limit(limit).lean(),
       VehicleMaster.countDocuments(filter),
@@ -408,6 +423,11 @@ exports.overview = async (req, res) => {
     // بطاقات التصنيف — عمود بعمود.
     const breakdowns = [
       { key: 'sector', ar: 'القطاع', en: 'Sector', field: 'sectorAr', items: group('sectorAr', (v) => v.sectorAr) },
+      // جاءت مع تحديث ملفات القسم: الإدارة والمدينة أدقّ من القطاع وحده — «مركبات
+      // كيتا في مكة» سؤال يُسأل، وكان لا يجد بطاقةً تجيبه.
+      { key: 'department', ar: 'الإدارة', en: 'Department', field: 'departmentAr', items: group('departmentAr', (v) => v.departmentAr) },
+      { key: 'city', ar: 'المدينة', en: 'City', field: 'cityAr', items: group('cityAr', (v) => v.cityAr) },
+      { key: 'possession', ar: 'حالة الحيازة', en: 'Possession', field: 'possessionStatusAr', items: group('possessionStatusAr', (v) => v.possessionStatusAr) },
       { key: 'registrationType', ar: 'نوع التسجيل', en: 'Registration type', field: 'registrationTypeAr', items: group('registrationTypeAr', (v) => v.registrationTypeAr) },
       { key: 'brand', ar: 'الماركة', en: 'Brand', field: 'brandAr', items: group('brandAr', (v) => v.brandAr) },
       { key: 'model', ar: 'الموديل', en: 'Model', field: 'modelAr', items: group('modelAr', (v) => v.modelAr) },
@@ -422,6 +442,8 @@ exports.overview = async (req, res) => {
       { key: 'gpsStatus', ar: 'حالة جهاز التتبّع', en: 'GPS status', field: 'gps.status', items: group('gps.status', (v) => v.gps?.status) },
       { key: 'gpsProvider', ar: 'مزوّد التتبّع', en: 'GPS provider', field: 'gps.provider', items: group('gps.provider', (v) => v.gps?.provider) },
       { key: 'gpsDevice', ar: 'موديل جهاز التتبّع', en: 'GPS device', field: 'gps.deviceModel', items: group('gps.deviceModel', (v) => v.gps?.deviceModel) },
+      // حالة الجهاز غير حالة الاشتراك: جهاز «مسروق» اشتراكه قد يكون ساريًا.
+      { key: 'gpsDeviceStatus', ar: 'حالة الجهاز', en: 'Device status', field: 'gps.deviceStatusAr', items: group('gps.deviceStatusAr', (v) => v.gps?.deviceStatusAr) },
       { key: 'inspectionStatus', ar: 'حالة الفحص', en: 'Inspection', field: 'inspection.statusAr', items: group('inspection.statusAr', (v) => v.inspection?.statusAr) },
     ];
 
@@ -458,7 +480,19 @@ exports.overview = async (req, res) => {
       activeFuelCards: vehicles.filter((v) => v.fuelCard?.statusCode === 'active').length,
       withAccidents: vehicles.filter((v) => (v.accidentCount || 0) > 0).length,
       needsAttention: documents.reduce((t, d) => t + d.needsAttention, 0),
+      // نواقص منصّة لوجستي: كم مركبة لا تستوفي شروط المنصّة، وكم شرطًا ناقصًا
+      // في المجموع. الرقم الثاني هو حجم العمل الحقيقي — مركبة واحدة قد ينقصها
+      // ثلاثة شروط.
+      withLogistiGaps: vehicles.filter((v) => (v.logistiGaps || []).length > 0).length,
+      logistiGapItems: vehicles.reduce((t, v) => t + (v.logistiGaps || []).length, 0),
     };
+
+    // الشروط الناقصة مرتّبة بالأكثر تكرارًا — من أين يبدأ العمل.
+    const gapCounts = new Map();
+    for (const v of vehicles) for (const g of v.logistiGaps || []) gapCounts.set(g, (gapCounts.get(g) || 0) + 1);
+    const logistiGaps = [...gapCounts.entries()]
+      .map(([value, count]) => ({ value, count, filter: { logistiGap: value } }))
+      .sort((a, b) => b.count - a.count);
 
     // الحوادث والمطالبات — الفلوس هي السؤال.
     const openClaims = claims.filter((c) => c.statusCode !== 'closed');
@@ -479,7 +513,7 @@ exports.overview = async (req, res) => {
         premiumSar: p.premiumSar, policyNumbers: p.policyNumbers, state: st.state, days: st.days };
     }).sort((a, b) => (a.days ?? 1e9) - (b.days ?? 1e9));
 
-    const body = { totals, breakdowns, documents, claims: claimTotals, corporate, alerts: cfg.alerts || {} };
+    const body = { totals, breakdowns, documents, logistiGaps, claims: claimTotals, corporate, alerts: cfg.alerts || {} };
     cache.set(key, body, 20000);
     res.json(body);
   } catch (e) {

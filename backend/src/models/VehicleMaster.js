@@ -31,6 +31,23 @@ const vehicleMasterSchema = new mongoose.Schema({
   // الملكية
   ownerNameAr: { type: String, default: '', index: true },
   commercialRegistration: { type: String, default: '' },
+  // ── حقول جاءت مع تحديث ملفات القسم ─────────────────────────────────────────
+  // الإدارة والمدينة: التصنيف كان بالقطاع وحده، والملف الجديد يفصّل المركبة إلى
+  // إدارة (١٣ إدارة) ومدينة — وهما ما يُسأل عنهما فعلًا: «مركبات كيتا في مكة».
+  departmentAr: { type: String, default: '', index: true },
+  cityAr: { type: String, default: '', index: true },
+  // حالة الحيازة: مالك أم مستخدم. شرط من شروط منصّة لوجستي، فلا يصحّ دفنه في نص.
+  possessionStatusAr: { type: String, default: '', index: true },
+  // المفوَّض بالقيادة كما هو في ملف المركبات (٩١ مركبة). هذا غير تفاويض القسم
+  // المسجَّلة على الموظفين — تلك سجل حركة، وهذا لقطة من الملف.
+  authorizedPerson: {
+    name: { type: String, default: '' },
+    iqamaNumber: { type: String, default: '' },
+    jobTitleAr: { type: String, default: '' },
+  },
+  // نواقص منصّة لوجستي: ما الذي يمنع هذه المركبة من استيفاء شروط المنصّة، مكتوبًا
+  // شرطًا شرطًا. قائمة عمل لا وصفًا: كل سطر فيها بند يُغلَق.
+  logistiGaps: { type: [String], default: [], index: true },
   tamStatusAr: { type: String, default: '' },
   tamStatusCode: { type: String, default: '' }, // owner / user / none
 
@@ -55,6 +72,9 @@ const vehicleMasterSchema = new mongoose.Schema({
 
   // شريحة الوقود (بترو اب)
   fuelCard: {
+    // اللوحة كما تظهر على فاتورة الوقود — تختلف كتابتها عن لوحة المركبة، وهي
+    // المفتاح الوحيد لمطابقة الفاتورة بالمركبة.
+    plateOnInvoiceAr: { type: String, default: '' },
     provider: { type: String, default: '' },
     cardNumber: { type: String, default: '' },
     statusAr: { type: String, default: '' },
@@ -67,6 +87,8 @@ const vehicleMasterSchema = new mongoose.Schema({
 
   // GPS (الهيكل موجود، البيانات غالبًا فاضية)
   gps: {
+    // حالة الجهاز نفسه (نشط / غير نشط / مسروق) — غير حالة الاشتراك.
+    deviceStatusAr: { type: String, default: '', index: true },
     deviceId: { type: String, default: '' },
     deviceModel: { type: String, default: '' },
     simNumber: { type: String, default: '' },
@@ -86,12 +108,14 @@ const vehicleMasterSchema = new mongoose.Schema({
 
   // رخصة السير
   vehicleLicense: {
+    expiryDateHijri: { type: String, default: '' },
     expiryDate: { type: Date, default: null, index: true },
     statusCode: { type: String, default: '', index: true },
   },
 
   // الفحص الدوري
   inspection: {
+    expiryDateHijri: { type: String, default: '' },
     statusAr: { type: String, default: '' },
     statusCode: { type: String, default: '', index: true }, // passed / none / with_bank / …
     expiryDate: { type: Date, default: null, index: true },

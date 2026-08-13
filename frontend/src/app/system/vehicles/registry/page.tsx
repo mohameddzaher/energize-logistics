@@ -101,13 +101,24 @@ export default function VehicleRegistryList() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs">
-              <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'القطاع' : 'Sector', ar ? 'النوع' : 'Type', ar ? 'الماركة' : 'Brand', ar ? 'السنة' : 'Year', ar ? 'المالك' : 'Owner', ar ? 'التأمين' : 'Insurance', ar ? 'الحالة' : 'Status', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+              <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'القطاع' : 'Sector', ar ? 'الإدارة' : 'Department', ar ? 'المدينة' : 'City', ar ? 'النوع' : 'Type', ar ? 'الماركة' : 'Brand', ar ? 'السنة' : 'Year', ar ? 'المالك' : 'Owner', ar ? 'التأمين' : 'Insurance', ar ? 'الحالة' : 'Status', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((v) => (
                 <tr key={v._id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2"><Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{v.plateNumber}</Link></td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{v.plateNumber}</Link>
+                    {/* شرط ناقص لمنصّة لوجستي = عمل مطلوب، فيبين على الصف نفسه */}
+                    {!!v.logistiGaps?.length && (
+                      <span title={v.logistiGaps.join(' · ')}
+                        className="ms-1.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 text-[10.5px] font-bold">
+                        {ar ? `ناقص ${v.logistiGaps.length}` : `${v.logistiGaps.length} gaps`}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.sectorAr || '—'}</td>
+                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.departmentAr || '—'}</td>
+                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.cityAr || '—'}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.registrationTypeAr || '—'}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.brandAr || '—'} {v.modelAr}</td>
                   <td className="px-3 py-2 text-slate-500">{v.modelYear || '—'}</td>
@@ -122,7 +133,7 @@ export default function VehicleRegistryList() {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={9} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={11} className="px-3 py-10 text-center text-slate-500">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
             </tbody>
           </table>
         </div>

@@ -8,12 +8,18 @@ export type VReg = {
   plateNumber: string; plateLettersAr?: string; plateDigits?: string;
   chassisNumber?: string; serialNumber?: string;
   sectorAr?: string; sectorCode?: string;
+  // جاءت مع تحديث ملفات القسم
+  departmentAr?: string; cityAr?: string; possessionStatusAr?: string;
+  authorizedPerson?: { name?: string; iqamaNumber?: string; jobTitleAr?: string };
+  /** شروط منصّة لوجستي التي لم تستوفِها هذه المركبة — قائمة عمل لا وصف. */
+  logistiGaps?: string[];
+  accidentCount?: number;
   registrationTypeAr?: string; registrationTypeCode?: string;
   brandAr?: string; modelAr?: string; modelYear?: number | null; colorAr?: string; colorCode?: string;
   ownerNameAr?: string; commercialRegistration?: string; tamStatusAr?: string; tamStatusCode?: string;
   insurance?: { policyNumber?: string; companyAr?: string; coverageTypeAr?: string; coverageTypeCode?: string; expiryDate?: string | null; premiumSar?: number | null; status?: string };
-  fuelCard?: { provider?: string; cardNumber?: string; statusAr?: string; statusCode?: string; consumptionTypeAr?: string; consumptionTypeCode?: string; limitSar?: number | null; limitStatus?: string };
-  gps?: { deviceId?: string; simNumber?: string; provider?: string; status?: string; expiryDate?: string | null };
+  fuelCard?: { provider?: string; cardNumber?: string; plateOnInvoiceAr?: string; statusAr?: string; statusCode?: string; consumptionTypeAr?: string; consumptionTypeCode?: string; limitSar?: number | null; limitStatus?: string };
+  gps?: { deviceId?: string; deviceModel?: string; deviceStatusAr?: string; simNumber?: string; provider?: string; status?: string; expiryDate?: string | null };
   operatingCard?: { cardNumber?: string; expiryDate?: string | null };
   vehicleLicense?: { expiryDate?: string | null };
   inspection?: { statusAr?: string; statusCode?: string; expiryDate?: string | null };
@@ -83,9 +89,17 @@ export interface DocCard {
 }
 
 export interface VehicleOverview {
-  totals: { vehicles: number; insuredPremiumSar: number; withGps: number; activeFuelCards: number; withAccidents: number; needsAttention: number };
+  totals: {
+    vehicles: number; insuredPremiumSar: number; withGps: number; activeFuelCards: number;
+    withAccidents: number; needsAttention: number;
+    // نواقص منصّة لوجستي: عدد المركبات، وعدد البنود الناقصة في المجموع —
+    // والثاني هو حجم العمل، فالمركبة الواحدة قد ينقصها أكثر من شرط.
+    withLogistiGaps: number; logistiGapItems: number;
+  };
   breakdowns: Breakdown[];
   documents: DocCard[];
+  /** الشروط الناقصة مرتّبة بالأكثر تكرارًا — من أين يبدأ العمل. */
+  logistiGaps: { value: string; count: number; filter: Record<string, string> }[];
   claims: { total: number; open: number; estimatedSar: number; expectedRecoverySar: number; ourFault: number; byInsurer: { value: string; count: number }[] };
   corporate: { _id: string; scopeAr: string; companyAr: string; expiryDate: string; premiumSar: number; policyNumbers: string[]; state: string; days: number | null }[];
   alerts: Record<string, any>;

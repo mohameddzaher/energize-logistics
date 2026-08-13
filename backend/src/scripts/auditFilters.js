@@ -93,7 +93,7 @@ const TIRE_CHIPS = {
       + flatbeds.filter(FLATBED_CHIPS.none).length;
     ok(`مكتمل + ناقص + ما اتجردش = الإجمالي (${cover} = ${flatbeds.length})`, cover === flatbeds.length);
     // «ناقصة كاوتش» ما تشملش اللي مفيهاش خالص — دول فئتين مختلفتين
-    ok('«ناقصة» و«ما اتجردتش» ما بيتداخلوش',
+    ok('«ناقصة» و«لم تُجرَد بعد» ما بيتداخلوش',
       !flatbeds.some((f) => FLATBED_CHIPS.short(f) && FLATBED_CHIPS.none(f)));
 
     // ═══ الكاوتش الحيّ ═══════════════════════════════════════════════════════

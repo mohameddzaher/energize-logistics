@@ -13,6 +13,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { CalendarClock, RefreshCw, X, Check, ArrowRight, CalendarCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import SelectionBar from '@/components/ls2/SelectionBar';
 import {
   getExpiring, renewDocument, renewBulk, canEditVehicles, STATE_META, stateLabel, fmtDate, daysText,
   type ExpiringRow,
@@ -81,7 +82,7 @@ function ExpiringInner() {
       <PageHeader
         icon={<CalendarClock className="w-5 h-5" />}
         title={t('الانتهاءات', 'Expiries')}
-        subtitle={t('كل مستند له تاريخ — اختر المدة اللي تهمّك', 'Every dated document — pick the window that matters to you')}
+        subtitle={t('كل مستند له تاريخ — اختر المدة التي تهمّك', 'Every dated document — pick the window that matters to you')}
       >
         <ExportMenu fileName="vehicle-expiries" lang={lang as 'ar' | 'en'}
           options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: t('الانتهاءات', 'Expiries'), rows, columns: cols }] }]} />
@@ -224,7 +225,7 @@ function ExpiringInner() {
               })}
               {!rows.length && (
                 <tr><td colSpan={canEdit ? 9 : 8} className="px-3 py-12 text-center text-slate-500">
-                  {t('مفيش حاجة هتنتهي في المدة دي', 'Nothing expires in this window')}
+                  {t('لا شيء ينتهي خلال هذه المدة', 'Nothing expires in this window')}
                 </td></tr>
               )}
             </tbody>
@@ -232,21 +233,17 @@ function ExpiringInner() {
         </div>
       </div>
 
-      {/* شريط الاختيار — بيبان بس لما يكون فيه سطر متحدّد */}
-      {canEdit && picked.size > 0 && (
-        <div className="sticky bottom-3 z-20 mx-auto max-w-3xl rounded-2xl border border-[#f37121]/40 bg-white shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
-          <span className="text-sm font-bold text-slate-900">
-            {t(`${picked.size} مستند متحدّد`, `${picked.size} selected`)}
-          </span>
-          <button onClick={() => setPicked(new Set())} className="text-[12.5px] text-slate-600 hover:text-slate-900 underline">
-            {t('إلغاء الاختيار', 'Clear')}
-          </button>
-          <button onClick={() => setBulk(true)}
-            className="ms-auto px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold inline-flex items-center gap-1.5">
-            <CalendarCheck className="w-4 h-4" />
-            {t(`تجديدهم بتاريخ واحد (${picked.size})`, `Renew all to one date (${picked.size})`)}
-          </button>
-        </div>
+      {/* شريط الإجراء الجماعي — ثابت أسفل الشاشة، يظهر فور اختيار أول مستند.
+          كان sticky وموضعه بعد الجدول، فمع مئات الصفوف لا يظهر إلا بعد النزول
+          إلى آخر الصفحة — واختيار صف في الأعلى يبدو بلا زر. */}
+      {canEdit && (
+        <SelectionBar
+          count={picked.size} ar={ar} tone="green"
+          label={t(`${picked.size} مستند محدَّد`, `${picked.size} selected`)}
+          hint={t('يُسجَّل لها جميعًا تاريخ تجديد واحد', 'All get one renewal date')}
+          actionLabel={t(`تجديدها بتاريخ واحد (${picked.size})`, `Renew to one date (${picked.size})`)}
+          onAction={() => setBulk(true)}
+          onClear={() => setPicked(new Set())} />
       )}
 
       {bulk && (
@@ -324,7 +321,7 @@ function RenewModal({ row, ar, t, onClose, onDone, notify }: any) {
         </div>
 
         <p className="mt-3 text-[11px] text-slate-500 bg-slate-50 rounded-lg px-3 py-2 leading-relaxed">
-          {t('هيتسجّل في سجل المركبة: التاريخ القديم والجديد وباسمك — عشان «جدّدناها امتى وبكام» يفضل ليها إجابة.',
+          {t('يُقيَّد في سجل المركبة: التاريخ السابق والجديد واسم من نفّذه — حتى يبقى لسؤال «متى جُدِّدت وبكم؟» إجابة.',
              'Recorded on the vehicle: old date, new date and your name — so "when did we renew, and for how much" keeps an answer.')}
         </p>
 
@@ -375,7 +372,7 @@ function BulkRenewModal({ rows, ar, onClose, onDone }: {
       const errs = e?.data?.errors || e?.errors;
       if (Array.isArray(errs) && errs.length) {
         setErrors(errs.map((x: any) => `${t('سطر', 'line')} ${x.line}: ${x.message}`));
-        notify(t('العملية اترفضت بالكامل — مفيش مركبة اتجدّدت', 'Rejected in full — nothing renewed'), 'error');
+        notify(t('رُفضت العملية بالكامل — لم تُجدَّد أي مركبة', 'Rejected in full — nothing renewed'), 'error');
       } else notify(e?.message || 'Failed', 'error');
     } finally { setBusy(false); }
   };

@@ -58,7 +58,7 @@ export default function VehicleRegistrySettings() {
             <div key={d.key} className="flex items-center gap-4 px-4 py-4">
               <div className="flex-1">
                 <p className="font-semibold text-slate-800">{ar ? d.ar : d.en}</p>
-                <p className="text-xs text-slate-400">{ar ? 'تنبيه برتقالي، ثم أحمر لما يقرب أوي' : 'Amber warning, then red when it gets close'}</p>
+                <p className="text-xs text-slate-400">{ar ? 'تنبيه برتقالي، ثم أحمر عند اقتراب الموعد كثيرًا' : 'Amber warning, then red when it gets close'}</p>
               </div>
               <div className="flex items-center gap-2">
                 <div className="text-center">
@@ -88,7 +88,7 @@ export default function VehicleRegistrySettings() {
       </div>
       <p className="text-xs text-slate-400 leading-relaxed">
         {ar
-          ? 'مثال: التأمين تنبيه 60 وحرج 15 — يبقى برتقالي أول ما يتبقّى شهرين، ويبقى أحمر آخر أسبوعين. نفس الأرقام دي هي اللي كروت النظرة الشاملة وصفحة الانتهاءات بتتلوّن بيها.'
+          ? 'مثال: التأمين — تنبيه ٦٠ وحرج ١٥: يصبح برتقاليًا حين يتبقّى شهران، وأحمر في آخر أسبوعين. وبهذه الأرقام نفسها تتلوّن بطاقات النظرة الشاملة وصفحة الانتهاءات.'
           : 'e.g. Insurance warn 60 / critical 15 — amber from two months out, red for the last fortnight. The overview cards and the expiries page colour by exactly these numbers.'}
       </p>
 

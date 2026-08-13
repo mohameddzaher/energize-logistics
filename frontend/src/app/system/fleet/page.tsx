@@ -228,7 +228,7 @@ export default function FleetShipmentsPage() {
         <StatCard label={ar ? 'ملغاة' : 'Cancelled'} value={stats?.byStatus.cancelled || 0} accent="text-red-600" />
       </div>
 
-      {/* الوجهات الحالية — "الرايح جدة كام سيارة" دون بحث. الضغط يرشح القائمة. */}
+      {/* الوجهات الحالية — "عدد السيارات المتّجهة إلى جدة" دون بحث. الضغط يرشح القائمة. */}
       {(stats?.byDestination?.length || 0) > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-600">{ar ? 'الوجهات الآن:' : 'Destinations now:'}</span>

@@ -717,7 +717,7 @@ export default function ItCustodyPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-slate-500">
-                  {ar ? `بعهدته ${handoverHeld.length} صنف — علّم على اللي استلمته` : `Holds ${handoverHeld.length} item(s) — tick what was handed back`}
+                  {ar ? `بعهدته ${handoverHeld.length} صنف — علِّم على ما استلمته` : `Holds ${handoverHeld.length} item(s) — tick what was handed back`}
                 </p>
                 <button type="button" onClick={() => setHandoverPicked(handoverPicked.length === handoverHeld.length ? [] : handoverHeld.map((i) => i._id))}
                   className="text-xs text-[#f37121] hover:underline">

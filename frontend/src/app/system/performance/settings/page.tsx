@@ -257,7 +257,7 @@ export default function PerformanceSettingsPage() {
                 <input
                   value={(editing.jobTitles || []).join(', ')}
                   onChange={(e) => setEditing({ ...editing, jobTitles: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                  className={inputCls} placeholder={ar ? 'اتركها فاضية لتطبيق النموذج على القسم كله' : 'Leave empty to apply to the whole department'}
+                  className={inputCls} placeholder={ar ? 'اتركها فارغة لتطبيق النموذج على القسم كله' : 'Leave empty to apply to the whole department'}
                 />
               </div>
               <div>

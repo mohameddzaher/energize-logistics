@@ -571,7 +571,7 @@ export default function RepsPerformancePage() {
                     : 'bg-amber-500/10 text-amber-700'
                 }`}>
                   {lang === 'ar'
-                    ? `🧮 إجمالي الطلبات اللي اتسجلت: ${uploadResult.totalOrdersWritten.toLocaleString()} مقابل المتوقع: ${uploadResult.expectedTotal.toLocaleString()}`
+                    ? `🧮 إجمالي الطلبات المسجَّلة: ${uploadResult.totalOrdersWritten.toLocaleString()} مقابل المتوقَّع: ${uploadResult.expectedTotal.toLocaleString()}`
                     : `🧮 Orders stored: ${uploadResult.totalOrdersWritten.toLocaleString()} vs expected: ${uploadResult.expectedTotal.toLocaleString()}`}
                   {Math.abs((uploadResult.totalOrdersWritten || 0) - (uploadResult.expectedTotal || 0)) >= 1 && (
                     <span className="block mt-1">
@@ -590,7 +590,7 @@ export default function RepsPerformancePage() {
               {uploadResult.inserted === 0 && uploadResult.updated === 0 && uploadResult.skipped > 0 && (
                 <p className="text-amber-700 text-xs mt-2">
                   {lang === 'ar'
-                    ? `⚠️ كل الأيام (${uploadResult.skipped}) موجودة بالفعل في النظام. اختر "Overwrite all" من الـ Mode لو عاوز تحدثها.`
+                    ? `⚠️ جميع الأيام (${uploadResult.skipped}) مسجَّلة بالفعل. اختر "Overwrite all" من الوضع إذا أردت تحديثها.`
                     : `⚠️ All days (${uploadResult.skipped}) already exist. Pick "Overwrite all" mode to update them.`}
                 </p>
               )}
@@ -777,7 +777,7 @@ export default function RepsPerformancePage() {
                 </p>
                 <p className="text-slate-500 text-xs mb-3">
                   {lang === 'ar'
-                    ? 'الخطوة المتبعة: ✋ أول صف فقط (الباقي يتم تجاهله). الأخضر = القيمة اللي هتدخل القاعدة.'
+                    ? 'الخطوة المتبعة: ✋ الصف الأول فقط (ويُتجاهَل الباقي). الأخضر = القيمة التي ستُحفَظ.'
                     : 'Resolution: ✋ first row wins (rest ignored). Green = value stored in DB.'}
                 </p>
                 <div className="max-h-96 overflow-y-auto space-y-3">
@@ -817,7 +817,7 @@ export default function RepsPerformancePage() {
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 text-[11px]">
                                   {dayPairs.length === 0 ? (
-                                    <span className="text-slate-600">{lang === 'ar' ? '(كل الأيام فاضية أو null)' : '(all days null/empty)'}</span>
+                                    <span className="text-slate-600">{lang === 'ar' ? '(جميع الأيام فارغة أو null)' : '(all days null/empty)'}</span>
                                   ) : dayPairs.map(([day, val]) => (
                                     <span key={day} className="px-1.5 py-0.5 rounded bg-slate-50 text-slate-700">
                                       {lang === 'ar' ? 'يوم' : 'd'}{day}=<strong className="text-slate-900">{val}</strong>
@@ -847,7 +847,7 @@ export default function RepsPerformancePage() {
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-32 overflow-y-auto">
                 <p className="text-slate-500 text-xs font-medium mb-1.5">
                   {lang === 'ar'
-                    ? `📋 شيتات تم تجاهلها (مش بأسماء شهور): ${parseResult.ignoredSheets.length}`
+                    ? `📋 أوراق تم تجاهلها (أسماؤها ليست أسماء شهور): ${parseResult.ignoredSheets.length}`
                     : `📋 Ignored sheets (not month-named): ${parseResult.ignoredSheets.length}`}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
@@ -877,7 +877,7 @@ export default function RepsPerformancePage() {
             </h2>
             <p className="text-slate-500 text-xs mt-1">
               {lang === 'ar'
-                ? 'كل (مشروع + فرع) ليه شيت خاص بيه — اضف اللي تحتاجه'
+                ? 'لكل (مشروع + فرع) ورقة خاصة به — أضف ما تحتاجه'
                 : 'Each (project + branch) has its own sheet — add as many as you need'}
             </p>
           </div>
@@ -994,7 +994,7 @@ export default function RepsPerformancePage() {
           <div className="text-center py-8 border border-dashed border-slate-200 rounded-lg">
             <Cloud className="w-10 h-10 text-slate-600 mx-auto mb-2" />
             <p className="text-slate-500 text-sm">
-              {lang === 'ar' ? 'لسه ما فيش شيتات متربوطة. اضغط "إضافة شيت جديد" للبدء.' : 'No sheets connected yet. Click "Add new sheet" to start.'}
+              {lang === 'ar' ? 'لا توجد أوراق مرتبطة بعد. اضغط «إضافة ورقة جديدة» للبدء.' : 'No sheets connected yet. Click "Add new sheet" to start.'}
             </p>
           </div>
         )}
@@ -1200,7 +1200,7 @@ export default function RepsPerformancePage() {
                         <>
                           <div className="bg-slate-100 rounded-lg p-3 text-xs text-slate-500 leading-relaxed">
                             {lang === 'ar'
-                              ? 'هتلصق السكربت ده في الـ Google Sheet (Extensions → Apps Script). كل تعديل في الشيت بيعمل ping للسيرفر، والسيرفر يحدّث الـ dashboard في ثانية أو اتنين. كل شيت ليه secret خاص بيه.'
+                              ? 'ألصِق هذا السكربت في Google Sheet‏ (Extensions → Apps Script). كل تعديل في الورقة يُرسِل إشعارًا إلى الخادم، فيحدِّث اللوحة خلال ثانية أو ثانيتين. ولكل ورقة مفتاح سرّي خاص بها.'
                               : 'Paste this script into your Google Sheet (Extensions → Apps Script). Every edit pings the server, which updates the dashboard within 1-2 seconds. Each sheet has its own secret.'}
                           </div>
 

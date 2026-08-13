@@ -170,7 +170,7 @@ export const brReopenMeeting = (id: string) =>
 /** أوعية البطاقات — نفس مفاتيح الـ bucket اللي السيرفر بيفهمها. */
 export const MEETING_BUCKETS = [
   { key: '', ar: 'كل الاجتماعات', en: 'All meetings', countKey: 'total', color: '#0f172a' },
-  { key: 'open', ar: 'لسه مفتوحة', en: 'Still open', countKey: 'open', color: '#f37121' },
+  { key: 'open', ar: 'ما زالت مفتوحة', en: 'Still open', countKey: 'open', color: '#f37121' },
   { key: 'completed', ar: 'مكتملة', en: 'Completed', countKey: 'completed', color: '#0f766e' },
   { key: 'upcoming', ar: 'قادمة', en: 'Upcoming', countKey: 'upcoming', color: '#0ea5e9' },
   { key: 'cancelled', ar: 'ملغاة', en: 'Cancelled', countKey: 'cancelled', color: '#94a3b8' },

@@ -61,7 +61,7 @@ export default function MeetingPage() {
       title: t('Close this meeting?', 'إقفال هذا الاجتماع؟'),
       message: t(
         'Marking it Completed says everything arising from this meeting is finished. It is refused if any action or delegated task is still open.',
-        'تحديده كـ«اكتمل» معناه إن كل حاجة اترتّبت على الاجتماع ده خلصت. هيترفض لو لسه فيه بند تنفيذي أو تكليف فرعي مفتوح.'
+        'تحديده كـ«اكتمل» يعني أن كل ما تُرتِّب على هذا الاجتماع قد أُنجِز. ويُرفَض إن بقي بند تنفيذي أو تكليف فرعي مفتوح.'
       ),
       confirmLabel: t('Close it', 'إقفال'),
     });

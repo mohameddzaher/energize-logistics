@@ -283,7 +283,7 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div><label className={lbl}>{t('لوحة المركبة', 'Plate')}</label>
               <input value={f.vehiclePlate} onChange={(e) => set('vehiclePlate', e.target.value)} className={inp} placeholder="5010" /></div>
-            <div><label className={lbl}>{t('موضوع الواقعة (لو مش مركبة)', 'Subject (if not a vehicle)')}</label>
+            <div><label className={lbl}>{t('موضوع الواقعة (إن لم تكن مركبة)', 'Subject (if not a vehicle)')}</label>
               <input value={f.incidentSubjectAr} onChange={(e) => set('incidentSubjectAr', e.target.value)} className={inp} /></div>
             <div><label className={lbl}>{t('تاريخ الحادث', 'Accident date')}</label>
               <input type="date" value={f.accidentDate} onChange={(e) => set('accidentDate', e.target.value)} className={inp} /></div>

@@ -108,7 +108,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
         if (_filter == 'new' || _filter == 'renewed') {
           if (t['condition'] != _filter) return false;
         } else if (_filter == 'unmounted') {
-          // أي فردة مش على عربية دلوقتي — مخزن أو تجديد أو سكراب أو تالفة أو
+          // أي فردة مش على مركبة حاليًا — مخزن أو تجديد أو سكراب أو تالفة أو
           // مباعة. غير «المستودع» اللي هي المتاحة للتركيب بس.
           if (t['status'] == 'mounted') return false;
         } else if (t['status'] != _filter) {
@@ -627,7 +627,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(color: T.warn.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(10)),
                     child: Text(
-                      tr('الموقع «${t['positionLabel'] ?? t['positionNumber'] ?? ''}» ما ينفعش يفضل فاضي — اختر فردة تتركب مكانها أو اعمل تبديل.',
+                      tr('الموقع «${t['positionLabel'] ?? t['positionNumber'] ?? ''}» لا يجوز أن يبقى فارغًا — اختر فردة تُركَّب مكانها، أو نفّذ تبديلًا.',
                          'This position cannot be left empty — pick a replacement or swap.'),
                       style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: T.warn)),
                   ),

@@ -50,15 +50,15 @@ export default function Ls2DriversPage() {
   }, [range.from, range.to]);
   useEffect(() => { load(); }, [load]);
 
-  // السواقين: مين ماشي على عربية دلوقتي، ومين اتنقل بين أكتر من عربية في الفترة،
+  // السواقين: مين ماشي على مركبة حاليًا، ومين اتنقل بين أكتر من عربية في الفترة،
   // ومين ما مشيش خالص — دي الأسئلة اللي بتتسأل على الكشف ده.
   const [dFilter, setDFilter] = useState('');
   const DRIVER_CHIPS: Chip[] = useMemo(() => [
     { key: '', label: ar ? 'الكل' : 'All' },
-    { key: 'onVehicle', label: ar ? 'على عربية دلوقتي' : 'On a vehicle now', tone: 'green', test: (d: any) => !!d.currentVehicle },
+    { key: 'onVehicle', label: ar ? 'على مركبة حاليًا' : 'On a vehicle now', tone: 'green', test: (d: any) => !!d.currentVehicle },
     { key: 'noVehicle', label: ar ? 'من غير عربية' : 'No vehicle', tone: 'amber', test: (d: any) => !d.currentVehicle },
     { key: 'multi', label: ar ? 'اتنقل بين أكتر من عربية' : 'Moved between vehicles', tone: 'violet', test: (d: any) => (d.vehicleCount || 0) > 1 },
-    { key: 'idle', label: ar ? 'ما مشيش في الفترة' : 'No distance', tone: 'slate', test: (d: any) => !(d.km > 0) },
+    { key: 'idle', label: ar ? 'بلا مسافة خلال الفترة' : 'No distance', tone: 'slate', test: (d: any) => !(d.km > 0) },
   ], [ar]);
   const dSearch = useCallback((d: any) => [d.driver, d.currentVehicle?.plate, ...(d.vehicles || []).map((v: any) => v.plate)], []);
   const dF = useChipFilter(items, DRIVER_CHIPS, dFilter, q, dSearch);

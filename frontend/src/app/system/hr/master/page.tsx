@@ -63,7 +63,7 @@ export default function HrMasterPage() {
       <PageHeader
         icon={<Users className="w-5 h-5" />}
         title={t('نظرة الموارد البشرية الشاملة', 'HR Overview')}
-        subtitle={t('كل عمود له كارت — اضغط أي رقم لتفتح الناس اللي وراه وتملّي بياناتهم',
+        subtitle={t('لكل عمود بطاقة — اضغط أي رقم لعرض الموظفين المعنيين واستكمال بياناتهم',
                     'A card per column — click any number to open the people behind it and fill their data')}
       >
         <div className="flex items-center gap-2">
@@ -90,7 +90,7 @@ export default function HrMasterPage() {
         <Big label={t('الموظفون', 'Employees')} value={d.totals.employees} c="#f37121" />
         <Big label={t('على رأس العمل', 'Active')} value={d.totals.active} c="#16a34a"
           onClick={() => setOnlyActive(true)} />
-        <Big label={t('مش على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8" />
+        <Big label={t('ليس على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8" />
         <Big label={t('بيانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626" />
         <Big label={t('ينتهي قريبًا', 'Expiring soon')} value={d.totals.expiringSoon} c="#ea580c"
           onClick={() => router.push('/system/hr/master/expiring')} />

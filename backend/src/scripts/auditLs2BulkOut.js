@@ -120,7 +120,48 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok('الصنف المتكرّر في الاختيار بيتحسب مرة واحدة', r5.status === 201 && (await qty(B._id)) === b0 - 1,
       `${b0} → ${await qty(B._id)}`);
 
-    // ═══ ⑤ الصادر المفرد ما اتكسرش ════════════════════════════════════════
+    // ═══ ⑤ كمية مختلفة لكل صنف ═══════════════════════════════════════════
+    console.log('\n── كمية مختلفة لكل صنف ──');
+    const before5 = { a: await qty(A._id), b: await qty(B._id), c: await qty(C._id) };
+    await Ls2StoreItem.updateOne({ _id: B._id }, { $set: { quantity: 9 } });
+    await Ls2StoreItem.updateOne({ _id: C._id }, { $set: { quantity: 9 } });
+    const mixed = await post('/api/ls2/store/bulk-movement', {
+      type: 'out', vehiclePlate: '5014',
+      lines: [
+        { item: A._id, quantity: 1 },
+        { item: B._id, quantity: 4 },
+        { item: C._id, quantity: 2 },
+      ],
+    });
+    ok('صادر بكميات مختلفة', mixed.status === 201, `HTTP ${mixed.status} ${mixed.body?.message || ''}`);
+    ok(`كل صنف نقص بكميته (1/4/2)`,
+      (await qty(A._id)) === before5.a - 1 && (await qty(B._id)) === 5 && (await qty(C._id)) === 7,
+      `${await qty(A._id)}/${await qty(B._id)}/${await qty(C._id)}`);
+    ok(`الملخّص: ${mixed.body?.summary?.items} صنف · ${mixed.body?.summary?.totalQty} قطعة`,
+      mixed.body?.summary?.items === 3 && mixed.body?.summary?.totalQty === 7);
+
+    // ═══ ⑥ الوارد بنفس المسار ═════════════════════════════════════════════
+    console.log('\n── وارد جماعي بكميات مختلفة ──');
+    const b6 = { b: await qty(B._id), z: await qty(Z._id) };
+    const inMv = await post('/api/ls2/store/bulk-movement', {
+      type: 'in', vehiclePlate: '5015', reason: 'توريد',
+      lines: [{ item: B._id, quantity: 10 }, { item: Z._id, quantity: 3 }],
+    });
+    ok('وارد جماعي', inMv.status === 201, `HTTP ${inMv.status} ${inMv.body?.message || ''}`);
+    ok(`الأرصدة زادت (${b6.b}→${await qty(B._id)} · ${b6.z}→${await qty(Z._id)})`,
+      (await qty(B._id)) === b6.b + 10 && (await qty(Z._id)) === b6.z + 3);
+    ok('والصنف اللي رصيده صفر ينفع يدخله وارد', (await qty(Z._id)) === 3);
+    const inMvs = await Ls2StoreMovement.find({ itemName: { $regex: '^zz-ls2b' }, type: 'in', vehiclePlate: '5015' }).lean();
+    ok('واتسجّلت كحركات وارد في نفس السجل', inMvs.length === 2 && inMvs.every((m) => m.reason === 'توريد'),
+      `${inMvs.length} حركة`);
+
+    // كمية غلط ⇒ الكل يترفض
+    const badQ = await post('/api/ls2/store/bulk-movement', {
+      type: 'out', lines: [{ item: A._id, quantity: 1 }, { item: B._id, quantity: 0 }],
+    });
+    ok('كمية صفر في سطر ⇒ الكل يترفض', badQ.status === 400, `HTTP ${badQ.status}`);
+
+    // ═══ ⑦ الصادر المفرد ما اتكسرش ════════════════════════════════════════
     console.log('\n── الصادر المفرد ──');
     const a1 = await qty(A._id);
     const single = await post(`/api/ls2/store/${A._id}/movement`, { type: 'out', quantity: 2, vehiclePlate: '5013' });

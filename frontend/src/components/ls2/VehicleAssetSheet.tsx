@@ -124,7 +124,7 @@ export default function VehicleAssetSheet({ plate, ar, onClose, admin = false, b
             tires == null ? <p className="text-slate-500 py-8 text-center">{t('جارٍ التحميل…', 'Loading…')}</p>
               : tires.length === 0 ? (
                 <p className="text-slate-600 py-10 text-center">
-                  {t('مفيش كاوتش مسجّل على العربية دي لسه — محتاجة جرد من الورشة',
+                  {t('لا توجد إطارات مسجَّلة على هذه المركبة بعد — تحتاج إلى جرد من الورشة',
                      'No tires registered on this vehicle yet — the workshop still has to inventory it')}
                 </p>
               ) : (
@@ -201,7 +201,7 @@ export default function VehicleAssetSheet({ plate, ar, onClose, admin = false, b
               </div>
 
               {rows == null ? <p className="text-slate-500 py-8 text-center">{t('جارٍ التحميل…', 'Loading…')}</p>
-                : shown.length === 0 ? <p className="text-slate-600 py-10 text-center">{t('مفيش حركة مسجّلة', 'No history recorded')}</p>
+                : shown.length === 0 ? <p className="text-slate-600 py-10 text-center">{t('لا توجد حركة مسجَّلة', 'No history recorded')}</p>
                 : (
                   <ol className="relative space-y-2">
                     {shown.map((r, i) => {

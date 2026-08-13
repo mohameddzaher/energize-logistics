@@ -377,7 +377,7 @@ exports.moveTire = async (req, res) => {
       return res.status(400).json({
         code: 'REPLACEMENT_REQUIRED',
         message: `الموقع «${vacated.positionLabel || vacated.positionNumber}» على ${vacated.plate} `
-          + 'ما ينفعش يفضل فاضي — اختر الفردة اللي هتتركب مكانها، أو اعمل تبديل مع فردة تانية.',
+          + 'لا يجوز أن يبقى فارغًا — اختر الفردة اللي هتتركب مكانها، أو اعمل تبديل مع فردة تانية.',
         vacating: {
           plate: vacated.plate, positionNumber: vacated.positionNumber,
           positionLabel: vacated.positionLabel, section: vacated.section,
@@ -584,7 +584,7 @@ function blockEmptySlot(tire, replacementTireId) {
   return {
     code: 'REPLACEMENT_REQUIRED',
     message: `الفردة مركّبة في «${tire.positionLabel || tire.positionNumber}» على ${tire.plate} — `
-      + 'نزّلها من «إنزال + بديل» واختر الفردة اللي هتتركب مكانها. الموقع ما ينفعش يفضل فاضي.',
+      + 'نزّلها من «إنزال + بديل» واختر الفردة اللي هتتركب مكانها. الموقع لا يجوز أن يبقى فارغًا.',
     vacating: {
       plate: tire.plate, positionNumber: tire.positionNumber,
       positionLabel: tire.positionLabel, section: tire.section,

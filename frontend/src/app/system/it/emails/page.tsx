@@ -109,7 +109,7 @@ export default function CompanyEmailsPage() {
         <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
         <p className="text-[12px] text-amber-900 leading-relaxed">
           {t(
-            'ده سجل صناديق بريد الشركة المُنشأة على هوستنجر — مش حسابات الدخول للسيستم. الموظف ممكن يكون له الاتنين بكلمتين مرور مختلفتين، وتغيير كلمة المرور هنا ما بيغيّرش دخوله على السيستم ولا العكس.',
+            'هذا سجل صناديق بريد الشركة المُنشأة على هوستنجر — وليست حسابات الدخول إلى النظام. قد يكون للموظف الاثنان بكلمتَي مرور مختلفتين، وتغيير كلمة المرور هنا لا يغيّر دخوله إلى النظام ولا العكس.',
             'These are company mailboxes created on Hostinger — not system logins. A person may have both, with different passwords; changing one here does not affect the other.'
           )}
         </p>
@@ -226,7 +226,7 @@ function Row({ r, ar, t, canEdit, canReveal, onEdit, onChanged, notify, confirm 
     const ok = await confirm({
       title: ar ? `حذف «${r.email}» من السجل؟` : `Remove "${r.email}"?`,
       message: ar
-        ? 'ده بيشيله من سجل السيستم بس — صندوق البريد نفسه على هوستنجر مش هيتمسح، لازم تقفله من هناك.'
+        ? 'هذا يزيله من سجل النظام فقط — أما صندوق البريد نفسه على هوستنجر فلن يُحذَف، ويجب إغلاقه من هناك.'
         : 'This removes it from the register only — the mailbox itself on Hostinger is untouched.',
       confirmLabel: ar ? 'حذف' : 'Delete', tone: 'danger',
     });
@@ -341,7 +341,7 @@ function EmailModal({ row, ar, t, vaultReady, onClose, onSaved, notify }: any) {
             <L>{t('الموظف', 'Employee')}</L>
             <EmployeePicker value={emp} onChange={pickEmployee} ar={ar} t={t} />
             <p className="text-[11px] text-slate-400 mt-1">
-              {t('لو لسه مش مضاف في الموارد البشرية، سيبها «بدون ربط» واربطه بعدين.',
+              {t('إذا لم يُضَف بعد في الموارد البشرية، اتركها «بدون ربط» واربطه لاحقًا.',
                  'Not in HR yet? Leave it unlinked and link later.')}
             </p>
           </div>

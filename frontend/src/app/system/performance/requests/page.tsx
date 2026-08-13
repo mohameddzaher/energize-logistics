@@ -148,7 +148,7 @@ export default function PerformanceRequestsPage() {
                 onClick={() => { setNoteFor({ row: r, decision: 'reject' }); setNote(''); }}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-red-200 hover:bg-red-50 text-red-600 text-sm font-medium disabled:opacity-50"
               >
-                <X className="w-4 h-4" /> {ar ? 'رفض — يبقى مقفول' : 'Reject — keep locked'}
+                <X className="w-4 h-4" /> {ar ? 'رفض — يظل مغلقًا' : 'Reject — keep locked'}
               </button>
             </div>
           </div>

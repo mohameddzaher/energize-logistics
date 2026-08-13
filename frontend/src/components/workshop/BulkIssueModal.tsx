@@ -150,7 +150,7 @@ export default function BulkIssueModal({ ar, onClose, onDone, notify }: {
           });
           return copy;
         });
-        setTopError(t('العملية اترفضت بالكامل — مفيش أي سطر اتنفّذ. صلّح الأسطر المعلّمة.',
+        setTopError(t('رُفضت العملية بالكامل — لم يُنفَّذ أي سطر. صحِّح الأسطر المعلَّمة.',
           'Rejected in full — nothing was issued. Fix the flagged lines.'));
       } else setTopError(e?.message || 'Failed');
     }
@@ -166,7 +166,7 @@ export default function BulkIssueModal({ ar, onClose, onDone, notify }: {
           <div>
             <h3 className="font-bold text-slate-900">{t('صرف عدة أصناف', 'Issue multiple items')}</h3>
             <p className="text-[11.5px] text-slate-600">
-              {t('اكتب اسم الصنف واختر من النتايج، وبعدين الكمية. الأسطر الفاضية بتتجاهل.',
+              {t('اكتب اسم الصنف واختر من النتائج، ثم الكمية. وتُتجاهَل الأسطر الفارغة.',
                  'Type an item name, pick it, then the quantity. Blank lines are ignored.')}
             </p>
           </div>
@@ -231,7 +231,7 @@ export default function BulkIssueModal({ ar, onClose, onDone, notify }: {
                     {openFor === l.key && !l.item && (l.query.trim() || searching) && (
                       <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
                         {searching && <p className="px-3 py-2 text-[12px] text-slate-500">{t('بحث…', 'Searching…')}</p>}
-                        {!searching && !results.length && <p className="px-3 py-2 text-[12px] text-slate-600">{t('مفيش نتايج', 'No results')}</p>}
+                        {!searching && !results.length && <p className="px-3 py-2 text-[12px] text-slate-600">{t('لا توجد نتائج', 'No results')}</p>}
                         {results.map((it) => (
                           <button key={it._id} onClick={() => { patch(l.key, { item: it, query: '' }); setOpenFor(null); setResults([]); }}
                             className="w-full text-start px-3 py-1.5 hover:bg-slate-50 flex items-center justify-between gap-2">

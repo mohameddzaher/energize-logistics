@@ -45,7 +45,7 @@ export default function CorporatePoliciesPage() {
       <PageHeader
         icon={<ShieldCheck className="w-5 h-5" />}
         title={t('وثائق التأمين على مستوى الشركة', 'Company-level Insurance')}
-        subtitle={t('وثائق مش مربوطة بمركبة — انتهاؤها يوقّف الشغل كله', 'Not tied to any vehicle — their expiry stops everything')}
+        subtitle={t('وثائق غير مرتبطة بمركبة بعينها — انتهاؤها يوقف العمل كله', 'Not tied to any vehicle — their expiry stops everything')}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

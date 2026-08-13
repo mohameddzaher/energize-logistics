@@ -70,7 +70,7 @@ export default function MasterNav() {
         })}
       </div>
       <p className="px-1 pt-1.5 text-[11px] text-slate-500">
-        {t('الرقم جنب كل صفحة = بيانات ناقصة لسه محتاجة تتجمّع', 'The number next to each page = data still missing')}
+        {t('الرقم بجانب كل صفحة = بيانات ناقصة ما زالت بحاجة إلى استكمال', 'The number next to each page = data still missing')}
       </p>
     </nav>
   );

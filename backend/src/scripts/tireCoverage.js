@@ -55,7 +55,7 @@ const FULL = 14;
     + ` · ناقصة: ${partial.length} · مفيهاش أي إطار: ${none.length}\n`);
 
   if (partial.length) { console.log(`⚠ أقل من ${FULL} إطار (${partial.length}):`); partial.forEach(show); console.log(''); }
-  if (none.length) { console.log(`✗ مفيش أي كاوتش مسجّل — لسه ما اتجردتش (${none.length}):`); none.forEach(show); console.log(''); }
+  if (none.length) { console.log(`✗ مفيش أي كاوتش مسجّل — لسه لم تُجرَد بعد (${none.length}):`); none.forEach(show); console.log(''); }
   console.log(`✓ مكتملة (${full.length}):`);
   full.forEach(show);
 

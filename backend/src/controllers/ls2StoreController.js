@@ -133,41 +133,74 @@ const actor = (req) => ({
   performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
 });
 
-exports.addBulkOut = async (req, res) => {
+// ── حركة جماعية: صادر أو وارد لعدة أصناف ─────────────────────────────────────
+//
+// الطلب: «أعمل سيليكت لأكتر من صنف وأقول الصادر ده على أنهي عربية»، ثم: «العدد
+// جنب كل عنصر تلقائي ١، لكن فيه عناصر هيعمل لها صادر أكتر من ١ فيكتب عددها».
+//
+// فالكمية **لكل صنف على حدة**، وافتراضها ١. ونفس المسار يخدم الوارد أيضًا: قد
+// تدخل خمس قطع من صنف وقطعتان من آخر في نفس التوريد.
+//
+// **الكل أو لا شيء.** إن كان رصيد صنف واحد لا يكفي، لا يَنقص أي صنف والرد يحمل
+// أسماء الأصناف الناقصة. صرف نُفِّذ نصفه يترك المخزن على رقم خاطئ، ولا يعرف من
+// نفّذه أي صنف نزل — فيعيده كاملًا ويصرف ضِعف الكمية.
+exports.addBulkMovement = async (req, res) => {
   try {
-    const ids = Array.isArray(req.body?.items) ? req.body.items : [];
-    if (!ids.length) return res.status(400).json({ message: 'اختر صنف واحد على الأقل' });
-    if (ids.length > 300) return res.status(400).json({ message: 'أقصى ٣٠٠ صنف في المرة الواحدة' });
+    const type = req.body?.type === 'in' ? 'in' : req.body?.type === 'out' ? 'out' : null;
+    if (!type) return res.status(400).json({ message: 'نوع الحركة غير صحيح' });
 
-    // قطعة واحدة من كل صنف — إلا لو اتبعت رقم صريح (الافتراضي ١).
-    const per = Math.max(1, Number(req.body?.quantityEach) || 1);
+    // يقبل الشكلين، ومعناهما مختلف عن قصد:
+    //   lines: أسطر صريحة كتبها المستخدم — الصنف المكرَّر فيها تُجمَع كمياته.
+    //   items: قائمة اختيار — التكرار فيها أثر انتقاء لا نيّة، فيُحسَب مرة واحدة.
+    const asLines = Array.isArray(req.body?.lines);
+    const raw = asLines ? req.body.lines
+      : (Array.isArray(req.body?.items) ? [...new Set(req.body.items.map(String))].map((id) => ({ item: id })) : []);
+    if (!raw.length) return res.status(400).json({ message: 'اختر صنفًا واحدًا على الأقل' });
+    if (raw.length > 300) return res.status(400).json({ message: 'الحد الأقصى ٣٠٠ صنف في المرة الواحدة' });
+
+    const fallback = Math.max(1, Number(req.body?.quantityEach) || 1);
     const vehiclePlate = (req.body?.vehiclePlate || '').trim();
     const reason = (req.body?.reason || '').trim();
 
-    const uniq = [...new Set(ids.map(String))];
-    const items = await Ls2StoreItem.find({ _id: { $in: uniq } });
-    const found = new Map(items.map((i) => [String(i._id), i]));
-
+    // الصنف المكرَّر في الاختيار تُجمَع كمياته، فلا يُقاس كل سطر وحده على الرصيد.
+    const wanted = new Map();
     const errors = [];
-    for (const id of uniq) {
+    raw.forEach((l, i) => {
+      const id = String(l.item || l.id || l);
+      const q = l.quantity === undefined || l.quantity === null || l.quantity === ''
+        ? fallback : Number(l.quantity);
+      if (!id) { errors.push({ line: i + 1, message: 'الصنف غير محدَّد' }); return; }
+      if (!Number.isInteger(q) || q < 1) {
+        errors.push({ id, line: i + 1, message: `الكمية «${l.quantity}» غير صالحة — يلزم رقم صحيح لا يقل عن ١` });
+        return;
+      }
+      wanted.set(id, asLines ? (wanted.get(id) || 0) + q : q);
+    });
+
+    const items = await Ls2StoreItem.find({ _id: { $in: [...wanted.keys()] } });
+    const found = new Map(items.map((i) => [String(i._id), i]));
+    for (const [id, total] of wanted) {
       const it = found.get(id);
-      if (!it) { errors.push({ id, message: 'الصنف مش موجود' }); continue; }
-      if ((Number(it.quantity) || 0) < per) {
-        errors.push({ id, name: it.name, message: `${it.name}: الرصيد ${it.quantity} والمطلوب ${per}` });
+      if (!it) { errors.push({ id, message: 'الصنف غير موجود' }); continue; }
+      // الوارد لا يُقيَّد برصيد؛ الصادر وحده هو الذي يَنقص.
+      if (type === 'out' && (Number(it.quantity) || 0) < total) {
+        errors.push({ id, name: it.name, message: `${it.name}: الرصيد ${it.quantity} والمطلوب ${total}` });
       }
     }
     if (errors.length) {
-      // مفيش حاجة اتغيّرت — الرفض قبل أي حفظ.
-      return res.status(400).json({ message: 'العملية اترفضت — مفيش أي صنف اتصرف', errors });
+      return res.status(400).json({
+        message: type === 'out' ? 'رُفضت العملية — لم يُصرَف أي صنف' : 'رُفضت العملية — لم يُسجَّل أي وارد',
+        errors,
+      });
     }
 
     const movements = [];
-    for (const id of uniq) {
+    for (const [id, qty] of wanted) {
       const it = found.get(id);
-      it.quantity -= per;
+      it.quantity += type === 'in' ? qty : -qty;
       await it.save();
       movements.push({
-        item: it._id, itemName: it.name, type: 'out', quantity: per,
+        item: it._id, itemName: it.name, type, quantity: qty,
         vehiclePlate, reason, balanceAfter: it.quantity, ...actor(req),
       });
     }
@@ -177,13 +210,21 @@ exports.addBulkOut = async (req, res) => {
     res.status(201).json({
       movements: created,
       items: [...found.values()],
-      summary: { items: uniq.length, quantityEach: per, totalQty: uniq.length * per, vehiclePlate },
+      summary: {
+        type,
+        items: wanted.size,
+        totalQty: [...wanted.values()].reduce((a, b) => a + b, 0),
+        vehiclePlate,
+      },
     });
   } catch (e) {
-    console.error('ls2 store bulk out', e);
-    res.status(500).json({ message: 'تعذّر تسجيل الصادر' });
+    console.error('ls2 store bulk movement', e);
+    res.status(500).json({ message: 'تعذّر تسجيل الحركة' });
   }
 };
+
+// الاسم القديم — يظل عاملًا ويعني «صادر».
+exports.addBulkOut = (req, res) => exports.addBulkMovement({ ...req, body: { ...req.body, type: 'out' } }, res);
 
 // ── التراجع عن حركة ───────────────────────────────────────────────────────────
 //

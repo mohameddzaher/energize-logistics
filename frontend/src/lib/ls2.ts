@@ -243,7 +243,7 @@ export const maintStyle = (s?: string | null) => (s && MAINT_STYLES[s]) || MAINT
 export const ALERT_TYPE_LABELS: Record<string, { en: string; ar: string }> = {
   tire_temp: { en: 'Tire temperature', ar: 'حرارة الكاوتش' },
   tire_pressure_low: { en: 'Low tire pressure', ar: 'ضغط كاوتش منخفض' },
-  tire_pressure_critical: { en: 'Flat tire risk', ar: 'خطر كاوتش فاضي' },
+  tire_pressure_critical: { en: 'Flat tire risk', ar: 'خطر: ضغط إطار شبه معدوم' },
   tire_pressure_high: { en: 'High tire pressure', ar: 'ضغط كاوتش مرتفع' },
   tire_imbalance: { en: 'Axle pressure imbalance', ar: 'عدم اتزان ضغط المحور' },
   tire_fault: { en: 'Tire sensor fault', ar: 'عطل حساس كاوتش' },
@@ -297,7 +297,7 @@ export function alertMessage(a: { type: string; key?: string; value: number | nu
   switch (a.type) {
     case 'tire_temp': return ar ? `حرارة الكاوتشة (${loc}) ${v}°م` : `Tire (${loc}) at ${v}°C`;
     case 'tire_pressure_low': return ar ? `ضغط منخفض بالكاوتشة (${loc}) ${v} psi` : `Under-inflated tire (${loc}) ${v} psi`;
-    case 'tire_pressure_critical': return ar ? `كاوتشة شبه فاضية (${loc}) ${v} psi — خطر انفجار` : `Nearly-flat tire (${loc}) ${v} psi — blow-out risk`;
+    case 'tire_pressure_critical': return ar ? `إطار شبه فارغ (${loc}) ${v} psi — خطر انفجار` : `Nearly-flat tire (${loc}) ${v} psi — blow-out risk`;
     case 'tire_pressure_high': return ar ? `ضغط مرتفع بالكاوتشة (${loc}) ${v} psi` : `Over-inflated tire (${loc}) ${v} psi`;
     case 'tire_imbalance': return ar ? `فرق ضغط بالمحور ${am ? am[1] : ''} = ${v} psi` : `Axle ${am ? am[1] : ''} pressure spread ${v} psi`;
     case 'tire_fault': return ar ? `${v} حسّاس كاوتش لا يُرسل بيانات` : `${v} tire sensor(s) not reporting`;
@@ -313,7 +313,7 @@ export function alertMessage(a: { type: string; key?: string; value: number | nu
     case 'tire_sensor_change': {
       const from = (a as any).context?.from ?? (a as any).threshold;
       return ar
-        ? `عدد سينسورات الكاوتش اللي بترسل اتغيّر من ${from ?? '؟'} إلى ${v ?? '؟'} — غالبًا حصل شيل/تركيب في الورشة ومتسجّلش. راجع كاوتشات العربية وحدّث السجل.`
+        ? `تغيّر عدد حسّاسات الإطارات المُرسِلة من ${from ?? '؟'} إلى ${v ?? '؟'} — غالبًا جرى فكّ أو تركيب في الورشة دون تسجيله. راجع إطارات المركبة وحدِّث السجل.`
         : `Tire sensors reporting changed from ${from ?? '?'} to ${v ?? '?'} — likely an unrecorded workshop swap. Review the truck's tires and update the registry.`;
     }
     default: return a.message || '';
@@ -680,7 +680,7 @@ export const THRESHOLD_FIELDS: { key: string; en: string; ar: string; unit: stri
   { key: 'tireTempC', en: 'Tire temp warning', ar: 'تحذير حرارة الكاوتش', unit: '°C' },
   { key: 'tireTempCriticalC', en: 'Tire temp critical', ar: 'حرارة كاوتش حرِجة', unit: '°C' },
   { key: 'tirePressureMinPsi', en: 'Min tire pressure', ar: 'أقل ضغط كاوتش', unit: 'psi' },
-  { key: 'tirePressureCriticalPsi', en: 'Flat-tire pressure', ar: 'ضغط كاوتش فاضي (حرِج)', unit: 'psi' },
+  { key: 'tirePressureCriticalPsi', en: 'Flat-tire pressure', ar: 'ضغط إطار شبه معدوم (حرِج)', unit: 'psi' },
   { key: 'tirePressureMaxPsi', en: 'Max tire pressure', ar: 'أقصى ضغط كاوتش', unit: 'psi' },
   { key: 'tirePressureImbalancePsi', en: 'Axle imbalance', ar: 'فرق ضغط المحور', unit: 'psi' },
   { key: 'coolantTempC', en: 'Engine temp warning', ar: 'تحذير حرارة الموتور', unit: '°C' },

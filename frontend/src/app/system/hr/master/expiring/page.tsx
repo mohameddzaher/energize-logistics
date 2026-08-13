@@ -65,7 +65,7 @@ function ExpiringInner() {
 
       <PageHeader icon={<CalendarClock className="w-5 h-5" />}
         title={t('انتهاءات مستندات الموظفين', 'Employee document expiries')}
-        subtitle={t('كل مستند له تاريخ — اختر المدة اللي تهمّك', 'Every dated document — pick the window that matters')}>
+        subtitle={t('كل مستند له تاريخ — اختر المدة التي تهمّك', 'Every dated document — pick the window that matters')}>
         <ExportMenu fileName="hr-expiries" lang={lang as 'ar' | 'en'}
           options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: t('الانتهاءات', 'Expiries'), rows, columns: cols }] }]} />
       </PageHeader>
@@ -150,7 +150,7 @@ function ExpiringInner() {
               })}
               {!rows.length && (
                 <tr><td colSpan={6} className="px-3 py-12 text-center text-slate-400">
-                  {t('مفيش حاجة هتنتهي في المدة دي', 'Nothing expires in this window')}
+                  {t('لا شيء ينتهي خلال هذه المدة', 'Nothing expires in this window')}
                 </td></tr>
               )}
             </tbody>

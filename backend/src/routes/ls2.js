@@ -72,8 +72,10 @@ router.get('/store/movements', store.listMovements);
 router.post('/store', ADMIN, store.createItem);
 router.put('/store/:id', ADMIN, store.updateItem);
 router.delete('/store/:id', ADMIN, store.deleteItem);
-// صادر لأكتر من صنف مرة واحدة — قبل /store/:id عشان «bulk-out» ما يتفهمش كمعرّف
+// حركة جماعية (صادر أو وارد) لعدة أصناف بكميات مختلفة — تُسجَّل قبل /store/:id
+// حتى لا يُفهم «bulk-out» على أنه معرّف صنف.
 router.post('/store/bulk-out', ADMIN, store.addBulkOut);
+router.post('/store/bulk-movement', ADMIN, store.addBulkMovement);
 router.post('/store/:id/movement', ADMIN, store.addMovement);
 // التراجع عن حركة — بيكتب حركة معاكسة، مش بيمسح ولا بيعدّل سطر. مفيش PUT/PATCH
 // على الحركات عن قصد: الحركة المسجّلة لا تُعدَّل (قرار الإدارة المالية).

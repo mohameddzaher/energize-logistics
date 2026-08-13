@@ -239,7 +239,7 @@ function DueSoonModal({ items, ar, onClose }: { items: Vehicle[]; ar: boolean; o
           <h3 className="font-semibold text-slate-800 flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-emerald-600" /> {ar ? 'تصدير القريبة من الصيانة' : 'Export services due soon'}</h3>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
         </div>
-        <p className="text-xs text-slate-500">{ar ? 'شيت للورشة بكل الخدمات اللي هتستحق خلال المسافة دي — علشان أي عربية منهم تدخل الورشة يعملوا حسابها.' : 'A workshop sheet of every service coming due within this distance.'}</p>
+        <p className="text-xs text-slate-500">{ar ? 'كشف للورشة بجميع الخدمات المستحقّة خلال هذه المسافة — حتى تُحسَب لأي مركبة منها عند دخولها الورشة.' : 'A workshop sheet of every service coming due within this distance.'}</p>
         <label className="block text-sm text-slate-600">
           {ar ? 'الخدمات المتبقّي لها أقل من (كم)' : 'Services with less than (km) remaining'}
           <input

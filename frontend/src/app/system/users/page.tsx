@@ -823,7 +823,7 @@ export default function UsersPage() {
               </div>
               <p className="text-slate-400 text-[11px] mt-1">
                 {lang === 'ar'
-                  ? 'القائمة تجمع كل سجلات العملاء والموردين في الشركة — بجانب كل اسم القسم اللي هو مسجّل فيه.'
+                  ? 'تجمع القائمة كل سجلات العملاء والموردين في الشركة — وبجانب كل اسم القسم المسجَّل فيه.'
                   : 'This list merges every customer/supplier register in the company — each row shows which one it came from.'}
               </p>
             </>

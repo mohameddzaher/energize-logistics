@@ -77,8 +77,8 @@ const formatNote = (note: NoteEntry, lang: Lang): string => {
     DAILY_TARGET_RARELY_HIT: `نادراً ما يحقق الهدف اليومي (${m.value}%)`,
     RECENT_MONTH_POOR: `الشهر الأخير ضعيف — ${m.value}%`,
     ZERO_OUTPUT_MONTH: `شهر بدون أي إنتاج`,
-    MANY_DAYS_OFF: `كثرة أيام الغياب (${m.count} يوم ما اشتغلش)`,
-    SOME_DAYS_OFF: `عدد أيام غياب (${m.count} يوم ما اشتغلش)`,
+    MANY_DAYS_OFF: `كثرة أيام التوقّف (${m.count} يوم بلا عمل)`,
+    SOME_DAYS_OFF: `عدد أيام التوقّف (${m.count} يوم بلا عمل)`,
   };
   return (lang === 'ar' ? arMap[note.code] : enMap[note.code]) || note.code;
 };
@@ -209,7 +209,7 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <ProfileKpi label={lang === 'ar' ? '✅ أيام اشتغل' : '✅ Worked Days'}
           value={`${lifetime.actualWorkingDays || 0} / ${lifetime.expectedTotalDays || 0}`} />
-        <ProfileKpi label={lang === 'ar' ? '🛌 أيام ما اشتغلش' : "🛌 Days Off"}
+        <ProfileKpi label={lang === 'ar' ? '🛌 أيام بلا عمل' : "🛌 Days Off"}
           value={lifetime.daysNotWorked || 0}
           color={(lifetime.daysNotWorked || 0) > 5 ? '#ef4444' : undefined} />
         <ProfileKpi label={lang === 'ar' ? 'نسبة الحضور' : 'Attendance'}
@@ -300,8 +300,8 @@ function ProfileBody({ data, lang, T, monthNames }: any) {
               <th className="text-center py-2 px-3" title={lang === 'ar' ? 'أيام اشتغل فيها' : 'Days worked'}>
                 {lang === 'ar' ? '✅ اشتغل' : '✅ Worked'}
               </th>
-              <th className="text-center py-2 px-3" title={lang === 'ar' ? 'أيام ما اشتغلش (قيمة 0)' : "Days off (cell = 0)"}>
-                {lang === 'ar' ? '🛌 ما اشتغلش' : '🛌 Off'}
+              <th className="text-center py-2 px-3" title={lang === 'ar' ? 'أيام بلا عمل (القيمة صفر)' : "Days off (cell = 0)"}>
+                {lang === 'ar' ? '🛌 بلا عمل' : '🛌 Off'}
               </th>
               <th className="text-center py-2 px-3">{T.avgDailyRate}</th>
               <th className="text-center py-2 px-3">{T.performance}</th>

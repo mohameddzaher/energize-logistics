@@ -65,7 +65,7 @@ const req = async (p, ck) => {
     const empty = flatbeds.filter((f) => !(f.tireCount || 0));
     console.log(`     مكتملة ${complete.length} · ناقصة ${partial.length} · مفيهاش أي كاوتش ${empty.length}`);
     partial.forEach((f) => console.log(`       ⚠ ${f.plate} — ${f.tireCount}/${FULL} (ناقص ${FULL - f.tireCount})`));
-    empty.forEach((f) => console.log(`       ✗ ${f.plate} — لسه ما اتجردتش`));
+    empty.forEach((f) => console.log(`       ✗ ${f.plate} — لسه لم تُجرَد بعد`));
 
     // ═══ الضغط على الرقم بيفتح نفس الكاوتش ═══════════════════════════════════
     console.log('\n── الضغط على الرقم بيفتح نفس العدد ──');

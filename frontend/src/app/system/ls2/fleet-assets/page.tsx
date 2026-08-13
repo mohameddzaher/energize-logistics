@@ -235,9 +235,9 @@ export default function Ls2FleetAssetsPage() {
     { key: '', label: ar ? 'الكل' : 'All' },
     { key: 'full', label: ar ? 'كاوتشها مكتمل (14)' : 'Full set (14)', tone: 'green', test: (f: any) => (f.tireCount || 0) >= 14 },
     { key: 'short', label: ar ? 'ناقصة كاوتش' : 'Short of tires', tone: 'amber', test: (f: any) => (f.tireCount || 0) > 0 && (f.tireCount || 0) < 14 },
-    { key: 'none', label: ar ? 'ما اتجردتش' : 'Not inventoried', tone: 'red', test: (f: any) => !(f.tireCount || 0) },
+    { key: 'none', label: ar ? 'لم تُجرَد بعد' : 'Not inventoried', tone: 'red', test: (f: any) => !(f.tireCount || 0) },
     { key: 'noTrailer', label: ar ? 'من غير تيدر' : 'No trailer', tone: 'violet', test: (f: any) => !f.currentTrailerNumber },
-    { key: 'noGps', label: ar ? 'مش على التتبّع' : 'Not on GPS', tone: 'slate', test: (f: any) => f.unitId == null },
+    { key: 'noGps', label: ar ? 'خارج نظام التتبّع' : 'Not on GPS', tone: 'slate', test: (f: any) => f.unitId == null },
   ], [ar]);
   const flatbedSearch = useCallback((f: any) => [f.plate, f.batch, f.brand, f.currentTrailerNumber, f.numbering, f.driver], []);
   const flatbedF = useChipFilter(flatbeds, FLATBED_CHIPS, flatbedFilter, q, flatbedSearch);
@@ -256,7 +256,7 @@ export default function Ls2FleetAssetsPage() {
   const matchesTireFilter = useCallback((ti: TireAsset) => {
     switch (tireFilter) {
       case 'mounted': return ti.status === 'mounted';
-      // «غير مركّبة» = أي فردة مش على عربية دلوقتي، مهما كانت حالتها: مخزن،
+      // «غير مركّبة» = أي فردة مش على مركبة حاليًا، مهما كانت حالتها: مخزن،
       // تحت التجديد، سكراب، تالفة، مباعة. مش نفس «في المخزن» — دي المتاحة
       // للتركيب بس، وفردة تحت التجديد مش متاحة رغم إنها برضه غير مركّبة.
       case 'unmounted': return ti.status !== 'mounted';
@@ -782,7 +782,7 @@ export default function Ls2FleetAssetsPage() {
         <div className="space-y-3">
           <p className="text-xs text-slate-500">
             {ar
-              ? 'مقارنة بين المسجّل في كشف الورشة (يوجد / لا يوجد سينسور) وبين اللي بيوصل فعليًا من Wialon. ترقيم Wialon (محور/إطار) مختلف عن ترقيم الورشة (1–14)، فالمقارنة بالعدد + عرض الاتنين جنب بعض للمطابقة اليدوية.'
+              ? 'مقارنة بين المسجَّل في كشف الورشة (يوجد / لا يوجد حسّاس) وبين ما يصل فعليًا من Wialon. ترقيم Wialon (محور/إطار) يختلف عن ترقيم الورشة (١–١٤)، لذلك تتم المقارنة بالعدد مع عرض الترقيمين معًا للمطابقة اليدوية.'
               : 'Registered sensor flags (workshop sheet) vs what Wialon actually reports. Wialon numbers tires by axle, the workshop by 1–14, so we compare counts and show both layouts.'}
           </p>
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -833,7 +833,7 @@ export default function Ls2FleetAssetsPage() {
                                   </ul>
                                 </div>
                                 <div>
-                                  <p className="font-semibold text-slate-600 mb-1.5">{ar ? 'اللي بيرسل فعليًا (Wialon)' : 'Actually reporting (Wialon)'}</p>
+                                  <p className="font-semibold text-slate-600 mb-1.5">{ar ? 'ما يُرسِل فعليًا (Wialon)' : 'Actually reporting (Wialon)'}</p>
                                   {!r.hasLive && <p className="text-slate-400">{ar ? 'العربية غير موجودة في Wialon' : 'Vehicle not in Wialon'}</p>}
                                   {r.hasLive && r.livePositions.length === 0 && <p className="text-slate-400">—</p>}
                                   <ul className="space-y-1">
@@ -988,7 +988,7 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
           <p className="text-[11px] text-slate-600 mt-1">{ar ? 'من المخزن، أو فردة مركّبة على مركبة أخرى (تُنقل تلقائيًا).' : 'From store, or a tire mounted on another truck (auto-transferred).'}</p>
           {needsReplacement && !replacementId && !(swap && canSwap) && (
             <p className="text-[11.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1.5 font-medium">
-              {ar ? `الموقع «${tire.positionLabel || tire.positionNumber}» ما ينفعش يفضل فاضي — اختر فردة تتركب مكانها أو اعمل تبديل.`
+              {ar ? `الموقع «${tire.positionLabel || tire.positionNumber}» لا يجوز أن يبقى فارغًا — اختر فردة تُركَّب مكانها، أو نفّذ تبديلًا.`
                   : `Position «${tire.positionLabel || tire.positionNumber}» cannot be left empty — pick a replacement or swap.`}
             </p>
           )}
@@ -1139,7 +1139,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
             {/* سليمة للمخزن → نكمّل السايكل: نسجّل نسبة حالتها لأجل التسكين لاحقًا. */}
             {displacedTo === 'store' && (
               <div className="pt-1">
-                <label className={labelCls}>{ar ? `حالة الفردة ${occupant.serial} عند التخزين (كام في المية؟)` : `Condition % of ${occupant.serial} on storing`}</label>
+                <label className={labelCls}>{ar ? `حالة الفردة ${occupant.serial} عند التخزين (النسبة المئوية)` : `Condition % of ${occupant.serial} on storing`}</label>
                 <div className="flex items-center gap-2">
                   <input type="number" min={0} max={100} value={displacedPercent} onChange={(e) => setDisplacedPercent(e.target.value)}
                     placeholder={ar ? 'مثال: 60' : 'e.g. 60'} className={`${inputCls} w-28`} />
@@ -1391,7 +1391,7 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
         </div>
         {!isEdit && (
           <div className="border border-slate-200 rounded-lg p-3 space-y-3">
-            <p className="text-xs font-medium text-slate-500">{ar ? 'تركيب فوري (اختياري — سيبها فاضية لو داخلة المخزن)' : 'Mount now (optional — leave empty for stock)'}</p>
+            <p className="text-xs font-medium text-slate-500">{ar ? 'تركيب فوري (اختياري — اتركه فارغًا إذا كانت داخلة إلى المخزن)' : 'Mount now (optional — leave empty for stock)'}</p>
             <SearchSelect value={mountPlate} onChange={setMountPlate} options={flatbedOptions(flatbeds, ar)} ar={ar}
               placeholder={ar ? '— المخزن —' : '— stock —'} emptyLabel={ar ? '— المخزن —' : '— stock —'}
               searchPlaceholder={ar ? 'ابحث برقم السطحة…' : 'Search flatbed…'} />
@@ -1463,7 +1463,7 @@ function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
             ))}
             {!canSwap && (
               <p className="text-[11px] text-amber-700">
-                {ar ? `التبديل متاح لما التيدر ${trailer.trailerNumber} يكون على عربية — هو دلوقتي واقف لوحده.`
+                {ar ? `التبديل متاح عندما يكون التيدر ${trailer.trailerNumber} مركَّبًا على مركبة — وهو حاليًا واقف بمفرده.`
                     : `Swap needs trailer ${trailer.trailerNumber} to be on a vehicle — it is standing alone.`}
               </p>
             )}
@@ -1578,7 +1578,7 @@ function ImportModal({ ar, onClose, onDone }: { ar: boolean; onClose: () => void
       <div className="space-y-3">
         <p className="text-xs text-slate-500">
           {ar
-            ? 'الصق نفس صيغة الـ JSON اللي بتتجمع في الورشة: { "vehicles": [...] } و/أو { "flatbeds": [...] }. الاستيراد آمن للتكرار: الفردة اللي ظهرت على عربية تانية بتتسجل كنقل بتاريخه، مش كتسجيل جديد.'
+            ? 'ألصِق صيغة JSON نفسها المستخدَمة في الورشة: { "vehicles": [...] } و/أو { "flatbeds": [...] }. الاستيراد آمن للتكرار: الفردة التي تظهر على مركبة أخرى تُسجَّل كنقل بتاريخه، لا كتسجيل جديد.'
             : 'Paste the workshop-collected JSON: { "vehicles": [...] } and/or { "flatbeds": [...] }. Idempotent: a serial appearing on another truck is recorded as a transfer, not a duplicate.'}
         </p>
         <textarea

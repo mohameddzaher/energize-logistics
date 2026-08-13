@@ -134,7 +134,7 @@ export default function FleetBoardPage() {
         ))}
       </div>
 
-      {/* الوجهات الحالية — "الرايح جدة كام سيارة" بنظرة واحدة */}
+      {/* الوجهات الحالية — "عدد السيارات المتّجهة إلى جدة" بنظرة واحدة */}
       {summary && summary.byDestination.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-600 flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-[#f37121]" /> {ar ? 'الوجهات الآن:' : 'Destinations now:'}</span>

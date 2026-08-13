@@ -89,7 +89,7 @@ const PAGES = [
     const fileActive = src.employees.filter((e) => e.employment?.is_active !== false).length;
     ok(`الموظفون = ${fileTotal} (الملف)`, ov?.totals?.employees === fileTotal, `رجع ${ov?.totals?.employees}`);
     ok(`على رأس العمل = ${fileActive}`, ov?.totals?.active === fileActive, `رجع ${ov?.totals?.active}`);
-    ok('مش على رأس العمل = الفرق', ov?.totals?.notActive === fileTotal - fileActive, `رجع ${ov?.totals?.notActive}`);
+    ok('ليس على رأس العمل = الفرق', ov?.totals?.notActive === fileTotal - fileActive, `رجع ${ov?.totals?.notActive}`);
 
     // «الموظفون» ما يتحركش لما الفلتر يتغيّر — ده اللي كان بيقول ٣٢١.
     const ovA = (await req('GET', '/api/hr/master/overview?status=active', ck)).body;

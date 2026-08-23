@@ -85,9 +85,37 @@ export default function VehiclesOverviewPage() {
         <Big label={t('عليها جهاز تتبّع', 'With GPS')} value={d.totals.withGps} accent="#0ea5e9" />
         <Big label={t('شرائح وقود نشطة', 'Active fuel cards')} value={d.totals.activeFuelCards} accent="#8b5cf6" />
         <Big label={t('مركبات لها حوادث', 'With accidents')} value={d.totals.withAccidents} accent="#ea580c" onClick={() => router.push('/system/vehicles/registry/claims')} />
-        <Big label={t('ناقصة لمنصّة لوجستي', 'Logisti gaps')} value={d.totals.withLogistiGaps} accent="#7c3aed"
-          onClick={() => openList({ logistiGaps: '1' })} />
+        <Big label={t('ينقصها بيانات', 'Missing data')} value={d.totals.withMissing} accent="#7c3aed"
+          onClick={() => openList({ missing: '1' })} />
       </div>
+
+      {/* النواقص — بندًا بندًا وبسببه. «لا يوجد» و«مطلوب» و«لدى البنك» ثلاثة
+          أوضاع مختلفة: الأول نقص، والثاني عملٌ مطلوب، والثالث ليس نقصًا أصلًا. */}
+      {!!d.missingBreakdown?.length && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-slate-800">
+            {t(`نواقص البيانات — ${d.totals.withMissing} مركبة · ${d.totals.missingItems} بندًا`,
+               `Missing data — ${d.totals.withMissing} vehicles · ${d.totals.missingItems} items`)}
+          </h2>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+            {d.missingBreakdown.map((g) => (
+              <button key={`${g.item}|${g.reason}`} onClick={() => openList(g.filter)}
+                className="w-full text-start px-4 py-2.5 flex items-center gap-3 hover:bg-violet-50/60 transition">
+                <span className="w-11 shrink-0 text-center px-1.5 py-0.5 rounded-lg bg-violet-100 text-violet-800 text-[12.5px] font-bold tabular-nums">
+                  {g.count}
+                </span>
+                <span className="flex-1 text-[13px] text-slate-900 font-medium">{g.item}</span>
+                <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${
+                  g.reason === 'required' ? 'bg-rose-100 text-rose-700'
+                    : g.reason === 'none' ? 'bg-amber-100 text-amber-800'
+                    : 'bg-slate-100 text-slate-700'}`}>
+                  {ar ? g.reasonAr : g.reasonEn}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* نواقص منصّة لوجستي — شرطًا شرطًا، والضغط يفتح المركبات التي ينقصها */}
       {!!d.logistiGaps?.length && (

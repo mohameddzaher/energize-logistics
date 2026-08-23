@@ -13,6 +13,9 @@ export type VReg = {
   authorizedPerson?: { name?: string; iqamaNumber?: string; jobTitleAr?: string };
   /** شروط منصّة لوجستي التي لم تستوفِها هذه المركبة — قائمة عمل لا وصف. */
   logistiGaps?: string[];
+  /** البنود الناقصة وسببُ كلٍّ منها: «لا يوجد» و«مطلوب» و«لدى البنك» أوضاع مختلفة. */
+  missingItems?: { item: string; docKey: string; reason: string }[];
+  insurancePolicy?: string | null;
   accidentCount?: number;
   registrationTypeAr?: string; registrationTypeCode?: string;
   brandAr?: string; modelAr?: string; modelYear?: number | null; colorAr?: string; colorCode?: string;
@@ -95,11 +98,18 @@ export interface VehicleOverview {
     // نواقص منصّة لوجستي: عدد المركبات، وعدد البنود الناقصة في المجموع —
     // والثاني هو حجم العمل، فالمركبة الواحدة قد ينقصها أكثر من شرط.
     withLogistiGaps: number; logistiGapItems: number;
+    // نواقص البيانات — «غير مطلوب» غير محسوبة فيها لأنها حالة سليمة.
+    withMissing: number; missingItems: number;
   };
   breakdowns: Breakdown[];
   documents: DocCard[];
   /** الشروط الناقصة مرتّبة بالأكثر تكرارًا — من أين يبدأ العمل. */
   logistiGaps: { value: string; count: number; filter: Record<string, string> }[];
+  /** النواقص مجمَّعة بالبند ثم بالسبب — كل مجموعة بندٌ من العمل. */
+  missingBreakdown: {
+    item: string; docKey: string; reason: string; reasonAr: string; reasonEn: string;
+    count: number; filter: Record<string, string>;
+  }[];
   claims: { total: number; open: number; estimatedSar: number; expectedRecoverySar: number; ourFault: number; byInsurer: { value: string; count: number }[] };
   corporate: { _id: string; scopeAr: string; companyAr: string; expiryDate: string; premiumSar: number; policyNumbers: string[]; state: string; days: number | null }[];
   alerts: Record<string, any>;
@@ -183,3 +193,23 @@ export const renewBulk = (body: {
   newExpiry: string; reference?: string; note?: string;
 }) => api.post<{ renewed: any[]; summary: { count: number; vehicles: number } }>(
   '/api/vehicle-registry/renew-bulk', body);
+
+// ── وثائق تأمين المركبات ─────────────────────────────────────────────────────
+// وثيقة واحدة تغطّي حتى ٢٣٩ مركبة؛ تجديدها يسري عليها كلها دفعةً واحدة.
+export type InsurancePolicy = {
+  _id: string; policyNumber: string; companyAr: string; coverageTypeAr: string;
+  expiryDate: string | null; totalPremiumSar: number | null;
+  vehicles: number; state: string; daysRemaining: number | null;
+  renewals?: { newExpiry: string; vehiclesUpdated: number; byName: string; at: string }[];
+};
+
+export const getInsurancePolicies = () =>
+  api.get<{
+    policies: InsurancePolicy[];
+    totals: { total: number; vehiclesCovered: number; premiumSar: number; expired: number; soon: number };
+  }>('/api/vehicle-registry/insurance-policies');
+
+export const renewInsurancePolicy = (id: string, body: {
+  newExpiry: string; policyNumber?: string; cost?: number | null; reference?: string; note?: string;
+}) => api.post<{ policy: InsurancePolicy; vehiclesUpdated: number }>(
+  `/api/vehicle-registry/insurance-policies/${id}/renew`, body);

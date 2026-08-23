@@ -114,24 +114,28 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     // ═══ ③أ ملفات القسم المستوردة تطابق الملف ═══════════════════════════════
     console.log('\n── مطابقة الاستيراد للملف ──');
     const fs = require('fs');
-    const dir = require('path').join(__dirname, '..', 'data', 'masters', 'vehicles files');
+    // المصدر هو أحدث مجلّد: «new vehicles files» يحلّ محلّ سابقه.
+    const dir = require('path').join(__dirname, '..', 'data', 'masters', 'new vehicles files');
     const has = fs.existsSync(dir);
-    if (!has) ok('مجلّد vehicles files موجود', false, dir);
+    if (!has) ok('مجلّد new vehicles files موجود', false, dir);
     else {
-      const vf = JSON.parse(fs.readFileSync(`${dir}/vehicles.json`, 'utf8'));
-      const af = JSON.parse(fs.readFileSync(`${dir}/accidents.json`, 'utf8'));
-      const pf = JSON.parse(fs.readFileSync(`${dir}/general_insurance.json`, 'utf8'));
+      const L = (f, k) => { const d = JSON.parse(fs.readFileSync(`${dir}/${f}`, 'utf8')); return Array.isArray(d) ? d : (d[k] || d.records || []); };
+      const stats = JSON.parse(fs.readFileSync(`${dir}/summary_statistics.json`, 'utf8'));
+      const vf = { statistics: { total_vehicles: stats.fleet.total_vehicles, by_city: stats.fleet.by_city },
+        vehicles: L('vehicles.json') };
+      const af = { accidents: L('accidents.json') };
+      const pf = { policies: L('general_documents.json') };
+      const insF = L('insurance_policies.json');
+      const missF = L('missing_data.json');
       const ov = (await call('GET', '/api/vehicle-registry/overview')).body;
 
       ok(`عدد المركبات ${ov?.totals?.vehicles} = ${vf.statistics.total_vehicles} (الملف)`,
         ov?.totals?.vehicles === vf.statistics.total_vehicles);
-      ok(`مركبات بنواقص لوجستي ${ov?.totals?.withLogistiGaps} = ${vf.statistics.with_logisti_platform_gaps}`,
-        ov?.totals?.withLogistiGaps === vf.statistics.with_logisti_platform_gaps);
-      const gapItems = vf.vehicles.reduce((t, v) => t + (v.logisti_platform_missing_data || []).length, 0);
-      ok(`بنود ناقصة ${ov?.totals?.logistiGapItems} = ${gapItems}`, ov?.totals?.logistiGapItems === gapItems);
-      ok(`الشروط الناقصة مسرودة (${(ov?.logistiGaps || []).length})`, (ov?.logistiGaps || []).length > 0);
-      ok('ومجموع تكراراتها = عدد البنود',
-        (ov?.logistiGaps || []).reduce((t, g) => t + g.count, 0) === gapItems);
+      const polList = (await call('GET', '/api/vehicle-registry/insurance-policies')).body;
+      ok(`وثائق التأمين ${polList?.totals?.total} = ${insF.length} (الملف)`,
+        polList?.totals?.total === insF.length);
+      ok(`مركبات ينقصها شيء ${ov?.totals?.withMissing} = ${missF.length} (الملف)`,
+        ov?.totals?.withMissing === missF.length);
 
       const cl = (await call('GET', '/api/vehicle-registry/claims')).body;
       ok(`الحوادث ${cl?.totals?.total} = ${af.accidents.length} (الملف)`, cl?.totals?.total === af.accidents.length);
@@ -150,16 +154,86 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       ok(`جدة ${jeddah} = ${fileCities['جدة']} (الملف)`, jeddah === fileCities['جدة']);
 
       // الفلاتر الجديدة ترجّع نفس العدد
-      const gapList = (await call('GET', '/api/vehicle-registry?logistiGaps=1&limit=500')).body;
-      ok(`فلتر «بنواقص» يرجّع ${gapList?.total} = ${vf.statistics.with_logisti_platform_gaps}`,
-        gapList?.total === vf.statistics.with_logisti_platform_gaps);
-      const one = (ov?.logistiGaps || [])[0];
-      if (one) {
-        const byItem = (await call('GET', `/api/vehicle-registry?logistiGap=${encodeURIComponent(one.value)}&limit=500`)).body;
-        ok(`فلتر شرط بعينه: ${byItem?.total} = ${one.count}`, byItem?.total === one.count, one.value.slice(0, 40));
-      }
+      const missList = (await call('GET', '/api/vehicle-registry?missing=1&limit=500')).body;
+      ok(`فلتر «ينقصه شيء» يرجّع ${missList?.total} = ${missF.length}`, missList?.total === missF.length);
       const byCity = (await call('GET', '/api/vehicle-registry?city=' + encodeURIComponent('جدة') + '&limit=500')).body;
       ok(`فلتر المدينة: ${byCity?.total} = ${fileCities['جدة']}`, byCity?.total === fileCities['جدة']);
+    }
+
+    // ═══ ③ب وثائق التأمين: وثيقة واحدة تغطّي مئات المركبات ═══════════════════
+    console.log('\n── وثائق التأمين ──');
+    const { VehicleInsurancePolicy } = require('../models/VehicleMaster');
+    const pols = (await call('GET', '/api/vehicle-registry/insurance-policies')).body;
+    ok('قائمة الوثائق تردّ', !!pols?.policies, `HTTP`);
+    ok(`${pols?.totals?.total} وثيقة تغطّي ${pols?.totals?.vehiclesCovered} مركبة`,
+      (pols?.totals?.total || 0) > 0 && (pols?.totals?.vehiclesCovered || 0) > 0);
+    // عدد المركبات على كل وثيقة = المحسوب من المركبات نفسها
+    let mismatched = 0;
+    for (const p of (pols?.policies || []).slice(0, 10)) {
+      const real = await VehicleMaster.countDocuments({ insurancePolicy: p._id, isActive: { $ne: false } });
+      if (real !== p.vehicles) mismatched++;
+    }
+    ok('عدد مركبات كل وثيقة = المحسوب فعلًا', mismatched === 0, `${mismatched} مختلف`);
+
+    // ── التجديد يسري على كل مركبات الوثيقة ──
+    const big = (pols?.policies || []).filter((p) => p.vehicles >= 2).sort((a, b) => b.vehicles - a.vehicles)[0];
+    if (!big) ok('توجد وثيقة تغطّي أكثر من مركبة للتجربة', false);
+    else {
+      const before = await VehicleMaster.find({ insurancePolicy: big._id }).select('_id insurance.expiryDate renewals').lean();
+      const target = new Date(Date.now() + 300 * 86400000).toISOString().slice(0, 10);
+      const rn = await call('POST', `/api/vehicle-registry/insurance-policies/${big._id}/renew`, {
+        newExpiry: target, reference: 'ZZ-POL', note: 'تيست',
+      });
+      ok(`تجديد وثيقة ${big.policyNumber} (${big.vehicles} مركبة)`, rn.status === 200,
+        `HTTP ${rn.status} ${rn.body?.message || ''}`);
+      ok(`سرى على ${rn.body?.vehiclesUpdated} مركبة`, rn.body?.vehiclesUpdated === big.vehicles,
+        `${rn.body?.vehiclesUpdated} من ${big.vehicles}`);
+      const after = await VehicleMaster.find({ insurancePolicy: big._id }).select('insurance.expiryDate renewals').lean();
+      ok('كل المركبات أخذت التاريخ الجديد',
+        after.every((v) => new Date(v.insurance.expiryDate).toISOString().slice(0, 10) === target));
+      ok('وكل واحدة قُيِّدت في سجل تجديداتها كالتجديد المفرد',
+        after.every((v) => (v.renewals || []).some((r) => r.document === 'insurance' && r.reference === 'ZZ-POL' && r.byName)));
+      const polAfter = await VehicleInsurancePolicy.findById(big._id).lean();
+      ok('والوثيقة نفسها سجّلت التجديد بعدد مركباتها',
+        (polAfter.renewals || []).some((r) => r.reference === 'ZZ-POL' && r.vehiclesUpdated === big.vehicles));
+
+      // إرجاع الحال — التواريخ الأصلية لكل مركبة والوثيقة
+      for (const b of before) {
+        await VehicleMaster.updateOne({ _id: b._id }, {
+          $set: { 'insurance.expiryDate': b.insurance?.expiryDate ?? null },
+          $pull: { renewals: { reference: 'ZZ-POL' } },
+        });
+      }
+      await VehicleInsurancePolicy.updateOne({ _id: big._id }, {
+        $set: { expiryDate: big.expiryDate ?? null }, $pull: { renewals: { reference: 'ZZ-POL' } },
+      });
+      const restored = await VehicleMaster.countDocuments({ insurancePolicy: big._id, 'renewals.reference': 'ZZ-POL' });
+      ok('ورجع الحال كما كان', restored === 0, `${restored} باقٍ`);
+    }
+
+    // ── تاريخ في الماضي مرفوض ──
+    const pastDay = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const badPol = await call('POST', `/api/vehicle-registry/insurance-policies/${(pols?.policies || [])[0]?._id}/renew`, { newExpiry: pastDay });
+    ok('تجديد بتاريخ ماضٍ مرفوض', badPol.status === 400, `HTTP ${badPol.status}`);
+
+    // ═══ ③ج نواقص البيانات ═══════════════════════════════════════════════════
+    console.log('\n── نواقص البيانات ──');
+    const ovm = (await call('GET', '/api/vehicle-registry/overview')).body;
+    ok(`${ovm?.totals?.withMissing} مركبة ينقصها شيء · ${ovm?.totals?.missingItems} بندًا`,
+      (ovm?.totals?.withMissing || 0) > 0);
+    ok(`النواقص مجمَّعة بالبند والسبب (${(ovm?.missingBreakdown || []).length} مجموعة)`,
+      (ovm?.missingBreakdown || []).length > 0);
+    ok('ومجموعها = عدد البنود',
+      (ovm?.missingBreakdown || []).reduce((t, x) => t + x.count, 0) === ovm?.totals?.missingItems,
+      `${(ovm?.missingBreakdown || []).reduce((t, x) => t + x.count, 0)} / ${ovm?.totals?.missingItems}`);
+    ok('و«غير مطلوب» لا تُعدّ نقصًا',
+      !(ovm?.missingBreakdown || []).some((x) => x.reason === 'not_required'));
+    const firstGap = (ovm?.missingBreakdown || [])[0];
+    if (firstGap) {
+      const q = `missingItem=${encodeURIComponent(firstGap.item)}&missingReason=${firstGap.reason}&limit=500`;
+      const got = (await call('GET', `/api/vehicle-registry?${q}`)).body;
+      ok(`فلتر «${firstGap.item} — ${firstGap.reasonAr}»: ${got?.total} = ${firstGap.count}`,
+        got?.total === firstGap.count);
     }
 
     // ═══ ③ التجديد الجماعي ══════════════════════════════════════════════════

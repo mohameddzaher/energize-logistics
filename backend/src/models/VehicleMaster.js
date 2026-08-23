@@ -48,6 +48,17 @@ const vehicleMasterSchema = new mongoose.Schema({
   // نواقص منصّة لوجستي: ما الذي يمنع هذه المركبة من استيفاء شروط المنصّة، مكتوبًا
   // شرطًا شرطًا. قائمة عمل لا وصفًا: كل سطر فيها بند يُغلَق.
   logistiGaps: { type: [String], default: [], index: true },
+  // ── نواقص البيانات، بندًا بندًا وبسببه ──────────────────────────────────────
+  // «لا يوجد» و«مطلوب» و«لدى البنك» ثلاثة أوضاع مختلفة تمامًا: الأول نقص،
+  // والثاني عملٌ مطلوب، والثالث ليس نقصًا أصلًا — الورقة موجودة عند المموِّل.
+  // خلطُها في «ناقص» واحد يجعل الرقم الذي ينظر إليه المدير بلا معنى.
+  missingItems: [{
+    item: { type: String, default: '' },      // «بطاقة التشغيل»
+    docKey: { type: String, default: '' },    // operatingCard
+    reason: { type: String, default: '' },    // none | required | with_bank | …
+  }],
+  // الوثيقة التي تؤمِّن هذه المركبة — سجلّ واحد تشير إليه مئات المركبات.
+  insurancePolicy: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleInsurancePolicy', default: null, index: true },
   tamStatusAr: { type: String, default: '' },
   tamStatusCode: { type: String, default: '' }, // owner / user / none
 
@@ -164,6 +175,36 @@ const vehicleRegistryConfigSchema = new mongoose.Schema({
 // ── وثائق التأمين على مستوى الشركة ──────────────────────────────────────────
 // مش مربوطة بمركبة (تأمين بضائع، خيانة أمانة). ليها تاريخ انتهاء زي أي مستند
 // تاني، فبتظهر في نفس شاشة الانتهاءات — انتهاؤها بيوقّف الشغل كله مش عربية.
+// ── وثيقة تأمين تغطّي عدة مركبات ─────────────────────────────────────────────
+//
+// ٤٩ وثيقة تغطّي ٣٣٥ مركبة: وثيقة واحدة قد تحمل ٢٣٩ مركبة. كانت مخزَّنة نسخةً
+// على كل مركبة، فتجديدها يعني فتح ٢٣٩ مركبة واحدةً واحدة — وأي مركبة تُنسى
+// تبقى في الشاشة «منتهية» وهي مؤمَّنة فعلًا.
+//
+// هنا الوثيقة سجلّ واحد، والمركبات تشير إليه. تجديدها يمسّ الجميع دفعة واحدة،
+// ويبقى على كل مركبة تاريخها لأن الشاشات والتنبيهات تقرأ من المركبة.
+const vehicleInsurancePolicySchema = new mongoose.Schema({
+  policyNumber: { type: String, required: true, unique: true, trim: true, index: true },
+  companyAr: { type: String, default: '', index: true },
+  coverageTypeAr: { type: String, default: '' },
+  expiryDate: { type: Date, default: null, index: true },
+  // إجمالي قسط الوثيقة كما في الملف — لا مجموع أقساط المركبات، فقد يختلفان.
+  totalPremiumSar: { type: Number, default: null },
+  vehicleCount: { type: Number, default: 0 },
+  notesAr: { type: String, default: '' },
+  renewals: [{
+    previousExpiry: { type: Date, default: null },
+    newExpiry: { type: Date, required: true },
+    cost: { type: Number, default: null },
+    reference: { type: String, default: '' },
+    note: { type: String, default: '' },
+    vehiclesUpdated: { type: Number, default: 0 },
+    at: { type: Date, default: Date.now },
+    byName: { type: String, default: '' },
+  }],
+  isActive: { type: Boolean, default: true, index: true },
+}, { timestamps: true });
+
 const corporatePolicySchema = new mongoose.Schema({
   scopeAr: { type: String, default: '', index: true },
   policyholderAr: { type: String, default: '' },
@@ -190,4 +231,6 @@ module.exports = {
   VehicleMaster: mongoose.models.VehicleMaster || mongoose.model('VehicleMaster', vehicleMasterSchema),
   VehicleRegistryConfig: mongoose.models.VehicleRegistryConfig || mongoose.model('VehicleRegistryConfig', vehicleRegistryConfigSchema),
   CorporatePolicy: mongoose.models.CorporatePolicy || mongoose.model('CorporatePolicy', corporatePolicySchema),
+  VehicleInsurancePolicy: mongoose.models.VehicleInsurancePolicy
+    || mongoose.model('VehicleInsurancePolicy', vehicleInsurancePolicySchema),
 };

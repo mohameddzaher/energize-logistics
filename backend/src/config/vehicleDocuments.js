@@ -70,6 +70,7 @@ const STATUS_LABELS = {
   unknown: { ar: 'غير معروف', en: 'Unknown' },
   with_bank: { ar: 'لدى البنك', en: 'Held by bank' },
   with_aljabr: { ar: 'لدى الجبر', en: 'Held by Aljabr' },
+  not_in_use: { ar: 'غير مستخدم', en: 'Not in use' },
   unmapped: { ar: 'غير مصنَّف', en: 'Unclassified' },
   '': { ar: 'مسجَّل', en: 'On file' },
 };
@@ -112,4 +113,32 @@ const stateOf = (expiry, statusCode, alert = {}, now = new Date()) => {
   return { state: 'valid', days };
 };
 
-module.exports = { DOCUMENTS, DOC_KEYS, getDoc, STATUS_LABELS, statusLabel, STATE_LABELS, daysLeft, stateOf };
+// ترجمة رموز الملف المصدر إلى رموزنا. الملف يكتبها بالإنجليزية الكبيرة، ونحن
+// نخزّنها بالأسماء التي تفهمها الشاشات — والترجمة في مكان واحد حتى لا يخترع كل
+// مستورِد ترجمته.
+const SENTINEL_MAP = {
+  NONE: 'none',
+  REQUIRED: 'required',
+  NOT_REQUIRED: 'not_required',
+  UNKNOWN: 'unknown',
+  NOT_IN_USE: 'not_in_use',
+  HELD_BY_BANK: 'with_bank',
+  WITH_LESSOR_ALJABR: 'with_aljabr',
+  EMPTY: 'none',
+  OTHER: 'unmapped',
+};
+/** رمز الملف → رمزنا. أي قيمة تبدأ بـ TEXT: نصٌّ حرّ كتبه أحدهم في خانة تاريخ. */
+const mapSentinel = (code) => {
+  if (!code) return '';
+  const c = String(code).trim();
+  if (c.startsWith('TEXT:')) return 'unmapped';
+  return SENTINEL_MAP[c.toUpperCase()] || 'unmapped';
+};
+
+/** «غير مطلوب» حالة سليمة؛ الباقي نقصٌ يحتاج عملًا. */
+const isGap = (code) => !!code && code !== 'not_required' && code !== '';
+
+module.exports = {
+  DOCUMENTS, DOC_KEYS, getDoc, STATUS_LABELS, statusLabel, STATE_LABELS,
+  daysLeft, stateOf, SENTINEL_MAP, mapSentinel, isGap,
+};

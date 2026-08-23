@@ -17,6 +17,10 @@ router.get('/overview', c.overview);
 router.get('/document-types', c.documentTypes);
 // الانتهاءات بفلتر «خلال كام يوم» اللي المستخدم بيكتبه هو.
 router.get('/expiring', c.expiring);
+// وثائق تأمين المركبات — وثيقة تغطّي عدة مركبات، وتجديدها يسري عليها كلها
+router.get('/insurance-policies', c.listInsurancePolicies);
+router.post('/insurance-policies/:id/renew', authorize(...EDIT), c.renewInsurancePolicy);
+
 router.get('/claims', c.listClaims);
 router.post('/claims', authorize(...EDIT), c.createClaim);
 router.put('/claims/:id', authorize(...EDIT), c.updateClaim);

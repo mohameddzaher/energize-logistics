@@ -1,4 +1,4 @@
-const { VehicleMaster, VehicleRegistryConfig, CorporatePolicy } = require('../models/VehicleMaster');
+const { VehicleMaster, VehicleRegistryConfig, CorporatePolicy, VehicleInsurancePolicy } = require('../models/VehicleMaster');
 const VehicleClaim = require('../models/VehicleClaim');
 const VDOC = require('../config/vehicleDocuments');
 const logAudit = require('../utils/auditLogger');
@@ -68,6 +68,16 @@ function buildFilter(q) {
   const gapItems = _multi(q.logistiGap);
   if (gapItems.length) and.push({ logistiGaps: { $in: gapItems } });
 
+  // نواقص البيانات: «أرِني من ينقصه شيء»، أو بندًا بعينه، أو بندًا بسبب بعينه.
+  if (q.missing === '1') and.push({ 'missingItems.0': { $exists: true } });
+  const mItems = _multi(q.missingItem);
+  const mReasons = _multi(q.missingReason);
+  if (mItems.length && mReasons.length) {
+    and.push({ missingItems: { $elemMatch: { item: { $in: mItems }, reason: { $in: mReasons } } } });
+  } else if (mItems.length) and.push({ 'missingItems.item': { $in: mItems } });
+  else if (mReasons.length) and.push({ 'missingItems.reason': { $in: mReasons } });
+  if (q.insurancePolicy) and.push({ insurancePolicy: q.insurancePolicy });
+
   const years = _multi(q.modelYear).map(Number).filter((x) => !Number.isNaN(x));
   if (years.length) and.push({ modelYear: { $in: years } });
   if (q.yearFrom || q.yearTo) {
@@ -132,7 +142,8 @@ exports.list = async (req, res) => {
       + ' possessionStatusAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr authorizedPerson logistiGaps'
       + ' insurance.companyAr insurance.expiryDate insurance.premiumSar operatingCard.cardNumber operatingCard.expiryDate'
       + ' vehicleLicense.expiryDate inspection.statusAr inspection.expiryDate fuelCard.statusAr fuelCard.cardNumber'
-      + ' fuelCard.plateOnInvoiceAr gps.deviceId gps.deviceModel gps.deviceStatusAr gps.expiryDate accidentCount';
+      + ' fuelCard.plateOnInvoiceAr gps.deviceId gps.deviceModel gps.deviceStatusAr gps.expiryDate accidentCount'
+      + ' missingItems insurancePolicy';
     const [vehicles, total] = await Promise.all([
       VehicleMaster.find(filter).select(LIST_FIELDS).sort({ [sortBy]: sortDir }).skip((page - 1) * limit).limit(limit).lean(),
       VehicleMaster.countDocuments(filter),
@@ -485,7 +496,31 @@ exports.overview = async (req, res) => {
       // ثلاثة شروط.
       withLogistiGaps: vehicles.filter((v) => (v.logistiGaps || []).length > 0).length,
       logistiGapItems: vehicles.reduce((t, v) => t + (v.logistiGaps || []).length, 0),
+      // نواقص البيانات: كم مركبة ينقصها شيء، وكم بندًا في المجموع، وكم منها
+      // **عملٌ مطلوب** فعلًا. «غير مطلوب» حالة سليمة ولا تُعدّ نقصًا — خلطها
+      // بالباقي يجعل الرقم الذي ينظر إليه المدير بلا معنى.
+      withMissing: vehicles.filter((v) => (v.missingItems || []).some((x) => VDOC.isGap(x.reason))).length,
+      missingItems: vehicles.reduce((t, v) => t + (v.missingItems || []).filter((x) => VDOC.isGap(x.reason)).length, 0),
     };
+
+    // النواقص مجمَّعة بالبند ثم بالسبب — «بطاقة التشغيل: ٤٤ مطلوبة و٧٢ لا يوجد»
+    // بندان مختلفان من العمل، لا رقم واحد.
+    const missingMap = new Map();
+    for (const v of vehicles) {
+      for (const it of v.missingItems || []) {
+        if (!VDOC.isGap(it.reason)) continue;
+        const k = `${it.item}|${it.reason}`;
+        if (!missingMap.has(k)) {
+          missingMap.set(k, {
+            item: it.item, docKey: it.docKey, reason: it.reason,
+            reasonAr: VDOC.statusLabel(it.reason, 'ar'), reasonEn: VDOC.statusLabel(it.reason, 'en'),
+            count: 0, filter: { missingItem: it.item, missingReason: it.reason },
+          });
+        }
+        missingMap.get(k).count += 1;
+      }
+    }
+    const missingBreakdown = [...missingMap.values()].sort((a, b) => b.count - a.count);
 
     // الشروط الناقصة مرتّبة بالأكثر تكرارًا — من أين يبدأ العمل.
     const gapCounts = new Map();
@@ -513,7 +548,7 @@ exports.overview = async (req, res) => {
         premiumSar: p.premiumSar, policyNumbers: p.policyNumbers, state: st.state, days: st.days };
     }).sort((a, b) => (a.days ?? 1e9) - (b.days ?? 1e9));
 
-    const body = { totals, breakdowns, documents, logistiGaps, claims: claimTotals, corporate, alerts: cfg.alerts || {} };
+    const body = { totals, breakdowns, documents, logistiGaps, missingBreakdown, claims: claimTotals, corporate, alerts: cfg.alerts || {} };
     cache.set(key, body, 20000);
     res.json(body);
   } catch (e) {
@@ -745,6 +780,103 @@ exports.renewBulk = async (req, res) => {
   } catch (e) {
     console.error('vreg renewBulk', e);
     res.status(500).json({ message: 'تعذّر تسجيل التجديد' });
+  }
+};
+
+// ── وثائق تأمين المركبات ────────────────────────────────────────────────────
+//
+// وثيقة واحدة تغطّي حتى ٢٣٩ مركبة. تجديدها كان يعني فتح كل مركبة على حدة —
+// وأي مركبة تُنسى تبقى في الشاشة «منتهية» وهي مؤمَّنة فعلًا. هنا تُجدَّد الوثيقة
+// مرة واحدة، ويسري التاريخ على كل مركباتها، ويُقيَّد في سجل تجديدات كلٍّ منها
+// كما لو جُدِّدت وحدها — فالمراجع يرى نفس القيد في الحالتين.
+exports.listInsurancePolicies = async (req, res) => {
+  try {
+    const cfg = await getConfig();
+    const policies = await VehicleInsurancePolicy.find({ isActive: { $ne: false } })
+      .sort({ expiryDate: 1 }).lean();
+    // عدد المركبات يُحسب من المركبات نفسها لا من رقم مخزَّن — الرقم المخزَّن يشيخ.
+    const counts = await VehicleMaster.aggregate([
+      { $match: { insurancePolicy: { $ne: null }, isActive: { $ne: false } } },
+      { $group: { _id: '$insurancePolicy', n: { $sum: 1 } } },
+    ]);
+    const byId = new Map(counts.map((c) => [String(c._id), c.n]));
+    const rows = policies.map((p) => {
+      const st = VDOC.stateOf(p.expiryDate, '', cfg.alerts?.insurance);
+      return {
+        ...p,
+        vehicles: byId.get(String(p._id)) || 0,
+        state: st.state,
+        daysRemaining: st.days,
+      };
+    });
+    res.json({
+      policies: rows,
+      totals: {
+        total: rows.length,
+        vehiclesCovered: rows.reduce((t, r) => t + r.vehicles, 0),
+        premiumSar: Math.round(rows.reduce((t, r) => t + (Number(r.totalPremiumSar) || 0), 0)),
+        expired: rows.filter((r) => r.state === 'expired').length,
+        soon: rows.filter((r) => r.state === 'critical' || r.state === 'warning').length,
+      },
+    });
+  } catch (e) {
+    console.error('vreg listInsurancePolicies', e);
+    res.status(500).json({ message: 'تعذّر تحميل وثائق التأمين' });
+  }
+};
+
+exports.renewInsurancePolicy = async (req, res) => {
+  try {
+    const pol = await VehicleInsurancePolicy.findById(req.params.id);
+    if (!pol || pol.isActive === false) return res.status(404).json({ message: 'الوثيقة غير موجودة' });
+    const newExpiry = req.body?.newExpiry ? new Date(req.body.newExpiry) : null;
+    if (!newExpiry || isNaN(newExpiry)) return res.status(400).json({ message: 'أدخل تاريخ الانتهاء الجديد' });
+    if (newExpiry < new Date(new Date().setHours(0, 0, 0, 0))) {
+      return res.status(400).json({ message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' });
+    }
+
+    const previous = pol.expiryDate || null;
+    const byName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
+    const reference = String(req.body?.reference || '').trim();
+    const note = String(req.body?.note || '').trim();
+    const newNumber = String(req.body?.policyNumber || '').trim();
+
+    const vehicles = await VehicleMaster.find({ insurancePolicy: pol._id, isActive: { $ne: false } });
+    for (const v of vehicles) {
+      const before = v.insurance?.expiryDate || null;
+      v.set('insurance.expiryDate', newExpiry);
+      // وثيقة جديدة برقم جديد؟ يتحدَّث على كل مركبة أيضًا.
+      if (newNumber) v.set('insurance.policyNumber', newNumber);
+      if (['none', 'required', 'unknown', ''].includes(v.insurance?.statusCode)) v.set('insurance.statusCode', '');
+      if (!Array.isArray(v.renewals)) v.renewals = [];
+      v.renewals.push({
+        document: 'insurance', previousExpiry: before, newExpiry,
+        cost: req.body?.cost != null && req.body?.cost !== '' ? Number(req.body.cost) : null,
+        reference, note: [note, `تجديد وثيقة ${pol.policyNumber}`].filter(Boolean).join(' — '), byName,
+      });
+      await v.save();
+    }
+
+    pol.renewals.push({
+      previousExpiry: previous, newExpiry,
+      cost: req.body?.cost != null && req.body?.cost !== '' ? Number(req.body.cost) : null,
+      reference, note, vehiclesUpdated: vehicles.length, byName,
+    });
+    pol.expiryDate = newExpiry;
+    if (newNumber) pol.policyNumber = newNumber;
+    await pol.save();
+
+    logAudit({
+      user: req.user, action: 'renew_insurance_policy', entity: 'VehicleInsurancePolicy', entityId: pol._id,
+      changes: { policy: pol.policyNumber, before: previous, after: newExpiry, vehicles: vehicles.length },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    emit('vreg:updated', {});
+    res.json({ policy: pol, vehiclesUpdated: vehicles.length });
+  } catch (e) {
+    console.error('vreg renewInsurancePolicy', e);
+    res.status(500).json({ message: 'تعذّر تجديد الوثيقة' });
   }
 };
 

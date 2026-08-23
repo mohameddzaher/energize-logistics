@@ -79,6 +79,7 @@ const statusLabel = (code, lang = 'ar') =>
 
 /** الحالات المحسوبة من التاريخ. */
 const STATE_LABELS = {
+  upcoming: { ar: 'على الرادار', en: 'Upcoming' },
   valid: { ar: 'ساري', en: 'Valid', color: '#16a34a' },
   warning: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b' },
   critical: { ar: 'ينتهي قريبًا جدًا', en: 'Critical', color: '#ea580c' },
@@ -110,6 +111,11 @@ const stateOf = (expiry, statusCode, alert = {}, now = new Date()) => {
   const warn = Number(alert.warnDays ?? 30);
   if (days <= crit) return { state: 'critical', days };
   if (days <= warn) return { state: 'warning', days };
+  // أفق ثالث: «على الرادار». المستند الذي ينتهي خلال ٩٠ يومًا ليس تحذيرًا بعد،
+  // لكنه ليس «ساريًا وانسَه» أيضًا — التأمين والفحص يحتاجان تجهيزًا قبل موعدهما
+  // بأسابيع. كان يسقط من شاشة التنبيهات تمامًا، فيظهر فجأةً وقد صار حرجًا.
+  const soon = Number(alert.soonDays ?? 90);
+  if (days <= soon) return { state: 'upcoming', days };
   return { state: 'valid', days };
 };
 

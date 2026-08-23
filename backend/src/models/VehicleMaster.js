@@ -162,12 +162,12 @@ const vehicleRegistryConfigSchema = new mongoose.Schema({
   // بيغيّرها من صفحة الإعدادات، و`critical` هي العتبة الحمرا اللي بعدها الموضوع
   // مستعجل مش تنبيه.
   alerts: {
-    insurance: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 }, criticalDays: { type: Number, default: 15 } },
-    operatingCard: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 } },
-    vehicleLicense: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 } },
-    inspection: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 } },
-    gps: { enabled: { type: Boolean, default: false }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 } },
-    corporatePolicy: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 }, criticalDays: { type: Number, default: 30 } },
+    insurance: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 }, criticalDays: { type: Number, default: 15 }, soonDays: { type: Number, default: 90 } },
+    operatingCard: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 }, soonDays: { type: Number, default: 90 } },
+    vehicleLicense: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 }, soonDays: { type: Number, default: 90 } },
+    inspection: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 }, soonDays: { type: Number, default: 90 } },
+    gps: { enabled: { type: Boolean, default: false }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 }, soonDays: { type: Number, default: 90 } },
+    corporatePolicy: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 }, criticalDays: { type: Number, default: 30 }, soonDays: { type: Number, default: 90 } },
   },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

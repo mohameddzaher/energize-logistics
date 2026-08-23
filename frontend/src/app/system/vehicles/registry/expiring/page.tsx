@@ -121,7 +121,7 @@ function ExpiringInner() {
           <select value={state} onChange={(e) => setState(e.target.value)}
             className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
             <option value="">{t('كل الحالات', 'All states')}</option>
-            {['expired', 'critical', 'warning', 'valid'].map((s) => (
+            {['expired', 'critical', 'warning', 'upcoming', 'valid'].map((s) => (
               <option key={s} value={s}>{stateLabel(s, ar)}</option>
             ))}
           </select>
@@ -135,7 +135,7 @@ function ExpiringInner() {
 
       {/* ملخّص — بيتحسب على نفس الصفوف المعروضة */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
-        {(['expired', 'critical', 'warning', 'valid'] as const).map((k) => {
+        {(['expired', 'critical', 'warning', 'upcoming', 'valid'] as const).map((k) => {
           const m = STATE_META[k];
           return (
             <button key={k} onClick={() => setState(state === k ? '' : k)}

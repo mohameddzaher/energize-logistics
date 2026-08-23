@@ -99,11 +99,11 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     // ═══ ② الانتهاءات = التنبيهات ═══════════════════════════════════════════
     console.log('\n── الانتهاءات مقابل التنبيهات ──');
     const alerts = (await call('GET', '/api/vehicle-registry/alerts')).body;
-    const exp = (await call('GET', '/api/vehicle-registry/expiring?state=expired,critical,warning')).body;
+    const exp = (await call('GET', '/api/vehicle-registry/expiring?state=expired,critical,warning,upcoming')).body;
     const expRows = exp?.rows || [];
     ok(`الإجمالي متطابق: تنبيهات ${alerts?.total} · انتهاءات ${expRows.length}`,
       alerts?.total === expRows.length);
-    for (const st of ['expired', 'critical', 'warning']) {
+    for (const st of ['expired', 'critical', 'warning', 'upcoming']) {
       const a = alerts?.byStatus?.[st] ?? -1;
       const e = expRows.filter((r) => r.state === st).length;
       ok(`${st}: ${a} = ${e}`, a === e);
@@ -158,6 +158,52 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       ok(`فلتر «ينقصه شيء» يرجّع ${missList?.total} = ${missF.length}`, missList?.total === missF.length);
       const byCity = (await call('GET', '/api/vehicle-registry?city=' + encodeURIComponent('جدة') + '&limit=500')).body;
       ok(`فلتر المدينة: ${byCity?.total} = ${fileCities['جدة']}`, byCity?.total === fileCities['جدة']);
+    }
+
+    // ═══ ③أ٢ التنبيهات وسجلّات القسم: كل ما في الملف يظهر ═════════════════════
+    console.log('\n── التنبيهات وسجلّات القسم ──');
+    {
+      const dirN = require('path').join(__dirname, '..', 'data', 'masters', 'new vehicles files');
+      const fsN = require('fs');
+      const LN = (f) => { const x = JSON.parse(fsN.readFileSync(`${dirN}/${f}`, 'utf8')); return Array.isArray(x) ? x : (x.records || []); };
+      const alerts = (await call('GET', '/api/vehicle-registry/alerts')).body;
+      const fileAlerts = LN('expiry_alerts.json');
+      ok(`التنبيهات ${alerts?.total} = ${fileAlerts.length} (الملف)`, alerts?.total === fileAlerts.length);
+      // الأفق الثالث موجود — كان ٢٤ مستندًا يسقط من الشاشة تمامًا
+      ok(`منها «على الرادار» ${alerts?.byStatus?.upcoming}`, (alerts?.byStatus?.upcoming || 0) > 0);
+      const fb = {}; fileAlerts.forEach((x) => { fb[x.bucket] = (fb[x.bucket] || 0) + 1; });
+      ok(`المنتهية ${alerts?.byStatus?.expired} = ${fb.expired} (الملف)`, alerts?.byStatus?.expired === fb.expired);
+      ok(`وخلال ٩٠ يومًا ${alerts?.byStatus?.upcoming} = ${fb.expiring_90d}`, alerts?.byStatus?.upcoming === fb.expiring_90d);
+
+      const regs = (await call('GET', '/api/vehicle-registry/registers')).body;
+      const uniq = (f, k) => new Set(LN(f).map((x) => String(x[k] || '').trim()).filter(Boolean)).size;
+      const cmp = [
+        ['owners', uniq('owners.json', 'owner_name'), 'المُلّاك'],
+        ['authorizedPersons', uniq('authorized_persons.json', 'name'), 'المفوَّضون'],
+        ['gpsProviders', uniq('gps_providers.json', 'provider'), 'مزوّدو التتبّع'],
+        ['gpsUnits', LN('gps_devices.json').length, 'أجهزة التتبّع'],
+        ['fuelCards', LN('fuel_cards_petroapp.json').length, 'شرائح الوقود'],
+      ];
+      for (const [key, expected, label] of cmp) {
+        ok(`${label.padEnd(16)} ${regs?.totals?.[key]} = ${expected} (الملف)`, regs?.totals?.[key] === expected);
+      }
+      // النص الدلالي لا يظهر كقيمة: «مطلوب» ليست شركة تتبّع
+      const providers = (regs?.registers?.gpsProviders?.items || []).map((x) => x.value);
+      ok('لا نصّ دلالي بين مزوّدي التتبّع', !providers.some((v) => /^(مطلوب|غير مطلوب|لا يوجد)$/.test(v)),
+        providers.join(' · '));
+      // وكل صفّ يفتح ما يقوله
+      const owner = (regs?.registers?.owners?.items || [])[0];
+      if (owner) {
+        const got = (await call('GET', `/api/vehicle-registry?owner=${encodeURIComponent(owner.value)}&limit=500`)).body;
+        ok(`الضغط على «${String(owner.value).slice(0, 24)}» يفتح ${got?.total} = ${owner.vehicles}`,
+          got?.total === owner.vehicles);
+      }
+      const person = (regs?.registers?.authorizedPersons?.items || [])[0];
+      if (person) {
+        const got = (await call('GET', `/api/vehicle-registry?authorizedPerson=${encodeURIComponent(person.value)}&limit=500`)).body;
+        ok(`ومفوَّض «${String(person.value).slice(0, 20)}»: ${got?.total} = ${person.vehicles}`,
+          got?.total === person.vehicles);
+      }
     }
 
     // ═══ ③ب وثائق التأمين: وثيقة واحدة تغطّي مئات المركبات ═══════════════════

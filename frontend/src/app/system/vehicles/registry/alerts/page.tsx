@@ -53,8 +53,8 @@ export default function VehicleRegistryAlerts() {
         <Link href="/system/vehicles/registry/settings" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><Settings className="w-4 h-4" /> {ar ? 'إعدادات التنبيهات' : 'Alert settings'}</Link>
       </PageHeader>
 
-      <div className="grid grid-cols-3 gap-3">
-        {(['expired', 'critical', 'warning'] as const).map((s) => (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {(['expired', 'critical', 'warning', 'upcoming'] as const).map((s) => (
           <button key={s} onClick={() => setStatus(status === s ? '' : s)} className={`rounded-2xl border p-4 text-start transition ${status === s ? 'border-current shadow' : 'border-slate-200'}`} style={{ color: statusColor(s) }}>
             <p className="text-3xl font-bold">{bs[s] || 0}</p>
             <p className="text-xs mt-1 font-semibold">{statusLabel(s, ar)}</p>

@@ -144,47 +144,52 @@ const ITEM_TO_DOC = {
     idToVehicle.set(v.id, { plate, key, vin });
 
     const st = (x) => VDOC.mapSentinel(x);
+    // ── النص الدلالي لا يُخزَّن كقيمة ──────────────────────────────────────────
+    // الملف يترك «مطلوب» و«غير مطلوب» مكتوبةً داخل خانة القيمة، ويضع رمزها في
+    // الحقل المجاور. نسخُها كما هي يجعل «مطلوب» تظهر كأنها **شركة تتبّع** لها
+    // ٤٥ مركبة، و«غير مطلوب» موديلَ جهاز له ٥٠. القيمة تُفرَّغ ويبقى الرمز.
+    const val = (v, status) => (status ? '' : S(v));
     const doc = {
       source_row: v.source_row ?? null,
       plateNumber: plate,
       plateKey: key,
       chassisNumber: vin,
-      serialNumber: S(idn.serial_number),
+      serialNumber: val(idn.serial_number, idn.serial_number_status),
       registrationTypeAr: S(idn.registration_type),
       brandAr: S(idn.brand),
       modelAr: S(idn.model_name),
       modelYear: N(idn.model_year),
-      colorAr: S(idn.color),
+      colorAr: val(idn.color, idn.color_status),
       // المسافات الزائدة في أسماء الأقسام تصنع قيمتين لقسم واحد — يحذّر منها
       // تقرير جودة الملف، والتنظيف هنا لا في الشاشة.
       sectorAr: S(asg.sector),
-      departmentAr: S(asg.department),
-      cityAr: S(asg.city),
+      departmentAr: val(asg.department, asg.department_status),
+      cityAr: val(asg.city, asg.city_status),
       ownerNameAr: S(own.owner_name),
-      commercialRegistration: S(own.commercial_register),
+      commercialRegistration: val(own.commercial_register, own.commercial_register_status),
       possessionStatusAr: S(own.possession_status),
       authorizedPerson: {
-        name: S(ap.name), iqamaNumber: S(ap.iqama_number), jobTitleAr: S(ap.job_title),
+        name: val(ap.name, ap.name_status), iqamaNumber: val(ap.iqama_number, ap.iqama_status), jobTitleAr: val(ap.job_title, ap.job_title_status),
       },
-      'insurance.policyNumber': S(ins.policy_number),
-      'insurance.companyAr': S(ins.company),
-      'insurance.coverageTypeAr': S(ins.type),
+      'insurance.policyNumber': val(ins.policy_number, ins.policy_status),
+      'insurance.companyAr': val(ins.company, ins.company_status),
+      'insurance.coverageTypeAr': val(ins.type, ins.type_status),
       'insurance.premiumSar': N(ins.premium_sar),
       'insurance.statusCode': st(ins.expiry_status),
-      'fuelCard.cardNumber': S(fc.chip_number),
-      'fuelCard.plateOnInvoiceAr': S(fc.plate_on_invoice),
-      'fuelCard.statusAr': S(fc.card_status),
-      'fuelCard.consumptionTypeAr': S(fc.consumption_type),
+      'fuelCard.cardNumber': val(fc.chip_number, fc.chip_status),
+      'fuelCard.plateOnInvoiceAr': val(fc.plate_on_invoice, fc.plate_on_invoice_status),
+      'fuelCard.statusAr': val(fc.card_status, fc.card_status_code),
+      'fuelCard.consumptionTypeAr': val(fc.consumption_type, fc.consumption_type_status),
       'fuelCard.limitSar': N(fc.consumption_limit),
-      'gps.deviceModel': S(gps.device_model),
-      'gps.deviceStatusAr': S(gps.device_status),
-      'gps.provider': S(gps.provider),
-      'gps.serialImei': S(gps.serial),
+      'gps.deviceModel': val(gps.device_model, gps.device_model_status),
+      'gps.deviceStatusAr': val(gps.device_status, gps.device_status_code),
+      'gps.provider': val(gps.provider, gps.provider_status),
+      'gps.serialImei': val(gps.serial, gps.serial_status),
       'gps.statusCode': st(gps.subscription_expiry_status),
-      'operatingCard.cardNumber': S(oc.number),
+      'operatingCard.cardNumber': val(oc.number, oc.number_status),
       'operatingCard.statusCode': st(oc.expiry_status),
       'vehicleLicense.statusCode': st(lic.expiry_gregorian_status),
-      'inspection.statusAr': S(insp.status),
+      'inspection.statusAr': val(insp.status, insp.status_code),
       'inspection.statusCode': st(insp.expiry_gregorian_status),
       // التاريخ الهجري في الملف معادلة تعكس الميلادي — لا يُخزَّن (تقرير الجودة).
       'vehicleLicense.expiryDateHijri': '',

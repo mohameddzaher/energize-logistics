@@ -51,6 +51,9 @@ function buildFilter(q) {
     sector: 'sectorAr', registrationType: 'registrationTypeAr', brand: 'brandAr',
     department: 'departmentAr', city: 'cityAr', possession: 'possessionStatusAr',
     gpsDeviceStatus: 'gps.deviceStatusAr',
+    // مفاتيح سجلّات القسم — كل صفّ فيها يفتح مركباته بهذه الفلاتر
+    authorizedPerson: 'authorizedPerson.name', gpsProvider: 'gps.provider',
+    gpsDevice: 'gps.deviceModel', fuelCard: 'fuelCard.cardNumber',
     owner: 'ownerNameAr', insuranceCompany: 'insurance.companyAr',
     coverageType: 'insurance.coverageTypeAr', fuelCardStatus: 'fuelCard.statusAr',
     inspectionStatus: 'inspection.statusAr', tamStatus: 'tamStatusAr', color: 'colorAr',
@@ -323,7 +326,9 @@ exports.alerts = async (req, res) => {
     // **نفس** حساب شاشة الانتهاءات — التنبيهات مجرد فلتر عليه، مش حساب تاني.
     // كانت بدالة مختلفة، فالأرقام كانت بتختلف بين الشاشتين على نفس الداتا.
     const all = await buildExpiryRows({});
-    const ALERT_STATES = ['expired', 'critical', 'warning'];
+    // «على الرادار» تدخل التنبيهات: كانت ٢٤ مستندًا تسقط من الشاشة تمامًا لأن
+    // انتهاءها بعد عتبة التحذير، فتظهر فجأةً وقد صارت حرجة.
+    const ALERT_STATES = ['expired', 'critical', 'warning', 'upcoming'];
 
     const items = all
       .filter((r) => ALERT_STATES.includes(r.state))
@@ -338,7 +343,7 @@ exports.alerts = async (req, res) => {
       }));
 
     items.sort((a, b) => (a.daysRemaining ?? 0) - (b.daysRemaining ?? 0));
-    const byStatus = { expired: 0, critical: 0, warning: 0 };
+    const byStatus = { expired: 0, critical: 0, warning: 0, upcoming: 0 };
     const byDoc = {};
     for (const it of items) { byStatus[it.status] += 1; byDoc[it.docType] = (byDoc[it.docType] || 0) + 1; }
     const muted = items.filter((i) => !i.alertEnabled).length;
@@ -780,6 +785,133 @@ exports.renewBulk = async (req, res) => {
   } catch (e) {
     console.error('vreg renewBulk', e);
     res.status(500).json({ message: 'تعذّر تسجيل التجديد' });
+  }
+};
+
+// ── سجلّات القسم: المُلّاك والمفوَّضون وأجهزة التتبّع وشرائح الوقود ──────────
+//
+// كلها **تُبنى من المركبات نفسها** لا من جداول موازية. المالك ليس كيانًا مستقلًّا
+// عندنا — هو اسمٌ على مركبات؛ ولو خُزِّن مرتين لاختلف عدد مركباته بين الشاشتين
+// أول ما تُنقَل مركبة. البناء من المصدر يجعل التناقض مستحيلًا لا نادرًا.
+//
+// وكل سجلّ يحمل ما يُسأل عنه فعلًا: كم مركبة، وكم منها مستنداتها منتهية.
+const REGISTER_DEFS = {
+  owners: {
+    ar: 'المُلّاك', en: 'Owners',
+    key: (v) => S(v.ownerNameAr),
+    extra: (rows) => ({ commercialRegistration: S(rows[0].commercialRegistration) }),
+    filterKey: 'owner',
+  },
+  authorizedPersons: {
+    ar: 'المفوَّضون', en: 'Authorized persons',
+    key: (v) => S(v.authorizedPerson?.name),
+    extra: (rows) => ({
+      iqamaNumber: S(rows[0].authorizedPerson?.iqamaNumber),
+      jobTitleAr: S(rows[0].authorizedPerson?.jobTitleAr),
+    }),
+    filterKey: 'authorizedPerson',
+  },
+  gpsProviders: {
+    ar: 'مزوّدو التتبّع', en: 'GPS providers',
+    key: (v) => S(v.gps?.provider),
+    extra: (rows) => ({ devices: [...new Set(rows.map((r) => S(r.gps?.deviceModel)).filter(Boolean))] }),
+    filterKey: 'gpsProvider',
+  },
+  gpsDevices: {
+    ar: 'أجهزة التتبّع', en: 'GPS devices',
+    key: (v) => S(v.gps?.deviceModel),
+    extra: (rows) => ({ providers: [...new Set(rows.map((r) => S(r.gps?.provider)).filter(Boolean))] }),
+    filterKey: 'gpsDevice',
+  },
+};
+
+const S = (v) => String(v ?? '').trim();
+
+exports.registers = async (req, res) => {
+  try {
+    const cfg = await getConfig();
+    const vehicles = await VehicleMaster.find({ isActive: { $ne: false } }).lean();
+
+    /** حالة أسوأ مستند على المركبة — بها نعرف «كم مركبة عند هذا المالك متعثّرة». */
+    const worstOf = (v) => {
+      let worst = 'valid';
+      const rank = { expired: 4, critical: 3, warning: 2, upcoming: 1, valid: 0 };
+      for (const dt of DOC_TYPES) {
+        const st = VDOC.stateOf(getPath(v, dt.path), getPath(v, dt.statusPath) || '', cfg.alerts?.[dt.key]);
+        if ((rank[st.state] || 0) > (rank[worst] || 0)) worst = st.state;
+      }
+      return worst;
+    };
+
+    const out = {};
+    for (const [name, def] of Object.entries(REGISTER_DEFS)) {
+      const groups = new Map();
+      for (const v of vehicles) {
+        const k = def.key(v);
+        if (!k) continue;
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(v);
+      }
+      out[name] = {
+        ar: def.ar, en: def.en, filterKey: def.filterKey,
+        items: [...groups.entries()].map(([value, rows]) => ({
+          value,
+          vehicles: rows.length,
+          expired: rows.filter((v) => worstOf(v) === 'expired').length,
+          plates: rows.slice(0, 40).map((v) => v.plateNumber),
+          ...(def.extra ? def.extra(rows) : {}),
+          filter: { [def.filterKey]: value },
+        })).sort((a, b) => b.vehicles - a.vehicles),
+      };
+    }
+
+    // شرائح الوقود سجلٌّ صفٌّ لكل شريحة لا تجميعة — الشريحة تخصّ مركبة واحدة.
+    out.fuelCards = {
+      ar: 'شرائح الوقود', en: 'Fuel cards', filterKey: 'fuelCard',
+      items: vehicles
+        .filter((v) => S(v.fuelCard?.cardNumber))
+        .map((v) => ({
+          value: S(v.fuelCard.cardNumber),
+          plateNumber: v.plateNumber,
+          vehicleId: v._id,
+          plateOnInvoiceAr: S(v.fuelCard.plateOnInvoiceAr),
+          statusAr: S(v.fuelCard.statusAr),
+          consumptionTypeAr: S(v.fuelCard.consumptionTypeAr),
+          limitSar: v.fuelCard.limitSar ?? null,
+          sectorAr: v.sectorAr, departmentAr: v.departmentAr, cityAr: v.cityAr,
+        }))
+        .sort((a, b) => String(a.plateNumber).localeCompare(String(b.plateNumber), 'ar')),
+    };
+
+    // وأجهزة التتبّع صفًّا صفًّا كذلك — الجهاز على مركبة بعينها بسيريال واشتراك.
+    out.gpsUnits = {
+      ar: 'أجهزة التتبّع المركّبة', en: 'Installed GPS units', filterKey: 'gpsUnit',
+      // «مركّب» يعني له سيريال. المركبة التي حقلها يحمل «مطلوب» ليس عليها جهاز
+      // ينتظر تركيبه — وعدُّها ضمن الأجهزة يضخّم الرقم بمئة جهاز غير موجود.
+      items: vehicles
+        .filter((v) => S(v.gps?.serialImei))
+        .map((v) => {
+          const st = VDOC.stateOf(v.gps?.expiryDate, v.gps?.statusCode || '', cfg.alerts?.gps);
+          return {
+            value: S(v.gps.serialImei) || S(v.gps.deviceModel),
+            plateNumber: v.plateNumber, vehicleId: v._id,
+            deviceModel: S(v.gps.deviceModel), provider: S(v.gps.provider),
+            deviceStatusAr: S(v.gps.deviceStatusAr),
+            expiryDate: v.gps?.expiryDate || null,
+            state: st.state, daysRemaining: st.days,
+            sectorAr: v.sectorAr, departmentAr: v.departmentAr, cityAr: v.cityAr,
+          };
+        })
+        .sort((a, b) => (a.daysRemaining ?? 1e9) - (b.daysRemaining ?? 1e9)),
+    };
+
+    res.json({
+      registers: out,
+      totals: Object.fromEntries(Object.entries(out).map(([k, r]) => [k, r.items.length])),
+    });
+  } catch (e) {
+    console.error('vreg registers', e);
+    res.status(500).json({ message: 'تعذّر تحميل سجلّات القسم' });
   }
 };
 

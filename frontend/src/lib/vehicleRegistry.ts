@@ -124,6 +124,7 @@ export interface ExpiringRow {
 }
 
 export const STATE_META: Record<string, { ar: string; en: string; color: string; bg: string }> = {
+  upcoming: { ar: 'على الرادار', en: 'Upcoming', color: '#0ea5e9', bg: 'bg-sky-100 text-sky-800' },
   valid: { ar: 'ساري', en: 'Valid', color: '#16a34a', bg: 'bg-emerald-100 text-emerald-700' },
   warning: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
   critical: { ar: 'ينتهي قريبًا جدًا', en: 'Critical', color: '#ea580c', bg: 'bg-orange-100 text-orange-700' },
@@ -213,3 +214,14 @@ export const renewInsurancePolicy = (id: string, body: {
   newExpiry: string; policyNumber?: string; cost?: number | null; reference?: string; note?: string;
 }) => api.post<{ policy: InsurancePolicy; vehiclesUpdated: number }>(
   `/api/vehicle-registry/insurance-policies/${id}/renew`, body);
+
+// ── سجلّات القسم ─────────────────────────────────────────────────────────────
+// المُلّاك والمفوَّضون ومزوّدو التتبّع تُبنى من المركبات نفسها لا من جداول موازية،
+// فعددُ مركبات أي منها لا يمكن أن يخالف ما تفتحه بالضغط عليه.
+export type RegisterGroup = {
+  ar: string; en: string; filterKey: string;
+  items: any[];
+};
+export const getRegisters = () =>
+  api.get<{ registers: Record<string, RegisterGroup>; totals: Record<string, number> }>(
+    '/api/vehicle-registry/registers');

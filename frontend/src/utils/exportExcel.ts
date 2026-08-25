@@ -30,13 +30,26 @@ function addStyledSheet(
 ) {
   // Excel sheet names: ≤31 chars, no []:*?/\
   const safe = String(name).replace(/[[\]:*?/\\]/g, ' ').slice(0, 31) || 'Sheet';
-  const ws = wb.addWorksheet(safe, { views: [{ state: 'frozen', ySplit: 1 }] });
+  // `rightToLeft`: محتوى الشيتات عربيّ في معظمه، وبدونه يفتح العمود الأوّل على
+  // اليسار فتُقرأ الأعمدة معكوسةً عن ترتيبها على الشاشة.
+  const ws = wb.addWorksheet(safe, {
+    views: [{ state: 'frozen', ySplit: 1, rightToLeft: true }],
+  });
 
-  ws.columns = columns.map((col) => ({
-    header: col.header,
-    key: col.key,
-    width: col.width || Math.max(col.header.length + 4, 15),
-  }));
+  // عرض العمود يُقاس على أطول قيمة فيه لا على ترويسته وحدها: عمودٌ ترويسته
+  // «العميل» وقيمُه أسماء شركات كان يخرج بعرض ست خانات فتظهر كلّها مبتورة.
+  const widthOf = (col: ExportColumn) => {
+    if (col.width) return col.width;
+    let longest = String(col.header).length;
+    for (const row of data.slice(0, 400)) {
+      const raw = col.key.split('.').reduce((obj: any, k) => obj?.[k], row);
+      const v = col.transform ? col.transform(raw, row) : raw;
+      const n = String(v ?? '').length;
+      if (n > longest) longest = n;
+    }
+    return Math.min(Math.max(longest + 4, 12), 46);
+  };
+  ws.columns = columns.map((col) => ({ header: col.header, key: col.key, width: widthOf(col) }));
 
   for (const row of data) {
     ws.addRow(columns.map((col) => {
@@ -61,6 +74,7 @@ function addStyledSheet(
   // their borders too (eachCell skips them).
   for (let r = 2; r <= data.length + 1; r++) {
     const row = ws.getRow(r);
+    row.height = 20;
     const zebra = r % 2 === 0;
     for (let c = 1; c <= columns.length; c++) {
       const cell = row.getCell(c);
@@ -71,7 +85,10 @@ function addStyledSheet(
         left: { style: 'thin', color: { argb: ROW_BORDER } },
         right: { style: 'thin', color: { argb: ROW_BORDER } },
       };
-      cell.alignment = { vertical: 'middle' };
+      // كل خانةٍ في المتن موسَّطة أفقيًّا ورأسيًّا. الشيت الذي يخرج بأرقامٍ على
+      // اليمين ونصوصٍ على اليسار وتواريخَ في الوسط يبدو مسوَّدةً لا مستندًا
+      // يُرسَل — وهذه الشيتات تُرسَل خارج الشركة.
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     }
   }
 

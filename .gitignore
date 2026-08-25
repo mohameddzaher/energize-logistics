@@ -33,7 +33,11 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files
+# النسخ الاحتياطية المؤرَّخة أيضًا: نسخةٌ منها وصلت المستودع العامّ ومعها مفاتيح
+# توقيع الجلسات المستعمَلة في الإنتاج، فبقيت مقروءةً للجميع حتى اكتُشفت.
 .env
+.env.*
+!.env.example
 .env.local
 .env.production
 .env.development

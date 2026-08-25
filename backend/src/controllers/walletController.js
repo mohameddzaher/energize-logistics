@@ -413,12 +413,31 @@ exports.addTransaction = async (req, res) => {
 };
 
 // ─── DELETE TRANSACTION ──────────────────────────────────────
+
+/**
+ * هل يجوز لهذا المستخدم أن يمسّ محفظةً بعينها؟
+ *
+ * القراءة كانت محروسة («Cannot view other wallets») والكتابةُ مفتوحة — فموظّف
+ * عملياتٍ لا يُسمح له برؤية محفظة زميله كان يستطيع حذف حركةٍ منها. وحذفُ تحصيلٍ
+ * يُعيد المبلغ إلى رصيد العميل ويعيد كتابة حالة الفاتورة، فالأثر مالٌ لا شاشة.
+ *
+ * والمديرون يمسّون أيّ محفظة؛ وغيرهم محفظتَه وحدها.
+ */
+const MANAGER_ROLES = ['super_admin', 'admin', 'operations_manager'];
+const mayTouchWallet = (req, wallet) => {
+  if (MANAGER_ROLES.includes(req.user.role)) return true;
+  if (!wallet) return false;
+  return String(wallet.user) === String(req.user._id);
+};
+const denyWallet = (res) => res.status(403).json({ message: 'لا تملك صلاحية التعديل على هذه المحفظة' });
+
 exports.deleteTransaction = async (req, res) => {
   try {
     const transaction = await WalletTransaction.findById(req.params.id);
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
 
     const wallet = await DailyWallet.findById(transaction.wallet);
+    if (!mayTouchWallet(req, wallet)) return denyWallet(res);
     const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
@@ -504,6 +523,7 @@ exports.updateTransaction = async (req, res) => {
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
 
     const wallet = await DailyWallet.findById(transaction.wallet);
+    if (!mayTouchWallet(req, wallet)) return denyWallet(res);
     const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet && wallet.isClosed && !isManager) {
@@ -735,6 +755,8 @@ exports.reopenDay = async (req, res) => {
     const { walletId } = req.params;
     const wallet = await DailyWallet.findById(walletId);
     if (!wallet) return res.status(404).json({ message: 'Wallet not found' });
+    // إعادة فتح يومٍ أُقفل قرارٌ إداريّ — لم يكن عليه أيّ فحصٍ إطلاقًا.
+    if (!MANAGER_ROLES.includes(req.user.role)) return denyWallet(res);
 
     wallet.isClosed = false;
     wallet.closedAt = null;

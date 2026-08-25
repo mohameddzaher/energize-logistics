@@ -11,6 +11,14 @@ const { getHighRiskClients } = require('../services/riskService');
 
 router.use(authenticate);
 
+// ── ولماذا تقييدُ الدور هنا ─────────────────────────────────────────────────
+// هذا المسار يُخرج قائمة العملاء بحدود ائتمانهم وأرصدتهم، والفواتير المتأخّرة
+// والمجمَّدة، وترتيب المحصّلين. ولم يكن عليه إلا `authenticate` — فكلُّ حسابٍ في
+// النظام، وحسابات العملاء والموردين في البوّابة من بينها فهي مستخدمون عاديّون،
+// يقرأ الملفّ المالي للشركة بطلبٍ واحد.
+const authorize = require('../middleware/rbac');
+router.use(authorize('super_admin', 'admin', 'finance_manager', 'accountant', 'collections_manager', 'collector'));
+
 // Query patterns and their handlers
 const queryHandlers = [
   {
@@ -365,10 +373,13 @@ router.post('/query', async (req, res) => {
     }
 
     // Default: try to interpret as a customer name search
-    const customers = await Customer.find({
-      companyName: { $regex: query, $options: 'i' },
+    // مهرَّبٌ ومقصوص ومثبَّت في أوّله: كان يُبنى من نصّ المستخدم كما هو، فـ«.»
+    // وحدها تُخرج كلّ العملاء، و«(a+)+z» تُشغل القاعدة دهرًا على مسحٍ كامل.
+    const safe = String(query ?? '').trim().slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const customers = safe ? await Customer.find({
+      companyName: { $regex: `^${safe}`, $options: 'i' },
       isActive: true,
-    });
+    }).limit(50) : [];
 
     if (customers.length > 0) {
       return res.json({

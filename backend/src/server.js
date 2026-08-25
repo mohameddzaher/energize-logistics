@@ -6,6 +6,7 @@ const cors = require('cors');
 const compression = require('compression');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
+const csrfGuard = require('./middleware/csrf');
 const morgan = require('morgan');
 const mongoSanitize = require('express-mongo-sanitize');
 
@@ -116,11 +117,11 @@ const { isAllowedOrigin } = require('./config/cors');
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    // يُرفَض بلا استثناء. رميُ خطأٍ هنا كان ينتهي في معالِج الأخطاء العامّ
+    // فيخرج **٥٠٠** — كأنّ الخادم تعطّل، لا كأنّه ردّ طلبًا لا يقبله. والفرق
+    // ليس شكليًّا: ٥٠٠ تُقرأ عطلًا فيُعاد الطلب ويُفتَح لها بلاغ، وتُخفي أن
+    // السبب أصلٌ غير مسموح. الرفضُ الصريح يأتي من csrfGuard تحت برسالته.
+    callback(null, isAllowedOrigin(origin));
   },
   credentials: true,
 }));
@@ -129,7 +130,9 @@ app.use(cors({
 // Body parsing. Limit is generous because employee documents are uploaded as
 // base64 data URLs in JSON (no multer dependency) — see utils/fileStore.js.
 app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+// `urlencoded` مرفوع عن قصد: هذا الخادم لا يستقبل إلا JSON، ووجودُ محلّل
+// الاستمارات كان يجعل استمارةً في أيّ موقعٍ آخر طلبًا «بسيطًا» يصل المعالِج بلا
+// فحصٍ مسبق — وهو نصفُ ثغرة تزوير الطلبات. النصف الآخر يردّه csrfGuard تحت.
 app.use(cookieParser());
 
 // ── التعقيم بعد المحلِّلات لا قبلها ──────────────────────────────────────────
@@ -137,6 +140,9 @@ app.use(cookieParser());
 // غير موجود أصلًا. فكان جسمُ الطلب يمرّ بلا تعقيم منذ اليوم الأوّل، وكذلك
 // الكوكيز. الآن يعمل بعدهما فيرى ما جاء ليفحصه.
 app.use(mongoSanitize());
+
+// ردّ ما جاء من أصلٍ غريب على كل ما يغيّر حالة — قبل أن يبلغ أيّ مسار.
+app.use(csrfGuard);
 
 // Static serving of uploaded files (employee documents). Mounted under
 // /api/uploads so the frontend's /api/* proxy forwards it (same-origin). Placed

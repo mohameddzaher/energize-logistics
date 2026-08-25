@@ -250,7 +250,9 @@ exports.listVehicles = async (req, res) => {
     if (status) filter.status = status;
     if (alertLevel) filter.alertLevel = alertLevel;
     if (q) {
-      const rx = new RegExp(String(q).trim(), 'i');
+      // مهرَّبٌ ومقصوص: نصُّ البحث يصير تعبيرًا نمطيًّا يُنفَّذ في القاعدة على
+      // المجموعة كاملة، فنصٌّ خبيثٌ واحد يشغلها دهرًا.
+      const rx = new RegExp(String(q).trim().slice(0, 120).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ plate: rx }, { driver: rx }, { name: rx }];
     }
     // Maintenance filter is a stored field now — filter in Mongo, not in memory.

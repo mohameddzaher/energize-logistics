@@ -25,7 +25,14 @@ const logAudit = require('../utils/auditLogger');
 const { createNotification } = require('../services/notificationService');
 
 // Item names are user text and go into a RegExp when matching an existing line.
+// ── ولماذا يُهرَّب كلُّ بحثٍ يأتي من المستخدم ────────────────────────────────
+// نصُّ البحث يُبنى منه تعبيرٌ نمطيّ يُنفَّذ داخل قاعدة البيانات على المجموعة
+// كاملة (غيرُ مثبَّتٍ في أوّله، فلا فهرس ينفع). نصٌّ مثل `(a+)+z` يجعل المطابقة
+// تتراجع تراجعًا أُسّيًّا فتشغل القاعدة دهرًا — طلبٌ واحد يكفي لإسقاط الخدمة.
+// والدالة كانت معرَّفةً هنا ومستعملةً في موضعٍ واحد من تسعة.
 const escapeRx = (str) => String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// ويُقصَّر الطول كذلك: تعبيرٌ من آلاف المحارف مكلفٌ ولو كان مهرَّبًا.
+const userRx = (v, flags = 'i') => new RegExp(escapeRx(String(v ?? '').trim().slice(0, 120)), flags);
 
 // ═══════════════════════════════════════════════════════════
 // MAINTENANCE REQUESTS
@@ -37,9 +44,9 @@ const getMaintenanceRequests = async (req, res) => {
     const filter = {};
 
     if (status) filter.status = status;
-    if (vehicleNumber) filter.vehicleNumber = new RegExp(vehicleNumber, 'i');
+    if (vehicleNumber) filter.vehicleNumber = userRx(vehicleNumber);
     if (search) {
-      const regex = new RegExp(search, 'i');
+      const regex = userRx(search);
       filter.$or = [
         { vehicleNumber: regex },
         { technicianName: regex },
@@ -298,7 +305,7 @@ const getPurchaseRequests = async (req, res) => {
     if (status) filter.status = status;
     if (maintenanceRequest) filter.maintenanceRequest = maintenanceRequest;
     if (search) {
-      const regex = new RegExp(search, 'i');
+      const regex = userRx(search);
       filter.$or = [
         { itemName: regex },
         { vehicleNumber: regex },
@@ -638,7 +645,7 @@ const getWorkshopTasks = async (req, res) => {
     if (status) filter.status = status;
     if (priority) filter.priority = priority;
     if (search) {
-      const regex = new RegExp(search, 'i');
+      const regex = userRx(search);
       filter.$or = [
         { title: regex },
         { description: regex },
@@ -1107,7 +1114,7 @@ const getInventory = async (req, res) => {
     }
 
     if (search) {
-      const regex = new RegExp(search, 'i');
+      const regex = userRx(search);
       filter.$or = [{ name: regex }, { code: regex }];
     }
     if (category) filter.category = category;
@@ -1248,7 +1255,7 @@ const searchInventory = async (req, res) => {
     const { q } = req.query;
     if (!q) return res.json([]);
 
-    const regex = new RegExp(q, 'i');
+    const regex = userRx(q);
     const items = await InventoryItem.find({
       isActive: true,
       approvalStatus: 'approved',
@@ -1534,9 +1541,9 @@ const listInventoryIssues = async (req, res) => {
     const { item, vehicleNumber, search, page = 1, limit = 20 } = req.query;
     const filter = {};
     if (item) filter.item = item;
-    if (vehicleNumber) filter.vehicleNumber = new RegExp(String(vehicleNumber).trim(), 'i');
+    if (vehicleNumber) filter.vehicleNumber = userRx(vehicleNumber);
     if (search) {
-      const rx = new RegExp(String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const rx = userRx(search);
       filter.$or = [{ itemName: rx }, { itemCode: rx }, { vehicleNumber: rx }, { notes: rx }];
     }
     const skip = (parseInt(page) - 1) * parseInt(limit);

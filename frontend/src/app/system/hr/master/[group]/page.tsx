@@ -16,7 +16,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { Search, Check, X, Pencil, ArrowUpDown, RefreshCw } from 'lucide-react';
+import { Search, Check, X, Pencil, ArrowUpDown, RefreshCw, ArrowRight } from 'lucide-react';
 import {
   getHrRecords, updateEmployeeFields, renewHrDocument, renewHrBulk, RENEWABLE_GROUPS,
   STATUS_META, STATE_META, statusLabel, stateLabel,
@@ -86,6 +86,28 @@ function GroupInner() {
 
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
+
+  // ── ما تختاره هنا يعيش في عنوان الصفحة ─────────────────────────────────────
+  // كان الفلتر يُقرأ من العنوان مرّةً عند الفتح ثم ينفصل عنه: ترفع شرطًا أو
+  // تضيف آخر فيتغيّر الجدول ويبقى العنوان على حاله — فالرجوع بزرّ المتصفّح
+  // يعيدك إلى ما لم تعد فيه، والتحديث يمسح ما بنيتَه.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) p.set(k, String(v));
+    if (field) p.set('field', field);
+    if (status) p.set('status', status);
+    if (state) p.set('state', state);
+    if (within) p.set('withinDays', within);
+    const q = p.toString();
+    router.replace(`/system/hr/master/${group}${q ? `?${q}` : ''}`, { scroll: false });
+  }, [JSON.stringify(filters), field, status, state, within, group, router]);
+
+  /** الرجوع إلى النظرة الشاملة حاملًا الفلتر الحاليّ — لا مُلقيًا به. */
+  const backToOverview = () => {
+    const q = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
+    router.push(`/system/hr/master${q ? `?${q}` : ''}`);
+  };
   // التحديد يسقط مع تغيّر الفلاتر: صفٌّ اختير ثم خرج من النتيجة يبقى محدَّدًا
   // بلا أن يُرى، فتُجدَّد في الدفعة أسماءٌ لا تظهر على الشاشة.
   useEffect(() => { setPicked(new Set()); }, [group, q, field, status, state, within, includeExpired, JSON.stringify(filters)]);
@@ -120,6 +142,11 @@ function GroupInner() {
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <MasterNav />
+      <button onClick={backToOverview}
+        className="inline-flex items-center gap-1.5 text-slate-500 text-sm hover:text-slate-900">
+        <ArrowRight className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />
+        {t('النظرة الشاملة', 'Overview')}
+      </button>
       {group === 'contract' && <ContractsTabs />}
 
       <PageHeader icon={<Pencil className="w-5 h-5" />} title={ar ? g.ar : g.en}

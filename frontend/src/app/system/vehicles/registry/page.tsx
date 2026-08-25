@@ -1,7 +1,7 @@
 'use client';
 // قائمة سجل المركبات — فلاتر متعددة، بحث، حالة كل مركبة، وتعديل/إضافة/حذف.
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -12,7 +12,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { VReg, statusColor, statusLabel, DOC_TYPES, fmtDate, money, daysText, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
 import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
-import { Car, Plus, Edit, Trash2, BarChart3, BellRing, X, Save } from 'lucide-react';
+import { Car, Plus, Edit, Trash2, BarChart3, BellRing, X, Save, ArrowRight } from 'lucide-react';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
 
@@ -21,6 +21,7 @@ export default function VehicleRegistryList() {
   const ar = lang === 'ar';
   const { user } = useAuth();
   const sp = useSearchParams();
+  const router = useRouter();
   const { notify, confirm } = useDialog();
   // A grant of «تعديل» on المركبات has to bring the actions with it — the API
   // already accepts the calls (rbac lets a section grant through), so hiding the
@@ -61,6 +62,23 @@ export default function VehicleRegistryList() {
   }, [qs, notify]);
 
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
+
+  // ما تختاره هنا يعيش في العنوان: ترفع شرطًا أو تضيف آخر فيعمل الرجوعُ والتقدّم
+  // ويبقى ما بنيتَه إن حدّثتَ الصفحة.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (q.trim()) p.set('q', q.trim());
+    for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) p.set(k, String(v));
+    const s = p.toString();
+    router.replace(`/system/vehicles/registry${s ? `?${s}` : ''}`, { scroll: false });
+  }, [q, JSON.stringify(filters), router]);
+
+  /** الرجوع إلى النظرة الشاملة حاملًا الفلتر الحاليّ — لا مُلقيًا به. */
+  const backToOverview = () => {
+    const p = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
+    router.push(`/system/vehicles/registry/overview${p ? `?${p}` : ''}`);
+  };
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   // أسماء مقروءة للفلاتر التي لا تأتي من الخادم — بدونها تظهر الشريحة بمفتاحها
@@ -95,6 +113,11 @@ export default function VehicleRegistryList() {
 
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
+      <button onClick={backToOverview}
+        className="inline-flex items-center gap-1.5 text-slate-500 text-sm hover:text-slate-900">
+        <ArrowRight className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />
+        {ar ? 'النظرة الشاملة' : 'Overview'}
+      </button>
       <PageHeader icon={<Car className="w-5 h-5" />} title={ar ? 'سجل المركبات' : 'Vehicle Registry'} subtitle={ar ? `${total} مركبة` : `${total} vehicles`}>
         <div className="flex items-center gap-2">
           <Link href="/system/vehicles/registry/dashboard" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><BarChart3 className="w-4 h-4" /> {ar ? 'التحليلات' : 'Analytics'}</Link>

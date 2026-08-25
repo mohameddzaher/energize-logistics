@@ -4,8 +4,8 @@
 // كل رقم «مطلوب» معناه بيانات ناقصة لازم التيم يجمّعها، والضغط عليه بيفتح
 // الناس اللي وراه عشان يتملي من هناك على طول. و«غير مطلوب» متعدّة لوحدها —
 // سعودي مالوش إقامة مش «ناقص إقامة»، وحطّه في قايمة الشغل بيضيّع وقت الناس.
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -21,7 +21,7 @@ import {
 } from '@/lib/hrMaster';
 import api from '@/lib/api';
 
-export default function HrMasterPage() {
+function HrMasterInner() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
@@ -36,7 +36,13 @@ export default function HrMasterPage() {
   const [refreshing, setRefreshing] = useState(false);
   // الفلتر هو مصدر كل رقم في هذه الصفحة. البطاقات والتحليلات كلها تُعاد قراءتها
   // منه، فلا يبقى في الشاشة رقمٌ محسوبٌ على مجموعة غير التي يراها المستخدم.
-  const [filters, setFilters] = useState<FilterValues>({});
+  const sp = useSearchParams();
+  // ── الفلتر يعيش في عنوان الصفحة ─────────────────────────────────────────────
+  // بغير ذلك يذهب مع أوّل انتقال: تفلتر، تفتح رقمًا، ترجع بزرّ المتصفّح فتجد
+  // اللوحة كما كانت أوّل مرّة وقد ضاع ما بنيتَه. وفي العنوان يعمل الرجوع
+  // والتقدّم، ويبقى ما اخترتَه إن حدّثتَ الصفحة، ويمكن نسخ الرابط ومشاركته.
+  const [filters, setFilters] = useState<FilterValues>(() =>
+    Object.fromEntries([...(sp?.entries() || [])]));
   const onlyActive = filters.employment === 'active';
 
   // التراخيص وحدها تأتي من الداشبورد العامّ، وهي لا تتحرّك مع الفلتر — فتُقرأ
@@ -54,6 +60,14 @@ export default function HrMasterPage() {
     setRefreshing(false);
   }, [JSON.stringify(filters), notify]);
   useEffect(() => { load(); }, [load]);
+
+  // `replace` لا `push`: كل ضغطةِ قيمةٍ في الفلتر لا تستحقّ خطوةً في تاريخ
+  // المتصفّح، وإلا احتاج الرجوعُ إلى الصفحة السابقة عشرَ ضغطات.
+  useEffect(() => {
+    const q = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
+    router.replace(`/system/hr/master${q ? `?${q}` : ''}`, { scroll: false });
+  }, [JSON.stringify(filters), router]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
 
   /**
@@ -497,4 +511,8 @@ function DistributionCard({ f, groupAr, ar, t, total, onPick, active }:
       )}
     </div>
   );
+}
+
+export default function HrMasterPage() {
+  return <Suspense fallback={<Spinner />}><HrMasterInner /></Suspense>;
 }

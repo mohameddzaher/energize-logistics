@@ -6,8 +6,8 @@
 // بالظبط. عشان كده الفلتر بييجي **من السيرفر** مع كل قيمة (`item.filter`) بدل
 // ما الصفحة تبنيه — لو بنته هنا كان ممكن يختلف عن اللي السيرفر بيعدّ بيه، ويبقى
 // الرقم بيقول حاجة والصفحة بتوري حاجة تانية.
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 
 import { useSocket } from '@/hooks/useSocket';
@@ -28,7 +28,7 @@ const DOC_ICON: Record<string, any> = {
   inspection: Wrench, gps: Satellite,
 };
 
-export default function VehiclesOverviewPage() {
+function VehiclesOverviewInner() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
@@ -39,14 +39,28 @@ export default function VehiclesOverviewPage() {
   const [loading, setLoading] = useState(true);
   // الفلتر هو مصدر كل رقم في هذه الصفحة — البطاقات والتحليلات تُعاد قراءتها منه،
   // فلا يبقى رقمٌ محسوبٌ على أسطولٍ غير الذي يراه المستخدم أمامه.
-  const [filters, setFilters] = useState<FilterValues>({});
+  // ويعيش في عنوان الصفحة: تفلتر، تفتح رقمًا، ترجع بزرّ المتصفّح فتجد ما بنيتَه
+  // كما تركتَه — لا اللوحةَ خامًا وقد ضاع الفلتر مع أوّل انتقال.
+  const sp = useSearchParams();
+  const [filters, setFilters] = useState<FilterValues>(() =>
+    Object.fromEntries([...(sp?.entries() || [])]));
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
+    setRefreshing(true);
     try { setD(await getOverview(filters as Record<string, string>)); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setLoading(false);
+    setRefreshing(false);
   }, [JSON.stringify(filters), notify]);
   useEffect(() => { load(); }, [load]);
+
+  // `replace` لا `push`: كل ضغطةِ قيمةٍ لا تستحقّ خطوةً في تاريخ المتصفّح.
+  useEffect(() => {
+    const q = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
+    router.replace(`/system/vehicles/registry/overview${q ? `?${q}` : ''}`, { scroll: false });
+  }, [JSON.stringify(filters), router]);
   useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
 
   /**
@@ -301,6 +315,10 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
     { key: 'expired', n: s.expired }, { key: 'critical', n: s.critical },
     { key: 'warning', n: s.warning }, { key: 'valid', n: s.valid },
   ];
+  // الحالات المسجَّلة تُطوى إلى رقمين: ما ينقصنا تاريخه، وما لا يلزم أصلًا.
+  // «غير مطلوب» قرارٌ إداريّ لا نقصٌ — خلطه بالنقص يجعل قائمة العمل تكذب.
+  const notRequired = s.not_applicable ?? 0;
+  const missing = s.missing ?? 0;
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
@@ -331,22 +349,23 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
         })}
       </div>
 
-      {/* الحالات الإدارية — بالاسم زي ما هو في الإكسل */}
-      {!!doc.statuses.length && (
-        <div className="mt-3 pt-2.5 border-t border-slate-100">
-          <p className="text-[10px] text-slate-400 mb-1.5">{t('الحالة المسجَّلة', 'Recorded status')}</p>
-          <div className="flex flex-wrap gap-1.5">
-            {doc.statuses.map((st) => (
-              <span key={st.code} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-100 text-[11px] text-slate-600">
-                {ar ? st.ar : st.en}
-                <b className="text-slate-900">{st.count}</b>
-              </span>
-            ))}
-          </div>
+      {/* ── سطرٌ واحد لما لا تاريخ له ─────────────────────────────────────────
+          كانت الحالات الإدارية تُنثَر كلّها شرائحَ بأسمائها من الإكسل، فيصير
+          نصفُ الكارت أسماءً لا يبحث عنها أحد ويضيع فيها الأربعة التي تعني عملًا.
+          والسؤال الحقيقيّ عمّا لا تاريخ له سؤالان لا سبعة: «ينقصنا» و«لا يلزم
+          أصلًا» — وكلاهما يُضغَط فيفتح ما فيه. */}
+      {(missing > 0 || notRequired > 0) && (
+        <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-400">
+          <button onClick={() => onList({ missingDocDate: doc.key })} className="hover:text-slate-700">
+            {t('بلا تاريخ', 'No date')}: <b className="text-slate-600">{missing}</b>
+          </button>
+          <button onClick={() => onOpen({ doc: doc.key, state: 'not_applicable' })} className="hover:text-slate-700">
+            {t('لا ينطبق', 'N/A')}: <b className="text-slate-600">{notRequired}</b>
+          </button>
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
+      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10.5px] text-slate-400">
         <span>
           {t('تنبيه قبل', 'Alert')} {doc.alert?.warnDays ?? 30} {t('يوم', 'days')}
           {doc.alert?.enabled === false && <span className="text-slate-300"> · {t('موقوف', 'off')}</span>}
@@ -434,4 +453,8 @@ function AnalyticCard({ a, ar, total, onPick, active }:
       </div>
     </div>
   );
+}
+
+export default function VehiclesOverviewPage() {
+  return <Suspense fallback={<Spinner />}><VehiclesOverviewInner /></Suspense>;
 }

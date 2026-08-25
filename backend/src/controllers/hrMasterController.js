@@ -388,21 +388,24 @@ exports.overview = async (req, res) => {
       return out;
     });
 
-    // «الموظفون» و«على رأس العمل» = عدد الملف الوظيفي نفسه، مش المفلتر. لو
-    // اترتبطوا بالفلتر، أول ما حد يدوس «على رأس العمل فقط» يبقى «الموظفون ٣٢١»
-    // — والليبل بيكدب. عدد الموظفين حقيقة تانية غير اللي إنت شايفه دلوقتي،
-    // فبيتحسب من الملف كله لوحده.
+    // ── كل رقم في هذه اللوحة محسوب على ما يعرضه الفلتر ────────────────────────
+    // كان «الموظفون» و«على رأس العمل» يُحسبان من الملفّ كلّه مهما كان الفلتر،
+    // بحجّة أن «عدد الموظفين» حقيقةٌ ثابتة. والنتيجة على الشاشة: تختار جنسيةً
+    // عددها ٧٢ فتقرأ «الموظفون ٣٧٨» فوق أرقامٍ كلّها محسوبة على الـ٧٢ — لوحةٌ
+    // نصفها يجيب عن سؤالك ونصفها يجيب عن سؤالٍ آخر، ولا شيء يقول أيّهما أيّ.
+    // إجمالي الملفّ يبقى متاحًا: يُرفَع الفلتر فيظهر.
     const rosterFilter = { isHrRecord: { $ne: false } };
     if (req.query.scope !== 'all') rosterFilter.inCurrentMaster = true;
-    const [rosterTotal, rosterActive] = await Promise.all([
-      Employee.countDocuments(rosterFilter),
-      Employee.countDocuments({ ...rosterFilter, employmentStatus: 'active' }),
-    ]);
+    const rosterTotal = await Employee.countDocuments(rosterFilter);
+    const activeCount = employees.filter((e) => e.employmentStatus === 'active').length;
 
     const totals = {
-      employees: rosterTotal,
-      active: rosterActive,
-      notActive: rosterTotal - rosterActive,
+      employees: employees.length,
+      active: activeCount,
+      notActive: employees.length - activeCount,
+      // إجمالي الملفّ الوظيفيّ — تعرضه الشاشة بجانب الرقم المفلتر ليُعرف من أيٍّ
+      // اقتُطع، لا لتحلّ محلّه.
+      roster: rosterTotal,
       // اللي الفلتر الحالي بيعرضه — الأرقام اللي تحت كلها محسوبة عليه.
       filtered: employees.length,
       required: groups.reduce((n, g) => n + g.required, 0),
@@ -413,6 +416,21 @@ exports.overview = async (req, res) => {
       gosiRegistered: employees.filter((e) => filled(e.gosiNumber)).length,
     };
 
+    // ── الشغل اليوميّ، محسوبًا على المعروض ──────────────────────────────────
+    // كانت هذه الأرقام تأتي من نداءٍ عامٍّ يتجاهل الفلتر، فتختار فرعًا فتقرأ
+    // «٣٣٥ عهدة» وهي عهدُ الشركة كلها. صارت تُحسب على الموظفين المطابقين وحدهم،
+    // ومعها ذهب نداءٌ كاملٌ من كل فتحةٍ للصفحة.
+    const LeaveRequest = require('../models/LeaveRequest');
+    const HRRequest = require('../models/HRRequest');
+    const Asset = require('../models/Asset');
+    const empIds = employees.map((e) => e._id);
+    const [pendingLeaves, openRequests, assignedAssets] = await Promise.all([
+      LeaveRequest.countDocuments({ employee: { $in: empIds }, status: { $in: ['pending_manager', 'pending_hr'] } }),
+      HRRequest.countDocuments({ employee: { $in: empIds }, status: { $in: ['open', 'in_progress'] } }),
+      Asset.countDocuments({ employee: { $in: empIds }, status: 'assigned' }),
+    ]);
+    const work = { pendingLeaves, openRequests, assignedAssets };
+
     // أكتر ١٢ حقل ناقص — «ابدأ من هنا».
     const topRequired = groups
       .flatMap((g) => g.fields.map((f) => ({ ...f, groupAr: g.ar, groupKey: g.key })))
@@ -420,7 +438,7 @@ exports.overview = async (req, res) => {
       .sort((a, b) => b.required - a.required)
       .slice(0, 12);
 
-    const body = { totals, groups, topRequired, analytics: buildAnalytics(employees), alert: ALERT, statuses: H.STATUS_LABELS, states: H.STATE_LABELS };
+    const body = { totals, work, groups, topRequired, analytics: buildAnalytics(employees), alert: ALERT, statuses: H.STATUS_LABELS, states: H.STATE_LABELS };
     // زيادة TTL الـ cache من 20s إلى 60s لتقليل الحسابات المتكررة
     cache.set(key, body, 60000);
     res.json(body);

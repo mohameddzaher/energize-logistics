@@ -593,12 +593,23 @@ exports.overview = async (req, res) => {
     if (hit !== undefined) return res.json(hit);
 
     const filter = buildFilter(req.query);
-    const [vehicles, cfg, claims, policies] = await Promise.all([
+    const [vehicles, cfg, allClaims, policies] = await Promise.all([
       VehicleMaster.find(filter).lean(),
       getConfig(),
       VehicleClaim.find({ isActive: true }).lean(),
       CorporatePolicy.find({ isActive: true }).lean(),
     ]);
+
+    // الحوادث تُقصَر على المركبات المطابقة للفلتر.
+    //
+    // كانت تُحسب على الأسطول كلّه مهما كان الفلتر، فتختار فرعًا فتقرأ فوق
+    // مركباته عددَ حوادث الشركة كلها ومبالغها — رقمٌ لا يخصّ ما تنظر إليه،
+    // ولا شيء على الشاشة يقول ذلك. الربط بمفتاح اللوحة الموحَّد لأن الحوادث
+    // تُسجَّل باللوحة لا بمعرّف المركبة.
+    const plateKeys = new Set(vehicles.map((v) => v.plateKey).filter(Boolean));
+    const claims = plateKeys.size
+      ? allClaims.filter((c) => plateKeys.has(c.vehiclePlateKey))
+      : [];
 
     // توزيع عمود: القيمة → العدد، مرتّبة، ومع كل قيمة الفلتر اللي بيوصّلها.
     const group = (field, valueOf) => {

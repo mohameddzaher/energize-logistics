@@ -124,17 +124,18 @@ export default function HrMasterPage() {
         />
         {countActive(filters) > 0 && (
           <p className="mt-2 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.filtered ?? 0} موظفًا مطابقًا للفلتر — عدا «الموظفون» و«على رأس العمل» فهما إجمالي الملف الوظيفي.`,
-               `Every card and chart below is computed over the ${d?.totals?.filtered ?? 0} matching employees — except “Employees” and “Active”, which are the whole roster.`)}
+            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.filtered ?? 0} موظفًا مطابقًا للفلتر، عدا التراخيص فهي على مستوى الشركة.`,
+               `Every card and chart below is computed over the ${d?.totals?.filtered ?? 0} matching employees — except licences, which are company-wide.`)}
           </p>
         )}
       </div>
 
       {/* الأرقام الكبيرة */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
-        {/* التلاتة دول عدد الملف الوظيفي نفسه — ما بيتحركوش مع الفلتر، عشان
-            «الموظفون» يفضل معناه عدد الموظفين. الباقي محسوب على المعروض. */}
-        <Big label={t('الموظفون', 'Employees')} value={d.totals.employees} c="#f37121" />
+        {/* كل رقم هنا محسوب على ما يعرضه الفلتر. «الموظفون» يحمل تحته إجمالي
+            الملفّ الوظيفيّ ليُعرف من أيٍّ اقتُطع هذا العدد. */}
+        <Big label={t('الموظفون', 'Employees')} value={d.totals.employees} c="#f37121"
+          sub={countActive(filters) > 0 ? t(`من ${d.totals.roster}`, `of ${d.totals.roster}`) : undefined} />
         <Big label={t('على رأس العمل', 'Active')} value={d.totals.active} c="#16a34a"
           onClick={() => drill({ employment: 'active' })} />
         <Big label={t('ليس على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8"
@@ -149,22 +150,33 @@ export default function HrMasterPage() {
           onClick={() => drill({ freelancer: '1' })} />
       </div>
 
-      {/* الشغل اليومي — كان في الداشبورد القديمة، وبقى هنا مع الباقي */}
+      {/* الشغل اليوميّ — محسوبٌ على الموظفين المطابقين وحدهم */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <Big label={t('إجازات قيد المراجعة', 'Leaves pending')} value={d.work?.pendingLeaves ?? 0} c="#0ea5e9"
+          onClick={() => router.push('/system/hr/leaves')} />
+        <Big label={t('طلبات مفتوحة', 'Open requests')} value={d.work?.openRequests ?? 0} c="#8b5cf6"
+          onClick={() => router.push('/system/hr/requests')} />
+        <Big label={t('عهد بعهدة الموظفين', 'Assets held')} value={d.work?.assignedAssets ?? 0} c="#0f172a"
+          onClick={() => router.push('/system/hr/custody')} />
+      </div>
+
+      {/* التراخيص والاشتراكات على مستوى الشركة، لا على مستوى الموظفين — فلا
+          يحرّكها فلترُ جنسيةٍ أو فرع. مفصولةٌ بعنوانها حتى لا يُظنّ أنها لم
+          تسمع الفلتر. */}
       {ops?.summary && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
-          <Big label={t('إجازات قيد المراجعة', 'Leaves pending')} value={ops.summary.pendingLeaves} c="#0ea5e9"
-            onClick={() => router.push('/system/hr/leaves')} />
-          <Big label={t('طلبات مفتوحة', 'Open requests')} value={ops.summary.openRequests} c="#8b5cf6"
-            onClick={() => router.push('/system/hr/requests')} />
-          <Big label={t('عهد بعهدة الموظفين', 'Assets held')} value={ops.summary.assignedAssets} c="#0f172a"
-            onClick={() => router.push('/system/hr/custody')} />
-          <Big label={t('التراخيص والاشتراكات', 'Licences')} value={ops.summary.licensesTotal} c="#64748b"
-            onClick={() => router.push('/system/hr/licenses')} />
-          <Big label={t('تراخيص تنتهي خلال ٦٠ يوم', 'Licences due 60d')} value={ops.summary.licensesExpiringCount} c="#f59e0b"
-            onClick={() => router.push('/system/hr/licenses')} />
-          <Big label={t('تراخيص منتهية', 'Licences expired')} value={ops.summary.licensesExpiredCount} c="#dc2626"
-            onClick={() => router.push('/system/hr/licenses')} />
-        </div>
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-slate-800">
+            {t('على مستوى الشركة — لا يحرّكها الفلتر', 'Company-wide — not affected by the filter')}
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <Big label={t('التراخيص والاشتراكات', 'Licences')} value={ops.summary.licensesTotal} c="#64748b"
+              onClick={() => router.push('/system/hr/licenses')} />
+            <Big label={t('تراخيص تنتهي خلال ٦٠ يوم', 'Licences due 60d')} value={ops.summary.licensesExpiringCount} c="#f59e0b"
+              onClick={() => router.push('/system/hr/licenses')} />
+            <Big label={t('تراخيص منتهية', 'Licences expired')} value={ops.summary.licensesExpiredCount} c="#dc2626"
+              onClick={() => router.push('/system/hr/licenses')} />
+          </div>
+        </section>
       )}
 
       {/* التحليلات — شرائح مشتقّة، كل شريحة تفلتر الصفحة عند الضغط */}
@@ -240,14 +252,21 @@ export default function HrMasterPage() {
   );
 }
 
-function Big({ label, value, c, onClick }: { label: string; value: any; c: string; onClick?: () => void }) {
+function Big({ label, value, c, onClick, sub }: {
+  label: string; value: any; c: string; onClick?: () => void;
+  /** سطرٌ صغير تحت الرقم — يُستعمل لإجمالي الملفّ بجانب الرقم المفلتر. */
+  sub?: string;
+}) {
   const inner = (
     <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm h-full">
-      <p className="text-xl font-extrabold leading-none" style={{ color: c }}>{value}</p>
+      <div className="flex items-baseline gap-1.5">
+        <p className="text-xl font-extrabold leading-none" style={{ color: c }}>{value}</p>
+        {sub && <span className="text-[10px] text-slate-400 font-semibold tabular-nums">{sub}</span>}
+      </div>
       <p className="text-[10.5px] text-slate-500 mt-1.5 leading-tight">{label}</p>
     </div>
   );
-  return onClick ? <button onClick={onClick} className="text-start hover:opacity-90">{inner}</button> : <div>{inner}</div>;
+  return onClick ? <button onClick={onClick} className="text-start hover:opacity-90 w-full">{inner}</button> : <div>{inner}</div>;
 }
 
 // كارت مستند: حالات التاريخ فوق، وحالة الحقول تحت.

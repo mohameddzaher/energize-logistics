@@ -26,9 +26,11 @@ export interface AnalyticBlock {
   key: string; ar: string; en: string; kind: 'bar' | 'horizon'; field?: string; items: AnalyticItem[];
 }
 export interface HrOverview {
-  // employees/active/notActive = الملف الوظيفي كله (ما بيتأثروش بالفلتر)،
-  // وfiltered = اللي الفلتر الحالي بيعرضه واللي الأرقام التانية محسوبة عليه.
-  totals: { employees: number; active: number; notActive: number; filtered: number; required: number; expiringSoon: number; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number };
+  // employees/active/notActive = ما يعرضه الفلتر الآن، وroster = إجمالي الملفّ
+  // الوظيفيّ يُعرض بجانبه ليُعرف من أيٍّ اقتُطع.
+  totals: { employees: number; active: number; notActive: number; roster: number; filtered: number; required: number; expiringSoon: number; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number };
+  /** الشغل اليوميّ محسوبًا على الموظفين المطابقين وحدهم. */
+  work: { pendingLeaves: number; openRequests: number; assignedAssets: number };
   groups: GroupCard[];
   topRequired: (FieldCard & { groupAr: string; groupKey: string })[];
   analytics: AnalyticBlock[];

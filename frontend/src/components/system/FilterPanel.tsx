@@ -233,92 +233,136 @@ export default function FilterPanel({
             <p className="text-[12px] text-slate-400 py-4 text-center">{t('جارٍ التحميل…', 'Loading…')}</p>
           )}
 
-          {byGroup.map(([g, fs]) => (
-            <div key={g} className="mb-2.5">
-              <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1">{g}</p>
-              {/* أربعة أعمدة على الشاشات العريضة: الحقول صفٌّ أو صفّان لا عمودٌ
-                  طويل يبتلع الشاشة. */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 items-start">
-                {fs.map((f) => {
+          {/* ── عمودان: الحقول ثابتة، وقيمها تُبدَّل بجانبها ────────────────────
+              كان الحقل المفتوح يتمدّد داخل الشبكة فيدفع ما تحته ويقفز مكانُ كل
+              شيء مع كل ضغطة. هنا لا يتحرّك شيء: تنتقل بين الحقول فيتبدّل
+              المحتوى في مكانه وحده. */}
+          <div className="flex gap-3 min-h-[18rem]">
+            <div className="w-52 shrink-0 max-h-[52vh] overflow-auto pe-1 border-e border-slate-100">
+              {byGroup.map(([g, fs]) => (
+                <div key={g} className="mb-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-0.5">{g}</p>
+                  {fs.map((f) => {
+                    const sel = String(value[f.key] || '').split(',').filter(Boolean);
+                    const on = expanded === f.key;
+                    return (
+                      <button key={f.key} onClick={() => setExpanded(f.key)}
+                        className={`w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg text-start transition
+                          ${on ? 'bg-[#12325c] text-white' : sel.length ? 'bg-orange-50 text-slate-800' : 'text-slate-600 hover:bg-slate-100'}`}>
+                        <span className="text-[12px] font-semibold truncate">{ar ? f.ar : f.en}</span>
+                        {sel.length > 0
+                          ? <span className={`px-1.5 rounded-full text-[10px] font-bold shrink-0 ${on ? 'bg-white/25 text-white' : 'bg-[#f37121] text-white'}`}>{sel.length}</span>
+                          : <span className={`text-[10px] tabular-nums shrink-0 ${on ? 'text-white/60' : 'text-slate-400'}`}>{f.values.length}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+              {!!dateFields.length && (
+                <div className="mb-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-0.5">{t('المدد الزمنية', 'Date ranges')}</p>
+                  {dateFields.map((dd) => {
+                    const on = expanded === `date:${dd.key}`;
+                    const has = !!(value[`${dd.key}From`] || value[`${dd.key}To`]);
+                    return (
+                      <button key={dd.key} onClick={() => setExpanded(`date:${dd.key}`)}
+                        className={`w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg text-start transition
+                          ${on ? 'bg-[#12325c] text-white' : has ? 'bg-orange-50 text-slate-800' : 'text-slate-600 hover:bg-slate-100'}`}>
+                        <span className="text-[12px] font-semibold truncate">{ar ? dd.ar : dd.en}</span>
+                        {has && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${on ? 'bg-white' : 'bg-[#f37121]'}`} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0 max-h-[52vh] overflow-auto">
+              {(() => {
+                const f = fields.find((x) => x.key === expanded);
+                if (f) {
                   const sel = String(value[f.key] || '').split(',').filter(Boolean);
-                  const isOpen = expanded === f.key;
                   const q = (search[f.key] || '').trim();
                   const vals = q ? f.values.filter((v) => v.value.toLowerCase().includes(q.toLowerCase())) : f.values;
                   return (
-                    <div key={f.key}
-                      className={`rounded-lg border transition-colors ${isOpen ? 'col-span-2 sm:col-span-3 lg:col-span-4' : ''}
-                        ${sel.length ? 'border-[#f37121] bg-orange-50/40' : 'border-slate-200 hover:border-slate-400'}`}>
-                      <button onClick={() => setExpanded(isOpen ? null : f.key)}
-                        className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 text-start">
-                        <span className="text-[12px] font-semibold text-slate-700 truncate">{label(f)}</span>
-                        <span className="flex items-center gap-1 shrink-0">
-                          {sel.length > 0 && <span className="px-1.5 rounded-full bg-[#f37121] text-white text-[10px] font-bold">{sel.length}</span>}
-                          <span className="text-[10px] text-slate-400 tabular-nums">{f.values.length}</span>
-                          <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                        </span>
-                      </button>
-                      {isOpen && (
-                        <div className="px-2 pb-2">
-                          {f.values.length > 8 && (
-                            <div className="relative mb-1">
-                              <Search className="w-3 h-3 absolute top-2 start-2 text-slate-300" />
-                              <input autoFocus value={search[f.key] || ''}
-                                onChange={(e) => setSearch((s) => ({ ...s, [f.key]: e.target.value }))}
-                                placeholder={t('ابحث…', 'Search…')}
-                                className="w-full ps-6 pe-2 py-1 text-[11.5px] border border-slate-200 rounded-md focus:outline-none focus:border-slate-400" />
-                            </div>
-                          )}
-                          {/* القيم نفسها في أعمدة — قائمةٌ من مئة جنسية في عمود
-                              واحد تجعل اللوحة شريطًا لا ينتهي. */}
-                          <div className="max-h-52 overflow-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-2 gap-y-0.5">
-                            {vals.map((v) => {
-                              const on = sel.includes(v.value);
-                              return (
-                                <button key={v.value} onClick={() => set(f.key, toggleValue(value[f.key], v.value))}
-                                  className={`w-full flex items-center justify-between gap-2 px-1.5 py-1 rounded text-[11.5px] transition
-                                    ${on ? 'bg-[#12325c] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
-                                  <span className="flex items-center gap-1.5 truncate">
-                                    <span className={`w-3 h-3 rounded-[3px] border flex items-center justify-center shrink-0
-                                      ${on ? 'bg-white border-white' : 'border-slate-300'}`}>
-                                      {on && <Check className="w-2.5 h-2.5 text-[#12325c]" strokeWidth={4} />}
-                                    </span>
-                                    <span className="truncate">{v.value === '—' ? t('(بلا قيمة)', '(blank)') : v.value}</span>
-                                  </span>
-                                  <b className={`tabular-nums ${on ? 'text-white/80' : 'text-slate-400'}`}>{v.count}</b>
-                                </button>
-                              );
-                            })}
-                            {!vals.length && <p className="text-[11px] text-slate-400 px-1.5 py-1">{t('لا نتائج', 'No matches')}</p>}
+                    <>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <p className="text-[12.5px] font-bold text-slate-800 truncate">{ar ? f.ar : f.en}</p>
+                        {sel.length > 0 && (
+                          <button onClick={() => set(f.key, '')} className="text-[11px] text-slate-500 hover:text-red-600 shrink-0">
+                            {t('مسح', 'Clear')}
+                          </button>
+                        )}
+                        {f.values.length > 8 && (
+                          <div className="relative ms-auto w-40">
+                            <Search className="w-3 h-3 absolute top-2 start-2 text-slate-300" />
+                            <input value={search[f.key] || ''}
+                              onChange={(e) => setSearch((sv) => ({ ...sv, [f.key]: e.target.value }))}
+                              placeholder={t('ابحث…', 'Search…')}
+                              className="w-full ps-6 pe-2 py-1 text-[11.5px] border border-slate-200 rounded-md focus:outline-none focus:border-slate-400" />
                           </div>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-2 gap-y-0.5">
+                        {vals.map((v) => {
+                          const on = sel.includes(v.value);
+                          return (
+                            <button key={v.value} onClick={() => set(f.key, toggleValue(value[f.key], v.value))}
+                              className={`w-full flex items-center justify-between gap-2 px-1.5 py-1 rounded text-[11.5px] transition
+                                ${on ? 'bg-[#12325c] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                              <span className="flex items-center gap-1.5 truncate">
+                                <span className={`w-3 h-3 rounded-[3px] border flex items-center justify-center shrink-0
+                                  ${on ? 'bg-white border-white' : 'border-slate-300'}`}>
+                                  {on && <Check className="w-2.5 h-2.5 text-[#12325c]" strokeWidth={4} />}
+                                </span>
+                                <span className="truncate">{v.value === '—' ? t('(بلا قيمة)', '(blank)') : v.value}</span>
+                              </span>
+                              <b className={`tabular-nums ${on ? 'text-white/80' : 'text-slate-400'}`}>{v.count}</b>
+                            </button>
+                          );
+                        })}
+                        {!vals.length && <p className="text-[11px] text-slate-400 px-1.5 py-1">{t('لا نتائج', 'No matches')}</p>}
+                      </div>
+                    </>
                   );
-                })}
-              </div>
+                }
+                const dk = String(expanded || '').startsWith('date:') ? String(expanded).slice(5) : '';
+                const dd = dateFields.find((x) => x.key === dk);
+                if (dd) {
+                  return (
+                    <>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <p className="text-[12.5px] font-bold text-slate-800 truncate">{ar ? dd.ar : dd.en}</p>
+                        {(value[`${dd.key}From`] || value[`${dd.key}To`]) && (
+                          <button onClick={() => { set(`${dd.key}From`, ''); set(`${dd.key}To`, ''); }}
+                            className="text-[11px] text-slate-500 hover:text-red-600 shrink-0">{t('مسح', 'Clear')}</button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 max-w-sm">
+                        <label className="block">
+                          <span className="text-[11px] text-slate-500">{t('من', 'From')}</span>
+                          <input type="date" value={value[`${dd.key}From`] || ''}
+                            onChange={(e) => set(`${dd.key}From`, e.target.value)}
+                            className="w-full px-2 py-1 text-[11.5px] border border-slate-200 rounded-md" />
+                        </label>
+                        <label className="block">
+                          <span className="text-[11px] text-slate-500">{t('إلى', 'To')}</span>
+                          <input type="date" value={value[`${dd.key}To`] || ''}
+                            onChange={(e) => set(`${dd.key}To`, e.target.value)}
+                            className="w-full px-2 py-1 text-[11.5px] border border-slate-200 rounded-md" />
+                        </label>
+                      </div>
+                    </>
+                  );
+                }
+                return (
+                  <p className="text-[12px] text-slate-400 pt-8 text-center">
+                    {t('اختر حقلًا من القائمة لعرض قيمه', 'Pick a field from the list to see its values')}
+                  </p>
+                );
+              })()}
             </div>
-          ))}
-
-          {!!dateFields.length && (
-            <div>
-              <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wide mb-1">{t('المدد الزمنية', 'Date ranges')}</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                {dateFields.map((d) => (
-                  <div key={d.key} className={`rounded-lg border px-2.5 py-1.5
-                    ${value[`${d.key}From`] || value[`${d.key}To`] ? 'border-[#f37121] bg-orange-50/40' : 'border-slate-200'}`}>
-                    <p className="text-[11.5px] font-semibold text-slate-700 mb-1 truncate">{ar ? d.ar : d.en}</p>
-                    <div className="flex items-center gap-1">
-                      <input type="date" value={value[`${d.key}From`] || ''} onChange={(e) => set(`${d.key}From`, e.target.value)}
-                        className="flex-1 min-w-0 px-1.5 py-1 text-[11px] border border-slate-200 rounded-md" />
-                      <span className="text-[10px] text-slate-400">→</span>
-                      <input type="date" value={value[`${d.key}To`] || ''} onChange={(e) => set(`${d.key}To`, e.target.value)}
-                        className="flex-1 min-w-0 px-1.5 py-1 text-[11px] border border-slate-200 rounded-md" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </div>,
         document.body,
       )}

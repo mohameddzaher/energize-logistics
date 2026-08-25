@@ -809,22 +809,36 @@ export default function OperationsWorkflowPage() {
                       };
                       const spanCls = (field: keyof Workflow, color: string) =>
                         `${color} ${!isEditing && !SYSTEM_FIELDS.has(field as string) && !locked ? editableClass : ''}`;
-                      const textCell = (field: keyof Workflow, color = 'text-slate-700') => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={cellClick(field)}>
-                          {isEditing ? <input type="text" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={spanCls(field, color)}>{(wf as any)[field] || '-'}</span>}
-                        </td>
-                      );
+                      // حقول كشف التخريج المسحوبة من النظام الخارجي غير قابلة للتعديل
+                      const systemPulledFields = new Set(['fromLocation', 'toLocation', 'purchaseValue', 'sellingValue', 'branch', 'carOwner', 'carNumber', 'ownerType']);
+                      const textCell = (field: keyof Workflow, color = 'text-slate-700') => {
+                        const isSystemPulled = systemPulledFields.has(field as string) && wf.reportNumber;
+                        return (
+                          <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
+                            title={isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
+                            {isEditing && !isSystemPulled ? <input type="text" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber ? ' opacity-60' : ''}`}>{(wf as any)[field] || '-'}</span>}
+                          </td>
+                        );
+                      };
                       // Like textCell but translates the value for display (edits the raw value).
-                      const transCell = (field: keyof Workflow, tr: (v: string) => string, color = 'text-slate-700') => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={cellClick(field)}>
-                          {isEditing ? <input type="text" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={spanCls(field, color)}>{(wf as any)[field] ? tr((wf as any)[field]) : '-'}</span>}
-                        </td>
-                      );
-                      const numCell = (field: keyof Workflow, color = 'text-slate-700') => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={cellClick(field)}>
-                          {isEditing ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={spanCls(field, color)}>{formatMoney((wf as any)[field])}</span>}
-                        </td>
-                      );
+                      const transCell = (field: keyof Workflow, tr: (v: string) => string, color = 'text-slate-700') => {
+                        const isSystemPulled = systemPulledFields.has(field as string) && wf.reportNumber;
+                        return (
+                          <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
+                            title={isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
+                            {isEditing && !isSystemPulled ? <input type="text" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber ? ' opacity-60' : ''}`}>{(wf as any)[field] ? tr((wf as any)[field]) : '-'}</span>}
+                          </td>
+                        );
+                      };
+                      const numCell = (field: keyof Workflow, color = 'text-slate-700') => {
+                        const isSystemPulled = systemPulledFields.has(field as string) && wf.reportNumber;
+                        return (
+                          <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
+                            title={isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
+                            {isEditing && !isSystemPulled ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber ? ' opacity-60' : ''}`}>{formatMoney((wf as any)[field])}</span>}
+                          </td>
+                        );
+                      };
                       // ── تاريخ السداد لا يُكتب قبل استلام السند ────────────────
                       // السداد يعني أن المال وصل، ولا يصل قبل استلام سند التسليم.
                       // كتابته قبله تجعل التقارير المالية تعدّ مبلغًا لم يُقبَض —

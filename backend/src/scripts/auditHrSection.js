@@ -87,20 +87,32 @@ const PAGES = [
     const ov = (await req('GET', '/api/hr/master/overview', ck)).body;
     const fileTotal = src.employees.length;
     const fileActive = src.employees.filter((e) => e.employment?.is_active !== false).length;
+    // الملف مرجعُ الإجمالي: عدد الصفوف لا يتغيّر بعمل المستخدم.
     ok(`الموظفون = ${fileTotal} (الملف)`, ov?.totals?.employees === fileTotal, `رجع ${ov?.totals?.employees}`);
-    ok(`على رأس العمل = ${fileActive}`, ov?.totals?.active === fileActive, `رجع ${ov?.totals?.active}`);
-    ok('ليس على رأس العمل = الفرق', ov?.totals?.notActive === fileTotal - fileActive, `رجع ${ov?.totals?.notActive}`);
+
+    // أما «على رأس العمل» فيتغيّر كل يوم: مَن أنهى المستخدم خدمته على الشاشة لم
+    // يعد على رأس العمل مهما قال ملف الاستيراد. فالمقارنة هنا **بين الواجهات
+    // بعضها ببعض** لا بالملف، والانحراف عن الملف يُطبع ليُقرأ لا ليُرسِب.
+    const drift = fileActive - (ov?.totals?.active ?? 0);
+    if (drift) console.log(`  ℹ  ${drift} موظفًا تغيّرت حالتهم بعد الاستيراد — الملف ${fileActive} · النظام ${ov?.totals?.active}`);
+    ok('«ليس على رأس العمل» = الإجمالي ناقص العاملين',
+      ov?.totals?.notActive === ov?.totals?.employees - ov?.totals?.active,
+      `${ov?.totals?.notActive} = ${ov?.totals?.employees} − ${ov?.totals?.active}`);
 
     // «الموظفون» ما يتحركش لما الفلتر يتغيّر — ده اللي كان بيقول ٣٢١.
     const ovA = (await req('GET', '/api/hr/master/overview?status=active', ck)).body;
     ok('«الموظفون» ثابت مع فلتر «على رأس العمل فقط»', ovA?.totals?.employees === fileTotal, `رجع ${ovA?.totals?.employees}`);
-    ok('«المعروض» بيقول العدد المفلتر', ovA?.totals?.filtered === fileActive, `رجع ${ovA?.totals?.filtered}`);
+    ok('«المعروض» بيقول العدد المفلتر', ovA?.totals?.filtered === ov?.totals?.active, `رجع ${ovA?.totals?.filtered}`);
 
     // عدد «مطلوب» = عدد السنتينلات في الملف بالظبط
     let fileRequired = 0;
     const countReq = (o) => { for (const [k, v] of Object.entries(o || {})) { if (v && typeof v === 'object') countReq(v); else if (k.endsWith('_status') || k === 'status_sentinel') { if (v === 'required') fileRequired++; } } };
     src.employees.forEach(countReq);
-    ok(`بيانات مطلوبة = ${fileRequired} (الملف)`, ov?.totals?.required === fileRequired, `رجع ${ov?.totals?.required}`);
+    // «مطلوب» ينقص كلما ملأ أحدهم خانة — فلا يجوز أن يساوي رقم الملف إلى الأبد.
+    // المطلوب ألا يزيد عنه (لا تُخلق قوائم عمل من العدم) وأن يبقى موجبًا.
+    ok(`بيانات مطلوبة ${ov?.totals?.required} ≤ ${fileRequired} (الملف)`,
+      ov?.totals?.required <= fileRequired && ov?.totals?.required >= 0,
+      `اكتُمل ${fileRequired - (ov?.totals?.required ?? 0)} خانة منذ الاستيراد`);
 
     // ═══ ٢) كل صفحة بترد ═════════════════════════════════════════════════════
     console.log('\n── كل صفحة في القسم ──');
@@ -207,10 +219,12 @@ const PAGES = [
     ok(`${archived.length} سجل أرشيفي — مفيش منهم في قايمة الموظفين`, leaked.length === 0,
       leaked.map((x) => x.arabicName || x.firstName).join(' | '));
     const dash = (await req('GET', '/api/hr/dashboard', ck)).body;
-    ok(`داشبورد: ${dash?.summary?.totalEmployees ?? '?'} موظف = ${fileTotal}`,
-      dash?.summary?.totalEmployees === fileTotal);
-    ok(`داشبورد: ${dash?.summary?.activeEmployees ?? '?'} على رأس العمل = ${fileActive}`,
-      dash?.summary?.activeEmployees === fileActive);
+    // الداشبورد واللوحة صفحتان في قسم واحد — رقمان مختلفان لعدد الموظفين على
+    // شاشتين متجاورتين يجعلان القارئ لا يصدّق أيًّا منهما.
+    ok(`داشبورد: ${dash?.summary?.totalEmployees ?? '?'} موظف = لوحة ${ov?.totals?.employees}`,
+      dash?.summary?.totalEmployees === ov?.totals?.employees);
+    ok(`داشبورد: ${dash?.summary?.activeEmployees ?? '?'} على رأس العمل = لوحة ${ov?.totals?.active}`,
+      dash?.summary?.activeEmployees === ov?.totals?.active);
 
     // ═══ ٨) الملء من الشاشة بيقلّل العدّاد ═══════════════════════════════════
     console.log('\n── الملء من الشاشة ──');

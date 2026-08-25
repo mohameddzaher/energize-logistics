@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../ui/filter_sheet.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import 'hr_employee_profile.dart';
@@ -27,6 +28,9 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   bool _loading = true;
   String? _error;
   String _status = '';
+  // الفلتر المتقدّم — نفس لغة لوحة الموارد البشرية في الموقع حرفيًّا، فالسؤال
+  // الذي تسأله من المتصفّح تسأله من الهاتف وتحصل على العدد نفسه.
+  Map<String, String> _filters = {};
   Timer? _debounce;
   final _qCtrl = TextEditingController();
 
@@ -44,6 +48,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
       final params = <String>[];
       if (_qCtrl.text.trim().isNotEmpty) params.add('q=${Uri.encodeComponent(_qCtrl.text.trim())}');
       if (_status.isNotEmpty) params.add('status=$_status');
+      _filters.forEach((k, v) { if (v.isNotEmpty) params.add('$k=${Uri.encodeComponent(v)}'); });
       final d = await Api.instance.get('/api/hr/employees${params.isEmpty ? '' : '?${params.join('&')}'}');
       if (!mounted) return;
       setState(() {
@@ -88,14 +93,41 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-          child: TextField(
-            controller: _qCtrl,
-            onChanged: _onSearch,
-            decoration: InputDecoration(
-              hintText: tr('ابحث بالاسم أو الإقامة أو رقم الموظف…', 'Search name, iqama, number…'),
-              prefixIcon: const Icon(Icons.search),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _qCtrl,
+                onChanged: _onSearch,
+                decoration: InputDecoration(
+                  hintText: tr('ابحث بالاسم أو الإقامة أو رقم الموظف…', 'Search name, iqama, number…'),
+                  prefixIcon: const Icon(Icons.search),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            Badge(
+              isLabelVisible: _filters.isNotEmpty,
+              label: Text('${_filters.length}'),
+              child: IconButton.filled(
+                style: IconButton.styleFrom(backgroundColor: _filters.isEmpty ? T.navy : T.orange),
+                icon: const Icon(Icons.tune),
+                tooltip: tr('التصفية', 'Filter'),
+                onPressed: () async {
+                  final r = await showFilterSheet(
+                    context: context,
+                    optionsUrl: '/api/hr/master/filters',
+                    value: _filters,
+                    extraLabels: {
+                      'employment': tr('حالة التوظيف', 'Employment'),
+                      'outsideKingdom': tr('خارج المملكة', 'Outside kingdom'),
+                      'freelancer': tr('عمل حر', 'Freelancer'),
+                    },
+                  );
+                  if (r != null && mounted) { setState(() { _filters = r; _loading = true; }); _load(); }
+                },
+              ),
+            ),
+          ]),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),

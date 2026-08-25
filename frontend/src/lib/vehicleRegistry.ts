@@ -111,6 +111,8 @@ export interface VehicleOverview {
     count: number; filter: Record<string, string>;
   }[];
   claims: { total: number; open: number; estimatedSar: number; expectedRecoverySar: number; ourFault: number; byInsurer: { value: string; count: number }[] };
+  /** شرائح مشتقّة (آفاق الانتهاء، أعمار المركبات) — كلٌّ ومعها فلترها. */
+  analytics: { key: string; ar: string; en: string; kind: 'bar' | 'horizon'; items: { label: string; labelEn: string; count: number; filter: Record<string, string> }[] }[];
   corporate: { _id: string; scopeAr: string; companyAr: string; expiryDate: string; premiumSar: number; policyNumbers: string[]; state: string; days: number | null }[];
   alerts: Record<string, any>;
 }
@@ -225,3 +227,8 @@ export type RegisterGroup = {
 export const getRegisters = () =>
   api.get<{ registers: Record<string, RegisterGroup>; totals: Record<string, number> }>(
     '/api/vehicle-registry/registers');
+
+/** الحقول القابلة للفلترة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر. */
+export const getVehicleFilters = (q: Record<string, string> = {}) =>
+  api.get<{ filters: { key: string; ar: string; en: string; groupAr: string; groupEn: string; values: { value: string; count: number }[] }[] }>(
+    `/api/vehicle-registry/filters${qs(q) ? `?${qs(q)}` : ''}`);

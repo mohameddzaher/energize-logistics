@@ -22,6 +22,8 @@ import {
   fmtDate, daysText, type RecordRow, type FieldDef,
 } from '@/lib/hrMaster';
 import { canEditSection } from '@/lib/sections';
+import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
+import { HR_DATE_FIELDS } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
 import ContractsTabs from '@/components/hr/ContractsTabs';
 
@@ -51,6 +53,13 @@ function GroupInner() {
   const [includeExpired, setIncludeExpired] = useState(true);
   const [sort, setSort] = useState('');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
+  // الفلتر القادم من النظرة الشاملة يظل مرئيًّا وقابلًا للتعديل هنا. لو بقي
+  // خفيًّا لرأى المستخدم جدولًا أقصر مما يتوقّع ولا يعرف السبب — وهذا أسوأ من
+  // ألا يكون هناك فلتر أصلًا.
+  const CTRL = ['field', 'status', 'state', 'withinDays', 'sort', 'dir', 'includeExpired', 'q'];
+  // ملاحظة: `employment` ليست من CTRL — فهي فلتر يظهر في اللوحة كبقيّة الفلاتر.
+  const [filters, setFilters] = useState<FilterValues>(() =>
+    Object.fromEntries([...(sp?.entries() || [])].filter(([k]) => !CTRL.includes(k))));
   const [d, setD] = useState<Awaited<ReturnType<typeof getHrRecords>> | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -59,13 +68,12 @@ function GroupInner() {
       setD(await getHrRecords(group, {
         q: q.trim(), field, status, state, withinDays: within, sort, dir,
         includeExpired: includeExpired ? '1' : '0',
-        // فلاتر القيم الجاية من كروت النظرة الشاملة (القسم، الجنسية…)
-        ...Object.fromEntries([...(sp?.entries() || [])].filter(([k]) =>
-          !['field', 'status', 'state', 'withinDays'].includes(k))),
+        // فلاتر القيم القادمة من بطاقات النظرة الشاملة (القسم، الجنسية، المدد…)
+        ...filters,
       }));
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setLoading(false);
-  }, [group, q, field, status, state, within, includeExpired, sort, dir, sp, notify]);
+  }, [group, q, field, status, state, within, includeExpired, sort, dir, JSON.stringify(filters), notify]);
 
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
@@ -107,6 +115,25 @@ function GroupInner() {
         <ExportMenu fileName={`hr-${group}`} lang={lang as 'ar' | 'en'}
           options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: ar ? g.ar : g.en, rows, columns: cols }] }]} />
       </PageHeader>
+
+      {/* الفلتر — يشمل ما جاء محمولًا من النظرة الشاملة، ظاهرًا وقابلًا للرفع */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+        <FilterPanel
+          optionsUrl="/api/hr/master/filters"
+          value={filters}
+          onChange={setFilters}
+          dateFields={HR_DATE_FIELDS}
+          extraLabels={{
+            employment: { ar: 'حالة التوظيف', en: 'Employment', values: {
+              active: { ar: 'على رأس العمل', en: 'Active' },
+              inactive: { ar: 'ليس على رأس العمل', en: 'Not active' } } },
+            outsideKingdom: { ar: 'خارج المملكة', en: 'Outside kingdom', values: { 1: { ar: 'خارج المملكة', en: 'Outside kingdom' } } },
+            freelancer: { ar: 'عمل حر', en: 'Freelancer', values: { 1: { ar: 'عمل حر', en: 'Freelancer' } } },
+          }}
+          resultCount={rows.length}
+          resultLabel={t('الصفوف المعروضة', 'Rows shown')}
+        />
+      </div>
 
       {/* كروت الحالة لكل حقل — نفس أرقام النظرة الشاملة، بس على المعروض */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">

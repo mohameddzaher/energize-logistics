@@ -12,11 +12,12 @@ import { useDialog } from '@/components/system/DialogProvider';
 import MasterNav from '@/components/hr/MasterNav';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
-  Users, CalendarClock, ChevronLeft, TriangleAlert, ClipboardList, Search,
+  Users, CalendarClock, ChevronLeft, TriangleAlert, ClipboardList, Search, BarChart3,
 } from 'lucide-react';
+import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
 import {
-  getHrOverview, STATUS_META, STATE_META, statusLabel, stateLabel,
-  type HrOverview, type GroupCard, type FieldCard,
+  getHrOverview, STATUS_META, STATE_META, statusLabel, stateLabel, HR_DATE_FIELDS,
+  type HrOverview, type GroupCard, type FieldCard, type AnalyticBlock,
 } from '@/lib/hrMaster';
 import api from '@/lib/api';
 
@@ -32,27 +33,37 @@ export default function HrMasterPage() {
   // القديمة — الصفحة دي بقت المكان الوحيد، فما ينفعش نسيب حاجة وراها.
   const [ops, setOps] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [onlyActive, setOnlyActive] = useState(false);
+  // الفلتر هو مصدر كل رقم في هذه الصفحة. البطاقات والتحليلات كلها تُعاد قراءتها
+  // منه، فلا يبقى في الشاشة رقمٌ محسوبٌ على مجموعة غير التي يراها المستخدم.
+  const [filters, setFilters] = useState<FilterValues>({});
+  const onlyActive = filters.employment === 'active';
 
   const load = useCallback(async () => {
     try {
       const [o, op] = await Promise.all([
-        getHrOverview(onlyActive ? { status: 'active' } : {}),
+        getHrOverview(filters),
         api.get<any>('/api/hr/dashboard').catch(() => null),
       ]);
       setD(o);
       if (op) setOps(op);
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setLoading(false);
-  }, [onlyActive, notify]);
+  }, [JSON.stringify(filters), notify]);
   useEffect(() => { load(); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
 
-  /** يفتح صفحة المجموعة مفلترة على الحاجة اللي المستخدم دوس عليها بالظبط. */
+  /**
+   * يفتح صفحة المجموعة على الصفوف التي وراء الرقم المضغوط بالضبط.
+   *
+   * الفلتر النشط يُحمل معه. لولا ذلك لفتح «١٢ مطلوبًا» وأنت تنظر إلى جدة على
+   * الاثني عشر في الشركة كلها — رقمٌ ضغطتَه فأعطاك غيره.
+   */
   const open = (group: string, q: Record<string, string> = {}) => {
-    const p = new URLSearchParams(q).toString();
+    const p = new URLSearchParams({ ...filters, ...q } as Record<string, string>).toString();
     router.push(`/system/hr/master/${group}${p ? `?${p}` : ''}`);
   };
+  /** بطاقات التحليل تفلتر الصفحة نفسها بدل الانتقال — تُضاف فوق الفلتر القائم. */
+  const drill = (q: Record<string, string>) => setFilters((f) => ({ ...f, ...q }));
 
   if (loading) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t('تعذّر التحميل', 'Could not load')}</div>;
@@ -67,15 +78,6 @@ export default function HrMasterPage() {
                     'A card per column — click any number to open the people behind it and fill their data')}
       >
         <div className="flex items-center gap-2">
-          <label className="inline-flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer">
-            <input type="checkbox" checked={onlyActive} onChange={(e) => setOnlyActive(e.target.checked)} className="accent-[#f37121]" />
-            {t('على رأس العمل فقط', 'Active only')}
-          </label>
-          {onlyActive && d?.totals?.filtered != null && (
-            <span className="text-[11.5px] text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
-              {t(`الأرقام محسوبة على ${d.totals.filtered} موظف`, `Counts over ${d.totals.filtered} employees`)}
-            </span>
-          )}
           <button onClick={() => router.push('/system/hr/master/expiring')}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm">
             <CalendarClock className="w-4 h-4" /> {t('الانتهاءات', 'Expiries')}
@@ -83,21 +85,69 @@ export default function HrMasterPage() {
         </div>
       </PageHeader>
 
+      {/* شريط الفلترة — كل ما تحته محسوب عليه */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+        <FilterPanel
+          optionsUrl="/api/hr/master/filters"
+          value={filters}
+          onChange={setFilters}
+          dateFields={HR_DATE_FIELDS}
+          resultCount={d?.totals?.filtered}
+          resultLabel={t('الموظفون المطابقون', 'Matching employees')}
+          extraLabels={{
+            employment: { ar: 'حالة التوظيف', en: 'Employment', values: {
+              active: { ar: 'على رأس العمل', en: 'Active' },
+              inactive: { ar: 'ليس على رأس العمل', en: 'Not active' } } },
+            outsideKingdom: { ar: 'خارج المملكة', en: 'Outside kingdom', values: { 1: { ar: 'خارج المملكة', en: 'Outside kingdom' } } },
+            freelancer: { ar: 'عمل حر', en: 'Freelancer', values: { 1: { ar: 'عمل حر', en: 'Freelancer' } } },
+          }}
+          extra={(
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {([['', 'الكل', 'All'], ['active', 'على رأس العمل', 'Active'], ['inactive', 'ليس على رأس العمل', 'Not active']] as const).map(([v, a, e]) => (
+                <button key={v || 'all'}
+                  onClick={() => setFilters((f) => { const n = { ...f }; if (v) n.employment = v; else delete n.employment; return n; })}
+                  className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold border transition
+                    ${(filters.employment || '') === v ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
+                  {t(a, e)}
+                </button>
+              ))}
+              {(['outsideKingdom', 'freelancer'] as const).map((k) => (
+                <button key={k}
+                  onClick={() => setFilters((f) => { const n = { ...f }; if (n[k] === '1') delete n[k]; else n[k] = '1'; return n; })}
+                  className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold border transition
+                    ${filters[k] === '1' ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
+                  {k === 'outsideKingdom' ? t('خارج المملكة', 'Outside kingdom') : t('عمل حر', 'Freelancer')}
+                </button>
+              ))}
+            </div>
+          )}
+        />
+        {countActive(filters) > 0 && (
+          <p className="mt-2 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.filtered ?? 0} موظفًا مطابقًا للتصفية — عدا «الموظفون» و«على رأس العمل» فهما إجمالي الملف الوظيفي.`,
+               `Every card and chart below is computed over the ${d?.totals?.filtered ?? 0} matching employees — except “Employees” and “Active”, which are the whole roster.`)}
+          </p>
+        )}
+      </div>
+
       {/* الأرقام الكبيرة */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9 gap-2.5">
         {/* التلاتة دول عدد الملف الوظيفي نفسه — ما بيتحركوش مع الفلتر، عشان
             «الموظفون» يفضل معناه عدد الموظفين. الباقي محسوب على المعروض. */}
         <Big label={t('الموظفون', 'Employees')} value={d.totals.employees} c="#f37121" />
         <Big label={t('على رأس العمل', 'Active')} value={d.totals.active} c="#16a34a"
-          onClick={() => setOnlyActive(true)} />
-        <Big label={t('ليس على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8" />
+          onClick={() => drill({ employment: 'active' })} />
+        <Big label={t('ليس على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8"
+          onClick={() => drill({ employment: 'inactive' })} />
         <Big label={t('بيانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626" />
         <Big label={t('ينتهي قريبًا', 'Expiring soon')} value={d.totals.expiringSoon} c="#ea580c"
           onClick={() => router.push('/system/hr/master/expiring')} />
         <Big label={t('مسجّل بالتأمينات', 'GOSI registered')} value={d.totals.gosiRegistered} c="#0ea5e9" />
         <Big label={t('راتب نقدي', 'Cash payroll')} value={d.totals.cashPayroll} c="#8b5cf6" />
-        <Big label={t('خارج المملكة', 'Outside kingdom')} value={d.totals.outsideKingdom} c="#64748b" />
-        <Big label={t('عمل حر', 'Freelancers')} value={d.totals.freelancers} c="#0f172a" />
+        <Big label={t('خارج المملكة', 'Outside kingdom')} value={d.totals.outsideKingdom} c="#64748b"
+          onClick={() => drill({ outsideKingdom: '1' })} />
+        <Big label={t('عمل حر', 'Freelancers')} value={d.totals.freelancers} c="#0f172a"
+          onClick={() => drill({ freelancer: '1' })} />
       </div>
 
       {/* الشغل اليومي — كان في الداشبورد القديمة، وبقى هنا مع الباقي */}
@@ -138,6 +188,37 @@ export default function HrMasterPage() {
           </div>
         </section>
       )}
+
+      {/* التحليلات — شرائح مشتقّة، كل شريحة تفلتر الصفحة عند الضغط */}
+      {!!d.analytics?.length && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-[#12325c]" />
+            <h2 className="text-sm font-bold text-slate-800">{t('التحليلات', 'Analytics')}</h2>
+            <span className="text-[11px] text-slate-400">
+              {t('اضغط أي شريحة لتُضاف إلى التصفية', 'Click any band to add it to the filter')}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {d.analytics.map((a) => (
+              <AnalyticCard key={a.key} a={a} ar={ar} total={d.totals.filtered} onPick={drill} active={filters} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* توزيع كل عمود له قيم متكرّرة — بطاقة لكل عمود */}
+      <section className="space-y-2">
+        <h2 className="text-sm font-bold text-slate-800">{t('التوزيعات', 'Distributions')}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {d.groups.flatMap((g) => g.fields
+            .filter((f) => (f.values?.length || 0) > 1)
+            .map((f) => (
+              <DistributionCard key={`${g.key}.${f.key}`} f={f} groupAr={ar ? g.ar : g.en} ar={ar} t={t}
+                total={d.totals.filtered} onPick={drill} active={filters} />
+            )))}
+        </div>
+      </section>
 
       {/* المستندات ذات التاريخ */}
       <section className="space-y-2">
@@ -271,6 +352,120 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+// ── بطاقة تحليل: شرائح أفقية بعرض متناسب مع العدد ─────────────────────────────
+//
+// الشريحة تحمل معها الفلتر الذي يُنتجها؛ الضغط عليها يضيفه إلى التصفية بدل أن
+// تُعيد الواجهة تخمين الشرط — فلا يفترق الرقم المعروض عن الصفوف التي يفتحها.
+function AnalyticCard({ a, ar, total, onPick, active }:
+{ a: AnalyticBlock; ar: boolean; total: number; onPick: (q: Record<string, string>) => void; active: Record<string, string> }) {
+  const max = Math.max(1, ...a.items.map((i) => i.count));
+  const isOn = (f: Record<string, string>) => Object.entries(f).every(([k, v]) => active[k] === v);
+  const colors = a.kind === 'horizon'
+    ? ['#dc2626', '#ea580c', '#f59e0b', '#0ea5e9', '#16a34a', '#94a3b8']
+    : ['#12325c', '#1b4278', '#2a5490', '#3d6aa8', '#5480bf', '#7b9dd1'];
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-2.5">
+        <h3 className="text-[13px] font-bold text-slate-900">{ar ? a.ar : a.en}</h3>
+        <span className="text-[10.5px] text-slate-400 tabular-nums">{total}</span>
+      </div>
+      <div className="space-y-1.5">
+        {a.items.map((it, i) => {
+          const on = isOn(it.filter);
+          const pct = Math.round((it.count / max) * 100);
+          return (
+            <button key={it.label} onClick={() => onPick(it.filter)} disabled={!it.count}
+              className={`w-full group text-start ${it.count ? '' : 'opacity-40 cursor-default'}`}>
+              <div className="flex items-center justify-between gap-2 mb-0.5">
+                <span className={`text-[11.5px] truncate ${on ? 'font-bold text-[#12325c]' : 'text-slate-600'}`}>
+                  {ar ? it.label : it.labelEn}
+                </span>
+                <span className="text-[11.5px] font-bold tabular-nums text-slate-800 shrink-0">
+                  {it.count}
+                  {total > 0 && <span className="text-[10px] text-slate-400 font-normal ms-1">{Math.round((it.count / total) * 100)}%</span>}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full transition-all group-hover:opacity-80"
+                  style={{ width: `${pct}%`, background: colors[i % colors.length] }} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── بطاقة توزيع عمود: أعلى القيم، وبقيّتها خلف زر ────────────────────────────
+//
+// فوق البطاقة عدّادا «مطلوب» و«غير مطلوب» — لأنهما ليسا وجهين لعملة: «مطلوب»
+// عملٌ ينتظر، و«غير مطلوب» لا شيء فيه أصلًا، وخلطهما يصنع قائمة عملٍ كاذبة.
+function DistributionCard({ f, groupAr, ar, t, total, onPick, active }:
+{ f: FieldCard; groupAr: string; ar: boolean; t: any; total: number;
+  onPick: (q: Record<string, string>) => void; active: Record<string, string> }) {
+  const [all, setAll] = useState(false);
+  const vals = f.values || [];
+  const shown = all ? vals : vals.slice(0, 6);
+  const max = Math.max(1, ...vals.map((v) => v.count));
+  const sel = String(active[f.key] || '').split(',').filter(Boolean);
+  const pick = (v: string) => {
+    const list = [...sel];
+    const i = list.indexOf(v);
+    if (i >= 0) list.splice(i, 1); else list.push(v);
+    onPick({ [f.key]: list.join(',') });
+  };
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-bold text-slate-900 truncate">{ar ? f.ar : f.en}</h3>
+          <p className="text-[10px] text-slate-400">{groupAr}</p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {f.counts.required > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold">
+              {t('مطلوب', 'Required')} {f.counts.required}
+            </span>
+          )}
+          {f.counts.not_required > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold">
+              {t('غير مطلوب', 'N/R')} {f.counts.not_required}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {shown.map((v) => {
+          const on = sel.includes(v.value);
+          return (
+            <button key={v.value} onClick={() => pick(v.value)} className="w-full group text-start">
+              <div className="flex items-center justify-between gap-2 mb-0.5">
+                <span className={`text-[11.5px] truncate ${on ? 'font-bold text-[#f37121]' : 'text-slate-600'}`}>
+                  {v.value === '—' ? t('(بلا قيمة)', '(blank)') : v.value}
+                </span>
+                <span className="text-[11.5px] font-bold tabular-nums text-slate-800 shrink-0">
+                  {v.count}
+                  {total > 0 && <span className="text-[10px] text-slate-400 font-normal ms-1">{Math.round((v.count / total) * 100)}%</span>}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className={`h-full rounded-full transition-all group-hover:opacity-80 ${on ? 'bg-[#f37121]' : 'bg-[#12325c]'}`}
+                  style={{ width: `${Math.round((v.count / max) * 100)}%` }} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {vals.length > 6 && (
+        <button onClick={() => setAll((x) => !x)} className="mt-2 text-[10.5px] text-slate-400 hover:text-slate-700">
+          {all ? t('عرض أقل', 'Show less') : t(`عرض الكل (${vals.length})`, `Show all (${vals.length})`)}
+        </button>
       )}
     </div>
   );

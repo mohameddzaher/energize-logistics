@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../ui/filter_sheet.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -68,6 +69,15 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // الفلتر الحيّ للشاشة — يبدأ بما جاء من بطاقة اللوحة، ثم يعدّله المستخدم من
+  // اللوحة نفسها. مصدر واحد للفلترة بدل ثلاثة حقول منفصلة، فما تراه الشرائح هو
+  // ما يُرسل إلى الخادم حرفيًّا.
+  late Map<String, String> _filters = {
+    ...?widget.filters,
+    if (widget.sector != null) 'sector': widget.sector!,
+    if (widget.expiringDoc != null) ...{'expiringDoc': widget.expiringDoc!, 'expiringWithin': '60'},
+    if (widget.expiredDoc != null) 'expiredDoc': widget.expiredDoc!,
+  };
   late final void Function() _onLive;
 
   @override
@@ -85,10 +95,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
     try {
       final p = <String>['limit=2000'];
       if (_q.trim().isNotEmpty) p.add('q=${Uri.encodeComponent(_q.trim())}');
-      if (widget.sector != null) p.add('sector=${Uri.encodeComponent(widget.sector!)}');
-      if (widget.expiringDoc != null) { p.add('expiringDoc=${widget.expiringDoc}'); p.add('expiringWithin=60'); }
-      if (widget.expiredDoc != null) p.add('expiredDoc=${widget.expiredDoc}');
-      widget.filters?.forEach((k, v) => p.add('$k=${Uri.encodeComponent(v)}'));
+      _filters.forEach((k, v) { if (v.isNotEmpty) p.add('$k=${Uri.encodeComponent(v)}'); });
       final d = await Api.instance.get('/api/vehicle-registry?${p.join('&')}');
       if (!mounted) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['vehicles'] ?? []); _total = (d['total'] ?? 0) as int; _loading = false; _error = null; });
@@ -108,10 +115,49 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-                    child: TextField(onChanged: (v) => setState(() => _q = v), decoration: InputDecoration(hintText: tr('لوحة / هيكل / مالك…', 'plate / chassis / owner…'), prefixIcon: const Icon(Icons.search))),
+                    child: Row(children: [
+                      Expanded(
+                        child: TextField(onChanged: (v) => setState(() => _q = v), decoration: InputDecoration(hintText: tr('لوحة / هيكل / مالك…', 'plate / chassis / owner…'), prefixIcon: const Icon(Icons.search))),
+                      ),
+                      const SizedBox(width: 8),
+                      // نفس لوحة الموقع: أي عدد من القيم في أي عدد من الحقول،
+                      // وأعدادها محسوبة بعد بقيّة الفلاتر.
+                      Badge(
+                        isLabelVisible: _filters.isNotEmpty,
+                        label: Text('${_filters.length}'),
+                        child: IconButton.filled(
+                          style: IconButton.styleFrom(backgroundColor: _filters.isEmpty ? T.navy : T.orange),
+                          icon: const Icon(Icons.tune),
+                          tooltip: tr('التصفية', 'Filter'),
+                          onPressed: () async {
+                            final r = await showFilterSheet(
+                              context: context,
+                              optionsUrl: '/api/vehicle-registry/filters',
+                              value: _filters,
+                              extraLabels: {
+                                'missing': tr('ينقصها بيانات', 'Missing data'),
+                                'hasGps': tr('التتبّع', 'GPS'),
+                                'logistiGaps': tr('نواقص لوجستي', 'Logisti gaps'),
+                                'missingDoc': tr('بدون مستند', 'Missing document'),
+                                'missingDocDate': tr('بلا تاريخ انتهاء', 'No expiry date'),
+                                'expiringDoc': tr('قارب انتهاؤه', 'Expiring'),
+                                'expiringWithin': tr('خلال (يوم)', 'Within (days)'),
+                                'expiredDoc': tr('منتهٍ', 'Expired'),
+                                'expiryDoc': tr('المستند', 'Document'),
+                                'expiryFrom': tr('الانتهاء من', 'Expiry from'),
+                                'expiryTo': tr('الانتهاء إلى', 'Expiry to'),
+                                'yearFrom': tr('سنة الصنع من', 'Year from'),
+                                'yearTo': tr('سنة الصنع إلى', 'Year to'),
+                              },
+                            );
+                            if (r != null && mounted) { setState(() { _filters = r; _loading = true; }); _load(); }
+                          },
+                        ),
+                      ),
+                    ]),
                   ),
-                  if (widget.filterLabel != null || widget.sector != null || widget.expiringDoc != null || widget.expiredDoc != null)
-                    Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Align(alignment: AlignmentDirectional.centerStart, child: Chip2(widget.filterLabel ?? widget.sector ?? docLabel(widget.expiringDoc ?? widget.expiredDoc ?? ''), T.navy))),
+                  if (widget.filterLabel != null)
+                    Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Align(alignment: AlignmentDirectional.centerStart, child: Chip2(widget.filterLabel!, T.navy))),
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,

@@ -89,7 +89,12 @@ exports.listEmployees = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     const { q, status } = req.query;
-    const filter = { isHrRecord: { $ne: false } };
+    // الفلاتر المتقدّمة (جنسية، قسم، فرع، مدى تاريخ…) تُقرأ بلغة لوحة الموارد
+    // البشرية نفسها، فالفلتر الذي يعمل في الموقع يعمل هنا وفي التطبيق بلا فرق.
+    // النطاق يبقى كما كان (كل السجلات) ما لم يطلب الطالب غير ذلك، حتى لا تختفي
+    // من القائمة أسماءٌ كانت تظهر فيها.
+    const master = require('./hrMasterController');
+    const filter = master._buildFilter({ scope: 'all', ...req.query });
     if (status) filter.employmentStatus = status;
     if (q && q.trim()) {
       const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -105,17 +110,25 @@ exports.listEmployees = async (req, res) => {
     // same list concurrently, a 30s cache collapses that into one query set;
     // writes (create/update/terminate/renew) clear it so edits show immediately.
     const cache = require('../utils/ttlCache');
-    const cacheKey = `hr:employees:${status || ''}:${(q || '').trim()}`;
-    const employees = await cache.wrap(cacheKey, 30000, () => Employee.find(filter)
+    const cacheKey = `hr:employees:${JSON.stringify(req.query || {})}`;
+    const rows = await cache.wrap(cacheKey, 30000, () => Employee.find(filter)
+      // حقول التواريخ كلها مطلوبة في المشروع لأن شرط المدى يُطبَّق على القيمة
+      // بعد جلبها؛ الحقل غير المجلوب يبدو «بلا تاريخ» فيسقط من كل مدى بصمت.
       .select('firstName lastName arabicName employeeNumber jobTitle department employmentStatus '
-        + 'phone email iqamaNumber iqamaExpiry nationalId nationality photo hireDate workLocation '
-        + 'project branch directManager user createdAt')
+        + 'phone email iqamaNumber nationalId nationality photo workLocation branchName '
+        + 'project branch directManager user createdAt '
+        + 'hireDate dateOfBirth iqamaExpiry passportExpiry contractEndDate insuranceExpiry '
+        + 'healthCertExpiry driverCardExpiry licenseExpiry')
       .populate('user', 'firstName lastName email role')
       .populate('directManager', 'firstName lastName email')
       .populate('branch', 'name')
       .sort({ createdAt: -1 })
       .limit(2000)
       .lean());
+    // مدى التاريخ يُطبَّق بعد الجلب: حقول التواريخ هنا نصوص تحمل كلمات إدارية
+    // بجانب التاريخ، فمقارنتها في قاعدة البيانات تقارن نوعين مختلفين.
+    const pred = master._dateRangePred(req.query);
+    const employees = pred ? rows.filter(pred) : rows;
     res.json({ employees });
   } catch (error) {
     console.error('listEmployees error:', error);
@@ -1295,7 +1308,11 @@ const EXPIRY_DOCS = require('../config/hrFields').DOCUMENT_GROUPS.map((g) => ({
 
 // سجلات حسابات الدخول التلقائية مش موظفين — بتخرج من كل عدّاد.
 // من غير الشرط ده الداشبورد كانت بتقول ٤٣٧ موظف والماستر بيقول ٣٧٨.
-const HR_ONLY = { isHrRecord: { $ne: false } };
+// نطاق «عدد الموظفين» — الملف الوظيفي الحالي، وهو نفسه الذي تعدّ به لوحة
+// الموارد البشرية. كانت اللوحة تقول ٣٧٨ وهذه الصفحة ٣٨٠ في القسم نفسه، والرقمان
+// معًا على شاشة واحدة يجعلان القارئ لا يصدّق أيًّا منهما. مَن خرج قبل بناء
+// الملف سجلّه محفوظ تاريخًا ولا يُعدّ مع الموظفين.
+const HR_ONLY = { isHrRecord: { $ne: false }, inCurrentMaster: true };
 
 exports.getDashboard = async (req, res) => {
   try {

@@ -172,7 +172,15 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       // الأفق الثالث موجود — كان ٢٤ مستندًا يسقط من الشاشة تمامًا
       ok(`منها «على الرادار» ${alerts?.byStatus?.upcoming}`, (alerts?.byStatus?.upcoming || 0) > 0);
       const fb = {}; fileAlerts.forEach((x) => { fb[x.bucket] = (fb[x.bucket] || 0) + 1; });
-      ok(`المنتهية ${alerts?.byStatus?.expired} = ${fb.expired} (الملف)`, alerts?.byStatus?.expired === fb.expired);
+      // عدد المنتهية يتحرّك يوميًّا: تاريخٌ يمرّ فيصير منتهيًا، ومستخدمٌ يجدّد
+      // فيخرج منها. فالمقارنة بالملف تُطبع للقراءة، والمُختبَر هو اتّساق
+      // الاستجابة مع نفسها — العدّاد يساوي الصفوف التي يفتحها.
+      const expiredRows = (alerts?.items || []).filter((x) => x.status === 'expired').length;
+      if (alerts?.byStatus?.expired !== fb.expired) {
+        console.log(`  ℹ  المنتهية: الملف ${fb.expired} · النظام ${alerts?.byStatus?.expired} — تجديدات وتواريخ مرّت منذ الاستيراد`);
+      }
+      ok(`عدّاد المنتهية ${alerts?.byStatus?.expired} = صفوفه ${expiredRows}`,
+        alerts?.byStatus?.expired === expiredRows);
       ok(`وخلال ٩٠ يومًا ${alerts?.byStatus?.upcoming} = ${fb.expiring_90d}`, alerts?.byStatus?.upcoming === fb.expiring_90d);
 
       const regs = (await call('GET', '/api/vehicle-registry/registers')).body;

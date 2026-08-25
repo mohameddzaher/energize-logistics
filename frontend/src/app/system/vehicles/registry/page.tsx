@@ -1,7 +1,7 @@
 'use client';
 // قائمة سجل المركبات — فلاتر متعددة، بحث، حالة كل مركبة، وتعديل/إضافة/حذف.
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -9,9 +9,10 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { VReg, statusColor, statusLabel, docLabel, DOC_TYPES, fmtDate, money, daysText, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
+import { VReg, statusColor, statusLabel, DOC_TYPES, fmtDate, money, daysText, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
 import { canEditSection } from '@/lib/sections';
-import { Car, Plus, Edit, Trash2, BarChart3, BellRing, X, Save, RotateCcw } from 'lucide-react';
+import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
+import { Car, Plus, Edit, Trash2, BarChart3, BellRing, X, Save } from 'lucide-react';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
 
@@ -19,7 +20,6 @@ export default function VehicleRegistryList() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { user } = useAuth();
-  const router = useRouter();
   const sp = useSearchParams();
   const { notify, confirm } = useDialog();
   // A grant of «تعديل» on المركبات has to bring the actions with it — the API
@@ -32,19 +32,26 @@ export default function VehicleRegistryList() {
   const [rows, setRows] = useState<VReg[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState(sp.get('q') || '');
+  const [q, setQ] = useState(sp?.get('q') || '');
   const [editing, setEditing] = useState<VReg | null>(null);
   const [showForm, setShowForm] = useState(false);
+
+  // كل فلاتر العنوان تُمرَّر كما هي إلى الخادم.
+  //
+  // كانت تُمرَّر قائمةٌ مكتوبة بالاسم، فأي فلتر خارجها — المدينة، الإدارة،
+  // المفوَّض، مدى الانتهاء — يسقط في صمت: تضغط «١٠ منتهية» فيفتح الجدول ٣٣٥.
+  // الرقم الذي يفتح غير ما يقول أسوأ من ألا يكون قابلًا للضغط أصلًا.
+  const UI_ONLY = ['limit', 'page'];
+  const [filters, setFilters] = useState<FilterValues>(() =>
+    Object.fromEntries([...(sp?.entries() || [])].filter(([k]) => k !== 'q' && !UI_ONLY.includes(k))));
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (q.trim()) p.set('q', q.trim());
-    ['sector', 'registrationType', 'brand', 'owner', 'insuranceCompany', 'coverageType', 'fuelCardStatus', 'inspectionStatus', 'modelYear', 'expiringDoc', 'expiringWithin', 'expiredDoc', 'missingDoc', 'hasGps'].forEach((k) => {
-      const v = sp.get(k); if (v) p.set(k, v);
-    });
+    for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) p.set(k, String(v));
     p.set('limit', '2000');
     return p.toString();
-  }, [q, sp]);
+  }, [q, JSON.stringify(filters)]);
 
   const load = useCallback(async () => {
     try {
@@ -56,16 +63,26 @@ export default function VehicleRegistryList() {
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
-  const FILTER_LABELS: Record<string, [string, string]> = {
-    missingDoc: ['بدون', 'Missing'], expiringDoc: ['قرب انتهاء', 'Expiring'], expiredDoc: ['منتهي', 'Expired'],
-    fuelCardStatus: ['شريحة', 'Fuel card'], hasGps: ['GPS', 'GPS'],
-  };
-  const activeFilters = ['sector', 'registrationType', 'brand', 'owner', 'insuranceCompany', 'coverageType', 'fuelCardStatus', 'inspectionStatus', 'modelYear', 'expiringDoc', 'expiredDoc', 'missingDoc', 'hasGps']
-    .map((k) => ({ k, v: sp.get(k) })).filter((x) => x.v);
-  const filterChipText = (k: string, v: string) => {
-    if (k === 'expiringDoc' || k === 'expiredDoc' || k === 'missingDoc') return `${ar ? FILTER_LABELS[k][0] : FILTER_LABELS[k][1]}: ${docLabel(v, ar)}`;
-    if (k === 'hasGps') return ar ? 'مزوّدة بـ GPS' : 'With GPS';
-    return v;
+  // أسماء مقروءة للفلاتر التي لا تأتي من الخادم — بدونها تظهر الشريحة بمفتاحها
+  // البرمجي («missingDocDate: insurance») ولا يقرؤه أحد.
+  const EXTRA_LABELS: Record<string, { ar: string; en: string; values?: Record<string, { ar: string; en: string }> }> = {
+    missing: { ar: 'ينقصها بيانات', en: 'Missing data', values: { 1: { ar: 'ينقصها بيانات', en: 'Missing data' } } },
+    logistiGaps: { ar: 'نواقص لوجستي', en: 'Logisti gaps', values: {
+      1: { ar: 'ينقصها شرط لوجستي', en: 'Has Logisti gaps' }, 0: { ar: 'مستوفية شروط لوجستي', en: 'Logisti complete' } } },
+    hasGps: { ar: 'التتبّع', en: 'GPS', values: { 1: { ar: 'عليها جهاز تتبّع', en: 'With GPS' } } },
+    missingDoc: { ar: 'بدون مستند', en: 'Missing document' },
+    missingDocDate: { ar: 'بلا تاريخ انتهاء', en: 'No expiry date' },
+    expiringDoc: { ar: 'قارب انتهاؤه', en: 'Expiring' },
+    expiredDoc: { ar: 'منتهٍ', en: 'Expired' },
+    expiryDoc: { ar: 'المستند', en: 'Document' },
+    expiryFrom: { ar: 'الانتهاء من', en: 'Expiry from' },
+    expiryTo: { ar: 'الانتهاء إلى', en: 'Expiry to' },
+    yearFrom: { ar: 'سنة الصنع من', en: 'Year from' },
+    yearTo: { ar: 'سنة الصنع إلى', en: 'Year to' },
+    missingItem: { ar: 'البند الناقص', en: 'Missing item' },
+    missingReason: { ar: 'سبب النقص', en: 'Missing reason' },
+    logistiGap: { ar: 'شرط لوجستي', en: 'Logisti requirement' },
+    insurancePolicy: { ar: 'وثيقة التأمين', en: 'Policy' },
   };
 
   const del = async (v: VReg) => {
@@ -88,13 +105,14 @@ export default function VehicleRegistryList() {
 
       <div className="flex flex-wrap items-center gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? 'ابحث بلوحة/هيكل/مالك/بوليصة…' : 'plate / chassis / owner…'} className="px-3 py-2 rounded-lg border border-slate-200 text-sm w-72 max-w-full" />
-        {activeFilters.map((f) => (
-          <span key={f.k} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-[#12325c]/10 text-[#12325c] text-xs">
-            {filterChipText(f.k, f.v!)}
-            <button onClick={() => { const p = new URLSearchParams(sp.toString()); p.delete(f.k); router.push(`/system/vehicles/registry?${p.toString()}`); }}><X className="w-3 h-3" /></button>
-          </span>
-        ))}
-        {activeFilters.length > 0 && <button onClick={() => router.push('/system/vehicles/registry')} className="flex items-center gap-1 text-xs text-slate-500"><RotateCcw className="w-3 h-3" /> {ar ? 'مسح الفلاتر' : 'Clear'}</button>}
+        <FilterPanel
+          optionsUrl="/api/vehicle-registry/filters"
+          value={filters}
+          onChange={setFilters}
+          extraLabels={EXTRA_LABELS}
+          resultCount={total}
+          resultLabel={ar ? 'المركبات المطابقة' : 'Matching vehicles'}
+        />
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">

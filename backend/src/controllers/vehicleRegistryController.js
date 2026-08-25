@@ -42,6 +42,18 @@ const docStatus = (date, alert, statusCode = '') => {
   return { status: state === 'not_applicable' ? 'not_required' : state === 'missing' ? 'none' : state, days };
 };
 
+// «عليها جهاز تتبّع» — تعريف واحد لا ثلاثة.
+//
+// كان الفلتر والبطاقة يسألان عن `gps.deviceId`، وهو حقل لا يُملأ من أي استيراد:
+// الأجهزة تصل بالرقم التسلسلي والطراز والمزوّد. فكانت البطاقة تقول «صفر» و٢٤٠
+// مركبة عليها أجهزة بالفعل — رقمٌ خاطئ في وجه صاحب الأسطول لا خانةٌ فارغة.
+const HAS_GPS = { $or: [
+  { 'gps.serialImei': { $nin: [null, ''] } },
+  { 'gps.deviceModel': { $nin: [null, ''] } },
+  { 'gps.deviceId': { $nin: [null, ''] } },
+] };
+const hasGps = (v) => !!(v?.gps?.serialImei || v?.gps?.deviceModel || v?.gps?.deviceId);
+
 // يبني فلتر Mongo من الـ query (متعدد القيم + بحث + نطاق سنة).
 function buildFilter(q) {
   const f = { isActive: { $ne: false } };
@@ -62,7 +74,14 @@ function buildFilter(q) {
   };
   for (const [qk, field] of Object.entries(map)) {
     const vals = _multi(q[qk]);
-    if (vals.length) and.push({ [field]: { $in: vals } });
+    if (!vals.length) continue;
+    // «—» تعني الخانة الفارغة، وهي فئةٌ حقيقية يُسأل عنها: «أي المركبات بلا
+    // مالك مسجَّل؟» سؤالُ عملٍ لا نتيجةَ خطأ، فلا يجوز أن يسقط من الفلتر.
+    const wantsBlank = vals.includes('—');
+    const rest = vals.filter((x) => x !== '—');
+    if (wantsBlank && rest.length) and.push({ $or: [{ [field]: { $in: rest } }, { [field]: { $in: ['', null] } }, { [field]: { $exists: false } }] });
+    else if (wantsBlank) and.push({ $or: [{ [field]: { $in: ['', null] } }, { [field]: { $exists: false } }] });
+    else and.push({ [field]: { $in: rest } });
   }
   // نواقص منصّة لوجستي: «أرِني المركبات التي ينقصها شرط» و«أرِني من ينقصه هذا
   // الشرط بعينه» — سؤالان مختلفان، وكلاهما قائمة عمل.
@@ -81,8 +100,19 @@ function buildFilter(q) {
   else if (mReasons.length) and.push({ 'missingItems.reason': { $in: mReasons } });
   if (q.insurancePolicy) and.push({ insurancePolicy: q.insurancePolicy });
 
-  const years = _multi(q.modelYear).map(Number).filter((x) => !Number.isNaN(x));
-  if (years.length) and.push({ modelYear: { $in: years } });
+  // «بلا تاريخ مسجَّل» لمستند بعينه — ليس تاريخًا خارج المدى بل لا تاريخ له،
+  // فلا يلتقطه أي مدى وتلزمه فئةٌ خاصة به.
+  if (q.missingDocDate) {
+    const dt = DOC_TYPES.find((x) => x.key === q.missingDocDate);
+    if (dt) and.push({ $or: [{ [dt.path]: null }, { [dt.path]: '' }, { [dt.path]: { $exists: false } }] });
+  }
+
+  const yearVals = _multi(q.modelYear);
+  const wantsNoYear = yearVals.includes('—');
+  const years = yearVals.map(Number).filter((x) => !Number.isNaN(x) && x);
+  if (wantsNoYear && years.length) and.push({ $or: [{ modelYear: { $in: years } }, { modelYear: { $in: [null, 0, ''] } }, { modelYear: { $exists: false } }] });
+  else if (wantsNoYear) and.push({ $or: [{ modelYear: { $in: [null, 0, ''] } }, { modelYear: { $exists: false } }] });
+  else if (years.length) and.push({ modelYear: { $in: years } });
   if (q.yearFrom || q.yearTo) {
     const yr = {}; if (q.yearFrom) yr.$gte = Number(q.yearFrom); if (q.yearTo) yr.$lte = Number(q.yearTo);
     and.push({ modelYear: yr });
@@ -110,16 +140,22 @@ function buildFilter(q) {
   // «بدون مستند»: مركبات ينقصها هذا المستند (لا تاريخ/لا رقم).
   if (q.missingDoc) {
     const paths = { insurance: 'insurance.expiryDate', operatingCard: 'operatingCard.cardNumber', vehicleLicense: 'vehicleLicense.expiryDate', inspection: 'inspection.expiryDate', gps: 'gps.deviceId', fuelCard: 'fuelCard.cardNumber' };
-    const p = paths[q.missingDoc];
-    if (p) and.push({ $or: [{ [p]: null }, { [p]: '' }] });
+    if (q.missingDoc === 'gps') and.push({ $nor: [HAS_GPS] });
+    else {
+      const p = paths[q.missingDoc];
+      if (p) and.push({ $or: [{ [p]: null }, { [p]: '' }] });
+    }
   }
   // «لديه GPS»: مركبات عليها جهاز مركّب.
-  if (q.hasGps === '1') and.push({ 'gps.deviceId': { $nin: [null, ''] } });
+  if (q.hasGps === '1') and.push(HAS_GPS);
+  if (q.hasGps === '0') and.push({ $nor: [HAS_GPS] });
   if (q.expiryDoc && (q.expiryFrom || q.expiryTo)) {
     const dt = DOC_TYPES.find((x) => x.key === q.expiryDoc);
     if (dt) {
-      const rng = {}; if (q.expiryFrom) rng.$gte = new Date(q.expiryFrom);
-      if (q.expiryTo) rng.$lte = new Date(new Date(q.expiryTo).getTime() + DAY);
+      const rng = {}; if (q.expiryFrom) rng.$gte = new Date(`${q.expiryFrom}T00:00:00.000Z`);
+      // نهاية اليوم المطلوب، لا اليوم التالي — كانت الإضافة يومًا كاملًا تُدخل
+      // ما ينتهي في أول اليوم التالي في هذه الشريحة وفي التي تليها معًا.
+      if (q.expiryTo) rng.$lte = new Date(`${q.expiryTo}T23:59:59.999Z`);
       and.push({ [dt.path]: rng });
     }
   }
@@ -145,7 +181,7 @@ exports.list = async (req, res) => {
       + ' possessionStatusAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr authorizedPerson logistiGaps'
       + ' insurance.companyAr insurance.expiryDate insurance.premiumSar operatingCard.cardNumber operatingCard.expiryDate'
       + ' vehicleLicense.expiryDate inspection.statusAr inspection.expiryDate fuelCard.statusAr fuelCard.cardNumber'
-      + ' fuelCard.plateOnInvoiceAr gps.deviceId gps.deviceModel gps.deviceStatusAr gps.expiryDate accidentCount'
+      + ' fuelCard.plateOnInvoiceAr gps.deviceId gps.serialImei gps.deviceModel gps.deviceStatusAr gps.expiryDate accidentCount'
       + ' missingItems insurancePolicy';
     const [vehicles, total] = await Promise.all([
       VehicleMaster.find(filter).select(LIST_FIELDS).sort({ [sortBy]: sortDir }).skip((page - 1) * limit).limit(limit).lean(),
@@ -282,7 +318,7 @@ exports.dashboard = async (req, res) => {
     }
 
     // مؤشرات علوية
-    const withGps = vehicles.filter((v) => v.gps?.deviceId).length;
+    const withGps = vehicles.filter(hasGps).length;
     const missingInsurance = vehicles.filter((v) => !v.insurance?.expiryDate).length;
     const missingOperatingCard = vehicles.filter((v) => !v.operatingCard?.cardNumber).length;
     const activeFuelCards = vehicles.filter((v) => v.fuelCard?.statusCode === 'active').length;
@@ -409,6 +445,135 @@ exports.updateSettings = async (req, res) => {
  * يدوس عليه يوديه على الصفحة المفلترة عليه — عشان كده كل مجموعة بترجع معاها
  * `filter` جاهز تبعته للـ list.
  */
+// ── الفلاتر المتاحة وقيمها، والتحليلات المشتقّة ────────────────────────────────
+//
+// نفس مبدأ الموارد البشرية: الشاشة لا تكتب قائمة الفلاتر عندها. الخادم يقول
+// «هذه هي الحقول، وهذه قيمها الموجودة فعلًا، وهذا عدد كلٍّ منها **بعد بقيّة
+// الفلاتر**» — فما يظهر في القائمة هو ما ستحصل عليه إن ضغطته، ولا يظهر خيارٌ
+// عدده صفر.
+//
+// عند حساب قيم حقلٍ ما تُطبَّق كل الفلاتر إلا هو، وإلا لبقيت القيمة المختارة
+// وحدها ظاهرةً فلا يستطيع أحد أن يضيف قيمةً ثانية إلى اختياره.
+const FILTER_DEFS = [
+  { key: 'sector', field: 'sectorAr', ar: 'القطاع', en: 'Sector', groupAr: 'التصنيف', groupEn: 'Classification' },
+  { key: 'department', field: 'departmentAr', ar: 'الإدارة', en: 'Department', groupAr: 'التصنيف', groupEn: 'Classification' },
+  { key: 'city', field: 'cityAr', ar: 'المدينة', en: 'City', groupAr: 'التصنيف', groupEn: 'Classification' },
+  { key: 'registrationType', field: 'registrationTypeAr', ar: 'نوع التسجيل', en: 'Registration type', groupAr: 'التصنيف', groupEn: 'Classification' },
+  { key: 'possession', field: 'possessionStatusAr', ar: 'حالة الحيازة', en: 'Possession', groupAr: 'التصنيف', groupEn: 'Classification' },
+  { key: 'brand', field: 'brandAr', ar: 'الماركة', en: 'Brand', groupAr: 'المركبة', groupEn: 'Vehicle' },
+  { key: 'color', field: 'colorAr', ar: 'اللون', en: 'Colour', groupAr: 'المركبة', groupEn: 'Vehicle' },
+  { key: 'modelYear', field: 'modelYear', ar: 'سنة الصنع', en: 'Model year', groupAr: 'المركبة', groupEn: 'Vehicle' },
+  { key: 'owner', field: 'ownerNameAr', ar: 'المالك', en: 'Owner', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
+  { key: 'authorizedPerson', field: 'authorizedPerson.name', ar: 'المفوَّض', en: 'Authorised person', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
+  { key: 'insuranceCompany', field: 'insurance.companyAr', ar: 'شركة التأمين', en: 'Insurer', groupAr: 'التأمين', groupEn: 'Insurance' },
+  { key: 'coverageType', field: 'insurance.coverageTypeAr', ar: 'نوع التغطية', en: 'Coverage', groupAr: 'التأمين', groupEn: 'Insurance' },
+  { key: 'inspectionStatus', field: 'inspection.statusAr', ar: 'حالة الفحص', en: 'Inspection status', groupAr: 'المستندات', groupEn: 'Documents' },
+  { key: 'tamStatus', field: 'tamStatusAr', ar: 'حالة تم', en: 'TAM status', groupAr: 'المستندات', groupEn: 'Documents' },
+  { key: 'fuelCardStatus', field: 'fuelCard.statusAr', ar: 'حالة بطاقة الوقود', en: 'Fuel card status', groupAr: 'التشغيل', groupEn: 'Operations' },
+  { key: 'gpsProvider', field: 'gps.provider', ar: 'مزوّد التتبّع', en: 'GPS provider', groupAr: 'التشغيل', groupEn: 'Operations' },
+  { key: 'gpsDevice', field: 'gps.deviceModel', ar: 'طراز جهاز التتبّع', en: 'GPS device', groupAr: 'التشغيل', groupEn: 'Operations' },
+  { key: 'gpsDeviceStatus', field: 'gps.deviceStatusAr', ar: 'حالة جهاز التتبّع', en: 'GPS device status', groupAr: 'التشغيل', groupEn: 'Operations' },
+];
+
+const _get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+
+exports.filterOptions = async (req, res) => {
+  try {
+    const key = `vreg:filters:${JSON.stringify(req.query || {})}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return res.json(hit);
+
+    const filters = [];
+    for (const d of FILTER_DEFS) {
+      const others = { ...req.query };
+      delete others[d.key];
+      const rows = await VehicleMaster.find(buildFilter(others)).select(d.field).lean();
+      const counts = new Map();
+      for (const r of rows) {
+        const raw = _get(r, d.field);
+        const v = (raw === null || raw === undefined || raw === '') ? '—' : String(raw);
+        counts.set(v, (counts.get(v) || 0) + 1);
+      }
+      filters.push({
+        key: d.key, ar: d.ar, en: d.en, groupAr: d.groupAr, groupEn: d.groupEn,
+        values: [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count),
+      });
+    }
+    const body = { filters };
+    cache.set(key, body, 20000);
+    res.json(body);
+  } catch (e) {
+    console.error('vreg filterOptions', e);
+    res.status(500).json({ message: 'تعذّر تحميل الفلاتر' });
+  }
+};
+
+/**
+ * التحليلات المشتقّة — آفاق انتهاء كل مستند، وأعمار المركبات.
+ *
+ * مع كل شريحة **الفلتر الذي يعيد إنتاجها بالضبط**، فالضغط عليها يفتح صفوفها
+ * دون أن تخمّن الواجهة الشرط، ولا يفترق الرقم المعروض عن الصفوف التي يفتحها.
+ */
+const _iso = (d) => d.toISOString().slice(0, 10);
+const _shiftDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return _iso(d); };
+
+const buildVehicleAnalytics = (vehicles) => {
+  const out = [];
+  for (const dt of DOC_TYPES) {
+    const mk = (ar, en, from, to) => {
+      const f = { expiryDoc: dt.key };
+      if (from) f.expiryFrom = from;
+      if (to) f.expiryTo = to;
+      const count = vehicles.filter((v) => {
+        const raw = getPath(v, dt.path);
+        if (!raw) return false;
+        const d = new Date(raw);
+        if (isNaN(d)) return false;
+        const s = _iso(d);
+        return (!from || s >= from) && (!to || s <= to);
+      }).length;
+      return { label: ar, labelEn: en, count, filter: f };
+    };
+    const items = [
+      // «منتهٍ» ينتهي بالأمس و«خلال ٣٠» تبدأ اليوم — ولولا الفصل لعُدَّ ما ينتهي
+      // اليوم في الشريحتين معًا فتجاوز مجموع الشرائح عدد المركبات.
+      mk('منتهٍ', 'Expired', null, _shiftDays(-1)),
+      mk('خلال ٣٠ يومًا', 'Within 30d', _shiftDays(0), _shiftDays(30)),
+      mk('٣١ إلى ٦٠ يومًا', '31–60d', _shiftDays(31), _shiftDays(60)),
+      mk('٦١ إلى ٩٠ يومًا', '61–90d', _shiftDays(61), _shiftDays(90)),
+      mk('أبعد من ٩٠ يومًا', 'Beyond 90d', _shiftDays(91), null),
+    ];
+    const dated = vehicles.filter((v) => { const r = getPath(v, dt.path); return r && !isNaN(new Date(r)); }).length;
+    items.push({ label: 'بلا تاريخ مسجَّل', labelEn: 'No date', count: vehicles.length - dated, filter: { missingDocDate: dt.key } });
+    out.push({ key: `hz:${dt.key}`, ar: `انتهاء ${dt.ar}`, en: `${dt.en} expiry`, kind: 'horizon', items });
+  }
+
+  // أعمار المركبات — سنة الصنع رقم لا يُقرأ منه العمر بالعين.
+  const year = new Date().getFullYear();
+  const AGE = [
+    { ar: 'أقل من ٣ سنوات', en: 'Under 3y', from: year - 2, to: null },
+    { ar: '٣ إلى ٥ سنوات', en: '3–5y', from: year - 5, to: year - 3 },
+    { ar: '٦ إلى ١٠ سنوات', en: '6–10y', from: year - 10, to: year - 6 },
+    { ar: 'أكثر من ١٠ سنوات', en: 'Over 10y', from: null, to: year - 11 },
+  ].map((b) => {
+    const f = {};
+    if (b.from) f.yearFrom = String(b.from);
+    if (b.to) f.yearTo = String(b.to);
+    const count = vehicles.filter((v) => {
+      const y = Number(v.modelYear);
+      if (!y) return false;
+      return (!b.from || y >= b.from) && (!b.to || y <= b.to);
+    }).length;
+    return { label: b.ar, labelEn: b.en, count, filter: f };
+  });
+  AGE.push({
+    label: 'بلا سنة صنع', labelEn: 'No model year',
+    count: vehicles.filter((v) => !Number(v.modelYear)).length, filter: { modelYear: '—' },
+  });
+  out.push({ key: 'age', ar: 'أعمار المركبات', en: 'Vehicle age', kind: 'bar', items: AGE });
+  return out;
+};
+
 exports.overview = async (req, res) => {
   try {
     const key = `vreg:overview:${JSON.stringify(req.query || {})}`;
@@ -492,7 +657,7 @@ exports.overview = async (req, res) => {
     const totals = {
       vehicles: vehicles.length,
       insuredPremiumSar: Math.round(vehicles.reduce((t, v) => t + (Number(v.insurance?.premiumSar) || 0), 0)),
-      withGps: vehicles.filter((v) => v.gps?.serialImei || v.gps?.deviceModel).length,
+      withGps: vehicles.filter(hasGps).length,
       activeFuelCards: vehicles.filter((v) => v.fuelCard?.statusCode === 'active').length,
       withAccidents: vehicles.filter((v) => (v.accidentCount || 0) > 0).length,
       needsAttention: documents.reduce((t, d) => t + d.needsAttention, 0),
@@ -553,7 +718,8 @@ exports.overview = async (req, res) => {
         premiumSar: p.premiumSar, policyNumbers: p.policyNumbers, state: st.state, days: st.days };
     }).sort((a, b) => (a.days ?? 1e9) - (b.days ?? 1e9));
 
-    const body = { totals, breakdowns, documents, logistiGaps, missingBreakdown, claims: claimTotals, corporate, alerts: cfg.alerts || {} };
+    const body = { totals, breakdowns, documents, logistiGaps, missingBreakdown, claims: claimTotals, corporate,
+      analytics: buildVehicleAnalytics(vehicles), alerts: cfg.alerts || {} };
     cache.set(key, body, 20000);
     res.json(body);
   } catch (e) {

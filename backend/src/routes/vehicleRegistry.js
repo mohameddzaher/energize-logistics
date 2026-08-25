@@ -14,6 +14,8 @@ const ADMIN = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
 router.get('/dashboard', c.dashboard);
 // نظرة شاملة: كارت لكل عمود، وكله بيوصّل لصفحة مفلترة.
 router.get('/overview', c.overview);
+// الفلاتر المتاحة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر
+router.get('/filters', c.filterOptions);
 router.get('/document-types', c.documentTypes);
 // الانتهاءات بفلتر «خلال كام يوم» اللي المستخدم بيكتبه هو.
 router.get('/expiring', c.expiring);

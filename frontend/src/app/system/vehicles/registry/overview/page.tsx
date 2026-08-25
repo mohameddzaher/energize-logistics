@@ -17,6 +17,7 @@ import {
   Car, ShieldCheck, CreditCard, FileText, Wrench, Satellite,
   ChevronLeft, Settings, CalendarClock, TriangleAlert,
 } from 'lucide-react';
+import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
 import {
   getOverview, STATE_META, stateLabel, money, fmtDate, daysText,
   type VehicleOverview, type DocCard, type Breakdown,
@@ -36,24 +37,33 @@ export default function VehiclesOverviewPage() {
 
   const [d, setD] = useState<VehicleOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  // الفلتر هو مصدر كل رقم في هذه الصفحة — البطاقات والتحليلات تُعاد قراءتها منه،
+  // فلا يبقى رقمٌ محسوبٌ على أسطولٍ غير الذي يراه المستخدم أمامه.
+  const [filters, setFilters] = useState<FilterValues>({});
 
   const load = useCallback(async () => {
-    try { setD(await getOverview()); }
+    try { setD(await getOverview(filters as Record<string, string>)); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setLoading(false);
-  }, [notify]);
+  }, [JSON.stringify(filters), notify]);
   useEffect(() => { load(); }, [load]);
   useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
 
-  /** يودّي على القائمة مفلترة بنفس الفلتر اللي السيرفر عدّ بيه. */
+  /**
+   * يفتح القائمة بنفس الفلتر الذي عدّ به الخادم — **مضافًا إليه الفلتر النشط**.
+   * لولا ذلك لفتح «١٠ منتهية» وأنت تنظر إلى جدة على العشر في الأسطول كلّه:
+   * رقمٌ ضغطتَه فأعطاك غيره.
+   */
   const openList = (filter: Record<string, string>) => {
-    const q = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== '')).toString();
+    const q = new URLSearchParams(Object.entries({ ...filters, ...filter }).filter(([, v]) => v !== '') as [string, string][]).toString();
     router.push(`/system/vehicles/registry${q ? `?${q}` : ''}`);
   };
   const openExpiring = (q: Record<string, string | number>) => {
-    const p = new URLSearchParams(Object.entries(q).map(([k, v]) => [k, String(v)])).toString();
+    const p = new URLSearchParams(Object.entries({ ...filters, ...q }).map(([k, v]) => [k, String(v)])).toString();
     router.push(`/system/vehicles/registry/expiring?${p}`);
   };
+  /** بطاقات التحليل تفلتر الصفحة نفسها بدل الانتقال — تُضاف فوق الفلتر القائم. */
+  const drill = (q: Record<string, string>) => setFilters((f) => ({ ...f, ...q }));
 
   if (loading) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t('تعذّر التحميل', 'Could not load')}</div>;
@@ -77,12 +87,61 @@ export default function VehiclesOverviewPage() {
         </div>
       </PageHeader>
 
+      {/* شريط الفلترة — كل رقم تحته محسوب عليه */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+        <FilterPanel
+          optionsUrl="/api/vehicle-registry/filters"
+          value={filters}
+          onChange={setFilters}
+          resultCount={d?.totals?.vehicles}
+          resultLabel={t('المركبات المطابقة', 'Matching vehicles')}
+          extraLabels={{
+            missing: { ar: 'ينقصها بيانات', en: 'Missing data', values: { 1: { ar: 'ينقصها بيانات', en: 'Missing data' } } },
+            logistiGaps: { ar: 'نواقص لوجستي', en: 'Logisti gaps', values: {
+              1: { ar: 'ينقصها شرط لوجستي', en: 'Has Logisti gaps' },
+              0: { ar: 'مستوفية شروط لوجستي', en: 'Logisti complete' } } },
+            hasGps: { ar: 'التتبّع', en: 'GPS', values: {
+              1: { ar: 'عليها جهاز تتبّع', en: 'With GPS' },
+              0: { ar: 'بلا جهاز تتبّع', en: 'Without GPS' } } },
+            expiryDoc: { ar: 'المستند', en: 'Document' },
+            missingDocDate: { ar: 'بلا تاريخ', en: 'No date' },
+            yearFrom: { ar: 'سنة الصنع من', en: 'Year from' },
+            yearTo: { ar: 'سنة الصنع إلى', en: 'Year to' },
+            expiryFrom: { ar: 'الانتهاء من', en: 'Expiry from' },
+            expiryTo: { ar: 'الانتهاء إلى', en: 'Expiry to' },
+          }}
+          extra={(
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {([['missing', '1', 'ينقصها بيانات', 'Missing data'],
+                 ['logistiGaps', '1', 'ينقصها شرط لوجستي', 'Logisti gaps'],
+                 ['logistiGaps', '0', 'مستوفية شروط لوجستي', 'Logisti complete'],
+                 ['hasGps', '1', 'عليها جهاز تتبّع', 'With GPS'],
+                 ['hasGps', '0', 'بلا جهاز تتبّع', 'Without GPS']] as const).map(([k, v, a, e]) => (
+                <button key={`${k}${v}`}
+                  onClick={() => setFilters((f) => { const n = { ...f }; if (n[k] === v) delete n[k]; else n[k] = v; return n; })}
+                  className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold border transition
+                    ${filters[k] === v ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
+                  {t(a, e)}
+                </button>
+              ))}
+            </div>
+          )}
+        />
+        {countActive(filters) > 0 && (
+          <p className="mt-2 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.vehicles ?? 0} مركبة مطابقة للتصفية.`,
+               `Every card and chart below is computed over the ${d?.totals?.vehicles ?? 0} matching vehicles.`)}
+          </p>
+        )}
+      </div>
+
       {/* ① الأرقام الكبيرة */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <Big label={t('إجمالي المركبات', 'Vehicles')} value={d.totals.vehicles} accent="#f37121" onClick={() => openList({})} />
         <Big label={t('يحتاج متابعة', 'Needs attention')} value={d.totals.needsAttention} accent="#dc2626" onClick={() => openExpiring({ withinDays: 60 })} />
         <Big label={t('أقساط التأمين (ر.س)', 'Premiums (SAR)')} value={money(d.totals.insuredPremiumSar)} accent="#16a34a" />
-        <Big label={t('عليها جهاز تتبّع', 'With GPS')} value={d.totals.withGps} accent="#0ea5e9" />
+        <Big label={t('عليها جهاز تتبّع', 'With GPS')} value={d.totals.withGps} accent="#0ea5e9"
+          onClick={() => drill({ hasGps: '1' })} />
         <Big label={t('شرائح وقود نشطة', 'Active fuel cards')} value={d.totals.activeFuelCards} accent="#8b5cf6" />
         <Big label={t('مركبات لها حوادث', 'With accidents')} value={d.totals.withAccidents} accent="#ea580c" onClick={() => router.push('/system/vehicles/registry/claims')} />
         <Big label={t('ينقصها بيانات', 'Missing data')} value={d.totals.withMissing} accent="#7c3aed"
@@ -187,6 +246,23 @@ export default function VehiclesOverviewPage() {
           <Big label={t('متوقع استرداده (ر.س)', 'Expected recovery')} value={money(d.claims.expectedRecoverySar)} accent="#16a34a" />
         </div>
       </section>
+
+      {/* التحليلات — شرائح مشتقّة، كل شريحة تفلتر الصفحة عند الضغط */}
+      {!!d.analytics?.length && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-800">{t('التحليلات', 'Analytics')}</h2>
+            <span className="text-[11px] text-slate-400">
+              {t('اضغط أي شريحة لتُضاف إلى التصفية', 'Click any band to add it to the filter')}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {d.analytics.map((a) => (
+              <AnalyticCard key={a.key} a={a} ar={ar} total={d.totals.vehicles} onPick={drill} active={filters} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ⑤ كارت لكل عمود */}
       <section className="space-y-2">
@@ -311,6 +387,51 @@ function BreakdownCard({ b, ar, t, onPick }: {
           {all ? t('عرض أقل', 'Show less') : t(`عرض الكل (${b.items.length})`, `Show all (${b.items.length})`)}
         </button>
       )}
+    </div>
+  );
+}
+
+// ── بطاقة تحليل: شرائح أفقية بعرض متناسب مع العدد ─────────────────────────────
+//
+// الشريحة تحمل معها الفلتر الذي أنتجها؛ الضغط عليها يضيفه إلى التصفية بدل أن
+// تخمّن الواجهة الشرط — فلا يفترق الرقم المعروض عن الصفوف التي يفتحها.
+function AnalyticCard({ a, ar, total, onPick, active }:
+{ a: VehicleOverview['analytics'][number]; ar: boolean; total: number;
+  onPick: (q: Record<string, string>) => void; active: Record<string, string> }) {
+  const max = Math.max(1, ...a.items.map((i) => i.count));
+  const isOn = (f: Record<string, string>) => Object.entries(f).every(([k, v]) => active[k] === v);
+  const colors = a.kind === 'horizon'
+    ? ['#dc2626', '#ea580c', '#f59e0b', '#0ea5e9', '#16a34a', '#94a3b8']
+    : ['#12325c', '#2a5490', '#3d6aa8', '#5480bf', '#7b9dd1'];
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-2.5">
+        <h3 className="text-[13px] font-bold text-slate-900">{ar ? a.ar : a.en}</h3>
+        <span className="text-[10.5px] text-slate-400 tabular-nums">{total}</span>
+      </div>
+      <div className="space-y-1.5">
+        {a.items.map((it, i) => {
+          const on = isOn(it.filter);
+          return (
+            <button key={it.label} onClick={() => onPick(it.filter)} disabled={!it.count}
+              className={`w-full group text-start ${it.count ? '' : 'opacity-40 cursor-default'}`}>
+              <div className="flex items-center justify-between gap-2 mb-0.5">
+                <span className={`text-[11.5px] truncate ${on ? 'font-bold text-[#12325c]' : 'text-slate-600'}`}>
+                  {ar ? it.label : it.labelEn}
+                </span>
+                <span className="text-[11.5px] font-bold tabular-nums text-slate-800 shrink-0">
+                  {it.count}
+                  {total > 0 && <span className="text-[10px] text-slate-400 font-normal ms-1">{Math.round((it.count / total) * 100)}%</span>}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full transition-all group-hover:opacity-80"
+                  style={{ width: `${Math.round((it.count / max) * 100)}%`, background: colors[i % colors.length] }} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

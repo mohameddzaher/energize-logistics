@@ -113,9 +113,12 @@ const TIRE_CHIPS = {
     const al = await get('/api/vehicle-registry/alerts');
     const items = al.items || [];
     ok(`الإجمالي ${items.length} = المعلن ${al.total}`, items.length === al.total);
-    const byStatusSum = ['expired', 'critical', 'warning'].reduce((n, s) => n + (al.byStatus?.[s] || 0), 0);
+    // الحالات تُقرأ من الاستجابة نفسها لا من قائمة مكتوبة هنا — أُضيف «على
+    // الرادار» بعد كتابة هذا التيست فصار المجموع ينقص ٢٤ ويبدو خطأً وهو ليس به.
+    const STATES = Object.keys(al.byStatus || {});
+    const byStatusSum = STATES.reduce((n, s) => n + (al.byStatus?.[s] || 0), 0);
     ok(`مجموع الحالات = الإجمالي (${byStatusSum} = ${al.total})`, byStatusSum === al.total);
-    for (const s of ['expired', 'critical', 'warning']) {
+    for (const s of STATES) {
       ok(`${s.padEnd(9)} ${al.byStatus[s]} = ${items.filter((i) => i.status === s).length}`,
         al.byStatus[s] === items.filter((i) => i.status === s).length);
     }

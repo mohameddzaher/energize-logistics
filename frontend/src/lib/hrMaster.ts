@@ -20,12 +20,18 @@ export interface GroupCard {
   states?: Record<DocState, number>;
   expiryField?: string; needsAttention?: number; nearestDays?: number | null;
 }
+/** شريحة تحليلية: عنوانها وعددها والفلتر الذي يفتح صفوفها بالضبط. */
+export interface AnalyticItem { label: string; labelEn: string; count: number; filter: Record<string, string> }
+export interface AnalyticBlock {
+  key: string; ar: string; en: string; kind: 'bar' | 'horizon'; field?: string; items: AnalyticItem[];
+}
 export interface HrOverview {
   // employees/active/notActive = الملف الوظيفي كله (ما بيتأثروش بالفلتر)،
   // وfiltered = اللي الفلتر الحالي بيعرضه واللي الأرقام التانية محسوبة عليه.
   totals: { employees: number; active: number; notActive: number; filtered: number; required: number; expiringSoon: number; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number };
   groups: GroupCard[];
   topRequired: (FieldCard & { groupAr: string; groupKey: string })[];
+  analytics: AnalyticBlock[];
   alert: { warnDays: number; criticalDays: number };
 }
 
@@ -89,3 +95,21 @@ export const updateEmployeeFields = (id: string, fields: Record<string, any>, ma
 
 export const getHrFieldConfig = () =>
   api.get<{ groups: (GroupCard & { fields: FieldDef[] })[]; statuses: any; states: any; alert: any }>('/api/hr/master/field-config');
+
+/** الحقول القابلة للفلترة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر. */
+export const getHrFilters = (q: Record<string, any> = {}) =>
+  api.get<{ filters: { key: string; ar: string; en: string; groupAr: string; groupEn: string; values: { value: string; count: number }[] }[]; dateFields: string[] }>(
+    `/api/hr/master/filters${qs(q) ? `?${qs(q)}` : ''}`);
+
+/** أسماء حقول التاريخ التي تقبل مدى — تُعرض في لوحة الفلترة. */
+export const HR_DATE_FIELDS = [
+  { key: 'hireDate', ar: 'تاريخ التعيين', en: 'Hire date' },
+  { key: 'dateOfBirth', ar: 'تاريخ الميلاد', en: 'Date of birth' },
+  { key: 'iqamaExpiry', ar: 'انتهاء الإقامة', en: 'Iqama expiry' },
+  { key: 'passportExpiry', ar: 'انتهاء الجواز', en: 'Passport expiry' },
+  { key: 'contractEndDate', ar: 'نهاية العقد', en: 'Contract end' },
+  { key: 'insuranceExpiry', ar: 'انتهاء التأمين الطبي', en: 'Medical insurance expiry' },
+  { key: 'healthCertExpiry', ar: 'انتهاء الشهادة الصحية', en: 'Health certificate expiry' },
+  { key: 'driverCardExpiry', ar: 'انتهاء بطاقة السائق', en: 'Driver card expiry' },
+  { key: 'licenseExpiry', ar: 'انتهاء رخصة القيادة', en: 'Licence expiry' },
+];

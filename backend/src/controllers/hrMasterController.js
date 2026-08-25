@@ -18,9 +18,19 @@ const emit = () => { try { emitToAll('hr:master', {}); } catch (e) {} cache.clea
 const filled = (v) => !(v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length));
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-/** حالة حقل عند موظف: مطلوب / غير مطلوب / لا يوجد / مملي. */
+/**
+ * حالة حقل عند موظف: مطلوب / غير مطلوب / لا يوجد / مملي.
+ *
+ * القيمة الموجودة تسبق العَلَم الإداري: حقلٌ فيه تاريخ إقامة مكتوب ليس «مطلوبًا»
+ * مهما قال العَلَم — العَلَم أثرٌ قديم من قبل أن يُملأ الحقل، وإبقاؤه يضع اسمًا
+ * في قائمة عملٍ لا عمل فيه فيضيّع وقت مَن يفتحه.
+ *
+ * أما «غير مطلوب» و«راتب نقدي» فيبقيان كما هما: هما قرارٌ إداريّ لا نقصُ بيانات،
+ * ولا تنقضهما قيمةٌ موجودة.
+ */
 const statusOf = (emp, fieldKey) => {
   const st = emp.fieldStatus?.[H.statusKeyOf(fieldKey)];
+  if (st === 'required' && filled(emp[fieldKey])) return 'filled';
   if (st) return st;
   return filled(emp[fieldKey]) ? 'filled' : 'none';
 };
@@ -29,6 +39,21 @@ const statusOf = (emp, fieldKey) => {
 // المكان ده هو اللي هيتغيّر.
 const ALERT = { warnDays: 60, criticalDays: 30 };
 
+// الحقول التي يجوز الفلترة بها — مشتقّة من تعريف الحقول نفسه، فأي حقل يُضاف
+// هناك ويُعلَّم `groupable` يصير قابلًا للفلترة هنا تلقائيًّا بلا تعديل.
+const FILTERABLE = [...new Set([
+  ...H.GROUPS.flatMap((g) => g.fields.filter((x) => x.groupable).map((x) => x.key)),
+  'department', 'branchName', 'project', 'nationality', 'workStatusText', 'bank',
+  'licenseType', 'insuranceCompany', 'directManagerName', 'iqamaProfession', 'idType',
+  'gender', 'driverCardStatus', 'insuranceClass', 'contractStatusText', 'systemStatus',
+])].filter((k) => !['isOutsideKingdom', 'isFreelancer'].includes(k));
+
+// حقول التاريخ التي تقبل مدى (من/إلى).
+const DATE_FILTERABLE = [
+  'hireDate', 'dateOfBirth', 'iqamaExpiry', 'passportExpiry', 'contractEndDate',
+  'insuranceExpiry', 'healthCertExpiry', 'driverCardExpiry', 'licenseExpiry',
+];
+
 function buildFilter(q) {
   // سجلات حسابات الدخول التلقائية مش موظفين — بتخرج من كل عدّاد وكل قايمة هنا.
   const f = { isHrRecord: { $ne: false } };
@@ -36,19 +61,240 @@ function buildFilter(q) {
   // كده سجله محفوظ كتاريخ ومش بيتعدّ مع الموظفين، وإلا «عدد الموظفين» بيبقى
   // رقم مالوش معنى. `scope=all` بيرجّع كل حاجة بالتاريخ.
   if (q.scope !== 'all') f.inCurrentMaster = true;
-  if (q.status === 'active') f.employmentStatus = 'active';
-  if (q.status === 'inactive') f.employmentStatus = { $ne: 'active' };
-  for (const k of ['department', 'branchName', 'project', 'nationality', 'workStatusText', 'bank', 'licenseType', 'insuranceCompany', 'directManagerName', 'iqamaProfession', 'idType', 'gender', 'driverCardStatus', 'insuranceClass', 'contractStatusText', 'systemStatus']) {
-    if (q[k]) f[k] = q[k] === '—' ? { $in: ['', null] } : q[k];
+  // حالة التوظيف تُقرأ من `employment`. كان اسمها `status`، وهو الاسم نفسه الذي
+  // تستعمله صفحة المجموعة لحالة الخانة (مطلوب/غير مطلوب) — فكان «جدة + على رأس
+  // العمل» يصل إلى الجدول فيُقرأ «حالة خانة اسمها active» فيُرجع صفرًا. الاسم
+  // القديم ما زال مقبولًا لأن روابط محفوظة تستعمله.
+  const employment = q.employment || (['active', 'inactive'].includes(q.status) ? q.status : '');
+  if (employment === 'active') f.employmentStatus = 'active';
+  if (employment === 'inactive') f.employmentStatus = { $ne: 'active' };
+  // ── الفلترة بأكثر من قيمة، وبأكثر من حقل معًا ──────────────────────────────
+  // «أرِني الباكستانيين والهنود، الذكور، في النقل الثقيل، بجدة ومكة» سؤال واحد
+  // لا أربعة. كان كل حقل يقبل قيمةً واحدة، فيُجيب عن ربعه.
+  //
+  // القيم تصل مفصولةً بفواصل، و«—» تعني الخانة الفارغة — وهي فئةٌ حقيقية:
+  // «مَن لا جنسية مسجَّلة له» سؤال يُسأل، لا نتيجةَ خطأ.
+  const multi = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  for (const k of FILTERABLE) {
+    const vals = multi(q[k]);
+    if (!vals.length) continue;
+    const wantsBlank = vals.includes('—');
+    const rest = vals.filter((x) => x !== '—');
+    if (wantsBlank && rest.length) f[k] = { $in: [...rest, '', null] };
+    else if (wantsBlank) f[k] = { $in: ['', null] };
+    else f[k] = { $in: rest };
   }
-  if (q.outsideKingdom === '1') f.isOutsideKingdom = true;
-  if (q.freelancer === '1') f.isFreelancer = true;
+  // الحقول المنطقية: تقبل نعم/لا صراحةً بدل أن تكون «مفعَّلة أو لا شيء».
+  for (const [qk, field] of [['outsideKingdom', 'isOutsideKingdom'], ['freelancer', 'isFreelancer']]) {
+    if (q[qk] === '1') f[field] = true;
+    else if (q[qk] === '0') f[field] = { $ne: true };
+  }
+  // مدى التاريخ **لا يُطبَّق هنا** — انظر dateRangePred تحت. حقول التواريخ في
+  // هذا الملف مخزَّنة نصًّا لأنها تحمل كلمات إدارية بجانب التاريخ («مطلوب»،
+  // «غير مطلوب»)، فمقارنتها بـ$gte/$lte على كائن تاريخ تقارن نوعين مختلفين في
+  // BSON فتُرجع صفوفًا لا علاقة لها بالمدى المطلوب. تُطبَّق على القيمة بعد
+  // قراءتها تاريخًا حقيقيًّا.
   if (q.q && q.q.trim()) {
     const r = rx(q.q);
     f.$or = [{ arabicName: r }, { firstName: r }, { lastName: r }, { employeeNumber: r }, { iqamaNumber: r }, { passportNumber: r }, { companyNumber: r }, { absherNumber: r }];
   }
   return f;
 }
+
+/**
+ * شرط مدى التاريخ — يُطبَّق على الصفوف بعد جلبها.
+ *
+ * القيمة قد تكون تاريخًا مخزَّنًا وقد تكون كلمة («مطلوب»). الكلمة ليست تاريخًا
+ * خارج المدى، بل **لا تاريخ لها**، فتخرج من أي مدى — ويردّها الفلتر «—» وحده.
+ */
+const asDate = (v) => {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return isNaN(d.getTime()) ? null : d;
+};
+function dateRangePred(q) {
+  const tests = [];
+  for (const key of DATE_FILTERABLE) {
+    // «—» على حقل تاريخ = لا تاريخ مقروء أصلًا (فارغ أو كلمة إدارية).
+    if (String(q[key] ?? '').split(',').map((x) => x.trim()).includes('—')) {
+      tests.push((e) => asDate(e[key]) === null);
+      continue;
+    }
+    const from = q[`${key}From`]; const to = q[`${key}To`];
+    if (!from && !to) continue;
+    const lo = from ? new Date(`${from}T00:00:00.000Z`) : null;
+    const hi = to ? new Date(`${to}T23:59:59.999Z`) : null;
+    tests.push((e) => {
+      const d = asDate(e[key]);
+      if (!d) return false;
+      return (!lo || d >= lo) && (!hi || d <= hi);
+    });
+  }
+  return tests.length ? (e) => tests.every((t) => t(e)) : null;
+}
+
+// تُصدَّر ليستعملها قائمة الموظفين العامة، فيصير للفلترة لغةٌ واحدة في القسم
+// كلّه: ما تكتبه لوحة الموارد البشرية تفهمه القائمة، وما يفهمه الموقع يفهمه
+// التطبيق. لغتان للفلترة تعنيان حتمًا رقمين مختلفين للسؤال نفسه.
+exports._buildFilter = buildFilter;
+exports._dateRangePred = dateRangePred;
+
+/** جلب الموظفين بكل شروط الاستعلام — شروط قاعدة البيانات ثم شروط التواريخ. */
+async function findEmployees(q, select) {
+  let query = Employee.find(buildFilter(q));
+  if (select) query = query.select(select);
+  // استخدام hint لفرض استخدام الـ index الأنسب عندما تكون الفلاتر معقدة
+  query = query.hint({ inCurrentMaster: 1, employmentStatus: 1 });
+  const rows = await query.lean();
+  const pred = dateRangePred(q);
+  return pred ? rows.filter(pred) : rows;
+}
+
+// ── تحليلات مشتقّة ─────────────────────────────────────────────────────────
+//
+// أعمدة كثيرة قيمتها تاريخ خام لا يُقرأ منه شيء بالعين: «١٩٨٧-٠٣-١١» لا تقول
+// «في الثلاثينات». هذه الدوال تحوّل التواريخ إلى شرائح يفهمها القارئ — وتُرفق
+// مع كل شريحة **الفلتر الذي يعيد إنتاجها بالضبط**، فالضغط عليها يفتح صفوفها
+// دون أن تعيد الواجهة استنتاج الشرط (ولو استنتجته لاختلف الرقم يومًا ما).
+const iso = (d) => d.toISOString().slice(0, 10);
+const shiftYears = (n) => { const d = new Date(); d.setFullYear(d.getFullYear() - n); return iso(d); };
+const nextDay = (isoStr) => { const d = new Date(`${isoStr}T00:00:00.000Z`); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
+const shiftDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+
+/** شرائح عمر/أقدمية: حدّان بالسنوات على حقل تاريخ. */
+const yearBands = (rows, key, bands) => bands.map((b) => {
+  // الأكبر سنًّا = الأقدم تاريخًا. حدّ «من» يُزاح يومًا لأن نهاية الشريحة السابقة
+  // هي نفس التاريخ، فلولا الإزاحة لوقع من يبلغ الحدّ تمامًا في الشريحتين معًا.
+  const from = b.max == null ? null : nextDay(shiftYears(b.max));
+  const to = b.min == null ? null : shiftYears(b.min);
+  const f = {};
+  if (from) f[`${key}From`] = from;
+  if (to) f[`${key}To`] = to;
+  const count = rows.filter((r) => {
+    const v = r[key] instanceof Date ? r[key] : (r[key] ? new Date(r[key]) : null);
+    if (!v || isNaN(v)) return false;
+    const s = iso(v);
+    return (!from || s >= from) && (!to || s <= to);
+  }).length;
+  return { label: b.ar, labelEn: b.en, count, filter: f };
+});
+
+/** آفاق انتهاء مستند: منتهٍ / خلال ٣٠ / ٣١-٦٠ / ٦١-٩٠ / أبعد / بلا تاريخ. */
+const expiryHorizon = (rows, key) => {
+  const today = iso(new Date());
+  const mk = (ar, en, from, to) => {
+    const f = {};
+    if (from) f[`${key}From`] = from;
+    if (to) f[`${key}To`] = to;
+    const count = rows.filter((r) => {
+      const v = r[key] ? new Date(r[key]) : null;
+      if (!v || isNaN(v)) return false;
+      const s = iso(v);
+      return (!from || s >= from) && (!to || s <= to);
+    }).length;
+    return { label: ar, labelEn: en, count, filter: f };
+  };
+  const out = [
+    // «منتهٍ» ينتهي بالأمس و«خلال ٣٠» تبدأ اليوم — ولو تقاطعا عند اليوم نفسه
+    // لعُدَّ من ينتهي اليوم مرتين، فيتجاوز مجموع الشرائح عدد الموظفين.
+    mk('منتهٍ', 'Expired', null, shiftDays(-1)),
+    mk('خلال ٣٠ يومًا', 'Within 30d', today, shiftDays(30)),
+    mk('٣١ إلى ٦٠ يومًا', '31–60d', shiftDays(31), shiftDays(60)),
+    mk('٦١ إلى ٩٠ يومًا', '61–90d', shiftDays(61), shiftDays(90)),
+    mk('أبعد من ٩٠ يومًا', 'Beyond 90d', shiftDays(91), null),
+  ];
+  const dated = rows.filter((r) => r[key] && !isNaN(new Date(r[key]))).length;
+  out.push({ label: 'بلا تاريخ مسجَّل', labelEn: 'No date', count: rows.length - dated, filter: { [key]: '—' } });
+  return out;
+};
+
+const AGE_BANDS = [
+  { ar: 'أقل من ٢٥', en: 'Under 25', min: null, max: 25 },
+  { ar: '٢٥ إلى ٣٤', en: '25–34', min: 25, max: 35 },
+  { ar: '٣٥ إلى ٤٤', en: '35–44', min: 35, max: 45 },
+  { ar: '٤٥ إلى ٥٤', en: '45–54', min: 45, max: 55 },
+  { ar: '٥٥ فأكثر', en: '55+', min: 55, max: null },
+];
+const TENURE_BANDS = [
+  { ar: 'أقل من سنة', en: 'Under 1y', min: null, max: 1 },
+  { ar: 'سنة إلى سنتين', en: '1–2y', min: 1, max: 3 },
+  { ar: '٣ إلى ٥ سنوات', en: '3–5y', min: 3, max: 6 },
+  { ar: '٦ إلى ١٠ سنوات', en: '6–10y', min: 6, max: 11 },
+  { ar: 'أكثر من ١٠ سنوات', en: 'Over 10y', min: 11, max: null },
+];
+const HORIZON_DOCS = [
+  { key: 'iqamaExpiry', ar: 'انتهاء الإقامات', en: 'Iqama expiry' },
+  { key: 'contractEndDate', ar: 'انتهاء العقود', en: 'Contract end' },
+  { key: 'passportExpiry', ar: 'انتهاء الجوازات', en: 'Passport expiry' },
+  { key: 'insuranceExpiry', ar: 'انتهاء التأمين الطبي', en: 'Medical insurance' },
+  { key: 'healthCertExpiry', ar: 'انتهاء الشهادات الصحية', en: 'Health certificate' },
+  { key: 'driverCardExpiry', ar: 'انتهاء بطاقات السائقين', en: 'Driver card' },
+  { key: 'licenseExpiry', ar: 'انتهاء رخص القيادة', en: 'Driving licence' },
+];
+
+const buildAnalytics = (rows) => {
+  const out = [];
+  out.push({ key: 'age', ar: 'الفئات العمرية', en: 'Age bands', kind: 'bar', items: yearBands(rows, 'dateOfBirth', AGE_BANDS) });
+  out.push({ key: 'tenure', ar: 'مدة الخدمة', en: 'Tenure', kind: 'bar', items: yearBands(rows, 'hireDate', TENURE_BANDS) });
+  for (const d of HORIZON_DOCS) {
+    out.push({ key: `hz:${d.key}`, ar: d.ar, en: d.en, kind: 'horizon', field: d.key, items: expiryHorizon(rows, d.key) });
+  }
+  return out;
+};
+
+// ── الفلاتر المتاحة وقيمها ──────────────────────────────────────────────────
+//
+// الشاشة تحتاج أن تعرف: بأي الحقول أفلتر؟ وما القيم الممكنة لكلٍّ؟ وكم صفًّا
+// وراء كل قيمة **بعد بقيّة الفلاتر المطبَّقة**؟
+//
+// الرقم الأخير هو بيت القصيد: لو حُسبت الأعداد على الملف كلّه لرأى المستخدم
+// «الهند ٤٠» ثم اختار «النقل الثقيل» فوجدها ٣ — فيظنّ الشاشة تكذب. تُحسَب هنا
+// على المجموعة المفلترة فعلًا، **عدا الحقل نفسه**: عند حساب قيم الجنسية نطبّق
+// كل الفلاتر إلا الجنسية، وإلا لبقيت القيمة المختارة وحدها ظاهرةً ولَما استطاع
+// أحد أن يضيف جنسيةً ثانية إلى اختياره.
+exports.filterOptions = async (req, res) => {
+  try {
+    const key = `hrm:filters:${JSON.stringify(req.query || {})}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return res.json(hit);
+
+    // تعريف كل فلتر: مفتاحه واسمه ومجموعته.
+    const defs = [];
+    for (const g of H.GROUPS) {
+      for (const fld of g.fields) {
+        if (!fld.groupable) continue;
+        defs.push({ key: fld.key, ar: fld.ar, en: fld.en, groupAr: g.ar, groupEn: g.en, groupKey: g.key });
+      }
+    }
+
+    const filters = [];
+    for (const d of defs) {
+      // كل الفلاتر إلا هذا الحقل — حتى تبقى بقيّة قيمه قابلةً للإضافة.
+      const others = { ...req.query };
+      delete others[d.key];
+      const rows = await findEmployees(others, `${d.key} ${DATE_FILTERABLE.join(' ')}`);
+      const counts = new Map();
+      for (const r of rows) {
+        const raw = r[d.key];
+        const v = raw === true ? 'نعم' : raw === false ? 'لا' : (filled(raw) ? String(raw) : '—');
+        counts.set(v, (counts.get(v) || 0) + 1);
+      }
+      filters.push({
+        ...d,
+        values: [...counts.entries()]
+          .map(([value, count]) => ({ value, count }))
+          .sort((a, b) => b.count - a.count),
+      });
+    }
+
+    const body = { filters, dateFields: DATE_FILTERABLE };
+    cache.set(key, body, 20000);
+    res.json(body);
+  } catch (e) {
+    console.error('hr filterOptions', e);
+    res.status(500).json({ message: 'تعذّر تحميل الفلاتر' });
+  }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  النظرة الشاملة
@@ -59,7 +305,14 @@ exports.overview = async (req, res) => {
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
-    const employees = await Employee.find(buildFilter(req.query)).lean();
+    // SELECT فقط الحقول المستخدمة في التحليل + الحقول القابلة للفلترة
+    const requiredFields = [
+      'employeeNumber', 'arabicName', 'firstName', 'lastName', 'employmentStatus',
+      'isOutsideKingdom', 'isFreelancer', 'iban', 'gosiNumber', 'inCurrentMaster',
+      ...FILTERABLE, ...DATE_FILTERABLE,
+      ...H.GROUPS.flatMap(g => [g.expiryField, ...g.fields.map(f => f.key)]).filter(Boolean)
+    ].join(' ');
+    const employees = await findEmployees(req.query, requiredFields);
 
     // ── كارت لكل حقل ─────────────────────────────────────────────────────────
     // العدّادات الأربعة هي اللي المستخدم طلبها بالاسم: مطلوب، غير مطلوب، مملي،
@@ -142,8 +395,9 @@ exports.overview = async (req, res) => {
       .sort((a, b) => b.required - a.required)
       .slice(0, 12);
 
-    const body = { totals, groups, topRequired, alert: ALERT, statuses: H.STATUS_LABELS, states: H.STATE_LABELS };
-    cache.set(key, body, 20000);
+    const body = { totals, groups, topRequired, analytics: buildAnalytics(employees), alert: ALERT, statuses: H.STATUS_LABELS, states: H.STATE_LABELS };
+    // زيادة TTL الـ cache من 20s إلى 60s لتقليل الحسابات المتكررة
+    cache.set(key, body, 60000);
     res.json(body);
   } catch (e) {
     console.error('hr overview', e);
@@ -165,16 +419,17 @@ exports.records = async (req, res) => {
     const g = H.getGroup(req.params.group);
     if (!g) return res.status(404).json({ message: 'المجموعة غير معروفة' });
 
-    const employees = await Employee.find(buildFilter(req.query))
-      // iqamaNumber بيرجع دايمًا حتى لو مش من حقول المجموعة — كل جدول في القسم
-      // لازم يعرض الموظف وجنبه رقم هويته، ده اللي الناس بتدوّر بيه.
-      .select([...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
+    // iqamaNumber يُرجَع دائمًا وإن لم يكن من حقول المجموعة — كل جدول في القسم
+    // يعرض الموظف وبجانبه رقم هويته، وهو ما يبحث الناس به.
+    const employees = await findEmployees(req.query,
+      [...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
         'department', 'branchName', 'project', 'employmentStatus', 'workStatusText', 'fieldStatus',
-        ...g.fields.map((f) => f.key)])].join(' '))
-      .lean();
+        ...DATE_FILTERABLE, ...g.fields.map((f) => f.key)])].join(' '));
 
     const field = req.query.field || '';
-    const wantStatus = req.query.status || '';
+    // «active»/«inactive» حالة توظيف لا حالة خانة — تُطبَّق في buildFilter،
+    // ولا يجوز أن تُقرأ هنا حالةَ خانةٍ لا وجود لها فتُفرِّغ الجدول.
+    const wantStatus = ['active', 'inactive'].includes(req.query.status) ? '' : (req.query.status || '');
     const wantState = req.query.state || '';
     const withinDays = req.query.withinDays === '' || req.query.withinDays == null ? null : Number(req.query.withinDays);
     // «ينتهي خلال ٣٠ يوم» كان بيرجّع المنتهي من سنة كمان، لأن -٣٦٥ أصغر من ٣٠.
@@ -316,11 +571,10 @@ exports.expiring = async (req, res) => {
     const includeExpired = req.query.includeExpired !== '0';
     const wantState = req.query.state || '';
 
-    const employees = await Employee.find(buildFilter(req.query))
-      .select(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
-        'department', 'branchName', 'fieldStatus',
-        ...H.DOCUMENT_GROUPS.map((g) => g.expiryField)].join(' '))
-      .lean();
+    const employees = await findEmployees(req.query,
+      [...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
+        'department', 'branchName', 'fieldStatus', ...DATE_FILTERABLE,
+        ...H.DOCUMENT_GROUPS.map((g) => g.expiryField)])].join(' '));
 
     const rows = [];
     for (const e of employees) {

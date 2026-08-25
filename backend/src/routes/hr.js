@@ -15,6 +15,8 @@ router.use(authenticate);
 // الـ endpoint فحالة «مطلوب» بتتشال بنفس الطريقة.
 router.get('/master/overview', hrm.overview);
 router.get('/master/field-config', hrm.fieldConfig);
+// الفلاتر المتاحة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر
+router.get('/master/filters', hrm.filterOptions);
 router.get('/master/expiring', hrm.expiring);
 router.get('/master/records/:group', hrm.records);
 router.patch('/master/employees/:id/fields', authorize(...STAFF), hrm.updateFields);

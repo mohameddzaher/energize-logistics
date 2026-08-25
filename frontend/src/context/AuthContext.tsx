@@ -34,9 +34,35 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// ── لماذا نحتفظ بالمستخدم في التبويب ────────────────────────────────────────
+// الواجهة كلها كانت تنتظر /api/auth/me عند **كل** فتح صفحة. ومع انتهاء توكن
+// الوصول (ربع ساعة) تصير الرحلة ثلاثًا متتالية — me ثم refresh ثم me — قبل أن
+// تبدأ الصفحة تحميل بياناتها أصلًا. هذا سبب «الصفحات بتقعد تحمّل كتير».
+//
+// الحلّ: نسخة من المستخدم في تخزين التبويب، فتُرسَم الشاشة فورًا ويُتحقَّق منها
+// في الخلفية. وهي للعرض فقط — كل طلب إلى الخادم يتحقّق من هويّته بنفسه، فلا
+// تمنح النسخة صلاحيةً ولا تُغني عن تحقّق، ولو كانت قديمة صحّحها التحقّق بعد لحظة.
+const CACHE_KEY = 'auth:user';
+const readCached = (): User | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch { return null; }
+};
+const writeCached = (u: User | null) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (u) sessionStorage.setItem(CACHE_KEY, JSON.stringify(u));
+    else sessionStorage.removeItem(CACHE_KEY);
+  } catch { /* وضع التصفّح الخاص يرفض الكتابة — الشاشة تعمل بدونها */ }
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = readCached();
+  const [user, setUser] = useState<User | null>(cached);
+  // لا ننتظر إن كانت لدينا نسخة: نرسم ونتحقّق في الخلفية.
+  const [loading, setLoading] = useState(!cached);
   const [loginKey, setLoginKey] = useState(0);
 
   const refreshUser = useCallback(async () => {
@@ -44,9 +70,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Let api.ts handle 401 → refresh automatically (no skipAuth)
       const data = await api.get<{ user: User }>('/api/auth/me');
       setUser(data.user);
+      writeCached(data.user);
       connectSocket();
     } catch {
       setUser(null);
+      writeCached(null);
     }
   }, []);
 
@@ -54,15 +82,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshUser().finally(() => setLoading(false));
   }, [refreshUser]);
 
+  // تجديد استباقي: توكن الوصول يعيش ربع ساعة، فنُجدِّده كل اثنتي عشرة دقيقة.
+  // بدونه يصطدم أوّل طلب بعد انتهائه بـ401 فيدفع رحلتين إضافيتين — وهو ما يجعل
+  // فتح صفحة بعد فترة سكون أبطأ من فتحها أثناء العمل.
+  useEffect(() => {
+    if (!user) return undefined;
+    const id = setInterval(() => {
+      fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' }).catch(() => {});
+    }, 12 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [user]);
+
   const login = async (email: string, password: string): Promise<User> => {
     const data = await api.post<{ user: User }>('/api/auth/login', { email, password });
     setUser(data.user);
+    writeCached(data.user);
     setLoginKey(k => k + 1);
     connectSocket();
     return data.user;
   };
 
   const logout = async () => {
+    writeCached(null);
     try {
       await api.post('/api/auth/logout');
     } catch {

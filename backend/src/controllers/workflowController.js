@@ -295,6 +295,31 @@ exports.updateWorkflow = async (req, res) => {
     }
 
     const filteredBody = filterFieldsByRole(req.body, req.user.role);
+
+    // ── تاريخ السداد لا يُسجَّل قبل استلام السند ──────────────────────────────
+    // السداد إقرارٌ بوصول المال، ولا يصل قبل استلام سند التسليم. تسجيله قبله
+    // يجعل التقارير المالية تَعُدُّ مبلغًا لم يُقبَض.
+    //
+    // الشرط هنا لا في الشاشة وحدها: الشاشة تمنع الخطأ، والخادم يمنع الاحتيال —
+    // وأي مسار آخر (الموبايل، استيراد، طلب مباشر) يمرّ من هنا أيضًا.
+    const settingPayment = Object.prototype.hasOwnProperty.call(filteredBody, 'paymentDate')
+      && filteredBody.paymentDate && String(filteredBody.paymentDate).trim();
+    if (settingPayment) {
+      const statusAfter = String(
+        Object.prototype.hasOwnProperty.call(filteredBody, 'applicationStatus')
+          ? filteredBody.applicationStatus
+          : workflow.applicationStatus || '',
+      ).trim();
+      if (statusAfter !== 'bond_received') {
+        return res.status(400).json({
+          code: 'BOND_NOT_RECEIVED',
+          message: 'لا يُسجَّل تاريخ السداد إلا بعد أن تصبح حالة الطلب «استُلم السند».'
+            + ' السداد إقرارٌ بوصول المال، ولا يصل قبل استلام السند.',
+          applicationStatus: statusAfter || null,
+        });
+      }
+    }
+
     filteredBody.lastModifiedBy = req.user._id;
 
     const before = workflow.toObject();

@@ -40,7 +40,14 @@ const employeeSchema = new mongoose.Schema(
     // employee actually started with us.
     actualWorkStartDate: { type: String }, // YYYY-MM-DD
     workLocation: { type: String, trim: true },
+    // الفرع الأساسي — الذي يُنسَب إليه الموظف في التقارير والرواتب.
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
+    // ── ولماذا فروعٌ أخرى ─────────────────────────────────────────────────────
+    // موظّفون يعملون على أكثر من فرع فعلًا (سائق يخدم جدة ومكة، ومشرف يغطّي
+    // فرعين). حصرُه في فرع واحد كان يجبر الإدارة على اختيار أحدهما، فيختفي من
+    // قوائم الفرع الآخر وكأنه ليس منه. الأساسي يبقى واحدًا للتقارير، وهذه
+    // الفروع الإضافية تجعله يظهر ويُختار في الفرعين معًا.
+    branches: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Branch' }], default: [], index: true },
     employmentStatus: {
       type: String,
       enum: ['active', 'on_leave', 'suspended', 'terminated'],

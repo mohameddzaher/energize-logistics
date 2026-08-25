@@ -975,11 +975,19 @@ export default function WalletPage() {
 
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">{L.driverName}</label>
+                      {/* يأتي من كشف التخريج، فلا يُعدَّل: بيانات الكشف مرتبطة برقمه،
+                          وتعديلها هنا يجعل السجل يقول شيئًا والكشف يقول غيره — ولا
+                          أحد يعرف أيّهما الصحيح بعد شهر. */}
                       <input type="text" value={txForm.purchaseDriverName}
                         name="purchaseDriverName"
                         autoComplete="off"
+                        readOnly={purchaseReportFound}
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseDriverName: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterDriverName} />
+                        className={`w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${
+                          purchaseReportFound
+                            ? 'bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed'
+                            : 'bg-white border-slate-200 text-slate-900'}`}
+                        placeholder={L.enterDriverName} />
                     </div>
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">{L.receiptNumber}</label>
@@ -996,9 +1004,21 @@ export default function WalletPage() {
                       <input type="text" value={txForm.purchaseBranch}
                         name="purchaseBranch"
                         autoComplete="off"
+                        readOnly={purchaseReportFound}
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseBranch: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterBranchName} />
+                        className={`w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 ${
+                          purchaseReportFound
+                            ? 'bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed'
+                            : 'bg-white border-slate-200 text-slate-900'}`}
+                        placeholder={L.enterBranchName} />
                     </div>
+                    {purchaseReportFound && (
+                      <p className="text-[11.5px] text-slate-600 sm:col-span-2">
+                        {lang === 'ar'
+                          ? 'اسم السائق والفرع مأخوذان من كشف التخريج ولا يُعدَّلان — إن كانا خطأً فالتصحيح في الكشف نفسه.'
+                          : 'Driver and branch come from the dispatch sheet and cannot be edited — correct them on the sheet itself.'}
+                      </p>
+                    )}
                   </>
                 )}
 

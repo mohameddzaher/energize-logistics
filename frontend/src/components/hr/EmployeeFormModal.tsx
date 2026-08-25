@@ -16,7 +16,7 @@ export const EMPTY_EMPLOYEE = {
   firstName: '', lastName: '', arabicName: '', employeeNumber: '', gender: '', dateOfBirth: '', nationality: '',
   idType: 'iqama', iqamaNumber: '', iqamaExpiry: '', nationalId: '', passportNumber: '', passportExpiry: '',
   qiwaContractNumber: '', gosiNumber: '', absherStatus: '', sponsorName: '', workPermitExpiry: '',
-  jobTitle: '', department: '', hireDate: '', actualWorkStartDate: '', workLocation: '', branch: '', employmentStatus: 'active',
+  jobTitle: '', department: '', hireDate: '', actualWorkStartDate: '', workLocation: '', branch: '', branches: [] as string[], employmentStatus: 'active',
   phone: '', email: '', address: '', emergencyContactName: '', emergencyContactPhone: '',
   basicSalary: 0, allowances: 0, directManager: '', notes: '',
   iban: '', bank: '', project: '', registerNumber: '', absherNumber: '', companyNumber: '', originCountryNumber: '',
@@ -68,6 +68,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       setForm({
         ...EMPTY_EMPLOYEE, ...employee,
         branch: (typeof employee.branch === 'object' ? employee.branch?._id : employee.branch) || '',
+        branches: (employee.branches || []).map((b: any) => (typeof b === 'object' ? b?._id : b)).filter(Boolean),
         directManager: (typeof employee.directManager === 'object' ? employee.directManager?._id : employee.directManager) || '',
       });
     } else {
@@ -136,6 +137,33 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={tx.actualWorkStartDate}><TextInput type="date" value={form.actualWorkStartDate || ''} onChange={(e) => set('actualWorkStartDate', e.target.value)} /></Field>
         <Field label={tx.workLocation}><TextInput value={form.workLocation} onChange={(e) => set('workLocation', e.target.value)} /></Field>
         <Field label={tx.branch}><Select value={form.branch} onChange={(e) => set('branch', e.target.value)}><option value="">—</option>{branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}</Select></Field>
+        {/* ── فروع إضافية ────────────────────────────────────────────────────
+            موظّفون يعملون على أكثر من فرع فعلًا. حصرُهم في واحد كان يُخفيهم من
+            قوائم الفرع الآخر وكأنهم ليسوا منه. الأساسي أعلاه يبقى فرعهم المنسوب
+            في التقارير، وهذه تجعلهم يظهرون ويُختارون في الفروع كلها. */}
+        <Field label={ar ? 'فروع إضافية يعمل عليها' : 'Also works at'}>
+          <div className="flex flex-wrap gap-1.5">
+            {branches.filter((b) => b._id !== form.branch).map((b) => {
+              const on = (form.branches || []).includes(b._id);
+              return (
+                <button key={b._id} type="button"
+                  onClick={() => set('branches', on
+                    ? (form.branches || []).filter((x: string) => x !== b._id)
+                    : [...(form.branches || []), b._id])}
+                  className={`px-2.5 py-1.5 rounded-lg text-[12.5px] font-semibold border transition ${
+                    on ? 'bg-[#12325c] text-white border-[#12325c]'
+                       : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'}`}>
+                  {b.name}
+                </button>
+              );
+            })}
+            {!branches.length && <span className="text-[12px] text-slate-500">—</span>}
+          </div>
+          <p className="text-[11px] text-slate-600 mt-1">
+            {ar ? 'الفرع الأساسي فوق هو المنسوب إليه في التقارير والرواتب.'
+                : 'The primary branch above is the one used in reports and payroll.'}
+          </p>
+        </Field>
         <Field label={tx.directManager}><Select value={form.directManager} onChange={(e) => set('directManager', e.target.value)}><option value="">—</option>{managers.map((m) => <option key={m._id} value={m._id}>{m.firstName} {m.lastName}</option>)}</Select></Field>
         <Field label={tx.employmentStatus}><Select value={form.employmentStatus} onChange={(e) => set('employmentStatus', e.target.value)}>{Object.entries(EMPLOYMENT_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}</Select></Field>
         <Field label={tx.basicSalary}><TextInput type="number" value={form.basicSalary} onChange={(e) => set('basicSalary', Number(e.target.value))} /></Field>

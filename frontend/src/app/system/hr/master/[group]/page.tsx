@@ -23,6 +23,7 @@ import {
 } from '@/lib/hrMaster';
 import { canEditSection } from '@/lib/sections';
 import MasterNav from '@/components/hr/MasterNav';
+import ContractsTabs from '@/components/hr/ContractsTabs';
 
 const QUICK = [30, 60, 90, 180];
 
@@ -99,6 +100,7 @@ function GroupInner() {
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <MasterNav />
+      {group === 'contract' && <ContractsTabs />}
 
       <PageHeader icon={<Pencil className="w-5 h-5" />} title={ar ? g.ar : g.en}
         subtitle={t('اضغط أي خانة ناقصة واملأها من هنا مباشرة', 'Click any missing cell and fill it right here')}>

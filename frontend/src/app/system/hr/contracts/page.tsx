@@ -9,6 +9,7 @@ import { FileText, Plus, Edit, Ban, Check } from 'lucide-react';
 import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, fmtDate, exportToExcel, today } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Badge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrContractsTranslations } from '@/lib/translations';
+import ContractsTabs from '@/components/hr/ContractsTabs';
 
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '' };
 
@@ -85,6 +86,7 @@ export default function ContractsPage() {
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
+      <ContractsTabs />
       <PageHeader icon={<FileText className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${contracts.length} ${tx.contractsUnit}`}>
         <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(filtered, [
           { header: tx.colEmployee, key: 'employee', transform: (v: any) => empName(v), width: 22 },

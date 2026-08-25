@@ -67,6 +67,9 @@ const userSchema = new mongoose.Schema(
     assignedProjects: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' },
     ],
+    // فروع إضافية يعمل عليها هذا الحساب — و`branch` أعلاه هو فرعه المنسوب.
+    // موجودة من قبل، ويقابلها `branches` على سجلّ الموظف: هذه صلاحية وصول
+    // الحساب، وتلك واقعُ عمل الشخص. قد يتطابقان وقد لا — ولذلك لم تُدمجا.
     assignedBranches: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
     ],

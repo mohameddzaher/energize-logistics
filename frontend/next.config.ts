@@ -8,6 +8,14 @@ const nextConfig = {
   outputFileTracingRoot: path.resolve('.'),
   poweredByHeader: false,
   compress: true,
+  // ── لماذا هذه الحزم بالذات ──────────────────────────────────────────────────
+  // `lucide-react` و`recharts` تُستورَد بالاسم من حزمة واحدة ضخمة (recharts وحدها
+  // ٧٫٤ ميغابايت مصدرًا)، فيدخل في حزمة الصفحة أكثر ممّا تستعمله بكثير — وهذا
+  // أثقل ما في صفحات اللوحات. هذا الخيار يحوّل الاستيراد إلى ملفّ لكل رمز،
+  // فلا يُحمَّل إلا المستعمَل فعلًا.
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'recharts', 'framer-motion', 'date-fns'],
+  },
   reactStrictMode: false,
   images: {
     unoptimized: true,

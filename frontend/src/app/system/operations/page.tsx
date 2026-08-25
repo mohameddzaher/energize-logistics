@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { ColumnFilter } from '@/components/ColumnFilter';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
+import { useDialog } from '@/components/system/DialogProvider';
 import { getOperationsTranslations } from '@/lib/translations';
 import { SHIPMENT_STATUSES, PAYMENT_METHODS } from '@/lib/ops';
 import api from '@/lib/api';
@@ -88,6 +89,13 @@ export default function OperationsWorkflowPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getOperationsTranslations(lang);
+  const { notify } = useDialog();
+  // الرسالة نصٌّ واحد يُستعمل في التلميح وفي التنبيه — فلا يقول أحدهما شيئًا
+  // ويقول الآخر غيره.
+  const gateMsg = lang === 'ar'
+    ? 'لا يُسجَّل تاريخ السداد إلا بعد أن تصبح حالة الطلب «استُلم السند». السداد إقرارٌ بوصول المال، ولا يصل قبل استلام السند — وتسجيله قبله يجعل التقارير المالية تَعُدُّ مبلغًا لم يُقبَض.'
+    : 'The payment date can only be recorded once the application status is “Bond received”. Recording it earlier makes the financial reports count money that has not arrived.';
+  const notifyGate = () => notify(gateMsg, 'error');
   // Translate raw UPL status/payment values for DISPLAY only (stored raw, so new
   // values the vendor adds still show — falling back to the raw value).
   const trStatus = (v: string) => { const s = SHIPMENT_STATUSES.find((x) => x.key === v); return s ? (lang === 'ar' ? s.ar : s.en) : v; };
@@ -701,14 +709,9 @@ export default function OperationsWorkflowPage() {
                 {ColHead('taxIndicator', T.thTaxIndicator)}
                 {ColHead('purchaseValue', T.thPurchaseValue)}
                 {ColHead('sellingValue', T.thSellingValue)}
-                {ColHead('loadingTime', T.thLoadingTime)}
                 {ColHead('driverName', T.thDriverName)}
-                {ColHead('driverPhone', T.thDriverPhone)}
                 {ColHead('truckType', T.thTruckType)}
                 {ColHead('truckSize', T.thTruckSize)}
-                {ColHead('loadType', T.thLoadType)}
-                {ColHead('quantity', T.thQuantity)}
-                {ColHead('reference', T.thReference)}
                 {ColHead('representativeName', T.thRepresentative)}
                 {/* Operations Review */}
                 {ColHead('operationsReview', T.thOpsReview, 'text-yellow-400')}
@@ -822,11 +825,25 @@ export default function OperationsWorkflowPage() {
                           {isEditing ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={spanCls(field, color)}>{formatMoney((wf as any)[field])}</span>}
                         </td>
                       );
-                      const dateCell = (field: keyof Workflow, color = 'text-slate-700') => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={cellClick(field)}>
-                          {isEditing ? <input type="date" autoFocus={focusField === field} title={field} className={`${ic} [&::-webkit-calendar-picker-indicator]:invert`} value={(editData as any)[field] ? (editData as any)[field].slice(0, 10) : ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={spanCls(field, color)}>{formatDate((wf as any)[field])}</span>}
-                        </td>
-                      );
+                      // ── تاريخ السداد لا يُكتب قبل استلام السند ────────────────
+                      // السداد يعني أن المال وصل، ولا يصل قبل استلام سند التسليم.
+                      // كتابته قبله تجعل التقارير المالية تعدّ مبلغًا لم يُقبَض —
+                      // فالحقل مقفل، ومكتوبٌ سببُ قفله لا مجرّد أنه مقفل.
+                      const bondReceived = String(wf.applicationStatus || '').trim() === 'bond_received';
+                      const dateCell = (field: keyof Workflow, color = 'text-slate-700') => {
+                        const gated = field === 'paymentDate' && !bondReceived;
+                        return (
+                          <td className="px-3 py-2.5 text-sm whitespace-nowrap"
+                            onClick={gated ? (e) => { e.stopPropagation(); notifyGate(); } : cellClick(field)}
+                            title={gated ? gateMsg : undefined}>
+                            {isEditing && !gated
+                              ? <input type="date" autoFocus={focusField === field} title={field} className={`${ic} [&::-webkit-calendar-picker-indicator]:invert`} value={(editData as any)[field] ? (editData as any)[field].slice(0, 10) : ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} />
+                              : <span className={`${spanCls(field, color)}${gated ? ' opacity-60 cursor-not-allowed' : ''}`}>
+                                  {formatDate((wf as any)[field]) || (gated ? '—' : '')}
+                                </span>}
+                          </td>
+                        );
+                      };
                       // Operations review is a one-click checkbox (checklist), not text.
                       const operationsReviewCell = () => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -873,14 +890,9 @@ export default function OperationsWorkflowPage() {
                         {textCell('taxIndicator')}
                         {numCell('purchaseValue')}
                         {numCell('sellingValue')}
-                        {textCell('loadingTime')}
                         {textCell('driverName')}
-                        {textCell('driverPhone')}
                         {textCell('truckType')}
                         {textCell('truckSize')}
-                        {textCell('loadType')}
-                        {textCell('quantity')}
-                        {textCell('reference')}
                         {textCell('representativeName')}
                         {/* Operations Review */}
                         {operationsReviewCell()}

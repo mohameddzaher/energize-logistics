@@ -220,7 +220,9 @@ exports.updateEmployee = async (req, res) => {
       'firstName', 'lastName', 'arabicName', 'employeeNumber', 'gender', 'dateOfBirth', 'nationality', 'photo',
       'idType', 'iqamaNumber', 'iqamaExpiry', 'nationalId', 'passportNumber', 'passportExpiry',
       'qiwaContractNumber', 'gosiNumber', 'absherStatus', 'sponsorName', 'workPermitExpiry',
-      'jobTitle', 'department', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branch', 'employmentStatus',
+      // `branch` الفرع الأساسي، و`branches` الفروع الإضافية التي يعمل عليها
+      // فعلًا — انظر models/Employee.
+      'jobTitle', 'department', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branch', 'branches', 'employmentStatus',
       'phone', 'email', 'address', 'emergencyContactName', 'emergencyContactPhone',
       'basicSalary', 'allowances', 'directManager', 'notes',
       // Banking
@@ -240,10 +242,18 @@ exports.updateEmployee = async (req, res) => {
     const after = {};
     for (const f of fields) {
       if (req.body[f] === undefined) continue;
-      const next = req.body[f] === '' && ['branch', 'directManager'].includes(f) ? null : req.body[f];
+      let next = req.body[f] === '' && ['branch', 'directManager'].includes(f) ? null : req.body[f];
+      // الفروع الإضافية مصفوفة، وقد تصل نصًّا مفصولًا بفواصل من نموذج قديم.
+      // ولا يصحّ أن يتكرّر الفرع الأساسي داخلها — يبقى أساسيًّا مرةً واحدة.
+      if (f === 'branches') {
+        const arr = Array.isArray(next) ? next : String(next || '').split(',');
+        const primary = String(req.body.branch ?? employee.branch ?? '');
+        next = [...new Set(arr.map((x) => String(x || '').trim()).filter(Boolean))]
+          .filter((x) => x !== primary);
+      }
       const prev = employee[f];
-      const prevCmp = prev && prev.toString ? prev.toString() : prev;
-      const nextCmp = next && next.toString ? next.toString() : next;
+      const prevCmp = Array.isArray(prev) ? prev.map(String).join(',') : (prev && prev.toString ? prev.toString() : prev);
+      const nextCmp = Array.isArray(next) ? next.map(String).join(',') : (next && next.toString ? next.toString() : next);
       if (String(prevCmp ?? '') !== String(nextCmp ?? '')) {
         before[f] = prev;
         after[f] = next;

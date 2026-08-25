@@ -35,6 +35,8 @@ export interface Employee {
   qiwaContractNumber?: string; gosiNumber?: string; absherStatus?: string; sponsorName?: string; workPermitExpiry?: string;
   jobTitle?: string; department?: string; hireDate?: string; actualWorkStartDate?: string; workLocation?: string;
   branch?: { _id: string; name: string } | string;
+  /** فروع إضافية يعمل عليها الموظف — والأساسي أعلاه هو المنسوب في التقارير. */
+  branches?: (string | { _id: string; name?: string })[];
   employmentStatus?: 'active' | 'on_leave' | 'suspended' | 'terminated';
   terminatedAt?: string; terminationReason?: string;
   phone?: string; email?: string; address?: string; emergencyContactName?: string; emergencyContactPhone?: string;

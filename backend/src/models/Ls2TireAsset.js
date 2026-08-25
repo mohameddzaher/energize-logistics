@@ -20,18 +20,29 @@ const ls2TireAssetSchema = new mongoose.Schema({
   //   spare(new)        ← purchases register a fresh tire
   //   mounted           ← installed; installing where another tire sits FORCES
   //                       declaring where the displaced one goes (in ⇒ out)
-  //   in_repair         ← تحت التجديد: off the truck at the renewal shop — NOT
-  //                       available stock; counting it as spare is how a shelf
-  //                       promises tires it cannot hand out
-  //   spare(renewed)    ← renewal succeeded (مجدد). A renewed tire mounts on
-  //                       the TRAILER only — never الرأس (enforced in /move)
+  //   in_repair         ← في المصنع: نزلت من العربية وراحت مصنع التجديد — مش
+  //                       مخزون متاح؛ عدّها ضمن الرف هو اللي بيخلي المخزن
+  //                       يوعد بفردة مش قادر يسلّمها. الدرجة بتبقى at_factory
+  //                       معاها عشان شاشة المخزن تعرض الخانة من غير ما تقرأ
+  //                       الحالة والدرجة من مصدرين مختلفين
+  //   spare             ← renewal succeeded: عادت من المصنع صالحة، ترجع الرف
+  //                       كأي فردة مستعملة — تُركَّب في أي موضع، رأس أو تيدر
   //   scrap             ← سكراب: renewal failed; unusable, kept in store to sell
   //   damaged           ← تالف: blew out / worn beyond existence; terminal
   //   retired           ← legacy value from before scrap/damaged were separated
   status: { type: String, enum: ['mounted', 'spare', 'in_repair', 'scrap', 'damaged', 'retired', 'sold'], default: 'mounted', index: true },
-  // Quality grade, independent of where it is: fresh from purchase, ordinary
-  // used, or renewed (retreaded) — the grade the trailer-only rule reads.
-  condition: { type: String, enum: ['new', 'used', 'renewed'], default: 'used' },
+  // درجة الفردة، مستقلة عن مكانها:
+  //   new         جديدة من الشراء
+  //   used        مستعملة — وتشمل المجدَّدة. كانت «مجدد» درجة مستقلة، والورشة
+  //               بتتعامل مع الاتنين نفس المعاملة على الرف: نفس الرفّ ونفس
+  //               مواضع التركيب. فصلهم كان بيقسم مخزون واحد على خانتين، وكان
+  //               بيغذّي قاعدة «المجدد للتيدر بس» اللي الورشة بتخالفها فعليًا
+  //               (بتركّبه في الأربعة اللي ورا الرأس). دمجهم يخلي كل صفّ
+  //               وصفه صحيح: المجدَّدة مستعملة فعلًا، والعكس مش صحيح.
+  //   at_factory  في المصنع — الفردة برّه عند مصنع التجديد دلوقتي، مش على الرف
+  //               ولا على عربية. لازم تكون درجة عشان المخزن يعدّها خانة لوحدها
+  //               من غير ما تتحسب مخزون متاح.
+  condition: { type: String, enum: ['new', 'used', 'at_factory'], default: 'used' },
   // كام في المية — recorded when a tire goes back to the shelf so the workshop
   // can pick the right tire for the right slot later (تسكين). Null = never rated.
   conditionPercent: { type: Number, min: 0, max: 100, default: null },

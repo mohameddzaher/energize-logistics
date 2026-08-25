@@ -18,10 +18,12 @@ class Ls2VehicleAssetsScreen extends StatefulWidget {
 List<Map<String, dynamic>> _l(dynamic v) =>
     v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : const [];
 
+// نفس خانات درجة الكاوتش في شاشة الأصول: «مجدد» اندمجت في «مستعمل»، و«في
+// المصنع» درجة بتتولد من الحالة in_repair.
 const _conditions = {
   'new': ('جديد', 'New', T.success),
   'used': ('مستعمل', 'Used', T.info),
-  'renewed': ('مجدد', 'Renewed', T.violet),
+  'at_factory': ('في المصنع', 'At factory', T.violet),
 };
 
 String _d(dynamic v) {
@@ -327,9 +329,9 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                           'mounted': (tr('تركيب', 'Mounted'), T.success),
                           'transferred': (tr('نقل', 'Transferred'), T.navy),
                           'removed': (tr('إزالة', 'Removed'), T.warn),
-                          'to_repair': (tr('للتجديد', 'To renewal'), T.warn),
-                          'from_repair': (tr('من التجديد', 'From renewal'), T.info),
-                          'renewed': (tr('تجديد', 'Renewed'), T.violet),
+                          'to_repair': (tr('للمصنع', 'To factory'), T.warn),
+                          'from_repair': (tr('من المصنع', 'From factory'), T.info),
+                          'renewed': (tr('نجح التجديد', 'Renewed'), T.violet),
                           'scrapped': (tr('سكراب', 'Scrapped'), T.inkFaint),
                           'damaged': (tr('تلف', 'Damaged'), T.danger),
                           'updated': (tr('تعديل', 'Updated'), T.inkFaint),

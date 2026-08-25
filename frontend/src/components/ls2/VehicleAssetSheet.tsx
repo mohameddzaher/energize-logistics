@@ -43,7 +43,7 @@ const SENSOR: Record<string, { ar: string; en: string; cls: string }> = {
 const TIRE_STATUS: Record<string, { ar: string; en: string; cls: string }> = {
   mounted: { ar: 'مركّب', en: 'mounted', cls: 'bg-emerald-100 text-emerald-700' },
   spare: { ar: 'مخزن', en: 'spare', cls: 'bg-sky-100 text-sky-700' },
-  in_repair: { ar: 'تحت التجديد', en: 'in repair', cls: 'bg-amber-100 text-amber-800' },
+  in_repair: { ar: 'في المصنع', en: 'at the factory', cls: 'bg-amber-100 text-amber-800' },
   scrap: { ar: 'سكراب', en: 'scrap', cls: 'bg-slate-200 text-slate-700' },
   damaged: { ar: 'تالف', en: 'damaged', cls: 'bg-rose-100 text-rose-700' },
   retired: { ar: 'خارج الخدمة', en: 'retired', cls: 'bg-slate-100 text-slate-600' },

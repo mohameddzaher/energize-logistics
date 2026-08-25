@@ -22,17 +22,20 @@ List<Map<String, dynamic>> _l(dynamic v) =>
 const _tireStatuses = {
   'mounted': ('مركّبة', 'Mounted', T.success),
   'spare': ('بالمستودع', 'In store', T.info),
-  'in_repair': ('تحت التجديد', 'Renewing', T.warn),
+  'in_repair': ('في المصنع', 'At factory', T.warn),
   'scrap': ('سكراب', 'Scrap', T.inkFaint),
   'damaged': ('تالفة', 'Damaged', T.danger),
   'sold': ('مباعة', 'Sold', T.success),
   'retired': ('خارج الخدمة', 'Retired', T.inkFaint),
 };
 
+// درجة الفردة. «مجدد» اندمجت في «مستعمل» — المجدَّدة مستعملة فعلًا، والورشة
+// بتحطّها على نفس الرفّ وفي نفس المواضع، فالفصل كان بيقسم مخزون واحد بس.
+// و«في المصنع» بتتولد من الحالة in_repair، مش اختيار يدوي.
 const _conditions = {
   'new': ('جديد', 'New', T.success),
   'used': ('مستعمل', 'Used', T.info),
-  'renewed': ('مجدد', 'Renewed', T.violet),
+  'at_factory': ('في المصنع', 'At factory', T.violet),
 };
 
 class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
@@ -105,8 +108,12 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final q = _fold(_q.trim());
     final filtered = tires.where((t) {
       if (_filter.isNotEmpty) {
-        if (_filter == 'new' || _filter == 'renewed') {
-          if (t['condition'] != _filter) return false;
+        if (_filter == 'new') {
+          if (t['status'] != 'spare' || (t['condition'] ?? 'used') != 'new') return false;
+        } else if (_filter == 'used') {
+          // «المستعمل» بقى خانة واحدة: أي فردة على الرف مش جديدة — بالنفي عشان
+          // الصفوف اللي لسه على القيمة القديمة تفضل بتتعدّ قبل ما تجري الهجرة.
+          if (t['status'] != 'spare' || (t['condition'] ?? 'used') == 'new') return false;
         } else if (_filter == 'unmounted') {
           // أي فردة مش على مركبة حاليًا — مخزن أو تجديد أو سكراب أو تالفة أو
           // مباعة. غير «المستودع» اللي هي المتاحة للتركيب بس.
@@ -125,9 +132,9 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       ('mounted', tr('مركّبة', 'Mounted'), counts['mounted'] ?? 0, T.success),
       ('unmounted', tr('غير مركّبة', 'Unmounted'), tires.where((t) => t['status'] != 'mounted').length, T.warn),
       ('spare', tr('المستودع', 'Store'), counts['spare'] ?? 0, T.info),
-      ('new', tr('الجديد', 'New'), tires.where((t) => t['condition'] == 'new').length, T.success),
-      ('in_repair', tr('تحت التجديد', 'Renewing'), counts['inRepair'] ?? 0, T.warn),
-      ('renewed', tr('المجدد', 'Renewed'), tires.where((t) => t['condition'] == 'renewed').length, T.violet),
+      ('new', tr('الجديد', 'New'), tires.where((t) => t['status'] == 'spare' && (t['condition'] ?? 'used') == 'new').length, T.success),
+      ('used', tr('المستعمل', 'Used'), tires.where((t) => t['status'] == 'spare' && (t['condition'] ?? 'used') != 'new').length, T.violet),
+      ('in_repair', tr('في المصنع', 'At factory'), counts['inRepair'] ?? 0, T.warn),
       ('scrap', tr('السكراب', 'Scrap'), tires.where((t) => t['status'] == 'scrap').length, T.inkFaint),
       ('damaged', tr('التالف', 'Damaged'), tires.where((t) => t['status'] == 'damaged').length, T.danger),
       ('sold', tr('المباع', 'Sold'), tires.where((t) => t['status'] == 'sold').length, T.success),
@@ -937,7 +944,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
           children: [
             for (final o in [
               ('store', tr('سليمة → المستودع', 'Fine → store'), tr('صالحة، أُزيلت فقط — هنسجّل نسبتها', 'still good — we\'ll record its %')),
-              ('repair', tr('تحت التجديد', 'Under renewal'), tr('تروح الورشة — تعود مجددة أو سكراب', 'to the shop — renewed or scrap')),
+              ('repair', tr('في المصنع', 'At the factory'), tr('تروح مصنع التجديد — تعود صالحة أو سكراب', 'to the retreading factory — comes back usable or scrap')),
               ('scrap', tr('سكراب', 'Scrap'), tr('غير صالحة — تُخزّن حتى تُباع', 'unusable — kept to sell')),
               ('damaged', tr('تالفة', 'Damaged'), tr('انفجرت/تآكلت — لا وجود لها', 'blown/worn — gone')),
             ])
@@ -991,14 +998,14 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       builder: (c) => SimpleDialog(
         title: Text(tr('نتيجة التجديد', 'Renewal result')),
         children: [
-          SimpleDialogOption(onPressed: () => Navigator.pop(c, 'renewed'), child: Text(tr('نجح التجديد — إلى المستودع كمجدد', 'Renewed — back to store'))),
+          SimpleDialogOption(onPressed: () => Navigator.pop(c, 'renewed'), child: Text(tr('نجح التجديد — إلى المستودع مستعملة صالحة', 'Renewed — back to store as usable'))),
           SimpleDialogOption(onPressed: () => Navigator.pop(c, 'scrap'), child: Text(tr('فشل — سكراب', 'Failed — scrap'))),
         ],
       ),
     );
     if (result == null) return;
     await _post('/api/ls2/assets/tires/${t['_id']}/renewal-result', {'result': result},
-        result == 'renewed' ? tr('عاد للمستودع كمجدد', 'Back in store as renewed') : tr('سُجّل سكراب', 'Scrapped'));
+        result == 'renewed' ? tr('رجعت المستودع مستعملة صالحة', 'Back in store as usable') : tr('سُجّل سكراب', 'Scrapped'));
   }
 
   Future<void> _retire(Map<String, dynamic> t) async {
@@ -1020,7 +1027,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
   Future<void> _changeStatus(Map<String, dynamic> t) async {
     const opts = [
       ('spare', 'في المخزن (سليمة)', 'In stock'),
-      ('in_repair', 'تحت التجديد', 'Under renewal'),
+      ('in_repair', 'في المصنع', 'At the factory'),
       ('scrap', 'سكراب', 'Scrap'),
       ('damaged', 'تالفة', 'Damaged'),
       ('retired', 'معدومة', 'Retired'),

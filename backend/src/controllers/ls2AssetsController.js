@@ -229,9 +229,13 @@ exports.getVehicleAssets = async (req, res) => {
 
 // ---- Tires -----------------------------------------------------------------
 // POST /assets/tires — register a new tire (optionally mounted straight away).
-// A renewed (retreaded) tire carries the trailer-only rule: الرأس positions
-// (الرأس + المحور الخلفي للرأس) are where a blowout is most dangerous.
-const isHeadSection = (section) => String(section || '').includes('الرأس');
+//
+// ما فيش قاعدة بتربط درجة الفردة بموضع التركيب. كان فيه واحدة: «المجدد يُركَّب
+// على التيدر فقط»، وكانت بترفض أي فردة مجددة على أي موضع قسمه فيه «الرأس» —
+// يعني الاتنين قدّام **والأربعة اللي ورا الرأس** كمان. الورشة بتركّب المجدد في
+// الأربعة دول فعلًا، فالقاعدة كانت بتمنع شغل قايم بالفعل، والفنّي كان بيلفّها
+// بإنه يسجّل الفردة «مستعملة». التحقق الوحيد الباقي هو التحقق المادي: الحالة
+// والموضع الفاضي — مش درجة الفردة.
 
 exports.createTire = async (req, res) => {
   try {
@@ -243,10 +247,7 @@ exports.createTire = async (req, res) => {
     // A freshly registered unmounted tire is what a purchase just delivered —
     // grade 'new' unless the workshop says otherwise; a tire registered already
     // on a truck is ordinary 'used'.
-    const grade = ['new', 'used', 'renewed'].includes(condition) ? condition : (key ? 'used' : 'new');
-    if (grade === 'renewed' && key && isHeadSection(section)) {
-      return res.status(400).json({ message: 'الكاوتش المجدد يُركَّب على التيدر فقط — لا يُركَّب على الرأس' });
-    }
+    const grade = ['new', 'used'].includes(condition) ? condition : (key ? 'used' : 'new');
     const tire = await Ls2TireAsset.create({
       serial: String(serial).trim(), tireNumber, type, size, sensor, notes,
       condition: grade,
@@ -291,7 +292,7 @@ exports.updateTire = async (req, res) => {
 // body: { toPlate|null, positionNumber, positionLabel, section, reason, notes,
 //         date, destination, conditionPercent, displacedTo, replacementTireId }
 // The in⇒out rule lives here: mounting into an OCCUPIED slot requires
-// `displacedTo` — where the removed tire goes: 'repair' (تحت التجديد),
+// `displacedTo` — where the removed tire goes: 'repair' (في المصنع),
 // 'damaged' (تالف), 'scrap' (سكراب) or 'store' (سليمة، رجعت للمخزن).
 //
 // `replacementTireId` closes the OTHER half of a swap in the same operation:
@@ -300,6 +301,23 @@ exports.updateTire = async (req, res) => {
 const DEST_STATUS = { repair: 'in_repair', damaged: 'damaged', scrap: 'scrap', store: 'spare' };
 const DEST_ACTION = { in_repair: 'to_repair', damaged: 'damaged', scrap: 'scrapped', spare: 'removed' };
 
+/**
+ * الدرجة بتتبع الحالة في نقطة واحدة بس: «في المصنع».
+ *
+ * خانة «في المصنع» في المخزن بتتعدّ بالدرجة، والفردة بتروح المصنع وترجع بتغيير
+ * حالة. لو الاتنين مش مربوطين، الفردة بترجع الرف وهي لسه متسجّلة عند المصنع،
+ * فالخانة تفضل بتعدّ فردات موجودة قدّامك — وده بالظبط النوع من التناقض اللي
+ * بيخلي حد يوقف يثق في العدّاد كله.
+ */
+function gradeForStatus(tire, status) {
+  // فردة «جديدة» راحت المصنع تفضل جديدة: خانة «في المصنع» في الشاشة بتتعدّ
+  // بالحالة نفسها (status === 'in_repair') مش بالدرجة، فالكتابة فوق «جديد» هنا
+  // بتضيّع معلومة حقيقية عن الفردة من غير ما تكسب الشاشة حاجة.
+  if (status === 'in_repair') return tire.condition === 'new' ? 'new' : 'at_factory';
+  if (tire.condition === 'at_factory') return 'used'; // خرجت من المصنع ⇐ ترجع درجتها الطبيعية
+  return tire.condition;
+}
+
 // Mount a spare tire into a specific (now empty) slot. Shared by the move and
 // swap paths; throws with a user-facing Arabic message on rule violations.
 async function mountSpareTire(req, tireId, slot, when, reason) {
@@ -307,7 +325,7 @@ async function mountSpareTire(req, tireId, slot, when, reason) {
   if (!r) throw new Error('الفردة البديلة غير موجودة');
   // The replacement may come from the store (spare) OR be pulled off ANOTHER
   // truck (a swap) — the workshop usually has zero spares, so a mounted tire is
-  // the common case. Only out-of-service tires (تحت التجديد/تالفة/سكراب/خارج
+  // the common case. Only out-of-service tires (في المصنع/تالفة/سكراب/خارج
   // الخدمة) are rejected.
   if (!['spare', 'mounted'].includes(r.status)) {
     throw new Error(`الفردة البديلة ${r.serial} ليست متاحة للتركيب — حالتها الحالية لا تسمح بذلك`);
@@ -317,9 +335,6 @@ async function mountSpareTire(req, tireId, slot, when, reason) {
   if (r.status === 'mounted' && r.plateKey === slot.plateKey && r.positionNumber != null && slot.positionNumber != null
       && String(r.positionNumber) === String(slot.positionNumber)) {
     throw new Error(`الفردة البديلة ${r.serial} مركّبة بالفعل في نفس الموضع`);
-  }
-  if (r.condition === 'renewed' && isHeadSection(slot.section)) {
-    throw new Error(`الفردة البديلة ${r.serial} مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس`);
   }
   // If it was mounted on another truck, record it leaving that truck first so
   // the swap is a full audit trail (the old slot is now physically empty).
@@ -403,12 +418,6 @@ exports.moveTire = async (req, res) => {
           && String(y.positionNumber) === String(vacated.positionNumber)) {
         return res.status(400).json({ message: 'الفردتان في نفس الموضع — لا يمكن التبديل' });
       }
-      if (y.condition === 'renewed' && isHeadSection(vacated.section)) {
-        return res.status(400).json({ message: `الفردة ${y.serial} مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس` });
-      }
-      if (tire.condition === 'renewed' && isHeadSection(y.section)) {
-        return res.status(400).json({ message: `الفردة ${tire.serial} مجددة — المجدد يُركَّب على التيدر فقط، لا على الرأس` });
-      }
       const ySlot = { plate: y.plate, plateKey: y.plateKey, positionNumber: y.positionNumber, positionLabel: y.positionLabel, section: y.section };
       const yPos = posLabel(y);
       // وسم الاستبن يتبع الموقع: كل فردة ترث كونها استبن من الموقع الذي تنتقل إليه.
@@ -438,10 +447,6 @@ exports.moveTire = async (req, res) => {
     }
 
     if (toPlate) {
-      // مجدد يركب على التيدر فقط.
-      if (tire.condition === 'renewed' && isHeadSection(section)) {
-        return res.status(400).json({ message: 'الكاوتش المجدد يُركَّب على التيدر فقط — لا يُركَّب على الرأس' });
-      }
       const toKey = plateKey(toPlate);
       const live = await vehicleByKey(toKey);
       // The slot's current occupant: an IN must declare its OUT.
@@ -453,7 +458,7 @@ exports.moveTire = async (req, res) => {
           if (!DEST_STATUS[displacedTo]) {
             return res.status(400).json({
               code: 'DISPLACED_FATE_REQUIRED',
-              message: `الموقع مشغول بالفردة ${occupant.serial} — حدد مصيرها: تحت التجديد أو تالفة أو سكراب أو سليمة للمخزن`,
+              message: `الموقع مشغول بالفردة ${occupant.serial} — حدد مصيرها: في المصنع أو تالفة أو سكراب أو سليمة للمخزن`,
               occupant: { serial: occupant.serial, tireNumber: occupant.tireNumber },
             });
           }
@@ -463,6 +468,9 @@ exports.moveTire = async (req, res) => {
             ? Math.max(0, Math.min(100, Number(displacedConditionPercent))) : null;
           occupant.set({
             status: occStatus, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '', isSpare: false,
+            // الدرجة تتبع المصير: القاطن اللي راح المصنع لازم يبان في خانة «في
+            // المصنع»، وإلا يفضل متعدّ على الرف وهو أصلاً برّه.
+            condition: gradeForStatus(occupant, occStatus),
             // سليمة للمخزن → نسجّل نسبة حالتها (يقرأها التسكين لاحقًا) تمامًا كالنزول العادي.
             ...(occPct != null ? { conditionPercent: occPct } : {}),
           });
@@ -496,6 +504,7 @@ exports.moveTire = async (req, res) => {
       const toStatus = DEST_STATUS[destination] || 'spare';
       tire.set({
         status: toStatus,
+        condition: gradeForStatus(tire, toStatus),
         plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '',
         isSpare: false, // فردة خارج العربية ليست الاستبن
 
@@ -549,18 +558,19 @@ exports.moveTire = async (req, res) => {
   }
 };
 
-// POST /assets/tires/:id/renewal-result — the ONLY exit from تحت التجديد:
-// it either came back usable (مجدد → spare, trailer-only from now on) or it
-// did not (سكراب → kept in store to be sold).
+// POST /assets/tires/:id/renewal-result — المخرج الوحيد من «في المصنع»:
+// إما رجعت صالحة (⇐ الرف، مستعملة، تتركّب في أي موضع) أو لأ (سكراب يتباع).
 exports.tireRenewalResult = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    if (tire.status !== 'in_repair') return res.status(400).json({ message: 'الفردة ليست تحت التجديد' });
+    if (tire.status !== 'in_repair') return res.status(400).json({ message: 'الفردة ليست في المصنع' });
     const { result, notes = '' } = req.body || {};
     if (!['renewed', 'scrap'].includes(result)) return res.status(400).json({ message: 'result must be renewed | scrap' });
-    if (result === 'renewed') tire.set({ status: 'spare', condition: 'renewed' });
-    else tire.set({ status: 'scrap' });
+    // في الحالتين الفردة سابت المصنع، فدرجتها ترجع طبيعية: نجح التجديد ⇐ رجعت
+    // الرف مستعملة صالحة (تتركّب في أي موضع)، فشل ⇐ سكراب للبيع.
+    const st = result === 'renewed' ? 'spare' : 'scrap';
+    tire.set({ status: st, condition: gradeForStatus(tire, st) });
     await tire.save();
     await logEvent(req, {
       entityType: 'tire', refId: tire._id, label: tire.serial,
@@ -631,8 +641,10 @@ exports.setTireStatus = async (req, res) => {
     const blocked = blockEmptySlot(tire, req.body?.replacementTireId);
     if (blocked) return res.status(400).json(blocked);
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire), status: tire.status };
-    const set = { status };
-    if (['new', 'used', 'renewed'].includes(req.body.condition)) set.condition = req.body.condition;
+    const set = { status, condition: gradeForStatus(tire, status) };
+    // «في المصنع» مش اختيار — بتتولد من الحالة. والدرجة ما تتغيّرش يدويًا والفردة
+    // عند المصنع، وإلا خانة المخزن تعدّ فردة برّه على إنها على الرف.
+    if (status !== 'in_repair' && ['new', 'used'].includes(req.body.condition)) set.condition = req.body.condition;
     if (req.body.conditionPercent != null && req.body.conditionPercent !== '') set.conditionPercent = Number(req.body.conditionPercent);
     // مغادرة حالة التركيب → فَكّ من المركبة والموضع.
     if (tire.status === 'mounted') {

@@ -103,8 +103,48 @@ const qsOf = (o) => new URLSearchParams(o).toString();
     ok(`أعداد الجنسيات تُحسب بعد فلتر الفرع (${natAll} ← ${natIn})`, natIn < natAll && natIn === br.values[0].count);
     ok('الفرع نفسه يظل يعرض كل فروعه ليمكن إضافة فرع ثانٍ',
       hf2.filters.find((x) => x.key === 'branchName').values.length === br.values.length);
+    // كل حقل يُحسب بكل الفلاتر إلا نفسه: قيمه محسوبة على ما تبقّى، وقيمته
+    // المختارة تبقى ظاهرةً لترفعها وبقيّة قيمه ظاهرةً لتضيفها إليها.
+    const cross = await get(`/api/hr/master/filters?${qsOf({ nationality: two[0], gender: 'male' })}`);
+    const males = (await get('/api/hr/master/overview?gender=male')).totals.filtered;
+    const egy = (await get(`/api/hr/master/overview?${qsOf({ nationality: two[0] })}`)).totals.filtered;
+    const cNat = cross.filters.find((x) => x.key === 'nationality');
+    const cGen = cross.filters.find((x) => x.key === 'gender');
+    ok(`قيم الجنسية محسوبة على الذكور وحدهم (${cNat.values.reduce((n, v) => n + v.count, 0)} = ${males})`,
+      cNat.values.reduce((n, v) => n + v.count, 0) === males);
+    ok('والقيمة المختارة ما زالت ظاهرةً لترفعها', cNat.values.some((v) => v.value === two[0]));
+    ok(`وبقيّة الجنسيات ظاهرة لتضيفها (${cNat.values.length} قيمة)`, cNat.values.length > 1);
+    ok(`وقيم الجنس محسوبة على تلك الجنسية (${cGen.values.reduce((n, v) => n + v.count, 0)} = ${egy})`,
+      cGen.values.reduce((n, v) => n + v.count, 0) === egy);
+
     ok('«على رأس العمل» و«الموظفون» لا يتحرّكان مع الفلتر',
       (await get(`/api/hr/master/overview?${qsOf({ nationality: two[0] })}`)).totals.employees === hov.totals.employees);
+
+    // «مطلوب» على اللوحة = علامات «مطلوب» في القاعدة، لا أقل.
+    //
+    // هذا الفحص موجود لأن مشروعًا جزئيًّا أُضيف لتسريع الاستعلام حذف حقل
+    // `fieldStatus`، فقرأت اللوحة كل خانة «مملوءة أو لا شيء» وأعلنت أن لا عمل
+    // ينتظر — وفي القاعدة آلاف الخانات تنتظر. لوحةٌ تقول صفرًا وهي لا تعرف
+    // أسوأ من لوحةٍ لا تُحمَّل.
+    // العلامة على خانةٍ فيها قيمة أثرٌ قديم من قبل أن تُملأ، فلا تُعدّ عملًا
+    // ينتظر — تُحصى وتُطبع، ولا تدخل في المقارنة.
+    const rowsFs = await Employee.find({ isHrRecord: { $ne: false }, inCurrentMaster: true }).lean();
+    let dbRequired = 0; let staleFlags = 0;
+    for (const r of rowsFs) {
+      for (const [k, v] of Object.entries(r.fieldStatus || {})) {
+        if (v !== 'required') continue;
+        const field = k.replace(/Status$/, '');
+        const val = r[field];
+        const isFilled = !(val === null || val === undefined || val === '' || (Array.isArray(val) && !val.length));
+        isFilled ? staleFlags++ : dbRequired++;
+      }
+    }
+    if (staleFlags) console.log(`  ℹ  ${staleFlags} علامة «مطلوب» على خانة فيها قيمة — أثرٌ قديم لا يُعدّ عملًا`);
+    ok(`«بيانات مطلوبة» ${hov.totals.required} = خانات القاعدة الفارغة المعلَّمة ${dbRequired}`,
+      hov.totals.required === dbRequired,
+      hov.totals.required === 0 ? 'العمود كلّه صفر — الأرجح أن حقل الحالة سقط من المشروع الجزئي' : '');
+    ok('وكل مجموعة تقول مجموع حقولها',
+      hov.groups.every((g) => g.required === g.fields.reduce((n, f) => n + f.counts.required, 0)));
 
     // ══ المركبات ══════════════════════════════════════════════════════════════
     console.log('\n══ المركبات ══');

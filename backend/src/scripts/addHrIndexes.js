@@ -40,8 +40,8 @@ const mongoose = require('mongoose');
       { inCurrentMaster: 1, bank: 1 },
       { inCurrentMaster: 1, nationality: 1, branchName: 1 },
 
-      // للبحث النصي
-      { arabicName: 'text', firstName: 'text', lastName: 'text', employeeNumber: 1, iqamaNumber: 1 },
+      // البحث في هذه الشاشات بتعبير نمطي لا بـ$text، فلا فهرس نصيًّا هنا:
+      // لا يستعمله أحد ويمنع إنشاء فهرس نصيّ آخر (واحد فقط لكل مجموعة).
     ];
 
     for (const idx of indexes) {

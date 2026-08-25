@@ -143,8 +143,9 @@ exports._dateRangePred = dateRangePred;
 async function findEmployees(q, select) {
   let query = Employee.find(buildFilter(q));
   if (select) query = query.select(select);
-  // استخدام hint لفرض استخدام الـ index الأنسب عندما تكون الفلاتر معقدة
-  query = query.hint({ inCurrentMaster: 1, employmentStatus: 1 });
+  // بلا hint: إجبار المخطِّط على فهرسٍ بعينه يجعل كل استعلام يفشل إن لم يكن
+  // ذلك الفهرس موجودًا على العنقود — وهو ما كان يحدث هنا حرفيًّا. الفهارس
+  // تُنشأ بـ scripts/addHrIndexes.js ويختار المخطِّط منها ما يناسب كل استعلام.
   const rows = await query.lean();
   const pred = dateRangePred(q);
   return pred ? rows.filter(pred) : rows;
@@ -323,13 +324,19 @@ exports.overview = async (req, res) => {
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
-    // SELECT فقط الحقول المستخدمة في التحليل + الحقول القابلة للفلترة
-    const requiredFields = [
+    // مشروعٌ جزئيّ لتقليل النقل — و`fieldStatus` **أوّل** ما فيه.
+    //
+    // كان محذوفًا، وهو الحقل الذي تُقرأ منه حالة كل خانة؛ فبغيابه صارت كل خانة
+    // «مملوءة أو لا شيء» وانهار عمود «مطلوب» كلّه إلى صفر — لوحةٌ تقول إن لا
+    // عمل ينتظر، وفي القاعدة ٥٢٦٢ خانة تنتظر. تقليل النقل لا يجوز أن يحذف
+    // الحقل الذي عليه يقوم الحساب.
+    const requiredFields = [...new Set([
+      'fieldStatus',
       'employeeNumber', 'arabicName', 'firstName', 'lastName', 'employmentStatus',
       'isOutsideKingdom', 'isFreelancer', 'iban', 'gosiNumber', 'inCurrentMaster',
       ...FILTERABLE, ...DATE_FILTERABLE,
-      ...H.GROUPS.flatMap(g => [g.expiryField, ...g.fields.map(f => f.key)]).filter(Boolean)
-    ].join(' ');
+      ...H.GROUPS.flatMap((g) => [g.expiryField, ...g.fields.map((f) => f.key)]).filter(Boolean),
+    ])].join(' ');
     const employees = await findEmployees(req.query, requiredFields);
 
     // ── كارت لكل حقل ─────────────────────────────────────────────────────────

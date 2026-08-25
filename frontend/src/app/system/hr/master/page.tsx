@@ -33,21 +33,25 @@ export default function HrMasterPage() {
   // القديمة — الصفحة دي بقت المكان الوحيد، فما ينفعش نسيب حاجة وراها.
   const [ops, setOps] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   // الفلتر هو مصدر كل رقم في هذه الصفحة. البطاقات والتحليلات كلها تُعاد قراءتها
   // منه، فلا يبقى في الشاشة رقمٌ محسوبٌ على مجموعة غير التي يراها المستخدم.
   const [filters, setFilters] = useState<FilterValues>({});
   const onlyActive = filters.employment === 'active';
 
+  // التراخيص وحدها تأتي من الداشبورد العامّ، وهي لا تتحرّك مع الفلتر — فتُقرأ
+  // مرّةً واحدة عند فتح الصفحة، لا مع كل ضغطةٍ على فلتر.
+  useEffect(() => { api.get<any>('/api/hr/dashboard').then(setOps).catch(() => {}); }, []);
+
   const load = useCallback(async () => {
+    // الشاشة تبقى معروضةً باهتةً أثناء التحديث بدل أن تُفرَّغ: الفراغ يجعل كل
+    // ضغطة فلترٍ تبدو انقطاعًا، والباهت يقول «يُحدَّث» بلا أن يأخذ الصفحة منك.
+    setRefreshing(true);
     try {
-      const [o, op] = await Promise.all([
-        getHrOverview(filters),
-        api.get<any>('/api/hr/dashboard').catch(() => null),
-      ]);
-      setD(o);
-      if (op) setOps(op);
+      setD(await getHrOverview(filters));
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setLoading(false);
+    setRefreshing(false);
   }, [JSON.stringify(filters), notify]);
   useEffect(() => { load(); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
@@ -62,8 +66,15 @@ export default function HrMasterPage() {
     const p = new URLSearchParams({ ...filters, ...q } as Record<string, string>).toString();
     router.push(`/system/hr/master/${group}${p ? `?${p}` : ''}`);
   };
-  /** بطاقات التحليل تفلتر الصفحة نفسها بدل الانتقال — تُضاف فوق الفلتر القائم. */
-  const drill = (q: Record<string, string>) => setFilters((f) => ({ ...f, ...q }));
+  /**
+   * كل رقم يفتح الصفوف التي وراءه — لا يُضيف فلترًا إلى هذه الصفحة.
+   *
+   * كان الضغط على «ليس على رأس العمل ١٣» يُضيف الشرط إلى فلتر اللوحة، فتبقى
+   * أمامك اللوحة نفسها بأرقامٍ أصغر ولا ترى الثلاثة عشر. والفرق بين الأمرين
+   * هو الفرق بين سؤالٍ وجواب: الفلتر يصنع الرقم، والضغط على الرقم يُري مَن فيه.
+   * «الهوية» هي المجموعة العامّة التي تعرض الموظف ببياناته الأساسية.
+   */
+  const drill = (q: Record<string, string>) => open('identity', q);
 
   if (loading) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t('تعذّر التحميل', 'Could not load')}</div>;
@@ -122,28 +133,26 @@ export default function HrMasterPage() {
             </div>
           )}
         />
-        {countActive(filters) > 0 && (
-          <p className="mt-2 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.filtered ?? 0} موظفًا مطابقًا للفلتر، عدا التراخيص فهي على مستوى الشركة.`,
-               `Every card and chart below is computed over the ${d?.totals?.filtered ?? 0} matching employees — except licences, which are company-wide.`)}
-          </p>
-        )}
       </div>
 
+      <div className={refreshing ? 'opacity-50 transition-opacity pointer-events-none space-y-5' : 'transition-opacity space-y-5'}>
       {/* الأرقام الكبيرة */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
         {/* كل رقم هنا محسوب على ما يعرضه الفلتر. «الموظفون» يحمل تحته إجمالي
             الملفّ الوظيفيّ ليُعرف من أيٍّ اقتُطع هذا العدد. */}
         <Big label={t('الموظفون', 'Employees')} value={d.totals.employees} c="#f37121"
-          sub={countActive(filters) > 0 ? t(`من ${d.totals.roster}`, `of ${d.totals.roster}`) : undefined} />
+          sub={countActive(filters) > 0 ? t(`من ${d.totals.roster}`, `of ${d.totals.roster}`) : undefined}
+          onClick={() => open('identity')} />
         <Big label={t('على رأس العمل', 'Active')} value={d.totals.active} c="#16a34a"
           onClick={() => drill({ employment: 'active' })} />
         <Big label={t('ليس على رأس العمل', 'Not active')} value={d.totals.notActive} c="#94a3b8"
           onClick={() => drill({ employment: 'inactive' })} />
-        <Big label={t('بيانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626" />
+        <Big label={t('بيانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626"
+          onClick={() => open('identity', { status: 'required' })} />
         <Big label={t('ينتهي قريبًا', 'Expiring soon')} value={d.totals.expiringSoon} c="#ea580c"
           onClick={() => router.push('/system/hr/master/expiring')} />
-        <Big label={t('مسجّل بالتأمينات', 'GOSI registered')} value={d.totals.gosiRegistered} c="#0ea5e9" />
+        <Big label={t('مسجّل بالتأمينات', 'GOSI registered')} value={d.totals.gosiRegistered} c="#0ea5e9"
+          onClick={() => open('gosi')} />
         <Big label={t('خارج المملكة', 'Outside kingdom')} value={d.totals.outsideKingdom} c="#64748b"
           onClick={() => drill({ outsideKingdom: '1' })} />
         <Big label={t('عمل حر', 'Freelancers')} value={d.totals.freelancers} c="#0f172a"
@@ -186,7 +195,7 @@ export default function HrMasterPage() {
             <BarChart3 className="w-4 h-4 text-[#12325c]" />
             <h2 className="text-sm font-bold text-slate-800">{t('التحليلات', 'Analytics')}</h2>
             <span className="text-[11px] text-slate-400">
-              {t('اضغط أيّ شريحة لتُضاف إلى الفلتر', 'Click any band to add it to the filter')}
+              {t('اضغط أيّ شريحة لعرض مَن فيها', 'Click any band to see who is in it')}
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -248,6 +257,7 @@ export default function HrMasterPage() {
           {d.groups.map((g) => <GroupBlock key={g.key} g={g} ar={ar} t={t} onOpen={open} />)}
         </div>
       </section>
+      </div>
     </div>
   );
 }

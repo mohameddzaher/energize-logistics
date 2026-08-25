@@ -62,8 +62,14 @@ export default function VehiclesOverviewPage() {
     const p = new URLSearchParams(Object.entries({ ...filters, ...q }).map(([k, v]) => [k, String(v)])).toString();
     router.push(`/system/vehicles/registry/expiring?${p}`);
   };
-  /** بطاقات التحليل تفلتر الصفحة نفسها بدل الانتقال — تُضاف فوق الفلتر القائم. */
-  const drill = (q: Record<string, string>) => setFilters((f) => ({ ...f, ...q }));
+  /**
+   * كل رقم يفتح المركبات التي وراءه — لا يُضيف فلترًا إلى هذه الصفحة.
+   *
+   * الفرق بين الأمرين هو الفرق بين سؤالٍ وجواب: الفلتر يصنع الرقم، والضغط على
+   * الرقم يُري ما فيه. وكان الضغط يُضيف الشرط فتبقى أمامك اللوحة نفسها بأرقامٍ
+   * أصغر ولا ترى المركبات أصلًا.
+   */
+  const drill = (q: Record<string, string>) => openList(q);
 
   if (loading) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t('تعذّر التحميل', 'Could not load')}</div>;
@@ -127,12 +133,6 @@ export default function VehiclesOverviewPage() {
             </div>
           )}
         />
-        {countActive(filters) > 0 && (
-          <p className="mt-2 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.vehicles ?? 0} مركبة مطابقة للفلتر.`,
-               `Every card and chart below is computed over the ${d?.totals?.vehicles ?? 0} matching vehicles.`)}
-          </p>
-        )}
       </div>
 
       {/* ① الأرقام الكبيرة */}
@@ -203,7 +203,7 @@ export default function VehiclesOverviewPage() {
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold text-slate-800">{t('التحليلات', 'Analytics')}</h2>
             <span className="text-[11px] text-slate-400">
-              {t('اضغط أي شريحة لتُضاف إلى الفلتر', 'Click any band to add it to the filter')}
+              {t('اضغط أيّ شريحة لعرض ما فيها', 'Click any band to see what is in it')}
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">

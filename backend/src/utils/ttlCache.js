@@ -30,19 +30,46 @@ function set(key, val, ttlMs) {
 
 // Drop everything (no prefix) or every key starting with `prefix`.
 function clear(prefix) {
-  if (!prefix) { store.clear(); return; }
+  if (!prefix) { store.clear(); inflight.clear(); return; }
   for (const k of store.keys()) if (k.startsWith(prefix)) store.delete(k);
+  // الوعود الجارية تُسقَط معها: وعدٌ بدأ قبل الكتابة سيكتب نتيجته القديمة فوق
+  // ذاكرةٍ أُبطلت للتوّ، فتعود الشاشة إلى ما قبل التعديل بلا سبب ظاهر.
+  for (const k of inflight.keys()) if (k.startsWith(prefix)) inflight.delete(k);
 }
 
-// Cache-aside helper: return the cached value for `key`, or run `producer()`,
-// cache its result, and return it. Coalesces identical concurrent computations
-// (e.g. a dashboard requested by many users at once) into one DB round-trip set.
+// ── الطلعة الواحدة (single-flight) ───────────────────────────────────────────
+//
+// كان `wrap` يقرأ الذاكرة ثم يحسب — وبينهما فجوة. فحين يفتح أربعون موظفًا
+// اللوحةَ نفسها في الثانية نفسها (وهذا ما يحدث صباحًا بالضبط) يخيب ظنّهم جميعًا
+// في الذاكرة، فتُحسب النتيجة نفسها أربعين مرّة على قاعدة البيانات. القياس تحت
+// أربعين مستخدمًا متزامنًا: من ٣ إلى ٦٫٦ ثانية عند ٩٥٪ — وكلّها انتظارٌ لعملٍ
+// مكرَّر لا لعملٍ لازم.
+//
+// الآن يُحفَظ **الوعد** لا النتيجة وحدها: أوّل طالبٍ يبدأ الحساب، ومَن جاء بعده
+// وهو جارٍ ينتظر الوعد نفسه. حسابٌ واحد يخدم الأربعين.
+//
+// والوعد يُنزَع عند الفشل: لو بقي محفوظًا لورث كلُّ طالبٍ لاحقٍ خطأً وقع مرّةً
+// واحدة، فيصير عطلٌ عابر عطلًا دائمًا حتى تنتهي المهلة.
+const inflight = new Map();
+
 async function wrap(key, ttlMs, producer) {
   const hit = get(key);
   if (hit !== undefined) return hit;
-  const val = await producer();
-  set(key, val, ttlMs);
-  return val;
+
+  const running = inflight.get(key);
+  if (running) return running;
+
+  const p = (async () => {
+    const val = await producer();
+    set(key, val, ttlMs);
+    return val;
+  })();
+  inflight.set(key, p);
+  try {
+    return await p;
+  } finally {
+    inflight.delete(key);
+  }
 }
 
 module.exports = { get, set, clear, wrap };

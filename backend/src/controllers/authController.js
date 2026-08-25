@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const logAudit = require('../utils/auditLogger');
-const { invalidateUserCache } = require('../middleware/auth');
+const { invalidateUserCache, revokeAccessToken } = require('../middleware/auth');
 const { COOKIE_OPTIONS } = require('../config/constants');
 
 // كم جهازًا/متصفّحًا يبقى المستخدم داخلًا عليها في وقت واحد.
@@ -20,10 +20,41 @@ const REFRESH_MS = REFRESH_DAYS * 24 * 60 * 60 * 1000;
 // مهلة بقاء التوكن القديم بعد إصدار بديله — تكفي لتبويبات تُجدِّد معًا.
 const GRACE_MS = 5 * 60 * 1000;
 
+// ── التوكن في فترة السماح يعيش هنا، لا في مصفوفة جلسات المستخدم ──────────────
+//
+// كان يُحشر في المصفوفة مع بديله، فيشغل الجلسةُ الواحدة خانتين وتبلغ المصفوفة
+// تسعًا، فيقصّها `slice(-8)` — **فيُطرَد جهازٌ آخر**. ومع ثمانية أجهزة عاملة صار
+// كل تجديدٍ يُخرِج شخصًا لا علاقة له بالتجديد، ثم يتكرّر: سلسلةُ خروجٍ لا يفهم
+// أحدٌ سببها.
+//
+// وهنا يُقاس عمره بوقتٍ لا بحذفٍ مؤجَّل: الحذف المؤجَّل كان يُلغي القديم بعد خمس
+// دقائق حتى لو ضاع الردّ الحامل للبديل في الشبكة — فيبقى الجهاز على توكنٍ لم
+// يعد معروفًا ويُطلَب منه كلمة السرّ بلا سبب. ولو أُعيد تشغيل الخادم قبل موعد
+// الحذف بقي القديم صالحًا إلى الأبد.
+const grace = new Map(); // token → وقت انتهاء السماح
+const graceHas = (t) => {
+  const exp = grace.get(t);
+  if (!exp) return false;
+  if (exp <= Date.now()) { grace.delete(t); return false; }
+  return true;
+};
+// كنسٌ خفيف: بلا هذا تنمو الخريطة بعدد التجديدات ما دام الخادم يعمل.
+setInterval(() => {
+  const now = Date.now();
+  for (const [t, exp] of grace) if (exp <= now) grace.delete(t);
+}, 60000).unref?.();
+
 const generateAccessToken = (userId, role) => {
-  return jwt.sign({ userId, role }, process.env.JWT_ACCESS_SECRET, {
-    expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m',
-  });
+  // ── معرّف عشوائيّ لكل توكن وصول ─────────────────────────────────────────────
+  // بدونه يُنتج جهازان يدخلان في الثانية نفسها توكنًا **متطابقًا حرفيًّا**:
+  // الحمولة {userId, role} والطابع الزمنيّ بالثواني، فلا شيء يفرّق بينهما.
+  // فيصير للجهازين توكنٌ واحد — وإبطالُ أحدهما عند الخروج يُخرج الآخر معه.
+  // توكن التجديد عولج بهذا من قبل، وبقي هذا بلا علاج.
+  return jwt.sign(
+    { userId, role, jti: require('crypto').randomBytes(9).toString('base64url') },
+    process.env.JWT_ACCESS_SECRET,
+    { expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m' },
+  );
 };
 
 const generateRefreshToken = (userId) => {
@@ -154,7 +185,7 @@ exports.refresh = async (req, res) => {
     // legacy single-token field is still honoured so sessions that were alive
     // before this change keep working.
     const sessions = Array.isArray(user && user.refreshTokens) ? user.refreshTokens : [];
-    const known = !!user && (sessions.includes(token) || user.refreshToken === token);
+    const known = !!user && (sessions.includes(token) || user.refreshToken === token || graceHas(token));
     if (!user || !known) {
       return res.status(401).json({ message: 'Invalid refresh token' });
     }
@@ -180,13 +211,19 @@ exports.refresh = async (req, res) => {
     let outgoing = token;
     if (isStale(decoded)) {
       outgoing = generateRefreshToken(user._id);
-      const keep = (user.refreshTokens || []).filter((x) => x !== token);
-      user.refreshTokens = [...keep, token, outgoing].slice(-MAX_SESSIONS);
-      await user.save();
-      setTimeout(() => {
-        // إبطال القديم بعد المهلة، بهدوء — فشلُه لا يضرّ الطلب الحالي.
-        User.updateOne({ _id: user._id }, { $pull: { refreshTokens: token } }).catch(() => {});
-      }, GRACE_MS).unref?.();
+      // ذرّيّ عبر القاعدة، لا قراءةً وتعديلًا وكتابة.
+      //
+      // تبويبان يُجدِّدان في اللحظة نفسها يحملان التوكن نفسه، فكلاهما يقرأ
+      // المصفوفة ويكتبها كاملة — فتمحو كتابةُ الثاني بديلَ الأوّل، ويربح آخرُ
+      // ردٍّ يصل المتصفّح. لو كان الخاسر هو صاحب الكوكي الأخير خرج المستخدم.
+      // `$pull` ثم `$push` بـ`$slice` يجعلان الأمر عمليةً واحدة في القاعدة.
+      await User.updateOne({ _id: user._id }, { $pull: { refreshTokens: token } });
+      await User.updateOne({ _id: user._id }, {
+        $push: { refreshTokens: { $each: [outgoing], $slice: -MAX_SESSIONS } },
+        $set: { refreshToken: outgoing },
+      });
+      // القديم يبقى مقبولًا فترةَ السماح — في الذاكرة، لا في المصفوفة.
+      grace.set(token, Date.now() + GRACE_MS);
     }
 
     res.cookie('refreshToken', outgoing, {
@@ -205,12 +242,19 @@ exports.refresh = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     if (req.user) {
-      // Sign out THIS device only — other devices stay logged in.
-      const thisToken = req.cookies?.refreshToken;
+      // جهازٌ واحد يخرج، والباقي يبقى داخلًا.
+      //
+      // الهاتف لا كوكيز له، فيرسل توكنه في الجسم كما يفعل في التجديد. وبقراءة
+      // الكوكي وحده كان `thisToken` غير معرَّف فيسقط الأمر إلى تفريغ المصفوفة —
+      // فخروجُ هاتفٍ واحد كان يُخرج كلّ مكتبٍ وكلّ جهازٍ للمستخدم نفسه.
+      const thisToken = req.cookies?.refreshToken || req.body?.refreshToken;
       const update = thisToken
         ? { $pull: { refreshTokens: thisToken }, $set: { refreshToken: null } }
         : { $set: { refreshToken: null, refreshTokens: [] } };
       await User.findByIdAndUpdate(req.user._id, update);
+      // توكن الوصول الحاليّ يُبطَل معه: بدونه يبقى مقبولًا حتى ينتهي عمره.
+      revokeAccessToken(req.cookies?.accessToken
+        || (req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
       invalidateUserCache(req.user._id);
       logAudit({
         user: req.user._id,

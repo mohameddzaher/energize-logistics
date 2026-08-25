@@ -12,7 +12,21 @@ import { Users, Plus, Pencil, Trash2, Check, Loader2, X, Route } from 'lucide-re
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, ErrorNotice,
 } from '@/components/hr/HRKit';
+import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetCustomer, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
+
+// المسارات المتفق عليها تُصدَّر مسطّحةً في خليةٍ واحدة: العميل صفٌّ واحد في
+// الملف، وتفريقُه على صفوفٍ بعدد مساراته يُفسد كل جمعٍ يُبنى فوقه لاحقًا.
+const CUSTOMER_COLUMNS = [
+  { header: 'Customer', key: 'name', width: 28 },
+  { header: 'Phone', key: 'phone', width: 16 },
+  { header: 'Email', key: 'email', width: 24 },
+  { header: 'Type', key: 'customerType', transform: (v: any) => (v === 'heavy' ? 'Heavy' : v === 'branch' ? 'Branch' : ''), width: 12 },
+  { header: 'Rating', key: 'rating', width: 10 },
+  { header: 'Routes', key: 'routes', transform: (v: any) => (v || []).map((r: any) => `${r.fromCity || ''}→${r.toCity || ''}${r.price != null ? ` (${r.price})` : ''}`).join(' | '), width: 44 },
+  { header: 'Route count', key: 'routes', transform: (v: any) => (v || []).length, width: 12 },
+  { header: 'Notes', key: 'notes', width: 28 },
+];
 
 const EMPTY = {
   name: '', phone: '', email: '', notes: '',
@@ -103,6 +117,11 @@ export default function FleetCustomersPage() {
         subtitle={ar
           ? `${customers.length} عميلاً — أسعار المسارات المتفق عليها تُقرأ عند إنشاء الشحنة`
           : `${customers.length} customers — agreed route prices feed the booking form`}>
+        <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-customers"
+          options={[
+            { key: 'view', label: ar ? 'المعروض حسب البحث' : 'Filtered view', sheets: [{ name: 'Customers', rows: filtered as any[], columns: CUSTOMER_COLUMNS }] },
+            { key: 'all', label: ar ? 'كل العملاء' : 'All customers', sheets: [{ name: 'Customers', rows: customers as any[], columns: CUSTOMER_COLUMNS }] },
+          ]} />
         {editor && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة عميل' : 'Add customer'}</PrimaryButton>}
       </PageHeader>
 

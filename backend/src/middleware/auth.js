@@ -1,4 +1,19 @@
 const jwt = require('jsonwebtoken');
+
+// توكنات وصولٍ أُبطلت بالخروج، ووقت انتهائها. تُنسى وحدها متى انتهى عمرها،
+// فلا يبقى منها شيء بعد ربع ساعة من آخر خروج.
+const revoked = new Map();
+const isRevoked = (t) => {
+  const exp = revoked.get(t);
+  if (!exp) return false;
+  if (exp <= Date.now()) { revoked.delete(t); return false; }
+  return true;
+};
+const revokeAccessToken = (t, ttlMs = 16 * 60 * 1000) => { if (t) revoked.set(t, Date.now() + ttlMs); };
+setInterval(() => {
+  const now = Date.now();
+  for (const [t, exp] of revoked) if (exp <= now) revoked.delete(t);
+}, 60000).unref?.();
 const User = require('../models/User');
 
 // The cluster has high per-query latency (~90ms RTT), and this middleware runs
@@ -29,6 +44,14 @@ const authenticate = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+
+    // ── توكن الوصول لجلسةٍ خرجت لا يُقبَل ─────────────────────────────────────
+    // الخروج كان يُبطل توكن التجديد ويمسح الكوكي، لكنّ توكن الوصول يبقى موقَّعًا
+    // وصالحًا ربعَ ساعة. مَن نسخه قبل الخروج يظلّ داخلًا بعده — و«خروج» لا
+    // يُخرِج ليس خروجًا. القائمة قصيرة العمر بطول عمر التوكن نفسه، فلا تنمو.
+    if (isRevoked(token)) {
+      return res.status(401).json({ message: 'Session ended', code: 'SESSION_ENDED' });
+    }
 
     const cacheKey = String(decoded.userId);
     const cached = userCache.get(cacheKey);
@@ -66,3 +89,4 @@ const authenticate = async (req, res, next) => {
 
 module.exports = authenticate;
 module.exports.invalidateUserCache = invalidateUserCache;
+module.exports.revokeAccessToken = revokeAccessToken;

@@ -7,15 +7,34 @@
 //
 // مدير القسم يرى كل السيارات؛ المشرف يصله من الخادم سياراته هو فقط.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
-  LayoutGrid, RefreshCw, Truck, MapPin, Clock, Wrench, User as UserIcon, Search, X, AlertTriangle,
+  LayoutGrid, RefreshCw, Truck, MapPin, Clock, Wrench, User as UserIcon, Search, X, AlertTriangle, CalendarClock,
 } from 'lucide-react';
 import { Spinner, PageHeader, ErrorNotice } from '@/components/hr/HRKit';
+import ExportMenu from '@/components/ls2/ExportMenu';
+
+// أعمدة تصدير اللوحة — بطاقةُ كل سيارة مسطّحةً في صفّ.
+const BOARD_COLUMNS = [
+  { header: 'Plate', key: 'plate', width: 16 },
+  { header: 'Description', key: 'name', width: 20 },
+  { header: 'Trailer', key: 'trailerType', width: 14 },
+  { header: 'Supervisor', key: 'supervisorName', width: 20 },
+  { header: 'State', key: 'state', width: 12 },
+  { header: 'Drivers', key: 'drivers', transform: (v: any) => (v || []).map((d: any) => d.name).join(' + '), width: 26 },
+  { header: 'Waybill', key: 'trip', transform: (v: any) => v?.waybillNumber ?? '', width: 10 },
+  { header: 'Customer', key: 'trip', transform: (v: any) => v?.customerName || '', width: 24 },
+  { header: 'From', key: 'trip', transform: (v: any) => v?.fromCity || '', width: 14 },
+  { header: 'To', key: 'trip', transform: (v: any) => v?.toCity || '', width: 14 },
+  { header: 'Expected arrival', key: 'trip', transform: (v: any) => (v?.expectedArrival ? fmtDT(v.expectedArrival, 'en') : ''), width: 20 },
+  { header: 'Live city', key: 'liveCity', width: 14 },
+  { header: 'Maintenance', key: 'maintenance', transform: (v: any) => v?.status || '', width: 14 },
+];
 import { canViewFleet, fleetStatusLabel, fmtDT, hoursSince, BOARD_STATES, foldAr, Lang } from '@/lib/fleet';
 
 interface BoardTrip {
@@ -116,6 +135,15 @@ export default function FleetBoardPage() {
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<LayoutGrid className="w-5 h-5" />} title={ar ? 'اللوحة الرئيسية للأسطول' : 'Fleet Board'}
         subtitle={ar ? 'كل سيارة ببطاقة — الحالة والوجهة والصيانة تلقائيًا' : 'Every truck as one card — state, destination and maintenance, automatically'}>
+        {/* اللوحة تُظهر حالة اللحظة؛ ومَن أراد التخطيط لما هو آتٍ ينتقل من هنا. */}
+        <Link href="/system/fleet/arrivals" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 hover:bg-[#f37121]/20 text-[#f37121] text-sm font-medium">
+          <CalendarClock className="w-4 h-4" /> {ar ? 'المتوقع للوصول' : 'Expected arrivals'}
+        </Link>
+        <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-board"
+          options={[
+            { key: 'view', label: ar ? 'المعروض حسب الفلتر' : 'Filtered view', sheets: [{ name: 'Board', rows: filtered as any[], columns: BOARD_COLUMNS }] },
+            { key: 'all', label: ar ? 'كل السيارات' : 'All vehicles', sheets: [{ name: 'Board', rows: cards as any[], columns: BOARD_COLUMNS }] },
+          ]} />
         <button type="button" onClick={() => { setLoading(true); load(); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <RefreshCw className="w-4 h-4" /> {ar ? 'تحديث' : 'Refresh'}
         </button>

@@ -1,6 +1,6 @@
 'use client';
 // قائمة سجل المركبات — فلاتر متعددة، بحث، حالة كل مركبة، وتعديل/إضافة/حذف.
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
@@ -16,7 +16,7 @@ import { Car, Plus, Edit, Trash2, BarChart3, BellRing, X, Save, ArrowRight } fro
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
 
-export default function VehicleRegistryList() {
+function VehicleRegistryListInner() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { user } = useAuth();
@@ -238,4 +238,11 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
       </div>
     </div>
   );
+}
+
+// `useSearchParams` يوجب حدَّ Suspense في موجِّه Next. كانت الصفحة تنجو صدفةً
+// لأن غلاف القسم يعود قبل المحتوى أثناء التوليد المسبق — وأيّ تعديلٍ في بوّابة
+// الدخول كان سيحوّلها إلى فشل بناءٍ صريح.
+export default function VehicleRegistryList() {
+  return <Suspense fallback={<Spinner />}><VehicleRegistryListInner /></Suspense>;
 }

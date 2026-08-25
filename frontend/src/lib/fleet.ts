@@ -181,3 +181,92 @@ export const canAdminFleet = (u: RoleOrUser) => FLEET_ADMIN_ROLES.includes(roleO
 // View tier: a role granted VIEW on the section can open the read pages (board,
 // lists) even though it can't create or edit anything.
 export const canViewFleet = (u: RoleOrUser) => FLEET_EDIT_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Fleet Management');
+
+// ── شاشات التحليل الثلاث: المتوقع للوصول، تحليل السيارة، تحليل الحمولات ──────
+// الأنواع تصف ردود `/api/fleet/arrivals` و`/vehicles/:id/analytics`
+// و`/loads-analysis`. تعيش هنا لا داخل الصفحات، لأن الصفحات تتقاطع: صفّ حمولةٍ
+// في تحليل الحمولات يفتح تحليل سيارته، وكلاهما يعرض نفس أرقام الحمولة.
+
+/** الفترة كما حسمها الخادم — تُعرض كما هي ولا تُعاد حسابتها في المتصفّح. */
+export interface FleetPeriod {
+  from: string;
+  to: string;
+  preset?: string;
+  monthsInRange?: number;
+}
+
+export interface FleetIdleVehicle {
+  _id: string;
+  plate: string;
+  name?: string;
+  trailerType?: string;
+  gpsType?: string;
+  supervisorName?: string;
+  drivers: { _id: string; name: string; phone?: string; working?: boolean }[];
+  // آخر رحلةٍ سارتها قبل أن تفرغ — «فاضية منذ متى وعائدةٌ من أين».
+  lastTrip: { waybillNumber: number; toCity?: string; status?: string; customerName?: string; at?: string | null } | null;
+}
+
+export interface FleetArrivals {
+  period: FleetPeriod;
+  arriving: FleetShipment[];
+  /** حمولاتٌ سائرة بلا وصولٍ متوقَّع مُسجَّل — لا تظهر في أيّ نافذةٍ زمنية. */
+  noEta: FleetShipment[];
+  idle: FleetIdleVehicle[];
+  byCity: { city: string; n: number }[];
+  summary: { arriving: number; noEta: number; idle: number; vehicles: number; busy: number };
+}
+
+export interface FleetVehicleAnalytics {
+  vehicle: FleetVehicle & {
+    monthlyTarget?: number;
+    drivers: { _id: string; name: string; phone?: string; working?: boolean; offReason?: string }[];
+    currentTrip: { _id: string; waybillNumber: number; status: string; fromCity?: string; toCity?: string; expectedArrival?: string | null; customerName?: string; loadDate?: string | null } | null;
+  };
+  period: FleetPeriod;
+  totals: {
+    trips: number; income: number; fullRent: number; driverExpense: number; branchShare: number;
+    net: number; avgTripIncome: number; avgTripExpense: number;
+    monthlyTarget: number; periodTarget: number; achievedPct: number | null; achieved: boolean | null;
+  };
+  byRoute: { fromCity: string; toCity: string; trips: number; income: number; driverExpense: number }[];
+  byCustomer: { _id: string | null; name: string; trips: number; income: number; driverExpense: number }[];
+  byStatus: Record<string, number>;
+  monthlyTrend: { month: string; trips: number; income: number; driverExpense: number }[];
+  shipments: FleetShipment[];
+  truncated: boolean;
+}
+
+export interface FleetLoadsAnalysis {
+  period: FleetPeriod;
+  totals: {
+    loads: number; income: number; fullRent: number; driverExpense: number;
+    fridayBonuses: number; branchShare: number; net: number; avgIncome: number; avgExpense: number;
+  };
+  byDay: { day: string; loads: number; income: number; driverExpense: number }[];
+  bySupervisor: { _id: string | null; name: string; loads: number; income: number; driverExpense: number }[];
+  byCustomer: { _id: string | null; name: string; loads: number; income: number; driverExpense: number }[];
+  byVehicle: { _id: string | null; plate: string; loads: number; income: number; driverExpense: number }[];
+  byDriver: { _id: string | null; name: string; loads: number; income: number; driverExpense: number }[];
+  byStatus: Record<string, number>;
+  shipments: FleetShipment[];
+  /** الصفوف مسقوفة والمجاميع ليست كذلك — يُعلَن الفرق بدل أن يُكتشَف بالجمع اليدوي. */
+  truncated: boolean;
+  shown: number;
+}
+
+export const money = (n?: number | null) => (Number(n) || 0).toLocaleString('en-US');
+
+/** معرّف السيارة من حمولة، سواء أُعيدت كمرجعٍ أو ككائنٍ مضمَّن. */
+export const shipmentVehicleId = (s: FleetShipment): string | null => {
+  const v = s.vehicle as any;
+  if (!v) return null;
+  return typeof v === 'string' ? v : (v._id || null);
+};
+
+/** معرّف العميل من حمولة — نفس السبب. */
+export const shipmentCustomerId = (s: FleetShipment): string | null => {
+  const c = s.customer as any;
+  if (!c) return null;
+  return typeof c === 'string' ? c : (c._id || null);
+};

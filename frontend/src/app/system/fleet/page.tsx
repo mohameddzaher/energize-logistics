@@ -3,8 +3,9 @@
 // a glance, filter by supervisor, and بوليصة downloads: one per row, or tick
 // several and download them all as a ZIP named
 // «بوليصة-<الرقم>-<العميل>-<التاريخ>».
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import { useLanguage } from '@/context/LanguageContext';
@@ -13,13 +14,14 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Truck, Plus, Pencil, Trash2, FileDown, Loader2, PhoneCall } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, StatCard, Select, ErrorNotice,
+  Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu from '@/components/ls2/ExportMenu';
+import PeriodFilter, { PeriodBanner, periodParams, periodFromParams, type Period } from '@/components/fleet/PeriodFilter';
 import { useFleetLookups } from '@/hooks/useFleetLookups';
 import {
   FleetShipment, FleetCustomer, FLEET_STATUSES, fleetStatus, fleetStatusLabel,
-  fmtDT, fmtD, hoursSince, canEditFleet, canAdminFleet, Lang,
+  fmtDT, fmtD, hoursSince, canEditFleet, canAdminFleet, shipmentVehicleId, Lang,
 } from '@/lib/fleet';
 import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
 
@@ -45,18 +47,40 @@ const toSheetRow = (s: FleetShipment): DispatchSheetRow => ({
   missingRequired: [],
 });
 
+// أعمدة تصدير الحمولات — معرَّفة مرة واحدة لأن الصفحة تصدّر مرّتين: الصفحة
+// المعروضة، وكل ما يطابق الفلتر مجلوبًا من الخادم. تعريفان يفترقان يومًا ما.
+const SHIPMENT_COLUMNS = [
+  { header: 'Waybill', key: 'waybillNumber', width: 10 },
+  { header: 'Customer', key: 'customerName', width: 26 },
+  { header: 'From', key: 'fromCity', width: 14 },
+  { header: 'To', key: 'toCity', width: 14 },
+  { header: 'Plate', key: 'vehiclePlate', width: 14 },
+  { header: 'Driver', key: 'driverName', width: 18 },
+  { header: 'Second driver', key: 'secondDriverName', width: 18 },
+  { header: 'Supervisor', key: 'supervisorName', width: 18 },
+  { header: 'Customer type', key: 'customerType', transform: (v: any) => (v === 'heavy' ? 'Heavy' : v === 'branch' ? 'Branch' : ''), width: 14 },
+  { header: 'Load type', key: 'loadType', width: 16 },
+  { header: 'Vehicle rent', key: 'price', width: 14 },
+  { header: 'Full rent', key: 'fullRent', width: 14 },
+  { header: 'Driver expense', key: 'driverExpense', width: 14 },
+  { header: 'Payment', key: 'paymentType', width: 12 },
+  { header: 'Load date', key: 'loadDate', transform: (v: any) => fmtD(v), width: 14 },
+  { header: 'Status', key: 'status', transform: (v: any) => fleetStatusLabel(v, 'en'), width: 14 },
+];
+
 // بوليصة-100001-اسم العميل-22-7-2026
 const waybillFileName = (s: FleetShipment) => {
   const d = new Date(s.loadDate || s.createdAt || Date.now());
   return `بوليصة-${s.waybillNumber}-${s.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
 };
 
-export default function FleetShipmentsPage() {
+function FleetShipmentsInner() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const lkp = useFleetLookups(ar);
   const router = useRouter();
+  const sp = useSearchParams();
   const { confirm, notify } = useDialog();
   const editor = canEditFleet(user);
 
@@ -64,18 +88,20 @@ export default function FleetShipmentsPage() {
   const [customers, setCustomers] = useState<FleetCustomer[]>([]);
   const [supervisors, setSupervisors] = useState<string[]>([]);
   const [stats, setStats] = useState<{ byStatus: Record<string, number>; byDestination?: { city: string; n: number }[] } | null>(null);
+  const [resolvedPeriod, setPeriodResolved] = useState<{ from: string; to: string; preset?: string } | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [search, setSearch] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [cityFilter, setCityFilter] = useState('');
-  const [customerFilter, setCustomerFilter] = useState('');
-  const [supervisorFilter, setSupervisorFilter] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  // كل فلاتر القائمة تعيش في عنوان الصفحة: يفتح المستخدم حمولةً ثم يرجع بزرّ
+  // المتصفّح فيجد قائمته كما تركها، ويُرسِل الرابط لغيره فيرى ما يراه بالضبط.
+  const [search, setSearch] = useState(() => sp?.get('q') || '');
+  const [debounced, setDebounced] = useState(search);
+  const [statusFilter, setStatusFilter] = useState(() => sp?.get('status') || '');
+  const [cityFilter, setCityFilter] = useState(() => sp?.get('toCity') || '');
+  const [customerFilter, setCustomerFilter] = useState(() => sp?.get('customer') || '');
+  const [supervisorFilter, setSupervisorFilter] = useState(() => sp?.get('supervisor') || '');
+  const [period, setPeriod] = useState<Period>(() => periodFromParams(sp));
   const [page, setPage] = useState(1);
 
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -86,30 +112,42 @@ export default function FleetShipmentsPage() {
   const [bulkProgress, setBulkProgress] = useState('');
 
   useEffect(() => {
-    const t = setTimeout(() => { setDebounced(search); setPage(1); }, 300);
+    const t = setTimeout(() => setDebounced(search), 300);
     return () => clearTimeout(t);
   }, [search]);
 
+  // الفلاتر بلا صفحة — تُستعمل للجلب وللعنوان وللتصدير الشامل معًا.
+  const filterParams = useMemo(() => {
+    const p: Record<string, string> = { ...periodParams(period) };
+    if (debounced.trim()) p.q = debounced.trim();
+    if (statusFilter) p.status = statusFilter;
+    if (cityFilter) p.toCity = cityFilter;
+    if (customerFilter) p.customer = customerFilter;
+    if (supervisorFilter) p.supervisor = supervisorFilter;
+    return p;
+  }, [debounced, statusFilter, cityFilter, customerFilter, supervisorFilter, period]);
+
   const load = useCallback(async () => {
     try {
-      const qs = new URLSearchParams({ page: String(page), limit: '25' });
-      if (debounced.trim()) qs.set('q', debounced.trim());
-      if (statusFilter) qs.set('status', statusFilter);
-      if (cityFilter) qs.set('toCity', cityFilter);
-      if (customerFilter) qs.set('customer', customerFilter);
-      if (supervisorFilter) qs.set('supervisor', supervisorFilter);
-      if (fromDate) qs.set('from', fromDate);
-      if (toDate) qs.set('to', toDate);
-      const d = await api.get<{ shipments: FleetShipment[]; total: number; stats: any }>(`/api/fleet/shipments?${qs}`);
+      const qs = new URLSearchParams({ ...filterParams, page: String(page), limit: '25' });
+      const d = await api.get<{ shipments: FleetShipment[]; total: number; stats: any; period: any }>(`/api/fleet/shipments?${qs}`);
       setShipments(d.shipments || []);
       setTotal(d.total || 0);
       setStats(d.stats || null);
+      setPeriodResolved(d.period || null);
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, cityFilter, customerFilter, supervisorFilter, fromDate, toDate, page]);
+  }, [filterParams, page]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const qs = new URLSearchParams(filterParams).toString();
+    router.replace(`/system/fleet${qs ? `?${qs}` : ''}`, { scroll: false });
+  }, [filterParams, router]);
+  // أيّ تغيير في الفلاتر يعيد الترقيم إلى أوّله، وإلا بقي المستخدم على صفحةٍ
+  // رقمها أكبر من نتائج الفلتر الجديد فتظهر القائمة فارغةً بلا سبب ظاهر.
+  useEffect(() => { setPage(1); }, [filterParams]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useEffect(() => {
     api.get<{ customers: FleetCustomer[] }>('/api/fleet/customers')
@@ -194,24 +232,22 @@ export default function FleetShipmentsPage() {
               : (ar ? `تحميل ${picked.size} بوليصة` : `Download ${picked.size} waybills`)}
           </button>
         )}
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(shipments, [
-          { header: 'Waybill', key: 'waybillNumber', width: 10 },
-          { header: 'Customer', key: 'customerName', width: 26 },
-          { header: 'From', key: 'fromCity', width: 14 },
-          { header: 'To', key: 'toCity', width: 14 },
-          { header: 'Plate', key: 'vehiclePlate', width: 14 },
-          { header: 'Driver', key: 'driverName', width: 18 },
-          { header: 'Second driver', key: 'secondDriverName', width: 18 },
-          { header: 'Supervisor', key: 'supervisorName', width: 18 },
-          { header: 'Customer type', key: 'customerType', transform: (v: any) => (v === 'heavy' ? 'Heavy' : v === 'branch' ? 'Branch' : ''), width: 14 },
-          { header: 'Load type', key: 'loadType', width: 16 },
-          { header: 'Vehicle rent', key: 'price', width: 14 },
-          { header: 'Full rent', key: 'fullRent', width: 14 },
-          { header: 'Driver expense', key: 'driverExpense', width: 14 },
-          { header: 'Payment', key: 'paymentType', width: 12 },
-          { header: 'Load date', key: 'loadDate', transform: (v: any) => fmtD(v), width: 14 },
-          { header: 'Status', key: 'status', transform: (v: any) => fleetStatusLabel(v, 'en'), width: 14 },
-        ], `fleet-shipments-${new Date().toISOString().slice(0, 10)}`, 'Shipments')} />
+        <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-shipments"
+          options={[
+            { key: 'page', label: ar ? 'الصفحة المعروضة' : 'This page', sheets: [{ name: 'Shipments', rows: shipments as any[], columns: SHIPMENT_COLUMNS }] },
+            {
+              key: 'filtered',
+              label: ar ? 'كل الحمولات حسب الفلتر الحالي' : 'Everything under the current filter',
+              hint: String(total),
+              // القائمة مرقّمة، فالتصدير «الشامل» يجب أن يُجلَب من الخادم لا أن
+              // يُبنى من الصفحة المعروضة — وإلا صدّر ٢٥ صفًّا باسم «الكل».
+              resolve: async () => {
+                const qs = new URLSearchParams({ ...filterParams, page: '1', limit: '2000' });
+                const d = await api.get<{ shipments: FleetShipment[] }>(`/api/fleet/shipments?${qs}`);
+                return [{ name: 'Shipments', rows: (d.shipments || []) as any[], columns: SHIPMENT_COLUMNS }];
+              },
+            },
+          ]} />
         {editor && (
           <PrimaryButton onClick={() => router.push('/system/fleet/new')}>
             <Plus className="w-4 h-4" /> {ar ? 'إنشاء حمولة' : 'Create shipment'}
@@ -267,14 +303,12 @@ export default function FleetShipmentsPage() {
             {customers.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
           </Select>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
-          <span className="text-slate-400 text-sm">→</span>
-          <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(1); }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
-        </div>
       </div>
+
+      {/* الفترة: نفس العنصر ونفس المعاني المستعملة في تحليل الحمولات وتحليل
+          السيارة — «هذا الشهر» هنا هو «هذا الشهر» هناك حرفيًّا. */}
+      <PeriodFilter value={period} onChange={setPeriod} lang={ar ? 'ar' : 'en'} />
+      <PeriodBanner period={resolvedPeriod} lang={ar ? 'ar' : 'en'} count={total} />
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
@@ -321,7 +355,11 @@ export default function FleetShipmentsPage() {
                   <td className="px-3 py-3 text-slate-900 font-bold font-mono">{s.waybillNumber}</td>
                   <td className="px-3 py-3 text-slate-900 font-medium max-w-[200px] truncate" title={s.customerName}>{s.customerName || '—'}</td>
                   <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{s.fromCity || '—'} ← {s.toCity || '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 font-mono text-xs">{s.vehiclePlate || '—'}</td>
+                  <td className="px-3 py-3 font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                    {shipmentVehicleId(s)
+                      ? <Link href={`/system/fleet/vehicles/${shipmentVehicleId(s)}`} className="font-semibold text-[#f37121] hover:underline">{s.vehiclePlate || '—'}</Link>
+                      : <span className="text-slate-700">{s.vehiclePlate || '—'}</span>}
+                  </td>
                   <td className="px-3 py-3 text-slate-700 text-xs">
                     <div className="flex items-center gap-2">
                       <span className="max-w-[150px] truncate">{[s.driverName, s.secondDriverName].filter(Boolean).join(' + ') || '—'}</span>
@@ -399,4 +437,8 @@ export default function FleetShipmentsPage() {
       )}
     </div>
   );
+}
+
+export default function FleetShipmentsPage() {
+  return <Suspense fallback={<Spinner />}><FleetShipmentsInner /></Suspense>;
 }

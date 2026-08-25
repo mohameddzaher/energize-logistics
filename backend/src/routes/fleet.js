@@ -35,8 +35,16 @@ router.post('/drivers', authorize(...EDIT_ROLES), fleet.createDriver);
 router.put('/drivers/:id', authorize(...EDIT_ROLES), fleet.updateDriver);
 router.delete('/drivers/:id', authorize(...ADMIN_ROLES), fleet.deleteDriver);
 
+// المتوقع للوصول + السيارات الفاضية — الجدولان يخرجان من نداءٍ واحد لأنهما
+// وجهان لقرارٍ واحد: ما الذي يصل، وبأيّ سيارةٍ نغطّي ما لم يصل.
+router.get('/arrivals', fleet.getArrivals);
+// تحليل الحمولات عبر فترة — بمصروف كل حمولة ومجموع مصروف كل سائق.
+router.get('/loads-analysis', fleet.getLoadsAnalysis);
+
 // Vehicles
 router.get('/vehicles', fleet.listVehicles);
+// تحليل سيارةٍ بعينها عبر فترة — محصورٌ بمشرفها (يُتحقَّق داخل المتحكّم).
+router.get('/vehicles/:id/analytics', fleet.getVehicleAnalytics);
 router.post('/vehicles', authorize(...EDIT_ROLES), fleet.createVehicle);
 router.put('/vehicles/:id', authorize(...EDIT_ROLES), fleet.updateVehicle);
 router.delete('/vehicles/:id', authorize(...ADMIN_ROLES), fleet.deleteVehicle);

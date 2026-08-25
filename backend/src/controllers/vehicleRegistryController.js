@@ -606,10 +606,18 @@ exports.overview = async (req, res) => {
     // مركباته عددَ حوادث الشركة كلها ومبالغها — رقمٌ لا يخصّ ما تنظر إليه،
     // ولا شيء على الشاشة يقول ذلك. الربط بمفتاح اللوحة الموحَّد لأن الحوادث
     // تُسجَّل باللوحة لا بمعرّف المركبة.
+    // ولا يُطبَّق الربط إلا حين يكون هناك فلترٌ فعلًا.
+    //
+    // بلا فلتر كان الربط يُسقِط كلَّ حادثٍ لا مفتاح لوحةٍ له — الحوادث غير
+    // المرتبطة بمركبة، وما لم يُطابَق عند الاستيراد — فيصير الإجماليّ أقلّ من
+    // حقيقة الأسطول ولا شيء على الشاشة يقول ذلك. وهذا نفسُ العطل الذي أُصلح
+    // من أجله الربط. وما لم يُطابَق يُعلَن عددُه بدل أن يُبتلَع.
+    const filtered = Object.keys(req.query || {}).some((k) => !['scope'].includes(k) && req.query[k] !== '');
     const plateKeys = new Set(vehicles.map((v) => v.plateKey).filter(Boolean));
-    const claims = plateKeys.size
+    const claims = filtered
       ? allClaims.filter((c) => plateKeys.has(c.vehiclePlateKey))
-      : [];
+      : allClaims;
+    const unmatchedClaims = filtered ? 0 : allClaims.filter((c) => !c.vehiclePlateKey).length;
 
     // توزيع عمود: القيمة → العدد، مرتّبة، ومع كل قيمة الفلتر اللي بيوصّلها.
     const group = (field, valueOf) => {
@@ -730,6 +738,7 @@ exports.overview = async (req, res) => {
       estimatedSar: Math.round(claims.reduce((t, c) => t + (Number(c.claim?.estimatedAmountSar) || 0), 0)),
       expectedRecoverySar: Math.round(claims.reduce((t, c) => t + (Number(c.claim?.expectedRecoverySar) || 0), 0)),
       ourFault: claims.filter((c) => (c.faultPercent || 0) >= 50).length,
+      unmatched: unmatchedClaims,
       byInsurer: [...claims.reduce((m, c) => m.set(c.claim?.insurerAr || '—', (m.get(c.claim?.insurerAr || '—') || 0) + 1), new Map())]
         .map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count),
     };

@@ -10,7 +10,19 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { UserCog, Truck, Check, Loader2, Search, X, Users } from 'lucide-react';
 import { Spinner, PageHeader, SearchableSelect, SmallBadge } from '@/components/hr/HRKit';
+import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetVehicle, foldAr, canAdminFleet } from '@/lib/fleet';
+
+// كشف التوزيع — «مَن يشرف على ماذا» في ملفٍ واحد، وهو ما يُطلب حين يُراجَع
+// التوزيع خارج الشاشة.
+const ASSIGN_COLUMNS = [
+  { header: 'Plate', key: 'plate', width: 16 },
+  { header: 'Description', key: 'name', width: 22 },
+  { header: 'Trailer', key: 'trailerType', width: 14 },
+  { header: 'GPS', key: 'gpsType', width: 8 },
+  { header: 'Supervisor', key: 'supervisorName', transform: (v: any) => v || 'Unassigned', width: 22 },
+  { header: 'Drivers', key: 'drivers', transform: (v: any) => (v || []).map((d: any) => d.name).join(' + '), width: 26 },
+];
 
 interface Supervisor { _id: string; firstName: string; lastName: string; email: string }
 const supName = (u: Supervisor) => `${u.firstName} ${u.lastName}`.trim() || u.email;
@@ -98,7 +110,13 @@ export default function FleetAssignPage() {
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<UserCog className="w-5 h-5" />} title={ar ? 'توزيع السيارات على المشرفين' : 'Assign vehicles to supervisors'}
-        subtitle={ar ? 'علّم على السيارات ثم أسندها لمشرف دفعة واحدة' : 'Tick vehicles, hand them to a supervisor in one save'} />
+        subtitle={ar ? 'علّم على السيارات ثم أسندها لمشرف دفعة واحدة' : 'Tick vehicles, hand them to a supervisor in one save'}>
+        <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-supervisor-assignment"
+          options={[
+            { key: 'view', label: ar ? 'المعروض حسب الفلتر' : 'Filtered view', sheets: [{ name: 'Assignment', rows: filtered as any[], columns: ASSIGN_COLUMNS }] },
+            { key: 'all', label: ar ? 'كل السيارات' : 'All vehicles', sheets: [{ name: 'Assignment', rows: vehicles as any[], columns: ASSIGN_COLUMNS }] },
+          ]} />
+      </PageHeader>
 
       {supervisors.length === 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">

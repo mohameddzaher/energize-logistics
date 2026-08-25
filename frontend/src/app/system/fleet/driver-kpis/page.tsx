@@ -19,6 +19,7 @@ import {
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ScoreBadge, ScoreBar, ScoreBreakdown, BandLegend, KpiTile, type ScoreBand, type ScoreBreakdownItem } from '@/components/system/Scorecard';
 import { exportToExcel } from '@/utils/exportExcel';
+import PeriodFilter, { PeriodBanner, periodParams, type Period } from '@/components/fleet/PeriodFilter';
 import ReportButton from '@/components/system/ReportButton';
 
 interface DriverKpi {
@@ -40,7 +41,7 @@ interface DriverKpi {
 }
 
 interface Payload {
-  period: { from: string; to: string; monthsInRange: number };
+  period: { from: string; to: string; monthsInRange: number; preset?: string };
   bands: ScoreBand[];
   followUpTargetHours: number;
   summary: {
@@ -52,8 +53,6 @@ interface Payload {
 }
 
 const FLEET_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
-const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-
 export default function FleetDriverKpisPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
@@ -62,18 +61,21 @@ export default function FleetDriverKpisPage() {
 
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [month, setMonth] = useState(monthKey(new Date()));
+  // نفس عنصر الفترة المستعمل في بقية القسم — كان هنا منتقي شهرٍ وحده، فتعذّر
+  // سؤالُ «كيف كان أداء السائقين أمس» أو «خلال هذا الأسبوع» أصلًا.
+  const [period, setPeriod] = useState<Period>({ preset: 'this_month', from: '', to: '', day: '' });
   const [q, setQ] = useState('');
   const [showIdle, setShowIdle] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
 
+  const periodQS = useMemo(() => new URLSearchParams(periodParams(period)).toString(), [period]);
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await api.get<Payload>(`/api/fleet/driver-kpis?month=${month}`));
+      setData(await api.get<Payload>(`/api/fleet/driver-kpis?${periodQS}`));
     } catch { /* keep the last good view */ }
     setLoading(false);
-  }, [month]);
+  }, [periodQS]);
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', load);
 
@@ -106,7 +108,7 @@ export default function FleetDriverKpisPage() {
       { header: tx('Truck', 'المركبة'), key: 'vehicle', transform: (v: any) => v?.plate || '—', width: 14 },
       { header: tx('Phone', 'الجوال'), key: 'phone', width: 16 },
     ],
-    `fleet-driver-kpis-${month}`,
+    'fleet-driver-kpis',
     tx('Driver KPIs', 'تقييم السائقين')
   );
 
@@ -121,12 +123,6 @@ export default function FleetDriverKpisPage() {
         )}
       >
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:border-[#f37121]"
-          />
           <button type="button" onClick={load} className="inline-flex items-center gap-1.5 text-slate-600 text-sm border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             {tx('Refresh', 'تحديث')}
@@ -136,6 +132,11 @@ export default function FleetDriverKpisPage() {
           </button>
         </div>
       </PageHeader>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <PeriodFilter value={period} onChange={setPeriod} lang={ar ? 'ar' : 'en'} />
+      </div>
+      <PeriodBanner period={data?.period} lang={ar ? 'ar' : 'en'} count={data?.summary.totalTrips} />
 
       {data && (
         <>

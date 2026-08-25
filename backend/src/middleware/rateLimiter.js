@@ -38,12 +38,46 @@ const generalLimiter = rateLimit({
   skip: isExempt,
 });
 
+// ── حدّ الدخول ───────────────────────────────────────────────────────────────
+//
+// كان ثلاثين محاولةً لكل ربع ساعة **لكل عنوان IP**، والدخولُ الناجح يُحسب فيها.
+// والمكتب كلّه يخرج إلى الإنترنت من عنوانٍ واحد — فصباحُ الأحد بخمسين موظفًا
+// يستهلك الحدّ عند الحادي والثلاثين، ويقرأ الباقون «حاولت كثيرًا» وهم لم
+// يحاولوا مرّة. قفلُ شركةٍ كاملة بسبب نجاحها في الدخول.
+//
+// القاعدة الآن: **الناجح لا يُحسب**. الحدّ للفشل وحده — وهو ما يُحمى منه أصلًا.
+// وطبقتان لأن التهديدين مختلفان:
+//
+//   • على الحساب الواحد: عشر محاولات فاشلة تكفي لإيقاف تخمين كلمة سرّ بعينها،
+//     وتُقاس بالبريد لا بالعنوان حتى لا يُنقَذ المهاجم بتبديل شبكته.
+//   • على العنوان الواحد: مئةُ فشلٍ تكفي لإيقاف مَن يجرّب حسابات كثيرة من مكان
+//     واحد، وتبقى بعيدةً جدًّا عن مكتبٍ يعمل فيه الناس.
+//
+// وما لا يوقفه هذان (هجومٌ موزَّع على شبكاتٍ كثيرة) يوقفه قفلُ الحساب نفسه
+// (User.isLocked) — لا رفعُ هذه الأرقام حتى تُعطِّل العمل.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
-  message: { message: 'Too many login attempts, please try again later' },
+  max: 100,
+  message: { message: 'Too many failed login attempts, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
 });
 
-module.exports = { generalLimiter, authLimiter };
+/** حدٌّ على الحساب نفسه — يلاحق البريد أينما ذهب المهاجم. */
+const accountAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { message: 'Too many failed login attempts for this account, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    // بلا بريدٍ في الطلب لا حساب يُحمى، فيُترك للحدّ الآخر بدل أن يشترك كلّ
+    // مَن أرسل طلبًا ناقصًا في مفتاحٍ واحد فيقفل بعضُهم بعضًا.
+    return email ? `a:${email}` : ipKeyGenerator(req.ip);
+  },
+});
+
+module.exports = { generalLimiter, authLimiter, accountAuthLimiter };

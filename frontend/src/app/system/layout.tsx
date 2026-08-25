@@ -223,6 +223,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // ---- Fleet Management (إدارة الأسطول) — our own trucks ----
     { href: '/system/fleet/board', label: lang === 'ar' ? 'اللوحة الرئيسية' : 'Fleet Board', icon: <LayoutGrid className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet', label: lang === 'ar' ? 'الحمولات' : 'Shipments', icon: <Truck className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/arrivals', label: lang === 'ar' ? 'المتوقع للوصول' : 'Expected Arrivals', icon: <CalendarClock className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/loads-analysis', label: lang === 'ar' ? 'تحليل الحمولات' : 'Loads Analysis', icon: <PackageSearch className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'لوحة التحليلات' : 'Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <UserSquare className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/driver-kpis', label: lang === 'ar' ? 'تقييم السائقين' : 'Driver KPIs', icon: <Target className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },

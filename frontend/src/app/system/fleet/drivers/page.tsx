@@ -14,6 +14,7 @@ import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea,
   Select, SearchableSelect, SmallBadge, ErrorNotice,
 } from '@/components/hr/HRKit';
+import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetDriver, FleetVehicle, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
 
 const EMPTY = { name: '', phone: '', iqama: '', nationality: '', working: true, onSponsorship: true, vehicle: '', notes: '' };
@@ -22,6 +23,19 @@ const EMPTY = { name: '', phone: '', iqama: '', nationality: '', working: true, 
 // be a bare id, so both shapes are handled.
 const vehId = (d: FleetDriver) => (typeof d.vehicle === 'object' && d.vehicle ? d.vehicle._id : (d.vehicle || ''));
 const vehPlate = (d: FleetDriver) => (typeof d.vehicle === 'object' && d.vehicle ? d.vehicle.plate : '');
+
+const DRIVER_COLUMNS = [
+  { header: 'Driver', key: 'name', width: 24 },
+  { header: 'Phone', key: 'phone', width: 16 },
+  { header: 'Iqama', key: 'iqama', width: 16 },
+  { header: 'Nationality', key: 'nationality', width: 14 },
+  { header: 'Vehicle', key: 'vehicle', transform: (v: any) => (v && typeof v === 'object' ? v.plate : ''), width: 16 },
+  { header: 'Working', key: 'working', transform: (v: any) => (v ? 'Yes' : 'No'), width: 10 },
+  { header: 'Off reason', key: 'offReason', width: 12 },
+  { header: 'Off note', key: 'offNote', width: 24 },
+  { header: 'On sponsorship', key: 'onSponsorship', transform: (v: any) => (v ? 'Yes' : 'No'), width: 14 },
+  { header: 'Notes', key: 'notes', width: 28 },
+];
 
 export default function FleetDriversPage() {
   const { user } = useAuth();
@@ -172,6 +186,11 @@ export default function FleetDriversPage() {
         subtitle={ar
           ? `${drivers.length} سائقاً · ${working} يعملون · ${unassigned} بلا سيارة — نقل السائق إلى سيارة أخرى يتم من الجدول مباشرة`
           : `${drivers.length} drivers · ${working} working · ${unassigned} unassigned — move a driver between trucks right from the table`}>
+        <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-drivers"
+          options={[
+            { key: 'view', label: ar ? 'المعروض حسب الفلتر' : 'Filtered view', sheets: [{ name: 'Drivers', rows: filtered as any[], columns: DRIVER_COLUMNS }] },
+            { key: 'all', label: ar ? 'كل السائقين' : 'All drivers', sheets: [{ name: 'Drivers', rows: drivers as any[], columns: DRIVER_COLUMNS }] },
+          ]} />
         {editor && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة سائق' : 'Add driver'}</PrimaryButton>}
       </PageHeader>
 

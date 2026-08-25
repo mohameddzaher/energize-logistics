@@ -459,6 +459,12 @@ exports.overview = async (req, res) => {
  */
 exports.records = async (req, res) => {
   try {
+    // جدولا المجموعة والانتهاءات كانا بلا ذاكرة أصلًا، وهما أثقل ما في القسم:
+    // تحت أربعين مستخدمًا متزامنًا بلغا ٦٫٢ و٦٫٦ ثانية عند ٩٥٪. و`wrap` يضمن
+    // أن يُحسب الجواب مرّةً واحدة مهما بلغ عدد مَن سألوه في اللحظة نفسها.
+    const ck = `hrm:rec:${req.params.group}:${JSON.stringify(req.query || {})}`;
+    const cached = cache.get(ck);
+    if (cached !== undefined) return res.json(cached);
     const g = H.getGroup(req.params.group);
     if (!g) return res.status(404).json({ message: 'المجموعة غير معروفة' });
 
@@ -528,11 +534,13 @@ exports.records = async (req, res) => {
       for (const r of rows) if (r.state) summary.states[r.state] += 1;
     }
 
-    res.json({
+    const body = {
       group: { key: g.key, ar: g.ar, en: g.en, icon: g.icon, document: !!g.document, expiryField: g.expiryField || null, fields: g.fields },
       rows: rows.slice(0, 1000),
       summary,
-    });
+    };
+    cache.set(ck, body, 60000);
+    res.json(body);
   } catch (e) {
     console.error('hr records', e);
     res.status(500).json({ message: 'تعذّر تحميل السجلات' });
@@ -608,6 +616,9 @@ exports.updateFields = async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 exports.expiring = async (req, res) => {
   try {
+    const ck = `hrm:exp:${JSON.stringify(req.query || {})}`;
+    const cached = cache.get(ck);
+    if (cached !== undefined) return res.json(cached);
     const withinDays = req.query.withinDays === '' || req.query.withinDays == null ? null : Math.max(0, Number(req.query.withinDays) || 0);
     const wanted = (req.query.doc || '').split(',').map((x) => x.trim()).filter(Boolean);
     const docs = wanted.length ? H.DOCUMENT_GROUPS.filter((g) => wanted.includes(g.key)) : H.DOCUMENT_GROUPS;
@@ -644,11 +655,13 @@ exports.expiring = async (req, res) => {
     const byDoc = {};
     for (const r of rows) { summary[r.state] = (summary[r.state] || 0) + 1; byDoc[r.docKey] = (byDoc[r.docKey] || 0) + 1; }
 
-    res.json({
+    const body = {
       rows: rows.slice(0, 2000), summary,
       byDoc: H.DOCUMENT_GROUPS.map((g) => ({ key: g.key, ar: g.ar, en: g.en, count: byDoc[g.key] || 0 })),
       withinDays,
-    });
+    };
+    cache.set(ck, body, 60000);
+    res.json(body);
   } catch (e) {
     console.error('hr expiring', e);
     res.status(500).json({ message: 'تعذّر تحميل الانتهاءات' });

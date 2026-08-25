@@ -4,11 +4,12 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const authenticate = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const { authLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, accountAuthLimiter } = require('../middleware/rateLimiter');
 
 router.post(
   '/login',
   authLimiter,
+  accountAuthLimiter,
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').notEmpty().withMessage('Password is required'),

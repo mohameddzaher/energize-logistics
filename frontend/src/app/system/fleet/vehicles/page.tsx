@@ -4,16 +4,35 @@
 // is one glance. Assignment itself happens on the drivers page — here the
 // vehicle's own facts (plate, trailer, GPS) get corrected.
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Truck, Plus, Pencil, Trash2, Check, Loader2, UserCog } from 'lucide-react';
+import { Truck, Plus, Pencil, Trash2, Check, Loader2, UserCog, BarChart3 } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select, SmallBadge, StatCard, ErrorNotice, SearchableSelect,
 } from '@/components/hr/HRKit';
+import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetVehicle, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
+
+// أعمدة تصدير السيارات — الشاشة تصدّر مرّتين (الكل، والمعروض بعد الفلتر)،
+// فالتعريف واحدٌ كي لا يفترق الملفان.
+const VEHICLE_COLUMNS = [
+  { header: 'Plate', key: 'plate', width: 16 },
+  { header: 'Description', key: 'name', width: 22 },
+  { header: 'Trailer type', key: 'trailerType', width: 14 },
+  { header: 'GPS', key: 'gpsType', width: 8 },
+  { header: 'Brand', key: 'brand', width: 14 },
+  { header: 'Color', key: 'color', width: 12 },
+  { header: 'Drivers', key: 'drivers', transform: (v: any) => (v || []).map((d: any) => d.name).join(' + '), width: 28 },
+  { header: 'Driver count', key: 'drivers', transform: (v: any) => (v || []).length, width: 12 },
+  { header: 'Supervisor', key: 'supervisorName', width: 20 },
+  { header: 'Carrying now', key: 'trip', transform: (v: any) => (v ? `WB ${v.waybillNumber} → ${v.toCity || ''}` : 'Idle'), width: 24 },
+  { header: 'Live city', key: 'live', transform: (v: any) => v?.city || '', width: 14 },
+  { header: 'Notes', key: 'notes', width: 28 },
+];
 
 const EMPTY = { plate: '', name: '', brand: '', color: '', trailerType: '', gpsType: '', notes: '' };
 
@@ -124,6 +143,11 @@ export default function FleetVehiclesPage() {
         subtitle={ar
           ? `${vehicles.length} سيارة — تُدار مقاعد السائقين من صفحة السائقين، وتُصحَّح بيانات السيارة هنا`
           : `${vehicles.length} vehicles — driver seats are managed on the drivers page; vehicle facts are corrected here`}>
+        <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-vehicles"
+          options={[
+            { key: 'filtered', label: ar ? 'المعروض حسب الفلتر' : 'Filtered view', sheets: [{ name: 'Vehicles', rows: filtered as any[], columns: VEHICLE_COLUMNS }] },
+            { key: 'all', label: ar ? 'كل السيارات' : 'All vehicles', sheets: [{ name: 'Vehicles', rows: vehicles as any[], columns: VEHICLE_COLUMNS }] },
+          ]} />
         {admin && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة سيارة' : 'Add vehicle'}</PrimaryButton>}
       </PageHeader>
 
@@ -171,8 +195,11 @@ export default function FleetVehiclesPage() {
           <tbody>
             {filtered.map((v) => (
               <tr key={v._id} className="border-b border-slate-200/70 hover:bg-slate-50">
+                {/* اللوحة هي مدخل التحليل: ضغطةٌ واحدة تفتح كل ما فعلته هذه
+                    السيارة خلال أي فترة — وكان الوصول إليه يمرّ بشاشة تحليلاتٍ
+                    عامة لا تُفتح منها سيارةٌ بعينها أصلًا. */}
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <span className="text-slate-900 font-bold font-mono">{v.plate}</span>
+                  <Link href={`/system/fleet/vehicles/${v._id}`} className="text-[#f37121] font-bold font-mono hover:underline">{v.plate}</Link>
                   {v.name && <span className="block text-xs text-slate-500">{v.name}</span>}
                 </td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{v.trailerType || '—'}</td>
@@ -212,6 +239,9 @@ export default function FleetVehiclesPage() {
                         <UserCog className="w-4 h-4" />
                       </button>
                     )}
+                    <Link href={`/system/fleet/vehicles/${v._id}`} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تحليل السيارة' : 'Vehicle analysis'}>
+                      <BarChart3 className="w-4 h-4" />
+                    </Link>
                     {editor && <button type="button" onClick={() => openEdit(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
                     {admin && <button type="button" onClick={() => remove(v)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
                   </div>

@@ -13,12 +13,19 @@ router.use(authenticate);
 // كارت لكل عمود بعدّادات «مطلوب / غير مطلوب / مملي»، وكل رقم بيفتح الناس اللي
 // وراه. الملء بيتم من نفس المكان أو من صفحة الموظف — الاتنين بيعدّوا على نفس
 // الـ endpoint فحالة «مطلوب» بتتشال بنفس الطريقة.
-router.get('/master/overview', hrm.overview);
-router.get('/master/field-config', hrm.fieldConfig);
+//
+// ── ولماذا `authorize` على القراءة أيضًا ─────────────────────────────────────
+// هذه الشاشات تُخرج أرقام الإقامات والجوازات والآيبان ورواتب كلّ الموظفين. لم
+// يكن عليها تقييدُ دورٍ إطلاقًا، وحارسُ الأقسام يسمح بالمرور للأدوار التي لا
+// نصيب لها في القسم (قاعدة «زيادة لا تضييق»). فكان كلُّ حسابٍ في النظام —
+// وحسابات العملاء والموردين في البوّابة من بينها، فهي مستخدمون عاديّون —
+// يقرأ الملفّ الوظيفيّ كاملًا بطلبٍ واحد.
+router.get('/master/overview', authorize(...STAFF), hrm.overview);
+router.get('/master/field-config', authorize(...STAFF), hrm.fieldConfig);
 // الفلاتر المتاحة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر
-router.get('/master/filters', hrm.filterOptions);
-router.get('/master/expiring', hrm.expiring);
-router.get('/master/records/:group', hrm.records);
+router.get('/master/filters', authorize(...STAFF), hrm.filterOptions);
+router.get('/master/expiring', authorize(...STAFF), hrm.expiring);
+router.get('/master/records/:group', authorize(...STAFF), hrm.records);
 router.patch('/master/employees/:id/fields', authorize(...STAFF), hrm.updateFields);
 // التجديد — فرديًّا وجماعيًّا. `renew-bulk` قبل أي مسار فيه معرّف حتى لا يُقرأ
 // «renew-bulk» على أنه معرّف موظف.

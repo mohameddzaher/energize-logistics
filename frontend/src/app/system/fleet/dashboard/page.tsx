@@ -1,8 +1,9 @@
 'use client';
 // لوحة تحليلات إدارة الأسطول — الدخل، تحقيق الأهداف لكل سيارة، ترتيب السواقين
 // والعملاء والمشرفين، الترند الشهري وتوزيع الحمولات — بفلاتر متعددة وتصدير Excel.
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -12,14 +13,15 @@ import {
   XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from 'recharts';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
-import { exportMultiSheet } from '@/utils/exportExcel';
+import ExportMenu from '@/components/ls2/ExportMenu';
+import PeriodFilter, { PeriodBanner, periodParams, periodFromParams, EMPTY_PERIOD, type Period } from '@/components/fleet/PeriodFilter';
 import { canViewFleet, FLEET_STATUSES, TRAILER_TYPES } from '@/lib/fleet';
-import { BarChart3, TrendingUp, RotateCcw, FileDown, Search, Star } from 'lucide-react';
+import { BarChart3, TrendingUp, RotateCcw, Search, Star, CalendarClock, PackageSearch } from 'lucide-react';
 
 type Cust = { _id: string | null; name: string; customerType: string; rating: number; trips: number; income: number };
 type Analytics = {
-  period: { from: string; to: string; monthsInRange: number };
-  totals: { totalIncome: number; totalFullRent: number; branchShare: number; tripCount: number; vehicleCount: number; customerCount: number; vehiclesAchieved: number; vehiclesBelow: number; avgTripIncome: number };
+  period: { from: string; to: string; monthsInRange: number; preset?: string };
+  totals: { totalIncome: number; totalFullRent: number; branchShare: number; tripCount: number; totalDriverExpense: number; vehicleCount: number; customerCount: number; vehiclesAchieved: number; vehiclesBelow: number; avgTripIncome: number };
   byTrailerType: Record<string, number>;
   byCustomerType: { heavy: { count: number; income: number }; branch: { count: number; income: number } };
   vehicles: { _id: string; plate: string; name?: string; trailerType?: string; supervisorName?: string; trips: number; income: number; monthlyTarget: number; periodTarget: number; achievedPct: number | null; achieved: boolean | null }[];
@@ -35,25 +37,26 @@ const ORANGE = '#f37121';
 const PALETTE = ['#f37121', '#2563eb', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ef4444', '#64748b'];
 const money = (n: number) => (Number(n) || 0).toLocaleString('en-US');
 
-export default function FleetAnalyticsPage() {
+function FleetAnalyticsInner() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { user } = useAuth();
+  const router = useRouter();
+  const sp = useSearchParams();
 
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [supers, setSupers] = useState<{ _id: string; name: string }[]>([]);
 
-  // ── الفلاتر ──
-  const [month, setMonth] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [customerType, setCustomerType] = useState<string[]>([]);
-  const [trailerType, setTrailerType] = useState<string[]>([]);
-  const [status, setStatus] = useState<string[]>([]);
-  const [supervisor, setSupervisor] = useState<string[]>([]);
-  const [vehicle] = useState<string[]>([]);
-  const [q, setQ] = useState('');
+  // ── الفلاتر — كلّها في عنوان الصفحة كي يُشارَك التحليل برابطٍ واحد ──
+  const multi = (k: string) => (sp?.get(k) ? sp!.get(k)!.split(',').filter(Boolean) : []);
+  const [period, setPeriod] = useState<Period>(() => periodFromParams(sp));
+  const [customerType, setCustomerType] = useState<string[]>(() => multi('customerType'));
+  const [trailerType, setTrailerType] = useState<string[]>(() => multi('trailerType'));
+  const [status, setStatus] = useState<string[]>(() => multi('status'));
+  const [supervisor, setSupervisor] = useState<string[]>(() => multi('supervisor'));
+  const [vehicle] = useState<string[]>(() => multi('vehicle'));
+  const [q, setQ] = useState(() => sp?.get('q') || '');
   const [vehSort, setVehSort] = useState<'income' | 'trips' | 'achievedPct'>('income');
   const [custTab, setCustTab] = useState<'all' | 'heavy' | 'branch'>('all');
 
@@ -61,9 +64,7 @@ export default function FleetAnalyticsPage() {
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   const query = useMemo(() => {
-    const p = new URLSearchParams();
-    if (month) p.set('month', month);
-    else { if (from) p.set('from', from); if (to) p.set('to', to); }
+    const p = new URLSearchParams(periodParams(period));
     if (customerType.length) p.set('customerType', customerType.join(','));
     if (trailerType.length) p.set('trailerType', trailerType.join(','));
     if (status.length) p.set('status', status.join(','));
@@ -71,7 +72,7 @@ export default function FleetAnalyticsPage() {
     if (vehicle.length) p.set('vehicle', vehicle.join(','));
     if (q.trim()) p.set('q', q.trim());
     return p.toString();
-  }, [month, from, to, customerType, trailerType, status, supervisor, vehicle, q]);
+  }, [period, customerType, trailerType, status, supervisor, vehicle, q]);
 
   const load = useCallback(async () => {
     try { setData(await api.get<Analytics>(`/api/fleet/analytics?${query}`)); } catch { /* keep last */ }
@@ -88,10 +89,9 @@ export default function FleetAnalyticsPage() {
     })();
   }, []);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
+  useEffect(() => { router.replace(`/system/fleet/dashboard${query ? `?${query}` : ''}`, { scroll: false }); }, [query, router]);
 
-  const reset = () => { setMonth(''); setFrom(''); setTo(''); setCustomerType([]); setTrailerType([]); setStatus([]); setSupervisor([]); setQ(''); };
-  const thisMonth = () => { const d = new Date(); setFrom(''); setTo(''); setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); };
-  const prevMonth = () => { const d = new Date(); d.setMonth(d.getMonth() - 1); setFrom(''); setTo(''); setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); };
+  const reset = () => { setPeriod(EMPTY_PERIOD); setCustomerType([]); setTrailerType([]); setStatus([]); setSupervisor([]); setQ(''); };
 
   const sortedVehicles = useMemo(() => {
     if (!data) return [];
@@ -109,22 +109,22 @@ export default function FleetAnalyticsPage() {
     return data.customers;
   }, [data, custTab]);
 
-  const doExport = () => {
-    if (!data) return;
-    exportMultiSheet([
-      { name: ar ? 'السيارات' : 'Vehicles', data: sortedVehicles, columns: [
-        { header: 'Plate', key: 'plate' }, { header: 'Trailer', key: 'trailerType' }, { header: 'Supervisor', key: 'supervisorName' },
-        { header: 'Trips', key: 'trips' }, { header: 'Income', key: 'income' }, { header: 'Period target', key: 'periodTarget' }, { header: 'Achieved %', key: 'achievedPct' } ] },
-      { name: ar ? 'السواقون' : 'Drivers', data: data.topDrivers, columns: [
-        { header: 'Driver', key: 'name' }, { header: 'Trips', key: 'trips' }, { header: 'Income', key: 'income' } ] },
-      { name: ar ? 'المشرفون' : 'Supervisors', data: data.supervisors, columns: [
-        { header: 'Supervisor', key: 'name' }, { header: 'Loads', key: 'trips' }, { header: 'Income', key: 'income' } ] },
-      { name: ar ? 'العملاء' : 'Customers', data: data.customers, columns: [
-        { header: 'Customer', key: 'name' }, { header: 'Type', key: 'customerType' }, { header: 'Rating', key: 'rating' }, { header: 'Trips', key: 'trips' }, { header: 'Income', key: 'income' } ] },
-      { name: ar ? 'الترند الشهري' : 'Monthly', data: data.monthlyTrend, columns: [
-        { header: 'Month', key: 'month' }, { header: 'Income', key: 'income' }, { header: 'Trips', key: 'trips' } ] },
-    ], `fleet-analytics-${new Date().toISOString().slice(0, 10)}`);
-  };
+  const exportSheets = data ? [
+    { name: ar ? 'السيارات' : 'Vehicles', rows: sortedVehicles as any[], columns: [
+      { header: 'Plate', key: 'plate', width: 16 }, { header: 'Trailer', key: 'trailerType', width: 14 },
+      { header: 'Supervisor', key: 'supervisorName', width: 20 }, { header: 'Trips', key: 'trips', width: 10 },
+      { header: 'Income', key: 'income', width: 14 }, { header: 'Period target', key: 'periodTarget', width: 14 },
+      { header: 'Achieved %', key: 'achievedPct', width: 12 } ] },
+    { name: ar ? 'السواقون' : 'Drivers', rows: data.topDrivers as any[], columns: [
+      { header: 'Driver', key: 'name', width: 24 }, { header: 'Trips', key: 'trips', width: 10 }, { header: 'Income', key: 'income', width: 14 } ] },
+    { name: ar ? 'المشرفون' : 'Supervisors', rows: data.supervisors as any[], columns: [
+      { header: 'Supervisor', key: 'name', width: 24 }, { header: 'Loads', key: 'trips', width: 10 }, { header: 'Income', key: 'income', width: 14 } ] },
+    { name: ar ? 'العملاء' : 'Customers', rows: data.customers as any[], columns: [
+      { header: 'Customer', key: 'name', width: 28 }, { header: 'Type', key: 'customerType', width: 12 },
+      { header: 'Rating', key: 'rating', width: 10 }, { header: 'Trips', key: 'trips', width: 10 }, { header: 'Income', key: 'income', width: 14 } ] },
+    { name: ar ? 'الترند الشهري' : 'Monthly', rows: data.monthlyTrend as any[], columns: [
+      { header: 'Month', key: 'month', width: 12 }, { header: 'Income', key: 'income', width: 14 }, { header: 'Trips', key: 'trips', width: 10 } ] },
+  ] : [];
 
   if (!canViewFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
   if (loading && !data) return <Spinner />;
@@ -138,31 +138,17 @@ export default function FleetAnalyticsPage() {
       <PageHeader icon={<BarChart3 className="w-5 h-5" />}
         title={ar ? 'تحليلات إدارة الأسطول' : 'Fleet Analytics'}
         subtitle={ar ? 'الدخل وتحقيق الأهداف والترتيبات — قابلة للفلترة والتصدير' : 'Income, targets, rankings — filterable & exportable'}>
-        <button type="button" onClick={doExport}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm">
-          <FileDown className="w-4 h-4" /> {ar ? 'تصدير Excel' : 'Export Excel'}
-        </button>
+        <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-analytics"
+          options={[
+            { key: 'all', label: ar ? 'التحليلات حسب الفلتر الحالي' : 'Analytics under the current filter', sheets: exportSheets },
+            { key: 'vehicles', label: ar ? 'أداء السيارات فقط' : 'Vehicle performance only', sheets: exportSheets.slice(0, 1) },
+          ]} />
       </PageHeader>
 
       {/* ── شريط الفلاتر ── */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
+        <PeriodFilter value={period} onChange={setPeriod} lang={ar ? 'ar' : 'en'} />
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex items-center gap-1.5">
-            <button type="button" onClick={thisMonth} className={chip(false)}>{ar ? 'هذا الشهر' : 'This month'}</button>
-            <button type="button" onClick={prevMonth} className={chip(false)}>{ar ? 'الشهر السابق' : 'Last month'}</button>
-          </div>
-          <div>
-            <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'شهر' : 'Month'}</label>
-            <input type="month" value={month} onChange={(e) => { setMonth(e.target.value); setFrom(''); setTo(''); }} className="px-2 py-1.5 rounded-lg border border-slate-200 text-sm" />
-          </div>
-          <div>
-            <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'من' : 'From'}</label>
-            <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setMonth(''); }} className="px-2 py-1.5 rounded-lg border border-slate-200 text-sm" />
-          </div>
-          <div>
-            <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'إلى' : 'To'}</label>
-            <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setMonth(''); }} className="px-2 py-1.5 rounded-lg border border-slate-200 text-sm" />
-          </div>
           <div className="flex-1 min-w-[180px]">
             <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'بحث' : 'Search'}</label>
             <div className="relative">
@@ -193,6 +179,10 @@ export default function FleetAnalyticsPage() {
         )}
       </div>
 
+      {/* شريط الفترة: الرقم الذي على الشاشة يخصّ هذا المدى وحده. غيابه هو ما
+          جعل بحثًا عن سيارةٍ خارج الشهر الحالي يبدو «كل حاجة صفر» بلا تفسير. */}
+      <PeriodBanner period={data?.period} lang={ar ? 'ar' : 'en'} count={data?.totals.tripCount} />
+
       {data && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
@@ -202,7 +192,25 @@ export default function FleetAnalyticsPage() {
             <StatCard label={ar ? 'متوسط دخل الرحلة' : 'Avg / trip'} value={money(data.totals.avgTripIncome)} />
             <StatCard label={ar ? 'سيارات محقّقة الهدف' : 'On target'} value={`${data.totals.vehiclesAchieved} / ${data.totals.vehicleCount}`} accent="text-emerald-600" />
             <StatCard label={ar ? 'سيارات دون الهدف' : 'Below target'} value={data.totals.vehiclesBelow} accent="text-red-600" />
-            <StatCard label={ar ? 'عدد العملاء' : 'Customers'} value={data.totals.customerCount} />
+            <StatCard label={ar ? 'مصروف السائقين' : 'Driver expense'} value={money(data.totals.totalDriverExpense || 0)} accent="text-amber-600" />
+          </div>
+
+          {/* روابط الشاشات الشقيقة — التحليل يبدأ هنا وينتهي عند تفصيلةٍ هناك. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Link href="/system/fleet/arrivals" className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-[#f37121] transition-colors">
+              <span className="p-2 rounded-xl bg-[#f37121]/10 text-[#f37121]"><CalendarClock className="w-5 h-5" /></span>
+              <span>
+                <span className="block font-bold text-slate-900 text-sm">{ar ? 'المتوقع للوصول' : 'Expected arrivals'}</span>
+                <span className="block text-xs text-slate-500">{ar ? 'مَن يصل ومتى وأين — ومعه السيارات الفاضية وقتها' : 'Who arrives, when and where — plus idle trucks'}</span>
+              </span>
+            </Link>
+            <Link href={`/system/fleet/loads-analysis${query ? `?${query}` : ''}`} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-[#f37121] transition-colors">
+              <span className="p-2 rounded-xl bg-amber-100 text-amber-700"><PackageSearch className="w-5 h-5" /></span>
+              <span>
+                <span className="block font-bold text-slate-900 text-sm">{ar ? 'تحليل الحمولات' : 'Loads analysis'}</span>
+                <span className="block text-xs text-slate-500">{ar ? 'كل حمولة بمصروفها ومشرفها — بنفس فلتر هذه الشاشة' : 'Every load with its expense — same filter as here'}</span>
+              </span>
+            </Link>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -288,7 +296,9 @@ export default function FleetAnalyticsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {sortedVehicles.map((v) => (
                     <tr key={v._id} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 font-mono font-semibold">{v.plate}</td>
+                      <td className="px-3 py-2 font-mono font-semibold">
+                        <Link href={`/system/fleet/vehicles/${v._id}${query ? `?${query}` : ''}`} className="text-[#f37121] hover:underline">{v.plate}</Link>
+                      </td>
                       <td className="px-3 py-2 text-slate-600">{v.trailerType || '—'}</td>
                       <td className="px-3 py-2 text-slate-600">{v.supervisorName || '—'}</td>
                       <td className="px-3 py-2">{v.trips}</td>
@@ -367,4 +377,8 @@ export default function FleetAnalyticsPage() {
       )}
     </div>
   );
+}
+
+export default function FleetAnalyticsPage() {
+  return <Suspense fallback={<Spinner />}><FleetAnalyticsInner /></Suspense>;
 }

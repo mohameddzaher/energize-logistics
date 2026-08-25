@@ -41,6 +41,26 @@ const pick = (body, fields) => {
 };
 
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+// بحثٌ يتسامح مع صور الكتابة العربية وأرقامها الهندية.
+//
+// لوحاتنا ومدننا وأسماء سائقينا تُكتب في المصادر بصور شتّى: «٢٧٠٨» و«2708»،
+// «أ ب ج» و«ا ب ج»، «جدة» و«جده». مطابقةُ النصّ الخام تجعل البحث يفشل بفارق
+// همزةٍ واحدة فيخرج الجدول فارغًا، فيظنّ المستخدم أن لا بيانات عنده أصلًا —
+// وهي الشكوى التي وردت عن البحث بلوحة سيارةٍ في التحليلات.
+//
+// المسافات تصير `\s*` لأن اللوحة تُكتب متلاصقةً ومتباعدةً على السواء.
+const arRx = (s) => {
+  const west = String(s).trim().replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+  const body = west
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/[اأإآٱ]/g, '[اأإآٱ]')
+    .replace(/[هة]/g, '[هة]')
+    .replace(/[يىئ]/g, '[يىئ]')
+    .replace(/\s+/g, '\\s*');
+  return new RegExp(body, 'i');
+};
+
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 
 const logEvent = async (req, shipmentId, type, data = {}) => {
@@ -149,43 +169,128 @@ const resolveAssignments = async (req, data, existing = null) => {
   return notes;
 };
 
+// ── الفترة الزمنية: مرجعٌ واحد لكل صفحات القسم ──────────────────────────────
+//
+// كانت كل شاشة تحسب مداها بنفسها: القائمة تقيس على تاريخ الإنشاء، والتحليلات
+// على تاريخ التحميل، وكلٌّ يفسّر «من/إلى» بتوقيتٍ مختلف. فيسأل المستخدم عن
+// «هذا الشهر» فيأخذ رقمين مختلفين من شاشتين، ويظنّ القسم غير مترابط.
+//
+// فصار المدى يُحسم هنا وحده: ترسل الواجهة **اسم الفترة** (preset) لا حدودها،
+// فيستحيل أن تختلف شاشتان في معنى «أمس».
+//
+// والحدود محلّية لا UTC عمدًا: «حمولات يوم السبت» تعني السبت بتوقيت الرياض.
+// و`new Date('2026-08-25')` تُفسَّر في جافاسكربت على أنها منتصف ليل UTC، فتزيح
+// اليوم ثلاث ساعات: تُسقِط أوّل حمولات اليوم وتُدخِل حمولات اليوم التالي.
+const _dayStart = (s) => new Date(`${String(s).slice(0, 10)}T00:00:00`);
+const _addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const _monthStart = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+
+const PERIOD_PRESETS = [
+  'today', 'yesterday', 'last_7', 'this_month', 'last_month',
+  'tomorrow', 'next_7', 'next_30', 'day', 'range', 'all',
+];
+
+// ‏(preset | month=YYYY-MM | day=YYYY-MM-DD | from/to) → { start, end, preset }.
+// `end` حصريّ دائمًا (‏`$lt`)، فلا يحتاج المستدعي إلى تذكّر إضافة يوم.
+const resolvePeriod = (query = {}) => {
+  const { preset, from, to, day, month } = query;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const out = (start, end, key) => ({ start, end, preset: key });
+
+  switch (preset) {
+    case 'today': return out(today, _addDays(today, 1), 'today');
+    case 'yesterday': return out(_addDays(today, -1), today, 'yesterday');
+    case 'last_7': return out(_addDays(today, -6), _addDays(today, 1), 'last_7');
+    case 'this_month': return out(_monthStart(now), new Date(now.getFullYear(), now.getMonth() + 1, 1), 'this_month');
+    case 'last_month': return out(new Date(now.getFullYear(), now.getMonth() - 1, 1), _monthStart(now), 'last_month');
+    // فتراتٌ مستقبلية — تخدم شاشة «المتوقع للوصول» وحدها: ما الذي سيصل غدًا؟
+    case 'tomorrow': return out(_addDays(today, 1), _addDays(today, 2), 'tomorrow');
+    case 'next_7': return out(today, _addDays(today, 7), 'next_7');
+    case 'next_30': return out(today, _addDays(today, 30), 'next_30');
+    // «الكل»: مخرجٌ صريح من كل مدى. وجوده وحده يمنع سؤال «لماذا كل شيء صفر؟»
+    case 'all': return out(new Date(0), new Date(8640000000000000), 'all');
+    default: break;
+  }
+  if (day && /^\d{4}-\d{2}-\d{2}/.test(day)) return out(_dayStart(day), _addDays(_dayStart(day), 1), 'day');
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    const s = _dayStart(`${month}-01`);
+    return out(s, new Date(s.getFullYear(), s.getMonth() + 1, 1), 'month');
+  }
+  if (from || to) {
+    return out(
+      from ? _dayStart(from) : new Date(0),
+      to ? _addDays(_dayStart(to), 1) : _addDays(today, 1),
+      'range',
+    );
+  }
+  // الافتراضي: الشهر الحالي. تُعاد قيمته في الرد (`period.preset`) كي تعرضه
+  // الواجهة صراحةً — فلا يبقى المستخدم يبحث عن حمولةٍ خارج الشهر ولا يدري.
+  return out(_monthStart(now), new Date(now.getFullYear(), now.getMonth() + 1, 1), 'this_month');
+};
+
+// تاريخ الحمولة الفعلي = تاريخ التحميل، وإن لم يُسجَّل فتاريخ الإنشاء. كل
+// عدٍّ في القسم يقيس على هذا التاريخ وحده، وإلا اختلفت القائمة عن التحليلات.
+const effectiveDateMatch = (start, end) => ({
+  $or: [
+    { loadDate: { $gte: start, $lt: end } },
+    { $and: [{ loadDate: null }, { createdAt: { $gte: start, $lt: end } }] },
+  ],
+});
+
+// نفس المعنى داخل خطوط التجميع: يُستعمل في `$group` و`$sort` على مستوى الخادم.
+const EFFECTIVE_DATE_EXPR = { $ifNull: ['$loadDate', '$createdAt'] };
+
 // ── Shipments ───────────────────────────────────────────────────────────────
 
 exports.listShipments = async (req, res) => {
   try {
-    const { q, status, supervisor, customer, toCity, from, to, page = 1, limit = 25 } = req.query;
-    const filter = {};
-    if (status) filter.status = status;
-    if (supervisor) filter.supervisor = supervisor;
-    if (customer) filter.customer = customer;
-    if (toCity) filter.toCity = toCity;
+    const { q, status, supervisor, customer, vehicle, toCity, preset, from, to, day, month, page = 1, limit = 25 } = req.query;
+    // الشروط المشتركة تُبنى منفصلةً عن «الحالة» و«الوجهة»، لأن شريط الوجهات
+    // أسفلَه يجيب سؤالًا آخر: «الرايح جدة كام سيارة» ضمن نفس الفلتر لكن **دون**
+    // حصر الوجهة أو الحالة، وإلا صار الشريط يعدّ ما رشّحه المستخدم به لا غير.
+    const base = [];
+    if (supervisor) base.push({ supervisor });
+    if (customer) base.push({ customer });
+    if (vehicle) base.push({ vehicle });
     const scope = await supervisorVehicleIds(req);
-    if (scope) filter.vehicle = { $in: scope };
-    if (from || to) {
-      filter.createdAt = {};
-      if (from) filter.createdAt.$gte = new Date(`${from}T00:00:00`);
-      if (to) filter.createdAt.$lte = new Date(`${to}T23:59:59`);
-    }
+    if (scope) base.push({ vehicle: { $in: scope } });
+    // مدى التاريخ: يُطلَب باسم الفترة (اليوم/أمس/هذا الشهر…) أو بمدى صريح، ولا
+    // يُقاس إلا على تاريخ الحمولة الفعلي — وكان يُقاس على تاريخ الإنشاء وحده،
+    // فتغيب حمولةٌ سُجّلت أمس لتحميل اليوم عن سؤال «حمولات اليوم».
+    // غياب كل الوسائط يعني «بلا حصر» هنا لا «الشهر الحالي»: هذه قائمة تُتصفَّح.
+    const periodAsked = !!(preset || from || to || day || month);
+    const period = periodAsked ? resolvePeriod({ preset, from, to, day, month }) : null;
+    if (period && period.preset !== 'all') base.push(effectiveDateMatch(period.start, period.end));
     if (q && q.trim()) {
-      const r = rx(q);
+      const r = arRx(q);
       const or = [
         { customerName: r }, { driverName: r }, { secondDriverName: r },
         { vehiclePlate: r }, { fromCity: r }, { toCity: r }, { supervisorName: r },
       ];
       const n = Number(String(q).trim());
       if (Number.isFinite(n)) or.push({ waybillNumber: n });
-      filter.$or = or;
+      base.push({ $or: or });
     }
+    const narrow = [];
+    if (status) narrow.push({ status });
+    if (toCity) narrow.push({ toCity });
+    const all = [...base, ...narrow];
+    const filter = all.length ? { $and: all } : {};
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     // "الرايح جدة كام سيارة" — destinations of the loads currently in motion,
     // under the SAME filter (minus the status/city drill-down itself).
-    const destMatch = { ...filter, status: { $in: ['requesting', 'loading', 'uploaded', 'on_way', 'late'] } };
-    delete destMatch.toCity;
+    const destMatch = { $and: [...base, { status: { $in: ['requesting', 'loading', 'uploaded', 'on_way', 'late'] } }] };
     const [shipments, total, statusAgg, destAgg] = await Promise.all([
       FleetShipment.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
       FleetShipment.countDocuments(filter),
-      FleetShipment.aggregate([{ $match: filter }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+      // عدّاد الحالات يُحسب دون حصر الحالة نفسها، وإلا صفّرت بطاقاتُ الأعلى
+      // كلَّ حالةٍ عدا المختارة — والمقصود منها أن تُظهر التوزيع كي يُنتقل بينها.
+      FleetShipment.aggregate([
+        { $match: (() => { const c = [...base, ...(toCity ? [{ toCity }] : [])]; return c.length ? { $and: c } : {}; })() },
+        { $group: { _id: '$status', n: { $sum: 1 } } },
+      ]),
       FleetShipment.aggregate([
         { $match: destMatch },
         { $group: { _id: '$toCity', n: { $sum: 1 } } },
@@ -219,7 +324,9 @@ exports.listShipments = async (req, res) => {
     const byStatus = {};
     statusAgg.forEach((r) => { byStatus[r._id] = r.n; });
     const byDestination = destAgg.filter((r) => r._id).map((r) => ({ city: r._id, n: r.n }));
-    res.json({ shipments, total, stats: { byStatus, byDestination } });
+    // تُعاد الفترة كما فهمها الخادم، لتعرضها الواجهة صراحةً بدل أن يبحث
+    // المستخدم عن حمولةٍ خارج المدى وهو لا يدري أن ثمّة مدًى أصلًا.
+    res.json({ shipments, total, period, stats: { byStatus, byDestination } });
   } catch (error) {
     console.error('Error listing fleet shipments:', error);
     res.status(500).json({ message: 'Failed to load fleet shipments' });
@@ -1076,34 +1183,26 @@ exports.getAnalytics = async (req, res) => {
     const cached = cache.get(cacheKey);
     if (cached !== undefined) return res.json(cached);
 
-    const { from, to, month, q, includeCancelled } = req.query;
+    const { q, includeCancelled } = req.query;
     const customerTypes = _multi(req.query.customerType);
     const supervisors = _multi(req.query.supervisor);
     const vehicleF = _multi(req.query.vehicle);
     const trailerTypes = _multi(req.query.trailerType);
     const statuses = _multi(req.query.status);
 
-    // Resolve the period. month=YYYY-MM is a shortcut; else from/to; else this month.
-    let start, end;
-    if (month && /^\d{4}-\d{2}$/.test(month)) {
-      start = new Date(`${month}-01T00:00:00`);
-      end = new Date(start); end.setMonth(end.getMonth() + 1);
-    } else {
-      const now = new Date();
-      start = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1);
-      end = to ? new Date(new Date(to).getTime() + 86400000) : new Date(now.getTime() + 86400000);
-    }
-    const monthsInRange = Math.max(1, _monthIndex(new Date(end.getTime() - 1)) - _monthIndex(start) + 1);
+    // الفترة من المرجع المشترك (resolvePeriod)، لا بحسابٍ محلّي: كان
+    // `new Date(from)` يُفسَّر UTC هنا وحدود اليوم محلّية في القائمة، فيعطي
+    // نفسُ «من/إلى» رقمين مختلفين على شاشتين متجاورتين.
+    const period = resolvePeriod(req.query);
+    const { start, end } = period;
+    const monthsInRange = period.preset === 'all'
+      ? 1
+      : Math.max(1, _monthIndex(new Date(end.getTime() - 1)) - _monthIndex(start) + 1);
 
     // Build the Mongo filter: effective date (loadDate else createdAt) in range,
     // supervisor scope, plus the explicit multi-value filters.
-    const inRange = {
-      $or: [
-        { loadDate: { $gte: start, $lt: end } },
-        { $and: [{ loadDate: null }, { createdAt: { $gte: start, $lt: end } }] },
-      ],
-    };
-    const filter = { $and: [inRange] };
+    const filter = { $and: [] };
+    if (period.preset !== 'all') filter.$and.push(effectiveDateMatch(start, end));
     if (scope) filter.$and.push({ vehicle: { $in: scope } });
     if (vehicleF.length) filter.$and.push({ vehicle: { $in: vehicleF } });
     if (supervisors.length) filter.$and.push({ supervisor: { $in: supervisors } });
@@ -1111,14 +1210,30 @@ exports.getAnalytics = async (req, res) => {
     if (trailerTypes.length) filter.$and.push({ trailerType: { $in: trailerTypes } });
     if (statuses.length) filter.$and.push({ status: { $in: statuses } });
     if (!includeCancelled && !statuses.length) filter.$and.push({ status: { $ne: 'cancelled' } });
-    if (q && q.trim()) {
-      const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$and.push({ $or: [{ customerName: rx }, { vehiclePlate: rx }, { driverName: rx }, { fromCity: rx }, { toCity: rx }, { loadType: rx }] });
+    // نفس تسامح البحث المستعمل في القائمة — لوحةٌ تُكتب «٢٧٠٨» أو «ق ن ر 2708»
+    // كانت تفشل هنا فتخرج الشاشة أصفارًا كلّها.
+    const qRx = q && q.trim() ? arRx(q) : null;
+    if (qRx) {
+      filter.$and.push({ $or: [{ customerName: qRx }, { vehiclePlate: qRx }, { driverName: qRx }, { fromCity: qRx }, { toCity: qRx }, { loadType: qRx }] });
     }
 
+    if (!filter.$and.length) delete filter.$and; // ‏`$and: []` يرفضه Mongo
+
+    // سجلّ السيارات يخضع لنفس الفلاتر التي تخصّ السيارة نفسها.
+    //
+    // كان الجدول يُبنى من الأسطول كاملًا مهما ضيّق المستخدم بحثه: تبحث بلوحةِ
+    // سيارةٍ فيردّ عليك سبعٌ وخمسون صفًّا أصفارًا وسيارتُك بينها — وهذه بعينها
+    // شكوى «عملت سيرش بعربية فطلع كل حاجة صفر». والعدّادات (عدد السيارات،
+    // ودون الهدف) كانت تعدّ الأسطول كلّه لا ما رشّحه المستخدم.
+    const vFilter = {};
+    if (scope) vFilter._id = { $in: scope };
+    if (vehicleF.length) vFilter._id = { $in: vehicleF.filter((v) => !scope || scope.some((s) => String(s) === v)) };
+    if (supervisors.length) vFilter.supervisor = { $in: supervisors };
+    if (trailerTypes.length) vFilter.trailerType = { $in: trailerTypes };
+
     const [shipments, vehicles, customers, cfg] = await Promise.all([
-      FleetShipment.find(filter).select('price fullRent customerType trailerType vehicle vehiclePlate driverName driver supervisor supervisorName customer customerName status loadDate createdAt fromCity toCity').lean(),
-      FleetVehicle.find(scope ? { _id: { $in: scope } } : {}).select('plate name trailerType monthlyTarget supervisor supervisorName').lean(),
+      FleetShipment.find(filter).select('price fullRent driverExpense customerType trailerType vehicle vehiclePlate driverName driver supervisor supervisorName customer customerName status loadDate createdAt fromCity toCity').lean(),
+      FleetVehicle.find(vFilter).select('plate name trailerType monthlyTarget supervisor supervisorName').lean(),
       FleetCustomer.find({}).select('name customerType rating').lean(),
       getFleetConfig(),
     ]);
@@ -1135,6 +1250,9 @@ exports.getAnalytics = async (req, res) => {
     const branchShare = shipments.reduce((a, s) => {
       const fr = Number(s.fullRent) || 0; return a + (fr > 0 ? Math.max(0, fr - income(s)) : 0);
     }, 0);
+    // مصروف السائقين ضمن الفترة — المبلغ الذي يُسلَّم للسائقين فعلًا، ويظهر
+    // مفصّلًا في شاشة «تحليل الحمولات».
+    const totalDriverExpense = shipments.reduce((a, s) => a + (Number(s.driverExpense) || 0), 0);
     const tripCount = shipments.length;
 
     // Trips by trailer type (كام سطحة/ستارة…) + by customer type.
@@ -1153,7 +1271,12 @@ exports.getAnalytics = async (req, res) => {
       const cur = vehAgg.get(id) || { trips: 0, income: 0, plate: s.vehiclePlate || (vById.get(id)?.plate) || '—' };
       cur.trips += 1; cur.income += income(s); vehAgg.set(id, cur);
     }
-    const vehiclesOut = [...vById.entries()].map(([id, v]) => {
+    // البحث الحرّ يضيّق الجدول أيضًا: تبقى السيارةُ التي طابق نصُّها لوحتَها،
+    // أو التي لها رحلاتٌ فعلًا ضمن النتائج — لا الأسطول كلّه.
+    const vehicleRows = qRx
+      ? [...vById.entries()].filter(([id, v]) => vehAgg.has(id) || qRx.test(v.plate || '') || qRx.test(v.name || ''))
+      : [...vById.entries()];
+    const vehiclesOut = vehicleRows.map(([id, v]) => {
       const a = vehAgg.get(id) || { trips: 0, income: 0 };
       const monthlyTarget = (Number(v.monthlyTarget) || 0) || defaultTarget;
       const target = monthlyTarget * monthsInRange;
@@ -1214,9 +1337,9 @@ exports.getAnalytics = async (req, res) => {
     const monthlyTrend = [...trendMap.values()];
 
     const body = {
-      period: { from: start, to: end, monthsInRange },
+      period: { from: start, to: end, monthsInRange, preset: period.preset },
       totals: {
-        totalIncome, totalFullRent, branchShare, tripCount,
+        totalIncome, totalFullRent, branchShare, tripCount, totalDriverExpense,
         vehicleCount: vehiclesOut.length, customerCount: customersOut.length,
         vehiclesAchieved, vehiclesBelow,
         avgTripIncome: tripCount ? Math.round(totalIncome / tripCount) : 0,
@@ -1299,26 +1422,18 @@ exports.getDriverKpis = async (req, res) => {
     const cached = cache.get(cacheKey);
     if (cached !== undefined) return res.json(cached);
 
-    const { from, to, month } = req.query;
-    let start, end;
-    if (month && /^\d{4}-\d{2}$/.test(month)) {
-      start = new Date(`${month}-01T00:00:00`);
-      end = new Date(start); end.setMonth(end.getMonth() + 1);
-    } else {
-      const now = new Date();
-      start = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1);
-      end = to ? new Date(new Date(to).getTime() + 86400000) : new Date(now.getTime() + 86400000);
-    }
-    const monthsInRange = Math.max(1, _monthIndex(new Date(end.getTime() - 1)) - _monthIndex(start) + 1);
+    // نفس مرجع الفترة المستعمل في القائمة والتحليلات — تقييم السائق يجب أن
+    // يُحسب على الشهر ذاته الذي يقرؤه المستخدم في بقيّة الشاشات.
+    const period = resolvePeriod(req.query);
+    const { start, end } = period;
+    const monthsInRange = period.preset === 'all'
+      ? 1
+      : Math.max(1, _monthIndex(new Date(end.getTime() - 1)) - _monthIndex(start) + 1);
 
-    const inRange = {
-      $or: [
-        { loadDate: { $gte: start, $lt: end } },
-        { $and: [{ loadDate: null }, { createdAt: { $gte: start, $lt: end } }] },
-      ],
-    };
-    const filter = { $and: [inRange] };
+    const filter = { $and: [] };
+    if (period.preset !== 'all') filter.$and.push(effectiveDateMatch(start, end));
     if (scope) filter.$and.push({ vehicle: { $in: scope } });
+    if (!filter.$and.length) delete filter.$and;
 
     const [shipments, drivers, cfg] = await Promise.all([
       FleetShipment.find(filter)
@@ -1463,7 +1578,7 @@ exports.getDriverKpis = async (req, res) => {
     items.sort((a, b) => b.score - a.score || b.income - a.income);
     const active = items.filter((i) => i.trips > 0);
     const body = {
-      period: { from: start, to: end, monthsInRange },
+      period: { from: start, to: end, monthsInRange, preset: period.preset },
       weights: DRIVER_KPI_WEIGHTS,
       bands: DRIVER_KPI_BANDS,
       followUpTargetHours: FOLLOWUP_TARGET_HOURS,
@@ -1485,5 +1600,338 @@ exports.getDriverKpis = async (req, res) => {
   } catch (error) {
     console.error('fleet driver KPIs error:', error);
     res.status(500).json({ message: 'Failed to load driver KPIs' });
+  }
+};
+
+// ── المتوقع للوصول + السيارات الفاضية ───────────────────────────────────────
+//
+// السؤال الذي تجيبه هذه الشاشة حرفيًّا: «مين العربيات اللي هتوصل يوم السبت في
+// جدة؟ وإيه العربيات اللي هتكون فاضية وقتها؟». الجدولان يخرجان معًا لأن قرار
+// المشرف واحد: إن لم تكفِ الواصلةُ حمولةَ الغد، فمِن الفاضية يُكمِل.
+//
+// «فاضية» هنا لا تعني «وصلت»: تعني أن السيارة ليس عليها حمولة نشطة أصلًا — لا
+// تسير ولا تُحمِّل ولا متجهة إلى مكان. ولذلك تُحسب من غياب الحمولة لا من حالتها.
+const ARRIVAL_ACTIVE = ['requesting', 'loading', 'uploaded', 'on_way', 'late'];
+
+exports.getArrivals = async (req, res) => {
+  try {
+    const scope = await supervisorVehicleIds(req);
+    const cacheKey = `fleet:arrivals:${scope ? String(req.user._id) : 'all'}:${JSON.stringify(req.query || {})}`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) return res.json(cached);
+
+    // الافتراضي «الأيام السبعة القادمة»: الشاشة استشرافية، ومَن يفتحها يسأل عمّا
+    // هو آتٍ لا عمّا مضى — ولو ورث الافتراضَ العامّ (الشهر الحالي) لفتحت على
+    // نصف شهرٍ ماضٍ لا معنى لوصولٍ متوقَّعٍ فيه.
+    const period = resolvePeriod(req.query.preset || req.query.from || req.query.to || req.query.day || req.query.month
+      ? req.query : { preset: 'next_7' });
+    const { toCity, supervisor, q } = req.query;
+
+    const base = [{ status: { $in: ARRIVAL_ACTIVE } }];
+    if (scope) base.push({ vehicle: { $in: scope } });
+    if (supervisor) base.push({ supervisor });
+    if (q && q.trim()) {
+      const r = arRx(q);
+      base.push({ $or: [{ customerName: r }, { driverName: r }, { vehiclePlate: r }, { fromCity: r }, { toCity: r }] });
+    }
+    // الوجهة تُطابَق بتسامح الكتابة العربية: «جده» و«جدة» مدينةٌ واحدة.
+    const cityClause = toCity && toCity.trim() ? [{ toCity: arRx(toCity) }] : [];
+
+    // «كل الفترات» تعني كل موعدٍ مسجَّل، لا كلَّ حمولةٍ سائرة: لولا اشتراط وجود
+    // الموعد لظهرت الحمولاتُ التي بلا موعدٍ في الجدولين معًا، فيُعدّ الشيء مرّتين.
+    const inWindow = period.preset === 'all'
+      ? [{ expectedArrival: { $ne: null } }]
+      : [{ expectedArrival: { $gte: period.start, $lt: period.end } }];
+
+    const [arriving, noEta, activeVehicleIds, cityAgg] = await Promise.all([
+      FleetShipment.find({ $and: [...base, ...cityClause, ...inWindow] })
+        .sort({ expectedArrival: 1 })
+        .select('waybillNumber customerName customer vehicle vehiclePlate trailerType driverName driverPhone secondDriverName fromCity toCity status loadDate expectedArrival lastContactAt supervisorName supervisor price loadType')
+        .limit(500).lean(),
+      // حمولاتٌ سائرة بلا وصولٍ متوقَّع مُسجَّل: لا تظهر في أيّ نافذة زمنية، وإخفاؤها
+      // يعني سيارةً تُحسب «لا واصلة ولا فاضية» — فتضيع من التخطيط تمامًا.
+      FleetShipment.find({ $and: [...base, ...cityClause, { $or: [{ expectedArrival: null }, { expectedArrival: { $exists: false } }] }] })
+        .sort({ loadDate: -1, createdAt: -1 })
+        .select('waybillNumber customerName customer vehicle vehiclePlate trailerType driverName driverPhone secondDriverName fromCity toCity status loadDate expectedArrival lastContactAt supervisorName supervisor price loadType')
+        .limit(300).lean(),
+      FleetShipment.distinct('vehicle', { $and: base }),
+      FleetShipment.aggregate([
+        { $match: { $and: [...base, ...inWindow] } },
+        { $group: { _id: '$toCity', n: { $sum: 1 } } },
+        { $sort: { n: -1 } },
+      ]),
+    ]);
+
+    // السيارات الفاضية = سجلّ الأسطول ناقصًا كل سيارةٍ عليها حمولة نشطة.
+    const busy = new Set(activeVehicleIds.filter(Boolean).map(String));
+    const vFilter = { isActive: { $ne: false } };
+    if (scope) vFilter._id = { $in: scope };
+    const allVehicles = await FleetVehicle.find(vFilter).select('plate name trailerType gpsType supervisor supervisorName').sort({ plate: 1 }).lean();
+    const idleVehicles = allVehicles.filter((v) => !busy.has(String(v._id)));
+    const idleIds = idleVehicles.map((v) => v._id);
+
+    // آخر رحلةٍ لكل سيارةٍ فاضية + سائقوها — تُحسب في الخادم لا بجرّ المجموعة كلّها.
+    const [lastTrips, drivers] = await Promise.all([
+      idleIds.length ? FleetShipment.aggregate([
+        { $match: { vehicle: { $in: idleIds } } },
+        { $sort: { createdAt: -1 } },
+        { $group: { _id: '$vehicle', last: { $first: { waybillNumber: '$waybillNumber', toCity: '$toCity', status: '$status', customerName: '$customerName', at: EFFECTIVE_DATE_EXPR } } } },
+      ]) : [],
+      idleIds.length ? FleetDriver.find({ vehicle: { $in: idleIds }, isActive: { $ne: false } }).select('name phone working vehicle').lean() : [],
+    ]);
+    const lastByVehicle = new Map(lastTrips.map((r) => [String(r._id), r.last]));
+    const drvByVehicle = new Map();
+    for (const d of drivers) {
+      const k = String(d.vehicle);
+      if (!drvByVehicle.has(k)) drvByVehicle.set(k, []);
+      drvByVehicle.get(k).push({ _id: d._id, name: d.name, phone: d.phone, working: d.working });
+    }
+    const idle = idleVehicles.map((v) => ({
+      ...v,
+      drivers: drvByVehicle.get(String(v._id)) || [],
+      lastTrip: lastByVehicle.get(String(v._id)) || null,
+    }));
+
+    const body = {
+      period: { from: period.start, to: period.end, preset: period.preset },
+      arriving,
+      noEta,
+      idle,
+      byCity: cityAgg.filter((r) => r._id).map((r) => ({ city: r._id, n: r.n })),
+      summary: {
+        arriving: arriving.length,
+        noEta: noEta.length,
+        idle: idle.length,
+        vehicles: allVehicles.length,
+        busy: allVehicles.length - idle.length,
+      },
+    };
+    cache.set(cacheKey, body, 12000);
+    res.json(body);
+  } catch (error) {
+    console.error('fleet arrivals error:', error);
+    res.status(500).json({ message: 'Failed to load expected arrivals' });
+  }
+};
+
+// ── تحليل سيارةٍ واحدة عبر فترة ─────────────────────────────────────────────
+//
+// «أضغط على السيارة فيطلع لي تحليل كامل ليها: عملت كام رحلة والسعر وكده».
+// كل رقمٍ هنا يُجمَّع في الخادم، والسجلّ المُعاد مسقوفٌ — سيارةٌ واحدة عبر سنة
+// قد تحمل مئات الحمولات، وجرُّها كلّها إلى المتصفّح ليعدّها هو خطأٌ يتكرّر.
+exports.getVehicleAnalytics = async (req, res) => {
+  try {
+    const scope = await supervisorVehicleIds(req);
+    const vehicle = await FleetVehicle.findById(req.params.id).lean();
+    if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
+    // المشرف لا يرى إلا سياراته: بغير هذا الشرط يصير رابطُ التحليل بابًا خلفيًّا
+    // إلى أرقام مشرفٍ آخر.
+    if (scope && !scope.some((s) => String(s) === String(vehicle._id))) {
+      return res.status(403).json({ message: 'Not your vehicle' });
+    }
+
+    const cacheKey = `fleet:vehicle-analytics:${req.params.id}:${JSON.stringify(req.query || {})}`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) return res.json(cached);
+
+    const period = resolvePeriod(req.query);
+    const { start, end } = period;
+    const monthsInRange = period.preset === 'all'
+      ? 1
+      : Math.max(1, _monthIndex(new Date(end.getTime() - 1)) - _monthIndex(start) + 1);
+
+    const match = { $and: [{ vehicle: vehicle._id }] };
+    if (period.preset !== 'all') match.$and.push(effectiveDateMatch(start, end));
+    if (!req.query.includeCancelled) match.$and.push({ status: { $ne: 'cancelled' } });
+
+    const sums = {
+      trips: { $sum: 1 },
+      income: { $sum: { $ifNull: ['$price', 0] } },
+      fullRent: { $sum: { $ifNull: ['$fullRent', 0] } },
+      driverExpense: { $sum: { $ifNull: ['$driverExpense', 0] } },
+    };
+
+    // ترند اثني عشر شهرًا: يتجاهل الفترة عمدًا — السؤال «هل السيارة تتحسّن؟»
+    // لا يُجاب من داخل الشهر المختار.
+    const trendStart = new Date(); trendStart.setMonth(trendStart.getMonth() - 11); trendStart.setDate(1); trendStart.setHours(0, 0, 0, 0);
+
+    const [totalsAgg, byRoute, byCustomer, byStatus, byMonth, trips, cfg, seatDrivers, currentTrip] = await Promise.all([
+      FleetShipment.aggregate([{ $match: match }, { $group: { _id: null, ...sums } }]),
+      FleetShipment.aggregate([
+        { $match: match },
+        { $group: { _id: { from: '$fromCity', to: '$toCity' }, ...sums } },
+        { $sort: { trips: -1 } }, { $limit: 40 },
+      ]),
+      FleetShipment.aggregate([
+        { $match: match },
+        { $group: { _id: { id: '$customer', name: '$customerName' }, ...sums } },
+        { $sort: { income: -1 } }, { $limit: 40 },
+      ]),
+      FleetShipment.aggregate([{ $match: match }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+      FleetShipment.aggregate([
+        { $match: { vehicle: vehicle._id, status: { $ne: 'cancelled' }, $expr: { $gte: [EFFECTIVE_DATE_EXPR, trendStart] } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m', date: EFFECTIVE_DATE_EXPR } }, ...sums } },
+        { $sort: { _id: 1 } },
+      ]),
+      FleetShipment.find(match)
+        .sort({ loadDate: -1, createdAt: -1 })
+        .select('waybillNumber customer customerName customerType driverName secondDriverName supervisorName supervisor fromCity toCity loadType price fullRent driverExpense status loadDate expectedArrival createdAt')
+        .limit(1000).lean(),
+      getFleetConfig(),
+      FleetDriver.find({ vehicle: vehicle._id, isActive: { $ne: false } }).select('name phone working offReason').lean(),
+      FleetShipment.findOne({ vehicle: vehicle._id, status: { $in: ARRIVAL_ACTIVE } })
+        .sort({ createdAt: -1 })
+        .select('waybillNumber status fromCity toCity expectedArrival customerName loadDate').lean(),
+    ]);
+
+    const t = totalsAgg[0] || { trips: 0, income: 0, fullRent: 0, driverExpense: 0 };
+    const monthlyTarget = (Number(vehicle.monthlyTarget) || 0) || (Number(cfg.defaultMonthlyTarget) || 0);
+    const periodTarget = monthlyTarget * monthsInRange;
+    // حصة قسم الفروع = فارق «الإيجار كامل» عن إيجار السيارة، ولا يُحسب إلا حين
+    // سُجِّل الإيجار الكامل فعلًا — وإلا صار كل إيجارٍ منفردٍ حصةً سالبة.
+    const branchShare = trips.reduce((a, s) => {
+      const fr = Number(s.fullRent) || 0;
+      return a + (fr > 0 ? Math.max(0, fr - (Number(s.price) || 0)) : 0);
+    }, 0);
+
+    const body = {
+      vehicle: { ...vehicle, drivers: seatDrivers, currentTrip: currentTrip || null },
+      period: { from: start, to: end, monthsInRange, preset: period.preset },
+      totals: {
+        trips: t.trips, income: t.income, fullRent: t.fullRent, driverExpense: t.driverExpense,
+        branchShare,
+        net: t.income - t.driverExpense,
+        avgTripIncome: t.trips ? Math.round(t.income / t.trips) : 0,
+        avgTripExpense: t.trips ? Math.round(t.driverExpense / t.trips) : 0,
+        monthlyTarget, periodTarget,
+        achievedPct: periodTarget > 0 ? Math.round((t.income / periodTarget) * 100) : null,
+        achieved: periodTarget > 0 ? t.income >= periodTarget : null,
+      },
+      byRoute: byRoute.map((r) => ({ fromCity: r._id.from || '—', toCity: r._id.to || '—', trips: r.trips, income: r.income, driverExpense: r.driverExpense })),
+      byCustomer: byCustomer.map((r) => ({ _id: r._id.id ? String(r._id.id) : null, name: r._id.name || '—', trips: r.trips, income: r.income, driverExpense: r.driverExpense })),
+      byStatus: Object.fromEntries(byStatus.map((r) => [r._id, r.n])),
+      monthlyTrend: byMonth.map((r) => ({ month: r._id, trips: r.trips, income: r.income, driverExpense: r.driverExpense })),
+      shipments: trips,
+      truncated: trips.length >= 1000,
+    };
+    cache.set(cacheKey, body, 12000);
+    res.json(body);
+  } catch (error) {
+    console.error('fleet vehicle analytics error:', error);
+    res.status(500).json({ message: 'Failed to load vehicle analytics' });
+  }
+};
+
+// ── تحليل الحمولات ──────────────────────────────────────────────────────────
+//
+// شاشةُ صرفِ مصروفِ السائقين قبل أن تكون شاشةَ تقارير: يقف المشرف عليها ليعرف
+// كم يُسلِّم لكل سائق عن حمولات اليوم. ولذلك المصروف عمودٌ في كل صفٍّ **و**
+// مجموعٌ لكل سائقٍ على حدة — والرقمان يُجمَّعان في الخادم من نفس المطابقة، فلا
+// يختلف مجموعُ الصفحة عن مجموع الصفوف حين تتجاوز الحمولاتُ سقفَ العرض.
+exports.getLoadsAnalysis = async (req, res) => {
+  try {
+    const scope = await supervisorVehicleIds(req);
+    const cacheKey = `fleet:loads-analysis:${scope ? String(req.user._id) : 'all'}:${JSON.stringify(req.query || {})}`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined) return res.json(cached);
+
+    const period = resolvePeriod(req.query);
+    const { start, end } = period;
+    const { q, includeCancelled } = req.query;
+    const supervisors = _multi(req.query.supervisor);
+    const customersF = _multi(req.query.customer);
+    const vehicleF = _multi(req.query.vehicle);
+    const statuses = _multi(req.query.status);
+    const customerTypes = _multi(req.query.customerType);
+    const limit = Math.min(3000, Math.max(1, parseInt(req.query.limit, 10) || 1000));
+
+    const and = [];
+    if (period.preset !== 'all') and.push(effectiveDateMatch(start, end));
+    if (scope) and.push({ vehicle: { $in: scope } });
+    if (vehicleF.length) and.push({ vehicle: { $in: vehicleF } });
+    if (supervisors.length) and.push({ supervisor: { $in: supervisors } });
+    if (customersF.length) and.push({ customer: { $in: customersF } });
+    if (customerTypes.length) and.push({ customerType: { $in: customerTypes } });
+    if (statuses.length) and.push({ status: { $in: statuses } });
+    if (!includeCancelled && !statuses.length) and.push({ status: { $ne: 'cancelled' } });
+    if (q && q.trim()) {
+      const r = arRx(q);
+      const or = [{ customerName: r }, { vehiclePlate: r }, { driverName: r }, { secondDriverName: r }, { fromCity: r }, { toCity: r }, { loadType: r }, { supervisorName: r }];
+      const n = Number(String(q).trim());
+      if (Number.isFinite(n)) or.push({ waybillNumber: n });
+      and.push({ $or: or });
+    }
+    const match = and.length ? { $and: and } : {};
+
+    const sums = {
+      loads: { $sum: 1 },
+      income: { $sum: { $ifNull: ['$price', 0] } },
+      fullRent: { $sum: { $ifNull: ['$fullRent', 0] } },
+      driverExpense: { $sum: { $ifNull: ['$driverExpense', 0] } },
+    };
+
+    const [totalsAgg, byDay, bySupervisor, byCustomer, byVehicle, byDriver, byStatus, rows] = await Promise.all([
+      FleetShipment.aggregate([{ $match: match }, { $group: { _id: null, ...sums, fridayBonuses: { $sum: { $cond: ['$fridayBonus', 1, 0] } } } }]),
+      FleetShipment.aggregate([
+        { $match: match },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: EFFECTIVE_DATE_EXPR, timezone: 'Asia/Riyadh' } }, ...sums } },
+        { $sort: { _id: 1 } },
+      ]),
+      FleetShipment.aggregate([
+        { $match: match },
+        { $group: { _id: { id: '$supervisor', name: '$supervisorName' }, ...sums } },
+        { $sort: { loads: -1 } },
+      ]),
+      FleetShipment.aggregate([
+        { $match: match },
+        { $group: { _id: { id: '$customer', name: '$customerName' }, ...sums } },
+        { $sort: { income: -1 } }, { $limit: 100 },
+      ]),
+      FleetShipment.aggregate([
+        { $match: match },
+        { $group: { _id: { id: '$vehicle', plate: '$vehiclePlate' }, ...sums } },
+        { $sort: { income: -1 } }, { $limit: 200 },
+      ]),
+      // مجموع مصروف كل سائق — الرقم الذي يُصرَف به فعلًا.
+      FleetShipment.aggregate([
+        { $match: match },
+        { $group: { _id: { id: '$driver', name: '$driverName' }, ...sums } },
+        { $sort: { driverExpense: -1 } }, { $limit: 200 },
+      ]),
+      FleetShipment.aggregate([{ $match: match }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+      FleetShipment.find(match)
+        .sort({ loadDate: -1, createdAt: -1 })
+        .select('waybillNumber customer customerName customerType vehicle vehiclePlate trailerType driver driverName driverPhone secondDriverName supervisor supervisorName fromCity toCity loadType rentType paymentType branch price fullRent driverExpense fridayBonus status loadDate expectedArrival createdAt')
+        .limit(limit).lean(),
+    ]);
+
+    const t = totalsAgg[0] || { loads: 0, income: 0, fullRent: 0, driverExpense: 0, fridayBonuses: 0 };
+    const body = {
+      period: { from: start, to: end, preset: period.preset },
+      totals: {
+        loads: t.loads, income: t.income, fullRent: t.fullRent, driverExpense: t.driverExpense,
+        fridayBonuses: t.fridayBonuses,
+        branchShare: Math.max(0, t.fullRent - t.income),
+        net: t.income - t.driverExpense,
+        avgIncome: t.loads ? Math.round(t.income / t.loads) : 0,
+        avgExpense: t.loads ? Math.round(t.driverExpense / t.loads) : 0,
+      },
+      byDay: byDay.map((r) => ({ day: r._id, loads: r.loads, income: r.income, driverExpense: r.driverExpense })),
+      bySupervisor: bySupervisor.map((r) => ({ _id: r._id.id ? String(r._id.id) : null, name: r._id.name || '—', loads: r.loads, income: r.income, driverExpense: r.driverExpense })),
+      byCustomer: byCustomer.map((r) => ({ _id: r._id.id ? String(r._id.id) : null, name: r._id.name || '—', loads: r.loads, income: r.income, driverExpense: r.driverExpense })),
+      byVehicle: byVehicle.map((r) => ({ _id: r._id.id ? String(r._id.id) : null, plate: r._id.plate || '—', loads: r.loads, income: r.income, driverExpense: r.driverExpense })),
+      byDriver: byDriver.map((r) => ({ _id: r._id.id ? String(r._id.id) : null, name: r._id.name || '—', loads: r.loads, income: r.income, driverExpense: r.driverExpense })),
+      byStatus: Object.fromEntries(byStatus.map((r) => [r._id, r.n])),
+      shipments: rows,
+      // الصفوف مسقوفة والمجاميع ليست كذلك: تُعلَن الحقيقة صراحةً بدل أن يظنّ
+      // القارئ أن ما أمامه هو كل شيء ثم يجمعه بيده فلا يوافق مجموع الشاشة.
+      truncated: t.loads > rows.length,
+      shown: rows.length,
+    };
+    cache.set(cacheKey, body, 12000);
+    res.json(body);
+  } catch (error) {
+    console.error('fleet loads analysis error:', error);
+    res.status(500).json({ message: 'Failed to load the loads analysis' });
   }
 };

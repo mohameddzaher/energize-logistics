@@ -63,6 +63,16 @@ class Api {
       if (token == null) return false;
       _accessToken = token;
       await _storage.write(key: 'accessToken', value: token);
+      // ── التوكن المجدَّد يُحفَظ، وإلا خرج المستخدم قسرًا كل نصف شهر ───────────
+      // الخادم يجدّد توكن التجديد حين يتجاوز نصف عمره ويرسل البديل هنا. كان
+      // البديل يُهمَل، فيبقى الهاتف على التوكن القديم حتى يُحذَف بعد مهلة
+      // السماح — ثم يفشل أوّل تجديدٍ بعده فيُطلَب من المستخدم كلمة سرّه من
+      // جديد بلا سبب يفهمه. هذا بالضبط ما كان يبدو «الجلسة بايظة، اعمل دخول
+      // وخروج».
+      final newRefresh = body['refreshToken'] as String?;
+      if (newRefresh != null && newRefresh.isNotEmpty) {
+        await _storage.write(key: 'refreshToken', value: newRefresh);
+      }
       return true;
     } catch (_) {
       return false;

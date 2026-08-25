@@ -72,9 +72,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user);
       writeCached(data.user);
       connectSocket();
-    } catch {
-      setUser(null);
-      writeCached(null);
+    } catch (e: any) {
+      // ── انقطاعُ الشبكة ليس خروجًا ─────────────────────────────────────────
+      // كان أيّ فشلٍ هنا يمحو المستخدم: مهلةٌ انتهت، أو إعادةُ تشغيل الخادم،
+      // أو حزمةٌ ضاعت من الواي-فاي — فتُقذَف إلى شاشة الدخول وجلستُك سليمة
+      // تمامًا. الخروج لا يكون إلا حين يقول الخادمُ نفسه إن الجلسة لم تعد
+      // مقبولة؛ وما عدا ذلك تُترَك النسخةُ المحفوظة ويُعاد المحاولة لاحقًا.
+      if (e?.message === 'Authentication required' || e?.status === 401 || e?.status === 403) {
+        setUser(null);
+        writeCached(null);
+      }
     }
   }, []);
 
@@ -87,9 +94,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // فتح صفحة بعد فترة سكون أبطأ من فتحها أثناء العمل.
   useEffect(() => {
     if (!user) return undefined;
-    const id = setInterval(() => {
-      fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' }).catch(() => {});
-    }, 12 * 60 * 1000);
+    // عبر عميل الـAPI لا بمسارٍ نسبيّ: الواجهة على نطاق والخادم على نطاقٍ آخر،
+    // وكوكيز الجلسة مربوطةٌ بنطاق الخادم وحده — فالمسار النسبيّ كان يصل إلى
+    // Netlify بلا كوكيز فيردّ 401 ولا يجدّد شيئًا. كان يعمل محليًّا وحده، حيث
+    // كلّ شيء على أصلٍ واحد.
+    const id = setInterval(() => { api.refreshSession().catch(() => {}); }, 12 * 60 * 1000);
     return () => clearInterval(id);
   }, [user]);
 

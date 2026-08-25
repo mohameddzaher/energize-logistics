@@ -117,7 +117,17 @@ class ApiClient {
       }
 
       // Try refresh on ANY 401 (not just TOKEN_EXPIRED)
-      const refreshed = await this.refreshToken();
+      //
+      // والاستثناء يُلتقَط هنا لا يُترَك يصعد: لو رمى التجديد (انقطاع شبكة) لم
+      // تُستدعَ processQueue أصلًا، فيبقى كلُّ طلبٍ في الطابور معلَّقًا إلى
+      // الأبد — دوائرُ تحميلٍ لا تنتهي حتى يصادف 401 آخر يفرّغ الطابور.
+      let refreshed = false;
+      try {
+        refreshed = await this.refreshToken();
+      } catch {
+        this.processQueue(false);
+        throw new Error('Network error during session refresh');
+      }
       if (refreshed) {
         this.processQueue(true);
         return this.request<T>(endpoint, { ...options, skipAuth: true });
@@ -157,6 +167,17 @@ class ApiClient {
       });
 
     return this.refreshPromise;
+  }
+
+  /**
+   * تجديدٌ استباقيّ يناديه AuthContext كلّ اثنتي عشرة دقيقة.
+   *
+   * يمرّ من هنا لا بـ`fetch` على مسارٍ نسبيّ: الخادم على نطاقٍ غير نطاق
+   * الواجهة، وكوكيز الجلسة مربوطةٌ بنطاقه وحده — فالمسار النسبيّ يذهب إلى
+   * المستضيف بلا كوكيز فيردّ ٤٠١ ولا يجدّد شيئًا.
+   */
+  refreshSession(): Promise<boolean> {
+    return this.refreshToken();
   }
 
   get<T>(endpoint: string, options?: FetchOptions): Promise<T> {

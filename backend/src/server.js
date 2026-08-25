@@ -124,13 +124,19 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(mongoSanitize());
+
 
 // Body parsing. Limit is generous because employee documents are uploaded as
 // base64 data URLs in JSON (no multer dependency) — see utils/fileStore.js.
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(cookieParser());
+
+// ── التعقيم بعد المحلِّلات لا قبلها ──────────────────────────────────────────
+// كان يعمل قبل `express.json()`، وهو يتخطّى ما ليس موجودًا — و`req.body` وقتها
+// غير موجود أصلًا. فكان جسمُ الطلب يمرّ بلا تعقيم منذ اليوم الأوّل، وكذلك
+// الكوكيز. الآن يعمل بعدهما فيرى ما جاء ليفحصه.
+app.use(mongoSanitize());
 
 // Static serving of uploaded files (employee documents). Mounted under
 // /api/uploads so the frontend's /api/* proxy forwards it (same-origin). Placed

@@ -633,13 +633,36 @@ exports.getDailyOrders = async (req, res) => {
       return res.json({ orders: [] });
     }
 
+    // ── حدٌّ وذاكرة ───────────────────────────────────────────────────────────
+    // بلا مدى تاريخ كان هذا يجلب السجلّ كلّه — ثلاثةً وأربعين ألف صفٍّ بثلاث
+    // عمليّات ربط — فيستغرق الطلب أربع ثوانٍ ونصفًا وينقلها كلَّها إلى المتصفّح.
+    // وكلُّ مستهلكٍ حقيقيّ (شاشة الإدخال اليوميّ في الموقع والتطبيق) يمرّر
+    // `dateFrom`/`dateTo` ليومٍ واحد، فلا أحد يطلب هذا الكمّ أصلًا؛ كان يُنقَل
+    // لأن لا شيء يمنعه.
+    //
+    // والحدُّ يُعلَن حين يُبلَغ: نتيجةٌ مبتورةٌ بصمت أسوأ من نتيجةٍ ناقصةٍ معلومة.
+    const MAX = Math.min(Number(req.query.limit) || 5000, 20000);
+    const key = `b2c:daily:${JSON.stringify(req.query || {})}:${req.user._id}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return res.json(hit);
+
     const orders = await B2CDailyOrder.find(filter)
       .populate('rep', 'englishName arabicName repId')
       .populate('project', 'name code color')
       .populate('branch', 'name code city')
       .sort({ dateKey: -1 })
+      .limit(MAX + 1)
       .lean();
-    res.json({ orders });
+
+    const truncated = orders.length > MAX;
+    const body = { orders: truncated ? orders.slice(0, MAX) : orders };
+    if (truncated) {
+      body.truncated = true;
+      body.limit = MAX;
+      body.note = 'النتيجة مبتورة عند الحدّ — ضيّق المدى الزمنيّ أو ارفع limit';
+    }
+    cache.set(key, body, 30000);
+    res.json(body);
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to load daily orders' });
   }

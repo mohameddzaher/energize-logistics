@@ -1,6 +1,6 @@
 'use client';
 // لوحة تحليلات سجل المركبات — أرقام كثيفة لكل بُعد + فلاتر متعددة + نطاق تاريخي
-// + عتبات انتهاء المستندات، وكله حي وقابل للنقر للتصفية.
+// + عتبات انتهاء المستندات، وكله حي وقابل للنقر للفلترة.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';

@@ -129,7 +129,7 @@ export default function VehiclesOverviewPage() {
         />
         {countActive(filters) > 0 && (
           <p className="mt-2 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.vehicles ?? 0} مركبة مطابقة للتصفية.`,
+            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.vehicles ?? 0} مركبة مطابقة للفلتر.`,
                `Every card and chart below is computed over the ${d?.totals?.vehicles ?? 0} matching vehicles.`)}
           </p>
         )}
@@ -147,56 +147,6 @@ export default function VehiclesOverviewPage() {
         <Big label={t('ينقصها بيانات', 'Missing data')} value={d.totals.withMissing} accent="#7c3aed"
           onClick={() => openList({ missing: '1' })} />
       </div>
-
-      {/* النواقص — بندًا بندًا وبسببه. «لا يوجد» و«مطلوب» و«لدى البنك» ثلاثة
-          أوضاع مختلفة: الأول نقص، والثاني عملٌ مطلوب، والثالث ليس نقصًا أصلًا. */}
-      {!!d.missingBreakdown?.length && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-bold text-slate-800">
-            {t(`نواقص البيانات — ${d.totals.withMissing} مركبة · ${d.totals.missingItems} بندًا`,
-               `Missing data — ${d.totals.withMissing} vehicles · ${d.totals.missingItems} items`)}
-          </h2>
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
-            {d.missingBreakdown.map((g) => (
-              <button key={`${g.item}|${g.reason}`} onClick={() => openList(g.filter)}
-                className="w-full text-start px-4 py-2.5 flex items-center gap-3 hover:bg-violet-50/60 transition">
-                <span className="w-11 shrink-0 text-center px-1.5 py-0.5 rounded-lg bg-violet-100 text-violet-800 text-[12.5px] font-bold tabular-nums">
-                  {g.count}
-                </span>
-                <span className="flex-1 text-[13px] text-slate-900 font-medium">{g.item}</span>
-                <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${
-                  g.reason === 'required' ? 'bg-rose-100 text-rose-700'
-                    : g.reason === 'none' ? 'bg-amber-100 text-amber-800'
-                    : 'bg-slate-100 text-slate-700'}`}>
-                  {ar ? g.reasonAr : g.reasonEn}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* نواقص منصّة لوجستي — شرطًا شرطًا، والضغط يفتح المركبات التي ينقصها */}
-      {!!d.logistiGaps?.length && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-bold text-slate-800">
-            {t(`نواقص منصّة لوجستي — ${d.totals.withLogistiGaps} مركبة · ${d.totals.logistiGapItems} بندًا`,
-               `Logisti platform gaps — ${d.totals.withLogistiGaps} vehicles · ${d.totals.logistiGapItems} items`)}
-          </h2>
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
-            {d.logistiGaps.map((g) => (
-              <button key={g.value} onClick={() => openList(g.filter)}
-                className="w-full text-start px-4 py-2.5 flex items-center gap-3 hover:bg-violet-50/60 transition">
-                <span className="w-11 shrink-0 text-center px-1.5 py-0.5 rounded-lg bg-violet-100 text-violet-800 text-[12.5px] font-bold tabular-nums">
-                  {g.count}
-                </span>
-                <span className="flex-1 text-[13px] text-slate-800">{g.value}</span>
-                <span className="text-[11.5px] text-slate-500">{t('اعرض المركبات', 'Show vehicles')}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* ② المستندات — الجزء اللي بيوجع */}
       <section className="space-y-2">
@@ -253,12 +203,62 @@ export default function VehiclesOverviewPage() {
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold text-slate-800">{t('التحليلات', 'Analytics')}</h2>
             <span className="text-[11px] text-slate-400">
-              {t('اضغط أي شريحة لتُضاف إلى التصفية', 'Click any band to add it to the filter')}
+              {t('اضغط أي شريحة لتُضاف إلى الفلتر', 'Click any band to add it to the filter')}
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {d.analytics.map((a) => (
               <AnalyticCard key={a.key} a={a} ar={ar} total={d.totals.vehicles} onPick={drill} active={filters} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* النواقص — بندًا بندًا وبسببه. «لا يوجد» و«مطلوب» و«لدى البنك» ثلاثة
+          أوضاع مختلفة: الأول نقص، والثاني عملٌ مطلوب، والثالث ليس نقصًا أصلًا. */}
+      {!!d.missingBreakdown?.length && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-slate-800">
+            {t(`نواقص البيانات — ${d.totals.withMissing} مركبة · ${d.totals.missingItems} بندًا`,
+               `Missing data — ${d.totals.withMissing} vehicles · ${d.totals.missingItems} items`)}
+          </h2>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+            {d.missingBreakdown.map((g) => (
+              <button key={`${g.item}|${g.reason}`} onClick={() => openList(g.filter)}
+                className="w-full text-start px-4 py-2.5 flex items-center gap-3 hover:bg-violet-50/60 transition">
+                <span className="w-11 shrink-0 text-center px-1.5 py-0.5 rounded-lg bg-violet-100 text-violet-800 text-[12.5px] font-bold tabular-nums">
+                  {g.count}
+                </span>
+                <span className="flex-1 text-[13px] text-slate-900 font-medium">{g.item}</span>
+                <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${
+                  g.reason === 'required' ? 'bg-rose-100 text-rose-700'
+                    : g.reason === 'none' ? 'bg-amber-100 text-amber-800'
+                    : 'bg-slate-100 text-slate-700'}`}>
+                  {ar ? g.reasonAr : g.reasonEn}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* نواقص منصّة لوجستي — شرطًا شرطًا، والضغط يفتح المركبات التي ينقصها */}
+      {!!d.logistiGaps?.length && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-slate-800">
+            {t(`نواقص منصّة لوجستي — ${d.totals.withLogistiGaps} مركبة · ${d.totals.logistiGapItems} بندًا`,
+               `Logisti platform gaps — ${d.totals.withLogistiGaps} vehicles · ${d.totals.logistiGapItems} items`)}
+          </h2>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+            {d.logistiGaps.map((g) => (
+              <button key={g.value} onClick={() => openList(g.filter)}
+                className="w-full text-start px-4 py-2.5 flex items-center gap-3 hover:bg-violet-50/60 transition">
+                <span className="w-11 shrink-0 text-center px-1.5 py-0.5 rounded-lg bg-violet-100 text-violet-800 text-[12.5px] font-bold tabular-nums">
+                  {g.count}
+                </span>
+                <span className="flex-1 text-[13px] text-slate-800">{g.value}</span>
+                <span className="text-[11.5px] text-slate-500">{t('اعرض المركبات', 'Show vehicles')}</span>
+              </button>
             ))}
           </div>
         </section>
@@ -393,7 +393,7 @@ function BreakdownCard({ b, ar, t, onPick }: {
 
 // ── بطاقة تحليل: شرائح أفقية بعرض متناسب مع العدد ─────────────────────────────
 //
-// الشريحة تحمل معها الفلتر الذي أنتجها؛ الضغط عليها يضيفه إلى التصفية بدل أن
+// الشريحة تحمل معها الفلتر الذي أنتجها؛ الضغط عليها يضيفه إلى الفلتر بدل أن
 // تخمّن الواجهة الشرط — فلا يفترق الرقم المعروض عن الصفوف التي يفتحها.
 function AnalyticCard({ a, ar, total, onPick, active }:
 { a: VehicleOverview['analytics'][number]; ar: boolean; total: number;

@@ -62,7 +62,7 @@ export function ColumnFilter({ rows, field, selected, onChange, onOpen, lang, fo
         type="button"
         onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }}
         className={`ms-1 p-0.5 rounded transition-colors ${active ? 'text-[#f37121]' : 'text-slate-400 hover:text-white'}`}
-        title={ar ? 'تصفية' : 'Filter'}
+        title={ar ? 'فلتر' : 'Filter'}
       >
         <Filter className="w-3 h-3" fill={active ? 'currentColor' : 'none'} />
       </button>

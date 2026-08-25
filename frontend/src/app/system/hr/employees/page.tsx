@@ -92,7 +92,7 @@ export default function HREmployeesPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
         <div className="w-full sm:w-48 shrink-0">
-          <Select aria-label={ar ? 'تصفية الحالة' : 'Filter by status'} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <Select aria-label={ar ? 'فلترة الحالة' : 'Filter by status'} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">{tx.allStatuses}</option>
             {Object.entries(EMPLOYMENT_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
           </Select>

@@ -124,14 +124,14 @@ export default function HrMasterPage() {
         />
         {countActive(filters) > 0 && (
           <p className="mt-2 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.filtered ?? 0} موظفًا مطابقًا للتصفية — عدا «الموظفون» و«على رأس العمل» فهما إجمالي الملف الوظيفي.`,
+            {t(`كل البطاقات والتحليلات في هذه الصفحة محسوبة على ${d?.totals?.filtered ?? 0} موظفًا مطابقًا للفلتر — عدا «الموظفون» و«على رأس العمل» فهما إجمالي الملف الوظيفي.`,
                `Every card and chart below is computed over the ${d?.totals?.filtered ?? 0} matching employees — except “Employees” and “Active”, which are the whole roster.`)}
           </p>
         )}
       </div>
 
       {/* الأرقام الكبيرة */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
         {/* التلاتة دول عدد الملف الوظيفي نفسه — ما بيتحركوش مع الفلتر، عشان
             «الموظفون» يفضل معناه عدد الموظفين. الباقي محسوب على المعروض. */}
         <Big label={t('الموظفون', 'Employees')} value={d.totals.employees} c="#f37121" />
@@ -143,7 +143,6 @@ export default function HrMasterPage() {
         <Big label={t('ينتهي قريبًا', 'Expiring soon')} value={d.totals.expiringSoon} c="#ea580c"
           onClick={() => router.push('/system/hr/master/expiring')} />
         <Big label={t('مسجّل بالتأمينات', 'GOSI registered')} value={d.totals.gosiRegistered} c="#0ea5e9" />
-        <Big label={t('راتب نقدي', 'Cash payroll')} value={d.totals.cashPayroll} c="#8b5cf6" />
         <Big label={t('خارج المملكة', 'Outside kingdom')} value={d.totals.outsideKingdom} c="#64748b"
           onClick={() => drill({ outsideKingdom: '1' })} />
         <Big label={t('عمل حر', 'Freelancers')} value={d.totals.freelancers} c="#0f172a"
@@ -168,27 +167,6 @@ export default function HrMasterPage() {
         </div>
       )}
 
-      {/* ابدأ من هنا — أكتر البيانات نقصًا */}
-      {!!d.topRequired.length && (
-        <section className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <ClipboardList className="w-4 h-4 text-red-600" />
-            <h2 className="text-sm font-bold text-slate-800">{t('ابدأ من هنا — أكتر البيانات نقصًا', 'Start here — most missing')}</h2>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-            {d.topRequired.map((f) => (
-              <button key={`${f.groupKey}.${f.key}`}
-                onClick={() => open(f.groupKey, { field: f.key, status: 'required' })}
-                className="text-start rounded-lg border border-red-100 bg-red-50/50 hover:border-red-300 px-3 py-2 transition-colors">
-                <p className="text-xl font-extrabold text-red-600 leading-none">{f.required}</p>
-                <p className="text-[11px] text-slate-700 mt-1 leading-tight">{ar ? f.ar : f.en}</p>
-                <p className="text-[10px] text-slate-400">{f.groupAr}</p>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* التحليلات — شرائح مشتقّة، كل شريحة تفلتر الصفحة عند الضغط */}
       {!!d.analytics?.length && (
         <section className="space-y-2">
@@ -196,7 +174,7 @@ export default function HrMasterPage() {
             <BarChart3 className="w-4 h-4 text-[#12325c]" />
             <h2 className="text-sm font-bold text-slate-800">{t('التحليلات', 'Analytics')}</h2>
             <span className="text-[11px] text-slate-400">
-              {t('اضغط أي شريحة لتُضاف إلى التصفية', 'Click any band to add it to the filter')}
+              {t('اضغط أيّ شريحة لتُضاف إلى الفلتر', 'Click any band to add it to the filter')}
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -219,6 +197,27 @@ export default function HrMasterPage() {
             )))}
         </div>
       </section>
+
+      {/* ابدأ من هنا — أكتر البيانات نقصًا */}
+      {!!d.topRequired.length && (
+        <section className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <ClipboardList className="w-4 h-4 text-red-600" />
+            <h2 className="text-sm font-bold text-slate-800">{t('ابدأ من هنا — أكتر البيانات نقصًا', 'Start here — most missing')}</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {d.topRequired.map((f) => (
+              <button key={`${f.groupKey}.${f.key}`}
+                onClick={() => open(f.groupKey, { field: f.key, status: 'required' })}
+                className="text-start rounded-lg border border-red-100 bg-red-50/50 hover:border-red-300 px-3 py-2 transition-colors">
+                <p className="text-xl font-extrabold text-red-600 leading-none">{f.required}</p>
+                <p className="text-[11px] text-slate-700 mt-1 leading-tight">{ar ? f.ar : f.en}</p>
+                <p className="text-[10px] text-slate-400">{f.groupAr}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* المستندات ذات التاريخ */}
       <section className="space-y-2">
@@ -359,7 +358,7 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
 
 // ── بطاقة تحليل: شرائح أفقية بعرض متناسب مع العدد ─────────────────────────────
 //
-// الشريحة تحمل معها الفلتر الذي يُنتجها؛ الضغط عليها يضيفه إلى التصفية بدل أن
+// الشريحة تحمل معها الفلتر الذي يُنتجها؛ الضغط عليها يضيفه إلى الفلتر بدل أن
 // تُعيد الواجهة تخمين الشرط — فلا يفترق الرقم المعروض عن الصفوف التي يفتحها.
 function AnalyticCard({ a, ar, total, onPick, active }:
 { a: AnalyticBlock; ar: boolean; total: number; onPick: (q: Record<string, string>) => void; active: Record<string, string> }) {

@@ -14,6 +14,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
+import SelectionBar from '@/components/ls2/SelectionBar';
 import { ShieldCheck, CalendarCheck, X } from 'lucide-react';
 import {
   getInsurancePolicies, renewInsurancePolicy, type InsurancePolicy,
@@ -34,6 +35,10 @@ export default function Page() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('');
   const [renewing, setRenewing] = useState<InsurancePolicy | null>(null);
+  // موسم التجديد يأتي دفعةً واحدة: عشرون وثيقة لدى نفس الشركة تنتهي في اليوم
+  // نفسه. فتحُها واحدةً واحدة هو بالضبط ما جاءت هذه الشاشة لتُنهيه.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState(false);
 
   const load = useCallback(async () => {
     try { setD(await getInsurancePolicies()); }
@@ -91,7 +96,18 @@ export default function Page() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
-              <tr>{[t('رقم الوثيقة', 'Policy no.'), t('شركة التأمين', 'Insurer'), t('نوع التغطية', 'Coverage'),
+              <tr>{canEdit && (
+                <th className="px-3 py-3 w-9">
+                  <input type="checkbox" className="accent-[#f37121]"
+                    title={t('اختيار كل المعروض', 'Select all shown')}
+                    checked={f.shown.length > 0 && f.shown.every((p: InsurancePolicy) => picked.has(p._id))}
+                    onChange={(e) => setPicked((prev) => {
+                      const n = new Set(prev);
+                      f.shown.forEach((p: InsurancePolicy) => (e.target.checked ? n.add(p._id) : n.delete(p._id)));
+                      return n;
+                    })} />
+                </th>
+              )}{[t('رقم الوثيقة', 'Policy no.'), t('شركة التأمين', 'Insurer'), t('نوع التغطية', 'Coverage'),
                 t('المركبات', 'Vehicles'), t('ينتهي في', 'Expires'), t('المتبقي', 'Left'),
                 t('القسط', 'Premium'), ...(canEdit ? [t('إجراءات', 'Actions')] : [])].map((h, i) => (
                 <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>
@@ -101,7 +117,18 @@ export default function Page() {
               {f.shown.map((p: InsurancePolicy) => {
                 const m = STATE_META[p.state] || STATE_META.valid;
                 return (
-                  <tr key={p._id} className="hover:bg-slate-50 text-center">
+                  <tr key={p._id} className={picked.has(p._id) ? 'bg-orange-50/70 text-center' : 'hover:bg-slate-50 text-center'}>
+                    {canEdit && (
+                      <td className="px-3 py-2.5">
+                        <input type="checkbox" className="accent-[#f37121]"
+                          checked={picked.has(p._id)}
+                          onChange={() => setPicked((prev) => {
+                            const n = new Set(prev);
+                            if (n.has(p._id)) n.delete(p._id); else n.add(p._id);
+                            return n;
+                          })} />
+                      </td>
+                    )}
                     <td className="px-3 py-2.5 font-mono text-[12.5px] text-slate-900 whitespace-nowrap">{p.policyNumber}</td>
                     <td className="px-3 py-2.5 text-slate-800 text-[13px] whitespace-nowrap">{p.companyAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-700 text-[12.5px]">{p.coverageTypeAr || '—'}</td>
@@ -133,7 +160,7 @@ export default function Page() {
                 );
               })}
               {!f.shown.length && (
-                <tr><td colSpan={canEdit ? 8 : 7} className="px-3 py-12 text-center text-slate-500">
+                <tr><td colSpan={canEdit ? 9 : 7} className="px-3 py-12 text-center text-slate-500">
                   {t('لا توجد وثائق مطابقة', 'No matching policies')}
                 </td></tr>
               )}
@@ -142,9 +169,32 @@ export default function Page() {
         </div>
       </div>
 
+      {canEdit && (() => {
+        const chosen = f.shown.filter((p: InsurancePolicy) => picked.has(p._id));
+        const vehicles = chosen.reduce((n: number, p: InsurancePolicy) => n + (p.vehicles || 0), 0);
+        return (
+          <>
+            <SelectionBar
+              count={chosen.length} ar={ar} tone="green"
+              label={t(`${chosen.length} وثيقة محدَّدة`, `${chosen.length} selected`)}
+              hint={t(`تغطّي ${vehicles} مركبة — سيسري عليها كلها التاريخ نفسه`,
+                      `Covering ${vehicles} vehicles — all get the same date`)}
+              actionLabel={t(`تجديدها بتاريخ واحد (${chosen.length})`, `Renew to one date (${chosen.length})`)}
+              onAction={() => setBulk(true)}
+              onClear={() => setPicked(new Set())} />
+            {bulk && (
+              <BulkRenewPoliciesModal policies={chosen} ar={ar}
+                onClose={() => setBulk(false)}
+                onReload={load}
+                onDone={() => { setBulk(false); setPicked(new Set()); load(); }} />
+            )}
+          </>
+        );
+      })()}
+
       {renewing && (
         <RenewPolicyModal policy={renewing} ar={ar} onClose={() => setRenewing(null)}
-          onDone={() => { setRenewing(null); load(); }} notify={notify} />
+          onDone={() => { setRenewing(null); setPicked(new Set()); load(); }} notify={notify} />
       )}
     </div>
   );
@@ -215,6 +265,129 @@ function RenewPolicyModal({ policy, ar, onClose, onDone, notify }: {
           <button onClick={save} disabled={busy || !newExpiry}
             className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-40">
             {busy ? t('جارٍ التجديد…', 'Renewing…') : t(`تجديد وسريانه على ${policy.vehicles} مركبة`, `Renew for ${policy.vehicles} vehicles`)}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── تجديد عدة وثائق بتاريخ واحد ──────────────────────────────────────────────
+// لا يوجد endpoint جماعي للوثائق، فالتنفيذ نداءات متتابعة — واحدة تلو الأخرى لا
+// دفعةً واحدة، حتى لا نُغرق السيرفر بعشرين طلبًا كلٌّ منها يكتب على مئتَي مركبة.
+//
+// والمتتابع يعني أن الفشل قد يقع في المنتصف: عشر وثائق جُدِّدت وعاشرة رُفضت.
+// إخفاء ذلك خلف «تم بنجاح» أسوأ من الفشل نفسه — لأن أحدًا لن يعود إلى المرفوضة.
+// لذلك نعرض العدّاد أثناء التنفيذ، ونُبقي النافذة مفتوحة بأسماء ما فشل.
+function BulkRenewPoliciesModal({ policies, ar, onClose, onDone, onReload }: {
+  policies: InsurancePolicy[]; ar: boolean;
+  onClose: () => void; onDone: () => void; onReload: () => void;
+}) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { notify } = useDialog();
+  const [newExpiry, setNewExpiry] = useState('');
+  const [cost, setCost] = useState('');
+  const [reference, setReference] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(0);
+  const [failed, setFailed] = useState<{ policyNumber: string; message: string }[]>([]);
+  // إعادة المحاولة يجب أن تمسّ ما فشل فقط: تكرارُ ما نجح يكتب في سجل كل مركبة
+  // تجديدًا ثانيًا لم يحدث.
+  const [succeeded, setSucceeded] = useState<Set<string>>(new Set());
+  const pending = policies.filter((p) => !succeeded.has(p._id));
+
+  const today = new Date().toISOString().slice(0, 10);
+  const past = !!newExpiry && newExpiry < today;
+  const vehicles = policies.reduce((n, p) => n + (p.vehicles || 0), 0);
+
+  const save = async () => {
+    const run = pending;
+    setBusy(true); setDone(0); setFailed([]);
+    let ok = 0; const bad: { policyNumber: string; message: string }[] = [];
+    const won = new Set(succeeded);
+    for (const p of run) {
+      try {
+        await renewInsurancePolicy(p._id, {
+          newExpiry, cost: cost === '' ? null : Number(cost), reference: reference.trim(),
+        });
+        ok += 1; won.add(p._id); setDone(ok);
+      } catch (e: any) {
+        bad.push({ policyNumber: p.policyNumber, message: e?.message || t('فشل', 'failed') });
+        setFailed([...bad]);
+      }
+    }
+    setSucceeded(won); setBusy(false);
+    if (!bad.length) {
+      notify(t(`تم تجديد ${won.size} وثيقة على ${vehicles} مركبة`, `Renewed ${won.size} policies across ${vehicles} vehicles`), 'success');
+      onDone();
+      return;
+    }
+    // نجاح جزئي: نحدّث القائمة ليظهر ما جُدِّد فعلًا، والنافذة تبقى بما فشل.
+    notify(t(`جُدِّدت ${won.size} من ${policies.length} — وفشلت ${bad.length}`,
+             `Renewed ${won.size} of ${policies.length} — ${bad.length} failed`), 'error');
+    onReload();
+  };
+
+  const inp = 'w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:border-[#f37121]';
+  const lbl = 'block text-[11.5px] font-semibold text-slate-700 mb-1';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-3"
+      onClick={() => { if (!busy) onClose(); }}>
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
+          <h3 className="font-bold text-slate-900">{t('تجديد جماعي للوثائق', 'Bulk policy renewal')}</h3>
+          <button onClick={onClose} disabled={busy} className="text-slate-500 hover:text-slate-900 disabled:opacity-40"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3 overflow-y-auto">
+          <p className="text-[12.5px] text-slate-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-medium">
+            {t(`${policies.length} وثيقة تغطّي ${vehicles} مركبة — سيسري التاريخ الجديد عليها كلها ويُقيَّد في سجل كل مركبة.`,
+               `${policies.length} policies covering ${vehicles} vehicles — the new date applies to all and is logged on each vehicle.`)}
+          </p>
+          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+            {policies.map((p) => (
+              <span key={p._id} className="px-2 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-mono" dir="ltr">
+                {p.policyNumber}
+              </span>
+            ))}
+          </div>
+          <div>
+            <label className={lbl}>{t('تاريخ الانتهاء الجديد', 'New expiry date')} *</label>
+            <input type="date" min={today} value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)} className={inp} autoFocus />
+            {past && <p className="text-[11.5px] text-rose-700 font-semibold mt-1">
+              {t('التاريخ في الماضي — راجعه', 'That date is in the past')}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={lbl}>{t('التكلفة لكل وثيقة (ر.س)', 'Cost per policy (SAR)')}</label>
+              <input type="number" value={cost} onChange={(e) => setCost(e.target.value)} className={inp} /></div>
+            <div><label className={lbl}>{t('المرجع', 'Reference')}</label>
+              <input value={reference} onChange={(e) => setReference(e.target.value)} className={inp} /></div>
+          </div>
+
+          {busy && (
+            <p className="text-[12.5px] font-semibold text-slate-700 tabular-nums">
+              {t(`جارٍ التجديد… ${done}/${pending.length}`, `Renewing… ${done}/${pending.length}`)}
+            </p>
+          )}
+          {failed.length > 0 && !busy && (
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-2.5 max-h-36 overflow-y-auto">
+              <p className="text-[11.5px] font-bold text-rose-900 mb-1">
+                {t(`جُدِّدت ${succeeded.size} — ولم تُجدَّد هذه:`, `Renewed ${succeeded.size} — these were not renewed:`)}
+              </p>
+              {failed.map((x, i) => (
+                <p key={i} className="text-[11.5px] text-rose-800"><span dir="ltr">{x.policyNumber}</span> — {x.message}</p>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3.5 border-t border-slate-200">
+          <button onClick={save} disabled={busy || !newExpiry || past}
+            className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-40">
+            {busy ? t(`جارٍ التجديد… ${done}/${pending.length}`, `Renewing… ${done}/${pending.length}`)
+              : !newExpiry ? t('اختر التاريخ أولًا', 'Pick the date first')
+              : failed.length ? t(`إعادة المحاولة على ${pending.length} وثيقة`, `Retry ${pending.length} policies`)
+              : t(`تجديد ${policies.length} وثيقة`, `Renew ${policies.length} policies`)}
           </button>
         </div>
       </div>

@@ -143,6 +143,30 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
+// ── سجلّ الطلبات البطيئة ─────────────────────────────────────────────────────
+//
+// «السيستم بطيء» جملةٌ لا يُعمَل بها: أيّ صفحة؟ أيّ نداء؟ كم مللي ثانية؟ بدون
+// رقمٍ حقيقيّ يصير التحسين تخمينًا — وقد حسّنّا من قبل ما لم يكن بطيئًا أصلًا،
+// وكسرنا في الطريق ما كان يعمل.
+//
+// هذا يطبع سطرًا واحدًا لكل طلبٍ تجاوز العتبة، في الإنتاج وفي التطوير معًا،
+// فتُقرأ من `pm2 logs` أبطأُ النداءات بأسمائها وأزمنتها.
+const SLOW_MS = Number(process.env.SLOW_REQUEST_MS || 1000);
+app.use((req, res, next) => {
+  const started = process.hrtime.bigint();
+  res.on('finish', () => {
+    const ms = Number(process.hrtime.bigint() - started) / 1e6;
+    if (ms < SLOW_MS) return;
+    // المسار بلا معرّفات: /api/hr/employees/:id لا سطرًا لكل موظف، وإلا صار
+    // السجلّ ضجيجًا لا يُقرأ منه نمط.
+    const route = req.originalUrl.split('?')[0]
+      .replace(/\/[0-9a-f]{24}(?=\/|$)/gi, '/:id')
+      .replace(/\/\d+(?=\/|$)/g, '/:n');
+    console.warn(`[slow] ${req.method} ${route} ${Math.round(ms)}ms status=${res.statusCode}`);
+  });
+  next();
+});
+
 // Rate limiting
 app.use('/api/', generalLimiter);
 

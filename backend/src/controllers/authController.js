@@ -4,8 +4,21 @@ const logAudit = require('../utils/auditLogger');
 const { invalidateUserCache } = require('../middleware/auth');
 const { COOKIE_OPTIONS } = require('../config/constants');
 
-// How many concurrent devices/browsers a user can stay logged in on.
+// كم جهازًا/متصفّحًا يبقى المستخدم داخلًا عليها في وقت واحد.
 const MAX_SESSIONS = 8;
+
+// ── الجلسة المنزلقة ─────────────────────────────────────────────────────────
+// كان توكن التجديد ينتهي بعد سبعة أيام **من لحظة الدخول**، لا من آخر استعمال.
+// فالموظّف الذي يعمل على النظام كل يوم يُخرَج منه فجأةً في اليوم الثامن بلا
+// سبب ظاهر — وهذا ما كان يبدو «انتهت البيانات، اعمل خروج ودخول».
+//
+// الآن: إذا تجاوز التوكن نصف عمره عند التجديد، يُصدَر بديلٌ جديد ويُترك القديم
+// صالحًا لفترة سماح قصيرة. فترة السماح ليست ترفًا: المستخدم يفتح عشرة تبويبات،
+// وكلها قد تُجدِّد في اللحظة نفسها — ولو أُبطِل القديم فورًا لخرج تسعة منها.
+const REFRESH_DAYS = Number(process.env.JWT_REFRESH_DAYS || 30);
+const REFRESH_MS = REFRESH_DAYS * 24 * 60 * 60 * 1000;
+// مهلة بقاء التوكن القديم بعد إصدار بديله — تكفي لتبويبات تُجدِّد معًا.
+const GRACE_MS = 5 * 60 * 1000;
 
 const generateAccessToken = (userId, role) => {
   return jwt.sign({ userId, role }, process.env.JWT_ACCESS_SECRET, {
@@ -14,16 +27,33 @@ const generateAccessToken = (userId, role) => {
 };
 
 const generateRefreshToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRY || '7d',
-  });
+  // معرّف جلسة عشوائي: بدونه يُنتج تسجيلا دخول في الثانية نفسها **توكنًا
+  // متطابقًا** (الحمولة {userId} والطابع الزمني بالثواني)، فيصير للجهازين توكن
+  // واحد — والخروج من أحدهما يُخرج الآخر بلا سبب ظاهر.
+  return jwt.sign(
+    { userId, sid: require('crypto').randomBytes(9).toString('base64url') },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRY || `${REFRESH_DAYS}d` },
+  );
+};
+
+/** هل تجاوز التوكن نصف عمره؟ عندها يُجدَّد بدل أن يُترك حتى ينتهي فجأة. */
+const isStale = (decoded) => {
+  if (!decoded?.exp || !decoded?.iat) return false;
+  const life = (decoded.exp - decoded.iat) * 1000;
+  const age = Date.now() - decoded.iat * 1000;
+  return age > life / 2;
 };
 
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email }).select('+password');
+    // `refreshTokens` معرَّف select:false، فبدون طلبه صراحةً يصل هنا undefined —
+    // فتُحفَظ الجلسات وفيها الجديدة وحدها، وتُمحى كل جلسات الأجهزة الأخرى.
+    // كان هذا سبب «الدخول من جهاز ثانٍ يُخرج الأول»: الأول يبقى ظاهرًا ربع ساعة
+    // (عمر توكن الوصول) ثم يفشل تجديده فيُخرَج بلا سبب مفهوم.
+    const user = await User.findOne({ email }).select('+password +refreshTokens');
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
@@ -61,7 +91,7 @@ exports.login = async (req, res) => {
 
     res.cookie('refreshToken', refreshToken, {
       ...COOKIE_OPTIONS,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: REFRESH_MS,
     });
 
     // Audit is a side-effect — don't make the user wait a full DB round-trip
@@ -145,15 +175,28 @@ exports.refresh = async (req, res) => {
       maxAge: 15 * 60 * 1000,
     });
 
-    // Re-set the same refresh token cookie to extend its maxAge
-    res.cookie('refreshToken', token, {
+    // تجاوز نصف عمره؟ يُصدَر بديلٌ ويُترك القديم في فترة سماح — فلا يُخرَج
+    // المستخدم في اليوم الثامن، ولا تُقطَع التبويبات التي جدَّدت في اللحظة نفسها.
+    let outgoing = token;
+    if (isStale(decoded)) {
+      outgoing = generateRefreshToken(user._id);
+      const keep = (user.refreshTokens || []).filter((x) => x !== token);
+      user.refreshTokens = [...keep, token, outgoing].slice(-MAX_SESSIONS);
+      await user.save();
+      setTimeout(() => {
+        // إبطال القديم بعد المهلة، بهدوء — فشلُه لا يضرّ الطلب الحالي.
+        User.updateOne({ _id: user._id }, { $pull: { refreshTokens: token } }).catch(() => {});
+      }, GRACE_MS).unref?.();
+    }
+
+    res.cookie('refreshToken', outgoing, {
       ...COOKIE_OPTIONS,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: REFRESH_MS,
     });
 
     // The mobile app reads the new access token from the body (it cannot see
     // httpOnly cookies); the web client ignores this field.
-    res.json({ message: 'Token refreshed', accessToken: newAccessToken });
+    res.json({ message: 'Token refreshed', accessToken: newAccessToken, refreshToken: outgoing });
   } catch (error) {
     return res.status(401).json({ message: 'Invalid refresh token' });
   }

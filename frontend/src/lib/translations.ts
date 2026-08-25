@@ -7174,7 +7174,7 @@ export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   '/system/remote/tasks': 'remoteTasks',
   '/system/remote/report': 'remoteReport',
   '/system/remote/announcements': 'remoteAnnouncements',
-  '/system/hr/dashboard': 'hrDashboard',
+  '/system/hr/master': 'hrDashboard',
   '/system/hr/employees': 'hrEmployees',
   '/system/hr/contracts': 'hrContracts',
   '/system/hr/leaves': 'hrLeaves',

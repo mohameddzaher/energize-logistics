@@ -78,7 +78,7 @@ export default function KpisPage() {
           <StatCard label={tx.active} value={num(data.customers.active)} accent="text-green-600" />
         </Group>
 
-        <Group icon={<Briefcase className="w-4 h-4" />} title={tx.hr} href="/system/hr/dashboard">
+        <Group icon={<Briefcase className="w-4 h-4" />} title={tx.hr} href="/system/hr/master">
           <StatCard label={tx.activeEmployees} value={num(data.hr.activeEmployees)} />
           <StatCard label={tx.pendingLeaves} value={num(data.hr.pendingLeaves)} accent="text-amber-700" />
         </Group>

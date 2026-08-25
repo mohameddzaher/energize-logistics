@@ -110,14 +110,22 @@ export default function WalletPage() {
   const [branchUsers, setBranchUsers] = useState<{ _id: string; firstName: string; lastName: string }[]>([]);
   const [selectedUser, setSelectedUser] = useState('');
 
-  // List of all branches for the Purchase modal's Branch dropdown
-  // (loaded for everyone, not just super admin, so operations can pick a real branch).
+  // قائمة الفروع — تُقرأ **مرّة واحدة** وتخدم الغرضين: قائمة فرع نافذة الشراء،
+  // ومحدِّد الفرع لمن يملك اختياره. كانت تُطلب مرّتين من الخادم في كل فتحة،
+  // فتصل الاستجابتان في لحظتين مختلفتين ويعيد كلٌّ منهما رسم الصفحة.
   const [branchList, setBranchList] = useState<{ _id: string; name: string }[]>([]);
   useEffect(() => {
     api.get<any>('/api/branches').then((data) => {
-      setBranchList(data.branches || data || []);
-    }).catch(() => { /* dropdown can stay empty */ });
-  }, []);
+      const list = data.branches || data || [];
+      setBranchList(list);
+      if (canSelectBranch) {
+        setAllBranches(list);
+        setSelectedBranch((cur) => cur || (list[0]?._id ?? ''));
+      }
+    }).catch((err: any) => {
+      if (canSelectBranch) setActionError(err?.message || 'Failed to load branches');
+    });
+  }, [canSelectBranch]);
 
   // Transaction modal
   const [showTxModal, setShowTxModal] = useState(false);

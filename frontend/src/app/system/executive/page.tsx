@@ -182,7 +182,7 @@ export default function ExecutiveOverviewPage() {
       </Section>
 
       {/* ── HR ── */}
-      <Section icon={<Users className="w-4 h-4" />} color="cyan" title={t('Human Resources', 'الموارد البشرية')} href="/system/hr/dashboard" go={go} viewLabel={t('Open', 'فتح')}
+      <Section icon={<Users className="w-4 h-4" />} color="cyan" title={t('Human Resources', 'الموارد البشرية')} href="/system/hr/master" go={go} viewLabel={t('Open', 'فتح')}
         chart={<MiniPie data={(hrByStatus || []).map((s: AnyObj) => ({ name: s.status, value: Number(s.count) }))} colors={{ active: '#10b981', on_leave: '#f59e0b', suspended: '#f97316', terminated: '#ef4444' }} />}>
         <Kpis>
           <Kpi label={t('Employees', 'الموظفون')} value={n(hr.totalEmployees)} accent="text-cyan-600" onClick={() => go('/system/hr/employees')} />

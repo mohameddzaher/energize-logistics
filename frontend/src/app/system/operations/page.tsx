@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ColumnFilter } from '@/components/ColumnFilter';
+import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -78,8 +78,10 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }>
   completed: { label: 'Completed', color: 'text-green-600', bg: 'bg-green-500/20' },
 };
 
-// Stable empty set so unfiltered columns don't create new refs each render.
+// مرجعان ثابتان: العمود غير المفلتر والعمود الذي لم تُفتح قائمته يشتركان فيهما،
+// فلا يُنشأ في كل رسمةٍ مرجعٌ جديد يُبطل حسابات القائمة بلا سبب.
 const EMPTY_SET = new Set<string>();
+const EMPTY_OPTIONS: ColumnFilterOption[] = [];
 // Columns whose filter-dropdown labels should be formatted as dates / money.
 const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
 const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
@@ -144,13 +146,23 @@ export default function OperationsWorkflowPage() {
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showBulkReview, setShowBulkReview] = useState(false);
   const [bulkReviewText, setBulkReviewText] = useState('تم');
-  // Excel-style per-column filters: field → set of allowed raw string values.
+  // فلاتر الأعمدة على طريقة إكسل: اسم العمود ← مجموعة القيم الخام المسموح بها.
+  // تُرسَل إلى الخادم فيفلتر بها الجدولَ كلَّه، ولا تُطبَّق في المتصفح.
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
-  // Once the user engages any column filter we load the WHOLE matching dataset
-  // (not just the current 50-row page) so the filter spans everything, then
-  // paginate client-side.
-  const [loadAll, setLoadAll] = useState(false);
-  const [clientPage, setClientPage] = useState(1);
+  // قيم كل عمود كما يحسبها الخادم، مع عدد صفوف كل قيمة.
+  //
+  // كانت تُشتقّ من الصفوف المحمَّلة — وهي خمسون صفًّا — فتعرض «حالة الابلكيشن» ثلاثَ
+  // حالاتٍ من تسع؛ ثم عولج ذلك بتنزيل الجدول كلّه عند أول فلتر فصار فتحُ القائمة
+  // ينقل عشرات الآلاف من الصفوف ويجمّد التبويب. الحساب صار في القاعدة.
+  const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
+  const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
+  const [openField, setOpenField] = useState<string | null>(null);
+  // عدّادُ فتحاتٍ لا مجرّد اسم العمود: إعادةُ فتح العمود نفسه يجب أن تُعيد طلب قيمه،
+  // وإلا بقيت القائمة على نتيجة بحثٍ سابق جزئية والمستخدم يظنّها كلَّ القيم.
+  const [openNonce, setOpenNonce] = useState(0);
+  // ترتيبُ وصول الردود ليس ترتيبَ إرسالها: بحثٌ سريع قد يسبق ردُّه ردَّ ما قبله،
+  // فتُعرض نتيجةُ حرفٍ قديم فوق نتيجة ما كتبه المستخدم. آخر طلبٍ وحده يُقبل.
+  const optionsSeq = useRef<Record<string, number>>({});
   const hasColFilters = Object.keys(colFilters).length > 0;
 
   const role = user?.role || '';
@@ -165,7 +177,25 @@ export default function OperationsWorkflowPage() {
   const canEditOperationsReview = ['super_admin', 'operations_manager'].includes(role);
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
-  const [stats, setStats] = useState<{ total: number; pendingInvoices: number; sumPurchaseValue: number }>({ total: 0, pendingInvoices: 0, sumPurchaseValue: 0 });
+  const [stats, setStats] = useState<{ total: number; pendingInvoices: number; sumPurchaseValue: number; byStage: Record<string, number> }>({ total: 0, pendingInvoices: 0, sumPurchaseValue: 0, byStage: {} });
+
+  // كل ما يفهمه الخادم من فلترة في مكانٍ واحد: يقرؤه الجدولُ والإحصاءاتُ وقوائمُ
+  // القيم والتصدير، فلا يفلتر أحدها على شرطٍ ويعرض الآخر نتيجة شرطٍ غيره.
+  //
+  // قيم كل عمود تُرسَل مكرَّرةً (`cf_x=a&cf_x=b`) لا مفصولةً بفاصلة، لأن القيم نفسها
+  // تحمل فواصل — أسماء ملّاك وملاحظات فواتير — فالفصل بفاصلة يقطعها نصفين.
+  const buildParams = useCallback(() => {
+    const params = new URLSearchParams();
+    if (stageFilter) params.append('stage', stageFilter);
+    if (search) params.append('search', search);
+    if (dateFrom) params.append('dateFrom', dateFrom);
+    if (dateTo) params.append('dateTo', dateTo);
+    if (showPendingOnly) params.append('pendingOnly', 'true');
+    for (const [field, vals] of Object.entries(colFilters)) {
+      vals.forEach((v) => params.append(`cf_${field}`, v));
+    }
+    return params;
+  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, colFilters]);
 
   const fetchWorkflows = useCallback(async (isBackground = false) => {
     try {
@@ -173,23 +203,9 @@ export default function OperationsWorkflowPage() {
         if (!initialLoadDone.current) setLoading(true);
         else setSearching(true);
       }
-      const params = new URLSearchParams();
-      if (stageFilter) params.append('stage', stageFilter);
-      if (search) params.append('search', search);
-      if (dateFrom) params.append('dateFrom', dateFrom);
-      if (dateTo) params.append('dateTo', dateTo);
-      if (showPendingOnly) {
-        params.append('pendingOnly', 'true');
-        params.append('page', '1');
-        params.append('limit', '10000');
-      } else if (loadAll) {
-        // Full dataset for client-side Excel-style column filtering.
-        params.append('page', '1');
-        params.append('limit', '100000');
-      } else {
-        params.append('page', String(page));
-        params.append('limit', '50');
-      }
+      const params = buildParams();
+      params.append('page', String(page));
+      params.append('limit', '50');
       const data = await api.get<any>(`/api/workflows?${params.toString()}`);
       setWorkflows(data.workflows || []);
       setTotal(data.total || 0);
@@ -200,7 +216,7 @@ export default function OperationsWorkflowPage() {
       setSearching(false);
       initialLoadDone.current = true;
     }
-  }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, loadAll]);
+  }, [buildParams, page]);
 
   // Initial load
   useEffect(() => { fetchWorkflows(); }, [fetchWorkflows]);
@@ -209,41 +225,55 @@ export default function OperationsWorkflowPage() {
   // filters change. Reflects all matching rows, not just the loaded page.
   const fetchStats = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      if (stageFilter) params.append('stage', stageFilter);
-      if (search) params.append('search', search);
-      if (dateFrom) params.append('dateFrom', dateFrom);
-      if (dateTo) params.append('dateTo', dateTo);
-      const data = await api.get<any>(`/api/workflows/stats?${params.toString()}`);
-      setStats({ total: data.total || 0, pendingInvoices: data.pendingInvoices || 0, sumPurchaseValue: data.sumPurchaseValue || 0 });
+      const data = await api.get<any>(`/api/workflows/stats?${buildParams().toString()}`);
+      setStats({
+        total: data.total || 0,
+        pendingInvoices: data.pendingInvoices || 0,
+        sumPurchaseValue: data.sumPurchaseValue || 0,
+        byStage: data.byStage || {},
+      });
     } catch { /* non-critical */ }
-  }, [stageFilter, search, dateFrom, dateTo]);
+  }, [buildParams]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
-  // Clear selection when filters/page change
-  useEffect(() => { setSelectedIds(new Set()); }, [stageFilter, search, page, dateFrom, dateTo]);
+  // قيم عمودٍ واحد عند فتح قائمته. الطلب يحمل الفلاتر النشطة كلَّها فيُرجع الخادم
+  // القيم القابلة للوصول فعلًا — قائمةٌ تعرض قيمًا لا صفوف لها تدعو المستخدم إلى
+  // اختيارٍ يُرجع جدولًا فارغًا.
+  const fetchColOptions = useCallback(async (field: string, q = '') => {
+    const seq = (optionsSeq.current[field] || 0) + 1;
+    optionsSeq.current[field] = seq;
+    setColLoading((prev) => ({ ...prev, [field]: true }));
+    try {
+      const params = buildParams();
+      params.append('field', field);
+      if (q) params.append('q', q);
+      const data = await api.get<any>(`/api/workflows/filters?${params.toString()}`);
+      if (optionsSeq.current[field] !== seq) return;
+      const f = data?.filters?.[0];
+      setColOptions((prev) => ({ ...prev, [field]: { values: f?.values || [], truncated: !!f?.truncated } }));
+    } catch {
+      if (optionsSeq.current[field] === seq) setColOptions((prev) => ({ ...prev, [field]: prev[field] || { values: [], truncated: false } }));
+    } finally {
+      if (optionsSeq.current[field] === seq) setColLoading((prev) => ({ ...prev, [field]: false }));
+    }
+  }, [buildParams]);
 
-  // Apply the Excel-style column filters client-side over the loaded rows.
-  const displayed = useMemo(() => {
-    const fields = Object.keys(colFilters);
-    if (!fields.length) return workflows;
-    return workflows.filter((row) => fields.every((f) => colFilters[f].has(String((row as any)[f] ?? ''))));
-  }, [workflows, colFilters]);
+  // تغيُّرُ أي فلتر يُبطل القوائم المحفوظة؛ وقائمةُ العمود المفتوح تُعاد فورًا حتى
+  // يرى المستخدم أثرَ اختياره في القيم المتاحة بدل أن يبقى ينظر إلى قائمةٍ قديمة.
+  useEffect(() => {
+    setColOptions((prev) => (openField && prev[openField] ? { [openField]: prev[openField] } : {}));
+    if (openField) fetchColOptions(openField);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchColOptions, openField, openNonce]);
 
-  // Client-side pagination when in full-load mode (filtering); otherwise the
-  // server already paginated to 50. Note the server-mode branch ALSO slices to a
-  // single page: when leaving full-load mode (e.g. "clear filters") `workflows`
-  // still briefly holds the whole dataset before the 50-row refetch lands, and
-  // rendering tens of thousands of <tr> at once would freeze the tab.
-  const CLIENT_PAGE_SIZE = 50;
-  const clientMode = loadAll || showPendingOnly;
-  const clientPaged = clientMode
-    ? displayed.slice((clientPage - 1) * CLIENT_PAGE_SIZE, clientPage * CLIENT_PAGE_SIZE)
-    : displayed.slice(0, CLIENT_PAGE_SIZE);
+  // اختيارُ الصفوف يُلغى مع كل تغيّر في الفلاتر أو الصفحة: الصفوف المؤشَّرة لم تعد
+  // معروضة، وحذفٌ جماعيّ يقع على صفوفٍ لا يراها المستخدم.
+  useEffect(() => { setSelectedIds(new Set()); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, colFilters]);
 
   const setColFilter = (field: string, set: Set<string>) => {
-    if (!loadAll) setLoadAll(true);
-    setClientPage(1);
+    // الفلترة تُغيّر عدد الصفحات كلّه، والبقاءُ على الصفحة السابعة بعد فلترٍ نتيجته
+    // صفحتان يُظهر جدولًا فارغًا يبدو معه أن الفلتر لم يجد شيئًا.
+    setPage(1);
     setColFilters((prev) => {
       const next = { ...prev };
       if (set.size === 0) delete next[field]; else next[field] = set;
@@ -251,15 +281,7 @@ export default function OperationsWorkflowPage() {
     });
   };
 
-  // Clear every column filter at once and drop back to normal server paging.
-  const clearColFilters = () => {
-    setColFilters({});
-    setLoadAll(false);
-    setClientPage(1);
-  };
-
-  // Reset client pagination when the result set changes.
-  useEffect(() => { setClientPage(1); }, [stageFilter, search, dateFrom, dateTo, showPendingOnly]);
+  const clearColFilters = () => { setColFilters({}); setPage(1); };
 
   // WebSocket real-time
   const handleCreated = useCallback((wf: Workflow) => { setWorkflows((p) => [wf, ...p]); setTotal((t) => t + 1); }, []);
@@ -422,7 +444,7 @@ export default function OperationsWorkflowPage() {
   };
 
   const toggleSelectAll = () => {
-    const visibleIds = clientPaged.map((w) => w._id);
+    const visibleIds = workflows.map((w) => w._id);
     const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -433,10 +455,9 @@ export default function OperationsWorkflowPage() {
   };
 
   const handleExportExcel = () => {
-    const exportParams = new URLSearchParams();
-    if (stageFilter) exportParams.append('stage', stageFilter);
-    if (dateFrom) exportParams.append('dateFrom', dateFrom);
-    if (dateTo) exportParams.append('dateTo', dateTo);
+    // الملف يخرج بنفس شرط الشاشة — بما فيه فلاتر الأعمدة والبحث — وإلا نزّل المستخدم
+    // الجدول كلّه وهو يظنّه نسخةً ممّا يراه.
+    const exportParams = buildParams();
     const qs = exportParams.toString() ? `?${exportParams.toString()}` : '';
     window.open(`/api/workflows/export${qs}`, '_blank');
   };
@@ -444,33 +465,47 @@ export default function OperationsWorkflowPage() {
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('en-GB') : '-';
   const formatMoney = (v: number) => v ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
 
-  // Summary cards. In "client mode" (a column filter or the pending toggle is
-  // engaged) the full matching dataset is already loaded and filtered in the
-  // browser, so the cards reflect `displayed` live. Otherwise they come from the
-  // backend aggregate over ALL matching rows (not just the 50-row page).
-  const inClientMode = hasColFilters || showPendingOnly;
-  const pendingCount = inClientMode
-    ? displayed.filter((w) => !w.paymentDate && !w.invoiceNumber).length
-    : stats.pendingInvoices;
-  const filteredRowsCount = inClientMode ? displayed.length : (stats.total || total);
-  const filteredPurchaseSum = inClientMode
-    ? displayed.reduce((s, w) => s + (Number(w.purchaseValue) || 0), 0)
-    : stats.sumPurchaseValue;
+  // كل أرقام البطاقات محسوبةٌ في الخادم على مجموعة الصفوف المطابقة كاملةً — لا على
+  // الخمسين صفًّا المعروضة. حسابُها من الصفوف المحمَّلة كان يجعلها تقول «٥٠» مهما
+  // كان في القاعدة، أو يُلزمنا بتنزيل الجدول كلّه لتصحّ.
+  const pendingCount = stats.pendingInvoices;
+  const filteredRowsCount = stats.total || total;
+  const filteredPurchaseSum = stats.sumPurchaseValue;
 
-  // A column header with an Excel-style filter funnel. `field` is the Workflow
-  // key it filters on; pass filterable={false} for non-data columns.
+  // عرضُ القيمة يُترجَم والفلترةُ تجري على القيمة الخام: القاعدة تخزّن `bond_received`
+  // والمستخدم يقرأ «استُلم السند»، فلو فلترنا على النصّ المعروض لتغيّرت نتيجةُ الفلتر
+  // بتغيّر لغة الواجهة.
+  const colFormat = (field: string): ((v: any) => string) | undefined => {
+    if (field === 'stage') return (v: any) => stageLabels[v] || v;
+    if (field === 'executionStatus' || field === 'applicationStatus') return trStatus;
+    if (field === 'paymentMethod') return trPayment;
+    // الخادم يجمّع التواريخ بيوم الرياض ويردّها «YYYY-MM-DD». إعادةُ تفسيرها
+    // بمنطقة المتصفح تُنقص يومًا لمن يفتح الصفحة غربَ غرينتش، فتُعرض كما هي.
+    if (DATE_FIELDS.has(field)) return (v: any) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : formatDate(String(v || ''));
+    };
+    // القيم تصل من الخادم نصوصًا؛ وتنسيقُ المال يحتاج رقمًا وإلا عُرض الرقم خامًّا
+    // بلا فواصل ولا كسور فبدا مختلفًا عن الرقم نفسه في الجدول.
+    if (NUM_FIELDS.has(field)) return (v: any) => formatMoney(Number(v));
+    return undefined;
+  };
+
   const ColHead = (field: keyof Workflow, label: string, color = 'text-slate-300') => (
     <th className="px-3 py-3 text-start text-xs font-semibold whitespace-nowrap">
       <span className={`inline-flex items-center ${color}`}>
         {label}
         <ColumnFilter
-          rows={workflows}
           field={field as string}
           selected={colFilters[field as string] || EMPTY_SET}
           onChange={(s) => setColFilter(field as string, s)}
-          onOpen={() => setLoadAll(true)}
+          onOpen={() => { setOpenField(field as string); setOpenNonce((n) => n + 1); }}
+          options={colOptions[field as string]?.values || EMPTY_OPTIONS}
+          truncated={!!colOptions[field as string]?.truncated}
+          loading={!!colLoading[field as string]}
+          onQuery={(q) => fetchColOptions(field as string, q)}
           lang={lang}
-          format={field === 'stage' ? ((v: any) => stageLabels[v] || v) : DATE_FIELDS.has(field as string) ? formatDate : NUM_FIELDS.has(field as string) ? (formatMoney as any) : undefined}
+          format={colFormat(field as string)}
         />
       </span>
     </th>
@@ -615,7 +650,7 @@ export default function OperationsWorkflowPage() {
         {/* Pending Invoices — over ALL matching rows (click to filter) */}
         <button
           type="button"
-          onClick={() => setShowPendingOnly(prev => !prev)}
+          onClick={() => { setShowPendingOnly(prev => !prev); setPage(1); }}
           className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border transition-all duration-200 ${
             showPendingOnly
               ? 'bg-amber-500/20 border-amber-500/60 ring-2 ring-amber-500/30'
@@ -685,7 +720,7 @@ export default function OperationsWorkflowPage() {
                     <input
                       type="checkbox"
                       title={T.selectAll}
-                      checked={clientPaged.length > 0 && clientPaged.every((w) => selectedIds.has(w._id))}
+                      checked={workflows.length > 0 && workflows.every((w) => selectedIds.has(w._id))}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 appearance-none rounded border border-slate-300 bg-transparent checked:bg-[#f37121] checked:border-[#f37121] cursor-pointer relative checked:after:content-['✓'] checked:after:text-white checked:after:text-[10px] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center"
                     />
@@ -735,9 +770,9 @@ export default function OperationsWorkflowPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {displayed.length === 0 ? (
+              {workflows.length === 0 ? (
                 <tr><td colSpan={41} className="px-4 py-12 text-center text-slate-800 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : (hasColFilters ? (lang === 'ar' ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : T.noWorkflows)}</td></tr>
-              ) : clientPaged.map((wf) => {
+              ) : workflows.map((wf) => {
                 const locked = isLockedByOther(wf);
                 const transitions = getTransitions(wf);
                 const sc = STAGE_CONFIG[wf.stage] || STAGE_CONFIG.draft;
@@ -944,21 +979,15 @@ export default function OperationsWorkflowPage() {
           </table>
         </div>
 
-        {!clientMode && total > 50 && (
+        {/* التصفّح كلّه في الخادم — بما في ذلك حالة الفلترة. الصفحة الواحدة خمسون
+            صفًّا مهما بلغ عدد المطابق، فلا يُرسم في التبويب جدولٌ بعشرات الآلاف من
+            الصفوف يجمّده. */}
+        {total > 50 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
-            <span className="text-slate-500 text-sm">{T.showing} {(page - 1) * 50 + 1}-{Math.min(page * 50, total)} {T.of} {total}</span>
+            <span className="text-slate-500 text-sm">{T.showing} {(page - 1) * 50 + 1}-{Math.min(page * 50, total)} {T.of} {total}{hasColFilters ? ` (${lang === 'ar' ? 'مُفلتر' : 'filtered'})` : ''}</span>
             <div className="flex gap-2">
               <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.previous}</button>
               <button type="button" onClick={() => setPage((p) => p + 1)} disabled={page * 50 >= total} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.next}</button>
-            </div>
-          </div>
-        )}
-        {clientMode && displayed.length > CLIENT_PAGE_SIZE && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
-            <span className="text-slate-500 text-sm">{T.showing} {(clientPage - 1) * CLIENT_PAGE_SIZE + 1}-{Math.min(clientPage * CLIENT_PAGE_SIZE, displayed.length)} {T.of} {displayed.length}{hasColFilters ? ` (${lang === 'ar' ? 'مُفلتر' : 'filtered'})` : ''}</span>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setClientPage((p) => Math.max(1, p - 1))} disabled={clientPage === 1} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.previous}</button>
-              <button type="button" onClick={() => setClientPage((p) => p + 1)} disabled={clientPage * CLIENT_PAGE_SIZE >= displayed.length} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.next}</button>
             </div>
           </div>
         )}
@@ -968,12 +997,12 @@ export default function OperationsWorkflowPage() {
       <div className="flex flex-wrap gap-3 items-center">
         {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
           <div key={key} className={`px-3 py-2 rounded-lg ${cfg.bg} ${cfg.color} text-xs font-medium`}>
-            {stageLabels[key] || cfg.label}: {displayed.filter((w) => w.stage === key).length}
+            {stageLabels[key] || cfg.label}: {(stats.byStage?.[key] || 0).toLocaleString()}
           </div>
         ))}
-        <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">{T.total}: {hasColFilters ? `${displayed.length} / ${total}` : total}</div>
+        <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">{T.total}: {(stats.total || total).toLocaleString()}</div>
         {hasColFilters && (
-          <button type="button" onClick={() => { setColFilters({}); setClientPage(1); }} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-medium hover:bg-[#f37121]/20 transition-colors">
+          <button type="button" onClick={clearColFilters} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-medium hover:bg-[#f37121]/20 transition-colors">
             <X className="w-3.5 h-3.5" /> {lang === 'ar' ? `مسح كل الفلاتر (${Object.keys(colFilters).length})` : `Clear all filters (${Object.keys(colFilters).length})`}
           </button>
         )}

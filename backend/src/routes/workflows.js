@@ -17,6 +17,9 @@ const allWorkflowRoles = ['super_admin', 'admin', 'employee', 'operations_manage
 router.get('/export', authorize(...allWorkflowRoles), workflowController.exportWorkflows);
 router.get('/permissions', authorize(...allWorkflowRoles), workflowController.getFieldPermissions);
 router.get('/stats', authorize(...allWorkflowRoles), workflowController.getWorkflowStats);
+// قيم فلتر عمودٍ واحد — تُحسب في القاعدة. لا بدّ أن تسبق `/:id` وإلا قُرئت
+// «filters» على أنها معرّف سجلّ فردّ الخادم 404 على كل فتحةٍ للقائمة.
+router.get('/filters', authorize(...allWorkflowRoles), workflowController.filterOptions);
 router.get('/', authorize(...allWorkflowRoles), workflowController.getWorkflows);
 
 // Bulk delete

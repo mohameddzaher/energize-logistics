@@ -4,6 +4,7 @@ const Invoice = require('../models/Invoice');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const XLSX = require('xlsx');
+const cache = require('../utils/ttlCache');
 
 // Field-level permission groups
 const FIELD_GROUPS = {
@@ -69,34 +70,132 @@ const isLocked = (workflow, userId) => {
   return workflow.lockedBy.toString() !== userId.toString();
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  فلاتر الأعمدة — قيمُ العمود تُحسب في القاعدة، والتصفية تجري فيها
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * الأعمدة المسموح بالفلترة عليها.
+ *
+ * قائمةٌ بيضاء مقصودة: اسم العمود يدخل مباشرةً في مفتاح `$group` وفي شرط `$in`،
+ * فلو قُبل أي اسمٍ يرسله المتصفح لأمكن استخراج قيم حقولٍ لا يعرضها الجدول أصلًا
+ * — ومنها حقولٌ ماليّة محجوبة عن أكثر الأدوار.
+ */
+const FILTERABLE_COLUMNS = new Set([
+  'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
+  'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
+  'username', 'userPhone', 'taxIndicator', 'purchaseValue', 'sellingValue',
+  'driverName', 'truckType', 'truckSize', 'representativeName', 'operationsReview',
+  'paymentDate', 'payingBranch', 'documentNumber', 'sendingDate', 'deliveryDate',
+  'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
+  'invoiceDate', 'collectionDate', 'stage',
+]);
+
+// القيمة تصل من المتصفح نصًّا دائمًا، والحقل في القاعدة رقمٌ أو تاريخ. المقارنة
+// بين نوعين مختلفين في BSON لا تُطابق شيئًا أبدًا، فالفلترة على «قيمة الشراء» أو
+// «تاريخ السداد» كانت سترجع صفرًا من الصفوف بلا رسالة خطأ — لذلك يُعاد كل نوعٍ
+// إلى نوعه قبل بناء الشرط.
+const NUMERIC_COLUMNS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
+const DATE_COLUMNS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
+
+/**
+ * أعمدة التواريخ تُجمَّع باليوم لا باللحظة.
+ *
+ * المخزَّن لحظةٌ بالثانية، والمعروض في الخانة يومٌ فقط؛ فالتجميع باللحظة كان يضع
+ * في القائمة ثمانيةً وعشرين سطرًا مكتوبًا عليها كلّها «١٦/١٢/٢٠٢٥» لا يفرّق بينها
+ * شيء، ويرفع عدد القيم المختلفة إلى ثلاثةٍ وعشرين ألفًا في عمودٍ واحد.
+ *
+ * والمنطقة الزمنية مثبَّتة على توقيت الرياض لأن الشركة كلّها فيه: التجميع بالتوقيت
+ * العالمي يُلقي بكشوف ما بعد التاسعة مساءً في اليوم التالي، فلا يطابق اليومَ
+ * المكتوب في الخانة نفسها.
+ */
+const TZ = 'Asia/Riyadh';
+const TZ_OFFSET = '+03:00';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const isDayString = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+/**
+ * سقف عدد القيم المُعادة في قائمة العمود الواحد.
+ *
+ * أعمدة مثل «رقم الكشف» و«رقم الفاتورة» فيها قيمةٌ مختلفة لكل صف — عشرات الآلاف
+ * — وإرسالها كاملةً يعيد بالضبط التجمّد الذي جاء هذا الحلّ ليزيله. تُعاد الأكثر
+ * تكرارًا، ويُطلب الباقي بالبحث داخل القائمة فيُنفَّذ على الخادم.
+ */
+const MAX_FILTER_VALUES = 500;
+
+const decodeColumnValue = (field, v) => {
+  if (NUMERIC_COLUMNS.has(field)) { const n = Number(v); return Number.isNaN(n) ? undefined : n; }
+  if (DATE_COLUMNS.has(field)) { const d = new Date(v); return isNaN(d.getTime()) ? undefined : d; }
+  return v;
+};
+
+/**
+ * شروط فلاتر الأعمدة القادمة من الجدول: `cf_<العمود>` مكرَّرًا لكل قيمة مختارة.
+ *
+ * التكرار — لا الفصل بفاصلة — لأن القيم نفسها تحمل فواصل (أسماء ملّاك، ملاحظات
+ * فواتير)، ففصلها بفاصلة كان يقطع القيمة نصفين فلا تطابق صفًّا واحدًا.
+ *
+ * `skipField` تستعمله قائمة القيم: قيم عمودٍ تُحسب بكل الفلاتر **إلا فلتره هو**،
+ * وإلا لما ظهرت في القائمة إلا القيم التي اختارها المستخدم بالفعل فتعذّر توسيع
+ * الاختيار.
+ */
+function columnFilters(query, skipField) {
+  const conds = [];
+  for (const key of Object.keys(query || {})) {
+    if (!key.startsWith('cf_')) continue;
+    const field = key.slice(3);
+    if (!FILTERABLE_COLUMNS.has(field) || field === skipField) continue;
+    const raw = Array.isArray(query[key]) ? query[key] : [query[key]];
+    const vals = raw.map((v) => String(v == null ? '' : v));
+    if (!vals.length) continue;
+    // الخانة الفارغة فئةٌ حقيقية يُسأل عنها («الكشوف التي لم تُفوتر بعد»)، وهي في
+    // القاعدة ثلاث صور: حقلٌ غير موجود، وnull، ونصٌّ فارغ — والثلاثة يجب أن يردّها
+    // اختيارٌ واحد، وإلا بدا للمستخدم أن صفوفًا اختفت.
+    const wantsBlank = vals.some((v) => v === '');
+    const rest = vals.filter((v) => v !== '');
+
+    if (DATE_COLUMNS.has(field)) {
+      // اليوم مدًى لا لحظة: `$eq` على منتصف ليل اليوم لا يطابق كشفًا سُجّل الثالثة
+      // عصرًا من اليوم نفسه، فيختفي من نتيجة فلترٍ اختاره المستخدم بالاسم.
+      const clauses = [];
+      if (wantsBlank) clauses.push({ [field]: { $in: ['', null] } });
+      for (const v of rest) {
+        if (isDayString(v)) {
+          const start = new Date(`${v}T00:00:00${TZ_OFFSET}`);
+          if (isNaN(start.getTime())) continue;
+          clauses.push({ [field]: { $gte: start, $lt: new Date(start.getTime() + DAY_MS) } });
+        } else {
+          const exact = new Date(v);
+          if (!isNaN(exact.getTime())) clauses.push({ [field]: exact });
+        }
+      }
+      if (clauses.length) conds.push(clauses.length === 1 ? clauses[0] : { $or: clauses });
+      continue;
+    }
+
+    const list = rest.map((v) => decodeColumnValue(field, v)).filter((v) => v !== undefined);
+    if (wantsBlank) list.push('', null);
+    if (list.length) conds.push({ [field]: { $in: list } });
+  }
+  return conds;
+}
+
+/**
+ * إبطال قوائم القيم المخزَّنة بعد كل كتابة.
+ *
+ * القائمة تُخزَّن عشرين ثانية لتوحيد الطلبات المتزامنة؛ لكن حالةً جديدة أو كشفًا
+ * محذوفًا لا يجوز أن ينتظر انتهاء المدة: المستخدم سيفلتر على قيمةٍ لم تعد موجودة
+ * فيرى جدولًا فارغًا ويظنّ الفلتر معطوبًا.
+ */
+const bustFilterCache = () => { try { cache.clear('wf:'); } catch (e) {} };
+
 // GET /api/workflows
 exports.getWorkflows = async (req, res) => {
   try {
-    const { stage, search, page = 1, limit = 50, dateFrom, dateTo, pendingOnly } = req.query;
-    const filter = {};
-
-    if (pendingOnly === 'true') {
-      filter.$and = [
-        { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] },
-        { $or: [{ invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } }] },
-      ];
-    }
-
-    if (stage) filter.stage = stage;
-    if (dateFrom || dateTo) {
-      filter.createdAt = {};
-      if (dateFrom) filter.createdAt.$gte = new Date(dateFrom + 'T00:00:00.000Z');
-      if (dateTo) filter.createdAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
-    }
-    if (search) {
-      filter.$or = [
-        { reportNumber: { $regex: search, $options: 'i' } },
-        { carOwner: { $regex: search, $options: 'i' } },
-        { carNumber: { $regex: search, $options: 'i' } },
-        { branch: { $regex: search, $options: 'i' } },
-        { invoiceNumber: { $regex: search, $options: 'i' } },
-      ];
-    }
+    const { page = 1, limit = 50 } = req.query;
+    // شرطُ البحث يُبنى في مكانٍ واحد يقرأه الجدول والإحصاءات والتصدير معًا، فلا
+    // يعرض عدّاد الصفوف رقمًا ويعرض الجدول تحته صفوف شرطٍ آخر.
+    const filter = buildWorkflowFilter(req.query);
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [workflows, total] = await Promise.all([
@@ -119,7 +218,8 @@ exports.getWorkflows = async (req, res) => {
 
 // Build the same match filter getWorkflows uses (stage/date/search/pendingOnly)
 // so stats and the table always agree. Kept as a helper for the stats endpoint.
-function buildWorkflowFilter({ stage, search, dateFrom, dateTo, pendingOnly }) {
+function buildWorkflowFilter(query, skipField) {
+  const { stage, search, dateFrom, dateTo, pendingOnly } = query || {};
   const filter = {};
   if (pendingOnly === 'true') {
     filter.$and = [
@@ -142,6 +242,13 @@ function buildWorkflowFilter({ stage, search, dateFrom, dateTo, pendingOnly }) {
       { invoiceNumber: { $regex: search, $options: 'i' } },
     ];
   }
+  // فلاتر الأعمدة تُطبَّق هنا لا في المتصفح: كانت الصفحة تنزّل الجدول كلّه لتفلتره
+  // محليًّا، فكان الفلتر يكلّف عشرات الآلاف من الصفوف ويجمّد التبويب.
+  //
+  // وتُضاف داخل `$and` لا على الجذر، لأن فلتر اليوم يحتاج `$or` (مدى اليوم أو
+  // خانة فارغة) وعلى الجذر `$or` واحدة يشغلها البحث فيمحو أحدهما الآخر بصمت.
+  const conds = columnFilters(query, skipField);
+  if (conds.length) filter.$and = [...(filter.$and || []), ...conds];
   return filter;
 }
 
@@ -159,22 +266,112 @@ exports.getWorkflowStats = async (req, res) => {
         { $or: [{ invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } }] },
       ],
     };
-    const [total, pendingInvoices, agg] = await Promise.all([
+    const [total, pendingInvoices, agg, stages] = await Promise.all([
       OperationsWorkflow.countDocuments(filter),
       OperationsWorkflow.countDocuments(pendingMatch),
       OperationsWorkflow.aggregate([
         { $match: filter },
         { $group: { _id: null, sumPurchaseValue: { $sum: '$purchaseValue' } } },
       ]),
+      // عدّاد كل مرحلة يُحسب هنا أيضًا: كان يُحسب في المتصفح من الصفوف المحمَّلة،
+      // فيقول «مكتمل: ٤» وهو لا يرى إلا خمسين صفًّا من عشرات الآلاف.
+      OperationsWorkflow.aggregate([
+        { $match: filter },
+        { $group: { _id: '$stage', count: { $sum: 1 } } },
+      ]),
     ]);
     res.json({
       total,
       pendingInvoices,
       sumPurchaseValue: agg[0]?.sumPurchaseValue || 0,
+      byStage: stages.reduce((acc, r) => { acc[r._id || 'draft'] = r.count; return acc; }, {}),
     });
   } catch (error) {
     console.error('Get workflow stats error:', error);
     res.status(500).json({ message: 'Failed to load workflow stats' });
+  }
+};
+
+/**
+ * GET /api/workflows/filters?field=<العمود> — قيمُ عمودٍ واحد مع عدد صفوف كل قيمة.
+ *
+ * كانت قائمة الفلتر تُبنى من الصفوف المحمَّلة في المتصفح، وهي خمسون صفًّا، فتعرض
+ * ثلاث حالاتٍ من أصل تسع؛ ثم عولج ذلك بتنزيل الجدول كلّه عند أول فلتر، فصار فتح
+ * القائمة ينقل عشرات الآلاف من الصفوف ويجمّد التبويب دقيقةً كاملة. العدّ في
+ * القاعدة يُرجع القيم كلّها في استعلامٍ واحد وبحجمٍ لا يُذكر.
+ *
+ * القيم محسوبةٌ على الفلاتر النشطة (المرحلة/البحث/المدى/بقيّة الأعمدة) لأن قائمةً
+ * تعرض قيمًا لا صفوف لها بعد الفلترة تدعو المستخدم إلى اختيارٍ يُرجع جدولًا فارغًا.
+ */
+exports.filterOptions = async (req, res) => {
+  try {
+    const field = String(req.query.field || '');
+    if (!FILTERABLE_COLUMNS.has(field)) {
+      return res.status(400).json({ message: 'Unknown filter column' });
+    }
+    const key = `wf:filters:${JSON.stringify(req.query || {})}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return res.json(hit);
+
+    const match = buildWorkflowFilter(req.query, field);
+    // البحث داخل القائمة يُنفَّذ هنا لا في المتصفح، لأن المتصفح لا يملك إلا القيم
+    // التي بلغت السقف: البحث عن رقم كشفٍ ليس ضمن الخمسمئة الأكثر تكرارًا كان
+    // يُرجع «لا توجد قيم» والقيمة موجودة في القاعدة.
+    const q = String(req.query.q || '').trim();
+    if (q && !NUMERIC_COLUMNS.has(field) && !DATE_COLUMNS.has(field)) {
+      const rx = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+      const prev = match[field];
+      // الشرط القائم على العمود قد يكون قيمةً مفردة (اختيار المرحلة من الشريط
+      // العلوي)؛ ونشرُ نصٍّ داخل كائن يفكّكه إلى حروف فيصير الشرط بلا معنى.
+      match[field] = prev === undefined ? rx
+        : (prev && typeof prev === 'object' && !(prev instanceof Date) ? { ...prev, ...rx } : { $eq: prev, ...rx });
+    }
+
+    const isDate = DATE_COLUMNS.has(field);
+    // التواريخ تُرتَّب من الأحدث لا بالأكثر تكرارًا: مَن يفلتر بتاريخ يبحث عن أيامٍ
+    // قريبة، لا عن اليوم الذي صادف أن فيه أكبر عدد كشوف.
+    const sort = isDate ? { _id: -1 } : { count: -1, _id: 1 };
+    const [agg] = await OperationsWorkflow.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: isDate ? { $dateToString: { format: '%Y-%m-%d', date: `$${field}`, timezone: TZ } } : `$${field}`,
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $facet: {
+          values: [{ $sort: sort }, { $limit: MAX_FILTER_VALUES + 1 }],
+          meta: [{ $count: 'distinct' }],
+        },
+      },
+    ]).allowDiskUse(true);
+
+    // الحقل غير الموجود وnull ينتجان المفتاح نفسه (null)، والنصّ الفارغ ينتج ''،
+    // وكلّها عند المستخدم شيءٌ واحد: «(فارغ)». دمجها هنا يمنع ظهور سطرين متطابقين
+    // في القائمة لا يفرّق بينهما شيء.
+    const merged = new Map();
+    for (const r of (agg?.values || [])) {
+      const id = r._id;
+      const value = id === null || id === undefined || id === ''
+        ? ''
+        : (id instanceof Date ? id.toISOString() : String(id));
+      merged.set(value, (merged.get(value) || 0) + r.count);
+    }
+    let values = [...merged.entries()].map(([value, count]) => ({ value, count }))
+      .sort((a, b) => (isDate ? b.value.localeCompare(a.value) : (b.count - a.count || a.value.localeCompare(b.value, 'ar', { numeric: true }))));
+    const distinct = agg?.meta?.[0]?.distinct || values.length;
+    const truncated = values.length > MAX_FILTER_VALUES;
+    if (truncated) values = values.slice(0, MAX_FILTER_VALUES);
+
+    // الشكل نفسه الذي تتكلّمه فلاتر الموارد البشرية وسجلّ المركبات، حتى لا يتعلّم
+    // كل قسمٍ لغةً خاصة به: { filters: [{ key, values: [{ value, count }] }] }.
+    const body = { filters: [{ key: field, values, truncated, distinct }] };
+    cache.set(key, body, 20000);
+    res.json(body);
+  } catch (error) {
+    console.error('workflow filterOptions', error);
+    res.status(500).json({ message: 'Failed to load column filter values' });
   }
 };
 
@@ -270,6 +467,7 @@ exports.createWorkflow = async (req, res) => {
       ipAddress: req.ip,
     });
 
+    bustFilterCache();
     try { emitToAll('workflow:created', populated); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.status(201).json(populated);
@@ -391,6 +589,7 @@ exports.updateWorkflow = async (req, res) => {
       ipAddress: req.ip,
     });
 
+    bustFilterCache();
     try { emitToAll('workflow:updated', populated); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json(populated);
@@ -471,6 +670,7 @@ exports.updateStage = async (req, res) => {
       ipAddress: req.ip,
     });
 
+    bustFilterCache();
     try { emitToAll('workflow:stageChanged', populated); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json(populated);
@@ -571,6 +771,7 @@ exports.deleteWorkflow = async (req, res) => {
       ipAddress: req.ip,
     });
 
+    bustFilterCache();
     try { emitToAll('workflow:deleted', { _id: req.params.id }); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json({ message: 'Workflow deleted successfully' });
@@ -606,6 +807,7 @@ exports.bulkDelete = async (req, res) => {
       ipAddress: req.ip,
     });
 
+    bustFilterCache();
     ids.forEach((id) => {
       try { emitToAll('workflow:deleted', { _id: id }); } catch (e) { console.error('WebSocket emit error:', e); }
     });
@@ -620,14 +822,10 @@ exports.bulkDelete = async (req, res) => {
 // GET /api/workflows/export
 exports.exportWorkflows = async (req, res) => {
   try {
-    const { stage, dateFrom, dateTo } = req.query;
-    const filter = {};
-    if (stage) filter.stage = stage;
-    if (dateFrom || dateTo) {
-      filter.createdAt = {};
-      if (dateFrom) filter.createdAt.$gte = new Date(dateFrom + 'T00:00:00.000Z');
-      if (dateTo) filter.createdAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
-    }
+    // التصدير يقرأ الشرط نفسه الذي يقرأه الجدول — بما فيه فلاتر الأعمدة والبحث.
+    // كان يتجاهلها فيُنزّل الجدول كلّه بينما الشاشة تعرض المُفلتَر، فيظنّ المستخدم
+    // أن الملف نسخةٌ ممّا يراه.
+    const filter = buildWorkflowFilter(req.query);
 
     // Use lean() + select only needed fields for speed — no populate needed
     const workflows = await OperationsWorkflow.find(filter)
@@ -848,6 +1046,7 @@ exports.bulkImport = async (req, res) => {
       ipAddress: req.ip,
     });
 
+    bustFilterCache();
     try {
       emitToAll('workflow:bulkImported', {
         count: createdWorkflows.length,

@@ -12,6 +12,7 @@ const upl = require('./uplClient');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const User = require('../models/User');
 const { emitToAll } = require('../websocket/socketManager');
+const cache = require('../utils/ttlCache');
 
 const SOURCE = 'ops_upl';
 let running = false;
@@ -126,6 +127,9 @@ async function upsertShipments(ships) {
     const r = await OperationsWorkflow.deleteMany({ externalSource: SOURCE, externalId: { $in: deletedIds } });
     removed = r.deletedCount || 0;
   }
+  // المزامنة تُدخل حالاتٍ وفروعًا جديدة، وقوائم قيم الفلتر مخزَّنة مؤقّتًا؛ فبغير
+  // إبطالها يفلتر المستخدم على قائمةٍ تسبق آخر مزامنة فلا يرى الكشوف الجديدة.
+  if (created || updated || removed) { try { cache.clear('wf:'); } catch (e) {} }
   return { created, updated, removed };
 }
 

@@ -483,22 +483,34 @@ exports.filterOptions = async (req, res) => {
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
-    const filters = [];
-    for (const d of FILTER_DEFS) {
-      const others = { ...req.query };
-      delete others[d.key];
-      const rows = await VehicleMaster.find(buildFilter(others)).select(d.field).lean();
+    const tally = (rows, field) => {
       const counts = new Map();
       for (const r of rows) {
-        const raw = _get(r, d.field);
+        const raw = _get(r, field);
         const v = (raw === null || raw === undefined || raw === '') ? '—' : String(raw);
         counts.set(v, (counts.get(v) || 0) + 1);
       }
-      filters.push({
-        key: d.key, ar: d.ar, en: d.en, groupAr: d.groupAr, groupEn: d.groupEn,
-        values: [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count),
-      });
-    }
+      return [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
+    };
+
+    // «كل الفلاتر إلا هذا الحقل» تختلف فعليًّا فقط للحقول المفلترة الآن؛ والبقيّة
+    // تشترك في المجموعة نفسها. استعلامٌ واحد لها جميعًا وواحدٌ لكل فلترٍ نشط،
+    // بدل ثمانية عشر استعلامًا في كل فتحةٍ للّوحة.
+    const active = FILTER_DEFS.filter((d) => req.query[d.key] != null && req.query[d.key] !== '');
+    const passive = FILTER_DEFS.filter((d) => !(req.query[d.key] != null && req.query[d.key] !== ''));
+    const shared = passive.length
+      ? await VehicleMaster.find(buildFilter(req.query)).select(passive.map((d) => d.field).join(' ')).lean()
+      : [];
+    const perActive = new Map(await Promise.all(active.map(async (d) => {
+      const others = { ...req.query };
+      delete others[d.key];
+      return [d.key, await VehicleMaster.find(buildFilter(others)).select(d.field).lean()];
+    })));
+
+    const filters = FILTER_DEFS.map((d) => ({
+      key: d.key, ar: d.ar, en: d.en, groupAr: d.groupAr, groupEn: d.groupEn,
+      values: tally(perActive.get(d.key) || shared, d.field),
+    }));
     const body = { filters };
     cache.set(key, body, 20000);
     res.json(body);

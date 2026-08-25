@@ -267,25 +267,43 @@ exports.filterOptions = async (req, res) => {
       }
     }
 
-    const filters = [];
-    for (const d of defs) {
-      // كل الفلاتر إلا هذا الحقل — حتى تبقى بقيّة قيمه قابلةً للإضافة.
-      const others = { ...req.query };
-      delete others[d.key];
-      const rows = await findEmployees(others, `${d.key} ${DATE_FILTERABLE.join(' ')}`);
+    const tally = (rows, key) => {
       const counts = new Map();
       for (const r of rows) {
-        const raw = r[d.key];
+        const raw = r[key];
         const v = raw === true ? 'نعم' : raw === false ? 'لا' : (filled(raw) ? String(raw) : '—');
         counts.set(v, (counts.get(v) || 0) + 1);
       }
-      filters.push({
-        ...d,
-        values: [...counts.entries()]
-          .map(([value, count]) => ({ value, count }))
-          .sort((a, b) => b.count - a.count),
-      });
-    }
+      return [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
+    };
+
+    // «كل الفلاتر إلا هذا الحقل» تختلف فعليًّا **فقط** للحقول المفلترة الآن؛
+    // والبقيّة — وهي الأغلبية دائمًا — تشترك في المجموعة نفسها. فبدل ثمانية
+    // عشر استعلامًا في كل فتحة للّوحة، استعلامٌ واحد لها جميعًا وواحدٌ لكل
+    // فلترٍ نشط. مع خمسة فلاتر نشطة: ٦ استعلامات بدل ١٨.
+    const isActive = (k) => {
+      const v = req.query[k];
+      return (v != null && v !== '') || req.query[`${k}From`] || req.query[`${k}To`];
+    };
+    const active = defs.filter((d) => isActive(d.key));
+    const passive = defs.filter((d) => !isActive(d.key));
+
+    const shared = passive.length
+      ? await findEmployees(req.query, [...new Set([...passive.map((d) => d.key), ...DATE_FILTERABLE])].join(' '))
+      : [];
+
+    const perActive = await Promise.all(active.map(async (d) => {
+      const others = { ...req.query };
+      delete others[d.key]; delete others[`${d.key}From`]; delete others[`${d.key}To`];
+      return [d.key, await findEmployees(others, [...new Set([d.key, ...DATE_FILTERABLE])].join(' '))];
+    }));
+    const byActive = new Map(perActive);
+
+    // الترتيب يبقى ترتيب التعريف حتى لا تقفز الحقول في اللوحة بين فتحةٍ وأخرى.
+    const filters = defs.map((d) => ({
+      ...d,
+      values: tally(byActive.get(d.key) || shared, d.key),
+    }));
 
     const body = { filters, dateFields: DATE_FILTERABLE };
     cache.set(key, body, 20000);

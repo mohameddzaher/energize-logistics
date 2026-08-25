@@ -647,3 +647,149 @@ exports.fieldConfig = (req, res) => {
     statuses: H.STATUS_LABELS, states: H.STATE_LABELS, alert: ALERT,
   });
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  التجديد — فرديًّا وجماعيًّا
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// لماذا هنا أصلًا: صفحات المستندات (الإقامات، الجوازات، العقود، التأمين الطبي،
+// الشهادات الصحية، بطاقات السائقين، رخص القيادة) لم يكن فيها تجديد. كان الحلّ
+// الوحيد أن يُفتَح تاريخ الانتهاء ويُكتَب فوقه — فيضيع الجواب عن «مَن جدّدها
+// ومتى ومن أي تاريخ إلى أيّ»، وهو أول ما يُسأل عنه عند أي مراجعة.
+//
+// والتجديد الجماعي ليس ترفًا: تُجدَّد عشرات الإقامات دفعةً واحدة بالتاريخ نفسه،
+// وفعلُها صفًّا صفًّا يعني عشرات النوافذ — ومعها احتمال أن يُنسى صفّ في المنتصف.
+const EmployeeRenewal = require('../models/EmployeeRenewal');
+const { _RENEWAL_FIELDS: RENEWAL_FIELDS, _GROUP_DOC_TYPE: GROUP_DOC_TYPE } = require('./hrController');
+
+/** تاريخ سليم بصيغة YYYY-MM-DD، أو null. */
+const asIsoDay = (v) => {
+  const s = String(v ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T00:00:00.000Z`);
+  return isNaN(d.getTime()) ? null : s;
+};
+
+/** المجموعة أو نوع المستند → خريطة الحقول. تقبل الاسمين فلا يهمّ من يُنادي. */
+const renewalMapOf = (docTypeOrGroup) => {
+  const key = GROUP_DOC_TYPE[docTypeOrGroup] || docTypeOrGroup;
+  const map = RENEWAL_FIELDS[key];
+  return map && map.expiry ? { key, map } : null;
+};
+
+/**
+ * POST /master/renew
+ * { employee, docType|group, newExpiry, documentNumber?, notes? }
+ */
+exports.renew = async (req, res) => {
+  try {
+    const resolved = renewalMapOf(req.body.docType || req.body.group);
+    if (!resolved) return res.status(400).json({ message: 'نوع المستند غير معروف' });
+    const newExpiry = asIsoDay(req.body.newExpiry);
+    if (!newExpiry) return res.status(400).json({ message: 'أدخل تاريخ الانتهاء الجديد' });
+
+    const emp = await Employee.findById(req.body.employee);
+    if (!emp) return res.status(404).json({ message: 'الموظف غير موجود' });
+
+    const { key, map } = resolved;
+    const previousExpiry = emp[map.expiry] || '';
+    emp[map.expiry] = newExpiry;
+    const docNum = String(req.body.documentNumber ?? '').trim();
+    if (map.number && docNum) emp[map.number] = docNum;
+    await emp.save();
+
+    const renewal = await EmployeeRenewal.create({
+      employee: emp._id, docType: key,
+      previousExpiry, newExpiry, documentNumber: docNum,
+      notes: String(req.body.notes ?? '').trim(),
+      renewedBy: req.user._id, renewedAt: new Date(),
+    });
+
+    logAudit({
+      user: req.user._id, action: 'renew_document', entity: 'Employee', entityId: emp._id,
+      changes: { before: { docType: key, expiry: previousExpiry }, after: { expiry: newExpiry, documentNumber: docNum } },
+      ipAddress: req.ip,
+    }).catch(() => {});
+    emit();
+    res.status(201).json({ employee: { _id: emp._id, [map.expiry]: newExpiry }, renewal });
+  } catch (e) {
+    console.error('hr renew', e);
+    res.status(500).json({ message: 'تعذّر تسجيل التجديد' });
+  }
+};
+
+/**
+ * POST /master/renew-bulk
+ * { items: [{ employee, docType|group }], newExpiry, notes? }
+ *
+ * كله أو لا شيء. لو سقط صفٌّ واحد في التحقّق لا يُكتب أيّ صفّ — لأن التجديد
+ * الجزئي أسوأ من الفشل: تظنّ الدفعة تمّت، ويبقى فيها من لم يُجدَّد بلا أن يقول
+ * أحدٌ أيّهم.
+ */
+exports.renewBulk = async (req, res) => {
+  try {
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!items.length) return res.status(400).json({ message: 'اختر مستندًا واحدًا على الأقل' });
+    if (items.length > 500) return res.status(400).json({ message: 'أقصى ٥٠٠ سطر في المرة الواحدة' });
+
+    const sharedExpiry = asIsoDay(req.body.newExpiry);
+    const notes = String(req.body.notes ?? '').trim();
+
+    // ① التحقّق من كل سطر قبل كتابة أي سطر.
+    const errors = [];
+    const plan = [];
+    const ids = [...new Set(items.map((r) => String(r.employee || r.id || '')).filter(Boolean))];
+    const found = await Employee.find({ _id: { $in: ids } });
+    const byId = new Map(found.map((e) => [String(e._id), e]));
+
+    items.forEach((row, i) => {
+      const line = i + 1;
+      const resolved = renewalMapOf(row.docType || row.group);
+      if (!resolved) return errors.push({ line, message: 'نوع المستند غير معروف' });
+      const newExpiry = asIsoDay(row.newExpiry) || sharedExpiry;
+      if (!newExpiry) return errors.push({ line, message: 'تاريخ الانتهاء الجديد ناقص أو غير صالح' });
+      const emp = byId.get(String(row.employee || row.id || ''));
+      if (!emp) return errors.push({ line, message: 'الموظف غير موجود' });
+      plan.push({ emp, key: resolved.key, map: resolved.map, newExpiry, documentNumber: String(row.documentNumber ?? '').trim() });
+    });
+
+    if (errors.length) {
+      return res.status(400).json({ message: 'العملية اترفضت — مفيش أي مستند اتجدّد', errors });
+    }
+
+    // ② الكتابة.
+    const renewed = [];
+    const history = [];
+    for (const p of plan) {
+      const previousExpiry = p.emp[p.map.expiry] || '';
+      p.emp[p.map.expiry] = p.newExpiry;
+      if (p.map.number && p.documentNumber) p.emp[p.map.number] = p.documentNumber;
+      await p.emp.save();
+      history.push({
+        employee: p.emp._id, docType: p.key,
+        previousExpiry, newExpiry: p.newExpiry, documentNumber: p.documentNumber,
+        notes, renewedBy: req.user._id, renewedAt: new Date(),
+      });
+      renewed.push({
+        employee: p.emp._id,
+        name: p.emp.arabicName || `${p.emp.firstName || ''} ${p.emp.lastName || ''}`.trim(),
+        docType: p.key, previousExpiry, newExpiry: p.newExpiry,
+      });
+    }
+    if (history.length) await EmployeeRenewal.insertMany(history);
+
+    logAudit({
+      user: req.user._id, action: 'renew_documents_bulk', entity: 'Employee',
+      changes: { after: { count: renewed.length, newExpiry: sharedExpiry } }, ipAddress: req.ip,
+    }).catch(() => {});
+    emit();
+
+    res.json({
+      renewed,
+      summary: { count: renewed.length, employees: new Set(renewed.map((r) => String(r.employee))).size },
+    });
+  } catch (e) {
+    console.error('hr renewBulk', e);
+    res.status(500).json({ message: 'تعذّر تسجيل التجديد الجماعي' });
+  }
+};

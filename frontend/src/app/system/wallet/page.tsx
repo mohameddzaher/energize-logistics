@@ -184,39 +184,24 @@ export default function WalletPage() {
   const [collectionReportMsg, setCollectionReportMsg] = useState('');
   const [collectionReportFound, setCollectionReportFound] = useState(false);
 
-  // ─── LOAD BRANCHES (super_admin & operations_manager) ───────
-  useEffect(() => {
-    if (!canSelectBranch) return;
-    api.get<any>('/api/branches').then((data) => {
-      const list = data.branches || data || [];
-      setAllBranches(list);
-      if (list.length > 0 && !selectedBranch) setSelectedBranch(list[0]._id);
-    }).catch((err: any) => { setActionError(err?.message || 'Failed to load branches'); });
-  }, [canSelectBranch]);
-
   // ─── LOAD USERS FOR BRANCH ─────────────────────────────────
+  //
+  // تفريغ المحفظة هنا وحده. كان يُفرَّغ مرّتين — مرّة عند تبدُّل الفرع ومرّة عند
+  // تبدُّل المستخدم الذي يتبعه — فتومض الشاشة فارغةً مرّتين قبل أن تمتلئ، وهو
+  // ما يبدو للمستخدم «تفتح وتلغبط وتفتح». والشاشة تبقى على حالة التحميل حتى
+  // تصل البيانات فعلًا بدل أن تعرض فراغًا ثم تعرض غيره.
   useEffect(() => {
     if (!canSelectBranch || !selectedBranch) return;
-    // Clear stale wallet/user immediately so we don't show one user's data
-    // under another branch's filter while the new user list loads.
+    setLoading(true);
     setWallet(null);
     setTransactions([]);
     setBranchUsers([]);
-    setSelectedUser('');
     api.get<any>(`/api/users?branch=${selectedBranch}`).then((data) => {
       const users = (data.users || data || []).filter((u: any) => ['operations_staff', 'operations_manager'].includes(u.role));
       setBranchUsers(users);
-      if (users.length > 0) setSelectedUser(users[0]._id);
-      else setSelectedUser('');
-    }).catch((err: any) => { setActionError(err?.message || 'Failed to load users'); });
+      setSelectedUser(users[0]?._id ?? '');
+    }).catch((err: any) => { setActionError(err?.message || 'Failed to load users'); setLoading(false); });
   }, [canSelectBranch, selectedBranch]);
-
-  // Clear stale data the moment the user filter flips, before the fetch resolves
-  useEffect(() => {
-    if (!canSelectBranch) return;
-    setWallet(null);
-    setTransactions([]);
-  }, [selectedUser, canSelectBranch]);
 
   // ─── FETCH WALLET ──────────────────────────────────────────
   const fetchWallet = useCallback(async (showSpinner = true) => {

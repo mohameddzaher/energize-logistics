@@ -319,8 +319,29 @@ const RENEWAL_FIELDS = {
   license: { expiry: 'licenseExpiry', number: 'licenseNumber' },
   driverCard: { expiry: 'driverCardExpiry', number: 'driverCardNumber' },
   ajeer: { expiry: 'ajeerExpiry' },
+  // العقد والشهادة الصحية كانا خارج التجديد، فيُعدَّل تاريخهما يدويًّا بلا أثر
+  // يقول مَن جدّده ومن أي تاريخ — وهما أكثر ما يُسأل عنه عند المراجعة.
+  contract: { expiry: 'contractEndDate', number: 'qiwaContractNumber' },
+  healthCert: { expiry: 'healthCertExpiry', number: 'healthCertNumber' },
   other: {},
 };
+
+// مجموعة اللوحة → نوع المستند القابل للتجديد.
+//
+// اللوحة تسمّي المجموعات بأسماء عربية الأصل (`medicalInsurance`) والتجديد يسمّي
+// المستندات بأسمائه (`insurance`). بغير هذا الجسر تفتح صفحة «التأمين الطبي»
+// فلا تجد فيها تجديدًا، لأن الاسمين لا يلتقيان في أي مكان.
+const GROUP_DOC_TYPE = {
+  iqama: 'iqama',
+  passport: 'passport',
+  contract: 'contract',
+  medicalInsurance: 'insurance',
+  healthCertificate: 'healthCert',
+  driverCard: 'driverCard',
+  drivingLicense: 'license',
+};
+exports._RENEWAL_FIELDS = RENEWAL_FIELDS;
+exports._GROUP_DOC_TYPE = GROUP_DOC_TYPE;
 
 // Renew a dated document: bumps the matching expiry (+ number if supplied) on the
 // employee AND records a renewal-history row so the profile keeps a trail.

@@ -93,6 +93,26 @@ export const updateEmployeeFields = (id: string, fields: Record<string, any>, ma
   api.patch<{ employee: any; statuses: Record<string, StatusCode>; rejected: string[] }>(
     `/api/hr/master/employees/${id}/fields`, { fields, markStatus });
 
+/** تجديد مستند واحد — يكتب التاريخ الجديد ويترك أثرًا يقول مَن جدّده ومن أيّ تاريخ. */
+export const renewHrDocument = (body: {
+  employee: string; group: string; newExpiry: string; documentNumber?: string; notes?: string;
+}) => api.post<{ employee: any; renewal: any }>('/api/hr/master/renew', body);
+
+/**
+ * تجديد دفعة بتاريخ واحد. كله أو لا شيء: لو سقط سطر في التحقّق لا يُكتب أيّ
+ * سطر، ويعود الخطأ في `errors` مع رقم السطر — فالتجديد الجزئي الصامت أسوأ من
+ * الفشل الصريح.
+ */
+export const renewHrBulk = (body: {
+  items: { employee: string; group: string }[]; newExpiry: string; notes?: string;
+}) => api.post<{ renewed: any[]; summary: { count: number; employees: number } }>(
+  '/api/hr/master/renew-bulk', body);
+
+/** المجموعات التي لها تاريخ انتهاء، فيصحّ فيها التجديد. */
+export const RENEWABLE_GROUPS = new Set([
+  'iqama', 'passport', 'contract', 'medicalInsurance', 'healthCertificate', 'driverCard', 'drivingLicense',
+]);
+
 export const getHrFieldConfig = () =>
   api.get<{ groups: (GroupCard & { fields: FieldDef[] })[]; statuses: any; states: any; alert: any }>('/api/hr/master/field-config');
 

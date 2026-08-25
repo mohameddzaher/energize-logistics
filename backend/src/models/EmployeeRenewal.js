@@ -9,7 +9,11 @@ const employeeRenewalSchema = new mongoose.Schema(
     // Which document was renewed. Maps to the matching expiry/number fields on Employee.
     docType: {
       type: String,
-      enum: ['iqama', 'passport', 'workPermit', 'insurance', 'visa', 'license', 'driverCard', 'ajeer', 'other'],
+      // القيم تغطّي كل مجموعة مستندات في لوحة الموارد البشرية. أي مجموعة لا
+      // نوعَ لها هنا كانت بلا تجديد أصلًا — يُعدَّل تاريخها يدويًّا بلا أثر
+      // يقول مَن جدّدها ومن أي تاريخ إلى أيّ.
+      enum: ['iqama', 'passport', 'workPermit', 'insurance', 'visa', 'license',
+             'driverCard', 'ajeer', 'contract', 'healthCert', 'other'],
       required: true,
     },
     previousExpiry: { type: String },   // YYYY-MM-DD (before)

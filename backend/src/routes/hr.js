@@ -20,6 +20,10 @@ router.get('/master/filters', hrm.filterOptions);
 router.get('/master/expiring', hrm.expiring);
 router.get('/master/records/:group', hrm.records);
 router.patch('/master/employees/:id/fields', authorize(...STAFF), hrm.updateFields);
+// التجديد — فرديًّا وجماعيًّا. `renew-bulk` قبل أي مسار فيه معرّف حتى لا يُقرأ
+// «renew-bulk» على أنه معرّف موظف.
+router.post('/master/renew-bulk', authorize(...STAFF), hrm.renewBulk);
+router.post('/master/renew', authorize(...STAFF), hrm.renew);
 
 // ── Self-service (any authenticated user) ────────────────────────────────────
 // Defined first so they aren't shadowed by the staff :id routes below.

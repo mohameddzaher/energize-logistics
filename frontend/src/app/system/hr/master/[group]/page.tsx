@@ -16,11 +16,13 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { Search, Check, X, Pencil, ArrowUpDown } from 'lucide-react';
+import { Search, Check, X, Pencil, ArrowUpDown, RefreshCw } from 'lucide-react';
 import {
-  getHrRecords, updateEmployeeFields, STATUS_META, STATE_META, statusLabel, stateLabel,
+  getHrRecords, updateEmployeeFields, renewHrDocument, renewHrBulk, RENEWABLE_GROUPS,
+  STATUS_META, STATE_META, statusLabel, stateLabel,
   fmtDate, daysText, type RecordRow, type FieldDef,
 } from '@/lib/hrMaster';
+import SelectionBar from '@/components/ls2/SelectionBar';
 import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import { HR_DATE_FIELDS } from '@/lib/hrMaster';
@@ -62,6 +64,13 @@ function GroupInner() {
     Object.fromEntries([...(sp?.entries() || [])].filter(([k]) => !CTRL.includes(k))));
   const [d, setD] = useState<Awaited<ReturnType<typeof getHrRecords>> | null>(null);
   const [loading, setLoading] = useState(true);
+  // ── التحديد والتجديد ───────────────────────────────────────────────────────
+  // المجموعات ذات تاريخ الانتهاء وحدها تقبل التجديد؛ «البيانات البنكية» لا
+  // تنتهي فلا معنى لزرّ تجديد فيها.
+  const renewable = RENEWABLE_GROUPS.has(group);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState(false);
+  const [renewing, setRenewing] = useState<RecordRow | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -77,6 +86,9 @@ function GroupInner() {
 
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
+  // التحديد يسقط مع تغيّر الفلاتر: صفٌّ اختير ثم خرج من النتيجة يبقى محدَّدًا
+  // بلا أن يُرى، فتُجدَّد في الدفعة أسماءٌ لا تظهر على الشاشة.
+  useEffect(() => { setPicked(new Set()); }, [group, q, field, status, state, within, includeExpired, JSON.stringify(filters)]);
 
   if (loading && !d) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t('تعذّر التحميل', 'Could not load')}</div>;
@@ -214,6 +226,18 @@ function GroupInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
+                {renewable && canEdit && (
+                  <th className="px-3 py-3 w-9">
+                    <input type="checkbox" className="accent-[#f37121]"
+                      title={t('اختيار كل المعروض', 'Select all shown')}
+                      checked={rows.length > 0 && rows.every((x) => picked.has(x._id))}
+                      onChange={(e) => setPicked((p) => {
+                        const n = new Set(p);
+                        rows.forEach((x) => (e.target.checked ? n.add(x._id) : n.delete(x._id)));
+                        return n;
+                      })} />
+                  </th>
+                )}
                 <th className="px-3 py-3 text-center font-bold whitespace-nowrap">
                   <button onClick={() => toggleSort('employeeNumber')} className="inline-flex items-center gap-1 hover:text-white">
                     {t('الرقم الوظيفي', 'Emp. no.')}<ArrowUpDown className="w-3 h-3 opacity-60" />
@@ -244,15 +268,17 @@ function GroupInner() {
                     </button>
                   </th>
                 )}
+                {renewable && canEdit && <th className="px-3 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
                 <Row key={r._id} r={r} fields={g.fields} isDoc={g.document} ar={ar} t={t}
-                  canEdit={canEdit} onSaved={load} notify={notify} router={router} />
+                  canEdit={canEdit} onSaved={load} notify={notify} router={router}
+                  renewable={renewable} picked={picked} setPicked={setPicked} onRenew={setRenewing} />
               ))}
               {!rows.length && (
-                <tr><td colSpan={g.fields.length + (g.document ? 5 : 4)} className="px-3 py-12 text-center text-slate-500">
+                <tr><td colSpan={g.fields.length + (g.document ? 5 : 4) + (renewable && canEdit ? 2 : 0)} className="px-3 py-12 text-center text-slate-500">
                   {t('لا نتائج بالفلاتر دي', 'Nothing matches these filters')}
                 </td></tr>
               )}
@@ -260,15 +286,52 @@ function GroupInner() {
           </table>
         </div>
       </div>
+
+      {renewable && canEdit && (
+        <SelectionBar
+          count={picked.size} ar={ar} tone="green"
+          label={t(`${picked.size} مستند محدَّد`, `${picked.size} selected`)}
+          hint={t('يُسجَّل لها جميعًا تاريخ تجديد واحد', 'All get one renewal date')}
+          actionLabel={t(`تجديدها بتاريخ واحد (${picked.size})`, `Renew to one date (${picked.size})`)}
+          onAction={() => setBulk(true)}
+          onClear={() => setPicked(new Set())} />
+      )}
+
+      {bulk && (
+        <HrBulkRenewModal
+          rows={rows.filter((r) => picked.has(r._id))} group={group} groupLabel={ar ? g.ar : g.en} ar={ar}
+          onClose={() => setBulk(false)}
+          onDone={() => { setBulk(false); setPicked(new Set()); load(); }} />
+      )}
+
+      {renewing && (
+        <HrRenewModal row={renewing} group={group} groupLabel={ar ? g.ar : g.en}
+          expiryField={g.expiryField} ar={ar} t={t} notify={notify}
+          onClose={() => setRenewing(null)}
+          onDone={() => { setRenewing(null); load(); }} />
+      )}
     </div>
   );
 }
 
 // ── صف موظف: كل خانة قابلة للتعديل في مكانها ─────────────────────────────────
-function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router }: any) {
+function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
+  renewable, picked, setPicked, onRenew }: any) {
   const m = r.state ? STATE_META[r.state] : null;
+  const sel = renewable && canEdit;
   return (
-    <tr className="hover:bg-slate-50 text-center align-middle">
+    <tr className={sel && picked.has(r._id) ? 'bg-orange-50/70 text-center align-middle' : 'hover:bg-slate-50 text-center align-middle'}>
+      {sel && (
+        <td className="px-3 py-2.5">
+          <input type="checkbox" className="accent-[#f37121]"
+            checked={picked.has(r._id)}
+            onChange={() => setPicked((p: Set<string>) => {
+              const n = new Set(p);
+              if (n.has(r._id)) n.delete(r._id); else n.add(r._id);
+              return n;
+            })} />
+        </td>
+      )}
       <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums">{r.employeeNumber || '—'}</td>
       <td className="px-3 py-2.5">
         <button onClick={() => router.push(`/system/hr/employees/${r._id}`)}
@@ -285,6 +348,14 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router }: any)
       {isDoc && (
         <td className="px-3 py-2.5 whitespace-nowrap font-bold" style={{ color: m?.color }}>
           {r.daysRemaining == null ? <span className="text-slate-500">—</span> : daysText(r.daysRemaining, ar)}
+        </td>
+      )}
+      {sel && (
+        <td className="px-3 py-2.5">
+          <button onClick={() => onRenew(r)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold">
+            <RefreshCw className="w-3.5 h-3.5" />{t('تجديد', 'Renew')}
+          </button>
         </td>
       )}
     </tr>
@@ -354,6 +425,160 @@ function Cell({ r, f, ar, t, canEdit, onSaved, notify }: any) {
       className="text-[13px] text-slate-900 hover:text-[#f37121] disabled:hover:text-slate-900 whitespace-nowrap">
       {f.type === 'date' ? fmtDate(raw) : (raw || '—')}
     </button>
+  );
+}
+
+
+// ── تجديد مستند واحد ─────────────────────────────────────────────────────────
+//
+// التجديد ليس كتابةً فوق التاريخ القديم: هو يكتب التاريخ الجديد **ويترك أثرًا**
+// يقول مَن جدّده ومن أيّ تاريخ إلى أيّ. الكتابة المباشرة على الخانة تفقد هذا
+// الجواب تمامًا، وهو أول ما يُسأل عنه عند المراجعة.
+function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onClose, onDone }: any) {
+  const cur = expiryField ? row.values?.[expiryField] : null;
+  const [newExpiry, setNewExpiry] = useState('');
+  const [docNum, setDocNum] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // الافتراض سنةٌ من تاريخ الانتهاء القائم إن كان في المستقبل، وإلا سنة من
+    // اليوم — فالمنتهي منذ شهور لا يُجدَّد إلى تاريخ ماضٍ.
+    const base = cur && !isNaN(new Date(cur).getTime()) ? new Date(cur) : new Date();
+    const from = base > new Date() ? base : new Date();
+    const d = new Date(from);
+    d.setFullYear(d.getFullYear() + 1);
+    setNewExpiry(d.toISOString().slice(0, 10));
+  }, [cur]);
+
+  const save = async () => {
+    if (!newExpiry) return notify(t('أدخل تاريخ الانتهاء الجديد', 'Enter the new expiry date'), 'error');
+    setBusy(true);
+    try {
+      await renewHrDocument({ employee: row._id, group, newExpiry, documentNumber: docNum.trim(), notes: note.trim() });
+      notify(t(`تم التجديد حتى ${newExpiry}`, `Renewed to ${newExpiry}`), 'success');
+      onDone();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-emerald-700 font-bold">{t('تجديد المستند', 'Renew document')}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="w-4 h-4" /></button>
+        </div>
+        <p className="text-[12px] text-slate-500 mb-4">
+          {row.name} · {groupLabel}{cur ? ` · ${t('ينتهي', 'expires')} ${fmtDate(cur)}` : ''}
+        </p>
+
+        <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('تاريخ الانتهاء الجديد', 'New expiry')} *</label>
+        <input type="date" autoFocus value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm mb-3" />
+
+        <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('رقم المستند الجديد', 'New document number')}</label>
+        <input value={docNum} onChange={(e) => setDocNum(e.target.value)}
+          placeholder={t('اتركه فارغًا إن لم يتغيّر', 'Leave blank if unchanged')}
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm mb-3" />
+
+        <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('ملاحظة', 'Note')}</label>
+        <input value={note} onChange={(e) => setNote(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm mb-4" />
+
+        <p className="text-[11px] text-slate-400 mb-3">
+          {t('يُحفَظ التجديد في سجلّ الموظف: التاريخ السابق والجديد ومَن سجّله ومتى.',
+             'The renewal is kept on the employee record: previous and new date, who logged it and when.')}
+        </p>
+        <button onClick={save} disabled={busy || !newExpiry}
+          className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold">
+          <Check className="w-4 h-4" />{busy ? t('جارٍ التجديد…', 'Renewing…') : t('تجديد', 'Renew')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── تجديد دفعة بتاريخ واحد ───────────────────────────────────────────────────
+//
+// كله أو لا شيء. لو رفض الخادم سطرًا لم يُجدَّد أيّ سطر، وتُعرض أسباب الرفض
+// بأرقام سطورها — لأن دفعةً نجح نصفها بصمت أسوأ من دفعةٍ فشلت كلها بوضوح.
+function HrBulkRenewModal({ rows, group, groupLabel, ar, onClose, onDone }: {
+  rows: any[]; group: string; groupLabel: string; ar: boolean; onClose: () => void; onDone: () => void;
+}) {
+  const { notify } = useDialog();
+  const t = (a: string, e: string) => (ar ? a : e);
+  const [when, setWhen] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
+  const today = new Date().toISOString().slice(0, 10);
+  const past = !!when && when < today;
+
+  const save = async () => {
+    setBusy(true); setErrors([]);
+    try {
+      const r = await renewHrBulk({
+        items: rows.map((x) => ({ employee: x._id, group })),
+        newExpiry: when, notes: note.trim(),
+      });
+      notify(t(`اتجدّد ${r.summary.count} مستند لـ${r.summary.employees} موظف`,
+               `Renewed ${r.summary.count} documents for ${r.summary.employees} employees`), 'success');
+      onDone();
+    } catch (e: any) {
+      const list = e?.data?.errors || e?.errors;
+      if (Array.isArray(list) && list.length) {
+        setErrors(list.map((x: any) => t(`سطر ${x.line}: ${x.message}`, `Row ${x.line}: ${x.message}`)));
+        notify(t('العملية اترفضت بالكامل — مفيش أي مستند اتجدّد', 'Rejected in full — nothing was renewed'), 'error');
+      } else notify(e?.message || 'Failed', 'error');
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="text-emerald-700 font-bold">{t('تجديد جماعي', 'Bulk renewal')}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="p-5 space-y-3 overflow-y-auto">
+          <p className="text-sm text-slate-600">
+            {t(`${rows.length} مستند من «${groupLabel}» سيُجدَّد إلى التاريخ نفسه.`,
+               `${rows.length} “${groupLabel}” documents will be renewed to the same date.`)}
+          </p>
+
+          <div>
+            <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('تاريخ الانتهاء الجديد', 'New expiry')} *</label>
+            <input type="date" autoFocus min={today} value={when} onChange={(e) => setWhen(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+            {past && <p className="text-[11px] text-red-600 mt-1">{t('التاريخ في الماضي', 'That date is in the past')}</p>}
+          </div>
+
+          <div>
+            <label className="block text-[12px] font-semibold text-slate-600 mb-1">{t('ملاحظة', 'Note')}</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+          </div>
+
+          {!!errors.length && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 max-h-32 overflow-y-auto">
+              {errors.map((x, i) => <p key={i} className="text-[11.5px] text-red-700">{x}</p>)}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-slate-100">
+          <button onClick={save} disabled={busy || !when || past}
+            className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold">
+            <Check className="w-4 h-4" />
+            {busy ? t('جارٍ التجديد…', 'Renewing…') : !when ? t('اختر التاريخ أولًا', 'Pick a date first')
+              : t(`تجديد ${rows.length} مستند`, `Renew ${rows.length} documents`)}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

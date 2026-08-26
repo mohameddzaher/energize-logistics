@@ -142,6 +142,18 @@ async function tick() {
     // فيُقرأ لها السجلّ مباشرةً — لكن لهذه وحدها: قراءةُ السجلّ لثمانٍ وخمسين
     // وحدةً كلَّ عشرين ثانية تُثقل المزوّد بلا داعٍ، وأكثر الأسطول لا يحتاجها.
     // ومرّةً كل خمس نبضات، فالمركبة التي لا تبثّ إطارات لن تبدأ فجأةً.
+    // عدد الإطارات المركَّبة لكلّ لوحة من سجلّ الورشة — استعلامٌ واحد لا
+    // استعلامٌ لكلّ مركبة. يُستعمل مرجعًا حين يكذب الأساس المحفوظ.
+    const mountedByKey = new Map();
+    try {
+      const Ls2TireAsset = require('../models/Ls2TireAsset');
+      const agg = await Ls2TireAsset.aggregate([
+        { $match: { status: 'mounted', plateKey: { $nin: ['', null] } } },
+        { $group: { _id: '$plateKey', n: { $sum: 1 } } },
+      ]);
+      for (const a of agg) mountedByKey.set(a._id, a.n);
+    } catch (e) { /* غيابُه يُرجعنا إلى الأساس وحده، لا يُعطّل النبض */ }
+
     const needsBackfill = [];
     for (const unit of units) {
       const t = normalize(unit);
@@ -155,9 +167,16 @@ async function tick() {
       // ليُبنى أساسُه.
       const doc = vById.get(t.unitId);
       const have = Math.max((t.tires || []).length, (doc && doc.tires ? doc.tires.length : 0));
-      const baseline = doc?.tireReporting?.baseline ?? null;
-      if (baseline != null && have >= baseline) continue;   // ليس ناقصًا عن عادته
-      if (baseline == null && have > 0) continue;           // بلا أساس بعد، ومعه شيء
+      // والأساس لا يُوثَق به وحده: يتجمّد على ما كان وقت تسجيله. مركبةٌ سُجّل
+      // أساسُها صفرًا يوم لم تكن تبثّ شيئًا يصير «واحدٌ ≥ صفر» فيمنع الاسترجاع
+      // إلى الأبد — فتبقى معطوبةً لأن أوّل قراءةٍ لها كانت معطوبة.
+      //
+      // فيُقاس إلى ما هو أكبر: أساسُها المستقرّ، أو ما يقوله سجلّ الورشة عن عدد
+      // إطاراتها المركَّبة. وأيّهما أكبر هو ما ينبغي أن يصل.
+      const baseline = doc?.tireReporting?.baseline || 0;
+      const expected = Math.max(baseline, mountedByKey.get(doc?.plateKey) || 0);
+      if (expected > 0 && have >= expected) continue;   // ليس ناقصًا عمّا يُنتظَر منه
+      if (expected === 0 && have > 0) continue;         // لا مرجع بعد، ومعه شيء
       needsBackfill.push(t.unitId);
     }
     const backfilled = new Map();

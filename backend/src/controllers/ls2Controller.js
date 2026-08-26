@@ -425,7 +425,13 @@ exports.getVehicleTrack = async (req, res) => {
       const step = Math.ceil(points.length / MAX);
       points = points.filter((_, i) => i % step === 0 || i === points.length - 1);
     }
+    // القصُّ يُعلَن للشاشة لا يُدفَن في السجلّ: مسارٌ ناقصٌ يبدو مسارًا كاملًا
+    // لشاحنةٍ وقفت — والفرق بينهما قرارٌ يُتّخذ.
     const payload = { unitId, from, to, count: points.length, points };
+    if (data && data.truncated) {
+      payload.truncated = true;
+      payload.coveredUntil = data.actualTo ? new Date(data.actualTo * 1000).toISOString() : null;
+    }
     cache.set(cacheKey, payload, 60000);
     res.json(payload);
   } catch (error) {

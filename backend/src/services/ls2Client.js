@@ -218,15 +218,45 @@ async function setServiceDate(unitId, id, atDate) {
  * Load raw messages for a unit over a time interval (epoch seconds). Used for the
  * history/track view. `flags`: 1 = data messages (0x0000 gives all).
  */
+/**
+ * رسائل وحدةٍ في مدًى زمنيّ.
+ *
+ * ── وما يجب أن يُعرَف عن `loadCount` ────────────────────────────────────────
+ * المزوّد يُرجع **الأقدم أوّلًا** ويقصّ ما زاد عن العدد المطلوب من آخر المدى.
+ * فطلبُ شهرٍ بحدٍّ لا يتّسع له لا يُرجع خطأً ولا تحذيرًا — يُرجع أوائل الشهر
+ * ويصمت عن باقيه. ومَن يقرأ الناتج يظنّه المدى كلَّه، فيبني على نصفِه.
+ *
+ * ولذلك يُرفَق `truncated` ومدى ما وصل فعلًا: الرقم الذي يقصّ بصمت أخطر من
+ * الخطأ الصريح، لأن الخطأ يُرى ويُعالَج والقصَّ يُصدَّق.
+ *
+ * (المعدّل الفعليّ اليوم ~٨٣٠ رسالة/يوم لأنشط مركبة، فالحدود القائمة تتّسع
+ * لأضعافه — وهذا قياسٌ لا افتراض. لكنّ الحارس يبقى لأن المعدّل يتغيّر بتغيّر
+ * إعدادات الأجهزة، ولا أحد سيتذكّر مراجعة هذه الأرقام يومها.)
+ */
 async function loadMessages(unitId, timeFrom, timeTo, count = 5000) {
-  return call('messages/load_interval', {
+  const from = Math.floor(timeFrom);
+  const to = Math.floor(timeTo);
+  const res = await call('messages/load_interval', {
     itemId: Number(unitId),
-    timeFrom: Math.floor(timeFrom),
-    timeTo: Math.floor(timeTo),
+    timeFrom: from,
+    timeTo: to,
     flags: 0,
     flagsMask: 0,
     loadCount: count,
   });
+  const msgs = (res && res.messages) || [];
+  if (msgs.length >= count) {
+    const lastT = msgs[msgs.length - 1] && msgs[msgs.length - 1].t;
+    res.truncated = true;
+    res.requestedTo = to;
+    res.actualTo = lastT || null;
+    // يُسجَّل مرّةً واحدة لا مع كل نداء: هذا ما ينبغي أن يُلاحَظ قبل أن يُصدَّق
+    // ناتجٌ ناقص.
+    console.warn(`[ls2Client] loadMessages truncated at ${count} for unit ${unitId} — ` +
+      `requested up to ${new Date(to * 1000).toISOString()}, got up to ` +
+      `${lastT ? new Date(lastT * 1000).toISOString() : 'unknown'}`);
+  }
+  return res;
 }
 
 /**

@@ -58,7 +58,12 @@ function detectSensorChange(tel, vehicleDoc, status, now) {
   const notice = vehicleDoc?.sensorChangeNotice || null;
   if (notice && new Date(notice.expiresAt) <= now) out.sensorChangeNotice = null;
 
-  if (status === 'offline' || !tel.ignition || !slots.length) return out;
+  // ── والقراءة المحمولة لا تُغذّي الكاشف ───────────────────────────────────
+  // الكاشف يقيس **تغيّرًا** في عدد ما يبثّ. وقراءةٌ محمولةٌ من نبضةٍ سابقة تعيد
+  // الرقمَ نفسه مهما تغيّر الواقع — فلو ركّبت الورشةُ حسّاسًا جديدًا وقت حملِ
+  // القراءة لبقي الأساس ثابتًا ولم يُلاحَظ التركيب. ولو انقطع حسّاسٌ لبقي
+  // الأساس ثابتًا ولم يُلاحَظ الانقطاع. الصمتُ في الحالتين خطأ.
+  if (status === 'offline' || !tel.ignition || !slots.length || tel.tiresCarriedOver) return out;
   const reporting = slots.filter((t) => t.tempC != null || (t.pressurePsi != null && t.pressurePsi > 10)).length;
   const prev = vehicleDoc?.tireReporting || null;
 

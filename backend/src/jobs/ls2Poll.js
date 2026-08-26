@@ -146,9 +146,18 @@ async function tick() {
     for (const unit of units) {
       const t = normalize(unit);
       if (!t) continue;
-      if (t.tires && t.tires.length) continue;
+      // ── متى يُقرَأ السجلّ؟ حين ينقص عمّا عُرف لهذه المركبة، لا عن رقمٍ ثابت ──
+      // «أقلّ من اثنتي عشرة» رقمٌ مكتوب، وبعض الشاحنات ستُّ قنواتٍ مشروعة (رأسٌ
+      // بلا تيدر) — فتُستدعى لها السجلّ كلَّ مرّةٍ بلا فائدة، وتُثقل المزوّد أبدًا.
+      //
+      // `tireReporting.baseline` هو ما استقرّ بثُّه لهذه المركبة بعينها. فالنقصُ
+      // عنه هو الشذوذ الذي يستحقّ مراجعة السجلّ؛ وما لا أساس له بعد يُقرأ مرّةً
+      // ليُبنى أساسُه.
       const doc = vById.get(t.unitId);
-      if (doc && Array.isArray(doc.tires) && doc.tires.length) continue;  // له مخزون، يكفيه الحمل
+      const have = Math.max((t.tires || []).length, (doc && doc.tires ? doc.tires.length : 0));
+      const baseline = doc?.tireReporting?.baseline ?? null;
+      if (baseline != null && have >= baseline) continue;   // ليس ناقصًا عن عادته
+      if (baseline == null && have > 0) continue;           // بلا أساس بعد، ومعه شيء
       needsBackfill.push(t.unitId);
     }
     const backfilled = new Map();
@@ -196,9 +205,17 @@ async function tick() {
       // فالقراءة الأخيرة المعروفة تبقى حتى تحلّ محلَّها قراءةٌ أحدث. وغيابُ
       // القراءة عن رسالةٍ ليس نفيًا لوجود الحسّاس؛ النفيُ أن تصل رسالة إطاراتٍ
       // ناقصةً منها.
-      // من السجلّ أوّلًا لمن لا مخزون له، ثم الحمل من المخزون.
+      // ── «أقلّ ممّا وصل» يُعامَل كـ«لم يصل» ──────────────────────────────────
+      // الرسالة قد تحمل قناةً واحدةً بقيمٍ فاسدة (حرارة ١٧٧٤°) بينما الجهاز
+      // يبثّ اثنتي عشرة قناةً سليمة في رسائل أخرى. والشرط «إن كانت فارغة» لا
+      // يُنقذ ذلك: واحدةٌ ليست فارغة، فتُخزَّن الواحدة وتُمحى الإحدى عشرة.
+      //
+      // قِيس: شاحنةٌ يصلها اثنتا عشرة قناةً في ثلاثة أيام ونعرض لها واحدة.
+      // فالمقارنة صارت بالعدد لا بالوجود: ما نملكه أكثرَ ممّا وصل الآن يبقى.
+      const carried = vehicleDoc && Array.isArray(vehicleDoc.tires) ? vehicleDoc.tires : [];
+      const fresh = tel.tires || [];
       const fromLog = backfilled.get(tel.unitId);
-      if ((!tel.tires || !tel.tires.length) && fromLog && fromLog.length) {
+      if (fresh.length < (fromLog ? fromLog.length : 0)) {
         tel.tires = fromLog;
         tel.tireCount = fromLog.length;
         const temps = fromLog.map((t) => t.tempC).filter((v) => v != null);
@@ -210,7 +227,7 @@ async function tick() {
         tel.tireFaults = fromLog.filter((t) => t.fault).length;
         tel.tiresCarriedOver = true;
       }
-      if ((!tel.tires || !tel.tires.length) && vehicleDoc && Array.isArray(vehicleDoc.tires) && vehicleDoc.tires.length) {
+      if ((tel.tires || []).length < carried.length) {
         tel.tires = vehicleDoc.tires;
         tel.tireCount = vehicleDoc.tireCount;
         tel.maxTireTempC = vehicleDoc.maxTireTempC;

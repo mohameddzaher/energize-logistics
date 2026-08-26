@@ -27,6 +27,7 @@ const supervisorVehicleIds = async (req) => {
 //   · everything that happens to a shipment lands in its event log.
 
 const cache = require('../utils/ttlCache');
+const { cappedFind, askedLimit, CAP_NOTE_AR } = require('../utils/capped');
 // Every fleet mutation flows through emit() → also drop the cached board and
 // dashboard so the socket-triggered refetch returns the post-mutation state.
 const emit = (event, payload = {}) => {
@@ -1366,13 +1367,19 @@ exports.getCustomerProfile = async (req, res) => {
     const scope = await supervisorVehicleIds(req);
     const q = { customer: customer._id };
     if (scope) q.vehicle = { $in: scope };
-    const shipments = await FleetShipment.find(q)
-      .select('waybillNumber vehiclePlate driverName fromCity toCity status price fullRent loadType rentType paymentType customerType loadDate createdAt supervisorName')
-      .sort({ loadDate: -1, createdAt: -1 }).limit(1000).lean();
+    // الحدُّ يُعلن نفسه: عميلٌ قديمٌ كثيرُ الحمولات سيتجاوز الألف يومًا، وحينها
+    // يعرض الملفّ آخرَ ألفٍ ويبدو كأنّه كلُّ تاريخه — فيُقرأ دخلُه ناقصًا.
+    const { rows: shipments, truncated: shipmentsTruncated } = await cappedFind(
+      FleetShipment.find(q)
+        .select('waybillNumber vehiclePlate driverName fromCity toCity status price fullRent loadType rentType paymentType customerType loadDate createdAt supervisorName')
+        .sort({ loadDate: -1, createdAt: -1 }),
+      askedLimit(req.query, 1000, 20000),
+    );
     const income = shipments.reduce((a, s) => a + (Number(s.price) || 0), 0);
     const byStatus = {};
     for (const s of shipments) byStatus[s.status] = (byStatus[s.status] || 0) + 1;
     res.json({
+      ...(shipmentsTruncated && { truncated: true, note: CAP_NOTE_AR }),
       customer,
       stats: {
         trips: shipments.length, income,

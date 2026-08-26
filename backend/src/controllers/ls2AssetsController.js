@@ -151,7 +151,9 @@ exports.getVehicleHistory = async (req, res) => {
     const Ls2ServiceLog = require('../models/Ls2ServiceLog');
 
     const [tireEvents, storeOut, issues, repairs, services] = await Promise.all([
-      Ls2AssetEvent.find({ $or: [{ fromPlateKey: key }, { toPlateKey: key }] }).sort({ date: -1 }).limit(500).lean(),
+      // أكثرُ لوحةٍ عليها ثمانمئةٌ وثمانيةٌ وثلاثون حدثًا — تجاوزت الخمسمئة،
+      // فكان سجلّ حركة إطاراتها يظهر ناقصًا وكأنّه كلُّ تاريخها.
+      Ls2AssetEvent.find({ $or: [{ fromPlateKey: key }, { toPlateKey: key }] }).sort({ date: -1 }).limit(10000).lean(),
       Ls2StoreMovement.find({ vehiclePlate: { $nin: ['', null] } }).sort({ createdAt: -1 }).limit(3000).lean(),
       InventoryIssue.find({ vehicleNumber: { $nin: ['', null] } }).sort({ date: -1 }).limit(3000).lean(),
       Ls2Repair.find({ plate: { $nin: ['', null] } }).sort({ date: -1 }).limit(1000).lean(),

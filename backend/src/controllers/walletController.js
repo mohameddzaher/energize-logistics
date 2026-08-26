@@ -947,7 +947,8 @@ exports.getRiskAlerts = async (req, res) => {
       .populate('customer', 'companyName')
       .populate('vendor', 'name')
       .sort({ createdAt: -1 })
-      .limit(100);
+        // محفظةٌ واحدة بلغت المئة بالفعل، فكانت تنبيهاتها تُبتَر عند حدّها.
+        .limit(2000);
 
     // Also get cash difference alerts
     const diffFilter = { cashDifference: { $ne: 0, $exists: true } };

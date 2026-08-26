@@ -219,44 +219,68 @@ async function setServiceDate(unitId, id, atDate) {
  * history/track view. `flags`: 1 = data messages (0x0000 gives all).
  */
 /**
- * رسائل وحدةٍ في مدًى زمنيّ.
+ * رسائل وحدةٍ في مدًى زمنيّ — بالترقيم، فلا سقف يكسر مع نموّ البيانات.
  *
- * ── وما يجب أن يُعرَف عن `loadCount` ────────────────────────────────────────
- * المزوّد يُرجع **الأقدم أوّلًا** ويقصّ ما زاد عن العدد المطلوب من آخر المدى.
- * فطلبُ شهرٍ بحدٍّ لا يتّسع له لا يُرجع خطأً ولا تحذيرًا — يُرجع أوائل الشهر
- * ويصمت عن باقيه. ومَن يقرأ الناتج يظنّه المدى كلَّه، فيبني على نصفِه.
+ * ── لماذا لا يكفي عددٌ كبير ──────────────────────────────────────────────────
+ * المزوّد يُرجع **الأقدم أوّلًا** ويقصّ ما زاد عن العدد المطلوب من آخر المدى. فأيّ
+ * سقفٍ نكتبه اليوم يصير ضيّقًا يومًا: تكبر الأجهزة، ويزيد معدّل الإرسال، ويطول
+ * المدى المطلوب. والأسوأ أن القصّ **صامت**: لا خطأ ولا تحذير، بل أوائل المدى
+ * وصمتٌ عن باقيه — فيُقرأ الناقصُ كاملًا ويُبنى عليه.
  *
- * ولذلك يُرفَق `truncated` ومدى ما وصل فعلًا: الرقم الذي يقصّ بصمت أخطر من
- * الخطأ الصريح، لأن الخطأ يُرى ويُعالَج والقصَّ يُصدَّق.
+ * وقعتُ فيه بنفسي: قرأتُ خمسة آلاف رسالةٍ لشاحنةٍ فظننتُ حسّاساتها صمتت منذ
+ * أسبوع، والحقيقة أن دفعتي انتهت هناك.
  *
- * (المعدّل الفعليّ اليوم ~٨٣٠ رسالة/يوم لأنشط مركبة، فالحدود القائمة تتّسع
- * لأضعافه — وهذا قياسٌ لا افتراض. لكنّ الحارس يبقى لأن المعدّل يتغيّر بتغيّر
- * إعدادات الأجهزة، ولا أحد سيتذكّر مراجعة هذه الأرقام يومها.)
+ * فبدل السقف: يُطلَب المدى على دفعات، كلُّ دفعةٍ تبدأ من حيث انتهت سابقتها،
+ * حتى يعود المزوّد بأقلّ من حجم الدفعة — وذلك وحده دليلُ الاكتمال.
+ *
+ * `maxMessages` سقفُ أمانٍ لا سقفُ بيانات: يمنع نداءً خاطئًا (مدى عشر سنوات)
+ * من ابتلاع الذاكرة، ويُعلَن صراحةً في `truncated` إن بُلِغ — فلا يُقصّ شيءٌ
+ * بصمتٍ أبدًا.
  */
-async function loadMessages(unitId, timeFrom, timeTo, count = 5000) {
+async function loadMessages(unitId, timeFrom, timeTo, maxMessages = 500000) {
   const from = Math.floor(timeFrom);
   const to = Math.floor(timeTo);
-  const res = await call('messages/load_interval', {
-    itemId: Number(unitId),
-    timeFrom: from,
-    timeTo: to,
-    flags: 0,
-    flagsMask: 0,
-    loadCount: count,
-  });
-  const msgs = (res && res.messages) || [];
-  if (msgs.length >= count) {
-    const lastT = msgs[msgs.length - 1] && msgs[msgs.length - 1].t;
-    res.truncated = true;
-    res.requestedTo = to;
-    res.actualTo = lastT || null;
-    // يُسجَّل مرّةً واحدة لا مع كل نداء: هذا ما ينبغي أن يُلاحَظ قبل أن يُصدَّق
-    // ناتجٌ ناقص.
-    console.warn(`[ls2Client] loadMessages truncated at ${count} for unit ${unitId} — ` +
-      `requested up to ${new Date(to * 1000).toISOString()}, got up to ` +
-      `${lastT ? new Date(lastT * 1000).toISOString() : 'unknown'}`);
+  const PAGE = 5000;              // حجم الدفعة الواحدة عند المزوّد
+  const all = [];
+  let cursor = from;
+  let guard = 0;
+
+  while (cursor <= to) {
+    // حدُّ دورانٍ: لو ردّ المزوّد بما لا يتقدّم بالمؤشّر لأيّ سبب، تُقطَع الحلقة
+    // بدل أن تدور إلى الأبد على نداءٍ لا ينتهي.
+    if (++guard > 1000) break;
+
+    const res = await call('messages/load_interval', {
+      itemId: Number(unitId),
+      timeFrom: cursor,
+      timeTo: to,
+      flags: 0,
+      flagsMask: 0,
+      loadCount: PAGE,
+    });
+    const page = (res && res.messages) || [];
+    if (!page.length) break;
+
+    // الدفعات تتداخل عند الحدّ (نفس الثانية)، فتُسقَط المكرّرات بالطابع الزمنيّ.
+    const startAt = all.length && page[0].t <= all[all.length - 1].t
+      ? page.findIndex((m) => m.t > all[all.length - 1].t)
+      : 0;
+    if (startAt === -1) break;                 // الدفعة كلُّها مكرّرة: انتهينا
+    for (let i = startAt; i < page.length; i++) all.push(page[i]);
+
+    if (page.length < PAGE) break;             // دفعةٌ ناقصة = بلغنا آخر المدى
+    if (all.length >= maxMessages) {
+      const lastT = all[all.length - 1] && all[all.length - 1].t;
+      console.warn(`[ls2Client] loadMessages hit the ${maxMessages} safety cap for unit ${unitId} — ` +
+        `covered up to ${lastT ? new Date(lastT * 1000).toISOString() : 'unknown'} of ` +
+        `${new Date(to * 1000).toISOString()}`);
+      return { messages: all, count: all.length, truncated: true, requestedTo: to, actualTo: lastT || null };
+    }
+    const nextT = page[page.length - 1].t;
+    cursor = nextT > cursor ? nextT : cursor + 1;   // ضمانُ التقدّم
   }
-  return res;
+
+  return { messages: all, count: all.length, truncated: false };
 }
 
 /**

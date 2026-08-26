@@ -411,7 +411,10 @@ exports.getVehicleTrack = async (req, res) => {
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
 
-    const data = await client.loadMessages(unitId, cairoEpoch(from), cairoEpoch(to, true), 20000);
+    // بلا سقف: القارئ يرقّم حتى يستوفي المدى مهما طال. والسقف القديم (عشرون
+    // ألفًا) كان يكفي اليوم ويضيق مع أوّل زيادةٍ في معدّل الإرسال أو في المدى
+    // المطلوب — ويقصّ حينها بصمت، فيبدو المسار الناقص مسارًا كاملًا لشاحنةٍ وقفت.
+    const data = await client.loadMessages(unitId, cairoEpoch(from), cairoEpoch(to, true));
     const msgs = (data && data.messages) || [];
     let points = [];
     for (const m of msgs) {

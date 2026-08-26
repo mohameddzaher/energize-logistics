@@ -11,6 +11,7 @@ const EmployeeDocument = require('../models/EmployeeDocument');
 const EmployeeRenewal = require('../models/EmployeeRenewal');
 const AuditLog = require('../models/AuditLog');
 const logAudit = require('../utils/auditLogger');
+const { cappedFind, askedLimit, CAP_NOTE_AR } = require('../utils/capped');
 const { saveEmployeeFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
 const { emitToUser } = require('../websocket/socketManager');
@@ -509,9 +510,15 @@ exports.deleteDocument = async (req, res) => {
 exports.getEmployeeAudit = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
-    const logs = await AuditLog.find({ entity: 'Employee', entityId: req.params.id })
-      .populate('user', 'firstName lastName role').sort({ createdAt: -1 }).limit(300).lean();
-    res.json({ logs });
+    // سجلُّ موظّفٍ واحد بلغ مئتين وثلاثةً وتسعين تعديلًا تحت سقف الثلاثمئة —
+      // على بُعد سبعةٍ من أن يبتر تاريخَه بصمت. والسقف يُعلن نفسه الآن.
+      const CAP = askedLimit(req.query, 2000, 20000);
+      const { rows: logs, truncated } = await cappedFind(
+        AuditLog.find({ entity: 'Employee', entityId: req.params.id })
+          .populate('user', 'firstName lastName role').sort({ createdAt: -1 }),
+        CAP,
+      );
+      res.json({ logs, ...(truncated && { truncated: true, limit: CAP, note: CAP_NOTE_AR }) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load history' });
   }

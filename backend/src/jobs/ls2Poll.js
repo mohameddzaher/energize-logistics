@@ -157,7 +157,9 @@ async function tick() {
       const from = to - 6 * 3600;   // ستّ ساعات تكفي لالتقاط رسالة إطاراتٍ واحدة
       for (const id of needsBackfill) {
         try {
-          const r = await client.loadMessages(id, from, to, 1000);
+          // النافذة ستُّ ساعاتٍ ومعدّلُ أنشط مركبةٍ ~٢١٠ رسالةً فيها، فدفعةٌ
+          // واحدة تكفيها بفارقٍ كبير — ولا داعيَ لترقيمٍ يُثقل المزوّد كلّ نبضة.
+          const r = await client.loadMessages(id, from, to, 5000);
           const msgs = (r && r.messages) || [];
           // الأحدث أوّلًا: نريد آخر قراءةٍ لا أوّلها.
           for (let i = msgs.length - 1; i >= 0; i--) {

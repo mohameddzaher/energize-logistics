@@ -81,6 +81,28 @@ export interface CustodyItem {
 // holder yet — so it reuses the shape rather than inventing a parallel type.
 export type StockItem = CustodyItem;
 
+// ── أعداد شاشة العهد ────────────────────────────────────────────────────────
+// الخادم يعيدها مع الصفوف محسوبةً على نفس الفلتر، فلا تشتقّها الشاشة ثانيةً.
+// اشتقاقها هنا هو ما جعل الكارت يقول ٦٨ ويفتح ٦: العدّ كان يُحسب على السجل
+// كله والجدول تحته مفلتر.
+export interface CustodyCounts {
+  buckets: { key: string; nameAr: string; nameEn: string; count: number }[];
+  byStatus: { assigned: number; in_stock: number; returned: number };
+  /** تفصيل دلو «أخرى» بعد بقية الفلاتر. */
+  otherKinds: CountRow[];
+  conditions: CountRow[];
+  /** عدد الصفوف المعروضة وقيمتها — كلاهما يصف الجدول لا السجل. */
+  total: number;
+  value: number;
+}
+
+export interface CustodyListResponse {
+  items: CustodyItem[];
+  counts?: CustodyCounts;
+  /** إجمالي السجل كله — يُعرض بجانب الرقم المفلتر ليُعرف من أيٍّ اقتُطع. */
+  register?: { total: number; assigned: number };
+}
+
 export interface ItSystem {
   _id: string;
   name: string;

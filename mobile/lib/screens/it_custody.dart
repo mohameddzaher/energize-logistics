@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
@@ -7,7 +9,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
 /// عهد الأجهزة (IT) — the custody register with the full action set:
-/// تسليم جديد، نقل، إرجاع للمستودع، إبلاغ تلف/فقد، إخراج من الخدمة، السجل.
+/// تسليم جديد، نقل، إرجاع للمستودع، تالف، السجل.
 class ItCustodyScreen extends StatefulWidget {
   const ItCustodyScreen({super.key});
   @override
@@ -112,13 +114,22 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // الفلاتر كلها تعمل على مجموعة محمّلة مرة واحدة: الكروت والأزرار تعرض
-  // إجمالياتها من نفس المجموعة، ولو فلتر كلٌّ منها على الخادم لعرض كل كارت عدداً
-  // محسوباً بعد فلتر الآخر — أي أعداداً لا تجمع على الكل.
+  // الفلاتر كلها تُرسَل إلى الخادم، ويعود معها عددُ كل كارت وكل زر محسوباً على
+  // نفس المجموعة المفلترة. كانت الشاشة تحمّل السجل كله وتحسب الإجماليات عليه
+  // بينما القائمة تحتها مفلترة، فيضغط المستخدم «المستودع» فتتبدّل الصفوف ويبقى
+  // كارت «لابتوبات» على ٦٨ وتحته ستة — رقمٌ لا يصف ما تحته.
   String _status = '';
   String _bucket = '';
   String _otherType = '';
   String _condition = '';
+  Map<String, int> _bucketCounts = {};
+  Map<String, int> _statusCounts = {};
+  List<Map<String, dynamic>> _otherKinds = [];
+  List<Map<String, dynamic>> _conditionCounts = [];
+  // إجمالي السجل يُعرض بجانب الرقم المفلتر ليُعرف من أيٍّ اقتُطع، لا ليحلّ محلّه.
+  int _registerTotal = 0;
+  // الكتابة تُطلق طلباً لكل حرف لولا التأخير.
+  Timer? _debounce;
   late final void Function() _onLive;
 
   @override
@@ -131,17 +142,51 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     Live.instance.off('it:updated', _onLive);
     super.dispose();
   }
+
+  void _searchChanged(String v) {
+    _q = v;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), _load);
+  }
+
+  int _n(dynamic v) => v is num ? v.toInt() : 0;
 
   Future<void> _load() async {
     try {
       // `scope=all` يضم المستودع: زر «المستودع» وكارت كل فئة يجب أن يعدّا
       // المخزون أيضاً، وبدونه تعرض الشاشة إجماليات ينقصها ثلث السجل.
-      final d = await Api.instance.get('/api/it/custody?scope=all');
+      final qs = <String, String>{'scope': 'all'};
+      if (_bucket.isNotEmpty) qs['bucket'] = _bucket;
+      // النوع المفصّل لا معنى له خارج دلو «أخرى».
+      if (_bucket == 'other' && _otherType.isNotEmpty) qs['otherType'] = _otherType;
+      if (_status.isNotEmpty) qs['status'] = _status;
+      if (_condition.isNotEmpty) qs['condition'] = _condition;
+      if (_q.trim().isNotEmpty) qs['q'] = _q.trim();
+      final query = qs.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&');
+      final d = await Api.instance.get('/api/it/custody?$query');
       if (!mounted) return;
-      setState(() { _rows = List<Map<String, dynamic>>.from(d['items'] ?? []); _loading = false; _error = null; });
+      final counts = (d['counts'] as Map?) ?? const {};
+      final reg = (d['register'] as Map?) ?? const {};
+      setState(() {
+        _rows = List<Map<String, dynamic>>.from(d['items'] ?? []);
+        _bucketCounts = {
+          for (final b in List<Map<String, dynamic>>.from(counts['buckets'] ?? []))
+            (b['key'] ?? '').toString(): _n(b['count']),
+        };
+        _statusCounts = {
+          for (final e in ((counts['byStatus'] as Map?) ?? const {}).entries)
+            e.key.toString(): _n(e.value),
+        };
+        _otherKinds = List<Map<String, dynamic>>.from(counts['otherKinds'] ?? []);
+        _conditionCounts = List<Map<String, dynamic>>.from(counts['conditions'] ?? []);
+        _registerTotal = _n(reg['total']);
+        _loading = false;
+        _error = null;
+      });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
@@ -151,21 +196,11 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final q = _fold(_q.trim());
-    final filtered = _rows.where((r) {
-      if (_bucket.isNotEmpty && bucketOf(r['type']) != _bucket) return false;
-      if (_bucket == 'other' && _otherType.isNotEmpty && r['type'] != _otherType) return false;
-      if (_status.isNotEmpty && r['status'] != _status) return false;
-      if (_condition.isNotEmpty && r['condition'] != _condition) return false;
-      if (q.isEmpty) return true;
-      return [r['name'], r['serialNumber'], r['brand'], empName(r['employee'])]
-          .any((x) => _fold((x ?? '').toString()).contains(q));
-    }).toList();
-
-    // الإجماليات تُحسب على المجموعة كاملة قبل أي فلتر — كارت يتغيّر رقمه كلما
-    // فُلترت القائمة لا يصلح كإجمالي.
-    int countBucket(String k) => _rows.where((r) => bucketOf(r['type']) == k).length;
-    int countStatus(String k) => _rows.where((r) => r['status'] == k).length;
+    // الصفوف تأتي مفلترة من الخادم، والأعداد معها محسوبةً على المجموعة نفسها:
+    // كل كارت يقول بالضبط كم صفاً سيفتحه الضغط عليه.
+    final filtered = _rows;
+    int countBucket(String k) => _bucketCounts[k] ?? 0;
+    int countStatus(String k) => _statusCounts[k] ?? 0;
 
     // «خارج الخدمة» صارت «تالف» بطلب القسم: الأولى تصف موقعاً، وما يعنيه
     // المستودع فعلاً هو أن الصنف لم يعد صالحاً للتسليم.
@@ -175,15 +210,10 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
       'returned': (tr('تالف', 'Faulty'), T.danger),
     };
 
-    // الفلتر الثاني يعرض ما هو موجود فعلاً فقط: عرض كل نوع ممكن يعني خيارات
-    // نتيجتها صفر.
-    final otherKinds = otherBucketTypes
-        .where((t) => _rows.any((r) => r['type'] == t))
-        .toList();
-
-    final conditionKeys = custodyConditions.keys
-        .where((k) => _rows.any((r) => r['condition'] == k))
-        .toList();
+    // الفلتر الثاني يعرض ما هو موجود فعلاً بعد بقية الفلاتر فقط: خيارٌ نتيجته
+    // صفر ليس خياراً.
+    final otherKinds = _otherKinds.map((k) => (k['key'] ?? '').toString()).toList();
+    final conditionKeys = _conditionCounts.map((k) => (k['key'] ?? '').toString()).toList();
 
     return AppScaffold(
       title: Text(tr('عهد الأجهزة', 'IT Custody')),
@@ -200,8 +230,20 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
                     child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
+                      onChanged: _searchChanged,
                       decoration: InputDecoration(hintText: tr('ابحث بالاسم أو الرقم التسلسلي أو الموظف…', 'Search…'), prefixIcon: const Icon(Icons.search)),
+                    ),
+                  ),
+                  // الرقمان جنباً إلى جنب عمداً: الأول يصف القائمة، والثاني يقول
+                  // من أيٍّ اقتُطعت — وبلا الثاني لا يعرف أحد أن الفلتر أخفى شيئاً.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(
+                        tr('المعروض ${filtered.length} من $_registerTotal', 'Showing ${filtered.length} of $_registerTotal'),
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkSoft),
+                      ),
                     ),
                   ),
                   // كروت الفئات الخمس بإجمالياتها. الضغط يفلتر، والضغط ثانيةً يلغي.
@@ -216,7 +258,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                         final b = custodyBuckets[i];
                         final on = _bucket == b.key;
                         return Pressable(
-                          onTap: () => setState(() { _bucket = on ? '' : b.key; _otherType = ''; }),
+                          onTap: () { setState(() { _bucket = on ? '' : b.key; _otherType = ''; }); _load(); },
                           child: Container(
                             width: 118,
                             padding: const EdgeInsets.all(10),
@@ -249,7 +291,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                         final on = _otherType == t;
                         return FilterChip(
                           selected: on,
-                          onSelected: (_) => setState(() => _otherType = on ? '' : t),
+                          onSelected: (_) { setState(() => _otherType = on ? '' : t); _load(); },
                           label: Text(custodyTypeLabel(t)),
                           labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: on ? Colors.white : T.inkSoft),
                           selectedColor: T.orange,
@@ -271,7 +313,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                           child: Padding(
                             padding: const EdgeInsets.only(left: 6),
                             child: Pressable(
-                              onTap: () => setState(() => _status = selected ? '' : e.key),
+                              onTap: () { setState(() => _status = selected ? '' : e.key); _load(); },
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
                                 decoration: BoxDecoration(
@@ -301,7 +343,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                         final on = _condition == k;
                         return FilterChip(
                           selected: on,
-                          onSelected: (_) => setState(() => _condition = on ? '' : k),
+                          onSelected: (_) { setState(() => _condition = on ? '' : k); _load(); },
                           label: Text(conditionLabel(k)),
                           labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: on ? Colors.white : T.inkSoft),
                           selectedColor: T.navy,
@@ -530,10 +572,11 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                 _action(c, Icons.swap_horiz_rounded, tr('نقل إلى موظف', 'Transfer'), T.navy, () => _transfer(context, r)),
               if (assigned)
                 _action(c, Icons.assignment_return_outlined, tr('إرجاع للمستودع', 'Return'), T.success, () => _returnItem(context, r)),
-              if (assigned)
-                _action(c, Icons.report_gmailerrorred_outlined, tr('إبلاغ تلف/فقد', 'Report'), T.warn, () => _report(context, r)),
+              // «تالف»: زر واحد بالاسم الذي يحمله زر الفلتر نفسه. كان زرَّين —
+              // أحدهما يكتب بلاغاً ويترك الصنف بعهدة الموظف، والآخر ينقل الحالة
+              // بلا سبب ولا خصم — والمدمَج يفعل الاثنين.
               if (r['status'] != 'returned')
-                _action(c, Icons.block_outlined, tr('تسجيل كتالف', 'Mark faulty'), T.danger, () => _retire(context, r)),
+                _action(c, Icons.report_gmailerrorred_outlined, tr('تالف', 'Faulty'), T.danger, () => _faulty(context, r)),
               _action(c, Icons.history_rounded, tr('السجل', 'History'), T.violet, () => _history(context, r)),
             ]),
             const SizedBox(height: 6),
@@ -588,13 +631,16 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
         tr('أُرجعت العهدة إلى المستودع', 'Returned to stock'));
   }
 
-  Future<void> _report(BuildContext context, Map<String, dynamic> r) async {
+  /// «تالف» — الإجراء الذي كان زرَّين. يكتب البلاغ بسببه وخصمه، وينقل الصنف
+  /// إلى «تالف» فيظهر تحت زر الفلتر الذي يحمل الاسم نفسه.
+  Future<void> _faulty(BuildContext context, Map<String, dynamic> r) async {
     String kind = 'damaged';
     final notes = TextEditingController();
+    final cost = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(builder: (c, setS) => AlertDialog(
-        title: Text(tr('إبلاغ عن الجهاز', 'Report item')),
+        title: Text(tr('تالف', 'Faulty')),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           SegmentedButton<String>(
             segments: [
@@ -605,34 +651,39 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
             onSelectionChanged: (s) => setS(() => kind = s.first),
           ),
           const SizedBox(height: 10),
+          Text(
+            kind == 'damaged'
+                ? tr('يخرج الصنف من التداول ويظهر تحت «تالف». يبقى اسم من كان يحمله مسجّلاً عليه ولا يُحسب عليه عهدةً قائمة.',
+                    'The item leaves circulation and appears under "Faulty". Who was holding it stays on the record, but it no longer counts as outstanding custody.')
+                : tr('يخرج الصنف من التداول لأنه لم يعد موجوداً، ويبقى البلاغ باسم من كان يحمله.',
+                    'The item leaves circulation because it no longer exists; the report stays under whoever was holding it.'),
+            style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
+          ),
+          const SizedBox(height: 10),
           TextField(controller: notes, decoration: InputDecoration(labelText: tr('التفاصيل', 'Details'))),
+          const SizedBox(height: 10),
+          TextField(
+            controller: cost,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: tr('قيمة الخصم (إن وُجد)', 'Amount charged (if any)')),
+          ),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إبلاغ', 'Report'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: T.danger),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(tr('تسجيل', 'Record')),
+          ),
         ],
       )),
     );
     if (ok != true) return;
-    await _post('/api/it/custody/${r['_id']}/report',
-        {'kind': kind, if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim()},
-        tr('سُجِّل البلاغ', 'Report recorded'));
-  }
-
-  Future<void> _retire(BuildContext context, Map<String, dynamic> r) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr('إخراج من الخدمة', 'Retire item')),
-        content: Text(tr('سيُخرَج الجهاز من الخدمة نهائيًا. متابعة؟', 'The item will be retired permanently. Continue?')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('إخراج', 'Retire'))),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    await _post('/api/it/custody/${r['_id']}/retire', {}, tr('أُخرج الجهاز من الخدمة', 'Item retired'));
+    await _post('/api/it/custody/${r['_id']}/report', {
+      'kind': kind,
+      if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim(),
+      if (double.tryParse(cost.text.trim()) != null) 'cost': double.parse(cost.text.trim()),
+    }, tr('سُجِّل الصنف كتالف', 'Recorded as faulty'));
   }
 
   Future<void> _history(BuildContext context, Map<String, dynamic> r) async {
@@ -648,6 +699,8 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
       'returned': ('إرجاع', 'Returned', T.info),
       'damaged': ('تلف', 'Damaged', T.warn),
       'lost': ('فقد', 'Lost', T.danger),
+      // «retired» لم تعد تُكتب: «تالف» صارت إجراءً واحداً يكتب damaged/lost.
+      // تبقى هنا لأن في السجل حركاتٍ قديمة كُتبت بها.
       'retired': ('إخراج من الخدمة', 'Retired', T.inkFaint),
     };
     showModalBottomSheet(

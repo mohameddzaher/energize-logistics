@@ -1,12 +1,12 @@
 'use client';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Laptop, Plus, Edit, Undo2, Trash2, Check, Boxes, ArrowLeftRight, AlertTriangle, Archive, History, ClipboardCheck } from 'lucide-react';
+import { Laptop, Plus, Edit, Undo2, Trash2, Check, Boxes, ArrowLeftRight, AlertTriangle, History, ClipboardCheck } from 'lucide-react';
 import { exportToExcel } from '@/utils/exportExcel';
 import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
@@ -14,9 +14,9 @@ import {
 } from '@/components/hr/HRKit';
 import { useAssetVocab } from '@/hooks/useAssetVocab';
 import {
-  canViewIt, CustodyItem, StockItem, EmployeeRef, CUSTODY_TYPES, CUSTODY_STATUSES,
-  CUSTODY_BUCKETS, OTHER_BUCKET_TYPES, bucketOf, custodyStatusLabel, deriveAssetName,
-  empName, fmtDate, fmtMoney, today, idOf,
+  canViewIt, CustodyItem, StockItem, EmployeeRef, CustodyCounts, CustodyListResponse,
+  CUSTODY_TYPES, CUSTODY_STATUSES, CUSTODY_BUCKETS, OTHER_BUCKET_TYPES, bucketOf,
+  custodyStatusLabel, deriveAssetName, empName, fmtDate, fmtMoney, today, idOf,
 } from '@/lib/it';
 import { CustodyCards, CustodyStateButtons } from '@/components/it/CustodyOverview';
 
@@ -35,6 +35,8 @@ const ACTION_LABEL: Record<string, { en: string; ar: string }> = {
   returned: { en: 'Returned to store', ar: 'أُعيد إلى المستودع' },
   damaged: { en: 'Reported damaged', ar: 'أُبلغ عن تلفه' },
   lost: { en: 'Reported lost', ar: 'أُبلغ عن فقده' },
+  // «retired» لم تعد تُكتب: «تالف» صارت إجراءً واحداً يكتب damaged/lost. تبقى
+  // هنا لأن في السجل حركاتٍ قديمة كُتبت بها، وحذفُ الاسم يجعلها تُقرأ رمزاً.
   retired: { en: 'Recorded faulty', ar: 'سُجّل كتالف' },
   updated: { en: 'Details updated', ar: 'عُدّلت بياناته' },
 };
@@ -54,9 +56,12 @@ export default function ItCustodyPage() {
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  // الفلاتر كلها تعمل على مجموعة محمّلة مرة واحدة، لا بطلب لكل ضغطة: الكروت
-  // والأزرار تعرض إجمالياتها من نفس المجموعة، فلو فلتر كلٌّ منها على الخادم
-  // لعرض كل كارت عدداً محسوباً بعد فلتر الآخر — أي أعداداً لا تجمع على الكل.
+  // الفلاتر كلها تُرسَل إلى الخادم، ويعود معها عددُ كل كارت وكل زر محسوباً على
+  // نفس المجموعة المفلترة. كانت الشاشة تحمّل السجل كله وتحسب الإجماليات عليه
+  // بينما الجدول تحتها مفلتر، فيضغط المستخدم «المستودع» فتتبدّل الصفوف ويبقى
+  // كارت «لابتوبات» على ٦٨ وتحته ستة — رقمٌ لا يصف ما تحته.
+  const [counts, setCounts] = useState<CustodyCounts | null>(null);
+  const [register, setRegister] = useState({ total: 0, assigned: 0 });
   const [bucket, setBucket] = useState('');
   const [otherType, setOtherType] = useState('');
   const [stateFilter, setStateFilter] = useState('');
@@ -82,9 +87,11 @@ export default function ItCustodyPage() {
   const [transferring, setTransferring] = useState<CustodyItem | null>(null);
   const [transferForm, setTransferForm] = useState({ toEmployee: '', date: '', condition: 'good', notes: '' });
 
-  // Damaged / lost while in someone's hands.
-  const [reporting, setReporting] = useState<CustodyItem | null>(null);
-  const [reportForm, setReportForm] = useState<{ kind: 'damaged' | 'lost'; notes: string; cost: number; date: string }>({ kind: 'damaged', notes: '', cost: 0, date: '' });
+  // «تالف» — إجراء واحد بعد أن كان زرَّين: «الإبلاغ عن تالف» الذي يكتب بلاغاً
+  // ويترك الصنف بعهدة الموظف، و«التحويل إلى تالف» الذي ينقل الحالة بلا سبب ولا
+  // خصم. المدمَج يفعل الاثنين.
+  const [faulty, setFaulty] = useState<CustodyItem | null>(null);
+  const [faultyForm, setFaultyForm] = useState<{ kind: 'damaged' | 'lost'; notes: string; cost: number; date: string }>({ kind: 'damaged', notes: '', cost: 0, date: '' });
 
   // One item's movement trail.
   const [historyOf, setHistoryOf] = useState<CustodyItem | null>(null);
@@ -103,19 +110,38 @@ export default function ItCustodyPage() {
   const params = useSearchParams();
   useEffect(() => {
     const b = params?.get('bucket'); if (b) setBucket(b);
+    const ot = params?.get('otherType'); if (ot) setOtherType(ot);
     const st = params?.get('status'); if (st) setStateFilter(st);
     const c = params?.get('condition'); if (c) setConditionFilter(c);
   }, [params]);
+
+  // الكتابة تُطلق طلباً لكل حرف لولا التأخير، والبحث الآن على الخادم لأن
+  // الأعداد تُحسب عليه معه — فلو بقي البحث في الشاشة وحدها لعادت الأعداد تصف
+  // مجموعةً غير التي في الجدول.
+  const [searchQuery, setSearchQuery] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   // `scope=all` يضم المستودع: زر «المستودع» وكارت كل فئة يجب أن يعدّا المخزون
   // أيضاً، وبدونه تعرض الشاشة إجماليات ينقصها ثلث السجل.
   const load = useCallback(async () => {
     try {
-      const d = await api.get<{ items: CustodyItem[] }>('/api/it/custody?scope=all');
+      const qs = new URLSearchParams({ scope: 'all' });
+      if (bucket) qs.set('bucket', bucket);
+      // النوع المفصّل لا معنى له خارج دلو «أخرى».
+      if (bucket === 'other' && otherType) qs.set('otherType', otherType);
+      if (stateFilter) qs.set('status', stateFilter);
+      if (conditionFilter) qs.set('condition', conditionFilter);
+      if (searchQuery) qs.set('q', searchQuery);
+      const d = await api.get<CustodyListResponse>(`/api/it/custody?${qs.toString()}`);
       setItems(d.items || []);
+      setCounts(d.counts || null);
+      if (d.register) setRegister(d.register);
     } catch {}
     setLoading(false);
-  }, []);
+  }, [bucket, otherType, stateFilter, conditionFilter, searchQuery]);
 
   // What is currently on the shelf and therefore assignable from this page.
   const loadStock = useCallback(async () => {
@@ -223,24 +249,16 @@ export default function ItCustodyPage() {
     setSaving(false);
   };
 
-  const openReport = (a: CustodyItem) => {
-    setReporting(a);
-    setReportForm({ kind: 'damaged', notes: '', cost: 0, date: today() });
+  const openFaulty = (a: CustodyItem) => {
+    setFaulty(a);
+    setFaultyForm({ kind: 'damaged', notes: '', cost: 0, date: today() });
   };
-  const doReport = async () => {
-    if (!reporting) return;
+  const doFaulty = async () => {
+    if (!faulty) return;
     setSaving(true);
-    try { await api.post(`/api/it/custody/${reporting._id}/report`, reportForm); setReporting(null); refresh(); }
+    try { await api.post(`/api/it/custody/${faulty._id}/report`, faultyForm); setFaulty(null); refresh(); }
     catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
-  };
-
-  const doRetire = async (a: CustodyItem) => {
-    if (!(await confirm(ar
-      ? 'تسجيل هذا الصنف كتالف؟ لن يعود إلى المستودع.'
-      : 'Mark this item faulty? It will not go back to the store.'))) return;
-    try { await api.post(`/api/it/custody/${a._id}/retire`, { date: today() }); refresh(); }
-    catch (e: any) { notify(e.message, 'error'); }
   };
 
   const openHistory = async (a: CustodyItem) => {
@@ -282,43 +300,20 @@ export default function ItCustodyPage() {
     setSaving(false);
   };
 
-  // إجماليات الكروت والأزرار تُحسب على المجموعة كاملة قبل أي فلتر — كارت يتغيّر
-  // رقمه كلما فُلتر الجدول لا يصلح كإجمالي.
-  const bucketCounts = useMemo(
-    () => CUSTODY_BUCKETS.map((b) => ({ key: b.key, count: items.filter((a) => bucketOf(a.type) === b.key).length })),
-    [items],
-  );
-  const stateCounts = useMemo(() => ({
-    assigned: items.filter((a) => a.status === 'assigned').length,
-    in_stock: items.filter((a) => a.status === 'in_stock').length,
-    returned: items.filter((a) => a.status === 'returned').length,
-  }), [items]);
-
-  // الفلتر الثاني لدلو «أخرى» يعرض ما هو موجود فعلاً فقط: عرض كل نوع ممكن يعني
-  // خيارات نتيجتها صفر.
-  const otherKinds = useMemo(() => {
-    const m = new Map<string, number>();
-    items.filter((a) => bucketOf(a.type) === 'other')
-      .forEach((a) => m.set(a.type, (m.get(a.type) || 0) + 1));
-    return OTHER_BUCKET_TYPES.filter((t) => m.has(t)).map((t) => ({ key: t, count: m.get(t) || 0 }));
-  }, [items]);
-
-  const filtered = items.filter((a) => {
-    if (bucket && bucketOf(a.type) !== bucket) return false;
-    if (bucket === 'other' && otherType && a.type !== otherType) return false;
-    if (stateFilter && a.status !== stateFilter) return false;
-    if (conditionFilter && a.condition !== conditionFilter) return false;
-    const s = search.trim().toLowerCase();
-    if (!s) return true;
-    return [a.name, a.serialNumber, a.brand, a.specs, empName(a.employee, lang)]
-      .some((v) => (v || '').toLowerCase().includes(s));
-  });
+  // الأعداد كما حسبها الخادم على المجموعة المفلترة نفسها: كل كارت يقول بالضبط
+  // كم صفاً سيفتحه الضغط عليه. اشتقاقها هنا ثانيةً هو ما يعيد الرقمين المختلفين
+  // لشيء واحد.
+  const bucketCounts = counts?.buckets ?? CUSTODY_BUCKETS.map((b) => ({ key: b.key, count: 0 }));
+  const stateCounts = counts?.byStatus ?? { assigned: 0, in_stock: 0, returned: 0 };
+  // الفلتر الثاني لدلو «أخرى» يعرض ما هو موجود فعلاً بعد بقية الفلاتر فقط:
+  // خيارٌ نتيجته صفر ليس خياراً.
+  const otherKinds = counts?.otherKinds ?? [];
 
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
-  const assigned = stateCounts.assigned;
-  const totalValue = items.filter((a) => a.status === 'assigned').reduce((s, a) => s + (a.value || 0), 0);
+  // أزرار الحالة تصف المفلتر، أما ترويسة الصفحة فتصف السجل كله — ولذلك تقرأ من
+  // `register` لا من `stateCounts`، وإلا لتغيّر «عهدة بحوزة الموظفين» بضغطة فلتر.
   const anyFilter = !!(bucket || stateFilter || conditionFilter || otherType || search.trim());
 
   return (
@@ -326,9 +321,9 @@ export default function ItCustodyPage() {
       <PageHeader
         icon={<Laptop className="w-5 h-5" />}
         title={ar ? 'عهد تقنية المعلومات' : 'IT Custody'}
-        subtitle={ar ? `${assigned} عهدة بحوزة الموظفين` : `${assigned} items currently assigned`}
+        subtitle={ar ? `${register.assigned} عهدة بحوزة الموظفين` : `${register.assigned} items currently assigned`}
       >
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(filtered, [
+        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(items, [
           { header: 'Employee', key: 'employee', transform: (v: any) => empName(v, 'en'), width: 24 },
           { header: 'Item', key: 'name', width: 22 },
           { header: 'Type', key: 'type', transform: (v: any) => custodyTypeLabel(v, 'en'), width: 14 },
@@ -402,10 +397,12 @@ export default function ItCustodyPage() {
         )}
       </div>
 
+      {/* الرقمان جنباً إلى جنب عمداً: «المعروض» يصف الجدول، و«إجمالي السجل» يقول
+          من أيٍّ اقتُطع — وبلا الثاني لا يعرف أحد أن الفلتر أخفى شيئاً أصلاً. */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <StatCard label={ar ? 'المعروض الآن' : 'Showing'} value={filtered.length} accent="text-slate-900" />
-        <StatCard label={ar ? 'إجمالي السجل' : 'Total register'} value={items.length} accent="text-slate-900" />
-        <StatCard label={ar ? 'قيمة العهد الحالية' : 'Value assigned'} value={fmtMoney(totalValue)} accent="text-[#f37121]" />
+        <StatCard label={ar ? 'المعروض الآن' : 'Showing'} value={counts?.total ?? items.length} accent="text-slate-900" />
+        <StatCard label={ar ? 'إجمالي السجل' : 'Total register'} value={register.total} accent="text-slate-900" />
+        <StatCard label={ar ? 'قيمة المعروض' : 'Value shown'} value={fmtMoney(counts?.value ?? 0)} accent="text-[#f37121]" />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
@@ -422,9 +419,11 @@ export default function ItCustodyPage() {
             <th className="text-end font-semibold px-4 py-3">{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={9} className="text-center text-slate-500 py-12">{ar ? 'لا توجد عهد مسجّلة.' : 'No custody items found.'}</td></tr>
-            ) : filtered.map((a) => (
+            {items.length === 0 ? (
+              <tr><td colSpan={9} className="text-center text-slate-500 py-12">{anyFilter
+                ? (ar ? 'لا توجد عهد مطابقة للفلتر الحالي.' : 'Nothing matches the current filter.')
+                : (ar ? 'لا توجد عهد مسجّلة.' : 'No custody items found.')}</td></tr>
+            ) : items.map((a) => (
               <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                 <td className="px-4 py-3 text-slate-900 font-medium">{empName(a.employee, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">
@@ -450,9 +449,13 @@ export default function ItCustodyPage() {
                     {a.status === 'assigned' && (<>
                       <button type="button" onClick={() => openReturn(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-green-600 hover:bg-slate-100" title={ar ? 'استرجاع' : 'Return'}><Undo2 className="w-4 h-4" /></button>
                       <button type="button" onClick={() => openTransfer(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-blue-600 hover:bg-slate-100" title={ar ? 'نقل لموظف آخر' : 'Transfer to another employee'}><ArrowLeftRight className="w-4 h-4" /></button>
-                      <button type="button" onClick={() => openReport(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-amber-600 hover:bg-slate-100" title={ar ? 'إبلاغ عن تلف أو فقد' : 'Report damaged or lost'}><AlertTriangle className="w-4 h-4" /></button>
-                      <button type="button" onClick={() => doRetire(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-slate-900 hover:bg-slate-100" title={ar ? 'تسجيل كتالف' : 'Mark faulty'}><Archive className="w-4 h-4" /></button>
                     </>)}
+                    {/* «تالف»: زر واحد بالاسم الذي يحمله زر الفلتر نفسه. ما دام
+                        الصنف لم يُسجَّل تالفاً بعد — سواء بعهدة موظف أو على الرف
+                        — فهذا هو طريقه إلى ذلك. */}
+                    {a.status !== 'returned' && (
+                      <button type="button" onClick={() => openFaulty(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={ar ? 'تالف' : 'Faulty'}><AlertTriangle className="w-4 h-4" /></button>
+                    )}
                     <button type="button" onClick={() => openHistory(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'سجل الحركة' : 'Movement history'}><History className="w-4 h-4" /></button>
                     <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button>
                     <button type="button" onClick={() => remove(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
@@ -690,38 +693,39 @@ export default function ItCustodyPage() {
         </div>
       </Modal>
 
-      {/* Damaged / lost. A damaged device stays on its holder; a lost one leaves
-          circulation, because it cannot be handed to anyone else. */}
-      <Modal open={!!reporting} onClose={() => setReporting(null)} title={ar ? 'إبلاغ عن تلف أو فقد' : 'Report damaged or lost'}
+      {/* «تالف» — الإجراء الذي كان زرَّين. يكتب البلاغ بسببه وخصمه، وينقل الصنف
+          إلى «تالف» فيظهر تحت زر الفلتر الذي يحمل الاسم نفسه. */}
+      <Modal open={!!faulty} onClose={() => setFaulty(null)} title={ar ? 'تالف' : 'Faulty'}
         footer={<>
-          <button type="button" onClick={() => setReporting(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-          <PrimaryButton onClick={doReport} disabled={saving}>
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'تسجيل البلاغ' : 'Record report'}
+          <button type="button" onClick={() => setFaulty(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={doFaulty} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'تسجيل' : 'Record'}
           </PrimaryButton>
         </>}>
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            {reporting?.name} — {empName(reporting?.employee, lang)}
+            {faulty?.name}
+            {faulty?.employee ? ` — ${empName(faulty?.employee, lang)}` : ''}
           </p>
-          <Field label={ar ? 'نوع البلاغ' : 'Report type'}>
-            <Select value={reportForm.kind} onChange={(e) => setReportForm({ ...reportForm, kind: e.target.value as 'damaged' | 'lost' })}>
+          <Field label={ar ? 'ما الذي حدث؟' : 'What happened?'}>
+            <Select value={faultyForm.kind} onChange={(e) => setFaultyForm({ ...faultyForm, kind: e.target.value as 'damaged' | 'lost' })}>
               <option value="damaged">{ar ? 'تالف' : 'Damaged'}</option>
               <option value="lost">{ar ? 'مفقود' : 'Lost'}</option>
             </Select>
           </Field>
           <p className="text-xs text-slate-500">
-            {reportForm.kind === 'damaged'
-              ? (ar ? 'الصنف يظل بعهدة الموظف وتتغير حالته إلى "تالف".' : 'The item stays with the employee and its condition becomes "damaged".')
-              : (ar ? 'الصنف يخرج من التداول لأنه لم يعد موجوداً، ويظل البلاغ مسجلاً على الموظف.' : 'The item leaves circulation because it no longer exists; the report stays on the employee\u2019s record.')}
+            {faultyForm.kind === 'damaged'
+              ? (ar ? 'يخرج الصنف من التداول ويظهر تحت «تالف»، وتصير حالته الفنية «تالف». يبقى اسم من كان يحمله مسجّلاً عليه ولا يُحسب عليه عهدةً قائمة.' : 'The item leaves circulation and appears under "Faulty", with its condition set to damaged. Who was holding it stays on the record, but it no longer counts as outstanding custody.')
+              : (ar ? 'يخرج الصنف من التداول لأنه لم يعد موجوداً، ويبقى البلاغ باسم من كان يحمله.' : 'The item leaves circulation because it no longer exists; the report stays under whoever was holding it.')}
           </p>
-          <Field label={ar ? 'تاريخ البلاغ' : 'Report date'}>
-            <TextInput type="date" value={reportForm.date} onChange={(e) => setReportForm({ ...reportForm, date: e.target.value })} />
+          <Field label={ar ? 'التاريخ' : 'Date'}>
+            <TextInput type="date" value={faultyForm.date} onChange={(e) => setFaultyForm({ ...faultyForm, date: e.target.value })} />
           </Field>
           <Field label={ar ? 'قيمة الخصم (إن وُجد)' : 'Amount charged (if any)'}>
-            <TextInput type="number" min={0} value={reportForm.cost} onChange={(e) => setReportForm({ ...reportForm, cost: Number(e.target.value) })} />
+            <TextInput type="number" min={0} value={faultyForm.cost} onChange={(e) => setFaultyForm({ ...faultyForm, cost: Number(e.target.value) })} />
           </Field>
           <Field label={ar ? 'ملاحظات' : 'Notes'}>
-            <TextArea rows={2} value={reportForm.notes} onChange={(e) => setReportForm({ ...reportForm, notes: e.target.value })} />
+            <TextArea rows={2} value={faultyForm.notes} onChange={(e) => setFaultyForm({ ...faultyForm, notes: e.target.value })} />
           </Field>
         </div>
       </Modal>

@@ -47,8 +47,10 @@ router.delete('/custody/:id', authorize(...EDIT_ROLES), it.deleteCustody);
 router.get('/custody/:id/history', it.custodyHistory);
 router.get('/custody/by-employee/:employeeId', it.custodyByEmployee);
 router.post('/custody/:id/transfer', authorize(...EDIT_ROLES), it.transferCustody);
-router.post('/custody/:id/report', authorize(...EDIT_ROLES), it.reportCustody);
-router.post('/custody/:id/retire', authorize(...EDIT_ROLES), it.retireCustody);
+// «تالف» صار إجراءً واحداً: المساران يشيران إلى معالجٍ واحد. /retire يبقى
+// معلناً لأن نسخ الموبايل المثبَّتة تناديه، لا لأنه سلوكٌ آخر.
+router.post('/custody/:id/report', authorize(...EDIT_ROLES), it.markFaulty);
+router.post('/custody/:id/retire', authorize(...EDIT_ROLES), it.markFaulty);
 router.post('/custody/handover', authorize(...EDIT_ROLES), it.handoverCustody);
 
 // ── Stock (المستودع) — unassigned items waiting on the shelf ────────────────

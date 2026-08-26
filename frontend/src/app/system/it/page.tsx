@@ -220,7 +220,9 @@ export default function ItDashboardPage() {
             ) : (
               <div className="flex flex-wrap gap-2">
                 {(custody?.otherKinds || []).map((k) => (
-                  <Link key={k.key} href={`/system/it/custody?bucket=other`}
+                  // الرابط يحمل النوع المفصّل كذلك: كان يفتح دلو «أخرى» كله،
+                  // فيضغط المستخدم على «شنطة لابتوب ٣٤» ويجد أمامه ٦٣ صفاً.
+                  <Link key={k.key} href={`/system/it/custody?bucket=other&otherType=${k.key}`}
                     className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 hover:border-[#f37121]/50 hover:bg-[#f37121]/5">
                     {custodyTypeLabel(k.key, lang)}
                     <span className="ms-2 text-sm font-semibold text-slate-900 tabular-nums">{k.count}</span>

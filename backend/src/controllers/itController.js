@@ -496,45 +496,139 @@ exports.getRecurring = async (req, res) => {
 
 // ── Custody (العهد) — the SAME Asset collection HR uses ─────────────────────
 
+// طيّ حروف العربية المتغيّرة الرسم قبل المقارنة: «أحمد» و«احمد»، «شاشه»
+// و«شاشة». من دونه يبحث المستخدم بالاسم كما يكتبه هو فلا يجد صفّاً كُتب
+// بهمزةٍ أخرى، فيظنّ أن الصنف غير مسجَّل أصلاً فيُدخله مرة ثانية.
+const fold = (s) => String(s || '')
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/ى/g, 'ي')
+  .replace(/ة/g, 'ه')
+  .toLowerCase()
+  .trim();
+
+// النص الذي يجري عليه البحث. اسم الموظف جزء منه لأن أكثر ما يُسأل عنه في سجل
+// العهد هو «مَن يحمل هذا الجهاز» لا اسم الجهاز — وهو ما كانت الشاشة تبحث فيه
+// وحدها قبل أن ينتقل البحث إلى الخادم.
+const custodyHaystack = (a) => fold([
+  a.name, a.serialNumber, a.brand, a.model, a.specs,
+  a.employee && [a.employee.firstName, a.employee.lastName, a.employee.arabicName, a.employee.employeeNumber]
+    .filter(Boolean).join(' '),
+].filter(Boolean).join(' '));
+
+/**
+ * GET /custody — الصفوف المعروضة وأعدادُ الكروت والأزرار في ردٍّ واحد.
+ *
+ * الأعداد كانت تُحسب في الشاشة على السجل كلّه بينما الجدول تحتها مفلتر: يضغط
+ * المستخدم «المستودع» فتتبدّل الصفوف ويبقى كارت «لابتوبات» على ٦٨ وتحته ستة
+ * صفوف. رقمٌ لا يصف ما تحته ليس معلومة، ويسحب معه الثقة في بقيّة الأرقام.
+ *
+ * فصار كل شيء يُشتق هنا من تعريفٍ واحد: المطابِقات تُبنى مرّة، ومنها يخرج
+ * المعروضُ وتخرج الأعداد — العدّ هو طول المجموعة التي يفتحها الضغط لا حساباً
+ * موازياً لها.
+ *
+ * وكل عدّ تُطبَّق عليه الفلاتر كلها **إلا البُعد الذي يخصّه**: عدد كارت
+ * «لابتوبات» يُحسب بعد فلتر الحالة والحالة الفنية والبحث ودون فلتر الفئة —
+ * وإلا لعرضت الكروت الأربعة الأخرى صفراً بمجرّد اختيار واحدٍ منها فلا يستطيع
+ * أحد أن ينتقل بينها. وهو شكل hrMasterController.filterOptions نفسه.
+ */
 exports.listCustody = async (req, res) => {
   try {
-    const { status, type, bucket, condition, employee, q, scope } = req.query;
-    // The custody page is about items that have been (or were) handed out —
-    // warehouse stock has its own page, so it is excluded unless asked for.
-    // `scope=all` يضم المستودع إلى النتيجة، لأن كروت الإجماليات وأزرار الحالة
-    // الثلاثة على الشاشة تعدّ العهدة والمستودع والتالف معاً: عدّ ينقصه ثلث
-    // المخزون ليس إجمالياً.
-    const filter = scope === 'all' ? {} : { status: { $ne: 'in_stock' } };
-    if (status) filter.status = status;
-    if (employee) filter.employee = employee;
-    if (condition) filter.condition = condition;
-    // Vehicles are out of IT's scope unless explicitly asked for.
-    if (type) filter.type = type;
-    else if (bucket && BUCKET_KEYS.includes(bucket)) {
-      filter.type = { $in: typesInBucket(bucket).filter((t) => !EXCLUDED_TYPES.includes(t)) };
-    } else filter.type = { $in: IT_CUSTODY_TYPES };
-    if (q && q.trim()) {
-      const r = rx(q);
-      filter.$or = [{ name: r }, { serialNumber: r }, { brand: r }, { model: r }, { specs: r }];
-    }
+    const { status, type, bucket, otherType, condition, employee, q, scope } = req.query;
 
-    const runQuery = () => Asset.find(filter)
+    // القراءة تتم مرّة واحدة بلا فلاتر الواجهة، ثم تُفلتَر وتُعدّ في الذاكرة:
+    // السجل بضع مئات من الصفوف، وفصلُ الفلترة عن الاستعلام هو ما يضمن أن يخرج
+    // العدّ والصفوف من نفس المطابِقات بالحرف.
+    // `scope=all` يضم المستودع، لأن زر «المستودع» وكارت كل فئة يعدّان المخزون
+    // أيضاً: عدٌّ ينقصه ثلث السجل ليس إجمالياً.
+    const base = { type: { $in: IT_CUSTODY_TYPES } };
+    if (scope !== 'all') base.status = { $ne: 'in_stock' };
+    if (employee) base.employee = employee;
+
+    const runQuery = () => Asset.find(base)
       .populate('employee', EMP_FIELDS)
       .populate('assignedBy', 'firstName lastName')
       .sort({ createdAt: -1 })
       .limit(2000)
       .lean();
-    // Cache the common (no-search) load; Asset writes clear 'it:custody' via hooks.
-    let items;
-    if (q && q.trim()) {
-      items = await runQuery();
-    } else {
-      const cache = require('../utils/ttlCache');
-      const ck = `it:custody:${scope || ''}:${status || ''}:${type || ''}:${bucket || ''}:${condition || ''}:${employee || ''}`;
-      items = await cache.wrap(ck, 20000, runQuery);
-    }
 
-    res.json({ items });
+    // المفتاح لا يحمل فلاتر الواجهة: المخزَّن هو السجل الخام، والفلترة تجري
+    // فوقه في كل طلب. وكتابات Asset تُبطل البادئة 'it:custody' من الـ hooks.
+    const cache = require('../utils/ttlCache');
+    const rows = await cache.wrap(`it:custody:rows:${scope || ''}:${employee || ''}`, 20000, runQuery);
+
+    const wantedBucket = BUCKET_KEYS.includes(bucket) ? bucket : '';
+    // `otherType` هو الفلتر الثاني داخل «أخرى»، و`type` يبقى مقبولاً لأن روابط
+    // اللوحة القديمة تستعمله.
+    const exactType = String(otherType || type || '').trim();
+    const needle = fold(q);
+
+    // مطابِق لكل بُعد على حدة — وعليها يقوم استثناءُ كل عدٍّ من فلتره هو.
+    const byCat = (a) => (!wantedBucket || bucketOf(a.type) === wantedBucket)
+      && (!exactType || a.type === exactType);
+    const byState = (a) => !status || a.status === status;
+    const byCondition = (a) => !condition || a.condition === condition;
+    const bySearch = (a) => !needle || custodyHaystack(a).includes(needle);
+
+    const items = rows.filter((a) => byCat(a) && byState(a) && byCondition(a) && bySearch(a));
+
+    const tally = (pred) => rows.reduce((n, a) => n + (pred(a) ? 1 : 0), 0);
+
+    // كروت الفئات الخمس: كل الفلاتر عدا الفئة.
+    const buckets = BUCKETS.map((b) => ({
+      key: b.key,
+      nameAr: b.nameAr,
+      nameEn: b.nameEn,
+      count: tally((a) => byState(a) && byCondition(a) && bySearch(a) && bucketOf(a.type) === b.key),
+    }));
+
+    // أزرار الحالة الثلاثة: كل الفلاتر عدا الحالة.
+    const byStatus = { assigned: 0, in_stock: 0, returned: 0 };
+    rows.forEach((a) => {
+      if (byCat(a) && byCondition(a) && bySearch(a) && byStatus[a.status] !== undefined) byStatus[a.status] += 1;
+    });
+
+    // تفصيل «أخرى»: كل الفلاتر عدا النوع المفصّل، وداخل الدلو وحده.
+    const kindMap = new Map();
+    rows.forEach((a) => {
+      if (bucketOf(a.type) !== 'other') return;
+      if (!byState(a) || !byCondition(a) || !bySearch(a)) return;
+      kindMap.set(a.type, (kindMap.get(a.type) || 0) + 1);
+    });
+    // النوع المختار يبقى ظاهراً ولو صار صفراً بعد فلترٍ آخر: إخفاؤه وهو مفعَّل
+    // يترك المستخدم أمام قائمة فارغة بلا زرٍّ يرفع الفلتر الذي أفرغها.
+    if (exactType && bucketOf(exactType) === 'other' && !kindMap.has(exactType)) kindMap.set(exactType, 0);
+    const otherKinds = typesInBucket('other')
+      .filter((t) => kindMap.has(t))
+      .map((t) => ({ key: t, count: kindMap.get(t) }));
+
+    // الحالات الفنية: كل الفلاتر عدا الحالة الفنية.
+    const condMap = new Map();
+    rows.forEach((a) => {
+      if (!byCat(a) || !byState(a) || !bySearch(a)) return;
+      const c = a.condition || 'good';
+      condMap.set(c, (condMap.get(c) || 0) + 1);
+    });
+    if (condition && !condMap.has(condition)) condMap.set(condition, 0);
+    const conditions = Array.from(condMap, ([key, count]) => ({ key, count })).sort((x, y) => y.count - x.count);
+
+    res.json({
+      items,
+      counts: {
+        buckets,
+        byStatus,
+        otherKinds,
+        conditions,
+        // «المعروض الآن» وقيمته: كلاهما يصف الجدول الذي تحته، لا السجل كله.
+        total: items.length,
+        value: items.reduce((s, a) => s + (Number(a.value) || 0), 0),
+      },
+      // إجمالي السجل يبقى معروضاً بجانب الرقم المفلتر ليُعرف من أيٍّ اقتُطع، لا
+      // ليحلّ محلّه.
+      register: {
+        total: rows.length,
+        assigned: rows.filter((a) => a.status === 'assigned').length,
+      },
+    });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load custody items' });
   }
@@ -677,12 +771,26 @@ exports.transferCustody = async (req, res) => {
   }
 };
 
-// Broken or missing while in someone's hands. The item stays on the holder —
-// they are still accountable for it — but its condition and the trail say what
-// happened, and `cost` records anything the company decided to charge.
-exports.reportCustody = async (req, res) => {
+// ── تالف: إجراءٌ واحد لا اثنان ─────────────────────────────────────────────
+//
+// كان في الشاشة زرّان يفعلان الشيء نفسه في نظر مَن يستعملها: «الإبلاغ عن تالف»
+// يكتب بلاغاً بسببه وقيمة الخصم لكنه يترك الصنف بعهدة الموظف كأنّ شيئاً لم
+// يقع، و«التحويل إلى تالف» ينقل الحالة إلى تالف لكنه لا يسجّل سبباً ولا خصماً.
+// فمن ضغط الأول ظنّ أنه أخرج الجهاز وهو ما زال محسوباً عهدةً قائمة، ومن ضغط
+// الثاني أخرجه بلا أثرٍ يقول لماذا ولا كم كلّف.
+//
+// صارا واحداً يفعل الاثنين: يكتب البلاغ بسببه وخصمه، وينقل الصنف إلى «تالف»
+// فيظهر تحت الزر الذي يحمل الاسم نفسه.
+//
+// والموظف يبقى مقيَّداً على الصنف عمداً — السجل يجب أن يقول من كان يحمله حين
+// تلف — ولا يُحسب عليه بعد ذلك، لأن كل بوابات الموارد البشرية (إنهاء العقد،
+// إخلاء الطرف، جرد العهدة) تسأل عن `status: 'assigned'` وحدها.
+exports.markFaulty = async (req, res) => {
   try {
-    const { kind, notes, cost, date } = req.body;
+    // بلاغٌ بلا نوع يُقرأ «تالف»: المسار القديم /retire كان يُنادى بجسمٍ فارغ،
+    // وما زالت نسخ الموبايل المثبَّتة تناديه.
+    const kind = req.body.kind || 'damaged';
+    const { notes, cost, date } = req.body;
     if (!['damaged', 'lost'].includes(kind)) {
       return res.status(400).json({ message: 'kind must be "damaged" or "lost"' });
     }
@@ -693,57 +801,38 @@ exports.reportCustody = async (req, res) => {
       return res.status(400).json({ message: 'This item is already out of service' });
     }
 
-    if (kind === 'damaged') {
-      item.condition = 'damaged';
-    } else {
-      // A lost device cannot sit on a shelf or in a drawer — it is out of
-      // circulation, and the trail records who lost it.
-      item.status = 'returned';
-      item.returnedDate = date || today();
-      item.returnedTo = req.user._id;
-    }
+    const holder = item.employee ? String(item.employee) : null;
+
+    // التالف لا يبقى موصوفاً بأنه «جيد». أما المفقود فحالته الفنية تبقى كما
+    // كانت: هو لم يتلف — اختفى، ووصفه بالتلف ادّعاءٌ لا يعرفه أحد.
+    if (kind === 'damaged') item.condition = 'damaged';
+    item.status = 'returned';
+    item.returnedDate = date || today();
+    item.returnedCondition = item.condition;
+    item.returnedTo = req.user._id;
     await item.save();
 
     await logEvent(req, item, kind, {
-      fromEmployee: item.employee || null,
-      date,
+      fromEmployee: holder,
+      date: item.returnedDate,
       condition: item.condition,
       cost: Number(cost) || 0,
       notes,
     });
 
     emitCustody({ type: 'custody', id: String(item._id) });
-    if (item.employee) emit('hr:employee', { id: String(item.employee) });
-    res.json({ item });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to report on custody item' });
-  }
-};
-
-// Out of circulation for good — dead, written off, sold. Distinct from a normal
-// return, which puts the device back on the shelf for the next person.
-exports.retireCustody = async (req, res) => {
-  try {
-    const item = await Asset.findById(req.params.id);
-    if (!item) return res.status(404).json({ message: 'Custody item not found' });
-
-    const holder = item.employee ? String(item.employee) : null;
-    item.status = 'returned';
-    item.returnedDate = req.body.date || today();
-    item.returnedTo = req.user._id;
-    item.employee = null;
-    item.assignedDate = undefined;
-    await item.save();
-
-    await logEvent(req, item, 'retired', { fromEmployee: holder, date: req.body.date, notes: req.body.notes });
-
-    emitCustody({ type: 'custody', id: String(item._id) });
     if (holder) emit('hr:employee', { id: holder });
     res.json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to retire custody item' });
+    res.status(500).json({ message: 'Failed to record the item as faulty' });
   }
 };
+
+// المساران القديمان صارا اسمين لمعالجٍ واحد: بقاؤهما تنفيذين منفصلين هو ما
+// أنتج زرّين لشيء واحد أصلاً، وحذف أحدهما يكسر نسخ الموبايل المثبَّتة التي
+// تناديه.
+exports.reportCustody = exports.markFaulty;
+exports.retireCustody = exports.markFaulty;
 
 // The handover desk: an employee walks in with some of their gear. Pick what
 // they actually handed back; whatever is not ticked stays on them, and the

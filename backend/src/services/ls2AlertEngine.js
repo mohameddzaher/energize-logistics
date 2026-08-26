@@ -129,7 +129,10 @@ function evaluate(tel, _vehicle, settings, deferrals = []) {
   }
 
   // ---- Tires: temperature + pressure -------------------------------------
-  for (const tire of tel.tires || []) {
+  // قراءةٌ محمولةٌ من نبضةٍ سابقة لا تُبنى عليها تنبيهات: التنبيه يقول «الآن»،
+  // وقراءةٌ عمرُها نبضاتٌ ليست الآن — فقد تُنبِّه على حرارةٍ بردت، أو تسكت عن
+  // ارتفاعٍ حدث بعدها. تُعرَض على الشاشة ولا تُحرِّك إنذارًا.
+  for (const tire of (tel.tiresCarriedOver ? [] : (tel.tires || []))) {
     const label = `A${tire.axle}·T${tire.position}`;
     const key = `axle${tire.axle}-tire${tire.position}`;
     if (tire.tempC != null) {

@@ -38,7 +38,7 @@ const HISTORY_START = new Date('2020-01-01T00:00:00Z');
 const VEHICLE_FIELDS = [
   'name', 'plate', 'driver', 'position', 'lastMessageAt', 'ignition', 'moving', 'speed', 'rpm',
   'coolantC', 'fuelPct', 'totalFuelUsedL', 'weightKg', 'mainPowerV', 'backupBatteryV', 'gsmSignal',
-  'odometerKm', 'engineHours', 'tires', 'tireCount', 'maxTireTempC', 'minTireTempC', 'maxTirePressurePsi', 'minTirePressurePsi', 'tireFaults',
+  'odometerKm', 'engineHours', 'tires', 'tireCount', 'maxTireTempC', 'minTireTempC', 'maxTirePressurePsi', 'minTirePressurePsi', 'tireFaults', 'tiresCarriedOver',
 ];
 
 // How long a changed tire-sensor count must persist (wall clock, but only
@@ -139,6 +139,31 @@ async function tick() {
       const tel = normalize(unit);
       if (!tel) continue;
       const vehicleDoc = vById.get(tel.unitId) || null;
+
+      // ── قراءات الإطارات لا تُمحى لأن آخر رسالةٍ خلت منها ──────────────────
+      //
+      // الجهاز لا يضع قراءات الإطارات في كلّ رسالة: رسالةُ موقعٍ تصل بخمس
+      // وأربعين قناةً ليس فيها إطارٌ واحد، ثم تأتي رسالةُ إطاراتٍ بعدها. والنبض
+      // يقرأ الرسالة الأخيرة وحدها — فإن صادفها من النوع الأوّل خزّن صفرًا، فتظهر
+      // شاحنةٌ حسّاساتُها كلُّها سليمةٌ وكأنّ لا حسّاس عليها.
+      //
+      // قِيس ذلك: ثلاث شاحنات تبثّ اثنتي عشرة قناةً كاملةً خلال ثمانٍ وأربعين
+      // ساعة، ونحن نعرض صفرًا وواحدًا — لأن رسالتها الأخيرة كانت رسالة موقع.
+      //
+      // فالقراءة الأخيرة المعروفة تبقى حتى تحلّ محلَّها قراءةٌ أحدث. وغيابُ
+      // القراءة عن رسالةٍ ليس نفيًا لوجود الحسّاس؛ النفيُ أن تصل رسالة إطاراتٍ
+      // ناقصةً منها.
+      if ((!tel.tires || !tel.tires.length) && vehicleDoc && Array.isArray(vehicleDoc.tires) && vehicleDoc.tires.length) {
+        tel.tires = vehicleDoc.tires;
+        tel.tireCount = vehicleDoc.tireCount;
+        tel.maxTireTempC = vehicleDoc.maxTireTempC;
+        tel.minTireTempC = vehicleDoc.minTireTempC;
+        tel.maxTirePressurePsi = vehicleDoc.maxTirePressurePsi;
+        tel.minTirePressurePsi = vehicleDoc.minTirePressurePsi;
+        tel.tireFaults = vehicleDoc.tireFaults;
+        // ويُعلَم أنها محفوظةٌ لا طازجة، فلا يُبنى تنبيهُ حرارةٍ على رقمٍ قديم.
+        tel.tiresCarriedOver = true;
+      }
       const { conditions, status, alertLevel, maintenance } = evaluate(tel, vehicleDoc, settings, deferByUnit.get(tel.unitId) || []);
 
       // --- Unrecorded tire-swap detector -----------------------------------

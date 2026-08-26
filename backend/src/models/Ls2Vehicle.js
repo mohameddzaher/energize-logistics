@@ -46,6 +46,9 @@ const ls2VehicleSchema = new mongoose.Schema({
   maxTirePressurePsi: Number,
   minTirePressurePsi: Number,
   tireFaults: Number,
+  // قراءةٌ محمولةٌ من نبضةٍ سابقة لأن الرسالة الأخيرة خلت من الإطارات — تُعرَض
+  // ولا يُبنى عليها تنبيهُ حرارةٍ أو ضغط: التنبيه يقتضي قراءةً طازجة.
+  tiresCarriedOver: { type: Boolean, default: false },
   // Manual, optional: tire brand/type (e.g. Continental) — entered by staff, NOT
   // from Wialon (TPMS sensors don't report brand). Poll upserts never touch it.
   tireBrand: { type: String, default: '' },

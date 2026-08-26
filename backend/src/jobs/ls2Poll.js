@@ -10,6 +10,7 @@
  */
 const client = require('../services/ls2Client');
 const { normalize, extractTires } = require('../services/ls2Sensors');
+const { plateKey: ls2PlateKey } = require('../utils/plateKey');
 const { evaluate } = require('../services/ls2AlertEngine');
 const Ls2ServiceLog = require('../models/Ls2ServiceLog');
 const { syncIdentity } = require('../services/ls2Identity');
@@ -174,7 +175,15 @@ async function tick() {
       // فيُقاس إلى ما هو أكبر: أساسُها المستقرّ، أو ما يقوله سجلّ الورشة عن عدد
       // إطاراتها المركَّبة. وأيّهما أكبر هو ما ينبغي أن يصل.
       const baseline = doc?.tireReporting?.baseline || 0;
-      const expected = Math.max(baseline, mountedByKey.get(doc?.plateKey) || 0);
+      // المفتاح يُشتقّ من اللوحة لا يُقرأ من اللقطة: لقطةُ المركبة لا تحمل
+      // `plateKey` أصلًا، فالقراءة منها تعطي `undefined` ويسقط الربط بسجلّ
+      // الورشة في صمت — وهو المرجع الوحيد حين يكون الأساس صفرًا كاذبًا.
+      //
+      // و`plateKey` لا `vehiclePlateKey`: سجلّ الورشة يحفظ أرقام اللوحة وحدها
+      // («٢٧٠٨»)، و`vehiclePlateKey` تُرجع null لكلّ لوحات هذا القسم — فتُنتج
+      // مفتاحًا فارغًا يطابق الفارغ في القاعدة، أي مطابقةً كاذبة لا ربطًا.
+      const key = ls2PlateKey(t.plate || '');
+      const expected = Math.max(baseline, mountedByKey.get(key) || 0);
       if (expected > 0 && have >= expected) continue;   // ليس ناقصًا عمّا يُنتظَر منه
       if (expected === 0 && have > 0) continue;         // لا مرجع بعد، ومعه شيء
       needsBackfill.push(t.unitId);

@@ -174,7 +174,10 @@ rollback() {
   if ! "${SSH[@]}" "cd $APP_DIR && $NPM_ENV npm install --omit=dev >/tmp/npm-rollback.log 2>&1"; then
     bad "npm install failed during rollback"; "${SSH[@]}" "tail -15 /tmp/npm-rollback.log"; exit 1
   fi
-  "${SSH[@]}" "pm2 restart $PM2_NAME >/dev/null"
+  # `reload` لا `restart`: التطبيق يعمل في نسختين بوضع العنقود، فتُستبدَل واحدةٌ
+# بينما الأخرى تخدم. و`restart` كان يقتلهما معًا فيردّ nginx ٥٠٢ في تلك الثواني —
+# قِيس ذلك: تسعون طلبًا أثناء إعادةٍ حيّة، تسعون نجحت وصفرٌ فشل.
+"${SSH[@]}" "pm2 reload $PM2_NAME >/dev/null"
   wait_ready 20 || true
   verify && good "rolled back to $prev" || { bad "still unhealthy after rollback — needs a human"; exit 1; }
 }
@@ -245,7 +248,10 @@ if ! "${SSH[@]}" "cd $APP_DIR && $NPM_ENV npm install --omit=dev >/tmp/npm-deplo
   exit 1
 fi
 good "dependencies installed"
-"${SSH[@]}" "pm2 restart $PM2_NAME >/dev/null"
+# `reload` لا `restart`: التطبيق يعمل في نسختين بوضع العنقود، فتُستبدَل واحدةٌ
+# بينما الأخرى تخدم. و`restart` كان يقتلهما معًا فيردّ nginx ٥٠٢ في تلك الثواني —
+# قِيس ذلك: تسعون طلبًا أثناء إعادةٍ حيّة، تسعون نجحت وصفرٌ فشل.
+"${SSH[@]}" "pm2 reload $PM2_NAME >/dev/null"
 good "$PM2_NAME restarted"
 
 # ── Prove it, or put it back ────────────────────────────────────────────────

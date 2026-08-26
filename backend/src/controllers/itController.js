@@ -6,7 +6,12 @@ const ItSystem = require('../models/ItSystem');
 // only reason these IT-facing endpoints exist at all.
 const Asset = require('../models/Asset');
 const Employee = require('../models/Employee');
+const User = require('../models/User');
 const AssetEvent = require('../models/AssetEvent');
+const {
+  BUCKETS, BUCKET_KEYS, EXCLUDED_TYPES, bucketOf, typesInBucket,
+  deriveAssetName, normalizeBrand,
+} = require('../config/itCustody');
 const { emitToAll } = require('../websocket/socketManager');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -29,7 +34,14 @@ const pick = (body, fields) => {
 
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-const today = () => new Date().toISOString().slice(0, 10);
+// الشركة تعمل بتوقيت الرياض (UTC+3). الاعتماد على تاريخ UTC كان يقيّد أي عملية
+// تحدث بعد التاسعة مساءً على تاريخ اليوم السابق، فتظهر العهدة مُسلَّمة قبل يوم
+// من تسليمها الفعلي ويظهر البلاغ مفتوحاً قبل أن يُبلَّغ عنه.
+const RIYADH_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+const dateInRiyadh = (t) => new Date(new Date(t).getTime() + RIYADH_OFFSET_MS).toISOString().slice(0, 10);
+
+const today = () => dateInRiyadh(Date.now());
 
 // The repeat key. Same category + same normalized title ⇒ same signature ⇒ the
 // two tickets are treated as occurrences of one recurring problem. Arabic and
@@ -44,19 +56,35 @@ const buildSignature = (category, title) => {
   return `${String(category || 'other').toLowerCase()}:${slug}`;
 };
 
-const minutesBetween = (fromDateStr, toDate) => {
-  if (!fromDateStr) return undefined;
-  const a = new Date(`${fromDateStr}T00:00:00Z`).getTime();
-  const b = (toDate instanceof Date ? toDate : new Date(toDate)).getTime();
+/**
+ * زمن الحل بالأيام الكاملة بين يوم البلاغ ويوم الحل.
+ *
+ * الحساب السابق كان يطرح لحظة الحفظ من منتصف ليل يوم البلاغ بتوقيت UTC، وينتج
+ * عن ذلك رقمان كاذبان معاً: بلاغ يُغلق في يومه يظهر بعشر ساعات ونصف لأن منتصف
+ * ليل UTC يسبق بداية دوام الرياض بثلاث ساعات، وبلاغ قديم يُدخَل اليوم كمحلول
+ * يقيس المدة حتى لحظة إدخاله لا حتى لحظة إصلاحه. وتاريخ البلاغ أصلاً بلا وقت،
+ * فأي رقم بالدقائق دقّة لا يملكها المصدر — واليوم الكامل هو أصدق ما يُقاس.
+ */
+const daysBetweenDates = (fromDateStr, toDateStr) => {
+  if (!fromDateStr || !toDateStr) return undefined;
+  const a = Date.parse(`${fromDateStr}T00:00:00Z`);
+  const b = Date.parse(`${toDateStr}T00:00:00Z`);
   if (!Number.isFinite(a) || !Number.isFinite(b)) return undefined;
-  return Math.max(0, Math.round((b - a) / 60000));
+  return Math.max(0, Math.round((b - a) / 86400000));
+};
+
+// التخزين يبقى بالدقائق لأن لوحة المعلومات وتقرير التكرار يحسبان المتوسط منه،
+// لكن القيمة صارت دائماً من مضاعفات اليوم الكامل.
+const resolutionMinutesOf = (reportedAt, resolvedDate) => {
+  const d = daysBetweenDates(reportedAt, resolvedDate);
+  return d === undefined ? undefined : d * 1440;
 };
 
 const CLOSED_STATUSES = new Set(['resolved', 'closed']);
 
 const TICKET_EDITABLE = [
   'title', 'category', 'priority', 'status', 'requester', 'requesterName',
-  'requesterDepartment', 'assignedTo', 'assignedToName', 'reportedAt',
+  'requesterDepartment', 'assignedTo', 'assignedToName', 'reportedAt', 'resolvedDate',
   'description', 'resolution', 'rootCause', 'preventiveAction',
   'relatedAsset', 'device', 'notes',
 ];
@@ -81,16 +109,20 @@ const logEvent = async (req, asset, action, extra = {}) => {
   }
 };
 
+// `name` غير مذكور عمداً: يُشتق من النوع والماركة في المتحكّم، وقبوله من الطلب
+// يعيد فتح باب الأسماء الحرّة الذي جاءت منه ستة وستون تهجئة لأربعمئة صنف.
 const CUSTODY_EDITABLE = [
-  'employee', 'name', 'type', 'serialNumber', 'brand', 'model', 'condition',
-  'value', 'assignedDate', 'notes', 'category', 'specs',
+  'employee', 'type', 'serialNumber', 'brand', 'condition',
+  'value', 'assignedDate', 'notes', 'category', 'specs', 'quantity',
 ];
 
 // Stock items have no employee and no assignedDate — they gain both the moment
 // they are handed out via assignFromStock.
+// كما في العهدة: الاسم مشتقّ لا مُدخَل. والموديل والموقع أُسقطا لأنهما كانا
+// يُترَكان فارغين في أغلب الصفوف فيتحوّل حقلان إلى عمودين فارغين في كل تقرير.
 const STOCK_EDITABLE = [
-  'name', 'type', 'serialNumber', 'brand', 'model', 'condition', 'value',
-  'notes', 'category', 'specs', 'quantity', 'location',
+  'type', 'serialNumber', 'brand', 'condition', 'value',
+  'notes', 'category', 'specs', 'quantity',
 ];
 
 const SYSTEM_EDITABLE = [
@@ -98,13 +130,16 @@ const SYSTEM_EDITABLE = [
   'renewalDate', 'cost', 'costPeriod', 'credentialsNote', 'description', 'notes',
 ];
 
-// IT hands out everything except vehicles (fleet section) and generic `tool`
-// (HR's own gear). Keep in sync with lib/it.ts IT_CUSTODY_TYPE_KEYS.
-const IT_CUSTODY_TYPES = [
-  'laptop', 'desktop', 'phone', 'tablet', 'sim', 'monitor',
-  'keyboard', 'mouse', 'keyboard_mouse', 'headset', 'printer', 'router',
-  'charger', 'cable', 'laptop_bag', 'accessory', 'access_card', 'other',
-];
+// الأنواع التي يسلّمها القسم: كل ما تعرفه الدلاء الخمسة. المركبات تخص الأسطول،
+// و`tool` عهدة الموارد البشرية، وشرائح الاتصال ليست من عهدتنا — والثلاثة
+// مستبعدة من مصدر واحد في config/itCustody حتى لا تعود من شاشة نسيها أحد.
+const IT_CUSTODY_TYPES = BUCKETS
+  .flatMap((b) => b.types)
+  .filter((t) => !EXCLUDED_TYPES.includes(t));
+
+// استعلام يُستثنى منه ما لا يخص القسم. يُستخدم في كل قراءة للأصول حتى تتطابق
+// أعداد الكروت مع أعداد الجداول — كارت يعدّ صفوفاً لا يظهرها الجدول هو خطأ.
+const NOT_EXCLUDED = { type: { $nin: EXCLUDED_TYPES } };
 
 const EMP_FIELDS = 'firstName lastName arabicName iqamaNumber employeeNumber department';
 
@@ -281,8 +316,11 @@ exports.createTicket = async (req, res) => {
     }
 
     if (CLOSED_STATUSES.has(data.status)) {
-      data.resolvedAt = new Date();
-      data.resolutionMinutes = minutesBetween(data.reportedAt, data.resolvedAt);
+      // يوم الحل يُدخله المستخدم؛ لحظة الحفظ ليست لحظة الإصلاح، وأغلب البلاغات
+      // تُسجَّل بعد إغلاقها بأيام.
+      if (!data.resolvedDate) data.resolvedDate = today();
+      data.resolvedAt = new Date(`${data.resolvedDate}T00:00:00Z`);
+      data.resolutionMinutes = resolutionMinutesOf(data.reportedAt, data.resolvedDate);
     }
 
     const ticket = await ItTicket.create(data);
@@ -308,10 +346,14 @@ exports.updateTicket = async (req, res) => {
     }
 
     const nowClosed = CLOSED_STATUSES.has(ticket.status);
-    if (nowClosed && !wasClosed) {
-      ticket.resolvedAt = new Date();
-      ticket.resolutionMinutes = minutesBetween(ticket.reportedAt, ticket.resolvedAt);
+    if (nowClosed) {
+      // يُعاد الحساب مع كل حفظ مُغلق، لا عند الإغلاق أول مرة فقط: تصحيح تاريخ
+      // بلاغ سبق إغلاقه كان يترك زمن الحل على قيمته القديمة الخاطئة.
+      if (!ticket.resolvedDate) ticket.resolvedDate = today();
+      ticket.resolvedAt = new Date(`${ticket.resolvedDate}T00:00:00Z`);
+      ticket.resolutionMinutes = resolutionMinutesOf(ticket.reportedAt, ticket.resolvedDate);
     } else if (!nowClosed && wasClosed) {
+      ticket.resolvedDate = undefined;
       ticket.resolvedAt = undefined;
       ticket.resolutionMinutes = undefined;
     }
@@ -417,15 +459,21 @@ exports.getRecurring = async (req, res) => {
 
 exports.listCustody = async (req, res) => {
   try {
-    const { status, type, employee, q } = req.query;
+    const { status, type, bucket, condition, employee, q, scope } = req.query;
     // The custody page is about items that have been (or were) handed out —
     // warehouse stock has its own page, so it is excluded unless asked for.
-    const filter = { status: { $ne: 'in_stock' } };
+    // `scope=all` يضم المستودع إلى النتيجة، لأن كروت الإجماليات وأزرار الحالة
+    // الثلاثة على الشاشة تعدّ العهدة والمستودع والتالف معاً: عدّ ينقصه ثلث
+    // المخزون ليس إجمالياً.
+    const filter = scope === 'all' ? {} : { status: { $ne: 'in_stock' } };
     if (status) filter.status = status;
     if (employee) filter.employee = employee;
+    if (condition) filter.condition = condition;
     // Vehicles are out of IT's scope unless explicitly asked for.
     if (type) filter.type = type;
-    else filter.type = { $in: IT_CUSTODY_TYPES };
+    else if (bucket && BUCKET_KEYS.includes(bucket)) {
+      filter.type = { $in: typesInBucket(bucket).filter((t) => !EXCLUDED_TYPES.includes(t)) };
+    } else filter.type = { $in: IT_CUSTODY_TYPES };
     if (q && q.trim()) {
       const r = rx(q);
       filter.$or = [{ name: r }, { serialNumber: r }, { brand: r }, { model: r }, { specs: r }];
@@ -443,7 +491,7 @@ exports.listCustody = async (req, res) => {
       items = await runQuery();
     } else {
       const cache = require('../utils/ttlCache');
-      const ck = `it:custody:${status || ''}:${type || ''}:${employee || ''}`;
+      const ck = `it:custody:${scope || ''}:${status || ''}:${type || ''}:${bucket || ''}:${condition || ''}:${employee || ''}`;
       items = await cache.wrap(ck, 20000, runQuery);
     }
 
@@ -455,17 +503,26 @@ exports.listCustody = async (req, res) => {
 
 exports.createCustody = async (req, res) => {
   try {
-    if (!req.body.employee || !req.body.name) {
-      return res.status(400).json({ message: 'Employee and name are required' });
+    if (!req.body.employee) {
+      return res.status(400).json({ message: 'Employee is required' });
     }
     const data = pick(req.body, CUSTODY_EDITABLE);
+    // الاسم لم يعد يُكتب باليد — يُشتق من النوع والماركة كما في المستودع تماماً،
+    // فيخرج الصنف باسم واحد أياً كان من أدخله ومن أي شاشة.
+    data.brand = normalizeBrand(data.brand);
+    data.name = deriveAssetName(data.type, data.brand);
     if (!data.assignedDate) data.assignedDate = today();
     if (!data.category) data.category = 'IT';
+    if (data.quantity === undefined || Number(data.quantity) < 1) data.quantity = 1;
     data.issuedBySection = 'it';
     data.assignedBy = req.user._id;
     data.createdBy = req.user._id;
 
     const item = await Asset.create(data);
+    // جهاز يُسلَّم مباشرة دون المرور بالرف يجب أن يُقيَّد في السجل بنفس الطريقة:
+    // من دون قيد الدخول يبدأ تاريخ الصنف من لحظة تسليمه، فلا يظهر في السجل أنه
+    // دخل ملك الشركة أصلاً ولا كيف دخل.
+    await logEvent(req, item, 'added_to_store', { condition: item.condition, date: item.assignedDate });
     await logEvent(req, item, 'assigned', { toEmployee: item.employee, date: item.assignedDate, condition: item.condition });
     emitCustody({ type: 'custody', id: String(item._id) });
     res.status(201).json({ item });
@@ -479,6 +536,10 @@ exports.updateCustody = async (req, res) => {
     const item = await Asset.findById(req.params.id);
     if (!item) return res.status(404).json({ message: 'Custody item not found' });
     Object.assign(item, pick(req.body, CUSTODY_EDITABLE));
+    // الاسم مشتقّ، فلا بد أن يتبع أي تعديل على النوع أو الماركة — وإلا بقي صنف
+    // صار «شاشة Dell» معروضاً باسم «لابتوب Dell» الذي اشتُقّ له أول مرة.
+    item.brand = normalizeBrand(item.brand);
+    item.name = deriveAssetName(item.type, item.brand);
     await item.save();
     emitCustody({ type: 'custody', id: String(item._id) });
     res.json({ item });
@@ -749,12 +810,15 @@ exports.listStock = async (req, res) => {
     // HR keeps its own shelf in this collection (`issuedBySection: 'hr'`) — it
     // is a different store and must not show up here. Legacy stock with no flag
     // set stays with IT, which is where it has always been.
-    const filter = { status: 'in_stock', issuedBySection: { $ne: 'hr' } };
+    const filter = { status: 'in_stock', issuedBySection: { $ne: 'hr' }, ...NOT_EXCLUDED };
     if (type) filter.type = type;
+    else if (req.query.bucket && BUCKET_KEYS.includes(req.query.bucket)) {
+      filter.type = { $in: typesInBucket(req.query.bucket).filter((t) => !EXCLUDED_TYPES.includes(t)) };
+    }
     if (condition) filter.condition = condition;
     if (q && q.trim()) {
       const r = rx(q);
-      filter.$or = [{ name: r }, { serialNumber: r }, { brand: r }, { model: r }, { specs: r }, { location: r }];
+      filter.$or = [{ name: r }, { serialNumber: r }, { brand: r }, { specs: r }];
     }
 
     const items = await Asset.find(filter)
@@ -771,10 +835,12 @@ exports.listStock = async (req, res) => {
 
 exports.createStock = async (req, res) => {
   try {
-    if (!req.body.name || !String(req.body.name).trim()) {
-      return res.status(400).json({ message: 'Item name is required' });
+    if (!req.body.type || !String(req.body.type).trim()) {
+      return res.status(400).json({ message: 'Item type is required' });
     }
     const data = pick(req.body, STOCK_EDITABLE);
+    data.brand = normalizeBrand(data.brand);
+    data.name = deriveAssetName(data.type, data.brand);
     if (!data.category) data.category = 'IT';
     if (data.quantity === undefined || Number(data.quantity) < 1) data.quantity = 1;
     data.status = 'in_stock';
@@ -799,6 +865,8 @@ exports.updateStock = async (req, res) => {
       return res.status(400).json({ message: 'This item is no longer in stock — edit it from the custody page instead' });
     }
     Object.assign(item, pick(req.body, STOCK_EDITABLE));
+    item.brand = normalizeBrand(item.brand);
+    item.name = deriveAssetName(item.type, item.brand);
     await item.save();
     emitCustody({ type: 'stock', id: String(item._id) });
     res.json({ item });
@@ -847,7 +915,8 @@ exports.assignFromStock = async (req, res) => {
     item.status = 'assigned';
     item.assignedDate = req.body.assignedDate || today();
     item.assignedBy = req.user._id;
-    if (req.body.condition) item.condition = req.body.condition;
+    // الحالة الفنية لا تُسأل عند التسليم من المستودع: الصنف يحملها بالفعل من
+    // لحظة إضافته، وسؤالها ثانيةً يفتح باب حقيقتين لشيء واحد.
     if (req.body.notes) item.notes = req.body.notes;
     // The item has left the shelf — clear the leftovers from its last return.
     item.returnedDate = undefined;

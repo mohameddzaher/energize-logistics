@@ -26,17 +26,37 @@ router.use(requireApiKey('FLEET_API_KEY', 'واجهة الأسطول للأتم�
 /** عمرُ القراءة بالثواني — الأتمتة تحتاج أن تعرف هل ما تقرؤه حديثٌ أم بائت. */
 const ageSec = (d) => (d ? Math.round((Date.now() - new Date(d).getTime()) / 1000) : null);
 
-/** شكلٌ واحد للمركبة في كل ردّ — فلا يخمّن المستهلك أين يجد ما يريد. */
+/**
+ * شكلٌ واحد للمركبة في كل ردّ — وفيه **كلّ** ما تعرضه شاشة الأسطول المباشر.
+ *
+ * كان يُصدَّر بعضُه، فيضطرّ المستهلك إلى بناء شرطه على ما نُقص عنه: حالة
+ * الصيانة، ومستوى التنبيه، والوقود المستهلك، وبيانات المركبة الثابتة. والواجهةُ
+ * التي تُعطي بعضَ ما على الشاشة تُقرأ كلَّها، فيُبنى عليها ما لا تحتمله.
+ */
 const shape = (v, tires) => ({
+  // ── الهوية ──
   plate: v.plate || null,
+  name: v.name || null,
   unitId: v.unitId,
+  driver: v.driver || null,
+
+  // ── حياة القراءة ──
   online: v.online ?? null,
+  status: v.status || null,
   lastMessageAt: v.lastMessageAt || null,
   // ثانيةً منذ آخر رسالة. قراءةٌ عمرُها ساعة ليست «قراءة حاليّة»، وبلا هذا
   // الرقم تبني الأتمتة قرارها على رقمٍ مات ولا تدري.
   dataAgeSeconds: ageSec(v.lastMessageAt),
-  driver: v.driver || null,
-  position: v.position ? { lat: v.position.lat, lng: v.position.lng, speed: v.position.speed, course: v.position.course } : null,
+  lastSyncedAt: v.lastSyncedAt || null,
+
+  // ── الموقع والحركة ──
+  position: v.position ? {
+    lat: v.position.lat ?? null, lng: v.position.lng ?? null,
+    speed: v.position.speed ?? null, course: v.position.course ?? null,
+    altitude: v.position.altitude ?? null,
+  } : null,
+
+  // ── المحرّك ──
   engine: {
     ignition: v.ignition ?? null,
     moving: v.moving ?? null,
@@ -45,25 +65,64 @@ const shape = (v, tires) => ({
     coolantC: v.coolantC ?? null,
     engineHours: v.engineHours ?? null,
   },
+
+  // ── العدّادات ──
   odometerKm: v.odometerKm ?? null,
   fuelPct: v.fuelPct ?? null,
+  totalFuelUsedL: v.totalFuelUsedL ?? null,
   weightKg: v.weightKg ?? null,
-  power: { mainV: v.mainPowerV ?? null, backupV: v.backupBatteryV ?? null, gsm: v.gsmSignal ?? null },
+
+  // ── الكهرباء والإرسال ──
+  power: {
+    mainV: v.mainPowerV ?? null,
+    backupV: v.backupBatteryV ?? null,
+    gsmSignal: v.gsmSignal ?? null,
+  },
+
+  // ── الإطارات ──
   tyres: {
     count: v.tireCount ?? 0,
     faults: v.tireFaults ?? 0,
+    brand: v.tireBrand || null,
     maxTempC: v.maxTireTempC ?? null,
     minTempC: v.minTireTempC ?? null,
     maxPressurePsi: v.maxTirePressurePsi ?? null,
     minPressurePsi: v.minTirePressurePsi ?? null,
-    // كلُّ فردةٍ بموضعها — هذا ما تبني عليه الأتمتة شرطها: «أيُّ فردةٍ تجاوزت ٩٠».
+    // كلُّ فردةٍ بموضعها — هذا ما تبني عليه الأتمتة شرطها.
     readings: (v.tires || []).map((t) => ({
       axle: t.axle ?? null, position: t.position ?? null,
       tempC: t.tempC ?? null, pressurePsi: t.pressurePsi ?? null, fault: !!t.fault,
     })),
     // ما نعرفه نحن ولا يعرفه المزوّد: المركَّب فعلًا في سجلّ الأصول.
-    registered: tires ? { mounted: tires.mounted, spare: tires.spare, withSensor: tires.withSensor } : undefined,
+    registered: tires ? { mounted: tires.mounted, spare: tires.spare, withSensor: tires.withSensor } : null,
+    sensorChangeNotice: v.sensorChangeNotice ?? null,
   },
+
+  // ── التنبيهات والصيانة ──
+  alerts: {
+    level: v.alertLevel ?? null,
+    activeCount: v.activeAlertCount ?? 0,
+  },
+  maintenance: {
+    status: v.maintenanceStatus ?? null,
+    overdueCount: v.maintenanceOverdueCount ?? 0,
+    dueCount: v.maintenanceDueCount ?? 0,
+    kmToService: v.kmToService ?? null,
+    nextServiceKm: v.nextServiceKm ?? null,
+    nextServiceName: v.nextServiceName || null,
+    upcomingServiceKm: v.upcomingServiceKm ?? null,
+    upcomingServiceName: v.upcomingServiceName || null,
+  },
+
+  // ── بيانات المركبة الثابتة ──
+  profile: v.profile ? {
+    vin: v.profile.vin || null,
+    brand: v.profile.brand || null,
+    modelYear: v.profile.modelYear ?? null,
+    vehicleType: v.profile.vehicleType || null,
+    registrationPlate: v.profile.registrationPlate || null,
+    installDate: v.profile.installDate || null,
+  } : null,
 });
 
 /** GET /vehicles — كلّ المركبات بلقطتها الأخيرة. */

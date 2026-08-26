@@ -62,6 +62,10 @@ router.post('/stock/:id/assign', authorize(...EDIT_ROLES), it.assignFromStock);
 // Employee picker for the custody modal (/api/hr/employees is HR-roles only).
 router.get('/employees', it.listEmployees);
 
+// قوائم نموذج البلاغ — الأقسام الحقيقية ومن يجوز إسناد الحل إليه.
+router.get('/departments', it.listDepartments);
+router.get('/assignees', it.listAssignees);
+
 // ── Systems & services ──────────────────────────────────────────────────────
 router.get('/systems', it.listSystems);
 router.post('/systems', authorize(...EDIT_ROLES), it.createSystem);

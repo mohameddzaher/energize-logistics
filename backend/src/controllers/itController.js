@@ -82,6 +82,10 @@ const resolutionMinutesOf = (reportedAt, resolvedDate) => {
 
 const CLOSED_STATUSES = new Set(['resolved', 'closed']);
 
+// الأدوار التي يجوز إسناد بلاغ إليها. مطابقة لقائمة الصلاحيات في routes/it.js:
+// إسناد بلاغ إلى من لا يملك صلاحية تعديله يترك البلاغ بلا من يقدر على إغلاقه.
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+
 const TICKET_EDITABLE = [
   'title', 'category', 'priority', 'status', 'requester', 'requesterName',
   'requesterDepartment', 'assignedTo', 'assignedToName', 'reportedAt', 'resolvedDate',
@@ -154,9 +158,13 @@ exports.getDashboard = async (req, res) => {
     const [tickets, periodTickets, assets, systems] = await Promise.all([
       ItTicket.find({}).select('status category priority signature title reportedAt resolutionMinutes requesterDepartment ticketNumber createdAt isRecurring').sort({ createdAt: -1 }).limit(5000).lean(),
       ItTicket.find(inPeriod).select('status reportedAt resolvedAt resolutionMinutes').lean(),
-      Asset.find({ type: { $ne: 'vehicle' } }).select('status type quantity').lean(),
+      Asset.find(NOT_EXCLUDED).select('status type quantity condition value').lean(),
       ItSystem.find({}).select('name nameAr status renewalDate cost costPeriod type').lean(),
     ]);
+
+    // صف واحد قد يمثّل عدة وحدات متطابقة (كابلات، شواحن)، فالعدّ بالوحدات لا
+    // بالصفوف — صف فيه عشرون كابلاً هو عشرون كابلاً.
+    const units = (a) => Math.max(1, Number(a.quantity) || 1);
 
     const countBy = (rows, key) => {
       const m = new Map();
@@ -188,7 +196,6 @@ exports.getDashboard = async (req, res) => {
     // counted in units (quantity) rather than documents — 1 row of 20 cables is
     // 20 cables, and the low-stock warning has to know that.
     const stockItems = assets.filter((a) => a.status === 'in_stock');
-    const units = (a) => Math.max(1, Number(a.quantity) || 1);
     const stockCount = stockItems.reduce((s, a) => s + units(a), 0);
 
     const stockMap = new Map();
@@ -206,6 +213,37 @@ exports.getDashboard = async (req, res) => {
       .map((key) => ({ key, count: stockMap.get(key) || 0 }))
       .filter((r) => r.count < LOW_STOCK_THRESHOLD)
       .sort((a, b) => a.count - b.count);
+
+    // ── ملخّص العهد: نفس الكروت ونفس الأزرار المعروضة في صفحة العهد ──────────
+    // اللوحة تقرأ نفس التجميع الذي تقرأه الصفحة حتى لا يختلف رقمان لشيء واحد
+    // على شاشتين — وهو أسرع طريق لفقدان الثقة في الاثنتين معاً.
+    const custodyBuckets = BUCKETS.map((b) => ({ key: b.key, nameAr: b.nameAr, nameEn: b.nameEn, count: 0 }));
+    const bucketIndex = new Map(custodyBuckets.map((b) => [b.key, b]));
+    const custodyByStatus = { assigned: 0, in_stock: 0, returned: 0 };
+    const conditionMap = new Map();
+    const otherKindMap = new Map();
+
+    assets.forEach((a) => {
+      const n = units(a);
+      const b = bucketIndex.get(bucketOf(a.type));
+      if (b) b.count += n;
+      if (custodyByStatus[a.status] !== undefined) custodyByStatus[a.status] += n;
+      const c = a.condition || 'good';
+      conditionMap.set(c, (conditionMap.get(c) || 0) + n);
+      // تفصيل دلو «أخرى» — الفلتر الثاني على الشاشة يعرض ما فيه فعلاً فقط، لا
+      // كل نوع ممكن، حتى لا يختار المستخدم فلتراً نتيجته صفر.
+      if (bucketOf(a.type) === 'other') otherKindMap.set(a.type, (otherKindMap.get(a.type) || 0) + n);
+    });
+
+    const sortedCount = (m) => Array.from(m, ([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
+
+    const custody = {
+      buckets: custodyBuckets,
+      byStatus: custodyByStatus,
+      byCondition: sortedCount(conditionMap),
+      otherKinds: sortedCount(otherKindMap),
+      total: custodyBuckets.reduce((s2, b) => s2 + b.count, 0),
+    };
 
     const totals = {
       openTickets: tickets.filter((t) => t.status === 'open' || t.status === 'reopened').length,
@@ -230,6 +268,7 @@ exports.getDashboard = async (req, res) => {
 
     res.json({
       totals,
+      custody,
       topRecurring: groupRecurring(tickets).slice(0, 6),
       recentTickets: tickets.slice(0, 8),
       range: { from, to },
@@ -952,6 +991,48 @@ exports.listEmployees = async (req, res) => {
     res.json({ employees });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load employees' });
+  }
+};
+
+// ── قوائم نموذج البلاغ ──────────────────────────────────────────────────────
+
+/**
+ * أقسام الشركة كما هي فعلاً في ملفات الموظفين.
+ *
+ * القسم كان حقلاً نصياً حرّاً في نموذج البلاغ، فكان «الموارد البشرية» و«الموارد
+ * البشريه» و«HR» ثلاثة أقسام مختلفة في أي تقرير يجمّع حسب القسم. المصدر هنا هو
+ * قيم Employee.department نفسها لا قائمة مكتوبة يدوياً، فلا يظهر قسم غير موجود
+ * ولا يغيب قسم أُنشئ أمس.
+ */
+exports.listDepartments = async (req, res) => {
+  try {
+    const values = await Employee.distinct('department', { isHrRecord: { $ne: false } });
+    const departments = values
+      .map((v) => String(v || '').trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'ar'));
+    res.json({ departments: Array.from(new Set(departments)) });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load departments' });
+  }
+};
+
+/**
+ * من يجوز إسناد حل البلاغ إليه: مديرو النظام وموظفو تقنية المعلومات.
+ *
+ * الاسم كان يُكتب نصاً حرّاً، فلم يكن ممكناً معرفة كم بلاغاً على أحدهم ولا فتح
+ * البلاغات المسندة إليه — الإسناد إلى مستخدم حقيقي هو ما يجعل ذلك ممكناً.
+ */
+exports.listAssignees = async (req, res) => {
+  try {
+    const users = await User.find({ role: { $in: EDIT_ROLES }, isActive: { $ne: false } })
+      .select('firstName lastName role email')
+      .sort({ firstName: 1 })
+      .limit(500)
+      .lean();
+    res.json({ users });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load assignees' });
   }
 };
 

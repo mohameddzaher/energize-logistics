@@ -37,7 +37,13 @@ const itTicketSchema = new mongoose.Schema(
     assignedToName: { type: String, trim: true },
 
     reportedAt: { type: String }, // YYYY-MM-DD
+    // يوم الحل كما يُدخله من أغلق البلاغ. وجوده ضروري لأن `resolvedAt` كان
+    // يُختم بلحظة الحفظ، وأغلب البلاغات تُسجَّل في النظام بعد إصلاحها بأيام —
+    // فكان زمن الحل يقيس تأخّر إدخال البيانات لا زمن الإصلاح.
+    resolvedDate: { type: String }, // YYYY-MM-DD
     resolvedAt: { type: Date },
+    // بالدقائق، لكنها دائماً من مضاعفات اليوم الكامل: تاريخ البلاغ بلا وقت،
+    // فأي دقّة أدقّ من اليوم رقم مُختلَق لا مصدر له.
     resolutionMinutes: { type: Number },
 
     description: { type: String, trim: true },

@@ -1,11 +1,12 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Laptop, Plus, Edit, Undo2, Trash2, Check, Info, Boxes, ArrowLeftRight, AlertTriangle, Archive, History, ClipboardCheck } from 'lucide-react';
+import { Laptop, Plus, Edit, Undo2, Trash2, Check, Boxes, ArrowLeftRight, AlertTriangle, Archive, History, ClipboardCheck } from 'lucide-react';
 import { exportToExcel } from '@/utils/exportExcel';
 import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
@@ -14,12 +15,15 @@ import {
 import { useAssetVocab } from '@/hooks/useAssetVocab';
 import {
   canViewIt, CustodyItem, StockItem, EmployeeRef, CUSTODY_TYPES, CUSTODY_STATUSES,
-  CUSTODY_STATUS_KEYS, custodyStatusLabel,
-  optionsOf, empName, fmtDate, fmtMoney, today, idOf,
+  CUSTODY_BUCKETS, OTHER_BUCKET_TYPES, bucketOf, custodyStatusLabel, deriveAssetName,
+  empName, fmtDate, fmtMoney, today, idOf,
 } from '@/lib/it';
+import { CustodyCards, CustodyStateButtons } from '@/components/it/CustodyOverview';
 
+// لا `name` ولا `model`: الاسم يُشتق في الخادم من النوع والماركة، والموديل
+// أُسقط لأنه كان يُترك فارغاً في أغلب الصفوف.
 const EMPTY = {
-  employee: '', name: '', type: 'laptop', serialNumber: '', brand: '', model: '',
+  employee: '', type: 'laptop', serialNumber: '', brand: '',
   specs: '', condition: 'good', value: 0, assignedDate: '', notes: '',
 };
 
@@ -31,7 +35,7 @@ const ACTION_LABEL: Record<string, { en: string; ar: string }> = {
   returned: { en: 'Returned to store', ar: 'أُعيد إلى المستودع' },
   damaged: { en: 'Reported damaged', ar: 'أُبلغ عن تلفه' },
   lost: { en: 'Reported lost', ar: 'أُبلغ عن فقده' },
-  retired: { en: 'Taken out of service', ar: 'أُخرج من الخدمة' },
+  retired: { en: 'Recorded faulty', ar: 'سُجّل كتالف' },
   updated: { en: 'Details updated', ar: 'عُدّلت بياناته' },
 };
 
@@ -42,14 +46,21 @@ export default function ItCustodyPage() {
   const ar = lang === 'ar';
   const staff = canViewIt(user);
   // Types/conditions are editable from Settings → Reference Data.
-  const { itTypes, conditions, typeLabel: custodyTypeLabel, conditionLabel } = useAssetVocab();
+  // لا حاجة لـ itTypes هنا: النوع صار يُختار من الفئات الخمس لا من قائمة
+  // الأنواع المفصّلة، والفئات ثابتة في lib/it.ts لأنها طبقة عرض لا مفردات.
+  const { conditions, typeLabel: custodyTypeLabel, conditionLabel } = useAssetVocab();
 
   const [items, setItems] = useState<CustodyItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  // الفلاتر كلها تعمل على مجموعة محمّلة مرة واحدة، لا بطلب لكل ضغطة: الكروت
+  // والأزرار تعرض إجمالياتها من نفس المجموعة، فلو فلتر كلٌّ منها على الخادم
+  // لعرض كل كارت عدداً محسوباً بعد فلتر الآخر — أي أعداداً لا تجمع على الكل.
+  const [bucket, setBucket] = useState('');
+  const [otherType, setOtherType] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
+  const [conditionFilter, setConditionFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<CustodyItem | null>(null);
   const [form, setForm] = useState<any>(EMPTY);
@@ -88,16 +99,23 @@ export default function ItCustodyPage() {
   const [handoverForm, setHandoverForm] = useState({ date: '', condition: 'good', notes: '', retire: false });
   const [handoverLoading, setHandoverLoading] = useState(false);
 
+  // اللوحة تفتح هذه الصفحة على كارت أو زر بعينه، فتصل الحالة الأولية من الرابط.
+  const params = useSearchParams();
+  useEffect(() => {
+    const b = params?.get('bucket'); if (b) setBucket(b);
+    const st = params?.get('status'); if (st) setStateFilter(st);
+    const c = params?.get('condition'); if (c) setConditionFilter(c);
+  }, [params]);
+
+  // `scope=all` يضم المستودع: زر «المستودع» وكارت كل فئة يجب أن يعدّا المخزون
+  // أيضاً، وبدونه تعرض الشاشة إجماليات ينقصها ثلث السجل.
   const load = useCallback(async () => {
     try {
-      const qs = new URLSearchParams();
-      if (statusFilter) qs.set('status', statusFilter);
-      if (typeFilter) qs.set('type', typeFilter);
-      const d = await api.get<{ items: CustodyItem[] }>(`/api/it/custody?${qs.toString()}`);
+      const d = await api.get<{ items: CustodyItem[] }>('/api/it/custody?scope=all');
       setItems(d.items || []);
     } catch {}
     setLoading(false);
-  }, [statusFilter, typeFilter]);
+  }, []);
 
   // What is currently on the shelf and therefore assignable from this page.
   const loadStock = useCallback(async () => {
@@ -124,6 +142,10 @@ export default function ItCustodyPage() {
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
+  // الفئة مشتقّة من النوع المحفوظ لا مخزَّنة بجانبه: قيمتان لشيء واحد تفترقان.
+  const formBucket = bucketOf(form.type);
+  const derivedName = deriveAssetName(form.type, form.brand);
+
   const openCreate = () => {
     setEditing(null);
     setForm({ ...EMPTY, assignedDate: today() });
@@ -142,10 +164,10 @@ export default function ItCustodyPage() {
 
   // Editing always takes the plain custody path; creating branches on the mode.
   const canSave = editing
-    ? !!form.employee && !!form.name.trim()
+    ? !!form.employee && !!form.type
     : createMode === 'stock'
       ? !!form.employee && !!pickedStockId
-      : !!form.employee && !!form.name.trim();
+      : !!form.employee && !!form.type;
 
   const save = async () => {
     if (!canSave) return;
@@ -156,10 +178,11 @@ export default function ItCustodyPage() {
       } else if (createMode === 'stock') {
         // Same document leaves the shelf and lands on the employee — the device
         // keeps its serial and its whole history.
+        // بلا `condition`: الصنف يحمل حالته من المستودع، وإعادة سؤالها هنا
+        // تعني حقيقتين لشيء واحد — وأيّهما الصحيحة سؤال بلا إجابة.
         await api.post(`/api/it/stock/${pickedStockId}/assign`, {
           employee: form.employee,
           assignedDate: form.assignedDate,
-          condition: form.condition,
           notes: form.notes,
         });
       } else {
@@ -214,8 +237,8 @@ export default function ItCustodyPage() {
 
   const doRetire = async (a: CustodyItem) => {
     if (!(await confirm(ar
-      ? 'إخراج هذا الصنف من الخدمة نهائياً؟ لن يعود إلى المستودع.'
-      : 'Take this item out of service for good? It will not go back to the store.'))) return;
+      ? 'تسجيل هذا الصنف كتالف؟ لن يعود إلى المستودع.'
+      : 'Mark this item faulty? It will not go back to the store.'))) return;
     try { await api.post(`/api/it/custody/${a._id}/retire`, { date: today() }); refresh(); }
     catch (e: any) { notify(e.message, 'error'); }
   };
@@ -259,19 +282,44 @@ export default function ItCustodyPage() {
     setSaving(false);
   };
 
+  // إجماليات الكروت والأزرار تُحسب على المجموعة كاملة قبل أي فلتر — كارت يتغيّر
+  // رقمه كلما فُلتر الجدول لا يصلح كإجمالي.
+  const bucketCounts = useMemo(
+    () => CUSTODY_BUCKETS.map((b) => ({ key: b.key, count: items.filter((a) => bucketOf(a.type) === b.key).length })),
+    [items],
+  );
+  const stateCounts = useMemo(() => ({
+    assigned: items.filter((a) => a.status === 'assigned').length,
+    in_stock: items.filter((a) => a.status === 'in_stock').length,
+    returned: items.filter((a) => a.status === 'returned').length,
+  }), [items]);
+
+  // الفلتر الثاني لدلو «أخرى» يعرض ما هو موجود فعلاً فقط: عرض كل نوع ممكن يعني
+  // خيارات نتيجتها صفر.
+  const otherKinds = useMemo(() => {
+    const m = new Map<string, number>();
+    items.filter((a) => bucketOf(a.type) === 'other')
+      .forEach((a) => m.set(a.type, (m.get(a.type) || 0) + 1));
+    return OTHER_BUCKET_TYPES.filter((t) => m.has(t)).map((t) => ({ key: t, count: m.get(t) || 0 }));
+  }, [items]);
+
   const filtered = items.filter((a) => {
+    if (bucket && bucketOf(a.type) !== bucket) return false;
+    if (bucket === 'other' && otherType && a.type !== otherType) return false;
+    if (stateFilter && a.status !== stateFilter) return false;
+    if (conditionFilter && a.condition !== conditionFilter) return false;
     const s = search.trim().toLowerCase();
     if (!s) return true;
-    return [a.name, a.serialNumber, a.brand, a.model, a.specs, empName(a.employee, lang)]
+    return [a.name, a.serialNumber, a.brand, a.specs, empName(a.employee, lang)]
       .some((v) => (v || '').toLowerCase().includes(s));
   });
 
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
-  const assigned = items.filter((a) => a.status === 'assigned').length;
-  const returned = items.filter((a) => a.status === 'returned').length;
+  const assigned = stateCounts.assigned;
   const totalValue = items.filter((a) => a.status === 'assigned').reduce((s, a) => s + (a.value || 0), 0);
+  const anyFilter = !!(bucket || stateFilter || conditionFilter || otherType || search.trim());
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -286,10 +334,9 @@ export default function ItCustodyPage() {
           { header: 'Type', key: 'type', transform: (v: any) => custodyTypeLabel(v, 'en'), width: 14 },
           { header: 'Serial', key: 'serialNumber', width: 20 },
           { header: 'Brand', key: 'brand', width: 14 },
-          { header: 'Model', key: 'model', width: 16 },
           { header: 'Specs', key: 'specs', width: 28 },
           { header: 'Condition', key: 'condition', transform: (v: any) => conditionLabel(v, 'en'), width: 12 },
-          { header: 'Value', key: 'value', width: 12 },
+          { header: 'Value (per unit)', key: 'value', width: 14 },
           { header: 'Assigned', key: 'assignedDate', width: 14 },
           { header: 'Status', key: 'status', transform: (v: any) => custodyStatusLabel(v, 'en'), width: 12 },
           { header: 'Returned', key: 'returnedDate', width: 14 },
@@ -300,42 +347,65 @@ export default function ItCustodyPage() {
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'تسليم عهدة' : 'Assign item'}</PrimaryButton>
       </PageHeader>
 
-      {/* Shared-data notice — this page writes to the same records HR reads, and
-          people need to know that before they hand out a laptop. */}
-      <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 flex items-start gap-3">
-        <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-        <p className="text-xs text-blue-800 leading-relaxed">
-          {ar
-            ? 'ملاحظة مهمة: العهد المسجّلة هنا هي نفسها المسجّلة في قسم الموارد البشرية — أي جهاز تسلّمه لموظف سيظهر تلقائياً في ملفه الشخصي في HR ضمن العهد الخاصة به، ولن يتمكن HR من إنهاء عقده قبل استرجاع العهدة. لا حاجة لتسجيل الجهاز مرتين.'
-            : 'Note: custody recorded here is the same record HR uses — any device you assign appears automatically on the employee\'s HR profile, and HR cannot terminate their contract until it is returned. No need to record it twice.'}
-        </p>
-      </div>
+      {/* الفئات الخمس بإجمالياتها. الضغط يفلتر، والضغط ثانيةً يلغي. */}
+      <CustodyCards
+        buckets={bucketCounts}
+        active={bucket}
+        onPick={(k) => { setBucket(k); setOtherType(''); }}
+        lang={lang}
+      />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label={ar ? 'بحوزة الموظفين' : 'Assigned'} value={assigned} accent="text-amber-600" />
-        <StatCard label={ar ? 'خارج الخدمة' : 'Out of service'} value={returned} accent="text-slate-600" />
-        <StatCard label={ar ? 'في المستودع' : 'In stock'} value={stock.length} accent="text-blue-600" />
-        <StatCard label={ar ? 'قيمة العهد الحالية' : 'Value assigned'} value={fmtMoney(totalValue)} accent="text-[#f37121]" />
-      </div>
+      {/* الفلتر الثاني: أي نوع من «أخرى» بالضبط. لا يظهر إلا حين يكون له معنى. */}
+      {bucket === 'other' && otherKinds.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+          <p className="text-xs font-semibold text-slate-500 mb-3">{ar ? 'أي نوع من «أخرى»؟' : 'Which kind of "Other"?'}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setOtherType('')}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                otherType === '' ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121]' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}>
+              {ar ? 'الكل' : 'All'}
+            </button>
+            {otherKinds.map((k) => (
+              <button key={k.key} type="button" onClick={() => setOtherType(otherType === k.key ? '' : k.key)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                  otherType === k.key ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121]' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}>
+                {custodyTypeLabel(k.key, lang)} <span className="tabular-nums opacity-70">{k.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* أين الصنف الآن: بعهدة موظف، أو على الرف، أو تالف. */}
+      <CustodyStateButtons byStatus={stateCounts} active={stateFilter} onPick={setStateFilter} lang={lang} />
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex-1 min-w-[240px]">
           <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث بالجهاز أو الرقم التسلسلي أو الموظف...' : 'Search item, serial or employee...'} />
         </div>
-        <div className="w-full sm:w-44 shrink-0">
-          {/* The type list grows from Reference Data — searchable, not scrollable */}
+        <div className="w-full sm:w-48 shrink-0">
           <SearchableSelect
-            value={typeFilter} onChange={setTypeFilter}
-            placeholder={ar ? 'كل الأنواع' : 'All types'} emptyLabel={ar ? 'كل الأنواع' : 'All types'}
-            options={[{ value: '', label: ar ? 'كل الأنواع' : 'All types' }, ...itTypes.map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
+            value={conditionFilter} onChange={setConditionFilter}
+            searchAfter={0}
+            placeholder={ar ? 'كل الحالات الفنية' : 'All conditions'} emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+            options={[{ value: '', label: ar ? 'كل الحالات الفنية' : 'All conditions' }, ...conditions.map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
           />
         </div>
-        <div className="w-full sm:w-44 shrink-0">
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
-            {optionsOf(CUSTODY_STATUSES, CUSTODY_STATUS_KEYS).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-          </Select>
-        </div>
+        {anyFilter && (
+          <button type="button"
+            onClick={() => { setBucket(''); setOtherType(''); setStateFilter(''); setConditionFilter(''); setSearch(''); }}
+            className="shrink-0 px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-600 hover:bg-slate-50">
+            {ar ? 'مسح الفلاتر' : 'Clear filters'}
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <StatCard label={ar ? 'المعروض الآن' : 'Showing'} value={filtered.length} accent="text-slate-900" />
+        <StatCard label={ar ? 'إجمالي السجل' : 'Total register'} value={items.length} accent="text-slate-900" />
+        <StatCard label={ar ? 'قيمة العهد الحالية' : 'Value assigned'} value={fmtMoney(totalValue)} accent="text-[#f37121]" />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
@@ -359,7 +429,7 @@ export default function ItCustodyPage() {
                 <td className="px-4 py-3 text-slate-900 font-medium">{empName(a.employee, lang)}</td>
                 <td className="px-4 py-3 text-slate-700">
                   {a.name}
-                  {(a.brand || a.model) && <div className="text-xs text-slate-500">{[a.brand, a.model].filter(Boolean).join(' ')}</div>}
+                  {a.specs && <div className="text-xs text-slate-500 truncate max-w-[180px]" title={a.specs}>{a.specs}</div>}
                 </td>
                 <td className="px-4 py-3">
                   <SmallBadge bg={CUSTODY_TYPES[a.type]?.bg || 'bg-slate-500/15'} text={CUSTODY_TYPES[a.type]?.text || 'text-slate-700'} label={custodyTypeLabel(a.type, lang)} />
@@ -381,7 +451,7 @@ export default function ItCustodyPage() {
                       <button type="button" onClick={() => openReturn(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-green-600 hover:bg-slate-100" title={ar ? 'استرجاع' : 'Return'}><Undo2 className="w-4 h-4" /></button>
                       <button type="button" onClick={() => openTransfer(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-blue-600 hover:bg-slate-100" title={ar ? 'نقل لموظف آخر' : 'Transfer to another employee'}><ArrowLeftRight className="w-4 h-4" /></button>
                       <button type="button" onClick={() => openReport(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-amber-600 hover:bg-slate-100" title={ar ? 'إبلاغ عن تلف أو فقد' : 'Report damaged or lost'}><AlertTriangle className="w-4 h-4" /></button>
-                      <button type="button" onClick={() => doRetire(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-slate-900 hover:bg-slate-100" title={ar ? 'إخراج من الخدمة' : 'Take out of service'}><Archive className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => doRetire(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-slate-900 hover:bg-slate-100" title={ar ? 'تسجيل كتالف' : 'Mark faulty'}><Archive className="w-4 h-4" /></button>
                     </>)}
                     <button type="button" onClick={() => openHistory(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'سجل الحركة' : 'Movement history'}><History className="w-4 h-4" /></button>
                     <button type="button" onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button>
@@ -469,38 +539,46 @@ export default function ItCustodyPage() {
             </Field>
           ) : (
             <>
-              <Field label={ar ? 'اسم الجهاز' : 'Item name'}>
-                <TextInput value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={ar ? 'مثال: لابتوب Dell' : 'e.g. Dell laptop'} />
-              </Field>
+              {/* النوع يُختار من الفئات الخمس. الاسم لم يعد حقلاً: يُشتق من الفئة
+                  والماركة، ويُعرض تحتهما كما سيُحفظ بالضبط. */}
               <Field label={ar ? 'النوع' : 'Type'}>
                 <SearchableSelect
-                  value={form.type} onChange={(v) => set('type', v)}
-                  options={itTypes.map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))}
+                  value={formBucket} searchAfter={0}
+                  onChange={(v) => {
+                    const b = CUSTODY_BUCKETS.find((x) => x.key === v);
+                    set('type', b ? b.canonicalType : 'other');
+                  }}
+                  options={CUSTODY_BUCKETS.map((b) => ({ value: b.key, label: ar ? b.ar : b.en }))}
                 />
+              </Field>
+              {formBucket === 'other' ? (
+                <Field label={ar ? 'أي نوع من «أخرى»؟' : 'Which kind of "Other"?'}>
+                  <SearchableSelect
+                    value={form.type} onChange={(v) => set('type', v)} searchAfter={0}
+                    options={OTHER_BUCKET_TYPES.map((t) => ({ value: t, label: custodyTypeLabel(t, lang) }))}
+                  />
+                </Field>
+              ) : <div className="hidden sm:block" />}
+              <Field label={ar ? 'الماركة' : 'Brand'}>
+                <TextInput value={form.brand || ''} onChange={(e) => set('brand', e.target.value)} placeholder={ar ? 'مثال: Dell' : 'e.g. Dell'} />
               </Field>
               <Field label={ar ? 'الرقم التسلسلي' : 'Serial number'}>
                 <TextInput value={form.serialNumber || ''} onChange={(e) => set('serialNumber', e.target.value)} />
               </Field>
-              <Field label={ar ? 'الماركة' : 'Brand'}>
-                <TextInput value={form.brand || ''} onChange={(e) => set('brand', e.target.value)} />
+              <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <span className="text-xs text-slate-500">{ar ? 'سيُسجَّل باسم' : 'Will be recorded as'}</span>
+                <span className="ms-2 text-sm font-semibold text-slate-900">{derivedName}</span>
+              </div>
+              <Field label={ar ? 'الحالة الفنية' : 'Condition'}>
+                <Select value={form.condition} onChange={(e) => set('condition', e.target.value)}>
+                  {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
+                </Select>
               </Field>
-              <Field label={ar ? 'الموديل' : 'Model'}>
-                <TextInput value={form.model || ''} onChange={(e) => set('model', e.target.value)} />
+              <Field label={ar ? 'القيمة للقطعة الواحدة' : 'Value per single unit'}>
+                <TextInput type="number" value={form.value ?? 0} onChange={(e) => set('value', Number(e.target.value))} />
               </Field>
-            </>
-          )}
-          <Field label={ar ? 'الحالة الفنية' : 'Condition'}>
-            <Select value={form.condition} onChange={(e) => set('condition', e.target.value)}>
-              {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-            </Select>
-          </Field>
-          {(editing || createMode === 'new') && (
-            <>
               <Field label={ar ? 'المواصفات' : 'Specs'} span2>
                 <TextInput value={form.specs || ''} onChange={(e) => set('specs', e.target.value)} placeholder={ar ? 'مثال: i7 / 16GB / 512GB SSD' : 'e.g. i7 / 16GB / 512GB SSD'} />
-              </Field>
-              <Field label={ar ? 'القيمة' : 'Value'}>
-                <TextInput type="number" value={form.value ?? 0} onChange={(e) => set('value', Number(e.target.value))} />
               </Field>
             </>
           )}
@@ -541,7 +619,7 @@ export default function ItCustodyPage() {
             <div className="flex gap-2">
               {([
                 { retire: false, ar: 'رجوع للمخزن', en: 'Back to stock' },
-                { retire: true, ar: 'إخراج من الخدمة', en: 'Retire' },
+                { retire: true, ar: 'تالف', en: 'Faulty' },
               ] as const).map((o) => (
                 <button
                   key={String(o.retire)}
@@ -562,8 +640,8 @@ export default function ItCustodyPage() {
           <p className="text-xs text-slate-500">
             {returnForm.retire
               ? (ar
-                ? 'سيتم إخراج الجهاز من الخدمة نهائياً ولن يظهر في المستودع.'
-                : 'The device leaves circulation and will not appear in stock.')
+                ? 'سيُسجَّل الجهاز كتالف ولن يظهر في المستودع.'
+                : 'The device is recorded as faulty and will not appear in stock.')
               : (ar
                 ? 'سيعود الجهاز إلى المستودع جاهزاً للتسليم لموظف آخر، مع الاحتفاظ بسجله الكامل.'
                 : 'The device returns to stock, ready to hand to someone else, keeping its full history.')}
@@ -764,7 +842,7 @@ export default function ItCustodyPage() {
               <label className="sm:col-span-2 flex items-center gap-2 text-sm text-slate-700">
                 <input type="checkbox" checked={handoverForm.retire} onChange={(e) => setHandoverForm({ ...handoverForm, retire: e.target.checked })}
                   className="w-4 h-4 accent-[#f37121]" />
-                {ar ? 'إخراج من الخدمة بدل إعادتها للمستودع' : 'Take out of service instead of returning to the store'}
+                {ar ? 'تسجيلها كتالفة بدل إعادتها للمستودع' : 'Record as faulty instead of returning to the store'}
               </label>
             </div>
           )}

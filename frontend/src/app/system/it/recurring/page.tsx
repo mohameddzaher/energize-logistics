@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { RefreshCw, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportToExcel } from '@/utils/exportExcel';
 import { Spinner, PageHeader, SearchInput, ExportButton, SmallBadge, SearchableSelect } from '@/components/hr/HRKit';
 import {
@@ -71,20 +71,6 @@ export default function RecurringPage() {
           { header: 'Affected departments', key: 'affectedDepartments', transform: (v: any) => (v || []).join(', '), width: 32 },
         ], `it-recurring-${today()}`, 'Recurring')} />
       </PageHeader>
-
-      {/* The explainer is the point of the page: a high count is a process
-          failure, not a support statistic. */}
-      <div className="rounded-xl border border-red-200 bg-red-50/70 p-4 flex items-start gap-3">
-        <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-        <div className="text-sm text-red-800">
-          <p className="font-semibold mb-1">{ar ? 'لماذا هذه الصفحة مهمة؟' : 'Why this page matters'}</p>
-          <p className="text-xs text-red-700/90 leading-relaxed">
-            {ar
-              ? 'كل مشكلة في هذه القائمة تكررت مرتين أو أكثر، أي أن الحل السابق كان مؤقتاً ولم يعالج السبب الحقيقي. كلما ارتفع عدد التكرار زادت التكلفة المهدرة على الدعم الفني وتعطّل العمل. المطلوب هنا هو حل جذري دائم — استبدال الجهاز، تعديل الإعدادات، تدريب المستخدمين، أو تحديث النظام — وليس إعادة نفس الإصلاح المؤقت في كل مرة.'
-              : 'Every problem listed here has come back two or more times, which means the previous fix was a workaround and never addressed the real cause. The higher the count, the more support time and downtime it keeps costing. These need a permanent root-cause fix — replace the device, change the configuration, train the users, or patch the system — not the same temporary repair again.'}
-          </p>
-        </div>
-      </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex-1 min-w-[240px]">

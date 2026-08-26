@@ -37,6 +37,7 @@ export interface Ticket {
   assignedTo?: UserRef | string | null;
   assignedToName?: string;
   reportedAt?: string;
+  resolvedDate?: string;
   resolvedAt?: string;
   resolutionMinutes?: number;
   description?: string;
@@ -130,10 +131,21 @@ export interface Dashboard {
     systemsByStatus: CountRow[];
     renewalsDueSoon: ItSystem[];
   };
+  // ملخّص العهد: نفس الكروت ونفس الأزرار المعروضة في صفحة العهد، محسوبة في
+  // الخادم مرة واحدة حتى لا تختلف الأرقام بين الشاشتين.
+  custody?: {
+    buckets: { key: string; nameAr: string; nameEn: string; count: number }[];
+    byStatus: { assigned: number; in_stock: number; returned: number };
+    byCondition: CountRow[];
+    otherKinds: CountRow[];
+    total: number;
+  };
   topRecurring: RecurringGroup[];
   recentTickets: Ticket[];
   range?: { from: string; to: string };
 }
+
+export interface ItAssignee { _id: string; firstName?: string; lastName?: string; role?: string; email?: string }
 
 // ── Label maps ──────────────────────────────────────────────────────────────
 
@@ -192,11 +204,72 @@ export const CUSTODY_TYPES: Record<string, Style> = {
   other: { en: 'Other', ar: 'أخرى', bg: 'bg-slate-500/15', text: 'text-slate-700' },
 };
 
+// ── دلاء العرض ──────────────────────────────────────────────────────────────
+// خمس فئات تُعرض ككروت بإجمالياتها أعلى الصفحة. النوع المفصّل يبقى محفوظاً كما
+// هو في قاعدة البيانات — الدلو طبقة عرض تُشتق منه، لأن سجلاً فيه خمسة عشر
+// نوعاً وستة وستون اسماً حرّاً لا يمكن قراءة إجمالياته بالعين.
+// مطابقة لـ BUCKETS في backend/src/config/itCustody.js.
+export interface CustodyBucket {
+  key: string;
+  ar: string;
+  en: string;
+  /** النوع الذي يُكتب عند إضافة صنف جديد من هذا الدلو. */
+  canonicalType: string;
+  types: string[];
+}
+
+export const CUSTODY_BUCKETS: CustodyBucket[] = [
+  { key: 'laptops', ar: 'لابتوبات', en: 'Laptops', canonicalType: 'laptop', types: ['laptop', 'desktop'] },
+  { key: 'peripherals', ar: 'ماوس وكيبورد', en: 'Mouse & Keyboard', canonicalType: 'keyboard_mouse', types: ['mouse', 'keyboard', 'keyboard_mouse'] },
+  { key: 'phones', ar: 'موبايلات', en: 'Phones', canonicalType: 'phone', types: ['phone', 'tablet'] },
+  { key: 'monitors', ar: 'شاشات', en: 'Monitors', canonicalType: 'monitor', types: ['monitor'] },
+  { key: 'other', ar: 'أخرى', en: 'Other', canonicalType: 'other', types: ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'] },
+];
+
+const TYPE_TO_BUCKET = new Map<string, string>();
+CUSTODY_BUCKETS.forEach((b) => b.types.forEach((t) => TYPE_TO_BUCKET.set(t, b.key)));
+
+/** الدلو الذي ينتمي إليه نوع مفصّل — وأي نوع مجهول يسقط في «أخرى» بدل أن يختفي. */
+export const bucketOf = (type?: string) => TYPE_TO_BUCKET.get(String(type || '').trim()) || 'other';
+
+export const bucketLabel = (key: string, lang: Lang) => {
+  const b = CUSTODY_BUCKETS.find((x) => x.key === key);
+  return b ? b[lang] : key;
+};
+
+// أسماء الأنواع بالعربية لاشتقاق اسم العرض. مطابقة لـ TYPE_NAME_AR في
+// backend/src/config/itCustody.js — الشاشة تعرض معاينة للاسم قبل الحفظ، وأي
+// اختلاف بين النسختين يجعل المعاينة تَعِد باسم غير الذي يُحفظ.
+export const TYPE_NAME_AR: Record<string, string> = {
+  laptop: 'لابتوب', desktop: 'حاسب مكتبي', phone: 'موبايل', tablet: 'جهاز لوحي',
+  monitor: 'شاشة', keyboard: 'كيبورد', mouse: 'ماوس', keyboard_mouse: 'ماوس وكيبورد',
+  headset: 'سماعة رأس', printer: 'طابعة', router: 'راوتر', charger: 'شاحن',
+  cable: 'كابل', laptop_bag: 'شنطة لابتوب', accessory: 'ملحق',
+  access_card: 'بطاقة دخول', other: 'صنف آخر',
+};
+
+/**
+ * اسم العرض مشتقّ من النوع والماركة بدل أن يُكتب باليد — «لابتوب Dell».
+ * الاسم الحرّ هو ما أنتج ستة وستين تهجئة لنفس الأجهزة في السجل.
+ */
+export const deriveAssetName = (type?: string, brand?: string) => {
+  const base = TYPE_NAME_AR[String(type || '').trim()] || TYPE_NAME_AR.other;
+  const b = String(brand || '').trim();
+  return b ? `${base} ${b}` : base;
+};
+
+/** الأنواع المفصّلة داخل دلو «أخرى» — تغذّي الفلتر الثاني الذي يظهر عند اختياره. */
+export const OTHER_BUCKET_TYPES =
+  CUSTODY_BUCKETS.find((b) => b.key === 'other')!.types;
+
 // Types IT does NOT hand out (vehicles belong to the fleet section; `tool` is
 // HR's — عدة, safety kit). An EXCLUDE list, mirroring `itHandsOut: false` in
 // backend/src/config/assetDefaults.js: a frozen include-list silently hid every
 // new type added through Reference Data from IT's own dropdowns.
-export const IT_CUSTODY_EXCLUDED_TYPE_KEYS = ['vehicle', 'tool'];
+// الشرائح انضمّت للقائمة: خطوط الأرقام ليست من عهدة القسم، وبقاؤها كان يضيف
+// أربعة وستين صفاً لا يملكها أحد فينا إلى كل عدّ وكل تقرير.
+// مطابقة لـ EXCLUDED_TYPES في backend/src/config/itCustody.js.
+export const IT_CUSTODY_EXCLUDED_TYPE_KEYS = ['vehicle', 'tool', 'sim'];
 
 // The custody page never lists warehouse stock (that has its own page), so its
 // status filter must not offer `in_stock`.
@@ -212,11 +285,16 @@ export const CONDITIONS: Record<string, Style> = {
   damaged: { en: 'Damaged', ar: 'تالف', bg: 'bg-red-500/15', text: 'text-red-700' },
 };
 
+// «خارج الخدمة» صارت «تالف» بطلب القسم: العبارة الأولى كانت تصف موقعاً، وما
+// يعني المستودع فعلاً هو أن الصنف لم يعد صالحاً للتسليم.
 export const CUSTODY_STATUSES: Record<string, Style> = {
   assigned: { en: 'Assigned', ar: 'بعهدة الموظف', bg: 'bg-amber-500/20', text: 'text-amber-700' },
-  in_stock: { en: 'In Stock', ar: 'في المستودع', bg: 'bg-blue-500/20', text: 'text-blue-700' },
-  returned: { en: 'Out of Service', ar: 'خارج الخدمة', bg: 'bg-slate-500/20', text: 'text-slate-700' },
+  in_stock: { en: 'In Stock', ar: 'المستودع', bg: 'bg-blue-500/20', text: 'text-blue-700' },
+  returned: { en: 'Faulty', ar: 'تالف', bg: 'bg-red-500/20', text: 'text-red-700' },
 };
+
+// الأزرار الثلاثة العريضة أعلى صفحة العهد، بالترتيب الذي تُقرأ به.
+export const CUSTODY_STATE_KEYS = ['assigned', 'in_stock', 'returned'] as const;
 
 export const SYSTEM_TYPES: Record<string, Style> = {
   erp: { en: 'ERP', ar: 'نظام ERP', bg: 'bg-orange-500/15', text: 'text-orange-700' },
@@ -289,11 +367,13 @@ export const fmtDateTime = (v?: string | Date | null) =>
 export const fmtMoney = (v?: number | null) =>
   typeof v === 'number' ? v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—';
 
-// Minutes → "2d 3h" / "٢ ي ٣ س". Resolution times span minutes to weeks, so the
-// unit has to adapt or the number becomes unreadable.
+// زمن الحل يُخزَّن بالدقائق لكنه دائماً من مضاعفات اليوم الكامل، لأن تاريخ
+// البلاغ بلا وقت. صفر يعني أن البلاغ حُلّ في يومه — لا أنه استغرق صفر دقيقة،
+// و«٠ د» كانت تقرأ كأن شيئاً لم يحدث.
 export const fmtDuration = (minutes?: number | null, lang: Lang = 'en') => {
   if (minutes === undefined || minutes === null || !Number.isFinite(minutes)) return '—';
   const m = Math.max(0, Math.round(minutes));
+  if (m === 0) return lang === 'ar' ? 'نفس اليوم' : 'Same day';
   if (m < 60) return lang === 'ar' ? `${m} د` : `${m}m`;
   const h = Math.floor(m / 60);
   const mm = m % 60;
@@ -345,6 +425,14 @@ export const idOf = (v: any): string => (!v ? '' : typeof v === 'string' ? v : v
 type UserLike = { role?: string | null; permissions?: Record<string, 'none' | 'view' | 'edit'> } | null | undefined;
 export const canViewIt = (u: UserLike) => isItStaff(u?.role) || canAccessSection(u?.permissions, 'Software & IT');
 export const canEditIt = (u: UserLike) => isItAdmin(u?.role) || canEditSection(u?.permissions, 'Software & IT');
+
+
+// ── قوائم نموذج البلاغ ──────────────────────────────────────────────────────
+// الأقسام تأتي من ملفات الموظفين نفسها، ومن يُسند إليه الحل من مستخدمي النظام:
+// الحقلان كانا نصاً حرّاً، فكان كل تقرير يجمّع حسب القسم أو حسب المسؤول ينقسم
+// على اختلاف تهجئة الاسم.
+export const listItDepartments = () => api.get<{ departments: string[] }>('/api/it/departments');
+export const listItAssignees = () => api.get<{ users: ItAssignee[] }>('/api/it/assignees');
 
 
 // ── بريد الشركة (@energize-logistics.com) ───────────────────────────────────

@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Boxes, Plus, Edit, Trash2, Check, Info, UserPlus } from 'lucide-react';
+import { Boxes, Plus, Edit, Trash2, Check, UserPlus } from 'lucide-react';
 import { exportToExcel } from '@/utils/exportExcel';
 import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
@@ -13,13 +13,16 @@ import {
 } from '@/components/hr/HRKit';
 import { useAssetVocab } from '@/hooks/useAssetVocab';
 import {
-  canViewIt, StockItem, EmployeeRef, CUSTODY_TYPES,
-  optionsOf, empName, fmtDate, fmtMoney, today, unitsOf,
+  canViewIt, StockItem, EmployeeRef, CUSTODY_TYPES, CUSTODY_BUCKETS,
+  OTHER_BUCKET_TYPES, bucketOf, deriveAssetName,
+  empName, fmtMoney, today, unitsOf,
 } from '@/lib/it';
 
+// لا `name` ولا `model` ولا `location`: الاسم يُشتق من النوع والماركة،
+// والحقلان الآخران كانا يُتركان فارغين فيصيران عمودين فارغين في كل تقرير.
 const EMPTY = {
-  name: '', type: 'laptop', serialNumber: '', brand: '', model: '',
-  specs: '', condition: 'new', value: 0, quantity: 1, location: '', notes: '',
+  type: 'laptop', serialNumber: '', brand: '',
+  specs: '', condition: 'new', value: 0, quantity: 1, notes: '',
 };
 
 export default function ItStockPage() {
@@ -46,7 +49,9 @@ export default function ItStockPage() {
   // Handing an item over is a separate decision from editing it, so it gets its
   // own modal — the employee and the handover date are what HR later audits.
   const [assigning, setAssigning] = useState<StockItem | null>(null);
-  const [assignForm, setAssignForm] = useState({ employee: '', assignedDate: '', condition: 'good', notes: '' });
+  // بلا حالة فنية: الصنف يحملها من لحظة إضافته للمستودع، وسؤالها ثانيةً عند
+  // التسليم يفتح باب حقيقتين لشيء واحد.
+  const [assignForm, setAssignForm] = useState({ employee: '', assignedDate: '', notes: '' });
 
   const load = useCallback(async () => {
     try {
@@ -71,11 +76,15 @@ export default function ItStockPage() {
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
+  // الفئة مشتقّة من النوع لا مخزَّنة بجانبه، والاسم مشتقّ من الاثنين.
+  const formBucket = bucketOf(form.type);
+  const derivedName = deriveAssetName(form.type, form.brand);
+
   const openCreate = () => { setEditing(null); setForm({ ...EMPTY }); setShowModal(true); };
   const openEdit = (a: StockItem) => { setEditing(a); setForm({ ...EMPTY, ...a }); setShowModal(true); };
 
   const save = async () => {
-    if (!form.name.trim()) return;
+    if (!form.type) return;
     setSaving(true);
     try {
       if (editing) await api.put(`/api/it/stock/${editing._id}`, form);
@@ -92,7 +101,7 @@ export default function ItStockPage() {
 
   const openAssign = (a: StockItem) => {
     setAssigning(a);
-    setAssignForm({ employee: '', assignedDate: today(), condition: a.condition || 'good', notes: '' });
+    setAssignForm({ employee: '', assignedDate: today(), notes: '' });
   };
 
   const doAssign = async () => {
@@ -108,7 +117,7 @@ export default function ItStockPage() {
   const filtered = items.filter((a) => {
     const s = search.trim().toLowerCase();
     if (!s) return true;
-    return [a.name, a.serialNumber, a.brand, a.model, a.specs, a.location]
+    return [a.name, a.serialNumber, a.brand, a.specs]
       .some((v) => (v || '').toLowerCase().includes(s));
   });
 
@@ -135,27 +144,13 @@ export default function ItStockPage() {
           { header: 'Type', key: 'type', transform: (v: any) => custodyTypeLabel(v, 'en'), width: 14 },
           { header: 'Serial', key: 'serialNumber', width: 20 },
           { header: 'Brand', key: 'brand', width: 14 },
-          { header: 'Model', key: 'model', width: 16 },
           { header: 'Specs', key: 'specs', width: 28 },
           { header: 'Condition', key: 'condition', transform: (v: any) => conditionLabel(v, 'en'), width: 12 },
           { header: 'Quantity', key: 'quantity', width: 10 },
-          { header: 'Location', key: 'location', width: 18 },
-          { header: 'Value', key: 'value', width: 12 },
+          { header: 'Value (per unit)', key: 'value', width: 14 },
         ], `it-stock-${today()}`, 'Stock')} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة للمستودع' : 'Add to stock'}</PrimaryButton>
       </PageHeader>
-
-      {/* Stock is the same collection as custody, one document per device — the
-          moment it is handed out it stops being stock and becomes a custody
-          record on the employee's HR profile. People need to expect that. */}
-      <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 flex items-start gap-3">
-        <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-        <p className="text-xs text-blue-800 leading-relaxed">
-          {ar
-            ? 'الأصناف هنا غير مسلّمة لأي موظف. عند الضغط على "تسليم لموظف" ينتقل نفس الصنف — بنفس الرقم التسلسلي وسجله الكامل — إلى عهد الموظف ويظهر مباشرة في ملفه في الموارد البشرية. وعند استرجاع العهدة يعود الصنف إلى المستودع تلقائياً.'
-            : 'Items here are held by nobody. Assigning one moves the same record — same serial, same history — into the employee\'s custody, where it appears on their HR profile immediately. Returning it puts it back on this shelf.'}
-        </p>
-      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label={ar ? 'إجمالي الوحدات' : 'Total units'} value={totalUnits} accent="text-[#f37121]" />
@@ -181,7 +176,7 @@ export default function ItStockPage() {
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex-1 min-w-[240px]">
-          <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث بالجهاز أو الرقم التسلسلي أو الموقع...' : 'Search item, serial or location...'} />
+          <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث بالجهاز أو الرقم التسلسلي أو الماركة...' : 'Search item, serial or brand...'} />
         </div>
         <div className="w-full sm:w-44 shrink-0">
           {/* The type list grows from Reference Data — searchable, not scrollable */}
@@ -208,17 +203,16 @@ export default function ItStockPage() {
             <th className="text-start font-semibold px-4 py-3">{ar ? 'المواصفات' : 'Specs'}</th>
             <th className="text-start font-semibold px-4 py-3">{ar ? 'الحالة الفنية' : 'Condition'}</th>
             <th className="text-start font-semibold px-4 py-3">{ar ? 'الكمية' : 'Qty'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الموقع' : 'Location'}</th>
             <th className="text-end font-semibold px-4 py-3">{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center text-slate-500 py-12">{ar ? 'المستودع فارغ.' : 'No items in stock.'}</td></tr>
+              <tr><td colSpan={7} className="text-center text-slate-500 py-12">{ar ? 'المستودع فارغ.' : 'No items in stock.'}</td></tr>
             ) : filtered.map((a) => (
               <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                 <td className="px-4 py-3 text-slate-900 font-medium">
                   {a.name}
-                  {(a.brand || a.model) && <div className="text-xs text-slate-500">{[a.brand, a.model].filter(Boolean).join(' ')}</div>}
+                  {a.specs && <div className="text-xs text-slate-500 truncate max-w-[180px]" title={a.specs}>{a.specs}</div>}
                 </td>
                 <td className="px-4 py-3">
                   <SmallBadge bg={CUSTODY_TYPES[a.type]?.bg || 'bg-slate-500/15'} text={CUSTODY_TYPES[a.type]?.text || 'text-slate-700'} label={custodyTypeLabel(a.type, lang)} />
@@ -227,7 +221,6 @@ export default function ItStockPage() {
                 <td className="px-4 py-3 text-slate-700 text-xs max-w-[200px] truncate" title={a.specs || ''}>{a.specs || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{a.condition ? conditionLabel(a.condition, lang) : '—'}</td>
                 <td className="px-4 py-3 text-slate-900 font-semibold">{unitsOf(a)}</td>
-                <td className="px-4 py-3 text-slate-700">{a.location || '—'}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
                     <button type="button" onClick={() => openAssign(a)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-xs font-semibold" title={ar ? 'تسليم لموظف' : 'Assign to employee'}>
@@ -247,45 +240,56 @@ export default function ItStockPage() {
         title={editing ? (ar ? 'تعديل صنف المستودع' : 'Edit stock item') : (ar ? 'إضافة صنف للمستودع' : 'Add item to stock')}
         footer={<>
           <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-          <PrimaryButton onClick={save} disabled={saving || !form.name.trim()}>
+          <PrimaryButton onClick={save} disabled={saving || !form.type}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'حفظ' : 'Save'}
           </PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label={ar ? 'اسم الجهاز' : 'Item name'}>
-            <TextInput value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={ar ? 'مثال: لابتوب Dell' : 'e.g. Dell laptop'} />
-          </Field>
+          {/* الفئات الخمس. الاسم لم يعد حقلاً — يُشتق من الفئة والماركة ويُعرض
+              تحتهما كما سيُحفظ، فيخرج الصنف باسم واحد أياً كان من أدخله. */}
           <Field label={ar ? 'النوع' : 'Type'}>
             <SearchableSelect
-              value={form.type} onChange={(v) => set('type', v)}
-              options={itTypes.map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))}
+              value={formBucket} searchAfter={0}
+              onChange={(v) => {
+                const b = CUSTODY_BUCKETS.find((x) => x.key === v);
+                set('type', b ? b.canonicalType : 'other');
+              }}
+              options={CUSTODY_BUCKETS.map((b) => ({ value: b.key, label: ar ? b.ar : b.en }))}
             />
+          </Field>
+          {formBucket === 'other' ? (
+            <Field label={ar ? 'أي نوع من «أخرى»؟' : 'Which kind of "Other"?'}>
+              <SearchableSelect
+                value={form.type} onChange={(v) => set('type', v)} searchAfter={0}
+                options={OTHER_BUCKET_TYPES.map((t) => ({ value: t, label: custodyTypeLabel(t, lang) }))}
+              />
+            </Field>
+          ) : <div className="hidden sm:block" />}
+          <Field label={ar ? 'الماركة' : 'Brand'}>
+            <TextInput value={form.brand || ''} onChange={(e) => set('brand', e.target.value)} placeholder={ar ? 'مثال: Dell' : 'e.g. Dell'} />
           </Field>
           <Field label={ar ? 'الرقم التسلسلي' : 'Serial number'}>
             <TextInput value={form.serialNumber || ''} onChange={(e) => set('serialNumber', e.target.value)} />
           </Field>
+          <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <span className="text-xs text-slate-500">{ar ? 'سيُسجَّل باسم' : 'Will be recorded as'}</span>
+            <span className="ms-2 text-sm font-semibold text-slate-900">{derivedName}</span>
+          </div>
           <Field label={ar ? 'الحالة الفنية' : 'Condition'}>
             <Select value={form.condition} onChange={(e) => set('condition', e.target.value)}>
               {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
             </Select>
           </Field>
-          <Field label={ar ? 'الماركة' : 'Brand'}>
-            <TextInput value={form.brand || ''} onChange={(e) => set('brand', e.target.value)} />
-          </Field>
-          <Field label={ar ? 'الموديل' : 'Model'}>
-            <TextInput value={form.model || ''} onChange={(e) => set('model', e.target.value)} />
-          </Field>
-          <Field label={ar ? 'المواصفات' : 'Specs'} span2>
-            <TextInput value={form.specs || ''} onChange={(e) => set('specs', e.target.value)} placeholder={ar ? 'مثال: i7 / 16GB / 512GB SSD' : 'e.g. i7 / 16GB / 512GB SSD'} />
-          </Field>
           <Field label={ar ? 'الكمية' : 'Quantity'}>
             <TextInput type="number" min={1} value={form.quantity ?? 1} onChange={(e) => set('quantity', Number(e.target.value))} />
           </Field>
-          <Field label={ar ? 'الموقع في المستودع' : 'Location in store'}>
-            <TextInput value={form.location || ''} onChange={(e) => set('location', e.target.value)} placeholder={ar ? 'مثال: رف A-3' : 'e.g. Shelf A-3'} />
-          </Field>
-          <Field label={ar ? 'القيمة' : 'Value'}>
+          {/* القيمة للقطعة الواحدة صراحةً: صف فيه عشرون كابلاً وقيمة واحدة كان
+              يُقرأ على الوجهين، فتختلف قيمة المستودع باختلاف من يقرأها. */}
+          <Field label={ar ? 'القيمة للقطعة الواحدة' : 'Value per single unit'} span2>
             <TextInput type="number" value={form.value ?? 0} onChange={(e) => set('value', Number(e.target.value))} />
+          </Field>
+          <Field label={ar ? 'المواصفات' : 'Specs'} span2>
+            <TextInput value={form.specs || ''} onChange={(e) => set('specs', e.target.value)} placeholder={ar ? 'مثال: i7 / 16GB / 512GB SSD' : 'e.g. i7 / 16GB / 512GB SSD'} />
           </Field>
           <Field label={ar ? 'ملاحظات' : 'Notes'} span2>
             <TextArea rows={2} value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} />
@@ -323,11 +327,6 @@ export default function ItStockPage() {
           </Field>
           <Field label={ar ? 'تاريخ التسليم' : 'Handover date'}>
             <TextInput type="date" value={assignForm.assignedDate} onChange={(e) => setAssignForm({ ...assignForm, assignedDate: e.target.value })} />
-          </Field>
-          <Field label={ar ? 'الحالة عند التسليم' : 'Condition at handover'}>
-            <Select value={assignForm.condition} onChange={(e) => setAssignForm({ ...assignForm, condition: e.target.value })}>
-              {conditions.map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-            </Select>
           </Field>
           <Field label={ar ? 'ملاحظات' : 'Notes'}>
             <TextArea rows={2} value={assignForm.notes} onChange={(e) => setAssignForm({ ...assignForm, notes: e.target.value })} />

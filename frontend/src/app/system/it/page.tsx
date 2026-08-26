@@ -5,7 +5,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { MonitorCog, AlertTriangle, RefreshCw, CalendarClock, ArrowRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { MonitorCog, AlertTriangle, RefreshCw, CalendarClock, ArrowRight, Laptop } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -15,12 +16,14 @@ import { exportMultiSheet } from '@/utils/exportExcel';
 import {
   canViewIt, Dashboard, categoryLabel, priorityLabel, ticketStatusLabel,
   systemStatusLabel, TICKET_STATUSES, fmtDate, fmtDuration, daysAgo, today,
-  daysUntil, renewalTone,
+  daysUntil, renewalTone, bucketLabel, custodyTypeLabel, conditionLabel,
 } from '@/lib/it';
+import { CustodyCards, CustodyStateButtons } from '@/components/it/CustodyOverview';
 
 const PIE_COLORS = ['#f37121', '#3b82f6', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6'];
 
 export default function ItDashboardPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -46,6 +49,8 @@ export default function ItDashboardPage() {
   if (loading) return <Spinner />;
 
   const t = data?.totals;
+  const custody = data?.custody;
+  const custodyBuckets = (custody?.buckets || []).map((b) => ({ key: b.key, count: b.count }));
   const systemsDown = (t?.systemsByStatus || []).filter((s) => s.key === 'down' || s.key === 'degraded').reduce((s, r) => s + r.count, 0);
 
   const categoryData = (t?.ticketsByCategory || []).map((r) => ({ name: categoryLabel(r.key, lang), count: r.count }));
@@ -63,7 +68,7 @@ export default function ItDashboardPage() {
         { metric: 'Open tickets', value: t?.openTickets ?? 0 },
         { metric: 'In progress', value: t?.inProgress ?? 0 },
         { metric: 'Resolved in period', value: t?.resolvedThisPeriod ?? 0 },
-        { metric: 'Avg resolution (minutes)', value: t?.avgResolutionMinutes ?? 0 },
+        { metric: 'Avg resolution (days)', value: Math.round((t?.avgResolutionMinutes ?? 0) / 1440) },
         { metric: 'Systems down or degraded', value: systemsDown },
         { metric: 'Custody items assigned', value: t?.assetsAssigned ?? 0 },
         { metric: 'Units in store', value: t?.stockCount ?? t?.assetsInStock ?? 0 },
@@ -92,6 +97,20 @@ export default function ItDashboardPage() {
         { header: 'Resolved', key: 'resolved', width: 10 },
       ],
       data: t?.timeline || [],
+    },
+    {
+      name: 'Custody by category',
+      columns: [{ header: 'Category', key: 'name', width: 24 }, { header: 'Items', key: 'count', width: 10 }],
+      data: (custody?.buckets || []).map((b) => ({ name: b.nameEn, count: b.count })),
+    },
+    {
+      name: 'Custody by state',
+      columns: [{ header: 'State', key: 'name', width: 24 }, { header: 'Items', key: 'count', width: 10 }],
+      data: [
+        { name: 'With employee', count: custody?.byStatus.assigned ?? 0 },
+        { name: 'In store', count: custody?.byStatus.in_stock ?? 0 },
+        { name: 'Faulty', count: custody?.byStatus.returned ?? 0 },
+      ],
     },
     {
       name: 'Store by type',
@@ -137,6 +156,80 @@ export default function ItDashboardPage() {
         <StatCard label={ar ? 'متوسط زمن الحل' : 'Avg resolution'} value={fmtDuration(t?.avgResolutionMinutes, lang)} accent="text-[#f37121]" />
         <StatCard label={ar ? 'عهد مسلّمة' : 'Assets assigned'} value={t?.assetsAssigned ?? 0} accent="text-indigo-600" />
         <StatCard label={ar ? 'أنظمة متعثرة' : 'Systems down'} value={systemsDown} accent={systemsDown ? 'text-red-600' : 'text-slate-900'} />
+      </div>
+
+      {/* ── العهد ───────────────────────────────────────────────────────────
+          كروت العهد وأزرارها كاملة على اللوحة: القسم يُسأل عن أعداد العهد أكثر
+          مما يُسأل عن البلاغات، وإرسال المستخدم إلى صفحة أخرى ليعرف كم لابتوباً
+          لدينا يجعل اللوحة صفحة عبور لا لوحة. الأرقام محسوبة في الخادم من نفس
+          التجميع الذي تقرأه صفحة العهد، والضغط ينقل إليها على نفس الفلتر. */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+            <Laptop className="w-4 h-4 text-[#f37121]" />
+            {ar ? 'العهد' : 'Custody'}
+            <span className="text-xs font-normal text-slate-400">
+              {ar ? `${custody?.total ?? 0} صنف في السجل` : `${custody?.total ?? 0} items on the register`}
+            </span>
+          </h3>
+          <Link href="/system/it/custody" className="text-xs font-medium text-[#f37121] hover:text-[#d85f16] flex items-center gap-1">
+            {ar ? 'السجل الكامل' : 'Full register'} <ArrowRight className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
+          </Link>
+        </div>
+
+        <CustodyCards
+          buckets={custodyBuckets}
+          active=""
+          onPick={(k) => k && router.push(`/system/it/custody?bucket=${k}`)}
+          lang={lang}
+        />
+
+        <CustodyStateButtons
+          byStatus={custody?.byStatus || { assigned: 0, in_stock: 0, returned: 0 }}
+          active=""
+          onPick={(k) => k && router.push(`/system/it/custody?status=${k}`)}
+          lang={lang}
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* الحالة الفنية — فلتر قائم بذاته في صفحة العهد، ومختصره هنا. */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
+            <p className="text-xs font-semibold text-slate-500 mb-3">{ar ? 'حسب الحالة الفنية' : 'By condition'}</p>
+            {(custody?.byCondition || []).length === 0 ? (
+              <p className="text-sm text-slate-400">{ar ? 'لا توجد بيانات.' : 'Nothing to show.'}</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {(custody?.byCondition || []).map((c) => (
+                  <Link key={c.key} href={`/system/it/custody?condition=${c.key}`}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 hover:border-[#f37121]/50 hover:bg-[#f37121]/5">
+                    {conditionLabel(c.key, lang)}
+                    <span className="ms-2 text-sm font-semibold text-slate-900 tabular-nums">{c.count}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* تفصيل «أخرى» — الكارت وحده يقول «١٤٠ صنفاً آخر» ولا يقول ما هي. */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
+            <p className="text-xs font-semibold text-slate-500 mb-3">
+              {ar ? `تفصيل «${bucketLabel('other', lang)}»` : `Inside "${bucketLabel('other', lang)}"`}
+            </p>
+            {(custody?.otherKinds || []).length === 0 ? (
+              <p className="text-sm text-slate-400">{ar ? 'لا توجد أصناف أخرى.' : 'Nothing here.'}</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {(custody?.otherKinds || []).map((k) => (
+                  <Link key={k.key} href={`/system/it/custody?bucket=other`}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 hover:border-[#f37121]/50 hover:bg-[#f37121]/5">
+                    {custodyTypeLabel(k.key, lang)}
+                    <span className="ms-2 text-sm font-semibold text-slate-900 tabular-nums">{k.count}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Opened vs resolved — the line that matters: if opened outpaces resolved

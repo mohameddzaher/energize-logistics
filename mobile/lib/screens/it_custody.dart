@@ -14,30 +14,90 @@ class ItCustodyScreen extends StatefulWidget {
   State<ItCustodyScreen> createState() => _ItCustodyScreenState();
 }
 
+// شرائح الاتصال محذوفة من القائمة: خطوط الأرقام ليست من عهدة القسم، ووجودها
+// هنا كان يضيف أربعة وستين صفاً لا يملكها أحد فينا إلى كل عدّ.
+// مطابقة لـ TYPE_NAME_AR في backend/src/config/itCustody.js.
 const custodyTypes = {
-  'laptop': ('حاسب محمول', 'Laptop'),
+  'laptop': ('لابتوب', 'Laptop'),
   'desktop': ('حاسب مكتبي', 'Desktop'),
-  'phone': ('هاتف', 'Phone'),
+  'phone': ('موبايل', 'Phone'),
   'tablet': ('جهاز لوحي', 'Tablet'),
-  'sim': ('شريحة اتصال', 'SIM'),
   'monitor': ('شاشة', 'Monitor'),
-  'keyboard': ('لوحة مفاتيح', 'Keyboard'),
-  'mouse': ('فأرة', 'Mouse'),
-  'keyboard_mouse': ('لوحة مفاتيح وفأرة', 'Keyboard & mouse'),
+  'keyboard': ('كيبورد', 'Keyboard'),
+  'mouse': ('ماوس', 'Mouse'),
+  'keyboard_mouse': ('ماوس وكيبورد', 'Keyboard & mouse'),
   'headset': ('سماعة رأس', 'Headset'),
   'printer': ('طابعة', 'Printer'),
-  'router': ('جهاز شبكة', 'Router'),
+  'router': ('راوتر', 'Router'),
   'charger': ('شاحن', 'Charger'),
   'cable': ('كابل', 'Cable'),
-  'laptop_bag': ('حقيبة حاسب', 'Laptop bag'),
+  'laptop_bag': ('شنطة لابتوب', 'Laptop bag'),
   'accessory': ('ملحق', 'Accessory'),
   'access_card': ('بطاقة دخول', 'Access card'),
-  'other': ('أخرى', 'Other'),
+  'other': ('صنف آخر', 'Other'),
 };
 
 String custodyTypeLabel(dynamic t) {
   final e = custodyTypes[t];
   return e == null ? (t ?? '—').toString() : tr(e.$1, e.$2);
+}
+
+/// الفئات الخمس التي تُعرض ككروت بإجمالياتها.
+///
+/// السجل يخزّن النوع مفصّلاً (ماوس، كيبورد، شنطة…) ولا يمكن قراءة إجمالياته
+/// بالعين على خمسة عشر نوعاً. الدلو طبقة عرض تُشتق من النوع ولا تحلّ محله، حتى
+/// لا نفقد أن هذا ماوس وذاك كيبورد.
+/// مطابقة لـ BUCKETS في backend/src/config/itCustody.js.
+class CustodyBucket {
+  final String key;
+  final String ar;
+  final String en;
+  final String canonicalType;
+  final List<String> types;
+  final IconData icon;
+  const CustodyBucket(this.key, this.ar, this.en, this.canonicalType, this.types, this.icon);
+  String get label => tr(ar, en);
+}
+
+const custodyBuckets = <CustodyBucket>[
+  CustodyBucket('laptops', 'لابتوبات', 'Laptops', 'laptop', ['laptop', 'desktop'], Icons.laptop_mac_rounded),
+  CustodyBucket('peripherals', 'ماوس وكيبورد', 'Mouse & Keyboard', 'keyboard_mouse', ['mouse', 'keyboard', 'keyboard_mouse'], Icons.keyboard_rounded),
+  CustodyBucket('phones', 'موبايلات', 'Phones', 'phone', ['phone', 'tablet'], Icons.smartphone_rounded),
+  CustodyBucket('monitors', 'شاشات', 'Monitors', 'monitor', ['monitor'], Icons.monitor_rounded),
+  CustodyBucket('other', 'أخرى', 'Other', 'other',
+      ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'], Icons.inventory_2_rounded),
+];
+
+/// أي نوع مجهول يسقط في «أخرى» بدل أن يختفي من العدّ.
+String bucketOf(dynamic type) {
+  final t = (type ?? '').toString().trim();
+  for (final b in custodyBuckets) {
+    if (b.types.contains(t)) return b.key;
+  }
+  return 'other';
+}
+
+/// أنواع دلو «أخرى» — تغذّي الفلتر الثاني الذي يظهر عند اختياره.
+const otherBucketTypes = ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'];
+
+const custodyConditions = {
+  'new': ('جديد', 'New'),
+  'good': ('جيد', 'Good'),
+  'fair': ('مقبول', 'Fair'),
+  'damaged': ('تالف', 'Damaged'),
+};
+
+String conditionLabel(dynamic c) {
+  final e = custodyConditions[c];
+  return e == null ? (c ?? '—').toString() : tr(e.$1, e.$2);
+}
+
+/// اسم العرض مشتقّ من النوع والماركة بدل أن يُكتب باليد — «لابتوب Dell».
+/// الاسم الحرّ هو ما أنتج ستة وستين تهجئة لنفس الأجهزة في السجل.
+String deriveAssetName(String type, String brand) {
+  final base = custodyTypes[type] == null ? 'صنف آخر' : custodyTypes[type]!.$1;
+  final b = brand.trim();
+  return b.isEmpty ? base : '$base $b';
 }
 
 String empName(dynamic e) {
@@ -52,7 +112,13 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // الفلاتر كلها تعمل على مجموعة محمّلة مرة واحدة: الكروت والأزرار تعرض
+  // إجمالياتها من نفس المجموعة، ولو فلتر كلٌّ منها على الخادم لعرض كل كارت عدداً
+  // محسوباً بعد فلتر الآخر — أي أعداداً لا تجمع على الكل.
   String _status = '';
+  String _bucket = '';
+  String _otherType = '';
+  String _condition = '';
   late final void Function() _onLive;
 
   @override
@@ -71,8 +137,9 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
 
   Future<void> _load() async {
     try {
-      final qs = _status.isEmpty ? '' : '?status=$_status';
-      final d = await Api.instance.get('/api/it/custody$qs');
+      // `scope=all` يضم المستودع: زر «المستودع» وكارت كل فئة يجب أن يعدّا
+      // المخزون أيضاً، وبدونه تعرض الشاشة إجماليات ينقصها ثلث السجل.
+      final d = await Api.instance.get('/api/it/custody?scope=all');
       if (!mounted) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['items'] ?? []); _loading = false; _error = null; });
     } catch (e) {
@@ -86,15 +153,37 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
     final filtered = _rows.where((r) {
+      if (_bucket.isNotEmpty && bucketOf(r['type']) != _bucket) return false;
+      if (_bucket == 'other' && _otherType.isNotEmpty && r['type'] != _otherType) return false;
+      if (_status.isNotEmpty && r['status'] != _status) return false;
+      if (_condition.isNotEmpty && r['condition'] != _condition) return false;
       if (q.isEmpty) return true;
-      return [r['name'], r['serialNumber'], r['brand'], r['model'], empName(r['employee'])]
+      return [r['name'], r['serialNumber'], r['brand'], empName(r['employee'])]
           .any((x) => _fold((x ?? '').toString()).contains(q));
     }).toList();
 
+    // الإجماليات تُحسب على المجموعة كاملة قبل أي فلتر — كارت يتغيّر رقمه كلما
+    // فُلترت القائمة لا يصلح كإجمالي.
+    int countBucket(String k) => _rows.where((r) => bucketOf(r['type']) == k).length;
+    int countStatus(String k) => _rows.where((r) => r['status'] == k).length;
+
+    // «خارج الخدمة» صارت «تالف» بطلب القسم: الأولى تصف موقعاً، وما يعنيه
+    // المستودع فعلاً هو أن الصنف لم يعد صالحاً للتسليم.
     final statuses = {
-      'assigned': (tr('مُسلَّمة', 'Assigned'), T.success),
-      'returned': (tr('خارج الخدمة', 'Retired'), T.inkFaint),
+      'assigned': (tr('بعهدة الموظف', 'With employee'), T.warn),
+      'in_stock': (tr('المستودع', 'In store'), T.info),
+      'returned': (tr('تالف', 'Faulty'), T.danger),
     };
+
+    // الفلتر الثاني يعرض ما هو موجود فعلاً فقط: عرض كل نوع ممكن يعني خيارات
+    // نتيجتها صفر.
+    final otherKinds = otherBucketTypes
+        .where((t) => _rows.any((r) => r['type'] == t))
+        .toList();
+
+    final conditionKeys = custodyConditions.keys
+        .where((k) => _rows.any((r) => r['condition'] == k))
+        .toList();
 
     return AppScaffold(
       title: Text(tr('عهد الأجهزة', 'IT Custody')),
@@ -115,28 +204,114 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                       decoration: InputDecoration(hintText: tr('ابحث بالاسم أو الرقم التسلسلي أو الموظف…', 'Search…'), prefixIcon: const Icon(Icons.search)),
                     ),
                   ),
+                  // كروت الفئات الخمس بإجمالياتها. الضغط يفلتر، والضغط ثانيةً يلغي.
+                  SizedBox(
+                    height: 84,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+                      itemCount: custodyBuckets.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (c, i) {
+                        final b = custodyBuckets[i];
+                        final on = _bucket == b.key;
+                        return Pressable(
+                          onTap: () => setState(() { _bucket = on ? '' : b.key; _otherType = ''; }),
+                          child: Container(
+                            width: 118,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: on ? T.orange.withValues(alpha: 0.10) : Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: on ? T.orange : T.line),
+                            ),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                              Row(children: [
+                                Icon(b.icon, size: 15, color: on ? T.orange : T.inkFaint),
+                                const SizedBox(width: 5),
+                                Expanded(child: Text(b.label, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: on ? T.orange : T.inkSoft))),
+                              ]),
+                              Text('${countBucket(b.key)}',
+                                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: on ? T.orange : T.ink)),
+                            ]),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  // الفلتر الثاني: أي نوع من «أخرى» بالضبط.
+                  if (_bucket == 'other' && otherKinds.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
+                      child: Wrap(spacing: 6, runSpacing: 6, children: otherKinds.map((t) {
+                        final on = _otherType == t;
+                        return FilterChip(
+                          selected: on,
+                          onSelected: (_) => setState(() => _otherType = on ? '' : t),
+                          label: Text(custodyTypeLabel(t)),
+                          labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: on ? Colors.white : T.inkSoft),
+                          selectedColor: T.orange,
+                          backgroundColor: T.line.withValues(alpha: 0.35),
+                          checkmarkColor: Colors.white,
+                          side: BorderSide.none,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        );
+                      }).toList()),
+                    ),
+
+                  // أين الصنف الآن: بعهدة موظف، أو على الرف، أو تالف.
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
                     child: Row(
                       children: statuses.entries.map((e) {
                         final selected = _status == e.key;
-                        return Padding(
-                          padding: const EdgeInsets.only(left: 6),
-                          child: FilterChip(
-                            selected: selected,
-                            onSelected: (_) { setState(() { _status = selected ? '' : e.key; _loading = true; }); _load(); },
-                            label: Text(e.value.$1),
-                            labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: selected ? Colors.white : e.value.$2),
-                            selectedColor: e.value.$2,
-                            backgroundColor: e.value.$2.withValues(alpha: 0.1),
-                            checkmarkColor: Colors.white,
-                            side: BorderSide.none,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Pressable(
+                              onTap: () => setState(() => _status = selected ? '' : e.key),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: selected ? e.value.$2 : e.value.$2.withValues(alpha: 0.10),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: selected ? e.value.$2 : Colors.transparent),
+                                ),
+                                child: Column(children: [
+                                  Text('${countStatus(e.key)}',
+                                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: selected ? Colors.white : e.value.$2)),
+                                  Text(e.value.$1, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : e.value.$2)),
+                                ]),
+                              ),
+                            ),
                           ),
                         );
                       }).toList(),
                     ),
                   ),
+
+                  // الحالة الفنية — جديد، جيد، تالف…
+                  if (conditionKeys.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+                      child: Wrap(spacing: 6, runSpacing: 6, children: conditionKeys.map((k) {
+                        final on = _condition == k;
+                        return FilterChip(
+                          selected: on,
+                          onSelected: (_) => setState(() => _condition = on ? '' : k),
+                          label: Text(conditionLabel(k)),
+                          labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: on ? Colors.white : T.inkSoft),
+                          selectedColor: T.navy,
+                          backgroundColor: T.line.withValues(alpha: 0.35),
+                          checkmarkColor: Colors.white,
+                          side: BorderSide.none,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        );
+                      }).toList()),
+                    ),
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,
@@ -164,8 +339,9 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                                         Wrap(spacing: 6, runSpacing: 6, children: [
                                           if (r['employee'] != null) Chip2(empName(r['employee']), T.info, icon: Icons.person_outline),
                                           if ((r['serialNumber'] ?? '').toString().isNotEmpty) Chip2(r['serialNumber'], T.inkFaint, icon: Icons.qr_code_2),
-                                          if ((r['condition'] ?? '').toString().isNotEmpty) Chip2(r['condition'], T.warn),
-                                          if (!assigned) Chip2(tr('خارج الخدمة', 'Retired'), T.inkFaint),
+                                          if ((r['condition'] ?? '').toString().isNotEmpty) Chip2(conditionLabel(r['condition']), T.warn),
+                                          if (r['status'] == 'in_stock') Chip2(tr('المستودع', 'In store'), T.info, icon: Icons.inventory_2_outlined),
+                                          if (r['status'] == 'returned') Chip2(tr('تالف', 'Faulty'), T.danger),
                                         ]),
                                       ]),
                                     ),
@@ -232,12 +408,13 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
   Future<void> _newCustodySheet(BuildContext context) async {
     final emp = await _pickEmployee(context);
     if (emp == null || !context.mounted) return;
-    final name = TextEditingController();
+    // لا حقل اسم ولا موديل: الاسم يُشتق من النوع والماركة كما في الويب تماماً،
+    // والموديل كان يُترك فارغاً في أغلب الصفوف.
     final brand = TextEditingController();
-    final model = TextEditingController();
     final serial = TextEditingController();
     final notes = TextEditingController();
     String type = 'laptop';
+    String condition = 'good';
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -248,22 +425,53 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('${tr('تسليم عهدة إلى', 'Assign to')} ${empName(emp)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 12),
-              TextField(controller: name, decoration: InputDecoration(labelText: tr('اسم الجهاز *', 'Item name *'))),
-              const SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                initialValue: type,
+                initialValue: bucketOf(type),
                 decoration: InputDecoration(labelText: tr('النوع', 'Type')),
-                items: custodyTypes.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2)))).toList(),
-                onChanged: (v) => setS(() => type = v ?? type),
+                items: custodyBuckets.map((b) => DropdownMenuItem(value: b.key, child: Text(b.label))).toList(),
+                onChanged: (v) => setS(() {
+                  final b = custodyBuckets.firstWhere((x) => x.key == v, orElse: () => custodyBuckets.last);
+                  type = b.canonicalType;
+                }),
+              ),
+              if (bucketOf(type) == 'other') ...[
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: otherBucketTypes.contains(type) ? type : 'other',
+                  decoration: InputDecoration(labelText: tr('أي نوع من «أخرى»؟', 'Which kind of "Other"?')),
+                  items: otherBucketTypes.map((t) => DropdownMenuItem(value: t, child: Text(custodyTypeLabel(t)))).toList(),
+                  onChanged: (v) => setS(() => type = v ?? type),
+                ),
+              ],
+              const SizedBox(height: 10),
+              TextField(
+                controller: brand,
+                decoration: InputDecoration(labelText: tr('الماركة', 'Brand')),
+                onChanged: (_) => setS(() {}),
               ),
               const SizedBox(height: 10),
-              Row(children: [
-                Expanded(child: TextField(controller: brand, decoration: InputDecoration(labelText: tr('الماركة', 'Brand')))),
-                const SizedBox(width: 10),
-                Expanded(child: TextField(controller: model, decoration: InputDecoration(labelText: tr('الموديل', 'Model')))),
-              ]),
-              const SizedBox(height: 10),
               TextField(controller: serial, decoration: InputDecoration(labelText: tr('الرقم التسلسلي', 'Serial number'))),
+              const SizedBox(height: 10),
+              // معاينة الاسم كما سيُحفظ: الاسم مشتقّ، والمستخدم يستحق أن يرى
+              // الناتج قبل الحفظ لا بعده.
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: T.line.withValues(alpha: 0.30), borderRadius: BorderRadius.circular(10)),
+                child: Row(children: [
+                  Text(tr('سيُسجَّل باسم', 'Will be recorded as'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(deriveAssetName(type, brand.text),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800))),
+                ]),
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: condition,
+                decoration: InputDecoration(labelText: tr('الحالة الفنية', 'Condition')),
+                items: custodyConditions.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2)))).toList(),
+                onChanged: (v) => setS(() => condition = v ?? condition),
+              ),
               const SizedBox(height: 10),
               TextField(controller: notes, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
               const SizedBox(height: 14),
@@ -271,12 +479,12 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () async {
-                    if (name.text.trim().isEmpty) return;
                     try {
+                      // الاسم لا يُرسل: الخادم يشتقّه من النوع والماركة، وإرساله
+                      // من هنا يفتح باب اسمين مختلفين لنفس الصنف من شاشتين.
                       await Api.instance.post('/api/it/custody', {
-                        'employee': emp['_id'], 'name': name.text.trim(), 'type': type,
+                        'employee': emp['_id'], 'type': type, 'condition': condition,
                         if (brand.text.trim().isNotEmpty) 'brand': brand.text.trim(),
-                        if (model.text.trim().isNotEmpty) 'model': model.text.trim(),
                         if (serial.text.trim().isNotEmpty) 'serialNumber': serial.text.trim(),
                         if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim(),
                       });
@@ -309,7 +517,6 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
             const SizedBox(height: 4),
             Text(
               '${custodyTypeLabel(r['type'])}${(r['brand'] ?? '').toString().isNotEmpty ? ' · ${r['brand']}' : ''}'
-              '${(r['model'] ?? '').toString().isNotEmpty ? ' ${r['model']}' : ''}'
               '${(r['serialNumber'] ?? '').toString().isNotEmpty ? ' · ${r['serialNumber']}' : ''}',
               style: const TextStyle(fontSize: 12.5, color: T.inkSoft),
             ),
@@ -326,7 +533,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
               if (assigned)
                 _action(c, Icons.report_gmailerrorred_outlined, tr('إبلاغ تلف/فقد', 'Report'), T.warn, () => _report(context, r)),
               if (r['status'] != 'returned')
-                _action(c, Icons.block_outlined, tr('إخراج من الخدمة', 'Retire'), T.danger, () => _retire(context, r)),
+                _action(c, Icons.block_outlined, tr('تسجيل كتالف', 'Mark faulty'), T.danger, () => _retire(context, r)),
               _action(c, Icons.history_rounded, tr('السجل', 'History'), T.violet, () => _history(context, r)),
             ]),
             const SizedBox(height: 6),

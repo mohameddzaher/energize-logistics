@@ -16,7 +16,7 @@ import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   Mail, Plus, Search, Edit, Trash2, X, Eye, EyeOff, Copy,
-  ShieldAlert, KeyRound, Loader2, UserRound,
+  KeyRound, Loader2, UserRound,
 } from 'lucide-react';
 import {
   canViewIt, canEditIt, COMPANY_DOMAIN, MAILBOX_STATUS,
@@ -103,17 +103,6 @@ export default function CompanyEmailsPage() {
           )}
         </div>
       </PageHeader>
-
-      {/* الفرق اللي لازم يكون واضح من أول نظرة */}
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 flex items-start gap-2">
-        <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-        <p className="text-[12px] text-amber-900 leading-relaxed">
-          {t(
-            'هذا سجل صناديق بريد الشركة المُنشأة على هوستنجر — وليست حسابات الدخول إلى النظام. قد يكون للموظف الاثنان بكلمتَي مرور مختلفتين، وتغيير كلمة المرور هنا لا يغيّر دخوله إلى النظام ولا العكس.',
-            'These are company mailboxes created on Hostinger — not system logins. A person may have both, with different passwords; changing one here does not affect the other.'
-          )}
-        </p>
-      </div>
 
       {!vaultReady && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 flex items-start gap-2">

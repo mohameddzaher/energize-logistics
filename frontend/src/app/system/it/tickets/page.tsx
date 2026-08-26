@@ -10,20 +10,25 @@ import { LifeBuoy, Plus, Edit, Trash2, Check, RefreshCw, ExternalLink } from 'lu
 import { exportToExcel } from '@/utils/exportExcel';
 import {
   Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
-  Modal, Field, TextInput, TextArea, Select, SearchableSelect, Loader2,
+  Modal, Field, TextInput, TextArea, SearchableSelect, Loader2,
 } from '@/components/hr/HRKit';
 import {
-  canViewIt, Ticket, EmployeeRef, TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES,
+  canViewIt, Ticket, EmployeeRef, ItAssignee, TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES,
   categoryLabel, priorityLabel, ticketStatusLabel, optionsOf, empName, fmtDate,
-  fmtDuration, today, idOf,
+  fmtDuration, today, idOf, listItDepartments, listItAssignees, userName,
 } from '@/lib/it';
 
+// لا `requesterName` ولا `device`: مقدّم البلاغ هو الموظف المختار نفسه، والجهاز
+// يعرّفه تصنيف البلاغ أعلاه — والحقلان الحرّان كانا يكرّران ما هو معروف أصلاً.
 const EMPTY = {
   title: '', category: 'hardware', priority: 'medium', status: 'open',
-  requester: '', requesterName: '', requesterDepartment: '',
-  assignedToName: '', reportedAt: '', device: '',
+  requester: '', requesterDepartment: '',
+  assignedTo: '', assignedToName: '', reportedAt: '', resolvedDate: '',
   description: '', resolution: '', rootCause: '', preventiveAction: '', notes: '',
 };
+
+// الحالات التي يصير فيها للبلاغ زمن حل، فيُطلب يوم الحل.
+const CLOSED_STATUSES = ['resolved', 'closed'];
 
 export default function ItTicketsPage() {
   const { confirm, notify } = useDialog();
@@ -34,6 +39,10 @@ export default function ItTicketsPage() {
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);
+  // القسم ومن يُسند إليه الحل كانا نصاً حرّاً، فكان كل تجميع حسب أيّهما ينقسم
+  // على اختلاف التهجئة. المصدر الآن ملفات الموظفين ومستخدمو النظام.
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [assignees, setAssignees] = useState<ItAssignee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -66,13 +75,23 @@ export default function ItTicketsPage() {
     api.get<{ employees: EmployeeRef[] }>('/api/it/employees')
       .then((d) => setEmployees(d.employees || []))
       .catch(() => {});
+    listItDepartments().then((d) => setDepartments(d.departments || [])).catch(() => {});
+    listItAssignees().then((d) => setAssignees(d.users || [])).catch(() => {});
   }, []);
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
+
+  // اختيار الموظف يملأ قسمه: كتابته يدوياً بعد اختياره كانت تسمح ببلاغ يقول إن
+  // الموظف في قسم غير قسمه في ملفه.
+  const pickRequester = (id: string) => {
+    const emp = employees.find((e) => e._id === id);
+    setForm((f: any) => ({ ...f, requester: id, requesterDepartment: emp?.department || f.requesterDepartment || '' }));
+  };
+
   const openCreate = () => { setEditing(null); setForm({ ...EMPTY, reportedAt: today() }); setShowModal(true); };
   const openEdit = (t: Ticket) => {
     setEditing(t);
-    setForm({ ...EMPTY, ...t, requester: idOf(t.requester), assignedTo: idOf(t.assignedTo) });
+    setForm({ ...EMPTY, ...t, requester: idOf(t.requester), assignedTo: idOf(t.assignedTo), resolvedDate: t.resolvedDate || '' });
     setShowModal(true);
   };
 
@@ -80,7 +99,7 @@ export default function ItTicketsPage() {
     if (!form.title.trim()) return;
     setSaving(true);
     try {
-      const body = { ...form, requester: form.requester || undefined };
+      const body = { ...form, requester: form.requester || undefined, assignedTo: form.assignedTo || undefined };
       if (editing) await api.put(`/api/it/tickets/${editing._id}`, body);
       else await api.post('/api/it/tickets', body);
       setShowModal(false); load();
@@ -131,21 +150,27 @@ export default function ItTicketsPage() {
         <div className="flex-1 min-w-[220px]">
           <SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث بالعنوان أو رقم البلاغ...' : 'Search title or ticket #...'} />
         </div>
-        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
-          {optionsOf(TICKET_STATUSES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-        </Select>
+        <div className="w-full lg:w-48 shrink-0">
+          <SearchableSelect
+            value={statusFilter} onChange={setStatusFilter} searchAfter={0}
+            placeholder={ar ? 'كل الحالات' : 'All statuses'} emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+            options={[{ value: '', label: ar ? 'كل الحالات' : 'All statuses' }, ...optionsOf(TICKET_STATUSES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
+          />
+        </div>
         <div className="w-full lg:w-56 shrink-0">
           <SearchableSelect
-            value={categoryFilter} onChange={setCategoryFilter}
-            placeholder={ar ? 'كل التصنيفات' : 'All categories'} emptyLabel={ar ? 'كل التصنيفات' : 'All categories'}
+            value={categoryFilter} onChange={setCategoryFilter} searchAfter={0}
+            placeholder={ar ? 'كل التصنيفات' : 'All categories'} emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
             options={[{ value: '', label: ar ? 'كل التصنيفات' : 'All categories' }, ...optionsOf(TICKET_CATEGORIES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
           />
         </div>
-        <Select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}>
-          <option value="">{ar ? 'كل الأولويات' : 'All priorities'}</option>
-          {optionsOf(TICKET_PRIORITIES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-        </Select>
+        <div className="w-full lg:w-48 shrink-0">
+          <SearchableSelect
+            value={priorityFilter} onChange={setPriorityFilter} searchAfter={0}
+            placeholder={ar ? 'كل الأولويات' : 'All priorities'} emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+            options={[{ value: '', label: ar ? 'كل الأولويات' : 'All priorities' }, ...optionsOf(TICKET_PRIORITIES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
+          />
+        </div>
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
       </div>
@@ -175,7 +200,7 @@ export default function ItTicketsPage() {
                     {t.title}
                     <ExternalLink className="w-3 h-3 text-slate-400" />
                   </Link>
-                  {t.device && <div className="text-xs text-slate-500">{t.device}</div>}
+                  {t.assignedToName && <div className="text-xs text-slate-500">{ar ? 'المسؤول: ' : 'Owner: '}{t.assignedToName}</div>}
                 </td>
                 <td className="px-4 py-3">
                   <SmallBadge bg={TICKET_CATEGORIES[t.category]?.bg || 'bg-slate-500/15'} text={TICKET_CATEGORIES[t.category]?.text || 'text-slate-700'} label={categoryLabel(t.category, lang)} />
@@ -218,27 +243,37 @@ export default function ItTicketsPage() {
           </Field>
           <Field label={ar ? 'التصنيف' : 'Category'}>
             <SearchableSelect
-              value={form.category} onChange={(v) => set('category', v)}
+              value={form.category} onChange={(v) => set('category', v)} searchAfter={0}
               options={optionsOf(TICKET_CATEGORIES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))}
             />
           </Field>
           <Field label={ar ? 'الأولوية' : 'Priority'}>
-            <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
-              {optionsOf(TICKET_PRIORITIES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-            </Select>
+            <SearchableSelect
+              value={form.priority} onChange={(v) => set('priority', v)} searchAfter={0}
+              options={optionsOf(TICKET_PRIORITIES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))}
+            />
           </Field>
           <Field label={ar ? 'الحالة' : 'Status'}>
-            <Select value={form.status} onChange={(e) => set('status', e.target.value)}>
-              {optionsOf(TICKET_STATUSES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
-            </Select>
+            <SearchableSelect
+              value={form.status} onChange={(v) => set('status', v)} searchAfter={0}
+              options={optionsOf(TICKET_STATUSES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))}
+            />
           </Field>
           <Field label={ar ? 'تاريخ البلاغ' : 'Reported at'}>
             <TextInput type="date" value={form.reportedAt || ''} onChange={(e) => set('reportedAt', e.target.value)} />
           </Field>
-          <Field label={ar ? 'الموظف (اختياري)' : 'Employee (optional)'}>
+          {/* يوم الحل يُدخله من أغلق البلاغ. لحظة الحفظ ليست لحظة الإصلاح —
+              أغلب البلاغات تُسجَّل بعد إغلاقها بأيام، وأخذ لحظة الحفظ كان يقيس
+              تأخّر إدخال البيانات ويعرضه كزمن حل. */}
+          {CLOSED_STATUSES.includes(form.status) && (
+            <Field label={ar ? 'تاريخ الحل الفعلي' : 'Date actually resolved'}>
+              <TextInput type="date" value={form.resolvedDate || ''} onChange={(e) => set('resolvedDate', e.target.value)} />
+            </Field>
+          )}
+          <Field label={ar ? 'الموظف صاحب المشكلة' : 'Employee'}>
             <SearchableSelect
               value={form.requester || ''}
-              onChange={(v) => set('requester', v)}
+              onChange={pickRequester}
               placeholder={ar ? 'اختر الموظف' : 'Select an employee'}
               searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم الوظيفي…' : 'Search by name or number…'}
               emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
@@ -249,17 +284,31 @@ export default function ItTicketsPage() {
               }))}
             />
           </Field>
-          <Field label={ar ? 'اسم مقدم البلاغ' : 'Requester name'}>
-            <TextInput value={form.requesterName || ''} onChange={(e) => set('requesterName', e.target.value)} />
-          </Field>
           <Field label={ar ? 'القسم' : 'Department'}>
-            <TextInput value={form.requesterDepartment || ''} onChange={(e) => set('requesterDepartment', e.target.value)} />
+            <SearchableSelect
+              value={form.requesterDepartment || ''} onChange={(v) => set('requesterDepartment', v)}
+              searchAfter={0}
+              placeholder={ar ? 'اختر القسم' : 'Select a department'}
+              searchPlaceholder={ar ? 'ابحث عن القسم…' : 'Search departments…'}
+              emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+              options={departments.map((d) => ({ value: d, label: d }))}
+            />
           </Field>
-          <Field label={ar ? 'المسؤول عن الحل' : 'Assigned to'}>
-            <TextInput value={form.assignedToName || ''} onChange={(e) => set('assignedToName', e.target.value)} />
-          </Field>
-          <Field label={ar ? 'الجهاز' : 'Device'} span2>
-            <TextInput value={form.device || ''} onChange={(e) => set('device', e.target.value)} placeholder={ar ? 'مثال: HP LaserJet - الدور الثاني' : 'e.g. HP LaserJet - 2nd floor'} />
+          <Field label={ar ? 'المسؤول عن الحل' : 'Assigned to'} span2>
+            <SearchableSelect
+              value={form.assignedTo || ''}
+              onChange={(v) => {
+                const u = assignees.find((x) => x._id === v);
+                // الاسم يُحفظ بجانب المرجع حتى يظل البلاغ مقروءاً لو حُذف
+                // المستخدم لاحقاً — سجل بلا اسم صاحبه سجل ناقص.
+                setForm((f: any) => ({ ...f, assignedTo: v, assignedToName: u ? userName(u) : '' }));
+              }}
+              searchAfter={0}
+              placeholder={ar ? 'اختر المسؤول' : 'Select the owner'}
+              searchPlaceholder={ar ? 'ابحث بالاسم…' : 'Search by name…'}
+              emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
+              options={assignees.map((u) => ({ value: u._id, label: userName(u), hint: u.email || u.role }))}
+            />
           </Field>
           <Field label={ar ? 'وصف المشكلة' : 'Description'} span2>
             <TextArea rows={3} value={form.description || ''} onChange={(e) => set('description', e.target.value)} />

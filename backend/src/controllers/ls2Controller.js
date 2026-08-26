@@ -12,6 +12,7 @@ const Ls2Repair = require('../models/Ls2Repair');
 const Ls2DriverAssignment = require('../models/Ls2DriverAssignment');
 const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
 const reports = require('../services/ls2Reports');
+const tireSensors = require('../services/ls2TireSensors');
 const cfg = require('../config/ls2Config');
 const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
@@ -266,7 +267,9 @@ exports.listVehicles = async (req, res) => {
     // without ever showing meaningfully-stale data.
     const cacheKey = `ls2:vehicles:${status || ''}:${alertLevel || ''}:${maintFilter || ''}:${q || ''}`;
     const rawVehicles = await cache.wrap(cacheKey, 15000, () => Ls2Vehicle.find(filter).lean());
-    let vehicles = rawVehicles.map((v) => withMaintenance(v));
+    // تغطية حسّاسات الكاوتش تُحسب هنا لا في المتصفّح: الشاشتان وتطبيق الهاتف
+    // تقرأ الرقم نفسه من مصدرٍ واحد، فلا يختلف «٧ / ٥ / ٢» من شاشةٍ لأخرى.
+    let vehicles = await tireSensors.attachToVehicles(rawVehicles.map((v) => withMaintenance(v)));
 
     // Optional: attach per-vehicle distance for a period (fleet mileage view).
     const { from, to } = req.query;
@@ -296,7 +299,7 @@ exports.getVehicle = async (req, res) => {
       Ls2ServiceLog.find({ unitId: v.unitId }).sort({ createdAt: -1 }).limit(20).lean(),
       Ls2DriverAssignment.find({ unitId: v.unitId }).sort({ from: -1 }).limit(50).lean(),
     ]);
-    res.json({ vehicle: withMaintenance(v), alerts, serviceLog, driverHistory });
+    res.json({ vehicle: await tireSensors.attachToVehicle(withMaintenance(v)), alerts, serviceLog, driverHistory });
   } catch (error) {
     fail(res, error, 'Failed to load vehicle');
   }

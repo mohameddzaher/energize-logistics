@@ -41,6 +41,11 @@ interface AssetEvent { _id: string; entityType: string; label: string; action: s
 interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
 
 // The workshop's 14-position scheme (matches the collected JSON exactly).
+//
+// نسخةٌ ثانيةٌ من الجدول تعيش في backend/src/services/ls2TireSensors.js، لأن
+// الخادم يشتقّ منها عدد مواضع الشاحنة التي لم تُجرَد بعد ليحسب عمود «حساسات
+// الكاوتش». فأيّ تعديلٍ هنا (إضافة موضعٍ أو تغيير قسمه) يجب أن يُنقل هناك،
+// وإلا اختلف ما تعرضه هذه الشاشة عمّا يعدّه العمود.
 const POSITION_DEFS: { n: number; label: string; section: string }[] = [
   { n: 1, label: 'اطار 1 يسار', section: 'الرأس' },
   { n: 2, label: 'اطار 2 يمين', section: 'الرأس' },

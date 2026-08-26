@@ -5,6 +5,7 @@ import 'ls2_track_map.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
+import '../ui/tire_sensor_badge.dart';
 import '../ui/widgets.dart';
 import 'reports.dart';
 import 'ls2_vehicle_assets.dart';
@@ -214,6 +215,9 @@ class _OverviewTab extends StatelessWidget {
                 _sensor(tr('الوزن', 'Weight'), v['weightKg'], ' ${tr('كجم', 'kg')}', Icons.scale_outlined, T.info),
                 _sensor(tr('ساعات المحرك', 'Engine hrs'), v['engineHours'], '', Icons.timelapse_outlined, T.inkFaint, digits: 1),
                 Chip2('${tr('آخر إشارة', 'Last seen')}: ${_dt(v['lastMessageAt'])}', status == 'offline' ? T.danger : T.inkFaint, icon: Icons.schedule_outlined),
+                // تغطية حسّاسات الكاوتش — محسوبةً في الخادم كما في شاشتَي الأسطول.
+                if (v['tireSensors'] is Map)
+                  TireSensorBadge(cov: _m(v['tireSensors']), plate: (v['plate'] ?? '').toString()),
               ]),
             ]),
           ),

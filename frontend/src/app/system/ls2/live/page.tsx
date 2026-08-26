@@ -11,6 +11,7 @@ import { Satellite, MapPin, RefreshCw, Search, Route } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import TireSensorCell from '@/components/ls2/TireSensorCell';
 import { ls2Text, isLs2Staff, statusStyle, tireTempColor, coolantColor, fmtKm, fmtNum, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type DateRange } from '@/lib/ls2';
 
 const STATUSES = ['moving', 'idle', 'stopped', 'offline'];
@@ -62,6 +63,10 @@ export default function Ls2LivePage() {
       { header: ar ? 'الوقود %' : 'Fuel %', key: 'fuelPct', transform: (v) => v ?? '', width: 10 },
       { header: ar ? 'حرارة الموتور' : 'Coolant °C', key: 'coolantC', transform: (v) => v ?? '', width: 13 },
       { header: ar ? 'أقصى حرارة كاوتش' : 'Max tire temp °C', key: 'maxTireTempC', transform: (v) => v ?? '', width: 16 },
+      // نصٌّ واحد «٧ / ٥ / ٢» لا ثلاثة أعمدة: الملف يُقرأ كما تُقرأ الشاشة،
+      // ومن أراد التفصيل ففي الشاشة نافذته.
+      { header: ar ? 'حساسات الكاوتش (يعمل/بدون/استبن)' : 'Tire sensors (ok/none/spare)', key: 'tireSensors.label', transform: (v) => v ?? '', width: 26 },
+      { header: ar ? 'حساس مركّب لا يبثّ' : 'Fitted but silent', key: 'tireSensors.silent', transform: (v) => v ?? '', width: 16 },
       { header: ar ? 'الوزن كجم' : 'Weight kg', key: 'weightKg', transform: (v) => v ?? '', width: 12 },
       { header: ar ? 'تنبيهات مفتوحة' : 'Open alerts', key: 'activeAlertCount', transform: (v) => v ?? '', width: 14 },
       { header: ar ? 'آخر إشارة' : 'Last signal', key: 'lastMessageAt', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 20 },
@@ -122,6 +127,7 @@ export default function Ls2LivePage() {
                 <th className="text-end font-semibold px-4 py-3">{t.speed}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.tireTempMinMax}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.tirePressMinMax}</th>
+                <th className="text-center font-semibold px-4 py-3 text-emerald-300" title={t.tireSensorsHint}>{t.tireSensorsCol}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.coolant}</th>
                 <th className="text-end font-semibold px-4 py-3">{t.odometer}</th>
                 <th className="text-end font-semibold px-4 py-3 text-[#f9a06b]">{t.kmInPeriod}</th>
@@ -151,6 +157,10 @@ export default function Ls2LivePage() {
                         <span><span className="text-slate-700 font-medium">{v.maxTirePressurePsi}</span><span className={`text-xs ${v.minTirePressurePsi != null && v.minTirePressurePsi < 90 ? 'text-red-500 font-medium' : 'text-slate-700'}`}> / {v.minTirePressurePsi}</span><span className="text-[10px] text-slate-700"> psi</span></span>
                       ) : <span className="text-slate-300">—</span>}
                     </td>
+                    {/* تغطية الحسّاسات — الرقم محسوبٌ في الخادم، والخلية تفتح تفصيل المواضع الناقصة. */}
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <TireSensorCell cov={v.tireSensors} plate={v.plate || v.name} unitId={v.unitId} lang={lang as Lang} />
+                    </td>
                     <td className={`px-4 py-3 text-end tabular-nums font-medium ${coolantColor(v.coolantC)}`}>{v.coolantC != null ? `${v.coolantC}°C` : '—'}</td>
                     <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(v.odometerKm)}</td>
                     <td className="px-4 py-3 text-end tabular-nums font-semibold text-slate-800">{v.periodKm != null ? `${fmtNum(Math.round(v.periodKm))}` : '—'}</td>
@@ -169,7 +179,7 @@ export default function Ls2LivePage() {
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={12} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={13} className="text-center text-slate-700 py-10">{t.noData}</td></tr>}
             </tbody>
           </table>
         </div>

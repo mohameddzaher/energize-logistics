@@ -27,6 +27,7 @@ import LiveMap from '@/components/ls2/LiveMap';
 import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
 import VehicleServiceRecord from '@/components/ls2/VehicleServiceRecord';
 import VehicleAssets from '@/components/ls2/VehicleAssets';
+import TireSensorCell from '@/components/ls2/TireSensorCell';
 
 interface Detail { vehicle: Vehicle; alerts: Alert[]; serviceLog: any[] }
 
@@ -409,6 +410,15 @@ export default function Ls2VehicleDetailPage() {
             )}
           </div>
         </div>
+        {/* تغطية الحسّاسات بالرقم نفسه الظاهر في شاشتَي الأسطول — لأن من يفتح
+            ملف الشاحنة بعد أن رأى «٧ / ٥ / ٢» في القائمة يجب أن يجده هنا كما هو. */}
+        {v.tireSensors && (
+          <div className="flex items-center gap-2 mb-3 text-xs text-slate-500">
+            <span>{t.tireSensorsCol}:</span>
+            <TireSensorCell cov={v.tireSensors} plate={v.plate || v.name} unitId={v.unitId} lang={lang as Lang} />
+            <span className="text-[11px] text-slate-400">({t.tireSensorsHint})</span>
+          </div>
+        )}
         <TireLayout tires={v.tires} t={t} lang={lang as Lang} />
       </div>
 

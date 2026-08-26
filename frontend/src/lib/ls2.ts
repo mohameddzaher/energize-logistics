@@ -133,6 +133,7 @@ export interface Vehicle {
   gsmSignal: number | null; odometerKm: number | null; engineHours: number | null;
   tires: Tire[]; tireCount: number; maxTireTempC: number | null; minTireTempC: number | null; maxTirePressurePsi: number | null; minTirePressurePsi: number | null; tireFaults: number;
   tireBrand?: string; // manual: tire brand/type (e.g. Continental)
+  tireSensors?: TireSensorCoverage; // محسوبة في الخادم — لا تُشتقّ في الشاشة
   status: string; alertLevel: string | null; activeAlertCount: number;
   serviceIntervals: ServiceInterval[];
   maintenanceStatus: 'ok' | 'due' | 'overdue';
@@ -142,6 +143,26 @@ export interface Vehicle {
   periodKm?: number; // attached when the list is queried with a from/to range
   profile?: VehicleProfile;
 }
+/**
+ * تغطية حسّاسات الكاوتش لشاحنةٍ واحدة، كما يحسبها الخادم
+ * (backend/src/services/ls2TireSensors.js). تُقرأ هنا ولا تُعاد صياغتها:
+ * الأرقام الثلاثة «أخضر / أحمر / استبن» يجب أن تكون واحدةً في الأسطول المباشر
+ * وسجل الأسطول وتطبيق الهاتف، وأيّ اشتقاقٍ محلّيٍّ يفتح باب اختلافها.
+ */
+export interface TireSensorCoverage {
+  withSensor: number;        // أخضر: مواضع الأرض التي يبثّ حسّاسها فعلًا
+  withoutSensor: number;     // أحمر: باقي مواضع الأرض
+  spare: number;             // عدد الاستبن
+  spareWithSensor: number;   // > 0 ⇒ الاستبن يُلوَّن أخضر
+  silent: number;            // حسّاسٌ مركَّبٌ لا يبثّ (جزءٌ من الأحمر) — كهرماني
+  ground: number; registered: number; unregistered: number;
+  fitted: number; reporting: number; faulty: number;
+  layout: 'registry' | 'head' | 'standard';
+  positionsWithoutSensor: { positionNumber: number | null; positionLabel: string; section: string; serial: string; sensor: string }[];
+  faultyChannels: { axle: number | null; position: number | null }[];
+  label: string;             // "7 / 5 / 2"
+}
+
 // Fleet distance over a period (from /api/ls2/mileage).
 export interface MileageRow { unitId: number; plate: string; driver: string; name: string; odometerKm: number | null; km: number; odoStart: number | null; odoEnd: number | null; activeDays: number; clipped: boolean }
 
@@ -566,6 +587,21 @@ export function ls2Text(lang: Lang) {
     tireLayout: t('Tire Layout', 'توزيع الكاوتش'),
     axle: t('Axle', 'محور'),
     noTireData: t('No tire sensor data', 'لا توجد بيانات كاوتش'),
+    // عمود تغطية الحسّاسات (أخضر / أحمر / استبن)
+    tireSensorsCol: t('Tire sensors', 'حساسات الكاوتش'),
+    tireSensorsHint: t('Working / no sensor / spare', 'يعمل / بدون حساس / استبن'),
+    tireSensorsTitle: t('Tire-sensor coverage', 'تغطية حساسات الكاوتش'),
+    tireSensorsWorking: t('Mounted tires with a reporting sensor', 'فرد مركّبة وحساسها يبثّ'),
+    tireSensorsMissing: t('Mounted tires with no sensor', 'فرد مركّبة بدون حساس'),
+    tireSensorsSpare: t('Spare tires', 'الاستبن'),
+    tireSensorsSpareOn: t('spare fitted with a sensor', 'الاستبن عليه حساس'),
+    tireSensorsSilent: t('fitted but not reporting (faulty / silent)', 'مركّب ولا يبثّ (عطل / مش لاقط)'),
+    tireSensorsSilentNote: t('Counted with the red number, never with the green one — a silent sensor is not coverage.', 'محسوبة ضمن الرقم الأحمر لا الأخضر — الحساس الصامت ليس تغطية.'),
+    tireSensorsChannels: t('Faulty live channels (Wialon axle–tire)', 'قنوات معطوبة في البثّ (محور–إطار)'),
+    tireSensorsNoSensorList: t('Positions registered without a sensor', 'المواضع المسجّلة بدون حساس'),
+    tireSensorsNotStocktaken: t('positions not yet stock-taken by the workshop', 'موضع لم تجرده الورشة بعد'),
+    tireSensorsAllCovered: t('Every mounted position has a working sensor.', 'كل المواضع المركّبة عليها حساس يعمل.'),
+    tireSensorsOpenVehicle: t('Open the vehicle file', 'فتح ملف المركبة'),
     delete: t('Delete', 'حذف'),
     // checklists / deferrals / exceptional repairs (our own, not from Wialon)
     checklist: t('Checklist', 'قائمة الفحص'),

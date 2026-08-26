@@ -18,6 +18,7 @@ const Ls2Vehicle = require('../models/Ls2Vehicle');
 const { plateKey, vehiclePlateKey } = require('../utils/plateKey');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
+const tireSensors = require('../services/ls2TireSensors');
 
 // Any asset mutation must reach the screens that mirror this registry live (the
 // workshop store, fleet-assets, the vehicle profile). Coalesced so a bulk import
@@ -26,6 +27,9 @@ const cache = require('../utils/ttlCache');
 let emitTimer = null;
 function emitAssetsChanged() {
   cache.clear('ls2assets:');
+  // عمود «الفرد اللي عليها سينسور» في شاشتَي الأسطول يقرأ مواضع هذا السجل.
+  // بدون إسقاط ذاكرته يظلّ الفنيّ دقيقةً كاملة يرى تسجيله كأنه لم يحدث.
+  tireSensors.clearLayoutCache();
   if (emitTimer) return;
   emitTimer = setTimeout(() => {
     emitTimer = null;

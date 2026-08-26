@@ -43,7 +43,16 @@ async function ensureSelfEmployee(user) {
       inCurrentMaster: false,
     });
   }
-  await User.updateOne({ _id: user._id }, { linkedEmployee: emp._id });
+  // ── الرابط يُكتَب في الاتجاهين ──────────────────────────────────────────────
+  // كان يُكتب هنا في اتجاهٍ واحد: الحسابُ يشير إلى الموظّف والموظّفُ لا يشير إلى
+  // الحساب. فتفتح صفحة المستخدمين فتراه مرتبطًا، وتفتح ملفَّه في الموارد البشرية
+  // فتقرأ «غير مرتبط بحساب دخول» — الشاشتان تقرآن طرفين مختلفين من رابطٍ واحد،
+  // فتقولان نقيضين وكلتاهما صادقة فيما تقرأ. ثلاثون حسابًا من واحدٍ وأربعين
+  // كانت كذلك.
+  await Promise.all([
+    User.updateOne({ _id: user._id }, { linkedEmployee: emp._id }),
+    Employee.updateOne({ _id: emp._id }, { user: user._id }),
+  ]);
   user.linkedEmployee = emp._id;
   return emp._id;
 }

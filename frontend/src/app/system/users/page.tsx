@@ -538,7 +538,18 @@ export default function UsersPage() {
     }));
   };
 
-  const roleLabels: Record<string, string> = {
+  // ── الأدوار تأتي من الخادم ────────────────────────────────────────────────
+  // القائمة المكتوبة هنا انحرفت عن الحقيقة في الاتّجاهين: أربعةُ أدوار تعرضها
+  // ولا وجود لها (فيردّ الخادم «الدور غير صالح»)، وثلاثةٌ وعشرون دورًا صحيحًا
+  // لا تظهر فلا سبيل إلى إسنادها. وكلّ دورٍ يُضاف بعد اليوم كان سيغيب كذلك.
+  const [serverRoles, setServerRoles] = useState<{ key: string; ar: string; en: string; section: string; isManager: boolean }[]>([]);
+  useEffect(() => {
+    api.get<{ roles: typeof serverRoles }>('/api/users/roles')
+      .then((r) => setServerRoles(r.roles || []))
+      .catch(() => { /* تبقى القائمة القديمة معروضةً بدل شاشةٍ بلا أدوار */ });
+  }, []);
+
+  const legacyRoleLabels: Record<string, string> = {
     super_admin: T.superAdmin, admin: T.admin, employee: T.employee,
     operations_manager: T.operationsManager, operations: T.operationsRole,
     moderator: T.moderator, client: T.clientRole,
@@ -572,6 +583,28 @@ export default function UsersPage() {
     contracts_manager: lang === 'ar' ? 'مدير إدارة العقود' : 'Contracts Manager',
     fleet_manager: lang === 'ar' ? 'مدير قسم الأسطول' : 'Fleet Manager',
     fleet_supervisor: lang === 'ar' ? 'مشرف أسطول' : 'Fleet Supervisor',
+  };
+
+  // الاسم المعروض: من الخادم أوّلًا، ثم القائمة القديمة لأدوارٍ حُذفت وبقيت على
+  // حسابات قائمة، ثم المفتاح نفسه — فلا تظهر خانةٌ فارغة مكان دورٍ لا نعرفه.
+  const roleLabels: Record<string, string> = Object.fromEntries([
+    ...Object.entries(legacyRoleLabels),
+    ...serverRoles.map((r) => [r.key, lang === 'ar' ? r.ar : r.en]),
+  ]);
+
+  /**
+   * المديرُ المباشر يُقترَح من قسم الدور.
+   *
+   * اختيارُ «مدير مشروع - أفراد» يعني أن مديره مديرُ قطاع الأفراد — ولا معنى
+   * لأن يبحث المستخدم عنه في قائمةٍ فيها كلُّ موظّفي الشركة. يُقترَح ولا يُفرَض:
+   * الهيكل يُخالَف أحيانًا، والاقتراح يوفّر الشائع ولا يمنع النادر.
+   */
+  const suggestManagerFor = (roleKey: string): string => {
+    const def = serverRoles.find((r) => r.key === roleKey);
+    if (!def || !def.section || def.isManager) return '';
+    const managerKeys = serverRoles.filter((r) => r.section === def.section && r.isManager).map((r) => r.key);
+    const found = users.find((u) => managerKeys.includes(u.role));
+    return found ? found._id : '';
   };
 
   const statusLabels: Record<string, string> = {
@@ -850,8 +883,13 @@ export default function UsersPage() {
           }}
           className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
         >
-          {Object.entries(roleLabels).filter(([value]) => value !== 'client').map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
+          {(serverRoles.length
+            ? serverRoles.filter((r) => r.key !== 'client')
+            : Object.entries(legacyRoleLabels).filter(([v]) => v !== 'client').map(([key]) => ({ key, ar: legacyRoleLabels[key], en: legacyRoleLabels[key], section: '', isManager: false }))
+          ).map((r) => (
+            <option key={r.key} value={r.key}>
+              {(lang === 'ar' ? r.ar : r.en)}{r.section ? ` — ${r.section}` : ''}
+            </option>
           ))}
         </select>
       </div>

@@ -12,6 +12,33 @@ const User = require('../models/User');
 // (the IT, marketing, BD and fleet roles all bounced with "Role is invalid").
 const VALID_ROLES = User.schema.path('role').enumValues;
 
+/**
+ * GET /api/users/roles — قائمةُ الأدوار التي يقبلها الخادم فعلًا.
+ *
+ * ── ولماذا تُقرأ ولا تُكتب في الشاشة ──────────────────────────────────────
+ * كانت الشاشة تحمل قائمةً مكتوبةً بيدها، فانحرفت عن الحقيقة في الاتّجاهين معًا:
+ * أربعةُ أدوار تعرضها ولا وجود لها («b2c_project_manager» بينما اسمه الحقيقيّ
+ * `b2c_project_lead`) — تختارها فيردّ الخادم «الدور غير صالح» بلا أن يقول أيّ
+ * دورٍ يقبل؛ وثلاثةٌ وعشرون دورًا صحيحًا لا تظهر أصلًا، فلا سبيل إلى إسنادها من
+ * الشاشة إطلاقًا. وكلّ دورٍ يُضاف بعد اليوم كان سيغيب عنها بالطريقة نفسها.
+ *
+ * ومعها القسمُ ومَن يديره: الشاشة تحتاجهما لتقترح المدير المباشر عند اختيار
+ * الدور، وحسابُهما هنا يجعل الاقتراح يتبع تعريف الأدوار وحده.
+ */
+router.get('/roles', (req, res) => {
+  const R = require('../config/roles');
+  const roles = R.ALL_ROLE_DEFS
+    .filter((d) => VALID_ROLES.includes(d.key))
+    .map((d) => ({
+      key: d.key,
+      ar: d.ar,
+      en: d.en,
+      section: R.sectionOfRole(d.key) || '',
+      isManager: R.isManager(d.key),
+    }));
+  res.json({ roles });
+});
+
 router.use(authenticate);
 
 router.get('/', authorize('super_admin', 'admin', 'operations_manager'), userController.getUsers);

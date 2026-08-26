@@ -328,17 +328,32 @@ connectDB().then(async () => {
   // (project, branch) compound unique index can take over. No-op on fresh installs.
   await migrateB2CSheetIndex();
 
-  // Start scheduled jobs once the DB is ready.
-  startWalletAutoCloseJob();
-  startB2CSheetSync();
-  startOpsPoll();
-  startOpsCustomerSync();
-  startOpsWorkflowSync();
-  startLs2Poll();
-  startLs2TripWarm();
-  startBusinessReviewSweep();
-  startKeepAlive();
-  console.log('DB ready — scheduled jobs started');
+  // ── المهامّ المجدولة تعمل في نسخةٍ واحدة ────────────────────────────────────
+  //
+  // النشرُ كان يقطع الخدمة: نسخةٌ واحدة في fork_mode، فـ`pm2 restart` يقتلها
+  // قبل أن تقوم البديلة، فيردّ nginx ٥٠٢ على كل طلبٍ في تلك الثواني. والعلاج
+  // نسختان تتناوبان الإعادة — لكنّ هذه المهامّ التسع لا تحتمل التكرار: النبض
+  // يسحب مرّتين ويرفع التنبيه مرّتين، وإقفال المحفظة الآليّ يقع مرّتين على اليوم
+  // نفسه. فتُحصَر في النسخة الأولى وحدها.
+  //
+  // `NODE_APP_INSTANCE` تضبطه pm2 في وضع العنقود؛ وغيابُه يعني نسخةً واحدة
+  // (تشغيلٌ يدويّ أو fork_mode) فتعمل المهامّ كما كانت.
+  const instance = process.env.NODE_APP_INSTANCE;
+  const runsJobs = instance === undefined || instance === '0';
+  if (runsJobs) {
+    startWalletAutoCloseJob();
+    startB2CSheetSync();
+    startOpsPoll();
+    startOpsCustomerSync();
+    startOpsWorkflowSync();
+    startLs2Poll();
+    startLs2TripWarm();
+    startBusinessReviewSweep();
+    startKeepAlive();
+    console.log('DB ready — scheduled jobs started');
+  } else {
+    console.log(`DB ready — instance ${instance} serves requests only (jobs run on instance 0)`);
+  }
 }).catch((err) => {
   console.error('DB initialisation failed:', err.message);
 });

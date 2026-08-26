@@ -9,7 +9,7 @@
  * step between the sensor and the screen.
  */
 const client = require('../services/ls2Client');
-const { normalize } = require('../services/ls2Sensors');
+const { normalize, extractTires } = require('../services/ls2Sensors');
 const { evaluate } = require('../services/ls2AlertEngine');
 const Ls2ServiceLog = require('../models/Ls2ServiceLog');
 const { syncIdentity } = require('../services/ls2Identity');
@@ -127,6 +127,42 @@ async function tick() {
       openByUnit.get(a.unitId).push(a);
     }
 
+    // ── استرجاع قراءةٍ من السجلّ لمن لا قراءة له إطلاقًا ──────────────────────
+    //
+    // الحملُ من النبضة السابقة لا ينفع مركبةً مخزونُها صفرٌ أصلًا: لا شيء
+    // يُحمَل. وهذه المركبات موجودة — ثلاثٌ تبثّ اثنتي عشرة قناةً في اليوم ونحن
+    // نعرض لها صفرًا، لأن رسالتها الأخيرة **دائمًا** رسالة موقع: الجهاز يرسل
+    // المواقع كثيرًا والإطارات قليلًا، فنادرًا ما تصادف النبضةُ رسالةَ إطارات.
+    //
+    // فيُقرأ لها السجلّ مباشرةً — لكن لهذه وحدها: قراءةُ السجلّ لثمانٍ وخمسين
+    // وحدةً كلَّ عشرين ثانية تُثقل المزوّد بلا داعٍ، وأكثر الأسطول لا يحتاجها.
+    // ومرّةً كل خمس نبضات، فالمركبة التي لا تبثّ إطارات لن تبدأ فجأةً.
+    const needsBackfill = [];
+    for (const unit of units) {
+      const t = normalize(unit);
+      if (!t) continue;
+      if (t.tires && t.tires.length) continue;
+      const doc = vById.get(t.unitId);
+      if (doc && Array.isArray(doc.tires) && doc.tires.length) continue;  // له مخزون، يكفيه الحمل
+      needsBackfill.push(t.unitId);
+    }
+    const backfilled = new Map();
+    if (needsBackfill.length && tickCount % 5 === 0) {
+      const to = Math.floor(Date.now() / 1000);
+      const from = to - 6 * 3600;   // ستّ ساعات تكفي لالتقاط رسالة إطاراتٍ واحدة
+      for (const id of needsBackfill) {
+        try {
+          const r = await client.loadMessages(id, from, to, 1000);
+          const msgs = (r && r.messages) || [];
+          // الأحدث أوّلًا: نريد آخر قراءةٍ لا أوّلها.
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            const tires = extractTires(msgs[i].p || {});
+            if (tires.length) { backfilled.set(id, tires); break; }
+          }
+        } catch (e) { /* وحدةٌ تعذّرت لا توقف البقيّة */ }
+      }
+    }
+
     const vehicleOps = [];
     const alertOps = [];
     const odoOps = [];
@@ -153,6 +189,20 @@ async function tick() {
       // فالقراءة الأخيرة المعروفة تبقى حتى تحلّ محلَّها قراءةٌ أحدث. وغيابُ
       // القراءة عن رسالةٍ ليس نفيًا لوجود الحسّاس؛ النفيُ أن تصل رسالة إطاراتٍ
       // ناقصةً منها.
+      // من السجلّ أوّلًا لمن لا مخزون له، ثم الحمل من المخزون.
+      const fromLog = backfilled.get(tel.unitId);
+      if ((!tel.tires || !tel.tires.length) && fromLog && fromLog.length) {
+        tel.tires = fromLog;
+        tel.tireCount = fromLog.length;
+        const temps = fromLog.map((t) => t.tempC).filter((v) => v != null);
+        const press = fromLog.map((t) => t.pressurePsi).filter((v) => v != null && v > 10);
+        tel.maxTireTempC = temps.length ? Math.max(...temps) : null;
+        tel.minTireTempC = temps.length ? Math.min(...temps) : null;
+        tel.maxTirePressurePsi = press.length ? Math.max(...press) : null;
+        tel.minTirePressurePsi = press.length ? Math.min(...press) : null;
+        tel.tireFaults = fromLog.filter((t) => t.fault).length;
+        tel.tiresCarriedOver = true;
+      }
       if ((!tel.tires || !tel.tires.length) && vehicleDoc && Array.isArray(vehicleDoc.tires) && vehicleDoc.tires.length) {
         tel.tires = vehicleDoc.tires;
         tel.tireCount = vehicleDoc.tireCount;

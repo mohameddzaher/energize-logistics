@@ -36,6 +36,9 @@ const docTypes = [
   ('vehicleLicense', 'رخصة السير', 'Vehicle License'),
   ('inspection', 'الفحص', 'Inspection'),
   ('gps', 'اشتراك GPS', 'GPS'),
+  // التفويض مستندٌ له تاريخ انتهاء كسائر المستندات — الخادم يرسله، وبدونه هنا
+  // يرى مستخدم الويب مستندًا لا يراه مستخدم الموبايل على نفس المركبة.
+  ('authorization', 'التفويض', 'Authorisation'),
 ];
 String docLabel(String k) { for (final d in docTypes) { if (d.$1 == k) return tr(d.$2, d.$3); } return k; }
 

@@ -54,6 +54,260 @@ const HAS_GPS = { $or: [
 ] };
 const hasGps = (v) => !!(v?.gps?.serialImei || v?.gps?.deviceModel || v?.gps?.deviceId);
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  الفلاتر المشتقّة — ما ليس عمودًا في الجدول ويُسأل عنه كل يوم
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * الفلاتر أعلاه تسأل عن قيمة مكتوبة في خانة: «المدينة = جدّة». وهذه تسأل عمّا
+ * لا يُكتب في خانة أصلًا: «أيُّ مركبةٍ ينتهي تأمينها خلال شهر؟» و«كم مركبةً
+ * بلا جهاز تتبّع؟» و«أين المركبات التي قسطُها فوق خمسة آلاف؟».
+ *
+ * وهي أسئلة الإدارة لا أسئلة موظّف الإدخال. كانت تُجاب بتصدير الجدول إلى إكسل
+ * ثم فرزه باليد، فيختلف رقمُ كل من يجرّبها.
+ *
+ * ── وكل شريحة تحمل شرطها مرّتين، وذلك مقصود ────────────────────────────────
+ *   `cond()` شرطُ Mongo الذي يفتح صفوفها في القائمة.
+ *   `test()` نفسُ الشرط منفَّذًا في الذاكرة، به يُحسب العدد المكتوب بجانبها.
+ * ولولا اشتقاقُهما من تعريفٍ واحد لانفصل العدد المعروض عن الصفوف التي يفتحها
+ * — وهو أسوأ عطبٍ في لوحة تحليلات: رقمٌ تضغطه فيعطيك غيرَه ولا شيء يفسّر.
+ *
+ * و`cond` دالّةٌ لا كائن: حدود «خلال ٣٠ يومًا» تُحسب من اليوم، ولو بُنيت مرّة
+ * عند إقلاع الخادم لتجمّدت عند يوم الإقلاع وصارت تكذب بعد أسبوع من التشغيل.
+ */
+const dayStart = (n = 0) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d; };
+const _blank = (x) => x === null || x === undefined || x === '';
+
+// أفقُ الانتهاء: نفس القطع لكل مستند. الحدود متلاصقة غير متداخلة — «منتهٍ»
+// تنتهي بالأمس و«خلال ٣٠» تبدأ اليوم، وإلا عُدَّ ما ينتهي اليوم في الشريحتين
+// معًا فتجاوز مجموعُ الشرائح عددَ المركبات.
+const HORIZON_BANDS = [
+  { value: 'منتهٍ', en: 'Expired', hi: -1 },
+  { value: 'خلال ٣٠ يومًا', en: 'Within 30 days', lo: 0, hi: 30 },
+  { value: '٣١ إلى ٦٠ يومًا', en: '31–60 days', lo: 31, hi: 60 },
+  { value: '٦١ إلى ٩٠ يومًا', en: '61–90 days', lo: 61, hi: 90 },
+  { value: 'أبعد من ٩٠ يومًا', en: 'Beyond 90 days', lo: 91 },
+  // «بلا تاريخ» ليست تاريخًا خارج المدى — لا يلتقطها أيُّ مدًى، وتلزمها شريحة.
+  { value: 'بلا تاريخ مسجَّل', en: 'No date on file', none: true },
+];
+const horizonOptions = (path) => HORIZON_BANDS.map((b) => ({
+  value: b.value, en: b.en,
+  cond: () => (b.none
+    ? { $or: [{ [path]: null }, { [path]: { $exists: false } }] }
+    : { [path]: Object.assign({ $ne: null },
+      b.lo != null ? { $gte: dayStart(b.lo) } : {},
+      b.hi != null ? { $lt: dayStart(b.hi + 1) } : {}) }),
+  test: (v) => {
+    const raw = getPath(v, path);
+    if (b.none) return !raw;
+    if (!raw) return false;
+    const d = VDOC.daysLeft(raw);
+    return (b.lo == null || d >= b.lo) && (b.hi == null || d <= b.hi);
+  },
+}));
+
+// شرائح رقمية (قسط التأمين، سقف الاستهلاك، عدد الحوادث، سنة الصنع).
+const numberOptions = (path, bands) => bands.map((b) => ({
+  value: b.value, en: b.en,
+  cond: () => (b.none
+    ? { $or: [{ [path]: null }, { [path]: '' }, { [path]: { $exists: false } }] }
+    : { [path]: Object.assign({ $ne: null },
+      b.lo != null ? { $gte: b.lo } : {}, b.hi != null ? { $lte: b.hi } : {}) }),
+  test: (v) => {
+    const n = getPath(v, path);
+    if (b.none) return _blank(n);
+    if (_blank(n)) return false;
+    const x = Number(n);
+    return !Number.isNaN(x) && (b.lo == null || x >= b.lo) && (b.hi == null || x <= b.hi);
+  },
+}));
+
+/** سؤال بنعم/لا: الشريحتان متكاملتان دائمًا، فمجموعهما كلُّ المركبات. */
+const yesNo = (yes, no, cond, test) => ([
+  { value: yes.ar, en: yes.en, cond: () => cond(), test },
+  { value: no.ar, en: no.en, cond: () => ({ $nor: [cond()] }), test: (v) => !test(v) },
+]);
+
+const HAS_FUEL_CARD = () => ({ 'fuelCard.cardNumber': { $nin: [null, ''] } });
+const HAS_AUTH = () => ({ $or: [
+  { 'authorizedPerson.name': { $nin: [null, ''] } },
+  { 'authorizedPerson.authorizationNumber': { $nin: [null, ''] } },
+] });
+const ANY_EXPIRED = () => ({ $or: DOC_TYPES.map((dt) => ({ [dt.path]: { $ne: null, $lt: dayStart(0) } })) });
+const ANY_SOON = () => ({ $or: DOC_TYPES.map((dt) => ({ [dt.path]: { $ne: null, $gte: dayStart(0), $lt: dayStart(31) } })) });
+const anyExpiredT = (v) => DOC_TYPES.some((dt) => { const d = VDOC.daysLeft(getPath(v, dt.path)); return d != null && d < 0; });
+const anySoonT = (v) => DOC_TYPES.some((dt) => { const d = VDOC.daysLeft(getPath(v, dt.path)); return d != null && d >= 0 && d <= 30; });
+
+const _year = () => new Date().getFullYear();
+
+const DERIVED_DEFS = [
+  // ── ما ينتهي ومتى، مستندًا مستندًا ──────────────────────────────────────
+  ...DOC_TYPES.map((dt) => ({
+    key: `${dt.key}Horizon`, ar: `انتهاء ${dt.ar}`, en: `${dt.en} expiry`,
+    groupAr: 'آفاق الانتهاء', groupEn: 'Expiry horizons',
+    select: [dt.path], options: horizonOptions(dt.path),
+  })),
+
+  // ── والمركبة كلّها في سؤال واحد ─────────────────────────────────────────
+  // الشرائح الثلاث متنافية عمدًا: مركبةٌ فيها منتهٍ **و** قاربَ آخرُ على الانتهاء
+  // تُعدّ في «منتهٍ» وحدها. ولولا ذلك لفاق مجموع الشرائح عدد الأسطول، وهو أوّل
+  // ما يلاحظه من ينظر ويُفقده الثقة في اللوحة كلها.
+  {
+    key: 'documentHealth', ar: 'صحّة المستندات', en: 'Document health',
+    groupAr: 'المستندات', groupEn: 'Documents',
+    select: DOC_TYPES.map((dt) => dt.path),
+    options: [
+      { value: 'فيها مستند منتهٍ', en: 'Has an expired document', cond: ANY_EXPIRED, test: anyExpiredT },
+      {
+        value: 'ينتهي فيها مستند خلال ٣٠ يومًا', en: 'Something expires within 30 days',
+        cond: () => ({ $and: [ANY_SOON(), { $nor: [ANY_EXPIRED()] }] }),
+        test: (v) => anySoonT(v) && !anyExpiredT(v),
+      },
+      {
+        value: 'كل مستنداتها سارية', en: 'All documents valid',
+        cond: () => ({ $nor: [ANY_EXPIRED(), ANY_SOON()] }),
+        test: (v) => !anyExpiredT(v) && !anySoonT(v),
+      },
+    ],
+  },
+  {
+    key: 'completeness', ar: 'اكتمال البيانات', en: 'Data completeness',
+    groupAr: 'المستندات', groupEn: 'Documents', select: ['missingItems'],
+    options: yesNo(
+      { ar: 'ينقصها بند أو أكثر', en: 'Missing something' }, { ar: 'مكتملة البيانات', en: 'Complete' },
+      () => ({ 'missingItems.0': { $exists: true } }), (v) => !!(v.missingItems || []).length,
+    ),
+  },
+  // البند الناقص وسببُه: `buildFilter` يعرف هذين المفتاحين من قبل (وحده يجمع
+  // بينهما في `$elemMatch` حين يُطلبا معًا)، فلا يُبنى لهما شرطٌ عامّ هنا —
+  // التعريفُ هنا لعرض قيمهما وأعدادها فحسب.
+  {
+    key: 'missingItem', ar: 'البند الناقص', en: 'Missing item',
+    groupAr: 'المستندات', groupEn: 'Documents', select: ['missingItems'], handled: true,
+    valuesOf: (v) => [...new Set((v.missingItems || []).map((m) => m.item).filter(Boolean))],
+  },
+  {
+    key: 'missingReason', ar: 'سبب النقص', en: 'Reason missing',
+    groupAr: 'المستندات', groupEn: 'Documents', select: ['missingItems'], handled: true,
+    valuesOf: (v) => [...new Set((v.missingItems || []).map((m) => VDOC.statusLabel(m.reason, 'ar')).filter(Boolean))],
+  },
+  {
+    key: 'logistiGap', ar: 'شرط لوجستي ناقص', en: 'Logisti requirement missing',
+    groupAr: 'المستندات', groupEn: 'Documents', select: ['logistiGaps'], handled: true,
+    valuesOf: (v) => [...new Set(v.logistiGaps || [])],
+  },
+
+  // ── التشغيل: ما الذي على المركبة فعلًا ──────────────────────────────────
+  {
+    key: 'gpsFitted', ar: 'جهاز التتبّع', en: 'Tracker fitted',
+    groupAr: 'التشغيل', groupEn: 'Operations',
+    select: ['gps.serialImei', 'gps.deviceModel', 'gps.deviceId'],
+    options: yesNo(
+      { ar: 'عليها جهاز تتبّع', en: 'Tracker fitted' }, { ar: 'بلا جهاز تتبّع', en: 'No tracker' },
+      () => HAS_GPS, hasGps,
+    ),
+  },
+  {
+    key: 'fuelCardFitted', ar: 'شريحة الوقود', en: 'Fuel card',
+    groupAr: 'التشغيل', groupEn: 'Operations', select: ['fuelCard.cardNumber'],
+    options: yesNo(
+      { ar: 'لها شريحة وقود', en: 'Has a fuel card' }, { ar: 'بلا شريحة وقود', en: 'No fuel card' },
+      HAS_FUEL_CARD, (v) => !!v.fuelCard?.cardNumber,
+    ),
+  },
+  {
+    key: 'authorized', ar: 'التفويض بالقيادة', en: 'Driving authorisation',
+    groupAr: 'الملكية والتفويض', groupEn: 'Ownership',
+    select: ['authorizedPerson.name', 'authorizedPerson.authorizationNumber'],
+    options: yesNo(
+      { ar: 'عليها مفوَّض', en: 'Has an authorised driver' }, { ar: 'بلا مفوَّض', en: 'No authorised driver' },
+      HAS_AUTH, (v) => !!(v.authorizedPerson?.name || v.authorizedPerson?.authorizationNumber),
+    ),
+  },
+  {
+    // سقف الاستهلاك: «مفتوح» ليس سقفًا عاليًا — هو لا سقف. عدُّه مع الأرقام
+    // يخفي المركبات التي لا حدَّ لصرفها، وهي أوّل ما يُسأل عنه في مراجعة الوقود.
+    key: 'consumptionLimit', ar: 'سقف الاستهلاك', en: 'Fuel limit',
+    groupAr: 'التشغيل', groupEn: 'Operations', select: ['fuelCard.limitSar', 'fuelCard.limitStatus'],
+    options: [
+      {
+        value: 'مفتوح بلا سقف', en: 'Open — no ceiling',
+        cond: () => ({ 'fuelCard.limitStatus': 'open' }),
+        test: (v) => v.fuelCard?.limitStatus === 'open',
+      },
+      ...numberOptions('fuelCard.limitSar', [
+        { value: '٣٠٠ ريال فأقل', en: 'Up to 300 SAR', hi: 300 },
+        { value: '٣٠١ إلى ١٠٠٠ ريال', en: '301–1000 SAR', lo: 301, hi: 1000 },
+        { value: '١٠٠١ إلى ٥٠٠٠ ريال', en: '1001–5000 SAR', lo: 1001, hi: 5000 },
+        { value: 'أكثر من ٥٠٠٠ ريال', en: 'Over 5000 SAR', lo: 5001 },
+        { value: 'بلا سقف مسجَّل', en: 'No limit recorded', none: true },
+      ]),
+    ],
+  },
+
+  // ── التأمين بالمال لا بالتاريخ ──────────────────────────────────────────
+  {
+    key: 'insuranceValue', ar: 'قيمة القسط', en: 'Premium band',
+    groupAr: 'التأمين', groupEn: 'Insurance', select: ['insurance.premiumSar', 'insurance.premiumStatusAr'],
+    options: [
+      ...numberOptions('insurance.premiumSar', [
+        { value: '١٠٠٠ ريال فأقل', en: 'Up to 1000 SAR', hi: 1000 },
+        { value: '١٠٠١ إلى ٣٠٠٠ ريال', en: '1001–3000 SAR', lo: 1001, hi: 3000 },
+        { value: '٣٠٠١ إلى ٥٠٠٠ ريال', en: '3001–5000 SAR', lo: 3001, hi: 5000 },
+        { value: 'أكثر من ٥٠٠٠ ريال', en: 'Over 5000 SAR', lo: 5001 },
+      ]),
+      {
+        // مركبةٌ يسدّد قسطَها المموِّل ليست «بلا قسط» — هي مؤمَّنة والرقم عنده.
+        value: 'يسدّده المموِّل', en: 'Paid by the financier',
+        cond: () => ({ 'insurance.premiumStatusAr': { $nin: [null, ''] } }),
+        test: (v) => !!v.insurance?.premiumStatusAr,
+      },
+      {
+        value: 'بلا قسط مسجَّل', en: 'No premium recorded',
+        cond: () => ({ $and: [{ $or: [{ 'insurance.premiumSar': null }, { 'insurance.premiumSar': { $exists: false } }] },
+          { $or: [{ 'insurance.premiumStatusAr': null }, { 'insurance.premiumStatusAr': '' }] }] }),
+        test: (v) => _blank(v.insurance?.premiumSar) && !v.insurance?.premiumStatusAr,
+      },
+    ],
+  },
+
+  // ── المركبة نفسها: عمرُها وسجلُّها ──────────────────────────────────────
+  {
+    // سنة الصنع رقمٌ لا يُقرأ منه العمر بالعين، والعمر هو ما يُبنى عليه قرار
+    // الإحلال. والشرائح محسوبة من سنة اليوم فلا تبور مع مرور السنة.
+    key: 'vehicleAge', ar: 'عمر المركبة', en: 'Vehicle age',
+    groupAr: 'المركبة', groupEn: 'Vehicle', select: ['modelYear'],
+    options: numberOptions('modelYear', [
+      { value: 'أقل من ٣ سنوات', en: 'Under 3 years', lo: _year() - 2 },
+      { value: '٣ إلى ٥ سنوات', en: '3–5 years', lo: _year() - 5, hi: _year() - 3 },
+      { value: '٦ إلى ١٠ سنوات', en: '6–10 years', lo: _year() - 10, hi: _year() - 6 },
+      { value: 'أكثر من ١٠ سنوات', en: 'Over 10 years', hi: _year() - 11 },
+      { value: 'بلا سنة صنع', en: 'No model year', none: true },
+    ]),
+  },
+  {
+    key: 'accidentBand', ar: 'سجلّ الحوادث', en: 'Accident record',
+    groupAr: 'المركبة', groupEn: 'Vehicle', select: ['accidentCount'],
+    options: [{
+      // «بلا حوادث» تشمل الخانة الفارغة: العدّاد يُملأ بعد ربط المطالبات،
+      // ومركبةٌ لم يُحسب لها بعدُ ليست مركبةً خارج التصنيف — هي بلا حوادث.
+      value: 'بلا حوادث', en: 'No accidents',
+      cond: () => ({ $or: [{ accidentCount: { $in: [null, 0] } }, { accidentCount: { $exists: false } }] }),
+      test: (v) => !Number(v.accidentCount),
+    }, ...numberOptions('accidentCount', [
+      { value: 'حادث واحد', en: 'One accident', lo: 1, hi: 1 },
+      { value: 'حادثان أو ثلاثة', en: '2–3 accidents', lo: 2, hi: 3 },
+      { value: 'أكثر من ثلاثة حوادث', en: 'More than 3', lo: 4 },
+    ])],
+  },
+];
+const DERIVED_BY_KEY = new Map(DERIVED_DEFS.map((d) => [d.key, d]));
+
+// اسم الحالة العربي → رمزها. الشاشة تعرض «مطلوب» لا `required`، والفلتر يجب أن
+// يقبل ما تعرضه — ويظل يقبل الرمز نفسه فلا تنكسر روابط محفوظة.
+const REASON_BY_LABEL = Object.fromEntries(
+  Object.entries(VDOC.STATUS_LABELS).map(([code, l]) => [l.ar, code]).filter(([ar]) => ar),
+);
+
 // يبني فلتر Mongo من الـ query (متعدد القيم + بحث + نطاق سنة).
 function buildFilter(q) {
   const f = { isActive: { $ne: false } };
@@ -69,8 +323,21 @@ function buildFilter(q) {
     owner: 'ownerNameAr', insuranceCompany: 'insurance.companyAr',
     coverageType: 'insurance.coverageTypeAr', fuelCardStatus: 'fuelCard.statusAr',
     inspectionStatus: 'inspection.statusAr', tamStatus: 'tamStatusAr', color: 'colorAr',
+    // ── أعمدة الماستر النهائي (أغسطس ٢٠٢٦) ───────────────────────────────
+    // حالة التشغيل أوّلها: ٧٦ مركبةً من ٣٣٥ واقفةٌ أو مسروقة، وكان الجواب
+    // مدفونًا في كلمة «غير مستخدم» مكتوبةً مكانَ اسم الإدارة.
+    serviceStatus: 'serviceStatusAr',
+    model: 'modelAr',
+    commercialRegistration: 'commercialRegistration',
+    insurancePolicyNumber: 'insurance.policyNumber',
+    premiumStatus: 'insurance.premiumStatusAr',
+    consumptionType: 'fuelCard.consumptionTypeAr',
+    gpsSerial: 'gps.serialImei',
+    operatingCardNumber: 'operatingCard.cardNumber',
+    authorizationNumber: 'authorizedPerson.authorizationNumber',
     // توافق خلفي مع الأكواد:
     sectorCode: 'sectorCode', registrationTypeCode: 'registrationTypeCode',
+    serviceStatusCode: 'serviceStatusCode',
   };
   for (const [qk, field] of Object.entries(map)) {
     const vals = _multi(q[qk]);
@@ -93,7 +360,7 @@ function buildFilter(q) {
   // نواقص البيانات: «أرِني من ينقصه شيء»، أو بندًا بعينه، أو بندًا بسبب بعينه.
   if (q.missing === '1') and.push({ 'missingItems.0': { $exists: true } });
   const mItems = _multi(q.missingItem);
-  const mReasons = _multi(q.missingReason);
+  const mReasons = _multi(q.missingReason).map((x) => REASON_BY_LABEL[x] || x);
   if (mItems.length && mReasons.length) {
     and.push({ missingItems: { $elemMatch: { item: { $in: mItems }, reason: { $in: mReasons } } } });
   } else if (mItems.length) and.push({ 'missingItems.item': { $in: mItems } });
@@ -123,6 +390,11 @@ function buildFilter(q) {
       { plateNumber: rx }, { chassisNumber: rx }, { serialNumber: rx }, { brandAr: rx }, { modelAr: rx },
       { ownerNameAr: rx }, { 'insurance.policyNumber': rx }, { 'insurance.companyAr': rx },
       { 'fuelCard.cardNumber': rx }, { 'operatingCard.cardNumber': rx }, { notesAr: rx },
+      // أعمدة الماستر النهائي: البحث بسريال جهاز التتبّع أو برقم التفويض أو
+      // باللوحة كما تُطبع على فاتورة الوقود — وهي الصيغ التي تصل بها الأوراق.
+      { 'gps.serialImei': rx }, { 'authorizedPerson.name': rx },
+      { 'authorizedPerson.authorizationNumber': rx }, { 'fuelCard.plateOnInvoiceAr': rx },
+      { commercialRegistration: rx },
     ] });
   }
   // فلتر انتهاء مستند خلال مدة، أو منتهي، أو ضمن نطاق تاريخي.
@@ -149,6 +421,20 @@ function buildFilter(q) {
   // «لديه GPS»: مركبات عليها جهاز مركّب.
   if (q.hasGps === '1') and.push(HAS_GPS);
   if (q.hasGps === '0') and.push({ $nor: [HAS_GPS] });
+  // ── الفلاتر المشتقّة ──────────────────────────────────────────────────────
+  // القيم المختارة داخل الحقل الواحد **أو**، وبين الحقول **و**: «(منتهٍ أو خلال
+  // ٣٠ يومًا) و(بلا جهاز تتبّع)». وهي الطريقة الوحيدة التي تُقرأ بها اللوحة:
+  // اختيارُ قيمتين في حقلٍ واحد يوسّع، واختيارُ حقلٍ ثانٍ يضيّق.
+  for (const d of DERIVED_DEFS) {
+    if (d.handled || !d.options) continue;
+    const picked = _multi(q[d.key]);
+    if (!picked.length) continue;
+    const conds = d.options.filter((o) => picked.includes(o.value)).map((o) => o.cond());
+    // قيمةٌ لا يعرفها التعريف (رابطٌ قديمٌ أو كتابةٌ يدوية) لا تُتجاهَل في صمت
+    // فتفتح الأسطول كلّه وكأن الفلتر مطبَّق — بل لا تطابق شيئًا.
+    and.push(conds.length ? { $or: conds } : { _id: { $in: [] } });
+  }
+
   if (q.expiryDoc && (q.expiryFrom || q.expiryTo)) {
     const dt = DOC_TYPES.find((x) => x.key === q.expiryDoc);
     if (dt) {
@@ -460,20 +746,37 @@ const FILTER_DEFS = [
   { key: 'city', field: 'cityAr', ar: 'المدينة', en: 'City', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'registrationType', field: 'registrationTypeAr', ar: 'نوع التسجيل', en: 'Registration type', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'possession', field: 'possessionStatusAr', ar: 'حالة الحيازة', en: 'Possession', groupAr: 'التصنيف', groupEn: 'Classification' },
+  // حالة التشغيل: أوّل سؤالٍ تسأله الإدارة وآخرُ ما كان يجد شاشةً تجيبه.
+  { key: 'serviceStatus', field: 'serviceStatusAr', ar: 'حالة التشغيل', en: 'Service status', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'brand', field: 'brandAr', ar: 'الماركة', en: 'Brand', groupAr: 'المركبة', groupEn: 'Vehicle' },
+  { key: 'model', field: 'modelAr', ar: 'الطراز', en: 'Model', groupAr: 'المركبة', groupEn: 'Vehicle' },
   { key: 'color', field: 'colorAr', ar: 'اللون', en: 'Colour', groupAr: 'المركبة', groupEn: 'Vehicle' },
   { key: 'modelYear', field: 'modelYear', ar: 'سنة الصنع', en: 'Model year', groupAr: 'المركبة', groupEn: 'Vehicle' },
   { key: 'owner', field: 'ownerNameAr', ar: 'المالك', en: 'Owner', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
+  { key: 'commercialRegistration', field: 'commercialRegistration', ar: 'السجل التجاري', en: 'Commercial register', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
   { key: 'authorizedPerson', field: 'authorizedPerson.name', ar: 'المفوَّض', en: 'Authorised person', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
   { key: 'insuranceCompany', field: 'insurance.companyAr', ar: 'شركة التأمين', en: 'Insurer', groupAr: 'التأمين', groupEn: 'Insurance' },
   { key: 'coverageType', field: 'insurance.coverageTypeAr', ar: 'نوع التغطية', en: 'Coverage', groupAr: 'التأمين', groupEn: 'Insurance' },
+  // رقم الوثيقة فلترٌ لا زينة: وثيقةٌ واحدة تغطّي ١٩٨ مركبة، و«أرِني كل ما
+  // تغطّيه هذه الوثيقة» هو السؤال الذي يسبق كل تجديد.
+  { key: 'insurancePolicyNumber', field: 'insurance.policyNumber', ar: 'رقم وثيقة التأمين', en: 'Policy number', groupAr: 'التأمين', groupEn: 'Insurance' },
+  { key: 'premiumStatus', field: 'insurance.premiumStatusAr', ar: 'جهة سداد القسط', en: 'Premium paid by', groupAr: 'التأمين', groupEn: 'Insurance' },
   { key: 'inspectionStatus', field: 'inspection.statusAr', ar: 'حالة الفحص', en: 'Inspection status', groupAr: 'المستندات', groupEn: 'Documents' },
   { key: 'tamStatus', field: 'tamStatusAr', ar: 'حالة تم', en: 'TAM status', groupAr: 'المستندات', groupEn: 'Documents' },
   { key: 'fuelCardStatus', field: 'fuelCard.statusAr', ar: 'حالة بطاقة الوقود', en: 'Fuel card status', groupAr: 'التشغيل', groupEn: 'Operations' },
+  { key: 'consumptionType', field: 'fuelCard.consumptionTypeAr', ar: 'نوع الاستهلاك', en: 'Consumption type', groupAr: 'التشغيل', groupEn: 'Operations' },
   { key: 'gpsProvider', field: 'gps.provider', ar: 'مزوّد التتبّع', en: 'GPS provider', groupAr: 'التشغيل', groupEn: 'Operations' },
   { key: 'gpsDevice', field: 'gps.deviceModel', ar: 'طراز جهاز التتبّع', en: 'GPS device', groupAr: 'التشغيل', groupEn: 'Operations' },
   { key: 'gpsDeviceStatus', field: 'gps.deviceStatusAr', ar: 'حالة جهاز التتبّع', en: 'GPS device status', groupAr: 'التشغيل', groupEn: 'Operations' },
 ];
+
+// الحقول التي تحتاجها كل الفلاتر، مجموعةً مرّة واحدة: استعلامٌ واحدٌ يكفيها
+// جميعًا. جلبُ المستند كاملًا لثلاثمئة مركبة في كل فتحةٍ للّوحة نقلٌ لا داعي
+// له على عنقود Atlas المُقيَّد، وهو ما تُقاس به بطء هذه الشاشة.
+const FILTER_SELECT = [...new Set([
+  ...FILTER_DEFS.map((d) => d.field),
+  ...DERIVED_DEFS.flatMap((d) => d.select || []),
+])].join(' ');
 
 const _get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 
@@ -496,21 +799,43 @@ exports.filterOptions = async (req, res) => {
     // «كل الفلاتر إلا هذا الحقل» تختلف فعليًّا فقط للحقول المفلترة الآن؛ والبقيّة
     // تشترك في المجموعة نفسها. استعلامٌ واحد لها جميعًا وواحدٌ لكل فلترٍ نشط،
     // بدل ثمانية عشر استعلامًا في كل فتحةٍ للّوحة.
-    const active = FILTER_DEFS.filter((d) => req.query[d.key] != null && req.query[d.key] !== '');
-    const passive = FILTER_DEFS.filter((d) => !(req.query[d.key] != null && req.query[d.key] !== ''));
+    // الشرائح المشتقّة تُعَدّ بنفس دالّة الشرط التي تفتح صفوفها — تعريفٌ واحد
+    // للاثنين، فلا يفترق الرقم عمّا يفتحه. والقيمة التي عددُها صفر لا تُعرَض:
+    // خيارٌ تضغطه فتجد الشاشة فارغة أسوأ من غيابه.
+    const tallyDerived = (rows, d) => {
+      if (d.valuesOf) {
+        const m = new Map();
+        // القيم متعددة على المركبة الواحدة (بنود النقص، شروط لوجستي): تُعَدّ
+        // المركبة في كل بندٍ ينقصها — ولذلك يفوق مجموعُ هذه الشريحة عددَ
+        // المركبات، وهو صحيح هنا وحده دون سائر الحقول.
+        for (const r of rows) for (const v of d.valuesOf(r)) m.set(v, (m.get(v) || 0) + 1);
+        return [...m.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
+      }
+      // ترتيب الشرائح هو ترتيب التعريف لا ترتيب الأعداد: «منتهٍ» قبل «خلال ٣٠»
+      // قبل «٣١ إلى ٦٠» — سُلَّمٌ يُقرأ، وفرزُه بالعدد يُفقده معناه.
+      return d.options.map((o) => ({ value: o.value, count: rows.filter(o.test).length }))
+        .filter((x) => x.count > 0);
+    };
+
+    const ALL_DEFS = [...FILTER_DEFS, ...DERIVED_DEFS];
+    const isOn = (k) => req.query[k] != null && req.query[k] !== '';
+    const active = ALL_DEFS.filter((d) => isOn(d.key));
+    const passive = ALL_DEFS.filter((d) => !isOn(d.key));
     const shared = passive.length
-      ? await VehicleMaster.find(buildFilter(req.query)).select(passive.map((d) => d.field).join(' ')).lean()
+      ? await VehicleMaster.find(buildFilter(req.query)).select(FILTER_SELECT).lean()
       : [];
     const perActive = new Map(await Promise.all(active.map(async (d) => {
       const others = { ...req.query };
       delete others[d.key];
-      return [d.key, await VehicleMaster.find(buildFilter(others)).select(d.field).lean()];
+      return [d.key, await VehicleMaster.find(buildFilter(others)).select(FILTER_SELECT).lean()];
     })));
 
-    const filters = FILTER_DEFS.map((d) => ({
+    const filters = ALL_DEFS.map((d) => ({
       key: d.key, ar: d.ar, en: d.en, groupAr: d.groupAr, groupEn: d.groupEn,
-      values: tally(perActive.get(d.key) || shared, d.field),
-    }));
+      values: d.field
+        ? tally(perActive.get(d.key) || shared, d.field)
+        : tallyDerived(perActive.get(d.key) || shared, d),
+    })).filter((f) => f.values.length);
     const body = { filters };
     cache.set(key, body, 20000);
     res.json(body);
@@ -640,6 +965,9 @@ exports.overview = async (req, res) => {
       { key: 'department', ar: 'الإدارة', en: 'Department', field: 'departmentAr', items: group('departmentAr', (v) => v.departmentAr) },
       { key: 'city', ar: 'المدينة', en: 'City', field: 'cityAr', items: group('cityAr', (v) => v.cityAr) },
       { key: 'possession', ar: 'حالة الحيازة', en: 'Possession', field: 'possessionStatusAr', items: group('possessionStatusAr', (v) => v.possessionStatusAr) },
+      // حالة التشغيل قبل أي تصنيفٍ آخر: ٧٦ مركبة من ٣٣٥ واقفةٌ أو مسروقة —
+      // ربعُ الأسطول لا يعمل، ولم تكن في الصفحة بطاقةٌ تقول ذلك.
+      { key: 'serviceStatus', ar: 'حالة التشغيل', en: 'Service status', field: 'serviceStatusAr', items: group('serviceStatusAr', (v) => v.serviceStatusAr) },
       { key: 'registrationType', ar: 'نوع التسجيل', en: 'Registration type', field: 'registrationTypeAr', items: group('registrationTypeAr', (v) => v.registrationTypeAr) },
       { key: 'brand', ar: 'الماركة', en: 'Brand', field: 'brandAr', items: group('brandAr', (v) => v.brandAr) },
       { key: 'model', ar: 'الموديل', en: 'Model', field: 'modelAr', items: group('modelAr', (v) => v.modelAr) },
@@ -650,7 +978,10 @@ exports.overview = async (req, res) => {
       { key: 'insuranceCompany', ar: 'شركة التأمين', en: 'Insurer', field: 'insurance.companyAr', items: group('insurance.companyAr', (v) => v.insurance?.companyAr) },
       { key: 'coverageType', ar: 'نوع التغطية', en: 'Coverage', field: 'insurance.coverageTypeAr', items: group('insurance.coverageTypeAr', (v) => v.insurance?.coverageTypeAr) },
       { key: 'fuelCardStatus', ar: 'حالة شريحة الوقود', en: 'Fuel card', field: 'fuelCard.statusAr', items: group('fuelCard.statusAr', (v) => v.fuelCard?.statusAr) },
-      { key: 'fuelConsumption', ar: 'نوع الاستهلاك', en: 'Consumption', field: 'fuelCard.consumptionTypeAr', items: group('fuelCard.consumptionTypeAr', (v) => v.fuelCard?.consumptionTypeAr) },
+      { key: 'consumptionType', ar: 'نوع الاستهلاك', en: 'Consumption', field: 'fuelCard.consumptionTypeAr', items: group('fuelCard.consumptionTypeAr', (v) => v.fuelCard?.consumptionTypeAr) },
+      // جهة سداد القسط: ٢٧ مركبة يسدّد قسطها المموِّل — مؤمَّنةٌ ورقمُها عنده،
+      // وكانت تُقرأ «بلا قسط» فتظهر نقصًا لا وجود له.
+      { key: 'premiumStatus', ar: 'جهة سداد القسط', en: 'Premium paid by', field: 'insurance.premiumStatusAr', items: group('insurance.premiumStatusAr', (v) => v.insurance?.premiumStatusAr) },
       { key: 'gpsStatus', ar: 'حالة جهاز التتبّع', en: 'GPS status', field: 'gps.status', items: group('gps.status', (v) => v.gps?.status) },
       { key: 'gpsProvider', ar: 'مزوّد التتبّع', en: 'GPS provider', field: 'gps.provider', items: group('gps.provider', (v) => v.gps?.provider) },
       { key: 'gpsDevice', ar: 'موديل جهاز التتبّع', en: 'GPS device', field: 'gps.deviceModel', items: group('gps.deviceModel', (v) => v.gps?.deviceModel) },

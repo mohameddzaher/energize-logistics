@@ -14,7 +14,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
-  Car, ShieldCheck, CreditCard, FileText, Wrench, Satellite,
+  Car, ShieldCheck, CreditCard, FileText, Wrench, Satellite, KeyRound,
   ChevronLeft, Settings, CalendarClock, TriangleAlert,
 } from 'lucide-react';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
@@ -25,7 +25,7 @@ import {
 
 const DOC_ICON: Record<string, any> = {
   insurance: ShieldCheck, operatingCard: CreditCard, vehicleLicense: FileText,
-  inspection: Wrench, gps: Satellite,
+  inspection: Wrench, gps: Satellite, authorization: KeyRound,
 };
 
 function VehiclesOverviewInner() {

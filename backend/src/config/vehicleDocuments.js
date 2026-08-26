@@ -57,6 +57,21 @@ const DOCUMENTS = [
     extra: ['gps.provider', 'gps.deviceModel', 'gps.serialImei', 'gps.status'],
     icon: 'gps',
   },
+  // ── ولماذا صار التفويض مستندًا كسائر المستندات ─────────────────────────────
+  // كان تاريخا بدايته ونهايته يقيمان في حقلٍ منفصل لا تمرّ عليه شاشة انتهاءات
+  // ولا عتبة تنبيه — فينتهي التفويض ولا يعلم أحد. وانتهاؤه ليس خانةً فارغة:
+  // السائق يقود حينئذٍ بلا صفة، فالمخالفة تُقيَّد على الشركة وتُنازِع شركةُ
+  // التأمين في التغطية عند أول حادث. له تاريخ انتهاء ورقم وحاملٌ اسمه، فهو
+  // بطاقة تشغيلٍ أخرى — ومكانه هنا حيث تراه الأربعُ شاشات وحدها.
+  {
+    key: 'authorization',
+    ar: 'التفويض', en: 'Authorisation',
+    path: 'authorizedPerson.expiryDate',
+    statusPath: 'authorizedPerson.statusCode',
+    extra: ['authorizedPerson.name', 'authorizedPerson.iqamaNumber',
+      'authorizedPerson.authorizationNumber', 'authorizedPerson.startDate'],
+    icon: 'authorization',
+  },
 ];
 
 const DOC_KEYS = DOCUMENTS.map((d) => d.key);
@@ -141,10 +156,58 @@ const mapSentinel = (code) => {
   return SENTINEL_MAP[c.toUpperCase()] || 'unmapped';
 };
 
+// ── والماستر الذي يكتبه القسم بيده يقول السبب بالعربية داخل الخانة ──────────
+//
+// الخريطة أعلاه لملفٍ مُصدَّر برموزٍ إنجليزية. أما ماستر القسم فيكتب سبب غياب
+// القيمة **مكان القيمة نفسها**: «مطلوب» في خانة رقم التفويض، و«غير مطلوب» في
+// خانة شركة التأمين، و«ملكية بنك الراجحي» في خانة قيمة التأمين.
+//
+// نقلُها كما هي يجعل «مطلوب» تظهر شركةَ تأمينٍ لها خمسٌ وأربعون مركبة، وتُعدّ
+// في التوزيعات كأنها اسم شركة — وهذا ما حدث فعلًا في استيرادٍ سابق. فتُترجَم
+// هنا مرةً واحدة: تُفرَّغ الخانة ويبقى سببُ فراغها رمزًا.
+//
+// وتوحيد الكتابة قبل المطابقة شرط: «غير مطلوب» و«غير مطلوب » و«غير مطلوب»
+// بألفٍ همزية ثلاثُ كتاباتٍ لمعنًى واحد، وأيّ واحدة تفلت تعود قيمةً كاذبة.
+const _foldAr = (v) => String(v)
+  .replace(/[\u064B-\u0652\u0640]/g, '')
+  .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const AR_SENTINEL_MAP = {
+  'مطلوب': 'required',
+  'غير مطلوب': 'not_required',
+  'لا يوجد': 'none',
+  'لايوجد': 'none',
+  'غير مستخدم': 'not_in_use',
+  'غير معروف': 'unknown',
+  'ملكيه بنك الراجحي': 'with_bank',
+  'ملكيه البنك الاهلي السعودي': 'with_bank',
+  'ملكيه شركه الجبر': 'with_aljabr',
+  // «اخري» ليست هنا عمدًا: هي **قيمة** في هذا الملف لا غيابَ قيمة — ٣٤ مركبة
+  // قطاعُها «اخري» وسِجلُّها «اخري». عدُّها سببَ فراغٍ يفرِّغ قطاعَ عُشر الأسطول.
+  '-': 'none',
+  '—': 'none',
+  ';': 'none',
+};
+
+/**
+ * نصّ الخانة العربي → رمزُ حالة، أو '' إن كانت قيمةً حقيقية.
+ * الرقم قيمةٌ دائمًا، والفراغ ليس سببًا — فراغٌ فقط.
+ */
+const mapSentinelAr = (v) => {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number' || v instanceof Date) return '';
+  const k = _foldAr(v);
+  if (!k) return '';
+  return AR_SENTINEL_MAP[k] || '';
+};
+
 /** «غير مطلوب» حالة سليمة؛ الباقي نقصٌ يحتاج عملًا. */
 const isGap = (code) => !!code && code !== 'not_required' && code !== '';
 
 module.exports = {
   DOCUMENTS, DOC_KEYS, getDoc, STATUS_LABELS, statusLabel, STATE_LABELS,
   daysLeft, stateOf, SENTINEL_MAP, mapSentinel, isGap,
+  AR_SENTINEL_MAP, mapSentinelAr, foldAr: _foldAr,
 };

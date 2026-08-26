@@ -38,12 +38,30 @@ const vehicleMasterSchema = new mongoose.Schema({
   cityAr: { type: String, default: '', index: true },
   // حالة الحيازة: مالك أم مستخدم. شرط من شروط منصّة لوجستي، فلا يصحّ دفنه في نص.
   possessionStatusAr: { type: String, default: '', index: true },
+  // ── وهل المركبة تعمل أصلًا؟ ────────────────────────────────────────────────
+  // الماستر يقول ذلك في خانتين مختلفتين: «غير مستخدم» مكانَ اسم الإدارة (٦١
+  // مركبة)، و«مسروق» مكانَ القطاع (١٥). فيضيع الجوابُ بين عمودين لا يُسأل عنهما
+  // بهذا المعنى، ولا تجد الإدارةُ سؤالها الأول — «كم مركبة لا تعمل؟» — في أي
+  // شاشة. ستٌّ وسبعون من ثلاثمئة وخمس وثلاثين مركبةً واقفة، ورقمٌ بهذا الحجم
+  // لا يجوز أن يُستخرج بقراءة عمودٍ نصّيّ بالعين.
+  serviceStatusAr: { type: String, default: '', index: true },
+  serviceStatusCode: { type: String, default: '', index: true }, // in_service / idle / stolen
   // المفوَّض بالقيادة كما هو في ملف المركبات (٩١ مركبة). هذا غير تفاويض القسم
   // المسجَّلة على الموظفين — تلك سجل حركة، وهذا لقطة من الملف.
   authorizedPerson: {
     name: { type: String, default: '' },
     iqamaNumber: { type: String, default: '' },
     jobTitleAr: { type: String, default: '' },
+    // ── والتفويض ورقةٌ لها رقمٌ ومدّة، لا اسمُ سائقٍ فحسب ────────────────────
+    // كان يُحفَظ الاسم وحده، فلا يُعرَف بأيّ تفويضٍ يقود ولا إلى متى. ونهايته
+    // هي بيت القصيد: بعدها يقود السائق بلا صفة، فتُقيَّد المخالفة على الشركة
+    // وتُنازِع شركةُ التأمين في التغطية. ولهذا صار `expiryDate` مستندًا كامل
+    // الحقوق في config/vehicleDocuments — له عتبة تنبيه وشاشة انتهاءات وتجديد.
+    authorizationNumber: { type: String, default: '' },
+    startDate: { type: Date, default: null },
+    expiryDate: { type: Date, default: null, index: true },
+    // سببُ غياب التفويض حين لا تاريخ له: مطلوب / غير مطلوب / لا يوجد.
+    statusCode: { type: String, default: '', index: true },
   },
   // نواقص منصّة لوجستي: ما الذي يمنع هذه المركبة من استيفاء شروط المنصّة، مكتوبًا
   // شرطًا شرطًا. قائمة عمل لا وصفًا: كل سطر فيها بند يُغلَق.
@@ -77,6 +95,11 @@ const vehicleMasterSchema = new mongoose.Schema({
     coverageTypeCode: { type: String, default: '' },
     expiryDate: { type: Date, default: null, index: true },
     premiumSar: { type: Number, default: null },
+    // ── ولا قيمةَ قسطٍ ليست بالضرورة نقصًا ──────────────────────────────────
+    // الماستر يكتب مكان الرقم أحيانًا «ملكية بنك الراجحي» أو «ملكية شركة الجبر»:
+    // القسط موجود ويدفعه المموِّل، لا قسط مجهول. تفريغُ الخانة وحده يجعل المركبة
+    // تُعدّ «بلا تأمين» في تقرير المدير المالي وهي مؤمَّنة، فالنصّ يبقى هنا.
+    premiumStatusAr: { type: String, default: '', index: true },
     status: { type: String, default: '' },
     statusCode: { type: String, default: '', index: true },
   },
@@ -149,6 +172,13 @@ const vehicleMasterSchema = new mongoose.Schema({
   accidentCount: { type: Number, default: 0, index: true },
 
   notesAr: { type: String, default: '' },
+  // ── متى لمسها الاستيراد آخر مرة ────────────────────────────────────────────
+  // بها وحدها يُعرَف عملُ الإنسان من عمل الملف: `updatedAt` أحدثُ من هذه يعني
+  // أن أحدًا فتح المركبة على الشاشة بعد آخر استيراد. وحينئذٍ لا يجوز لخانةٍ
+  // فارغة في الشيت أن تمحو ما كتبه — الشيت لقطةٌ من ورق، ومن فتح الشاشة كان
+  // ينظر إلى المركبة. بدونها يدوس كل استيرادٍ على كل تصحيحٍ يدويّ في صمت.
+  lastImportAt: { type: Date, default: null },
+  sourceFile: { type: String, default: '' },
   isActive: { type: Boolean, default: true, index: true },
 }, { timestamps: true });
 
@@ -167,6 +197,8 @@ const vehicleRegistryConfigSchema = new mongoose.Schema({
     vehicleLicense: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 }, soonDays: { type: Number, default: 90 } },
     inspection: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 }, soonDays: { type: Number, default: 90 } },
     gps: { enabled: { type: Boolean, default: false }, warnDays: { type: Number, default: 30 }, criticalDays: { type: Number, default: 7 }, soonDays: { type: Number, default: 90 } },
+    // التفويض ينتهي فجأةً ولا يُستخرج بديلُه في يوم — فعتبته أوسع من بطاقة التشغيل.
+    authorization: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 45 }, criticalDays: { type: Number, default: 15 }, soonDays: { type: Number, default: 90 } },
     corporatePolicy: { enabled: { type: Boolean, default: true }, warnDays: { type: Number, default: 60 }, criticalDays: { type: Number, default: 30 }, soonDays: { type: Number, default: 90 } },
   },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

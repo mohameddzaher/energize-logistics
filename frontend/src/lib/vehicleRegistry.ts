@@ -10,7 +10,12 @@ export type VReg = {
   sectorAr?: string; sectorCode?: string;
   // جاءت مع تحديث ملفات القسم
   departmentAr?: string; cityAr?: string; possessionStatusAr?: string;
-  authorizedPerson?: { name?: string; iqamaNumber?: string; jobTitleAr?: string };
+  authorizedPerson?: {
+    name?: string; iqamaNumber?: string; jobTitleAr?: string;
+    authorizationNumber?: string; startDate?: string | null; expiryDate?: string | null; statusCode?: string;
+  };
+  /** هل تعمل المركبة أصلًا: في الخدمة / غير مستخدمة / مسروقة. */
+  serviceStatusAr?: string; serviceStatusCode?: string;
   /** شروط منصّة لوجستي التي لم تستوفِها هذه المركبة — قائمة عمل لا وصف. */
   logistiGaps?: string[];
   /** البنود الناقصة وسببُ كلٍّ منها: «لا يوجد» و«مطلوب» و«لدى البنك» أوضاع مختلفة. */
@@ -20,12 +25,12 @@ export type VReg = {
   registrationTypeAr?: string; registrationTypeCode?: string;
   brandAr?: string; modelAr?: string; modelYear?: number | null; colorAr?: string; colorCode?: string;
   ownerNameAr?: string; commercialRegistration?: string; tamStatusAr?: string; tamStatusCode?: string;
-  insurance?: { policyNumber?: string; companyAr?: string; coverageTypeAr?: string; coverageTypeCode?: string; expiryDate?: string | null; premiumSar?: number | null; status?: string };
+  insurance?: { policyNumber?: string; companyAr?: string; coverageTypeAr?: string; coverageTypeCode?: string; expiryDate?: string | null; premiumSar?: number | null; premiumStatusAr?: string; status?: string };
   fuelCard?: { provider?: string; cardNumber?: string; plateOnInvoiceAr?: string; statusAr?: string; statusCode?: string; consumptionTypeAr?: string; consumptionTypeCode?: string; limitSar?: number | null; limitStatus?: string };
-  gps?: { deviceId?: string; deviceModel?: string; deviceStatusAr?: string; simNumber?: string; provider?: string; status?: string; expiryDate?: string | null };
+  gps?: { deviceId?: string; deviceModel?: string; deviceStatusAr?: string; simNumber?: string; serialImei?: string; provider?: string; status?: string; expiryDate?: string | null };
   operatingCard?: { cardNumber?: string; expiryDate?: string | null };
-  vehicleLicense?: { expiryDate?: string | null };
-  inspection?: { statusAr?: string; statusCode?: string; expiryDate?: string | null };
+  vehicleLicense?: { expiryDate?: string | null; expiryDateHijri?: string };
+  inspection?: { statusAr?: string; statusCode?: string; expiryDate?: string | null; expiryDateHijri?: string };
   notesAr?: string; isActive?: boolean;
   docStatuses?: Record<string, DocStatus>;
   overallStatus?: DocStatus['status']; overallDays?: number | null;
@@ -44,6 +49,10 @@ export const DOC_TYPES = [
   { key: 'vehicleLicense', ar: 'رخصة السير', en: 'Vehicle License', datePath: (v: VReg) => v.vehicleLicense?.expiryDate },
   { key: 'inspection', ar: 'الفحص', en: 'Inspection', datePath: (v: VReg) => v.inspection?.expiryDate },
   { key: 'gps', ar: 'اشتراك GPS', en: 'GPS', datePath: (v: VReg) => v.gps?.expiryDate },
+  // التفويض بالقيادة صار مستندًا كسائر المستندات في الخادم: تاريخُ نهايته يمرّ
+  // على شاشة الانتهاءات وعتبات التنبيه والتجديد. وإغفالُه هنا كان يعني أن يظهر
+  // في ردّ الخادم ولا يجد عمودًا ولا كارتًا يعرضه.
+  { key: 'authorization', ar: 'التفويض', en: 'Authorisation', datePath: (v: VReg) => v.authorizedPerson?.expiryDate },
 ] as const;
 
 export const docLabel = (key: string, ar: boolean) => {

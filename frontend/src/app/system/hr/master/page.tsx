@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import FilterPanel, { countActive, type FilterValues } from '@/components/system/FilterPanel';
 import {
-  getHrOverview, STATUS_META, STATE_META, statusLabel, stateLabel, HR_DATE_FIELDS,
+  getHrOverview, STATUS_META, STATE_META, statusLabel, stateLabel, HR_DATE_FIELDS, HR_NUM_RANGES,
   type HrOverview, type GroupCard, type FieldCard, type AnalyticBlock,
 } from '@/lib/hrMaster';
 import api from '@/lib/api';
@@ -117,6 +117,7 @@ function HrMasterInner() {
           value={filters}
           onChange={setFilters}
           dateFields={HR_DATE_FIELDS}
+          numRanges={HR_NUM_RANGES}
           resultCount={d?.totals?.filtered}
           resultLabel={t('الموظفون المطابقون', 'Matching employees')}
           extraLabels={{

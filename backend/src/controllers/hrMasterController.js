@@ -112,8 +112,70 @@ const asDate = (v) => {
   const d = v instanceof Date ? v : new Date(String(v));
   return isNaN(d.getTime()) ? null : d;
 };
+// ── حقولٌ يُسأل عنها بالسنوات لا بالتاريخ ────────────────────────────────────
+// «أرِني مَن أعمارهم بين ٢٥ و٣٠» سؤالٌ يُسأل كل يوم، وكان جوابه يحتاج حسابَ
+// تاريخَي ميلادٍ في الرأس ثم كتابتهما. والسنُّ تتغيّر مع الزمن والتاريخ لا،
+// فالفلتر بالسنوات يبقى صحيحًا غدًا والمدى المكتوب بالتاريخ يشيخ.
+const YEAR_SPAN_FIELDS = { dateOfBirth: 'age', hireDate: 'tenure' };
+// وحقولُ الانتهاء يُسأل عنها بالأيام المتبقّية: «ما ينتهي خلال ثلاثين يومًا».
+const DAYS_LEFT_FIELDS = [
+  'iqamaExpiry', 'passportExpiry', 'contractEndDate', 'insuranceExpiry',
+  'healthCertExpiry', 'driverCardExpiry', 'licenseExpiry',
+];
+
+const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+/** فرقُ السنوات الكاملة بين تاريخٍ واليوم — سنٌّ أو أقدميّة. */
+const yearsSince = (d) => {
+  const now = new Date();
+  let y = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) y -= 1;
+  return y;
+};
+/** الأيام حتى تاريخٍ — سالبةٌ لما مضى. */
+const daysUntil = (d) => Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
+
 function dateRangePred(q) {
   const tests = [];
+
+  // ① يومٌ بعينه: `<key>On=YYYY-MM-DD`. المدى «من كذا إلى كذا نفسه» يؤدّي المعنى
+  //    لكنّه يجعل المستخدم يكتب التاريخ مرّتين لسؤالٍ واحد.
+  for (const key of DATE_FILTERABLE) {
+    const on = String(q[`${key}On`] ?? '').trim();
+    if (!on) continue;
+    tests.push((e) => {
+      const d = asDate(e[key]);
+      return !!d && d.toISOString().slice(0, 10) === on;
+    });
+  }
+
+  // ② مدًى بالسنوات: `ageFrom/ageTo` و`tenureFrom/tenureTo`.
+  for (const [key, name] of Object.entries(YEAR_SPAN_FIELDS)) {
+    const lo = q[`${name}From`] === '' || q[`${name}From`] == null ? null : Number(q[`${name}From`]);
+    const hi = q[`${name}To`] === '' || q[`${name}To`] == null ? null : Number(q[`${name}To`]);
+    if (lo == null && hi == null) continue;
+    tests.push((e) => {
+      const d = asDate(e[key]);
+      if (!d) return false;
+      const y = yearsSince(d);
+      return (lo == null || y >= lo) && (hi == null || y <= hi);
+    });
+  }
+
+  // ③ مدًى بالأيام المتبقّية: `<key>DaysFrom/DaysTo`. السالب ماضٍ، فـ«المنتهي
+  //    منذ شهر إلى ما ينتهي بعد شهر» يُكتب ‎-30 إلى 30.
+  for (const key of DAYS_LEFT_FIELDS) {
+    const lo = q[`${key}DaysFrom`] === '' || q[`${key}DaysFrom`] == null ? null : Number(q[`${key}DaysFrom`]);
+    const hi = q[`${key}DaysTo`] === '' || q[`${key}DaysTo`] == null ? null : Number(q[`${key}DaysTo`]);
+    if (lo == null && hi == null) continue;
+    tests.push((e) => {
+      const d = asDate(e[key]);
+      if (!d) return false;
+      const n = daysUntil(d);
+      return (lo == null || n >= lo) && (hi == null || n <= hi);
+    });
+  }
+
   for (const key of DATE_FILTERABLE) {
     // «—» على حقل تاريخ = لا تاريخ مقروء أصلًا (فارغ أو كلمة إدارية).
     if (String(q[key] ?? '').split(',').map((x) => x.trim()).includes('—')) {

@@ -38,6 +38,13 @@ export interface FilterFieldDef {
   values: { value: string; count: number }[];
 }
 export interface FilterDateDef { key: string; ar: string; en: string }
+/**
+ * مدًى رقميّ — يُقرأ بالسنوات أو بالأيام لا بالتاريخ.
+ *
+ * «مَن أعمارهم بين ٢٥ و٣٠» كان يحتاج حسابَ تاريخَي ميلادٍ في الرأس ثم كتابتهما.
+ * والسنّ تتغيّر مع الزمن والتاريخ لا، فالمدى بالسنوات يبقى صحيحًا غدًا.
+ */
+export interface FilterNumRangeDef { key: string; ar: string; en: string; unitAr: string; unitEn: string; min?: number; max?: number }
 
 /** ضمّ/إزالة قيمة من حقل متعدّد القيم (القيم مفصولة بفواصل في نصّ الاستعلام). */
 export const toggleValue = (cur: string | undefined, v: string) => {
@@ -50,7 +57,7 @@ export const countActive = (v: FilterValues) =>
   Object.entries(v).filter(([, val]) => val !== '' && val != null).length;
 
 export default function FilterPanel({
-  optionsUrl, value, onChange, dateFields = [], extra, extraLabels = {}, resultCount, resultLabel,
+  optionsUrl, value, onChange, dateFields = [], numRanges = [], extra, extraLabels = {}, resultCount, resultLabel,
 }: {
   /** اندبوينت يرجّع { filters: FilterFieldDef[], dateFields?: string[] } */
   optionsUrl: string;
@@ -58,6 +65,8 @@ export default function FilterPanel({
   onChange: (v: FilterValues) => void;
   /** حقول التاريخ التي تقبل مدى — بأسمائها المعروضة */
   dateFields?: FilterDateDef[];
+  /** مُدًى رقميّة (عمر، سنوات خدمة، أيام متبقّية) */
+  numRanges?: FilterNumRangeDef[];
   /** فلاتر خاصة بالقسم (أزرار جاهزة) تظهر أعلى اللوحة */
   extra?: React.ReactNode;
   /**
@@ -160,8 +169,17 @@ export default function FilterPanel({
   const chips: { k: string; v: string; text: string }[] = [];
   for (const [k, raw] of Object.entries(value)) {
     if (!raw) continue;
+    if (/On$/.test(k) && dateFields.some((d) => `${d.key}On` === k)) {
+      chips.push({ k, v: '', text: `${dLabel(k.slice(0, -2))}: ${raw}` });
+      continue;
+    }
     if (/(From|To)$/.test(k)) {
       const base = k.replace(/(From|To)$/, '');
+      const nr = numRanges.find((n) => n.key === base);
+      if (nr) {
+        chips.push({ k, v: '', text: `${ar ? nr.ar : nr.en} ${k.endsWith('From') ? t('من', 'from') : t('إلى', 'to')} ${raw} ${ar ? nr.unitAr : nr.unitEn}` });
+        continue;
+      }
       chips.push({ k, v: '', text: `${dLabel(base)} ${k.endsWith('From') ? t('من', 'from') : t('إلى', 'to')} ${raw}` });
       continue;
     }
@@ -285,6 +303,23 @@ export default function FilterPanel({
                   })}
                 </div>
               )}
+              {!!numRanges.length && (
+                <div className="mb-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1 mb-0.5">{t('مُدًى رقميّة', 'Numeric ranges')}</p>
+                  {numRanges.map((nr) => {
+                    const on = expanded === `num:${nr.key}`;
+                    const has = !!(value[`${nr.key}From`] || value[`${nr.key}To`]);
+                    return (
+                      <button key={nr.key} onClick={() => setExpanded(`num:${nr.key}`)}
+                        className={`w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg text-start transition
+                          ${on ? 'bg-[#12325c] text-white' : has ? 'bg-orange-50 text-slate-800' : 'text-slate-600 hover:bg-slate-100'}`}>
+                        <span className="text-[12px] font-semibold truncate">{ar ? nr.ar : nr.en}</span>
+                        {has && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${on ? 'bg-white' : 'bg-[#f37121]'}`} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="flex-1 min-w-0 max-h-[52vh] overflow-auto ps-0.5">
@@ -362,6 +397,57 @@ export default function FilterPanel({
                             className="w-full px-2 py-1 text-[11.5px] border border-slate-200 rounded-md" />
                         </label>
                       </div>
+                      {/* يومٌ بعينه — «مَن وُلد في هذا اليوم» سؤالٌ يُسأل، وكان
+                          يحتاج كتابة التاريخ نفسه في الخانتين. */}
+                      <div className="mt-3 pt-3 border-t border-slate-100 max-w-sm">
+                        <label className="block">
+                          <span className="text-[11px] text-slate-500">{t('أو يومٌ بعينه', 'Or one exact day')}</span>
+                          <input type="date" value={value[`${dd.key}On`] || ''}
+                            onChange={(e) => {
+                              // اليوم الواحد والمدى لا يجتمعان: أحدهما يُلغي الآخر
+                              // وإلا بقي مدًى منسيّ يقصّ النتيجة بلا سبب ظاهر.
+                              if (e.target.value) { set(`${dd.key}From`, ''); set(`${dd.key}To`, ''); }
+                              set(`${dd.key}On`, e.target.value);
+                            }}
+                            className="w-full px-2 py-1 text-[11.5px] border border-slate-200 rounded-md" />
+                        </label>
+                      </div>
+                    </>
+                  );
+                }
+                const nk = String(expanded || '').startsWith('num:') ? String(expanded).slice(4) : '';
+                const nr = numRanges.find((x) => x.key === nk);
+                if (nr) {
+                  const unit = ar ? nr.unitAr : nr.unitEn;
+                  return (
+                    <>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <p className="text-[12.5px] font-bold text-slate-800 truncate">{ar ? nr.ar : nr.en}</p>
+                        {(value[`${nr.key}From`] || value[`${nr.key}To`]) && (
+                          <button onClick={() => { set(`${nr.key}From`, ''); set(`${nr.key}To`, ''); }}
+                            className="text-[11px] text-slate-500 hover:text-red-600 shrink-0">{t('مسح', 'Clear')}</button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 max-w-sm">
+                        <label className="block">
+                          <span className="text-[11px] text-slate-500">{t('من', 'From')} ({unit})</span>
+                          <input type="number" min={nr.min} max={nr.max} value={value[`${nr.key}From`] || ''}
+                            onChange={(e) => set(`${nr.key}From`, e.target.value)}
+                            className="w-full px-2 py-1 text-[11.5px] border border-slate-200 rounded-md" />
+                        </label>
+                        <label className="block">
+                          <span className="text-[11px] text-slate-500">{t('إلى', 'To')} ({unit})</span>
+                          <input type="number" min={nr.min} max={nr.max} value={value[`${nr.key}To`] || ''}
+                            onChange={(e) => set(`${nr.key}To`, e.target.value)}
+                            className="w-full px-2 py-1 text-[11.5px] border border-slate-200 rounded-md" />
+                        </label>
+                      </div>
+                      {nr.key.endsWith('Days') && (
+                        <p className="text-[10.5px] text-slate-400 mt-2 max-w-sm">
+                          {t('السالب يعني ما مضى: «‎-٣٠ إلى ٣٠» تعني المنتهي منذ شهر وما ينتهي خلال شهر.',
+                             'Negative means past: “-30 to 30” is expired within a month and expiring within a month.')}
+                        </p>
+                      )}
                     </>
                   );
                 }

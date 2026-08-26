@@ -25,7 +25,7 @@ import {
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
-import { HR_DATE_FIELDS } from '@/lib/hrMaster';
+import { HR_DATE_FIELDS, HR_NUM_RANGES } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
 import ContractsTabs from '@/components/hr/ContractsTabs';
 
@@ -162,6 +162,7 @@ function GroupInner() {
           value={filters}
           onChange={setFilters}
           dateFields={HR_DATE_FIELDS}
+          numRanges={HR_NUM_RANGES}
           extraLabels={{
             employment: { ar: 'حالة التوظيف', en: 'Employment', values: {
               active: { ar: 'على رأس العمل', en: 'Active' },

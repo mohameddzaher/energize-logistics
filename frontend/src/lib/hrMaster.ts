@@ -124,6 +124,25 @@ export const getHrFilters = (q: Record<string, any> = {}) =>
     `/api/hr/master/filters${qs(q) ? `?${qs(q)}` : ''}`);
 
 /** أسماء حقول التاريخ التي تقبل مدى — تُعرض في لوحة الفلترة. */
+/**
+ * فلاتر رقميّة بمدى — تُقرأ بالسنوات أو بالأيام لا بالتاريخ.
+ *
+ * «مَن أعمارهم بين ٢٥ و٣٠» و«ما ينتهي خلال ثلاثين يومًا» سؤالان يُسألان كل يوم،
+ * وكان جوابهما يحتاج حسابَ تاريخين في الرأس. والسنُّ تتغيّر مع الزمن والتاريخ
+ * لا، فالمدى المكتوب بالسنوات يبقى صحيحًا غدًا والمكتوب بالتاريخ يشيخ.
+ */
+export interface NumRangeDef { key: string; ar: string; en: string; unitAr: string; unitEn: string; min?: number; max?: number }
+export const HR_NUM_RANGES: NumRangeDef[] = [
+  { key: 'age', ar: 'العمر', en: 'Age', unitAr: 'سنة', unitEn: 'years', min: 15, max: 90 },
+  { key: 'tenure', ar: 'سنوات الخدمة', en: 'Years of service', unitAr: 'سنة', unitEn: 'years', min: 0, max: 50 },
+  // الأيام المتبقّية: السالب ماضٍ، فـ«المنتهي منذ شهر إلى ما ينتهي بعد شهر» = ‎-30 إلى 30.
+  { key: 'iqamaExpiryDays', ar: 'الإقامة — الأيام المتبقّية', en: 'Iqama — days left', unitAr: 'يوم', unitEn: 'days' },
+  { key: 'contractEndDateDays', ar: 'العقد — الأيام المتبقّية', en: 'Contract — days left', unitAr: 'يوم', unitEn: 'days' },
+  { key: 'passportExpiryDays', ar: 'الجواز — الأيام المتبقّية', en: 'Passport — days left', unitAr: 'يوم', unitEn: 'days' },
+  { key: 'insuranceExpiryDays', ar: 'التأمين الطبي — الأيام المتبقّية', en: 'Medical — days left', unitAr: 'يوم', unitEn: 'days' },
+  { key: 'licenseExpiryDays', ar: 'رخصة القيادة — الأيام المتبقّية', en: 'Licence — days left', unitAr: 'يوم', unitEn: 'days' },
+];
+
 export const HR_DATE_FIELDS = [
   { key: 'hireDate', ar: 'تاريخ التعيين', en: 'Hire date' },
   { key: 'dateOfBirth', ar: 'تاريخ الميلاد', en: 'Date of birth' },

@@ -195,6 +195,11 @@ app.use('/api/invoices', authenticate, sectionGate('Customers & Finance'), invoi
 app.use('/api/payments', authenticate, sectionGate('Customers & Finance'), paymentRoutes);
 app.use('/api/collections', authenticate, sectionGate('Customers & Finance'), collectionRoutes);
 app.use('/api/disputes', authenticate, sectionGate('Customers & Finance'), disputeRoutes);
+// ── واجهة الأسطول للأتمتة ────────────────────────────────────────────────────
+// خارج `authenticate` لأنها تُصادَق بمفتاح لا بجلسة، وخارج `csrfGuard` لأن
+// الحارس يتخطّى ما لا كوكي جلسة فيه أصلًا. للقراءة وحدها.
+app.use('/api/fleet-api', require('./routes/publicFleetApi'));
+
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);

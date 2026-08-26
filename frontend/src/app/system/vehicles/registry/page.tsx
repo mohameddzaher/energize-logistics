@@ -149,12 +149,16 @@ function VehicleRegistryListInner() {
                 <tr key={v._id} className="hover:bg-slate-50">
                   <td className="px-3 py-2 whitespace-nowrap">
                     <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{v.plateNumber}</Link>
-                    {/* شرط ناقص لمنصّة لوجستي = عمل مطلوب، فيبين على الصف نفسه */}
+                    {/* ── لا رقم بجانب اللوحة ──────────────────────────────────
+                        كان يُكتب «ناقص ١» و«ناقص ٢»، والرقم عددُ شروط منصّة لوجستي
+                        غير المستوفاة لا عددُ الخانات الفارغة. فيفتح الناظر مركبةً
+                        «ناقص ٢» فيجد خانةً واحدة ناقصة كالتي عليها «ناقص ١»،
+                        فيظنّ الرقم عبثًا — وهو ليس عبثًا، لكنّه يعدّ شيئًا غير
+                        الذي يُفهَم منه في هذا الموضع. النقطة وحدها تقول «هنا عمل»،
+                        وتفصيلُه في صفحة المركبة حيث يُقرأ شرطًا شرطًا. */}
                     {!!v.logistiGaps?.length && (
-                      <span title={v.logistiGaps.join(' · ')}
-                        className="ms-1.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 text-[10.5px] font-bold">
-                        {ar ? `ناقص ${v.logistiGaps.length}` : `${v.logistiGaps.length} gaps`}
-                      </span>
+                      <span title={ar ? `ينقصها لمنصّة لوجستي: ${v.logistiGaps.join(' · ')}` : `Logisti gaps: ${v.logistiGaps.join(' · ')}`}
+                        className="ms-1.5 inline-block w-1.5 h-1.5 rounded-full bg-violet-500 align-middle" />
                     )}
                   </td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{v.sectorAr || '—'}</td>

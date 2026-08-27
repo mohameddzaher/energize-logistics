@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { ArrowLeft, LifeBuoy, History, Check, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, LifeBuoy, History, Check, AlertTriangle, Trash2 } from 'lucide-react';
 import {
   Spinner, PageHeader, PrimaryButton, SmallBadge, Field, TextArea, Select, Loader2,
 } from '@/components/hr/HRKit';
@@ -33,7 +33,7 @@ interface Sibling {
 }
 
 export default function TicketDetailPage() {
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
   const routeParams = useParams<{ id: string }>();
   const id = String(routeParams?.id || '');
   const router = useRouter();
@@ -47,6 +47,14 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ status: '', resolution: '', rootCause: '', preventiveAction: '', notes: '' });
+
+  const removeTicket = async () => {
+    if (!(await confirm(ar
+      ? 'حذف هذه التذكرة نهائيًّا؟ يُحذف معها سجلُّ تحديثاتها.'
+      : 'Delete this ticket permanently? Its update history goes with it.'))) return;
+    try { await api.delete(`/api/it/tickets/${id}`); router.push('/system/it/tickets'); }
+    catch (e: any) { notify(e.message, 'error'); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -97,6 +105,12 @@ export default function TicketDetailPage() {
         subtitle={`${ticket.ticketNumber || ''} · ${fmtDate(ticket.reportedAt)}`}
       >
         <div className="flex items-center gap-2">
+          {/* الحذف من صفحة التذكرة نفسها: من فتحها ورآها مكرّرةً أو مفتوحةً
+              بالخطأ هو مَن يعرف أنّها كذلك — لا مَن يمرّ على القائمة. */}
+          <button type="button" onClick={removeTicket} title={ar ? 'حذف التذكرة' : 'Delete ticket'}
+            className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50">
+            <Trash2 className="w-4 h-4" />
+          </button>
           <SmallBadge bg={TICKET_STATUSES[ticket.status]?.bg || 'bg-slate-500/15'} text={TICKET_STATUSES[ticket.status]?.text || 'text-slate-700'} label={ticketStatusLabel(ticket.status, lang)} />
           <SmallBadge bg={TICKET_PRIORITIES[ticket.priority]?.bg || 'bg-slate-500/15'} text={TICKET_PRIORITIES[ticket.priority]?.text || 'text-slate-700'} label={priorityLabel(ticket.priority, lang)} />
         </div>

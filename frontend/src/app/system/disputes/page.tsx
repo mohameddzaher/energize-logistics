@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle, Plus, X, ChevronDown, ChevronUp,
   Filter, RefreshCw, User, FileText, MessageSquare,
-  Search, Loader2, Calendar
+  Search, Loader2, Calendar, Trash2
 } from 'lucide-react';
 import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -86,6 +86,7 @@ export default function DisputesPage() {
   const [updateError, setUpdateError] = useState('');
 
   const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+  const ar = lang === 'ar';
 
   const fetchDisputes = useCallback(async (isBackground = false) => {
     if (!isBackground) {
@@ -233,6 +234,23 @@ export default function DisputesPage() {
       setUpdateError(err.message || txx.failedToUpdate);
     } finally {
       setUpdating(false);
+    }
+  };
+
+  /**
+   * حذف نزاع — والفاتورة تعود إلى حالها قبله في الخادم.
+   * وهو حذفٌ حقيقيّ لا تعطيل: النزاع الذي فُتح خطأً لا معنى لبقائه «ملغى».
+   */
+  const handleDelete = async (dispute: Dispute) => {
+    const label = (dispute as any).invoice?.invoiceNumber || '';
+    if (!window.confirm(ar
+      ? `حذف النزاع${label ? ` على الفاتورة ${label}` : ''}؟ ترجع الفاتورة إلى حالتها قبله.`
+      : `Delete this dispute${label ? ` on invoice ${label}` : ''}? The invoice returns to its prior status.`)) return;
+    try {
+      await api.delete(`/api/disputes/${dispute._id}`);
+      fetchDisputes();
+    } catch (err: any) {
+      setUpdateError(err.message || txx.failedToUpdate);
     }
   };
 
@@ -492,16 +510,29 @@ export default function DisputesPage() {
                       ))}
                       {isAdmin && (
                         <td className="px-4 py-3 text-sm">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openUpdateModal(dispute);
-                            }}
-                            className="px-3 py-1 bg-[#f37121]/20 text-[#f37121] rounded text-xs font-medium hover:bg-[#f37121]/30 transition-colors"
-                          >
-                            {T.edit}
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openUpdateModal(dispute);
+                              }}
+                              className="px-3 py-1 bg-[#f37121]/20 text-[#f37121] rounded text-xs font-medium hover:bg-[#f37121]/30 transition-colors"
+                            >
+                              {T.edit}
+                            </button>
+                            {/* الحذف يعيد الفاتورة إلى حالها قبل النزاع: نزاعٌ
+                                يُحذف صفُّه دون رفع صفة «متنازَع عليها» يترك
+                                فاتورةً مجمّدة لا يعرف أحدٌ لماذا. */}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleDelete(dispute); }}
+                              title={ar ? 'حذف النزاع' : 'Delete dispute'}
+                              className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>

@@ -442,6 +442,53 @@ exports.createBill = async (req, res) => {
   }
 };
 
+/**
+ * تعديل فاتورة مورّد — والقيد المحاسبيّ يُعاد ترحيله معها.
+ *
+ * تصحيحُ الصفّ وحده يترك قيد الذمم الدائنة على الرقم القديم، فتُقفل السنة
+ * بميزانٍ لا يطابق الفواتير التي بُني عليه. فيُعكَس القيد القديم ثم يُرحَّل
+ * الجديد — كأنّها حُذفت وسُجِّلت، وبأثرٍ محاسبيّ واحد.
+ *
+ * ولا تنزل القيمة تحت ما سُدِّد منها فعلًا، ولا يُغيَّر المورّد: ذاك التزامٌ
+ * لجهةٍ أخرى، يُحذف ويُسجَّل باسمها.
+ */
+exports.updateBill = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const { id } = req.params; if (badId(id, res)) return;
+    const bill = await VendorBill.findById(id);
+    if (!bill) return res.status(404).json({ message: 'Bill not found' });
+
+    const sub = req.body.subtotal !== undefined ? round2(req.body.subtotal) : bill.subtotal;
+    const vat = req.body.vatAmount !== undefined ? round2(req.body.vatAmount) : bill.vatAmount;
+    const total = round2(sub + vat);
+    if (total <= 0) return res.status(400).json({ message: 'Bill total must be greater than zero' });
+    if (total < bill.paidAmount) {
+      return res.status(400).json({ message: `القيمة أقلّ ممّا سُدِّد فعلًا (${bill.paidAmount}). صحّح السداد أوّلًا.` });
+    }
+
+    const amountChanged = total !== bill.total;
+    bill.subtotal = sub; bill.vatAmount = vat; bill.total = total;
+    bill.balance = round2(total - bill.paidAmount);
+    bill.status = bill.balance <= 0.001 ? 'paid' : bill.paidAmount > 0 ? 'partial' : 'unpaid';
+    for (const f of ['vendorInvoiceNumber', 'billDate', 'dueDate', 'category', 'notes']) {
+      if (req.body[f] !== undefined) bill[f] = req.body[f];
+    }
+    await bill.save();
+
+    if (amountChanged) {
+      await reverseSource('vendorbill', id);
+      await postBillJournal(bill, req.user._id);
+      emit('accounting:journal', {});
+    }
+    emit('procurement:bill', { id: String(id) });
+    res.json({ bill: await popBill(VendorBill.findById(id)).lean() });
+  } catch (error) {
+    console.error('updateBill error:', error);
+    res.status(500).json({ message: 'Failed to update bill' });
+  }
+};
+
 // Record a payment against a bill (full or partial). Posts the payment journal.
 exports.payBill = async (req, res) => {
   try {

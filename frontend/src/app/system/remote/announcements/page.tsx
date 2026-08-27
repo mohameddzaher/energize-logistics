@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { motion } from 'framer-motion';
-import { Megaphone, Plus, X, Trash2, RefreshCw } from 'lucide-react';
+import { Megaphone, Plus, X, Trash2, RefreshCw, Pencil } from 'lucide-react';
 import { isRemoteStaff, fmtDateTime } from '@/lib/remote';
 import { getRemoteAnnouncementsTranslations } from '@/lib/translations';
 
@@ -39,14 +39,25 @@ export default function RemoteAnnouncementsPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  // ── التعديل ───────────────────────────────────────────────────────────────
+  // الإعلان الذي فيه خطأ كان علاجُه حذفَه ونشرَه من جديد — فيصل الفريقَ إشعارٌ
+  // ثانٍ عن الخبر نفسه فيُقرأ خبرًا جديدًا. والتعديل لا يُشعر أحدًا.
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const openEdit = (a: Announcement) => {
+    setEditingId(a._id); setTitle(a.title); setBody(a.body); setErr(''); setShowForm(true);
+  };
+  const openCreate = () => { setEditingId(null); setTitle(''); setBody(''); setErr(''); setShowForm(true); };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr('');
     if (!title.trim() || !body.trim()) { setErr(tx.titleBodyRequired); return; }
     setSubmitting(true);
     try {
-      await api.post('/api/remote/announcements', { title, body });
-      setShowForm(false); setTitle(''); setBody('');
+      if (editingId) await api.put(`/api/remote/announcements/${editingId}`, { title, body });
+      else await api.post('/api/remote/announcements', { title, body });
+      setShowForm(false); setEditingId(null); setTitle(''); setBody('');
       load();
     } catch (e: any) { setErr(e.message || tx.failed); } finally { setSubmitting(false); }
   };
@@ -63,7 +74,7 @@ export default function RemoteAnnouncementsPage() {
         <div className="flex items-center gap-2">
           <button type="button" onClick={load} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}><RefreshCw className="w-4 h-4" /></button>
           {staff && (
-            <button type="button" onClick={() => { setShowForm(true); setErr(''); }} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] text-white rounded-lg text-sm font-medium"><Plus className="w-4 h-4" />{tx.newAnnouncement}</button>
+            <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] text-white rounded-lg text-sm font-medium"><Plus className="w-4 h-4" />{tx.newAnnouncement}</button>
           )}
         </div>
       </div>
@@ -85,7 +96,10 @@ export default function RemoteAnnouncementsPage() {
                   </p>
                 </div>
                 {staff && (
-                  <button type="button" onClick={() => remove(a._id)} className="text-slate-500 hover:text-red-600 p-1 shrink-0" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button type="button" onClick={() => openEdit(a)} className="text-slate-500 hover:text-[#f37121] p-1" title={tx.edit}><Pencil className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => remove(a._id)} className="text-slate-500 hover:text-red-600 p-1" title={tx.delete}><Trash2 className="w-4 h-4" /></button>
+                  </div>
                 )}
               </div>
             </div>
@@ -98,7 +112,7 @@ export default function RemoteAnnouncementsPage() {
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowForm(false)} />
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl" dir={isRTL ? 'rtl' : 'ltr'}>
             <div className="flex items-center justify-between p-5 border-b border-slate-200">
-              <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">{tx.newAnnouncement}</h2>
+              <h2 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-lg mb-3">{editingId ? (tx.edit || 'تعديل الإعلان') : tx.newAnnouncement}</h2>
               <button type="button" onClick={() => setShowForm(false)} className="text-slate-500 hover:text-slate-900" title={tx.close}><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={submit} className="p-5 space-y-4">
@@ -115,7 +129,7 @@ export default function RemoteAnnouncementsPage() {
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm">{tx.cancel}</button>
                 <button type="submit" disabled={submitting} className="px-4 py-2 bg-[#f37121] hover:bg-[#e0611a] disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-2">
                   {submitting && <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                  {tx.publish}
+                  {editingId ? (tx.save || 'حفظ') : tx.publish}
                 </button>
               </div>
             </form>

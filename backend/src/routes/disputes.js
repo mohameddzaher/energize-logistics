@@ -25,5 +25,6 @@ router.put(
 );
 
 router.get('/', disputeController.getDisputes);
+router.delete('/:id', authorize('super_admin', 'admin'), disputeController.deleteDispute);
 
 module.exports = router;

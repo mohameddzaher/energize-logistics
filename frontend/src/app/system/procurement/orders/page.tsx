@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { FileText, Plus, Trash2, PackageCheck, Receipt, X } from 'lucide-react';
+import { FileText, Plus, Trash2, PackageCheck, Receipt, X, Pencil } from 'lucide-react';
 import {
   isProcStaff, isProcManager, PurchaseOrder, ProcOptions, PO_STATUS_STYLE,
   vendorName, money, fmtDate,
@@ -53,13 +53,30 @@ export default function PurchaseOrdersPage() {
   const addItem = () => setForm((f: any) => ({ ...f, items: [...f.items, emptyItem()] }));
   const rmItem = (i: number) => setForm((f: any) => ({ ...f, items: f.items.filter((_: any, idx: number) => idx !== i) }));
 
-  const openCreate = () => { setForm({ vendor: '', vatRate: opts?.KSA_VAT_RATE ?? 15, expectedDate: '', notes: '', items: [emptyItem()] }); setShowModal(true); };
+  // ── التعديل ───────────────────────────────────────────────────────────────
+  // أمرُ شراءٍ فيه بندٌ ناقصٌ أو سعرٌ خاطئ كان يُحذف ويُكتب من جديد برقمٍ آخر،
+  // فينقطع أثرُه عن الطلب الذي وُلد منه وعن الفاتورة التي بُنيت عليه.
+  const [editing, setEditing] = useState<PurchaseOrder | null>(null);
+  const openCreate = () => { setEditing(null); setForm({ vendor: '', vatRate: opts?.KSA_VAT_RATE ?? 15, expectedDate: '', notes: '', items: [emptyItem()] }); setShowModal(true); };
+  const openEdit = (po: PurchaseOrder) => {
+    setEditing(po);
+    setForm({
+      vendor: typeof po.vendor === 'object' ? (po.vendor as any)._id : po.vendor,
+      vatRate: (po as any).vatRate ?? opts?.KSA_VAT_RATE ?? 15,
+      expectedDate: (po as any).expectedDate ? String((po as any).expectedDate).slice(0, 10) : '',
+      notes: (po as any).notes || '',
+      items: ((po as any).items || []).length ? (po as any).items.map((l: any) => ({ ...l })) : [emptyItem()],
+    });
+    setShowModal(true);
+  };
   const save = async () => {
     if (!form.vendor) { notify(tx.pickVendor); return; }
     setSaving(true);
     try {
-      await api.post('/api/procurement/orders', { ...form, expectedDate: form.expectedDate || undefined, items: form.items.filter((l: any) => l.description?.trim()) });
-      setShowModal(false); load();
+      const payload = { ...form, expectedDate: form.expectedDate || undefined, items: form.items.filter((l: any) => l.description?.trim()) };
+      if (editing) await api.put(`/api/procurement/orders/${editing._id}`, payload);
+      else await api.post('/api/procurement/orders', payload);
+      setShowModal(false); setEditing(null); load();
     } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
   };
   const receive = async (po: PurchaseOrder) => { try { await api.post(`/api/procurement/orders/${po._id}/receive`); load(); } catch (e: any) { notify(e.message, 'error'); } };
@@ -133,6 +150,7 @@ export default function PurchaseOrdersPage() {
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
                   {['draft', 'sent', 'partially_received'].includes(po.status) && <button type="button" title={tx.receive} onClick={() => receive(po)} className="text-green-600 hover:text-green-700"><PackageCheck className="w-4 h-4" /></button>}
                   {po.status !== 'cancelled' && po.status !== 'billed' && <button type="button" title={tx.createBill} onClick={() => setBillFor(po)} className="text-purple-600 hover:text-purple-700"><Receipt className="w-4 h-4" /></button>}
+                  <button type="button" title={ar ? 'تعديل' : 'Edit'} onClick={() => openEdit(po)} className="text-slate-400 hover:text-[#f37121]"><Pencil className="w-4 h-4" /></button>
                   {canManage && <button type="button" title={tx.delete} onClick={() => remove(po)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}
                 </div></td>
               </tr>
@@ -142,8 +160,9 @@ export default function PurchaseOrdersPage() {
       </div>
 
       {/* Create PO */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} wide title={tx.newPurchaseOrder}
-        footer={<><button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{tx.cancel}</button>
+      <Modal open={showModal} onClose={() => { setShowModal(false); setEditing(null); }} wide
+        title={editing ? (ar ? `تعديل أمر الشراء ${(editing as any).orderNumber || ''}` : `Edit PO ${(editing as any).orderNumber || ''}`) : tx.newPurchaseOrder}
+        footer={<><button type="button" onClick={() => { setShowModal(false); setEditing(null); }} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{tx.cancel}</button>
           <PrimaryButton onClick={save} disabled={saving}>{saving ? '...' : tx.save}</PrimaryButton></>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label={tx.vendor}><VendorSelect value={form.vendor} onChange={(v) => setForm({ ...form, vendor: v })} required placeholder={tx.vendor} /></Field>

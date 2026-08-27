@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Megaphone, ArrowRight, Pencil, X, Loader2, Link as LinkIcon } from 'lucide-react';
+import { Megaphone, ArrowRight, Pencil, X, Loader2, Link as LinkIcon, Trash2 } from 'lucide-react';
 import { Spinner, PageHeader, StatCard, PrimaryButton, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import {
@@ -22,7 +22,7 @@ import {
 type Draft = Partial<Campaign>;
 
 export default function MarketingCampaignPage() {
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
@@ -38,6 +38,14 @@ export default function MarketingCampaignPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Draft>({});
+
+  const removeCampaign = async () => {
+    if (!(await confirm(ar
+      ? 'حذف هذه الحملة نهائيًّا؟ تُحذف معها أنشطتها وأرقامها.'
+      : 'Delete this campaign permanently? Its activities and numbers go with it.'))) return;
+    try { await api.delete(`/api/marketing/campaigns/${id}`); router.push('/system/marketing/campaigns'); }
+    catch (e: any) { notify(e.message, 'error'); }
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -190,6 +198,12 @@ export default function MarketingCampaignPage() {
       >
         <button type="button" onClick={() => router.push('/system/marketing/campaigns')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} /> {ar ? 'كل الحملات' : 'All campaigns'}
+        </button>
+        {/* الحذف من صفحة الحملة: من فتحها ورآها مكرَّرةً أو أُنشئت خطأً هو من
+            يعرف ذلك، لا من يمرّ على القائمة. */}
+        <button type="button" onClick={removeCampaign} title={ar ? 'حذف الحملة' : 'Delete campaign'}
+          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50">
+          <Trash2 className="w-4 h-4" />
         </button>
         <ExportMenu fileName={`campaign-${(campaign.name || id).toLowerCase().replace(/\s+/g, '-')}`} lang={lang as 'ar' | 'en'}
           options={[{ key: 'full', label: ar ? 'ملف الحملة كاملًا' : 'The whole campaign', sheets: campaignSheets }]} />

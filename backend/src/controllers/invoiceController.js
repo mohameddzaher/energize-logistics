@@ -155,13 +155,29 @@ exports.updateInvoice = async (req, res) => {
     }
 
     const before = invoice.toObject();
-    const { notes, amount } = req.body;
+    const { notes, amount, dueDate, invoiceDate, creditTerm } = req.body;
 
     if (notes !== undefined) invoice.notes = notes;
+    if (dueDate !== undefined && dueDate) invoice.dueDate = dueDate;
+    if (invoiceDate !== undefined && invoiceDate) invoice.invoiceDate = invoiceDate;
+    if (creditTerm !== undefined && creditTerm) invoice.creditTerm = Number(creditTerm);
+
     if (amount !== undefined && req.user.role !== 'employee') {
-      const diff = amount - invoice.amount;
-      invoice.amount = amount;
-      invoice.balance = amount - invoice.paidAmount;
+      const next = Number(amount);
+      if (!Number.isFinite(next) || next <= 0) return res.status(400).json({ message: 'قيمة الفاتورة يجب أن تكون رقمًا أكبر من صفر' });
+      // ولا تنزل القيمة تحت ما سُدِّد فعلًا: فاتورةٌ قيمتُها أقلّ ممّا قُبض
+      // منها تعطي رصيدًا سالبًا يُقرأ دائنًا للعميل وهو ليس كذلك.
+      if (next < invoice.paidAmount) {
+        return res.status(400).json({ message: `القيمة أقلّ ممّا سُدِّد فعلًا (${invoice.paidAmount}). احذف الدفعة أوّلًا أو صحّحها.` });
+      }
+      const diff = next - invoice.amount;
+      invoice.amount = next;
+      invoice.balance = next - invoice.paidAmount;
+      // والحالة تُشتقّ من الرصيد لا تبقى على قديمها: تخفيضُ القيمة إلى ما سُدِّد
+      // يجعلها مسدَّدةً، وكان الصفّ يبقى «جزئيًّا» ورصيدُه صفر.
+      if (!['frozen', 'disputed', 'refunded'].includes(invoice.status)) {
+        invoice.status = invoice.balance <= 0 ? 'paid' : invoice.paidAmount > 0 ? 'partial' : 'pending';
+      }
       const customer = await Customer.findById(invoice.customer);
       if (customer) {
         customer.currentOutstanding += diff;

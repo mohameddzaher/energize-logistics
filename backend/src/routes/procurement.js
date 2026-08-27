@@ -31,6 +31,7 @@ router.delete('/orders/:id', p.deletePO);
 // Vendor bills (A/P)
 router.get('/bills', p.listBills);
 router.post('/bills', p.createBill);
+router.put('/bills/:id', p.updateBill);
 router.post('/bills/:id/pay', p.payBill);
 router.delete('/bills/:id', p.deleteBill);
 

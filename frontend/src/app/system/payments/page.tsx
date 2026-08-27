@@ -17,6 +17,7 @@ import {
   Zap,
   ChevronDown,
   Trash2,
+  Pencil,
   AlertTriangle,
 } from 'lucide-react';
 import { fmt } from '@/utils/exportExcel';
@@ -166,6 +167,7 @@ export default function PaymentsPage() {
   const customerDropdownRef = useRef<HTMLDivElement>(null);
 
   const isSuperAdmin = user?.role === 'super_admin';
+  const canEditPayment = isSuperAdmin || user?.role === 'admin';
   const hasActiveFilters = dateFrom || dateTo;
 
   // --------------- Fetch Payments (listing) ---------------
@@ -466,6 +468,49 @@ export default function PaymentsPage() {
     setPage(1);
   };
 
+  // ── تعديل دفعة ────────────────────────────────────────────────────────────
+  //
+  // كانت الدفعة تُسجَّل وتُحذف ولا تُصحَّح: خطأُ رقمٍ واحد يعني حذفَ الدفعة
+  // وتسجيلَها من جديد، فيضيع تاريخُها ومن استلمها. والتعديل في الخادم يعكس أثر
+  // المبلغ القديم ويطبّق الجديد على الفاتورة ورصيد العميل معًا — لا يغيّر الصفّ
+  // وحده فيصير سجلٌّ يقول شيئًا وميزانٌ يقول غيره.
+  //
+  // ولا يُغيَّر العميل ولا الفاتورة هنا: تلك دفعةٌ أخرى، تُحذف وتُسجَّل.
+  const [editTarget, setEditTarget] = useState<PaymentItem | null>(null);
+  const [editForm, setEditForm] = useState({ amount: '', paymentDate: '', paymentMethod: 'bank_transfer', reference: '', notes: '' });
+  const [editLoading, setEditLoading] = useState(false);
+
+  const openEditPayment = (row: PaymentItem) => {
+    setEditTarget(row);
+    setEditForm({
+      amount: String(row.amount ?? ''),
+      paymentDate: row.paymentDate ? String(row.paymentDate).slice(0, 10) : '',
+      paymentMethod: row.paymentMethod || 'bank_transfer',
+      reference: (row as any).reference || '',
+      notes: row.notes || '',
+    });
+  };
+
+  const handleUpdatePayment = async () => {
+    if (!editTarget) return;
+    setEditLoading(true);
+    try {
+      await api.put(`/api/payments/${editTarget._id}`, {
+        amount: Number(editForm.amount) || 0,
+        paymentDate: editForm.paymentDate || undefined,
+        paymentMethod: editForm.paymentMethod,
+        reference: editForm.reference,
+        notes: editForm.notes,
+      });
+      setEditTarget(null);
+      fetchPayments();
+    } catch (err: any) {
+      setError(err.message || txx.failedToDelete);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
   // --------------- Delete Payment ---------------
 
   const handleDeletePayment = async () => {
@@ -695,16 +740,26 @@ export default function PaymentsPage() {
         searchable
         searchPlaceholder={`${T.search}...`}
         emptyMessage={T.noPayments}
-        actions={isSuperAdmin ? (row: PaymentItem) => (
+        actions={canEditPayment ? (row: PaymentItem) => (
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); setShowDeleteConfirm(true); }}
-              className="text-xs text-red-500 hover:text-red-600 font-medium transition-colors flex items-center gap-1"
+              onClick={(e) => { e.stopPropagation(); openEditPayment(row); }}
+              className="text-xs text-[#f37121] hover:text-[#e06010] font-medium transition-colors flex items-center gap-1"
             >
-              <Trash2 className="w-3 h-3" />
-              {T.delete}
+              <Pencil className="w-3 h-3" />
+              {T.edit || (lang === 'ar' ? 'تعديل' : 'Edit')}
             </button>
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); setShowDeleteConfirm(true); }}
+                className="text-xs text-red-500 hover:text-red-600 font-medium transition-colors flex items-center gap-1"
+              >
+                <Trash2 className="w-3 h-3" />
+                {T.delete}
+              </button>
+            )}
           </div>
         ) : undefined}
       />
@@ -761,6 +816,79 @@ export default function PaymentsPage() {
           </div>
         </div>
       )}
+
+      {/* Edit Payment Modal */}
+      <AnimatePresence>
+        {editTarget && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setEditTarget(null)} className="fixed inset-0 bg-black/60 z-50" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                  <h3 className="font-bold text-slate-900">{lang === 'ar' ? 'تعديل الدفعة' : 'Edit payment'}</h3>
+                  <button type="button" onClick={() => setEditTarget(null)} className="p-1 text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-5 h-5" /></button>
+                </div>
+                <div className="p-5 space-y-3">
+                  <p className="text-xs text-slate-500">
+                    {editTarget.customer?.companyName || '—'}
+                    {editTarget.invoice?.invoiceNumber ? ` · ${T.invoice} ${editTarget.invoice.invoiceNumber}` : ''}
+                  </p>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-600">{T.amount}</span>
+                    <input type="number" step="0.01" value={editForm.amount}
+                      onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="text-xs font-semibold text-slate-600">{T.paymentDate}</span>
+                      <input type="date" value={editForm.paymentDate}
+                        onChange={(e) => setEditForm((f) => ({ ...f, paymentDate: e.target.value }))}
+                        className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold text-slate-600">{T.paymentMethod}</span>
+                      <select value={editForm.paymentMethod}
+                        onChange={(e) => setEditForm((f) => ({ ...f, paymentMethod: e.target.value }))}
+                        className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+                        {Object.entries(PAYMENT_METHODS).map(([k, v]) => <option key={k} value={k}>{v as string}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-600">{T.reference || (lang === 'ar' ? 'المرجع' : 'Reference')}</span>
+                    <input value={editForm.reference}
+                      onChange={(e) => setEditForm((f) => ({ ...f, reference: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-600">{T.notes}</span>
+                    <textarea rows={2} value={editForm.notes}
+                      onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {lang === 'ar'
+                      ? 'تغيير المبلغ يُعاد به حساب الفاتورة ورصيد العميل معًا. ولتغيير العميل أو الفاتورة تُحذف الدفعة وتُسجَّل من جديد.'
+                      : 'Changing the amount recomputes the invoice and the customer balance. To change the customer or invoice, delete and re-record it.'}
+                  </p>
+                </div>
+                <div className="flex gap-3 px-5 py-4 border-t border-slate-200 bg-slate-50">
+                  <button type="button" onClick={() => setEditTarget(null)}
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">{T.cancel}</button>
+                  <button type="button" onClick={handleUpdatePayment} disabled={editLoading || !editForm.amount}
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+                    {editLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                    {T.save || (lang === 'ar' ? 'حفظ' : 'Save')}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Delete Payment Confirmation Modal */}
       <AnimatePresence>

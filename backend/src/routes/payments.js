@@ -46,6 +46,8 @@ router.post(
 router.get('/', paymentController.getPayments);
 router.get('/customer/:id', paymentController.getCustomerPayments);
 
+// التعديل يعيد حساب أثر الدفعة على الفاتورة ورصيد العميل، لا يغيّر الصفّ وحده.
+router.put('/:id', authorize('super_admin', 'admin'), paymentController.updatePayment);
 router.delete('/:id', authorize('super_admin'), paymentController.deletePayment);
 
 module.exports = router;

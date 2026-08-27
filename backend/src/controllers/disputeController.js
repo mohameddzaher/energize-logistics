@@ -143,3 +143,39 @@ exports.getDisputes = async (req, res) => {
     res.status(500).json({ message: 'Failed to load disputes' });
   }
 };
+
+/**
+ * حذف نزاع — والفاتورة تعود إلى حالها قبله.
+ *
+ * فتحُ النزاع يجمّد الفاتورة؛ وحذفُ صفّه دون رفع التجميد يترك فاتورةً مجمّدةً
+ * بلا سببٍ ظاهر، لا يعرف أحدٌ لماذا ولا كيف تُفكّ.
+ */
+exports.deleteDispute = async (req, res) => {
+  try {
+    const dispute = await Dispute.findById(req.params.id).lean();
+    if (!dispute) return res.status(404).json({ message: 'Dispute not found' });
+
+    if (dispute.invoice) {
+      // ولا تُرفع صفة «متنازَع عليها» إن بقي نزاعٌ آخر مفتوحٌ على الفاتورة
+      // نفسها — رفعُها حينئذٍ يُخفي نزاعًا قائمًا عن التحصيل.
+      const others = await Dispute.countDocuments({
+        invoice: dispute.invoice, _id: { $ne: dispute._id }, status: { $nin: ['resolved', 'rejected'] },
+      });
+      const invoice = await Invoice.findById(dispute.invoice);
+      if (invoice && invoice.status === 'disputed' && !others) {
+        invoice.status = invoice.balance > 0 ? (invoice.paidAmount > 0 ? 'partial' : 'pending') : 'paid';
+        await invoice.save();
+      }
+    }
+    await Dispute.deleteOne({ _id: dispute._id });
+    await logAudit({
+      user: req.user._id, action: 'delete', entity: 'Dispute', entityId: dispute._id,
+      changes: { before: dispute }, ipAddress: req.ip,
+    });
+    try { emitToAll('dispute:deleted', { id: String(dispute._id) }); } catch (e) {}
+    res.json({ message: 'Dispute deleted' });
+  } catch (error) {
+    console.error('Delete dispute error:', error);
+    res.status(500).json({ message: 'Failed to delete the dispute' });
+  }
+};

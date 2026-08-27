@@ -43,6 +43,7 @@ router.post('/reports', remote.submitReport);
 // Announcements
 router.get('/announcements', remote.listAnnouncements);
 router.post('/announcements', remote.createAnnouncement);
+router.put('/announcements/:id', remote.updateAnnouncement);
 router.delete('/announcements/:id', remote.deleteAnnouncement);
 
 // Team directory

@@ -6,13 +6,14 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { AlertTriangle, Edit, Trash2, Check } from 'lucide-react';
+import { AlertTriangle, Edit, Trash2, Check, Plus } from 'lucide-react';
 import {
-  VehicleAccident, ACCIDENT_SEVERITY, ACCIDENT_STATUS, FAULT_PARTY, isVehicleStaff, isVehicleAdmin,
+  VehicleAccident, Vehicle, ACCIDENT_SEVERITY, ACCIDENT_STATUS, FAULT_PARTY, isVehicleStaff, isVehicleAdmin,
   faultPartyLabel, empRefName, plateOf, getVehiclesText, fmtDate, today,
 } from '@/lib/vehicles';
 import {
   Spinner, PageHeader, SearchInput, Badge, Modal, Field, TextInput, TextArea, Select, PrimaryButton, Loader2,
+  SearchableSelect,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
@@ -32,6 +33,13 @@ export default function VehicleAccidentsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(sp?.get('status') || '');
   const [editing, setEditing] = useState<VehicleAccident | null>(null);
+  // ── التسجيل ───────────────────────────────────────────────────────────────
+  // كانت الشاشة تعدّل الحوادث وتحذفها ولا تسجّلها: الحادث يُسجَّل من ملفّ
+  // المركبة وحده، فمن يفتح شاشة الحوادث ليكتب حادثًا وقع اليوم لا يجد أين.
+  // وسجلٌّ لا يُكتب فيه من مكان قراءته يُكتب في مكانٍ آخر — أو لا يُكتب.
+  const [creating, setCreating] = useState(false);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [newVehicle, setNewVehicle] = useState('');
   const [form, setForm] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
@@ -49,7 +57,27 @@ export default function VehicleAccidentsPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('vehicle:accident', useCallback(() => load(), [load]));
 
+  // قائمة المركبات تُجلب مرّةً واحدة عند أوّل فتحٍ للاستمارة، لا مع كل تحميل.
+  const loadVehicles = useCallback(async () => {
+    if (vehicles.length) return;
+    try {
+      const d = await api.get<{ vehicles: Vehicle[] }>('/api/vehicles?limit=2000');
+      setVehicles(d.vehicles || []);
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+  }, [vehicles.length, notify]);
+
+  const EMPTY_ACCIDENT = {
+    date: today(), location: '', description: '', faultParty: 'unknown', severity: 'minor',
+    status: 'reported', thirdPartyDetails: '', actionTaken: '', reportNumber: '',
+    estimatedCost: '', actualCost: '', resolution: '', notes: '',
+  };
+  const openCreate = () => {
+    loadVehicles();
+    setEditing(null); setNewVehicle(''); setForm({ ...EMPTY_ACCIDENT }); setCreating(true);
+  };
+
   const openEdit = (a: VehicleAccident) => {
+    setCreating(false);
     setEditing(a);
     setForm({
       date: a.date || today(), location: a.location || '', description: a.description || '',
@@ -60,12 +88,20 @@ export default function VehicleAccidentsPage() {
   };
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
+  const closeForm = () => { setEditing(null); setCreating(false); setForm(null); };
+
   const save = async () => {
-    if (!editing || !form.description?.trim()) return;
+    if (!form?.description?.trim()) return;
+    if (creating && !newVehicle) { notify(ar ? 'اختر المركبة أولًا.' : 'Pick the vehicle first.', 'error'); return; }
     setSaving(true);
+    const payload = { ...form, estimatedCost: Number(form.estimatedCost) || 0, actualCost: Number(form.actualCost) || 0 };
     try {
-      await api.put(`/api/vehicles/accidents/${editing._id}`, { ...form, estimatedCost: Number(form.estimatedCost) || 0, actualCost: Number(form.actualCost) || 0 });
-      setEditing(null); setForm(null); load();
+      // الموظّف المسؤول والتفويض يُستنتجان في الخادم من التفويض الساري وقتها —
+      // فلا يُسأل عنهما هنا ولا يُخمَّنان.
+      if (creating) await api.post(`/api/vehicles/${newVehicle}/accidents`, payload);
+      else if (editing) await api.put(`/api/vehicles/accidents/${editing._id}`, payload);
+      closeForm(); load();
+      notify(ar ? 'حُفظ.' : 'Saved.', 'success');
     } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
@@ -105,6 +141,7 @@ export default function VehicleAccidentsPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<AlertTriangle className="w-5 h-5" />} title={tx.accidentsTitle} subtitle={`${accidents.length} ${tx.accidentsUnit}`}>
         <ExportMenu fileName="accidents" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
+        <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'تسجيل حادث' : 'Report accident'}</PrimaryButton>
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -158,14 +195,25 @@ export default function VehicleAccidentsPage() {
         </table>
       </div>
 
-      <Modal open={!!editing} onClose={() => { setEditing(null); setForm(null); }} wide
-        title={tx.editAccident}
+      <Modal open={!!editing || creating} onClose={closeForm} wide
+        title={creating ? (ar ? 'تسجيل حادث' : 'Report accident') : tx.editAccident}
         footer={<>
-          <button type="button" onClick={() => { setEditing(null); setForm(null); }} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
+          <button type="button" onClick={closeForm} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
           <PrimaryButton onClick={save} disabled={saving || !form?.description?.trim()}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.save}</PrimaryButton>
         </>}>
         {form && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {creating && (
+              <Field label={`${tx.plateNumber} *`} span2>
+                <SearchableSelect value={newVehicle} onChange={setNewVehicle} searchAfter={0}
+                  placeholder={ar ? 'اختر المركبة — اكتب اللوحة للبحث…' : 'Pick the vehicle — type the plate…'}
+                  options={vehicles.map((v) => ({
+                    value: v._id,
+                    label: plateOf(v),
+                    hint: [(v as any).brand, (v as any).model, (v as any).departmentAr].filter(Boolean).join(' · '),
+                  }))} />
+              </Field>
+            )}
             <Field label={tx.date}><TextInput type="date" value={form.date || ''} onChange={(e) => set('date', e.target.value)} /></Field>
             <Field label={tx.location}><TextInput value={form.location} onChange={(e) => set('location', e.target.value)} /></Field>
             <Field label={tx.faultParty}><Select value={form.faultParty} onChange={(e) => set('faultParty', e.target.value)}>{FAULT_PARTY.map((f) => <option key={f.key} value={f.key}>{ar ? f.ar : f.en}</option>)}</Select></Field>

@@ -8,7 +8,7 @@ import { getInvoicesTranslations, getInvoicesExtraTranslations } from '@/lib/tra
 import DataTable from '@/components/system/DataTable';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, FileText, Filter, X, Calendar, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
+import { Plus, FileText, Filter, X, Calendar, AlertTriangle, CheckCircle, Trash2, Pencil } from 'lucide-react';
 import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
@@ -132,6 +132,39 @@ export default function InvoicesPage() {
       setActionError(err.message);
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // تعديل الفاتورة: القيمة والاستحقاق والملاحظات — والعميل لا يُغيَّر، فتلك
+  // فاتورةٌ أخرى تُنشأ باسمه.
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
+  const [editInvForm, setEditInvForm] = useState({ amount: '', dueDate: '', notes: '' });
+  const [editInvLoading, setEditInvLoading] = useState(false);
+
+  const openEditInvoice = (row: Invoice) => {
+    setEditInvoice(row);
+    setEditInvForm({
+      amount: String(row.amount ?? ''),
+      dueDate: row.dueDate ? String(row.dueDate).slice(0, 10) : '',
+      notes: (row as any).notes || '',
+    });
+  };
+
+  const handleUpdateInvoice = async () => {
+    if (!editInvoice) return;
+    setEditInvLoading(true);
+    try {
+      await api.put(`/api/invoices/${editInvoice._id}`, {
+        amount: Number(editInvForm.amount) || 0,
+        dueDate: editInvForm.dueDate || undefined,
+        notes: editInvForm.notes,
+      });
+      setEditInvoice(null);
+      fetchInvoices();
+    } catch (err: any) {
+      setActionError(err.message);
+    } finally {
+      setEditInvLoading(false);
     }
   };
 
@@ -542,6 +575,19 @@ export default function InvoicesPage() {
         emptyMessage={T.noInvoices}
         actions={isAdmin ? (row: Invoice) => (
           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {/* ── التعديل ──────────────────────────────────────────────────
+                كانت الفاتورة تُنشأ وتُسدَّد وتُحذف ولا تُصحَّح: قيمةٌ كُتبت
+                خطأً كان علاجُها حذفَ الفاتورة كلّها — بدفعاتها. والتعديل في
+                الخادم يعيد حساب الرصيد وحالة الفاتورة ورصيد العميل معًا، ولا
+                ينزل بالقيمة تحت ما سُدِّد منها فعلًا. */}
+            <button
+              type="button"
+              onClick={() => openEditInvoice(row)}
+              className="text-xs text-[#f37121] hover:text-[#e06010] font-medium flex items-center gap-1"
+            >
+              <Pencil className="w-3 h-3" />
+              {T.edit || (lang === 'ar' ? 'تعديل' : 'Edit')}
+            </button>
             {row.status !== 'paid' && row.status !== 'refunded' && row.status !== 'frozen' && (
               <button
                 type="button"
@@ -573,6 +619,53 @@ export default function InvoicesPage() {
           </div>
         ) : undefined}
       />
+
+      {/* Edit Invoice Modal */}
+      {editInvoice && (
+        <>
+          <div className="fixed inset-0 bg-black/60 z-50" onClick={() => setEditInvoice(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+            <div className="pointer-events-auto bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl">
+              <div className="px-5 py-4 border-b border-slate-200">
+                <h3 className="font-bold text-slate-900">{lang === 'ar' ? 'تعديل الفاتورة' : 'Edit invoice'} {editInvoice.invoiceNumber}</h3>
+              </div>
+              <div className="p-5 space-y-3">
+                <label className="block">
+                  <span className="text-xs font-semibold text-slate-600">{T.amount}</span>
+                  <input type="number" step="0.01" value={editInvForm.amount}
+                    onChange={(e) => setEditInvForm((f) => ({ ...f, amount: e.target.value }))}
+                    className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  <span className="text-[11px] text-slate-400">
+                    {lang === 'ar' ? `المسدَّد منها ${(editInvoice.paidAmount ?? 0).toLocaleString('en-US')} — لا تنزل القيمة تحته.`
+                      : `Paid so far ${(editInvoice.paidAmount ?? 0).toLocaleString('en-US')} — the amount cannot go below it.`}
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold text-slate-600">{T.dueDate}</span>
+                  <input type="date" value={editInvForm.dueDate}
+                    onChange={(e) => setEditInvForm((f) => ({ ...f, dueDate: e.target.value }))}
+                    className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold text-slate-600">{T.notes}</span>
+                  <textarea rows={2} value={editInvForm.notes}
+                    onChange={(e) => setEditInvForm((f) => ({ ...f, notes: e.target.value }))}
+                    className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                </label>
+              </div>
+              <div className="flex gap-3 px-5 py-4 border-t border-slate-200 bg-slate-50">
+                <button type="button" onClick={() => setEditInvoice(null)}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">{T.cancel}</button>
+                <button type="button" onClick={handleUpdateInvoice} disabled={editInvLoading || !editInvForm.amount}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+                  {editInvLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  {T.save || (lang === 'ar' ? 'حفظ' : 'Save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

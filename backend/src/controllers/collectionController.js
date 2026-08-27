@@ -174,3 +174,48 @@ exports.markPromiseFulfilled = async (req, res) => {
     res.status(500).json({ message: 'Failed to update promise status' });
   }
 };
+
+/**
+ * حذف نشاط تحصيل — لأنّ ما يُسجَّل بالخطأ يجب أن يُزال.
+ *
+ * ونشاطُ التحصيل ليس قيدًا ماليًّا: لا يحرّك رصيدًا ولا فاتورة، فحذفُه لا
+ * يترك ميزانًا مائلًا. لكنه يُقيَّد في سجلّ التدقيق كاملًا، فالمحذوف يبقى
+ * معروفًا وإن لم يبقَ في القائمة.
+ */
+exports.deleteActivity = async (req, res) => {
+  try {
+    const activity = await CollectionActivity.findById(req.params.id).lean();
+    if (!activity) return res.status(404).json({ message: 'Activity not found' });
+    await CollectionActivity.deleteOne({ _id: activity._id });
+    await logAudit({
+      user: req.user._id, action: 'delete', entity: 'CollectionActivity', entityId: activity._id,
+      changes: { before: activity }, ipAddress: req.ip,
+    });
+    try { emitToAll('collection:deleted', { id: String(activity._id) }); } catch (e) {}
+    res.json({ message: 'Activity deleted' });
+  } catch (error) {
+    console.error('Delete collection activity error:', error);
+    res.status(500).json({ message: 'Failed to delete the activity' });
+  }
+};
+
+/** تعديل نشاط تحصيل — تصحيح ما كُتب خطأً بدل حذفه وإعادة كتابته. */
+exports.updateActivity = async (req, res) => {
+  try {
+    const activity = await CollectionActivity.findById(req.params.id);
+    if (!activity) return res.status(404).json({ message: 'Activity not found' });
+    const before = activity.toObject();
+    const allowed = ['type', 'promiseDate', 'promiseAmount', 'followUpDate', 'notes', 'contactType', 'status', 'amountCollected', 'nextFollowUpDate', 'promiseFulfilled'];
+    for (const f of allowed) if (req.body[f] !== undefined) activity[f] = req.body[f];
+    await activity.save();
+    await logAudit({
+      user: req.user._id, action: 'update', entity: 'CollectionActivity', entityId: activity._id,
+      changes: { before, after: activity.toObject() }, ipAddress: req.ip,
+    });
+    try { emitToAll('collection:updated', { id: String(activity._id) }); } catch (e) {}
+    res.json({ activity });
+  } catch (error) {
+    console.error('Update collection activity error:', error);
+    res.status(500).json({ message: 'Failed to update the activity' });
+  }
+};

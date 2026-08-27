@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Receipt, Plus, Trash2, DollarSign } from 'lucide-react';
+import { Receipt, Plus, Trash2, DollarSign, Pencil } from 'lucide-react';
 import {
   isProcStaff, isProcManager, VendorBill, ProcOptions, BILL_STATUS_STYLE,
   vendorName, money, fmtDate, today,
@@ -48,14 +48,34 @@ export default function VendorBillsPage() {
   useSocket('procurement:bill', useCallback(() => load(), [load]));
 
   const total = (Number(form.subtotal) || 0) + (Number(form.vatAmount) || 0);
-  const openCreate = () => { setForm({ vendor: '', vendorInvoiceNumber: '', subtotal: 0, vatAmount: 0, billDate: today(), dueDate: '', category: '', notes: '' }); setShowModal(true); };
+  // ── التعديل ───────────────────────────────────────────────────────────────
+  // كانت الفاتورة تُسجَّل وتُسدَّد وتُحذف ولا تُصحَّح: رقمٌ كُتب خطأً علاجُه حذفُ
+  // الفاتورة كلّها. والتعديل في الخادم يعكس قيد الذمم الدائنة ثم يُرحِّله من
+  // جديد، فلا يُقفَل الشهر بميزانٍ لا يطابق فواتيره. والمورّد لا يُغيَّر: ذاك
+  // التزامٌ لجهةٍ أخرى، يُحذف ويُسجَّل باسمها.
+  const [editing, setEditing] = useState<VendorBill | null>(null);
+  const openCreate = () => { setEditing(null); setForm({ vendor: '', vendorInvoiceNumber: '', subtotal: 0, vatAmount: 0, billDate: today(), dueDate: '', category: '', notes: '' }); setShowModal(true); };
+  const openEdit = (b: VendorBill) => {
+    setEditing(b);
+    setForm({
+      vendor: typeof b.vendor === 'object' ? (b.vendor as any)._id : b.vendor,
+      vendorInvoiceNumber: (b as any).vendorInvoiceNumber || '',
+      subtotal: b.subtotal ?? 0, vatAmount: b.vatAmount ?? 0,
+      billDate: (b as any).billDate ? String((b as any).billDate).slice(0, 10) : today(),
+      dueDate: (b as any).dueDate ? String((b as any).dueDate).slice(0, 10) : '',
+      category: (b as any).category || '', notes: (b as any).notes || '',
+    });
+    setShowModal(true);
+  };
   const save = async () => {
     if (!form.vendor) { notify(tx.pickVendor); return; }
     if (total <= 0) { notify(tx.totalGtZero); return; }
     setSaving(true);
     try {
-      await api.post('/api/procurement/bills', { ...form, subtotal: Number(form.subtotal) || 0, vatAmount: Number(form.vatAmount) || 0, dueDate: form.dueDate || undefined });
-      setShowModal(false); load();
+      const payload = { ...form, subtotal: Number(form.subtotal) || 0, vatAmount: Number(form.vatAmount) || 0, dueDate: form.dueDate || undefined };
+      if (editing) await api.put(`/api/procurement/bills/${editing._id}`, payload);
+      else await api.post('/api/procurement/bills', payload);
+      setShowModal(false); setEditing(null); load();
     } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
   };
   const remove = async (b: VendorBill) => { if (!(await confirm(tx.confirmDelete))) return; try { await api.delete(`/api/procurement/bills/${b._id}`); load(); } catch (e: any) { notify(e.message, 'error'); } };
@@ -128,6 +148,7 @@ export default function VendorBillsPage() {
                 <td className="px-4 py-3"><Badge style={BILL_STATUS_STYLE[b.status]} lang={lang} /></td>
                 <td className="px-4 py-3"><div className="flex items-center justify-end gap-2">
                   {b.status !== 'paid' && <button type="button" title={tx.pay} onClick={() => openPay(b)} className="text-green-600 hover:text-green-700"><DollarSign className="w-4 h-4" /></button>}
+                  <button type="button" title={ar ? 'تعديل' : 'Edit'} onClick={() => openEdit(b)} className="text-slate-400 hover:text-[#f37121]"><Pencil className="w-4 h-4" /></button>
                   {canManage && <button type="button" title={tx.delete} onClick={() => remove(b)} className="text-red-600 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>}
                 </div></td>
               </tr>
@@ -137,9 +158,10 @@ export default function VendorBillsPage() {
       </div>
 
       {/* Create bill */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={tx.newVendorBill}
-        footer={<><button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{tx.cancel}</button>
-          <PrimaryButton onClick={save} disabled={saving}>{saving ? '...' : tx.createAndPost}</PrimaryButton></>}>
+      <Modal open={showModal} onClose={() => { setShowModal(false); setEditing(null); }}
+        title={editing ? (ar ? `تعديل الفاتورة ${editing.billNumber || ''}` : `Edit bill ${editing.billNumber || ''}`) : tx.newVendorBill}
+        footer={<><button type="button" onClick={() => { setShowModal(false); setEditing(null); }} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm">{tx.cancel}</button>
+          <PrimaryButton onClick={save} disabled={saving}>{saving ? '...' : editing ? (ar ? 'حفظ' : 'Save') : tx.createAndPost}</PrimaryButton></>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label={tx.vendor} span2><VendorSelect value={form.vendor} onChange={(v) => setForm({ ...form, vendor: v })} required placeholder={tx.vendor} /></Field>
           <Field label={tx.vendorInvoiceNo}><TextInput value={form.vendorInvoiceNumber} onChange={(e) => setForm({ ...form, vendorInvoiceNumber: e.target.value })} /></Field>

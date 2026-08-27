@@ -9,7 +9,7 @@ import { useSocket } from '@/hooks/useSocket';
 import DataTable from '@/components/system/DataTable';
 import {
   Phone, Plus, X, Filter, Calendar, MessageSquare,
-  CheckCircle2, Clock, Mail, MapPin, FileText, AlertCircle
+  CheckCircle2, Clock, Mail, MapPin, FileText, AlertCircle, Trash2, Pencil
 } from 'lucide-react';
 import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -243,6 +243,53 @@ export default function CollectionsPage() {
     return map[type] || type;
   };
 
+  const ar = lang === 'ar';
+  const canEditActivity = ['super_admin', 'admin', 'customers_finance_manager', 'customers_finance_staff'].includes(user?.role || '');
+  const canDeleteActivity = ['super_admin', 'admin', 'customers_finance_manager'].includes(user?.role || '');
+
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [editActivityForm, setEditActivityForm] = useState<any>({ notes: '', contactType: '', amountCollected: '', promiseDate: '', promiseAmount: '', followUpDate: '' });
+  const [savingActivity, setSavingActivity] = useState(false);
+
+  const openEditActivity = (a: Activity) => {
+    setEditingActivity(a);
+    setEditActivityForm({
+      notes: a.notes || '',
+      contactType: (a as any).contactType || '',
+      amountCollected: (a as any).amountCollected ?? '',
+      promiseDate: (a as any).promiseDate ? String((a as any).promiseDate).slice(0, 10) : '',
+      promiseAmount: (a as any).promiseAmount ?? '',
+      followUpDate: (a as any).followUpDate ? String((a as any).followUpDate).slice(0, 10) : '',
+    });
+  };
+
+  const saveActivity = async () => {
+    if (!editingActivity) return;
+    setSavingActivity(true);
+    try {
+      const p: any = { notes: editActivityForm.notes, contactType: editActivityForm.contactType };
+      if (editActivityForm.amountCollected !== '') p.amountCollected = Number(editActivityForm.amountCollected) || 0;
+      if (editActivityForm.promiseAmount !== '') p.promiseAmount = Number(editActivityForm.promiseAmount) || 0;
+      if (editActivityForm.promiseDate) p.promiseDate = editActivityForm.promiseDate;
+      if (editActivityForm.followUpDate) p.followUpDate = editActivityForm.followUpDate;
+      await api.put(`/api/collections/${editingActivity._id}`, p);
+      setEditingActivity(null);
+      fetchActivities();
+    } catch (e: any) { alert(e.message); }
+    setSavingActivity(false);
+  };
+
+  const handleDeleteActivity = async (a: Activity) => {
+    const who = a.customer?.companyName || '';
+    if (!window.confirm(ar
+      ? `حذف هذا النشاط${who ? ` على «${who}»` : ''}؟ لا يؤثّر على أرصدة العميل ولا على فواتيره.`
+      : `Delete this activity${who ? ` on “${who}”` : ''}? It does not affect balances or invoices.`)) return;
+    try {
+      await api.delete(`/api/collections/${a._id}`);
+      fetchActivities();
+    } catch (e: any) { alert(e.message); }
+  };
+
   const columns = [
     {
       key: 'createdAt',
@@ -335,6 +382,30 @@ export default function CollectionsPage() {
         return <span className="text-slate-500 text-xs">-</span>;
       },
     },
+    // ── تصحيح ما كُتب خطأً ───────────────────────────────────────────────────
+    // نشاط التحصيل كان يُكتب ولا يُصحَّح ولا يُزال: مكالمةٌ سُجِّلت على العميل
+    // الخطأ تبقى في سجلّه إلى الأبد، وتدخل في تقارير التحصيل عنه. وهو ليس
+    // قيدًا ماليًّا — لا يحرّك رصيدًا ولا فاتورة — فتصحيحُه لا يميل بميزان.
+    ...(canEditActivity ? [{
+      key: '_actions',
+      label: T.actions || (ar ? 'إجراءات' : 'Actions'),
+      render: (_: any, row: Activity) => (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <button type="button" onClick={() => openEditActivity(row)}
+            title={ar ? 'تعديل' : 'Edit'}
+            className="p-1.5 rounded text-slate-400 hover:text-[#f37121] hover:bg-slate-100 transition-colors">
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          {canDeleteActivity && (
+            <button type="button" onClick={() => handleDeleteActivity(row)}
+              title={ar ? 'حذف' : 'Delete'}
+              className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      ),
+    }] : []),
   ];
 
   const hasActiveFilters = !!typeFilter;
@@ -852,6 +923,69 @@ export default function CollectionsPage() {
           </>
         )}
       </AnimatePresence>
+
+      {/* ── تعديل نشاط تحصيل ─────────────────────────────────────────────────
+          نافذةٌ صغيرة بحقول التصحيح وحدها: العميل والفاتورة لا يُغيَّران هنا —
+          نشاطٌ سُجِّل على عميلٍ آخر يُحذف ويُسجَّل من جديد، فتغييرُهما يقلب
+          سجلَّي عميلين معًا. */}
+      {editingActivity && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setEditingActivity(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+            <div className="pointer-events-auto w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+                <p className="font-bold text-slate-900">{ar ? 'تعديل النشاط' : 'Edit activity'}</p>
+                <button type="button" onClick={() => setEditingActivity(null)} className="p-1 text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+                <p className="text-xs text-slate-500">
+                  {editingActivity.customer?.companyName || '—'}
+                  {editingActivity.invoice?.invoiceNumber ? ` · ${editingActivity.invoice.invoiceNumber}` : ''}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-600">{ar ? 'وسيلة التواصل' : 'Contact type'}</span>
+                    <input value={editActivityForm.contactType} onChange={(e) => setEditActivityForm((f: any) => ({ ...f, contactType: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-600">{ar ? 'المبلغ المحصَّل' : 'Amount collected'}</span>
+                    <input type="number" value={editActivityForm.amountCollected} onChange={(e) => setEditActivityForm((f: any) => ({ ...f, amountCollected: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-600">{ar ? 'تاريخ الوعد' : 'Promise date'}</span>
+                    <input type="date" value={editActivityForm.promiseDate} onChange={(e) => setEditActivityForm((f: any) => ({ ...f, promiseDate: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-600">{ar ? 'مبلغ الوعد' : 'Promise amount'}</span>
+                    <input type="number" value={editActivityForm.promiseAmount} onChange={(e) => setEditActivityForm((f: any) => ({ ...f, promiseAmount: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-semibold text-slate-600">{ar ? 'تاريخ المتابعة' : 'Follow-up date'}</span>
+                    <input type="date" value={editActivityForm.followUpDate} onChange={(e) => setEditActivityForm((f: any) => ({ ...f, followUpDate: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-semibold text-slate-600">{T.notes}</span>
+                    <textarea rows={3} value={editActivityForm.notes} onChange={(e) => setEditActivityForm((f: any) => ({ ...f, notes: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </label>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-200 bg-slate-50">
+                <button type="button" onClick={() => setEditingActivity(null)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">{T.cancel}</button>
+                <button type="button" onClick={saveActivity} disabled={savingActivity}
+                  className="px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold hover:bg-[#e06010] disabled:opacity-50">
+                  {savingActivity ? T.loading : T.save || (ar ? 'حفظ' : 'Save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </motion.div>
   );
 }

@@ -9,7 +9,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Edit, Lock, Unlock, Loader2, CheckCircle2,
-  ArrowRight, Save, X
+  ArrowRight, Save, X, Trash2
 } from 'lucide-react';
 import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -251,6 +251,24 @@ export default function WorkflowDetailPage() {
     }
   };
 
+  /**
+   * حذف الكشف — للمدير الأعلى وحده، وبتأكيدٍ يذكر رقمه.
+   * ما يُحذف هنا يختفي من تقارير التشغيل والتحصيل معًا، فالتأكيد يذكر ما
+   * يُحذف بالاسم لا «هل أنت متأكد؟».
+   */
+  const handleDeleteWorkflow = async () => {
+    if (!workflow) return;
+    if (!window.confirm(lang === 'ar'
+      ? `حذف الكشف ${workflow.reportNumber} نهائيًّا؟ يختفي من تقارير التشغيل والتحصيل.`
+      : `Permanently delete report ${workflow.reportNumber}? It leaves the operations and collections reports.`)) return;
+    try {
+      await api.delete(`/api/workflows/${workflow._id}`);
+      router.push('/system/operations');
+    } catch (e: any) {
+      setError(e?.message || 'Failed');
+    }
+  };
+
   const handleCancelEdit = async () => {
     if (workflow) {
       try { await api.post(`/api/workflows/${workflow._id}/unlock`); } catch {}
@@ -393,9 +411,20 @@ export default function WorkflowDetailPage() {
             </>
           ) : (
             !isLockedByOther && (
-              <button type="button" onClick={handleStartEdit} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors flex items-center gap-2">
-                <Edit className="w-4 h-4" /> {T.edit}
-              </button>
+              <>
+                <button type="button" onClick={handleStartEdit} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors flex items-center gap-2">
+                  <Edit className="w-4 h-4" /> {T.edit}
+                </button>
+                {/* الحذف للمدير الأعلى وحده: الكشف قيدٌ ماليّ يدخل في تقارير
+                    التشغيل والتحصيل، وحذفُه ينقص رقمًا اطّلع عليه غيرُ واحد. */}
+                {role === 'super_admin' && (
+                  <button type="button" onClick={handleDeleteWorkflow}
+                    title={lang === 'ar' ? 'حذف الكشف' : 'Delete report'}
+                    className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </>
             )
           )}
         </div>

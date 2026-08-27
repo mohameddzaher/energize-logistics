@@ -34,6 +34,16 @@ export default function CustomsDetailPage() {
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState('');
 
+  const canDelete = ['super_admin', 'admin', 'customs_manager'].includes(user?.role || '');
+
+  const removeClearance = async () => {
+    if (!window.confirm(lang === 'ar'
+      ? `حذف المعاملة ${c?.refNumber || ''} نهائيًّا؟ تُحذف معها مراحلُها ومستنداتُها. ولو كانت ملغاةً فحسب فالأصحّ تركُها ملغاة.`
+      : `Permanently delete clearance ${c?.refNumber || ''}? Its stages and documents go with it. If it was merely cancelled, leave it cancelled.`)) return;
+    try { await api.delete(`/api/customs-clearance/${params?.id}`); router.push('/system/customs'); }
+    catch (e: any) { notify(e.message, 'error'); }
+  };
+
   const fetchOne = useCallback(async () => {
     try {
       const data = await api.get<any>(`/api/customs-clearance/${params.id}`);
@@ -314,6 +324,15 @@ export default function CustomsDetailPage() {
             c.cancelled
               ? <button type="button" onClick={() => patch({ cancelled: false })} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/15 text-green-600 text-sm font-medium hover:bg-green-500/25 transition-colors"><RotateCcw className="w-4 h-4" /> {T.reactivate}</button>
               : <button type="button" onClick={() => patch({ cancelled: true })} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/15 text-red-600 text-sm font-medium hover:bg-red-500/25 transition-colors"><Ban className="w-4 h-4" /> {T.markCancelled}</button>
+          )}
+          {/* الإلغاء واقعةٌ تبقى في السجلّ؛ والحذف لمعاملةٍ أُدخلت خطأً أو
+              مكرَّرة، ولا معنى لبقائها «ملغاة» تُحسب في العدّ. وهو للمدير
+              وحده — مع تفاصيلها كلّها. */}
+          {canDelete && (
+            <button type="button" onClick={removeClearance} title={ar ? 'حذف المعاملة' : 'Delete clearance'}
+              className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+              <Trash2 className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>

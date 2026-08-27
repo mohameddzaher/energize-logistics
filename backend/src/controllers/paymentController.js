@@ -321,3 +321,58 @@ exports.deletePayment = async (req, res) => {
     res.status(500).json({ message: 'Failed to delete payment' });
   }
 };
+
+/**
+ * تعديل دفعةٍ مسجَّلة — والمال لا يُدهَس، يُعاد حسابه.
+ *
+ * تغييرُ المبلغ في الصفّ وحده يترك الفاتورةَ ورصيدَ العميل على الرقم القديم،
+ * فيصير سجلٌّ يقول شيئًا وميزانٌ يقول غيره. فيُعكَس أثرُ الدفعة القديم أوّلًا
+ * ثم يُطبَّق الجديد — كأنّها حُذفت وسُجِّلت من جديد، وبأثرٍ محاسبيّ واحد.
+ *
+ * ولا يُغيَّر العميل ولا الفاتورة: تلك دفعةٌ أخرى تمامًا، تُحذف وتُسجَّل.
+ */
+exports.updatePayment = async (req, res) => {
+  try {
+    const payment = await Payment.findById(req.params.id);
+    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+
+    const Invoice = require('../models/Invoice');
+    const Customer = require('../models/Customer');
+    const before = { amount: payment.amount, paymentDate: payment.paymentDate, paymentMethod: payment.paymentMethod, reference: payment.reference, notes: payment.notes };
+
+    const nextAmount = req.body.amount !== undefined ? Number(req.body.amount) : payment.amount;
+    if (!Number.isFinite(nextAmount) || nextAmount <= 0) return res.status(400).json({ message: 'المبلغ يجب أن يكون رقمًا أكبر من صفر' });
+    const delta = nextAmount - payment.amount;
+
+    if (delta !== 0) {
+      if (payment.invoice) {
+        const invoice = await Invoice.findById(payment.invoice);
+        if (invoice) {
+          const paid = Math.max(0, invoice.paidAmount + delta);
+          if (paid > invoice.amount) return res.status(400).json({ message: `المبلغ يتجاوز رصيد الفاتورة المتبقّي (${invoice.amount - (invoice.paidAmount - payment.amount)})` });
+          invoice.paidAmount = paid;
+          invoice.balance = invoice.amount - paid;
+          invoice.status = invoice.balance <= 0 ? 'paid' : invoice.balance < invoice.amount ? 'partial' : 'pending';
+          await invoice.save();
+        }
+      }
+      if (payment.customer) await Customer.findByIdAndUpdate(payment.customer, { $inc: { currentOutstanding: -delta } });
+    }
+
+    for (const f of ['amount', 'paymentDate', 'paymentMethod', 'reference', 'notes']) {
+      if (req.body[f] !== undefined) payment[f] = f === 'amount' ? nextAmount : req.body[f];
+    }
+    await payment.save();
+
+    await logAudit({
+      user: req.user._id, action: 'update_payment', entity: 'Payment', entityId: payment._id,
+      changes: { before, after: { amount: payment.amount, paymentDate: payment.paymentDate, paymentMethod: payment.paymentMethod } },
+      ipAddress: req.ip,
+    });
+    try { emitToAll('payment:updated', { paymentId: payment._id }); } catch (e) {}
+    res.json({ payment });
+  } catch (error) {
+    console.error('Update payment error:', error);
+    res.status(500).json({ message: 'Failed to update the payment' });
+  }
+};

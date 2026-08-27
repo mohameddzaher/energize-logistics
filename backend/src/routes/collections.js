@@ -4,6 +4,7 @@ const router = express.Router();
 const collectionController = require('../controllers/collectionController');
 const authenticate = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const authorize = require('../middleware/rbac');
 
 router.use(authenticate);
 
@@ -26,5 +27,7 @@ router.get('/', collectionController.getActivities);
 router.get('/follow-ups', collectionController.getFollowUps);
 router.put('/:id/promise', collectionController.markPromiseFulfilled);
 router.put('/:id/complete', collectionController.completeFollowUp);
+router.put('/:id', collectionController.updateActivity);
+router.delete('/:id', authorize('super_admin', 'admin', 'customers_finance_manager'), collectionController.deleteActivity);
 
 module.exports = router;

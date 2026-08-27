@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { FileText, Plus, Edit, Ban, Check } from 'lucide-react';
+import { FileText, Plus, Edit, Ban, Check, Trash2 } from 'lucide-react';
 import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, fmtDate, today } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -15,7 +15,7 @@ import ContractsTabs from '@/components/hr/ContractsTabs';
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '' };
 
 export default function ContractsPage() {
-  const { notify, prompt } = useDialog();
+  const { notify, prompt, confirm } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -73,6 +73,19 @@ export default function ContractsPage() {
       // The backend blocks termination while custody is outstanding.
       notify(e.message, 'error');
     }
+  };
+
+  /**
+   * حذف عقد — لا «إنهاؤه».
+   * الإنهاء واقعةٌ في تاريخ الموظّف تبقى مسجّلةً؛ والحذف لعقدٍ أُدخل خطأً —
+   * موظّفٌ غير صحيح أو صفٌّ مكرَّر — ولا معنى لبقائه «منتهيًا» في سجلّه.
+   */
+  const remove = async (c: Contract) => {
+    if (!(await confirm(ar
+      ? `حذف عقد «${empName(c.employee)}» نهائيًّا؟ إن كان العقد قد انتهى فعلًا فالأصحّ إنهاؤه لا حذفه.`
+      : `Permanently delete the contract for “${empName(c.employee)}”? If it actually ended, terminate it instead.`))) return;
+    try { await api.delete(`/api/hr/contracts/${c._id}`); load(); }
+    catch (e: any) { notify(e.message, 'error'); }
   };
 
   const filtered = contracts.filter((c) => {
@@ -155,6 +168,7 @@ export default function ContractsPage() {
                     {c.status === 'active' && (
                       <button type="button" onClick={() => terminate(c)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.terminateTooltip}><Ban className="w-4 h-4" /></button>
                     )}
+                    <button type="button" onClick={() => remove(c)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-slate-100" title={ar ? 'حذف العقد' : 'Delete contract'}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </td>
               </tr>

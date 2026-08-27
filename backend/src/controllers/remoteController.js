@@ -7,7 +7,7 @@ const RemoteTask = require('../models/RemoteTask');
 const RemoteReport = require('../models/RemoteReport');
 const RemoteAnnouncement = require('../models/RemoteAnnouncement');
 const { createNotification } = require('../services/notificationService');
-const { emitToUser } = require('../websocket/socketManager');
+const { emitToUser, emitToAll } = require('../websocket/socketManager');
 const { grantedBySection } = require('../utils/sectionAccess');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -669,5 +669,28 @@ exports.listEmployees = async (req, res) => {
     res.json({ employees });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load employees' });
+  }
+};
+
+/**
+ * تعديل إعلان — الإعلان الذي فيه خطأٌ يُصحَّح لا يُحذف ويُعاد.
+ * حذفُه وإعادة نشره يُرسل إشعارًا ثانيًا لكلّ الفريق عن الخبر نفسه، فيُقرأ
+ * الثاني على أنّه خبرٌ جديد. ولذلك لا يُشعَر عند التعديل.
+ */
+exports.updateAnnouncement = async (req, res) => {
+  try {
+    if (!staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
+    const a = await RemoteAnnouncement.findById(req.params.id);
+    if (!a) return res.status(404).json({ message: 'Announcement not found' });
+    const { title, body, audience } = req.body;
+    if (title !== undefined) { if (!String(title).trim()) return res.status(400).json({ message: 'Title is required' }); a.title = title; }
+    if (body !== undefined) { if (!String(body).trim()) return res.status(400).json({ message: 'Body is required' }); a.body = body; }
+    if (audience !== undefined) a.audience = Array.isArray(audience) ? audience : [];
+    await a.save();
+    try { emitToAll('remote:announcement', { id: String(a._id) }); } catch (e) {}
+    res.json({ announcement: a });
+  } catch (error) {
+    console.error('updateAnnouncement error:', error);
+    res.status(500).json({ message: 'Failed to update the announcement' });
   }
 };

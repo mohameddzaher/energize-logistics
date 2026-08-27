@@ -218,14 +218,19 @@ exports.getWorkflows = async (req, res) => {
 
 // Build the same match filter getWorkflows uses (stage/date/search/pendingOnly)
 // so stats and the table always agree. Kept as a helper for the stats endpoint.
+/** بلا تاريخ سداد — تعريفٌ واحد يستعمله العدّاد والفلتر معًا. */
+const PENDING_PAYMENT = { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] };
+
 function buildWorkflowFilter(query, skipField) {
   const { stage, search, dateFrom, dateTo, pendingOnly } = query || {};
   const filter = {};
+  // ── «فواتير لم تصل» = بلا تاريخ سداد، لا شيء غيره ──────────────────────────
+  // كان الشرط يجمع غيابَ تاريخ السداد **ورقمِ الفاتورة** معًا، فكشفٌ سُدِّد ولم
+  // تُسجَّل فاتورته يخرج من العدّ وهو ليس منتظَرًا، وكشفٌ لم يُسدَّد وله رقم فاتورة
+  // يخرج كذلك. والسؤال الذي تُطرَح البطاقة لأجله واحد: «أيُّ كشفٍ لم يصل سداده؟»
+  // فشرطُه واحد.
   if (pendingOnly === 'true') {
-    filter.$and = [
-      { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] },
-      { $or: [{ invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } }] },
-    ];
+    filter.$and = [PENDING_PAYMENT];
   }
   if (stage) filter.stage = stage;
   if (dateFrom || dateTo) {
@@ -258,14 +263,9 @@ function buildWorkflowFilter(query, skipField) {
 exports.getWorkflowStats = async (req, res) => {
   try {
     const filter = buildWorkflowFilter(req.query);
-    const pendingMatch = {
-      ...filter,
-      $and: [
-        ...(filter.$and || []),
-        { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] },
-        { $or: [{ invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } }] },
-      ],
-    };
+    // نفس الشرط الذي يفلتر به الزرّ — من تعريفٍ واحد، فلا يقول العدّاد رقمًا
+    // ويفتح الزرّ غيره.
+    const pendingMatch = { ...filter, $and: [...(filter.$and || []), PENDING_PAYMENT] };
     const [total, pendingInvoices, agg, stages] = await Promise.all([
       OperationsWorkflow.countDocuments(filter),
       OperationsWorkflow.countDocuments(pendingMatch),

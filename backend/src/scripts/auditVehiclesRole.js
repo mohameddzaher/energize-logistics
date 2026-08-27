@@ -54,7 +54,8 @@ const VEHICLE_PAGES = [
   ['/system/vehicles/registry/claims', '/api/vehicle-registry/claims'],
   ['/system/vehicles/registry/corporate', '/api/vehicle-registry/corporate-policies'],
   ['/system/vehicles/registry/dashboard', '/api/vehicle-registry/dashboard'],
-  ['/system/vehicles/registry/alerts', '/api/vehicle-registry/alerts'],
+  // الشاشة اندمجت في «الانتهاءات والتجديد»، والاندبوينت باقٍ لتطبيق الجوّال — فيُختبر بلا صفحة.
+  ['(تطبيق الجوّال — التنبيهات)', '/api/vehicle-registry/alerts'],
   ['/system/vehicles/registry/settings', '/api/vehicle-registry/settings'],
   ['(التفاويض)', '/api/vehicles/authorizations'],
 ];

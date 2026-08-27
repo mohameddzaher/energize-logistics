@@ -14,6 +14,17 @@
  *
  * «غير مطلوب» مش نقص بيانات — دي حالة سليمة وبتتعدّ لوحدها. لو خلطناها بـ«لا
  * يوجد» يبقى الرقم اللي صاحب الشركة بيبص عليه بيقول إن فيه نقص مش موجود.
+ *
+ * ── ولماذا لكل مستندٍ `numberPath` ─────────────────────────────────────────
+ * المستند الذي يُجدَّد لا يعود هو نفسه في كل حالة: بطاقة التشغيل تخرج برقمٍ
+ * جديد، والتفويض قد يُستخرج برقمٍ آخر، ووثيقة التأمين كذلك. وكان التجديد يكتب
+ * التاريخَ وحده، فيبقى في الشاشة رقمُ بطاقةٍ سُلِّمت وانتهت مقرونًا بتاريخ
+ * بطاقةٍ أخرى — ورقةٌ لا وجود لها. ومن يبحث عن المركبة برقم بطاقتها الجاري لا
+ * يجدها، ومن يراجع مخالفةً برقمٍ ظاهرٍ هنا يراجعها على ورقةٍ ملغاة.
+ *
+ * فالرقم يُسمّى هنا مرةً واحدة كما سُمّي التاريخ: `numberPath` يعرف أين يُكتب،
+ * و`numberAr` يعرف كيف يُسمّى في نافذة التجديد. والمستند الذي لا رقم له —
+ * رخصة السير والفحص — `numberPath: null`، فلا تعرض له النافذة خانةً لا معنى لها.
  */
 
 const DOCUMENTS = [
@@ -23,6 +34,7 @@ const DOCUMENTS = [
     path: 'insurance.expiryDate',
     statusPath: 'insurance.statusCode',
     extra: ['insurance.policyNumber', 'insurance.companyAr', 'insurance.coverageTypeAr', 'insurance.premiumSar'],
+    numberPath: 'insurance.policyNumber', numberAr: 'رقم وثيقة التأمين', numberEn: 'Policy number',
     icon: 'shield',
   },
   {
@@ -31,6 +43,7 @@ const DOCUMENTS = [
     path: 'operatingCard.expiryDate',
     statusPath: 'operatingCard.statusCode',
     extra: ['operatingCard.cardNumber'],
+    numberPath: 'operatingCard.cardNumber', numberAr: 'رقم بطاقة التشغيل', numberEn: 'Operating card number',
     icon: 'card',
   },
   {
@@ -39,6 +52,8 @@ const DOCUMENTS = [
     path: 'vehicleLicense.expiryDate',
     statusPath: 'vehicleLicense.statusCode',
     extra: [],
+    // رخصة السير تُجدَّد ولا يتغيّر رقمها — لا رقم مستقلّ لها أصلًا.
+    numberPath: null,
     icon: 'license',
   },
   {
@@ -47,6 +62,7 @@ const DOCUMENTS = [
     path: 'inspection.expiryDate',
     statusPath: 'inspection.statusCode',
     extra: ['inspection.statusAr'],
+    numberPath: null,
     icon: 'inspection',
   },
   {
@@ -55,6 +71,8 @@ const DOCUMENTS = [
     path: 'gps.expiryDate',
     statusPath: 'gps.statusCode',
     extra: ['gps.provider', 'gps.deviceModel', 'gps.serialImei', 'gps.status'],
+    // تجديد الاشتراك قد يصحبه تبديلُ الجهاز، فالسريال يتغيّر مع التاريخ.
+    numberPath: 'gps.serialImei', numberAr: 'سريال جهاز التتبّع', numberEn: 'GPS serial',
     icon: 'gps',
   },
   // ── ولماذا صار التفويض مستندًا كسائر المستندات ─────────────────────────────
@@ -70,6 +88,7 @@ const DOCUMENTS = [
     statusPath: 'authorizedPerson.statusCode',
     extra: ['authorizedPerson.name', 'authorizedPerson.iqamaNumber',
       'authorizedPerson.authorizationNumber', 'authorizedPerson.startDate'],
+    numberPath: 'authorizedPerson.authorizationNumber', numberAr: 'رقم التفويض', numberEn: 'Authorisation number',
     icon: 'authorization',
   },
 ];

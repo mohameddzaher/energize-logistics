@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react';
 import { X, Check } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
-import { renewDocument, renewBulk, fmtDate } from '@/lib/vehicleRegistry';
+import { renewDocument, renewBulk, fmtDate, docNumberLabel } from '@/lib/vehicleRegistry';
 
 /** أقلّ ما تحتاجه النافذة لتجدّد مستندًا — تكتفي به الصفوف على اختلاف مصادرها.
  *  صفوف «الانتهاءات» تسمّي المستند docKey وصفوف «التنبيهات» تسمّيه docType،
@@ -20,6 +20,8 @@ export type RenewTarget = {
   docAr?: string;
   docEn?: string;
   expiryDate?: string | null;
+  /** رقم المستند الجاري به العمل — يُعرَض ليُقارَن بالجديد قبل استبداله. */
+  documentNumber?: string;
 };
 
 // ── تجديد ────────────────────────────────────────────────────────────────────
@@ -33,8 +35,12 @@ export function RenewModal({ row, ar, onClose, onDone }: {
   const [newExpiry, setNewExpiry] = useState('');
   const [cost, setCost] = useState('');
   const [reference, setReference] = useState('');
+  const [documentNumber, setDocumentNumber] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  // اسمُ الرقم يأتي من تعريف المستند لا من هذه النافذة: المستند الذي لا رقم له
+  // لا يجد هنا خانةً أصلًا، فلا يكتب أحدٌ رقمًا لا موضع له يُحفَظ فيه.
+  const numLabel = docNumberLabel(row.docKey, ar);
 
   // اقتراح: سنة من تاريخ الانتهاء الحالي لو لسه ساري، وإلا سنة من النهاردة.
   useEffect(() => {
@@ -49,6 +55,7 @@ export function RenewModal({ row, ar, onClose, onDone }: {
     try {
       await renewDocument(row.vehicleId, {
         document: row.docKey, newExpiry,
+        documentNumber: documentNumber.trim(),
         cost: cost === '' ? null : Number(cost),
         reference: reference.trim(), note: note.trim(),
       });
@@ -74,10 +81,30 @@ export function RenewModal({ row, ar, onClose, onDone }: {
             <label className="block text-xs font-semibold text-slate-600 mb-1">{t('تاريخ الانتهاء الجديد', 'New expiry')} *</label>
             <input type="date" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)} className={inp} autoFocus />
           </div>
+          {/* ── الرقم الجديد، للمستند الذي يخرج من التجديد برقمٍ آخر ────────
+              بطاقة التشغيل تُستخرج برقمٍ جديد كل مرة، والتفويض كذلك أحيانًا.
+              وتركُ الخانة فارغة يعني «الرقم هو هو» — لا محوَه. */}
+          {numLabel && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                {numLabel} <span className="font-normal text-slate-400">({t('اتركه فارغًا إن لم يتغيّر', 'leave blank if unchanged')})</span>
+              </label>
+              <input value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)}
+                placeholder={row.documentNumber || ''} className={inp} dir="ltr" />
+              {!!row.documentNumber && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {t('الحالي', 'Current')}: <b className="font-mono">{row.documentNumber}</b>
+                  {documentNumber.trim() && documentNumber.trim() !== row.documentNumber && (
+                    <span className="text-amber-700"> · {t('سيُستبدل، ويُقيَّد القديم في السجل', 'will be replaced; the old one is kept in the trail')}</span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-xs font-semibold text-slate-600 mb-1">{t('التكلفة (ر.س)', 'Cost (SAR)')}</label>
               <input type="number" value={cost} onChange={(e) => setCost(e.target.value)} className={inp} /></div>
-            <div><label className="block text-xs font-semibold text-slate-600 mb-1">{t('رقم الوثيقة/الإيصال', 'Reference')}</label>
+            <div><label className="block text-xs font-semibold text-slate-600 mb-1">{t('رقم الإيصال', 'Receipt reference')}</label>
               <input value={reference} onChange={(e) => setReference(e.target.value)} className={inp} /></div>
           </div>
           <div><label className="block text-xs font-semibold text-slate-600 mb-1">{t('ملاحظة', 'Note')}</label>
@@ -114,6 +141,17 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+  // ── الأرقام الجديدة: سطرًا سطرًا، ومطويّةً حتى تُطلَب ────────────────────
+  // بطاقةُ كل مركبة تخرج برقمها هي، فرقمٌ واحد مشترك على مئةٍ منها يجعل المئة
+  // نسخةً من ورقة واحدة — وهذا أسوأ من ألا يُكتب رقم. ومَن جدّد التواريخ فقط
+  // لا يُجبَر على المرور بمئة خانة: القائمة مطويّة ما لم يفتحها.
+  const [showNumbers, setShowNumbers] = useState(false);
+  const [numbers, setNumbers] = useState<Record<string, string>>({});
+  const numbered = rows.filter((r) => !!docNumberLabel(r.docKey, ar));
+  const changedCount = numbered.filter((r, i) => {
+    const v = (numbers[`${r.vehicleId}:${r.docKey}:${i}`] || '').trim();
+    return v && v !== (r.documentNumber || '');
+  }).length;
 
   const today = new Date().toISOString().slice(0, 10);
   const past = !!when && when < today;
@@ -126,7 +164,10 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
     setErrors([]); setBusy(true);
     try {
       const r = await renewBulk({
-        items: rows.map((x) => ({ vehicle: x.vehicleId, document: x.docKey })),
+        items: rows.map((x, i) => ({
+          vehicle: x.vehicleId, document: x.docKey,
+          documentNumber: (numbers[`${x.vehicleId}:${x.docKey}:${i}`] || '').trim(),
+        })),
         newExpiry: when, reference: reference.trim(), note: note.trim(),
       });
       notify(t(`اتجدّد ${r?.summary?.count ?? rows.length} مستند على ${r?.summary?.vehicles ?? '—'} مركبة`,
@@ -166,8 +207,38 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
             {past && <p className="text-[11.5px] text-rose-700 font-semibold mt-1">
               {t('التاريخ في الماضي — راجعه', 'That date is in the past')}</p>}
           </div>
+          {!!numbered.length && (
+            <div className="rounded-lg border border-slate-200">
+              <button type="button" onClick={() => setShowNumbers((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-[12px] font-semibold text-slate-700 hover:bg-slate-50">
+                <span>{t('تحديث أرقام المستندات (اختياري)', 'Update document numbers (optional)')}</span>
+                <span className="text-[11px] text-slate-500">
+                  {changedCount > 0
+                    ? t(`${changedCount} رقمًا سيتغيّر`, `${changedCount} will change`)
+                    : t(`${numbered.length} مستندًا له رقم`, `${numbered.length} have a number`)}
+                </span>
+              </button>
+              {showNumbers && (
+                <div className="max-h-48 overflow-y-auto border-t border-slate-200 divide-y divide-slate-100">
+                  {rows.map((r, i) => {
+                    if (!docNumberLabel(r.docKey, ar)) return null;
+                    const k = `${r.vehicleId}:${r.docKey}:${i}`;
+                    return (
+                      <div key={k} className="flex items-center gap-2 px-3 py-1.5">
+                        <span className="w-24 shrink-0 text-[11.5px] font-semibold text-slate-800 truncate">{r.plateNumber}</span>
+                        <input value={numbers[k] ?? ''} dir="ltr"
+                          onChange={(e) => setNumbers((m) => ({ ...m, [k]: e.target.value }))}
+                          placeholder={r.documentNumber || t('الرقم الجديد', 'New number')}
+                          className="flex-1 min-w-0 px-2 py-1 rounded border border-slate-200 text-[11.5px] font-mono" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <div>
-            <label className={lbl}>{t('رقم مرجعي (اختياري)', 'Reference (optional)')}</label>
+            <label className={lbl}>{t('رقم الإيصال (اختياري)', 'Receipt reference (optional)')}</label>
             <input value={reference} onChange={(e) => setReference(e.target.value)} className={inp} />
           </div>
           <div>

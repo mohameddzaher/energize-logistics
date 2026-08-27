@@ -9,7 +9,7 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { RegConfig, DOC_TYPES } from '@/lib/vehicleRegistry';
-import { Settings, Save, BellRing } from 'lucide-react';
+import { Settings, Save, CalendarClock } from 'lucide-react';
 import { canAdminVehicles } from '@/lib/vehicleRegistry';
 import { useSocket } from '@/hooks/useSocket';
 
@@ -48,7 +48,7 @@ export default function VehicleRegistrySettings() {
     <div className="space-y-4 w-full max-w-3xl pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Settings className="w-5 h-5" />} title={ar ? 'إعدادات القسم — التنبيهات' : 'Section Settings — Alerts'}
         subtitle={ar ? 'حدّد لكل مستند متى يبدأ التنبيه قبل انتهائه' : 'Set how early each document warns'}>
-        <Link href="/system/vehicles/registry/alerts" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><BellRing className="w-4 h-4" /> {ar ? 'التنبيهات' : 'Alerts'}</Link>
+        <Link href="/system/vehicles/registry/expiring" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><CalendarClock className="w-4 h-4" /> {ar ? 'الانتهاءات والتجديد' : 'Expiries & Renewals'}</Link>
       </PageHeader>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">

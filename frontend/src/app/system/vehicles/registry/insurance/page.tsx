@@ -15,7 +15,8 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import SelectionBar from '@/components/ls2/SelectionBar';
-import { ShieldCheck, CalendarCheck, X } from 'lucide-react';
+import Link from 'next/link';
+import { ShieldCheck, CalendarCheck, X, Car } from 'lucide-react';
 import {
   getInsurancePolicies, renewInsurancePolicy, type InsurancePolicy,
   money, fmtDate, daysText, STATE_META, stateLabel, canEditVehicles,
@@ -76,6 +77,13 @@ export default function Page() {
         title={t('وثائق تأمين المركبات', 'Vehicle insurance policies')}
         subtitle={t('الوثيقة الواحدة تغطّي عدة مركبات — وتجديدها يسري عليها كلها',
                     'One policy covers many vehicles — renewing it applies to all of them')}>
+        {/* السؤال يأتي بالاتجاهين: «ما الذي تغطّيه هذه الوثيقة؟» تجيب عنه هذه
+            الشاشة، و«بأيّ وثيقةٍ هذه المركبة مؤمَّنة وبكم؟» تجيب عنه تلك. ومن
+            يقف هنا باحثًا عن الثانية لم يكن يجد إليها سبيلًا. */}
+        <Link href="/system/vehicles/registry/insurance/vehicles"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold">
+          <Car className="w-4 h-4" /> {t('عرض مركبةً مركبة', 'Per-vehicle view')}
+        </Link>
         <ExportMenu fileName="vehicle-insurance-policies" lang={lang as 'ar' | 'en'}
           options={[{ key: 'all', label: t('تصدير', 'Export'), sheets: [{ name: t('الوثائق', 'Policies'), rows, columns: cols }] }]} />
       </PageHeader>

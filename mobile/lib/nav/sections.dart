@@ -56,6 +56,7 @@ import '../screens/wallet_dashboard.dart';
 import '../screens/accounting_reports.dart';
 import '../screens/performance_overview.dart';
 import '../screens/reference_data.dart';
+import '../screens/vehicle_documents.dart';
 import '../screens/vehicle_registry.dart';
 import '../screens/vehicle_registry_dash.dart';
 import '../screens/crm_calendar.dart';
@@ -330,7 +331,18 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('تحليلات المركبات', 'Registry Analytics', Icons.insights_outlined, (c) => const VehicleRegistryDashboardScreen()),
         AppPage('سجل المركبات', 'Vehicle Registry', Icons.directions_car_outlined, (c) => const VehicleRegistryListScreen()),
-        AppPage('تنبيهات المركبات', 'Vehicle Alerts', Icons.notifications_active_outlined, (c) => const VehicleRegistryAlertsScreen()),
+        // ── صفحةٌ لكل عائلةِ مستند، كما في الموقع ─────────────────────────
+        // بياناتُها كلُّها كانت مخزَّنة ولا تجد عمودًا يعرضها: تفلتر على بطاقة
+        // التشغيل فتحصل على المركبات الصحيحة بلا رقمِ بطاقةٍ واحد. وجمعُها في
+        // شاشةٍ واحدة يجاوز الأربعين حقلًا فلا يُقرأ على هاتف.
+        AppPage('تأمين المركبات', 'Vehicle Insurance', Icons.shield_outlined, (c) => VehicleDocumentsScreen(family: vehicleInsuranceFamily)),
+        AppPage('بطاقات التشغيل', 'Operating Cards', Icons.credit_card_outlined, (c) => VehicleDocumentsScreen(family: vehicleOperatingCardFamily)),
+        AppPage('التفاويض', 'Authorisations', Icons.assignment_ind_outlined, (c) => VehicleDocumentsScreen(family: vehicleAuthorizationFamily)),
+        AppPage('بترو اب — شرائح الوقود', 'Petro App Cards', Icons.local_gas_station_outlined, (c) => VehicleDocumentsScreen(family: vehicleFuelCardFamily)),
+        AppPage('أجهزة التتبّع GPS', 'GPS Devices', Icons.satellite_alt_outlined, (c) => VehicleDocumentsScreen(family: vehicleGpsFamily)),
+        AppPage('رخص السير', 'Vehicle Licences', Icons.description_outlined, (c) => VehicleDocumentsScreen(family: vehicleLicenceFamily)),
+        AppPage('الفحص الدوري', 'Periodic Inspection', Icons.fact_check_outlined, (c) => VehicleDocumentsScreen(family: vehicleInspectionFamily)),
+        AppPage('الانتهاءات والتجديد', 'Expiries & Renewals', Icons.event_available_outlined, (c) => const VehicleRegistryAlertsScreen()),
         AppPage('إعدادات التنبيهات', 'Alert Settings', Icons.settings_outlined, (c) => const VehicleRegistrySettingsScreen()),
       ],
     ),

@@ -162,8 +162,15 @@ const vehicleMasterSchema = new mongoose.Schema({
     document: { type: String, required: true },   // insurance | operatingCard | …
     previousExpiry: { type: Date, default: null },
     newExpiry: { type: Date, required: true },
+    // ── ورقمُ المستند نفسه، قبلَ التجديد وبعده ────────────────────────────
+    // بطاقة التشغيل تخرج من التجديد برقمٍ جديد، وكذلك التفويض أحيانًا. وحين
+    // يُستبدل الرقم في خانته لا يبقى للرقم القديم أثر في أي مكان — فالمخالفة
+    // المقيَّدة على البطاقة السابقة، والفاتورة المحرَّرة باسمها، يصيران بلا
+    // مركبةٍ يُنسبان إليها. القيد هنا هو ما يجعل السلسلة تُقرأ إلى الوراء.
+    previousNumber: { type: String, default: '' },
+    newNumber: { type: String, default: '' },
     cost: { type: Number, default: null },
-    reference: { type: String, default: '' },     // رقم الوثيقة/الإيصال الجديد
+    reference: { type: String, default: '' },     // رقم الإيصال/سند الصرف
     note: { type: String, default: '' },
     at: { type: Date, default: Date.now },
     byName: { type: String, default: '' },

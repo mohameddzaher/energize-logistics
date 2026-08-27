@@ -1,0 +1,54 @@
+'use client';
+// بترو اب — شريحةُ الوقود لكل مركبة: رقمُها، واللوحةُ كما تُطبَع على الفاتورة،
+// وحالتُها ونوعُ استهلاكها وسقفُه.
+//
+// و«اللوحة في فاتورة بترو اب» ليست تكرارًا للوحة: تُكتب في الفاتورة بصيغةٍ
+// أخرى، وهي المفتاح الوحيد لمطابقة بند الفاتورة بالمركبة. وسقفٌ «مفتوح» ليس
+// سقفًا عاليًا — هو لا سقف، وهو أوّل ما يُسأل عنه في مراجعة الوقود.
+import { Fuel } from 'lucide-react';
+import DocumentFamilyPage, { commonColumns, type DocColumn } from '@/components/vehicles/DocumentFamilyPage';
+import { type Chip } from '@/components/ls2/FilterBar';
+import { useLanguage } from '@/context/LanguageContext';
+import { money, type VReg } from '@/lib/vehicleRegistry';
+
+const COLUMNS: DocColumn[] = [
+  ...commonColumns(),
+  { key: 'cardNumber', ar: 'شريحة بترو اب', en: 'Petro App chip', mono: true, get: (v) => v.fuelCard?.cardNumber, width: 18 },
+  { key: 'plateOnInvoiceAr', ar: 'رقم اللوحة في فاتورة بترو اب', en: 'Plate on Petro App invoice', get: (v) => v.fuelCard?.plateOnInvoiceAr, width: 24 },
+  { key: 'statusAr', ar: 'حالة الشريحة', en: 'Chip status', get: (v) => v.fuelCard?.statusAr, width: 14 },
+  { key: 'consumptionTypeAr', ar: 'نوع الاستهلاك', en: 'Consumption type', get: (v) => v.fuelCard?.consumptionTypeAr, width: 16 },
+  {
+    key: 'limitSar', ar: 'حد الاستهلاك', en: 'Consumption limit', width: 14,
+    // «مفتوح» تُكتب كلمةً لا رقمًا: عرضُها فراغًا يخفي المركبات التي لا حدَّ
+    // لصرفها، وهي بالضبط ما تبحث عنه المراجعة.
+    get: (v) => (v.fuelCard?.limitStatus === 'open' ? 'مفتوح — بلا سقف'
+      : v.fuelCard?.limitSar != null ? money(v.fuelCard.limitSar) : ''),
+  },
+];
+
+export default function Page() {
+  const ar = useLanguage().lang === 'ar';
+  const t = (a: string, e: string) => (ar ? a : e);
+  // شرائحُ هذه العائلة عن حالة الشريحة لا عن انتهاء تاريخ — لا تاريخ لها.
+  const CHIPS: Chip[] = [
+    { key: '', label: t('الكل', 'All') },
+    { key: 'has', label: t('لها شريحة', 'Has a chip'), tone: 'green', test: (v: VReg) => !!v.fuelCard?.cardNumber },
+    { key: 'none', label: t('بلا شريحة', 'No chip'), tone: 'red', test: (v: VReg) => !v.fuelCard?.cardNumber },
+    { key: 'open', label: t('بلا سقف استهلاك', 'No spending ceiling'), tone: 'amber', test: (v: VReg) => v.fuelCard?.limitStatus === 'open' },
+    { key: 'noInvoicePlate', label: t('بلا لوحة على الفاتورة', 'No plate on invoice'), tone: 'violet', test: (v: VReg) => !!v.fuelCard?.cardNumber && !v.fuelCard?.plateOnInvoiceAr },
+  ];
+  return (
+    <DocumentFamilyPage
+      docKey={null}
+      chips={CHIPS}
+      path="/system/vehicles/registry/fuel-cards"
+      icon={<Fuel className="w-5 h-5" />}
+      titleAr="بترو اب — شرائح الوقود" titleEn="Petro App — Fuel Cards"
+      subtitleAr="رقم الشريحة واللوحة كما تُطبَع على الفاتورة وحالتها ونوع استهلاكها وسقفه"
+      subtitleEn="Chip number, the plate as printed on the invoice, status, consumption type and limit"
+      fileName="vehicle-fuel-cards"
+      columns={COLUMNS}
+      searchIn={(v) => [v.plateNumber, v.fuelCard?.cardNumber, v.fuelCard?.plateOnInvoiceAr, v.ownerNameAr]}
+    />
+  );
+}

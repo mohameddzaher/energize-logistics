@@ -25,12 +25,18 @@ export type VReg = {
   registrationTypeAr?: string; registrationTypeCode?: string;
   brandAr?: string; modelAr?: string; modelYear?: number | null; colorAr?: string; colorCode?: string;
   ownerNameAr?: string; commercialRegistration?: string; tamStatusAr?: string; tamStatusCode?: string;
-  insurance?: { policyNumber?: string; companyAr?: string; coverageTypeAr?: string; coverageTypeCode?: string; expiryDate?: string | null; premiumSar?: number | null; premiumStatusAr?: string; status?: string };
+  insurance?: { policyNumber?: string; companyAr?: string; coverageTypeAr?: string; coverageTypeCode?: string; expiryDate?: string | null; premiumSar?: number | null; premiumStatusAr?: string; status?: string; statusCode?: string };
   fuelCard?: { provider?: string; cardNumber?: string; plateOnInvoiceAr?: string; statusAr?: string; statusCode?: string; consumptionTypeAr?: string; consumptionTypeCode?: string; limitSar?: number | null; limitStatus?: string };
-  gps?: { deviceId?: string; deviceModel?: string; deviceStatusAr?: string; simNumber?: string; serialImei?: string; provider?: string; status?: string; expiryDate?: string | null };
-  operatingCard?: { cardNumber?: string; expiryDate?: string | null };
-  vehicleLicense?: { expiryDate?: string | null; expiryDateHijri?: string };
+  gps?: { deviceId?: string; deviceModel?: string; deviceStatusAr?: string; simNumber?: string; serialImei?: string; provider?: string; status?: string; statusCode?: string; expiryDate?: string | null };
+  operatingCard?: { cardNumber?: string; expiryDate?: string | null; statusCode?: string };
+  vehicleLicense?: { expiryDate?: string | null; expiryDateHijri?: string; statusCode?: string };
   inspection?: { statusAr?: string; statusCode?: string; expiryDate?: string | null; expiryDateHijri?: string };
+  /** سجل التجديدات — يحمل الرقم السابق والجديد، فالأثر يُقرأ إلى الوراء. */
+  renewals?: {
+    document: string; previousExpiry?: string | null; newExpiry: string;
+    previousNumber?: string; newNumber?: string;
+    cost?: number | null; reference?: string; note?: string; at?: string; byName?: string;
+  }[];
   notesAr?: string; isActive?: boolean;
   docStatuses?: Record<string, DocStatus>;
   overallStatus?: DocStatus['status']; overallDays?: number | null;
@@ -43,17 +49,34 @@ export type AlertItem = {
 
 export type RegConfig = { alerts: Record<string, { enabled: boolean; warnDays: number; criticalDays: number }> };
 
+// ── ولماذا يحمل كل مستندٍ هنا رقمَه أيضًا ────────────────────────────────────
+// المستند الذي يُجدَّد قد يخرج برقمٍ جديد: بطاقة التشغيل دائمًا، والتفويض
+// أحيانًا. فنافذة التجديد تحتاج أن تعرف — قبل أن تُرسَم — أتسأل عن رقمٍ جديد
+// أم تسكت؛ ورخصةُ السير والفحص لا رقم لهما فـ`numberAr` فيهما `null`، وهو ما
+// يمنع النافذة من عرض خانةٍ لا موضع لها في الخادم.
 export const DOC_TYPES = [
-  { key: 'insurance', ar: 'التأمين', en: 'Insurance', datePath: (v: VReg) => v.insurance?.expiryDate },
-  { key: 'operatingCard', ar: 'بطاقة التشغيل', en: 'Operating Card', datePath: (v: VReg) => v.operatingCard?.expiryDate },
-  { key: 'vehicleLicense', ar: 'رخصة السير', en: 'Vehicle License', datePath: (v: VReg) => v.vehicleLicense?.expiryDate },
-  { key: 'inspection', ar: 'الفحص', en: 'Inspection', datePath: (v: VReg) => v.inspection?.expiryDate },
-  { key: 'gps', ar: 'اشتراك GPS', en: 'GPS', datePath: (v: VReg) => v.gps?.expiryDate },
+  { key: 'insurance', ar: 'التأمين', en: 'Insurance', datePath: (v: VReg) => v.insurance?.expiryDate,
+    numberAr: 'رقم وثيقة التأمين', numberEn: 'Policy number', numberOf: (v: VReg) => v.insurance?.policyNumber || '' },
+  { key: 'operatingCard', ar: 'بطاقة التشغيل', en: 'Operating Card', datePath: (v: VReg) => v.operatingCard?.expiryDate,
+    numberAr: 'رقم بطاقة التشغيل', numberEn: 'Operating card number', numberOf: (v: VReg) => v.operatingCard?.cardNumber || '' },
+  { key: 'vehicleLicense', ar: 'رخصة السير', en: 'Vehicle License', datePath: (v: VReg) => v.vehicleLicense?.expiryDate,
+    numberAr: null, numberEn: null, numberOf: () => '' },
+  { key: 'inspection', ar: 'الفحص', en: 'Inspection', datePath: (v: VReg) => v.inspection?.expiryDate,
+    numberAr: null, numberEn: null, numberOf: () => '' },
+  { key: 'gps', ar: 'اشتراك GPS', en: 'GPS', datePath: (v: VReg) => v.gps?.expiryDate,
+    numberAr: 'سريال جهاز التتبّع', numberEn: 'GPS serial', numberOf: (v: VReg) => v.gps?.serialImei || '' },
   // التفويض بالقيادة صار مستندًا كسائر المستندات في الخادم: تاريخُ نهايته يمرّ
   // على شاشة الانتهاءات وعتبات التنبيه والتجديد. وإغفالُه هنا كان يعني أن يظهر
   // في ردّ الخادم ولا يجد عمودًا ولا كارتًا يعرضه.
-  { key: 'authorization', ar: 'التفويض', en: 'Authorisation', datePath: (v: VReg) => v.authorizedPerson?.expiryDate },
+  { key: 'authorization', ar: 'التفويض', en: 'Authorisation', datePath: (v: VReg) => v.authorizedPerson?.expiryDate,
+    numberAr: 'رقم التفويض', numberEn: 'Authorisation number', numberOf: (v: VReg) => v.authorizedPerson?.authorizationNumber || '' },
 ] as const;
+
+/** اسمُ رقمِ المستند، أو null للمستند الذي لا رقم مستقلَّ له. */
+export const docNumberLabel = (key: string, ar: boolean): string | null => {
+  const d = DOC_TYPES.find((x) => x.key === key);
+  return d ? (ar ? d.numberAr : d.numberEn) : null;
+};
 
 export const docLabel = (key: string, ar: boolean) => {
   const d = DOC_TYPES.find((x) => x.key === key);
@@ -132,6 +155,9 @@ export interface ExpiringRow {
   docKey: string; docAr: string; docEn: string;
   expiryDate: string | null; daysRemaining: number | null; state: string; statusCode: string;
   reference?: string; company?: string;
+  /** هل التنبيه مفعَّل لهذا النوع في الإعدادات؟ يصل مع الصف لأن المستند
+   *  المتوقَّف تنبيهه يبقى معروضًا ومعلَّمًا لا محذوفًا في صمت. */
+  alertEnabled?: boolean;
 }
 
 export const STATE_META: Record<string, { ar: string; en: string; color: string; bg: string }> = {
@@ -160,8 +186,17 @@ export const getExpiring = (q: Record<string, string | number | undefined> = {})
     docs: { key: string; ar: string; en: string }[];
   }>(`/api/vehicle-registry/expiring${qs(q) ? `?${qs(q)}` : ''}`);
 
-export const renewDocument = (vehicleId: string, body: { document: string; newExpiry: string; cost?: number | null; reference?: string; note?: string }) =>
-  api.post<{ vehicle: VReg }>(`/api/vehicle-registry/${vehicleId}/renew`, body);
+/**
+ * `documentNumber` اختياريّ، وتركُه فارغًا يعني «الرقم هو هو».
+ *
+ * وهو غيرُ `reference`: هذا رقمُ الورقة الجاري به العمل ويُكتب في خانتها على
+ * المركبة، وذاك رقمُ إيصال السداد ويبقى في سجل التجديد وحده. خلطُهما كان
+ * سيجعل رقمَ إيصالٍ يحلّ محلَّ رقم بطاقة التشغيل على مئتي مركبة.
+ */
+export const renewDocument = (vehicleId: string, body: {
+  document: string; newExpiry: string; documentNumber?: string;
+  cost?: number | null; reference?: string; note?: string;
+}) => api.post<{ vehicle: VReg }>(`/api/vehicle-registry/${vehicleId}/renew`, body);
 
 export const getClaims = (q: Record<string, string> = {}) =>
   api.get<{ claims: any[]; totals: { total: number; open: number; estimatedSar: number; expectedRecoverySar: number; gapSar: number; stale: number } }>(
@@ -200,8 +235,10 @@ export const updateClaim = (id: string, body: any) => api.put<{ claim: any }>(`/
 export const deleteClaim = (id: string) => api.delete(`/api/vehicle-registry/claims/${id}`);
 
 // ── تجديد أكتر من مستند بنفس التاريخ ─────────────────────────────────────────
+// والرقم هنا **سطريّ لا مشترك**: بطاقةُ كل مركبة تخرج برقمها هي، ورقمٌ واحد
+// يُكتب على مئةٍ منها يجعل المئة نسخةً من ورقة واحدة.
 export const renewBulk = (body: {
-  items: { vehicle: string; document: string }[];
+  items: { vehicle: string; document: string; documentNumber?: string }[];
   newExpiry: string; reference?: string; note?: string;
 }) => api.post<{ renewed: any[]; summary: { count: number; vehicles: number } }>(
   '/api/vehicle-registry/renew-bulk', body);

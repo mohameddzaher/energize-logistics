@@ -13,7 +13,7 @@ import { money, statusColor, statusLabel, docLabel, DOC_TYPES, CHART_COLORS } fr
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
 } from 'recharts';
-import { Car, RotateCcw, ListFilter, BellRing } from 'lucide-react';
+import { Car, RotateCcw, ListFilter, CalendarClock } from 'lucide-react';
 
 type Row = { key: string; count: number };
 type Dash = {
@@ -87,8 +87,8 @@ export default function VehicleRegistryDashboard() {
       <PageHeader icon={<Car className="w-5 h-5" />} title={ar ? 'تحليلات سجل المركبات' : 'Vehicle Registry Analytics'}
         subtitle={ar ? `${t.vehicles} مركبة` : `${t.vehicles} vehicles`}>
         <div className="flex items-center gap-2">
-          <Link href="/system/vehicles/registry/alerts" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm">
-            <BellRing className="w-4 h-4" /> {ar ? 'التنبيهات' : 'Alerts'} {t.expiredTotal + t.expiringTotal > 0 && <span className="bg-white/25 rounded-full px-1.5 text-xs">{t.expiredTotal + t.expiringTotal}</span>}
+          <Link href="/system/vehicles/registry/expiring" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm">
+            <CalendarClock className="w-4 h-4" /> {ar ? 'الانتهاءات والتجديد' : 'Expiries & Renewals'} {t.expiredTotal + t.expiringTotal > 0 && <span className="bg-white/25 rounded-full px-1.5 text-xs">{t.expiredTotal + t.expiringTotal}</span>}
           </Link>
           <Link href="/system/vehicles/registry" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><ListFilter className="w-4 h-4" /> {ar ? 'القائمة' : 'List'}</Link>
         </div>
@@ -122,8 +122,8 @@ export default function VehicleRegistryDashboard() {
       {/* بطاقات المؤشرات — كلها قابلة للضغط وتفتح المفلتر المناسب */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <ClickStat label={ar ? 'إجمالي المركبات' : 'Vehicles'} value={t.vehicles} accent="text-[#f37121]" onClick={() => goList({})} />
-        <ClickStat label={ar ? 'مستندات منتهية' : 'Expired docs'} value={t.expiredTotal} accent="text-red-600" onClick={() => router.push('/system/vehicles/registry/alerts')} />
-        <ClickStat label={ar ? 'قرب الانتهاء' : 'Expiring soon'} value={t.expiringTotal} accent="text-amber-600" onClick={() => router.push('/system/vehicles/registry/alerts')} />
+        <ClickStat label={ar ? 'مستندات منتهية' : 'Expired docs'} value={t.expiredTotal} accent="text-red-600" onClick={() => router.push('/system/vehicles/registry/expiring?state=expired&includeExpired=1')} />
+        <ClickStat label={ar ? 'قرب الانتهاء' : 'Expiring soon'} value={t.expiringTotal} accent="text-amber-600" onClick={() => router.push('/system/vehicles/registry/expiring?withinDays=60&includeExpired=0')} />
         <ClickStat label={ar ? 'مزوّدة بـ GPS' : 'With GPS'} value={t.withGps} accent="text-emerald-600" onClick={() => goList({ hasGps: '1' })} />
         <ClickStat label={ar ? 'بدون GPS' : 'Without GPS'} value={Math.max(0, (t.vehicles || 0) - (t.withGps || 0))} accent="text-slate-500" onClick={() => goList({ missingDoc: 'gps' })} />
         <ClickStat label={ar ? 'شرائح وقود نشطة' : 'Active fuel cards'} value={t.activeFuelCards} accent="text-sky-600" onClick={() => goList({ fuelCardStatus: 'نشط' })} />

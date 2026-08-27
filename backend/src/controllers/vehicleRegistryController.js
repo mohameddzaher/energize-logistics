@@ -318,7 +318,8 @@ function buildFilter(q) {
     department: 'departmentAr', city: 'cityAr', possession: 'possessionStatusAr',
     gpsDeviceStatus: 'gps.deviceStatusAr',
     // مفاتيح سجلّات القسم — كل صفّ فيها يفتح مركباته بهذه الفلاتر
-    authorizedPerson: 'authorizedPerson.name', gpsProvider: 'gps.provider',
+    authorizedPerson: 'authorizedPerson.name', authorizedPersonIqama: 'authorizedPerson.iqamaNumber',
+    gpsProvider: 'gps.provider',
     gpsDevice: 'gps.deviceModel', fuelCard: 'fuelCard.cardNumber',
     owner: 'ownerNameAr', insuranceCompany: 'insurance.companyAr',
     coverageType: 'insurance.coverageTypeAr', fuelCardStatus: 'fuelCard.statusAr',
@@ -411,7 +412,9 @@ function buildFilter(q) {
   }
   // «بدون مستند»: مركبات ينقصها هذا المستند (لا تاريخ/لا رقم).
   if (q.missingDoc) {
-    const paths = { insurance: 'insurance.expiryDate', operatingCard: 'operatingCard.cardNumber', vehicleLicense: 'vehicleLicense.expiryDate', inspection: 'inspection.expiryDate', gps: 'gps.deviceId', fuelCard: 'fuelCard.cardNumber' };
+    // التفويض كان غائبًا عن هذه الخريطة رغم كونه مستندًا سادسًا كامل الحقوق،
+    // فـ«أرِني المركبات بلا تفويض» كان يسقط في صمت ويفتح الأسطول كلَّه.
+    const paths = { insurance: 'insurance.expiryDate', operatingCard: 'operatingCard.cardNumber', vehicleLicense: 'vehicleLicense.expiryDate', inspection: 'inspection.expiryDate', gps: 'gps.deviceId', fuelCard: 'fuelCard.cardNumber', authorization: 'authorizedPerson.authorizationNumber' };
     if (q.missingDoc === 'gps') and.push({ $nor: [HAS_GPS] });
     else {
       const p = paths[q.missingDoc];
@@ -461,14 +464,32 @@ exports.list = async (req, res) => {
     const page = Math.max(Number(req.query.page) || 1, 1);
     const sortBy = req.query.sortBy || 'plateNumber';
     const sortDir = req.query.sortDir === 'desc' ? -1 : 1;
-    // مشروع مختصر — القائمة تحتاج ملخّصًا فقط (التفاصيل الكاملة عبر getOne)؛
-    // يقلّل النقل من ~1.7kb إلى ~0.5kb لكل مركبة على عنقود Atlas المُقيَّد.
+    // ── ما تحمله القائمة، ولماذا اتّسع ─────────────────────────────────────
+    //
+    // المشروع مختصرٌ عمدًا: `renewals` وحدها قد تكون عشرات القيود، وجلبُها
+    // لثلاثمئة مركبةٍ في كل فتحةٍ للشاشة نقلٌ لا يُقرأ. لكنّ الاختصار كان قد
+    // جاوز حدَّه: **البيانات موجودة في قاعدة البيانات ولا تصل إلى الشاشة**.
+    // رقمُ بطاقة التشغيل لمئتين وعشرين مركبة، ورقمُ وثيقة التأمين لمئتين
+    // وأربع وثمانين، ورقمُ التفويض لمئتين وإحدى وعشرين — كلّها مسجَّلة، وكلّها
+    // تسقط هنا قبل أن تُرسَل. فيفلتر المستخدم على بطاقة التشغيل فيجد الصفوف
+    // ولا يجد رقمًا في أيّ منها، فيظنّ الاستيراد ناقصًا وهو تامّ.
+    //
+    // فكلُّ حقلٍ يُعرَض في عمودٍ من أعمدة صفحات المستندات موجودٌ هنا. وهي حقولٌ
+    // نصّيةٌ قصيرة: الزيادة بضع مئات من البايتات للمركبة، والثمن الذي كانت
+    // تدفعه الشاشة قبلها هو أن تكون فارغة.
     const LIST_FIELDS = 'plateNumber plateLettersAr chassisNumber serialNumber sectorAr departmentAr cityAr'
-      + ' possessionStatusAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr authorizedPerson logistiGaps'
-      + ' insurance.companyAr insurance.expiryDate insurance.premiumSar operatingCard.cardNumber operatingCard.expiryDate'
-      + ' vehicleLicense.expiryDate inspection.statusAr inspection.expiryDate fuelCard.statusAr fuelCard.cardNumber'
-      + ' fuelCard.plateOnInvoiceAr gps.deviceId gps.serialImei gps.deviceModel gps.deviceStatusAr gps.expiryDate accidentCount'
-      + ' missingItems insurancePolicy';
+      + ' possessionStatusAr registrationTypeAr brandAr modelAr modelYear colorAr ownerNameAr commercialRegistration'
+      + ' authorizedPerson logistiGaps serviceStatusAr serviceStatusCode tamStatusAr'
+      + ' insurance.policyNumber insurance.companyAr insurance.coverageTypeAr insurance.expiryDate'
+      + ' insurance.premiumSar insurance.premiumStatusAr insurance.statusCode'
+      + ' operatingCard.cardNumber operatingCard.expiryDate operatingCard.statusCode'
+      + ' vehicleLicense.expiryDate vehicleLicense.expiryDateHijri vehicleLicense.statusCode'
+      + ' inspection.statusAr inspection.expiryDate inspection.expiryDateHijri inspection.statusCode'
+      + ' fuelCard.provider fuelCard.cardNumber fuelCard.plateOnInvoiceAr fuelCard.statusAr fuelCard.statusCode'
+      + ' fuelCard.consumptionTypeAr fuelCard.limitSar fuelCard.limitStatus'
+      + ' gps.deviceId gps.serialImei gps.simNumber gps.deviceModel gps.provider gps.deviceStatusAr'
+      + ' gps.status gps.statusCode gps.expiryDate'
+      + ' accidentCount missingItems insurancePolicy';
     const [vehicles, total] = await Promise.all([
       VehicleMaster.find(filter).select(LIST_FIELDS).sort({ [sortBy]: sortDir }).skip((page - 1) * limit).limit(limit).lean(),
       VehicleMaster.countDocuments(filter),
@@ -698,10 +719,16 @@ exports.updateSettings = async (req, res) => {
       const warn = Math.max(0, Math.min(3650, Number(a.warnDays)));
       const crit = Math.max(0, Math.min(3650, Number(a.criticalDays)));
       if (!Number.isFinite(warn) || !Number.isFinite(crit)) { problems.push(k); continue; }
+      // «على الرادار» أفقٌ ثالث يقرأه `stateOf`، وكان يسقط من هنا فيُستبدل عند
+      // كل حفظٍ بقيمته الافتراضية: يضبط المستخدم أفق التأمين على ١٨٠ يومًا ثم
+      // يغيّر عتبةً أخرى فيعود الأفق ٩٠ بلا أن يمسّه أحد.
+      const soonRaw = Number(a.soonDays);
+      const soon = Number.isFinite(soonRaw) ? Math.max(0, Math.min(3650, soonRaw)) : 90;
       clean[k] = {
         enabled: a.enabled !== false,
         warnDays: warn,
         criticalDays: Math.min(crit, warn),   // الحرج جوّه التنبيه دايمًا
+        soonDays: Math.max(soon, warn),       // والرادار أوسع من التنبيه دايمًا
       };
     }
     if (problems.length) return res.status(400).json({ message: `قيم غير صحيحة في: ${problems.join(', ')}` });
@@ -755,17 +782,27 @@ const FILTER_DEFS = [
   { key: 'owner', field: 'ownerNameAr', ar: 'المالك', en: 'Owner', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
   { key: 'commercialRegistration', field: 'commercialRegistration', ar: 'السجل التجاري', en: 'Commercial register', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
   { key: 'authorizedPerson', field: 'authorizedPerson.name', ar: 'المفوَّض', en: 'Authorised person', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
+  // ── ورقمُ الورقة فلترٌ كاسم حاملها ──────────────────────────────────────
+  // «هاتِ لي المركبة صاحبة هذا الرقم» هو أوّل ما يُسأل حين تصل مخالفةٌ أو
+  // فاتورة: الورقة في اليد وعليها رقمٌ، والمركبةُ هي المجهول. وكانت هذه
+  // الأرقام مقبولةً في `buildFilter` منذ البداية ولا تظهر في اللوحة، فلا
+  // يبلغها إلا من يكتب الرابط بيده.
+  { key: 'authorizedPersonIqama', field: 'authorizedPerson.iqamaNumber', ar: 'رقم إقامة المفوَّض', en: 'Authorised person iqama', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
+  { key: 'authorizationNumber', field: 'authorizedPerson.authorizationNumber', ar: 'رقم التفويض', en: 'Authorisation number', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
   { key: 'insuranceCompany', field: 'insurance.companyAr', ar: 'شركة التأمين', en: 'Insurer', groupAr: 'التأمين', groupEn: 'Insurance' },
   { key: 'coverageType', field: 'insurance.coverageTypeAr', ar: 'نوع التغطية', en: 'Coverage', groupAr: 'التأمين', groupEn: 'Insurance' },
   // رقم الوثيقة فلترٌ لا زينة: وثيقةٌ واحدة تغطّي ١٩٨ مركبة، و«أرِني كل ما
   // تغطّيه هذه الوثيقة» هو السؤال الذي يسبق كل تجديد.
   { key: 'insurancePolicyNumber', field: 'insurance.policyNumber', ar: 'رقم وثيقة التأمين', en: 'Policy number', groupAr: 'التأمين', groupEn: 'Insurance' },
   { key: 'premiumStatus', field: 'insurance.premiumStatusAr', ar: 'جهة سداد القسط', en: 'Premium paid by', groupAr: 'التأمين', groupEn: 'Insurance' },
+  { key: 'operatingCardNumber', field: 'operatingCard.cardNumber', ar: 'رقم بطاقة التشغيل', en: 'Operating card number', groupAr: 'المستندات', groupEn: 'Documents' },
   { key: 'inspectionStatus', field: 'inspection.statusAr', ar: 'حالة الفحص', en: 'Inspection status', groupAr: 'المستندات', groupEn: 'Documents' },
   { key: 'tamStatus', field: 'tamStatusAr', ar: 'حالة تم', en: 'TAM status', groupAr: 'المستندات', groupEn: 'Documents' },
   { key: 'fuelCardStatus', field: 'fuelCard.statusAr', ar: 'حالة بطاقة الوقود', en: 'Fuel card status', groupAr: 'التشغيل', groupEn: 'Operations' },
   { key: 'consumptionType', field: 'fuelCard.consumptionTypeAr', ar: 'نوع الاستهلاك', en: 'Consumption type', groupAr: 'التشغيل', groupEn: 'Operations' },
+  { key: 'fuelCard', field: 'fuelCard.cardNumber', ar: 'رقم شريحة بترو اب', en: 'Fuel card number', groupAr: 'التشغيل', groupEn: 'Operations' },
   { key: 'gpsProvider', field: 'gps.provider', ar: 'مزوّد التتبّع', en: 'GPS provider', groupAr: 'التشغيل', groupEn: 'Operations' },
+  { key: 'gpsSerial', field: 'gps.serialImei', ar: 'سريال جهاز التتبّع', en: 'GPS serial', groupAr: 'التشغيل', groupEn: 'Operations' },
   { key: 'gpsDevice', field: 'gps.deviceModel', ar: 'طراز جهاز التتبّع', en: 'GPS device', groupAr: 'التشغيل', groupEn: 'Operations' },
   { key: 'gpsDeviceStatus', field: 'gps.deviceStatusAr', ar: 'حالة جهاز التتبّع', en: 'GPS device status', groupAr: 'التشغيل', groupEn: 'Operations' },
 ];
@@ -1130,10 +1167,14 @@ async function buildExpiryRows(query = {}) {
         expiryDate: expiry, daysRemaining: st.days, state: st.state, statusCode,
         // التنبيه متفعّل للنوع ده؟ بيترجّع مع الصف بدل ما الصف يختفي في صمت.
         alertEnabled: cfg.alerts?.[dt.key]?.enabled !== false,
-        reference: dt.key === 'insurance' ? v.insurance?.policyNumber
-          : dt.key === 'operatingCard' ? v.operatingCard?.cardNumber
-            : dt.key === 'gps' ? v.gps?.serialImei : '',
+        // رقم المستند من تعريفه لا من سلسلة شروطٍ تُنسى: التفويض أُضيف مستندًا
+        // سادسًا ولم يُضَف إلى السلسلة، فظهر في شاشة الانتهاءات بلا رقمٍ يُعرَف
+        // به — ولا يُجدَّد تفويضٌ لا يُعرَف رقمه.
+        reference: dt.numberPath ? String(getPath(v, dt.numberPath) || '') : '',
         company: dt.key === 'insurance' ? v.insurance?.companyAr : dt.key === 'gps' ? v.gps?.provider : '',
+        // اسم المفوَّض: التفويض وحده من بين المستندات مقرونٌ بشخص، و«تفويضٌ
+        // ينتهي بعد أسبوع» سؤالٌ ناقصٌ ما لم يُقَل تفويضُ مَن.
+        holder: dt.key === 'authorization' ? String(v.authorizedPerson?.name || '') : '',
       });
     }
   }
@@ -1197,6 +1238,50 @@ exports.expiring = async (req, res) => {
  * ومين عمله. من غير السجل، «جدّدناها امتى وبكام؟» مالهاش إجابة بعد أول تجديد.
  * وبيشيل حالة «لا يوجد/مطلوب» تلقائيًا — بقى فيه تاريخ خلاص.
  */
+/**
+ * يطبّق تجديدًا واحدًا على مركبة: التاريخ، والرقم إن تغيّر، والقيد في السجل.
+ *
+ * ولماذا دالّة لا سطورٌ مكرّرة في الموضعين: التجديد المفرد والجماعي كانا
+ * ينسخان الخطوات نفسها، فأيّ تعديلٍ في أحدهما — وهذا التعديل مثالُه — يترك
+ * الآخر خلفه. فيجدَّد الرقم من الشاشة الفردية ولا يجدَّد من الجماعية، ولا يظهر
+ * الفرق إلا بعد أن تكون مئةُ مركبةٍ قد جُدِّدت ناقصةً.
+ *
+ * ويرجع القيد نفسه ليقيَّد في سجل المراجعة كما قُيِّد في المركبة.
+ */
+const applyRenewal = (v, doc, when, src = {}, byName = '') => {
+  const [block, field] = doc.path.split('.');
+  const previous = v[block]?.[field] || null;
+  v[block][field] = when;
+
+  // ── الرقم الجديد اختياريّ، وسكوتُه يعني «هو هو» ─────────────────────────
+  // الفراغ ليس أمرًا بالمسح: من يترك الخانة فارغة لم يستخرج بطاقةً برقمٍ جديد،
+  // ولو فسّرناه محوًا لأتلف التجديدُ الجماعيُّ مئتي رقمٍ في ضربة واحدة.
+  let previousNumber = '';
+  let newNumber = '';
+  const wanted = src.documentNumber == null ? '' : String(src.documentNumber).trim();
+  if (wanted && doc.numberPath) {
+    const [nBlock, nField] = doc.numberPath.split('.');
+    previousNumber = String(v[nBlock]?.[nField] || '');
+    if (previousNumber !== wanted) { v[nBlock][nField] = wanted; newNumber = wanted; }
+    else previousNumber = '';
+  }
+
+  const [sBlock, sField] = doc.statusPath.split('.');
+  if (v[sBlock] && ['none', 'required', 'unknown', ''].includes(v[sBlock][sField])) v[sBlock][sField] = '';
+  // المستندات اللي اتحفظت قبل ما الحقل ده يتضاف مش هيكون عندها المصفوفة أصلاً.
+  if (!Array.isArray(v.renewals)) v.renewals = [];
+  const entry = {
+    document: doc.key, previousExpiry: previous, newExpiry: when,
+    previousNumber, newNumber,
+    cost: src.cost != null && src.cost !== '' ? Number(src.cost) : null,
+    reference: String(src.reference || '').trim(),
+    note: String(src.note || '').trim(),
+    byName,
+  };
+  v.renewals.push(entry);
+  return { previous, entry };
+};
+
 exports.renew = async (req, res) => {
   try {
     const doc = VDOC.getDoc(req.body.document);
@@ -1207,30 +1292,27 @@ exports.renew = async (req, res) => {
     const v = await VehicleMaster.findById(req.params.id);
     if (!v) return res.status(404).json({ message: 'المركبة غير موجودة' });
 
-    const [block, field] = doc.path.split('.');
-    const previous = v[block]?.[field] || null;
     // تجديد لتاريخ فات معناه غالبًا غلطة كتابة — نوقفه بدل ما يتسجّل ويلخبط.
     if (newExpiry < new Date(new Date().setHours(0, 0, 0, 0))) {
       return res.status(400).json({ message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' });
     }
+    // رقمٌ جديد لمستندٍ لا رقم له (رخصة السير، الفحص) طلبٌ لا معنى له: قبولُه
+    // في صمت يوهم المستخدم أن رقمًا حُفظ ولا موضع له يُحفظ فيه.
+    if (String(req.body.documentNumber || '').trim() && !doc.numberPath) {
+      return res.status(400).json({ message: `${doc.ar} ليس له رقم مستقلّ يُجدَّد` });
+    }
 
-    v[block][field] = newExpiry;
-    const [sBlock, sField] = doc.statusPath.split('.');
-    if (v[sBlock] && ['none', 'required', 'unknown', ''].includes(v[sBlock][sField])) v[sBlock][sField] = '';
-    // المستندات اللي اتحفظت قبل ما الحقل ده يتضاف مش هيكون عندها المصفوفة أصلاً.
-    if (!Array.isArray(v.renewals)) v.renewals = [];
-    v.renewals.push({
-      document: doc.key, previousExpiry: previous, newExpiry,
-      cost: req.body.cost != null && req.body.cost !== '' ? Number(req.body.cost) : null,
-      reference: String(req.body.reference || '').trim(),
-      note: String(req.body.note || '').trim(),
-      byName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim(),
-    });
+    const { previous, entry } = applyRenewal(v, doc, newExpiry, req.body,
+      `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim());
     await v.save();
 
     logAudit({
       user: req.user, action: 'renew_vehicle_document', entity: 'VehicleMaster', entityId: v._id,
-      changes: { before: { [doc.key]: previous }, after: { [doc.key]: newExpiry } }, ipAddress: req.ip,
+      changes: {
+        before: { [doc.key]: previous, number: entry.previousNumber || undefined },
+        after: { [doc.key]: newExpiry, number: entry.newNumber || undefined },
+      },
+      ipAddress: req.ip,
     }).catch(() => {});
 
     emit('vreg:updated', {});
@@ -1273,6 +1355,12 @@ exports.renewBulk = async (req, res) => {
       if (when < today) { errors.push({ line: i + 1, message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' }); continue; }
       const v = await VehicleMaster.findById(row.vehicle || row.id);
       if (!v) { errors.push({ line: i + 1, message: 'المركبة غير موجودة' }); continue; }
+      // الرقم في التجديد الجماعي **سطريّ لا مشترك**: بطاقةُ كل مركبة تخرج
+      // برقمها هي، ورقمٌ واحد يُكتب على مئةٍ منها يجعل المئة نسخةً من ورقة
+      // واحدة — أسوأ من ألا يُكتب رقمٌ أصلًا.
+      if (String(row.documentNumber || '').trim() && !doc.numberPath) {
+        errors.push({ line: i + 1, message: `${doc.ar} ليس له رقم مستقلّ يُجدَّد` }); continue;
+      }
       prepared.push({ v, doc, when, row });
     }
     if (errors.length) {
@@ -1283,26 +1371,27 @@ exports.renewBulk = async (req, res) => {
     const byName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
     const done = [];
     for (const { v, doc, when, row } of prepared) {
-      const [block, field] = doc.path.split('.');
-      const previous = v[block]?.[field] || null;
-      v[block][field] = when;
-      const [sBlock, sField] = doc.statusPath.split('.');
-      if (v[sBlock] && ['none', 'required', 'unknown', ''].includes(v[sBlock][sField])) v[sBlock][sField] = '';
-      if (!Array.isArray(v.renewals)) v.renewals = [];
-      v.renewals.push({
-        document: doc.key, previousExpiry: previous, newExpiry: when,
-        cost: row.cost != null && row.cost !== '' ? Number(row.cost) : null,
-        reference: String(row.reference || req.body.reference || '').trim(),
-        note: String(row.note || req.body.note || '').trim(),
-        byName,
-      });
+      const { previous, entry } = applyRenewal(v, doc, when, {
+        ...row,
+        reference: row.reference || req.body.reference,
+        note: row.note || req.body.note,
+      }, byName);
       await v.save();
-      done.push({ vehicle: v._id, plate: v.plateNumber, document: doc.key, previousExpiry: previous, newExpiry: when });
+      done.push({
+        vehicle: v._id, plate: v.plateNumber, document: doc.key,
+        previousExpiry: previous, newExpiry: when,
+        previousNumber: entry.previousNumber, newNumber: entry.newNumber,
+      });
     }
 
     logAudit({
       user: req.user, action: 'renew_vehicle_document', entity: 'VehicleMaster', entityId: null,
-      changes: { bulk: true, count: done.length, newExpiry: shared, documents: [...new Set(done.map((d) => d.document))] },
+      changes: {
+        bulk: true, count: done.length, newExpiry: shared,
+        documents: [...new Set(done.map((d) => d.document))],
+        // كم رقمًا استُبدل فعلًا — الفرق بين «جدّدنا التواريخ» و«استخرجنا أوراقًا جديدة».
+        numbersChanged: done.filter((d) => d.newNumber).length,
+      },
       ipAddress: req.ip,
     }).catch(() => {});
 
@@ -1505,6 +1594,7 @@ exports.renewInsurancePolicy = async (req, res) => {
     const vehicles = await VehicleMaster.find({ insurancePolicy: pol._id, isActive: { $ne: false } });
     for (const v of vehicles) {
       const before = v.insurance?.expiryDate || null;
+      const beforeNumber = String(v.insurance?.policyNumber || '');
       v.set('insurance.expiryDate', newExpiry);
       // وثيقة جديدة برقم جديد؟ يتحدَّث على كل مركبة أيضًا.
       if (newNumber) v.set('insurance.policyNumber', newNumber);
@@ -1512,6 +1602,11 @@ exports.renewInsurancePolicy = async (req, res) => {
       if (!Array.isArray(v.renewals)) v.renewals = [];
       v.renewals.push({
         document: 'insurance', previousExpiry: before, newExpiry,
+        // الرقم القديم يُقيَّد على كل مركبة لا على الوثيقة وحدها: المطالبةُ
+        // المفتوحة بالرقم السابق تُراجَع مركبةً مركبة، ولو بقي الأثر في سجل
+        // الوثيقة فقط لوجب فتحُ شاشةٍ أخرى لمعرفة برقم أيّ وثيقةٍ كانت مؤمَّنة.
+        previousNumber: newNumber && newNumber !== beforeNumber ? beforeNumber : '',
+        newNumber: newNumber && newNumber !== beforeNumber ? newNumber : '',
         cost: req.body?.cost != null && req.body?.cost !== '' ? Number(req.body.cost) : null,
         reference, note: [note, `تجديد وثيقة ${pol.policyNumber}`].filter(Boolean).join(' — '), byName,
       });
@@ -1705,7 +1800,14 @@ exports.renewCorporatePolicy = async (req, res) => {
 exports.documentTypes = async (req, res) => {
   const cfg = await getConfig();
   res.json({
-    documents: DOC_TYPES.map((d) => ({ key: d.key, ar: d.ar, en: d.en, icon: d.icon, alert: cfg.alerts?.[d.key] || {} })),
+    // `numberAr` هو ما يجعل نافذة التجديد تعرف: أهذا مستندٌ له رقمٌ يتغيّر مع
+    // التجديد فتسأل عنه، أم لا رقم له فتسكت؟ بدونه كانت الواجهة ستكتب القائمة
+    // عندها وتفترق عن الخادم أوّلَ ما يُضاف مستند.
+    documents: DOC_TYPES.map((d) => ({
+      key: d.key, ar: d.ar, en: d.en, icon: d.icon,
+      numberAr: d.numberPath ? d.numberAr : null, numberEn: d.numberPath ? d.numberEn : null,
+      alert: cfg.alerts?.[d.key] || {},
+    })),
     corporatePolicyAlert: cfg.alerts?.corporatePolicy || {},
     states: VDOC.STATE_LABELS,
     statuses: VDOC.STATUS_LABELS,

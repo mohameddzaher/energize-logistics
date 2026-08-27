@@ -1,17 +1,25 @@
 'use client';
-// الانتهاءات — «وريني اللي هينتهي خلال كام يوم».
+// الانتهاءات والتجديد — الشاشة الوحيدة لسؤالٍ واحد: أيُّ مستندٍ قارب أو انتهى،
+// وكيف يُجدَّد من مكانه.
+//
+// كانت شاشتان: هذه و«تنبيهات المركبات»، وكلتاهما تبنيان من نفس دالة الخادم
+// (buildExpiryRows) وتعرضان نفس الصفوف باسمين مختلفين — فكان المستخدم يقارن
+// رقمًا برقم ويسأل أيّهما الصحيح. أُبقيت هذه وحدها، ونُقل إليها كل ما كانت
+// شاشة التنبيهات تنفرد به: البحث الحُرّ، وإظهار المركبة (ماركة وطراز)، وفلتر
+// «تنبيهه متقفول»، ورابط إعدادات التنبيهات.
 //
 // المدة **رقم يكتبه المستخدم**، مش قايمة ثابتة. الأزرار الجاهزة (٣٠/٦٠/٩٠)
-// اختصار للشائع بس، واللي عايز ٤٧ يوم يكتب ٤٧. الفلترة كلها بتحصل على السيرفر
-// عشان الملخّص اللي فوق يفضل بيوصف نفس الصفوف اللي تحت بالظبط.
-import { useState, useEffect, useCallback, Suspense } from 'react';
+// اختصار للشائع بس، واللي عايز ٤٧ يوم يكتب ٤٧. الفلترة الأساسية بتحصل على
+// السيرفر عشان الملخّص اللي فوق يفضل بيوصف نفس الصفوف اللي تحت بالظبط.
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { CalendarClock, RefreshCw, ArrowRight } from 'lucide-react';
+import { CalendarClock, RefreshCw, ArrowRight, Settings, BellOff } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { RenewModal, BulkRenewModal } from '@/components/vehicles/RenewModals';
@@ -21,6 +29,7 @@ import {
 } from '@/lib/vehicleRegistry';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
+const STATES = ['expired', 'critical', 'warning', 'upcoming', 'valid'] as const;
 
 function ExpiringInner() {
   const { lang, isRTL } = useLanguage();
@@ -34,6 +43,13 @@ function ExpiringInner() {
   const [doc, setDoc] = useState(sp?.get('doc') || '');
   const [state, setState] = useState(sp?.get('state') || '');
   const [includeExpired, setIncludeExpired] = useState(sp?.get('includeExpired') !== '0');
+  // البحث الحُرّ ورّثناه من شاشة التنبيهات: مسؤول القسم يبحث برقم لوحةٍ بعينه
+  // لا بمدةٍ، وبدونه كان يُضطر إلى تصفّح مئات الصفوف بعينه.
+  const [q, setQ] = useState('');
+  // المستند الذي أُوقف تنبيهه من الإعدادات يظل معروضًا هنا دائمًا — إخفاؤه هو
+  // ما كان يجعل مستندًا منتهيًا فعلًا يغيب في صمت. وهذا الفلتر يُظهر هذه الفئة
+  // وحدها ليراجعها من يضبط العتبات.
+  const [mutedOnly, setMutedOnly] = useState(false);
   const [d, setD] = useState<Awaited<ReturnType<typeof getExpiring>> | null>(null);
   const { user } = useAuth();
   const canEdit = canEditVehicles(user);
@@ -58,6 +74,30 @@ function ExpiringInner() {
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
 
+  const all = useMemo(() => d?.rows || [], [d]);
+  const needle = q.trim().toLowerCase();
+  // البحث والفلتر المتوقّف يُطبَّقان هنا لا على الخادم، فيجب أن يُعاد حساب
+  // الملخّص عليهما أيضًا — وإلا وصف الرقمُ فوق صفوفًا غير التي تحت.
+  const rows = useMemo(() => all.filter((r: any) => {
+    if (mutedOnly && r.alertEnabled !== false) return false;
+    if (!needle) return true;
+    return [r.plateNumber, r.brandAr, r.modelAr, r.sectorAr, r.ownerNameAr, r.docAr, r.docEn, r.reference]
+      .some((v) => String(v || '').toLowerCase().includes(needle));
+  }), [all, mutedOnly, needle]);
+
+  const summary = useMemo(() => {
+    const s: Record<string, number> = { total: rows.length };
+    for (const k of STATES) s[k] = 0;
+    for (const r of rows) s[r.state] = (s[r.state] || 0) + 1;
+    return s;
+  }, [rows]);
+  const byDoc = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const r of rows) c[r.docKey] = (c[r.docKey] || 0) + 1;
+    return (d?.byDoc || []).map((x) => ({ ...x, count: c[x.key] || 0 }));
+  }, [rows, d]);
+  const mutedCount = useMemo(() => all.filter((r: any) => r.alertEnabled === false).length, [all]);
+
   const cols: ExportColumn[] = [
     { header: t('اللوحة', 'Plate'), key: 'plateNumber', width: 16 },
     { header: t('المستند', 'Document'), key: 'docAr', width: 18 },
@@ -66,12 +106,13 @@ function ExpiringInner() {
     { header: t('الحالة', 'State'), key: 'state', transform: (v) => stateLabel(v, ar), width: 16 },
     { header: t('القطاع', 'Sector'), key: 'sectorAr', width: 16 },
     { header: t('الماركة', 'Brand'), key: 'brandAr', width: 16 },
+    { header: t('الطراز', 'Model'), key: 'modelAr', width: 16 },
     { header: t('المالك', 'Owner'), key: 'ownerNameAr', width: 26 },
     { header: t('المرجع', 'Reference'), key: 'reference', width: 22 },
+    { header: t('التنبيه مفعّل', 'Alert on'), key: 'alertEnabled', transform: (v) => (v === false ? t('لا', 'No') : t('نعم', 'Yes')), width: 12 },
   ];
 
   if (loading && !d) return <Spinner />;
-  const rows = d?.rows || [];
 
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -82,11 +123,19 @@ function ExpiringInner() {
 
       <PageHeader
         icon={<CalendarClock className="w-5 h-5" />}
-        title={t('الانتهاءات', 'Expiries')}
+        title={t('الانتهاءات والتجديد', 'Expiries & Renewals')}
         subtitle={t('كل مستند له تاريخ — اختر المدة التي تهمّك', 'Every dated document — pick the window that matters to you')}
       >
-        <ExportMenu fileName="vehicle-expiries" lang={lang as 'ar' | 'en'}
-          options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: t('الانتهاءات', 'Expiries'), rows, columns: cols }] }]} />
+        <div className="flex items-center gap-2">
+          {/* العتبات تُضبط من الإعدادات، وهي التي تحدّد «حرج» من «تحذير» —
+              فالرابط إليها ينتمي إلى الشاشة التي تُظهر أثرها. */}
+          <Link href="/system/vehicles/registry/settings"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
+            <Settings className="w-4 h-4" /> {t('إعدادات التنبيهات', 'Alert settings')}
+          </Link>
+          <ExportMenu fileName="vehicle-expiries" lang={lang as 'ar' | 'en'}
+            options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: t('الانتهاءات', 'Expiries'), rows, columns: cols }] }]} />
+        </div>
       </PageHeader>
 
       {/* المدة — الجزء اللي المستخدم بيتحكّم فيه */}
@@ -100,11 +149,11 @@ function ExpiringInner() {
             <span className="text-sm text-slate-500">{t('يوم', 'days')}</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {QUICK.map((q) => (
-              <button key={q} onClick={() => setWithin(String(q))}
+            {QUICK.map((qd) => (
+              <button key={qd} onClick={() => setWithin(String(qd))}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                  within === String(q) ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
-                }`}>{q}</button>
+                  within === String(qd) ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                }`}>{qd}</button>
             ))}
             <button onClick={() => setWithin('')}
               className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${within === '' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}>
@@ -114,6 +163,9 @@ function ExpiringInner() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder={t('لوحة · مالك · قطاع · ماركة…', 'Plate · owner · sector · brand…')}
+            className="px-3 py-2 rounded-lg border border-slate-200 text-sm w-64 max-w-full" />
           <select value={doc} onChange={(e) => setDoc(e.target.value)}
             className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
             <option value="">{t('كل المستندات', 'All documents')}</option>
@@ -122,7 +174,7 @@ function ExpiringInner() {
           <select value={state} onChange={(e) => setState(e.target.value)}
             className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
             <option value="">{t('كل الحالات', 'All states')}</option>
-            {['expired', 'critical', 'warning', 'upcoming', 'valid'].map((s) => (
+            {STATES.map((s) => (
               <option key={s} value={s}>{stateLabel(s, ar)}</option>
             ))}
           </select>
@@ -130,31 +182,41 @@ function ExpiringInner() {
             <input type="checkbox" checked={includeExpired} onChange={(e) => setIncludeExpired(e.target.checked)} className="accent-[#f37121]" />
             {t('اعرض المنتهي بالفعل', 'Include already expired')}
           </label>
-          <span className="text-xs text-slate-400 ms-auto">{rows.length} {t('صف', 'rows')}</span>
+          {mutedCount > 0 && (
+            <button onClick={() => setMutedOnly((v) => !v)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                mutedOnly ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+              }`}>
+              <BellOff className="w-3.5 h-3.5" />{t('تنبيهه متقفول', 'Alert muted')} <b>{mutedCount}</b>
+            </button>
+          )}
+          <span className="text-xs text-slate-400 ms-auto">
+            {rows.length}{rows.length !== all.length ? ` / ${all.length}` : ''} {t('صف', 'rows')}
+          </span>
         </div>
       </div>
 
       {/* ملخّص — بيتحسب على نفس الصفوف المعروضة */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
-        {(['expired', 'critical', 'warning', 'upcoming', 'valid'] as const).map((k) => {
+        {STATES.map((k) => {
           const m = STATE_META[k];
           return (
             <button key={k} onClick={() => setState(state === k ? '' : k)}
               className={`text-start bg-white border rounded-xl p-3 shadow-sm transition-colors ${state === k ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : 'border-slate-200 hover:border-slate-300'}`}>
-              <p className="text-2xl font-extrabold leading-none" style={{ color: m.color }}>{d?.summary?.[k] ?? 0}</p>
+              <p className="text-2xl font-extrabold leading-none" style={{ color: m.color }}>{summary[k] ?? 0}</p>
               <p className="text-[11px] text-slate-500 mt-1.5">{ar ? m.ar : m.en}</p>
             </button>
           );
         })}
         <div className="bg-slate-900 rounded-xl p-3 text-white">
-          <p className="text-2xl font-extrabold leading-none">{d?.summary?.total ?? 0}</p>
+          <p className="text-2xl font-extrabold leading-none">{summary.total}</p>
           <p className="text-[11px] text-slate-300 mt-1.5">{t('الإجمالي', 'Total')}</p>
         </div>
       </div>
 
       {/* توزيع على المستندات */}
       <div className="flex flex-wrap gap-1.5">
-        {(d?.byDoc || []).map((x) => (
+        {byDoc.map((x) => (
           <button key={x.key} onClick={() => setDoc(doc === x.key ? '' : x.key)}
             className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
               doc === x.key ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
@@ -181,13 +243,13 @@ function ExpiringInner() {
                       })} />
                   </th>
                 )}
-                {[t('اللوحة', 'Plate'), t('المستند', 'Document'), t('ينتهي في', 'Expires'),
+                {[t('اللوحة', 'Plate'), t('المركبة', 'Vehicle'), t('المستند', 'Document'), t('ينتهي في', 'Expires'),
                 t('المتبقي', 'Left'), t('الحالة', 'State'), t('القطاع', 'Sector'), t('المالك', 'Owner'), ''].map((h, i) => (
                 <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>
               ))}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((r) => {
+              {rows.map((r: any) => {
                 const m = STATE_META[r.state] || STATE_META.valid;
                 return (
                   <tr key={`${r.vehicleId}-${r.docKey}`}
@@ -207,7 +269,17 @@ function ExpiringInner() {
                       <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicleId}`)}
                         className="font-semibold text-slate-800 hover:text-[#f37121]">{r.plateNumber}</button>
                     </td>
-                    <td className="px-3 py-2.5 text-slate-600">{ar ? r.docAr : r.docEn}</td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{[r.brandAr, r.modelAr].filter(Boolean).join(' ') || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-600">
+                      <span className="inline-flex items-center gap-1 justify-center">
+                        {ar ? r.docAr : r.docEn}
+                        {/* التنبيه المتوقّف يُعلَّم ولا يُخفى: الصف قائم، والمستخدم
+                            يعرف لماذا لم يصله إشعارٌ به. */}
+                        {r.alertEnabled === false && (
+                          <BellOff className="w-3.5 h-3.5 text-slate-400" aria-label={t('تنبيهه متقفول', 'Alert muted')} />
+                        )}
+                      </span>
+                    </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(r.expiryDate)}</td>
                     <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: m.color }}>{daysText(r.daysRemaining, ar)}</td>
                     <td className="px-3 py-2.5">
@@ -225,7 +297,7 @@ function ExpiringInner() {
                 );
               })}
               {!rows.length && (
-                <tr><td colSpan={canEdit ? 9 : 8} className="px-3 py-12 text-center text-slate-500">
+                <tr><td colSpan={canEdit ? 10 : 9} className="px-3 py-12 text-center text-slate-500">
                   {t('لا شيء ينتهي خلال هذه المدة', 'Nothing expires in this window')}
                 </td></tr>
               )}
@@ -257,7 +329,7 @@ function ExpiringInner() {
 
       {renewing && (
         <RenewModal row={renewing} ar={ar} onClose={() => setRenewing(null)}
-          onDone={() => { setRenewing(null); load(); }} />
+          onDone={() => { setRenewing(null); setPicked(new Set()); load(); }} />
       )}
     </div>
   );

@@ -18,7 +18,7 @@ import {
   Thermometer, Satellite, Crown, Container, FileBarChart,
   Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail,
   CalendarClock, TriangleAlert,
-  FileSignature, PhoneCall,
+  FileSignature, PhoneCall, UserCheck, Fuel, ClipboardCheck,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -245,9 +245,22 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vehicles/registry/corporate', label: lang === 'ar' ? 'وثائق تأمين الشركة' : 'Company Policies', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/insurance', label: lang === 'ar' ? 'وثائق تأمين المركبات' : 'Insurance Policies', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/records', label: lang === 'ar' ? 'سجلّات القسم' : 'Registers', icon: <Boxes className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    // ── صفحةٌ لكل عائلةِ مستند ───────────────────────────────────────────────
+    // في الملف المصدر كل عائلةٍ مجموعةٌ بلونها: التأمين، بترو اب، التتبّع،
+    // بطاقات التشغيل، رخص السير، الفحص، التفاويض. وكانت بياناتها كلُّها مخزَّنة
+    // ولا تجد عمودًا يعرضها — تفلتر على بطاقة التشغيل فلا ترى رقم بطاقةٍ واحد.
+    // وجمعُها في جدولٍ واحد يجاوز الأربعين عمودًا فلا يُقرأ، فصارت كلُّ عائلةٍ
+    // شاشةً تتبع الورقة التي يعرفها القسم. ونفسُ أدوار بقيّة صفحات المركبات:
+    // من فُتح له القسم فُتح له بكامله.
+    { href: '/system/vehicles/registry/insurance/vehicles', label: lang === 'ar' ? 'تأمين المركبات' : 'Vehicle Insurance', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/operating-cards', label: lang === 'ar' ? 'بطاقات التشغيل' : 'Operating Cards', icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/authorizations', label: lang === 'ar' ? 'التفاويض' : 'Authorisations', icon: <UserCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/fuel-cards', label: lang === 'ar' ? 'بترو اب — شرائح الوقود' : 'Petro App Cards', icon: <Fuel className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/gps', label: lang === 'ar' ? 'أجهزة التتبّع GPS' : 'GPS Devices', icon: <Satellite className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/licenses', label: lang === 'ar' ? 'رخص السير' : 'Vehicle Licences', icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/registry/inspection', label: lang === 'ar' ? 'الفحص الدوري' : 'Periodic Inspection', icon: <ClipboardCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/dashboard', label: lang === 'ar' ? 'تحليلات المركبات' : 'Registry Analytics', icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry', label: lang === 'ar' ? 'سجل المركبات' : 'Vehicle Registry', icon: <Car className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
-    { href: '/system/vehicles/registry/alerts', label: lang === 'ar' ? 'تنبيهات المركبات' : 'Vehicle Alerts', icon: <Bell className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/settings', label: lang === 'ar' ? 'إعدادات التنبيهات' : 'Alert Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager'], section: 'Vehicles', restrict: true },
     { href: '/system/vehicles/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },

@@ -195,7 +195,10 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
       );
 }
 
-// ══════════════════ التنبيهات ══════════════════
+// ══════════════════ الانتهاءات والتجديد ══════════════════
+// الاسم الظاهر واحدٌ في الموقع والتطبيق: الموقع دمج «تنبيهات المركبات» في
+// «الانتهاءات والتجديد»، فبقاء اسمين لشاشةٍ واحدة يجعل المستخدم يبحث عن شاشةٍ
+// لا وجود لها. اسم الصنف باقٍ كما هو لأنه داخليٌّ لا يراه أحد.
 class VehicleRegistryAlertsScreen extends StatefulWidget {
   const VehicleRegistryAlertsScreen({super.key});
   @override
@@ -236,7 +239,7 @@ class _VRAlertsState extends State<VehicleRegistryAlertsScreen> {
     final bs = Map<String, dynamic>.from(d?['byStatus'] ?? {});
     final byDoc = Map<String, dynamic>.from(d?['byDoc'] ?? {});
     return AppScaffold(
-      title: Text(tr('تنبيهات المركبات', 'Vehicle Alerts')),
+      title: Text(tr('الانتهاءات والتجديد', 'Expiries & Renewals')),
       actions: [IconButton(icon: const Icon(Icons.settings_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleRegistrySettingsScreen())))],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 70), SizedBox(height: 10), Shimmer(height: 60)])

@@ -4,9 +4,9 @@ import { useRouter } from 'next/navigation';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
 import { getVehicleAnalyticsTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { detectTrips, type GPSMovement } from '@/lib/tripDetection';
-import { Truck, Activity, DollarSign, MapPin, Navigation, Route, TrendingUp, AlertTriangle, Search, Filter, ChevronUp, ChevronDown, Download } from 'lucide-react';
+import { Truck, Activity, DollarSign, MapPin, Navigation, Route, TrendingUp, AlertTriangle, Search, Filter, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface RawPetro { vehicleId: string; vehicle?: string; model?: string; branch?: string; driver?: string; status?: string; maxConsump?: number; currentRate?: number; fuel?: string; category?: string; consType?: string; [k: string]: any }
 interface RawGpsOdo { vehicleId: string; distance?: number | string; driver?: string; date?: string; initial?: number | string; final?: number | string; [k: string]: any }
@@ -60,16 +60,14 @@ export default function VehicleAnalyticsPage() {
     setShowClearConfirm(false);
   };
 
-  const handleExport = () => {
-    exportToExcel(vehicleTable, [
-      { header: tx.vehicle, key: 'vehicleId' }, { header: tx.model, key: 'model' },
-      { header: tx.branch, key: 'branch' }, { header: tx.driver, key: 'driver' },
-      { header: tx.status, key: 'status' }, { header: tx.fuelPct, key: 'fuelPct', transform: (v: number) => v > 0 ? v.toFixed(0) + '%' : '' },
-      { header: tx.gpsKm, key: 'gpsKm', transform: (v: number) => v > 0 ? Math.round(v) : '' },
-      { header: tx.avgSpeed, key: 'avgSpeed', transform: (v: number) => v > 0 ? v.toFixed(0) : '' },
-      { header: tx.trips, key: 'trips' }, { header: tx.revenue, key: 'revenue' }, { header: tx.expenses, key: 'expenses' },
-    ], 'vehicle-analytics-dashboard', 'Dashboard');
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: tx.vehicle, key: 'vehicleId' }, { header: tx.model, key: 'model' },
+    { header: tx.branch, key: 'branch' }, { header: tx.driver, key: 'driver' },
+    { header: tx.status, key: 'status' }, { header: tx.fuelPct, key: 'fuelPct', transform: (v: number) => v > 0 ? v.toFixed(0) + '%' : '' },
+    { header: tx.gpsKm, key: 'gpsKm', transform: (v: number) => v > 0 ? Math.round(v) : '' },
+    { header: tx.avgSpeed, key: 'avgSpeed', transform: (v: number) => v > 0 ? v.toFixed(0) : '' },
+    { header: tx.trips, key: 'trips' }, { header: tx.revenue, key: 'revenue' }, { header: tx.expenses, key: 'expenses' },
+  ];
 
   // Derive filter options
   const parseNum = (v: any): number => { const n = parseFloat(String(v || '0').replace(/[^\d.-]/g, '')); return isNaN(n) ? 0 : n; };
@@ -184,11 +182,13 @@ export default function VehicleAnalyticsPage() {
     return Object.entries(map).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 20);
   }, [filtered, petro]);
 
-  // Vehicle table
-  const vehicleTable = useMemo(() => {
+  // Vehicle table — بُنيت دالّةً لا تعبيرًا لأنّ نطاق «الكلّ» في التصدير يحتاج
+  // الجدولَ نفسه محسوبًا من البيانات الخام لا من `filtered`؛ ولولا ذلك لبقي
+  // «الكلّ» صورةً أخرى من المفلتَر.
+  const buildVehicleTable = (src: { petro: RawPetro[]; gpsOdo: RawGpsOdo[]; gpsMov: RawGpsMov[]; htTrips: RawHtTrip[] }) => {
     const map: Record<string, { vehicleId: string; model: string; branch: string; driver: string; status: string; fuelPct: number; gpsKm: number; avgSpeed: number; trips: number; revenue: number; expenses: number }> = {};
     const ensure = (vid: string) => { if (!map[vid]) map[vid] = { vehicleId: vid, model: '', branch: '', driver: '', status: '', fuelPct: 0, gpsKm: 0, avgSpeed: 0, trips: 0, revenue: 0, expenses: 0 }; };
-    filtered.petro.forEach(r => {
+    src.petro.forEach(r => {
       ensure(r.vehicleId);
       map[r.vehicleId].model = String(r.model || '');
       map[r.vehicleId].branch = String(r.branch || '');
@@ -197,13 +197,19 @@ export default function VehicleAnalyticsPage() {
       const cur = parseNum(r.currentRate);
       map[r.vehicleId].fuelPct = max > 0 ? (cur / max) * 100 : 0;
     });
-    filtered.gpsOdo.forEach(r => { ensure(r.vehicleId); map[r.vehicleId].gpsKm += parseNum(r.distance); if (r.driver && !map[r.vehicleId].driver) map[r.vehicleId].driver = String(r.driver); });
-    filtered.gpsMov.forEach(r => { ensure(r.vehicleId); const spd = parseNum(r.avgSpeed); if (spd > map[r.vehicleId].avgSpeed) map[r.vehicleId].avgSpeed = spd; });
-    filtered.htTrips.forEach(r => { ensure(r.vehicleId); map[r.vehicleId].trips += 1; map[r.vehicleId].revenue += parseNum(r.revenue || r.selling); map[r.vehicleId].expenses += parseNum(r.actualDriverExpense); if (r.driver1 && !map[r.vehicleId].driver) map[r.vehicleId].driver = String(r.driver1); });
+    src.gpsOdo.forEach(r => { ensure(r.vehicleId); map[r.vehicleId].gpsKm += parseNum(r.distance); if (r.driver && !map[r.vehicleId].driver) map[r.vehicleId].driver = String(r.driver); });
+    src.gpsMov.forEach(r => { ensure(r.vehicleId); const spd = parseNum(r.avgSpeed); if (spd > map[r.vehicleId].avgSpeed) map[r.vehicleId].avgSpeed = spd; });
+    src.htTrips.forEach(r => { ensure(r.vehicleId); map[r.vehicleId].trips += 1; map[r.vehicleId].revenue += parseNum(r.revenue || r.selling); map[r.vehicleId].expenses += parseNum(r.actualDriverExpense); if (r.driver1 && !map[r.vehicleId].driver) map[r.vehicleId].driver = String(r.driver1); });
     const arr = Object.values(map);
     arr.sort((a, b) => sortAsc ? (a[sortKey] > b[sortKey] ? 1 : -1) : (a[sortKey] < b[sortKey] ? 1 : -1));
     return arr;
-  }, [filtered, sortKey, sortAsc]);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const vehicleTable = useMemo(() => buildVehicleTable(filtered), [filtered, sortKey, sortAsc]);
+  // جدول «الكلّ» يُحسب هنا لا عند بناء خيارات التصدير: تجميعُ آلاف الصفوف الخام
+  // كان سيتكرّر مع كل ضغطة مفتاحٍ في مربّع البحث لو تُرك أسفل الشاشة.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const allVehicleTable = useMemo(() => buildVehicleTable({ petro, gpsOdo, gpsMov, htTrips }), [petro, gpsOdo, gpsMov, htTrips, sortKey, sortAsc]);
 
   // Revenue per KM
   const revenuePerKm = useMemo(() => {
@@ -314,6 +320,12 @@ export default function VehicleAnalyticsPage() {
   ];
 
   const hasData = petro.length > 0 || gpsOdo.length > 0 || gpsMov.length > 0 || htTrips.length > 0;
+  // خمسة فلاتر تحكم الجدول؛ العدّاد جنب كلّ نطاقٍ هو ما يمنع تصدير المفلتَر بحسبانه الكلّ.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Dashboard', rows: vehicleTable, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: 'Dashboard', rows: allVehicleTable, columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-6">
@@ -321,7 +333,7 @@ export default function VehicleAnalyticsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-slate-900">{tx.title}</h1>
         <div className="flex items-center gap-2">
-          {hasData && <button onClick={handleExport} className="px-3 py-2 bg-emerald-500/20 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1"><Download className="w-4 h-4" /> {tx.exportExcel}</button>}
+          {hasData && <ExportMenu fileName="vehicle-analytics-dashboard" lang={lang === 'ar' ? 'ar' : 'en'} label={tx.exportExcel} options={exportOptions} />}
           <button onClick={() => router.push('/system/vehicle-analytics/upload')} className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200">
             {tx.manageData}
           </button>

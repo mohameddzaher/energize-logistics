@@ -5,8 +5,8 @@ import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { detectTrips, type GPSMovement } from '@/lib/tripDetection';
 import { useLanguage } from '@/context/LanguageContext';
 import { getVehicleAnalyticsVehicleIdTranslations } from '@/lib/translations';
-import { ArrowLeft, Truck, Activity, DollarSign, MapPin, Navigation, Route, TrendingUp, AlertTriangle, Gauge, Fuel, Users, Calendar, CheckCircle, XCircle, Download } from 'lucide-react';
-import { exportToExcel } from '@/utils/exportExcel';
+import { ArrowLeft, Truck, Activity, DollarSign, MapPin, Navigation, Route, TrendingUp, AlertTriangle, Gauge, Fuel, Users, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 type Tab = 'overview' | 'trips' | 'gps' | 'fuel' | 'financials' | 'compliance';
 type GpsSortKey = 'time' | 'distance' | 'speed';
@@ -161,18 +161,24 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
     return d;
   }, [gpsMov, gpsSearch, gpsSort]);
 
-  const exportGps = () => {
-    exportToExcel(filteredGpsMov, [
-      { header: tx.startTime, key: 'beginning', transform: (v) => v || '-', width: 18 },
-      { header: tx.endTime, key: 'end', transform: (v) => v || '-', width: 18 },
-      { header: tx.from, key: 'initialLocation', transform: (v) => v || '-', width: 28 },
-      { header: tx.to, key: 'finalLocation', transform: (v) => v || '-', width: 28 },
-      { header: tx.duration, key: 'duration', transform: (v) => v || '-', width: 14 },
-      { header: tx.distance, key: 'distance', transform: (v) => parseNum(v).toFixed(1), width: 12 },
-      { header: tx.maxSpeed, key: 'maxSpeed', transform: (v) => parseNum(v).toFixed(0), width: 12 },
-      { header: tx.avgSpeed, key: 'avgSpeed', transform: (v) => parseNum(v).toFixed(0), width: 12 },
-    ], `gps-${id}`, lang === 'ar' ? 'حركة GPS' : 'GPS Movements');
-  };
+  const gpsExportColumns: ExportColumn[] = [
+    { header: tx.startTime, key: 'beginning', transform: (v) => v || '-', width: 18 },
+    { header: tx.endTime, key: 'end', transform: (v) => v || '-', width: 18 },
+    { header: tx.from, key: 'initialLocation', transform: (v) => v || '-', width: 28 },
+    { header: tx.to, key: 'finalLocation', transform: (v) => v || '-', width: 28 },
+    { header: tx.duration, key: 'duration', transform: (v) => v || '-', width: 14 },
+    { header: tx.distance, key: 'distance', transform: (v) => parseNum(v).toFixed(1), width: 12 },
+    { header: tx.maxSpeed, key: 'maxSpeed', transform: (v) => parseNum(v).toFixed(0), width: 12 },
+    { header: tx.avgSpeed, key: 'avgSpeed', transform: (v) => parseNum(v).toFixed(0), width: 12 },
+  ];
+  // الجدول نفسه لا يرسم إلّا أوّل خمسمئة مقطع، والبحث فوقه يضيّقها أكثر؛ فلزم أن
+  // يقول الزرّ صراحةً أيَّ مجموعةٍ يأخذ، وإلّا خرج ملفٌّ ناقصٌ بلا علامةٍ على نقصه.
+  const gpsSheetName = lang === 'ar' ? 'حركة GPS' : 'GPS Movements';
+  const gpsScope = exportScopeLabels(lang === 'ar');
+  const gpsExportOptions = [
+    { key: 'shown', label: gpsScope.shown, sheets: [{ name: gpsSheetName, rows: filteredGpsMov, columns: gpsExportColumns }] },
+    { key: 'all', label: gpsScope.all, sheets: [{ name: gpsSheetName, rows: gpsMov, columns: gpsExportColumns }] },
+  ];
 
   if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{tx.loading}</div>;
 
@@ -324,9 +330,7 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
               <option value="speed">{tx.speed}</option>
             </select>
             <span className="text-slate-500 text-sm shrink-0">{filteredGpsMov.length}</span>
-            <button type="button" onClick={exportGps} className="shrink-0 inline-flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 border border-slate-300">
-              <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
-            </button>
+            <ExportMenu fileName={`gps-${id}`} lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" className="shrink-0 border border-slate-300" options={gpsExportOptions} />
           </div>
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm">

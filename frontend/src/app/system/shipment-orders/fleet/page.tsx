@@ -14,6 +14,7 @@ import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea,
   SearchableSelect, SmallBadge, Tabs, ErrorNotice,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { OrderSupplier, OrderVehicle, FormField, optionLabel, canEditOrders, canAdminOrders, Lang } from '@/lib/shipmentOrders';
 
 const EMPTY_SUPPLIER = { name: '', type: 'company' as 'company' | 'freelancer', phone: '', email: '', notes: '' };
@@ -108,6 +109,29 @@ export default function FleetPage() {
     try { await api.delete(`/api/shipment-orders/vehicles/${v._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
+  const shownVehicles = vehicles.filter((v) => hit(v.plate, v.name, supplierName(v), v.defaultDriverName));
+  const shownSuppliers = suppliers.filter((s) => hit(s.name, s.phone));
+
+  const vehicleCols: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 16 },
+    { header: ar ? 'الوصف' : 'Description', key: 'name', width: 26, transform: (v) => v || '—' },
+    { header: ar ? 'النوع' : 'Type', key: 'truckType', width: 18, transform: (v) => v || '—' },
+    // العمود يعرض «أسطولنا» حين لا مورّد، تمامًا كشارة الجدول: خلوّ الخانة
+    // يُقرأ نقصًا في البيانات، وهو هنا معلومة ملكيّةٍ صريحة.
+    { header: ar ? 'المالك' : 'Owner', key: 'supplier', width: 26, transform: (_v, r) => supplierName(r) || (ar ? 'أسطولنا' : 'Our fleet') },
+    { header: ar ? 'السائق المعتاد' : 'Usual driver', key: 'defaultDriverName', width: 24, transform: (v) => v || '—' },
+    { header: ar ? 'جواله' : 'Driver phone', key: 'defaultDriverPhone', width: 16, transform: (v) => v || '—' },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 30 },
+  ];
+  const supplierCols: ExportColumn[] = [
+    { header: ar ? 'الاسم' : 'Name', key: 'name', width: 30 },
+    { header: ar ? 'النوع' : 'Type', key: 'type', width: 14, transform: (v) => (v === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company')) },
+    { header: ar ? 'الجوال' : 'Phone', key: 'phone', width: 16 },
+    { header: ar ? 'البريد' : 'Email', key: 'email', width: 26 },
+    { header: ar ? 'عدد السيارات' : 'Vehicles', key: 'vehicleCount', width: 12, transform: (v) => Number(v || 0) },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 30 },
+  ];
+
   if (loading) return <Spinner />;
 
   const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -119,6 +143,23 @@ export default function FleetPage() {
         subtitle={ar
           ? `${vehicles.length} سيارة (${vehicles.filter((v) => !v.supplier).length} من أسطولنا) · ${suppliers.length} مورد — تُسجَّل تلقائياً من نموذج الشحنة`
           : `${vehicles.length} vehicles (${vehicles.filter((v) => !v.supplier).length} ours) · ${suppliers.length} suppliers — auto-registered from the create form`}>
+        {/* التبويبان يعرضان سجلّين مختلفين والبحث يصفّي المعروض منهما، فالخيار
+            الأوّل يطابق الشاشة والثاني يخرج السجلّين كاملين في شيتين. */}
+        <ExportMenu
+          fileName="shipment-orders-fleet" lang={ar ? 'ar' : 'en'}
+          options={[
+            tab === 'vehicles'
+              ? { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'المركبات' : 'Vehicles', rows: shownVehicles as any[], columns: vehicleCols }] }
+              : { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'الموردون' : 'Suppliers', rows: shownSuppliers as any[], columns: supplierCols }] },
+            {
+              key: 'all', label: exportScopeLabels(ar).all,
+              sheets: [
+                { name: ar ? 'المركبات' : 'Vehicles', rows: vehicles as any[], columns: vehicleCols },
+                { name: ar ? 'الموردون' : 'Suppliers', rows: suppliers as any[], columns: supplierCols },
+              ],
+            },
+          ]}
+        />
         {editor && (tab === 'vehicles'
           ? <PrimaryButton onClick={() => { setEditingVeh(null); setVehForm({ ...EMPTY_VEHICLE }); setVehModal(true); }}><Plus className="w-4 h-4" /> {ar ? 'إضافة سيارة' : 'Add vehicle'}</PrimaryButton>
           : <PrimaryButton onClick={() => { setEditingSup(null); setSupForm({ ...EMPTY_SUPPLIER }); setSupModal(true); }}><Plus className="w-4 h-4" /> {ar ? 'إضافة مورد' : 'Add supplier'}</PrimaryButton>)}
@@ -148,7 +189,7 @@ export default function FleetPage() {
               <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
             </tr></thead>
             <tbody>
-              {vehicles.filter((v) => hit(v.plate, v.name, supplierName(v), v.defaultDriverName)).map((v) => (
+              {shownVehicles.map((v) => (
                 <tr key={v._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                   <td className="px-4 py-3 text-slate-900 font-bold font-mono">{v.plate}</td>
                   <td className="px-4 py-3 text-slate-700">{v.name || '—'}</td>
@@ -175,7 +216,7 @@ export default function FleetPage() {
 
       {tab === 'suppliers' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {suppliers.filter((s) => hit(s.name, s.phone)).map((s) => (
+          {shownSuppliers.map((s) => (
             <div key={s._id} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">

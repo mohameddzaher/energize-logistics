@@ -2,9 +2,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getVehicleAnalyticsTripsTranslations } from '@/lib/translations';
-import { Truck, DollarSign, TrendingUp, Calendar, Users, Building2, Search, Filter, ArrowRight, Receipt, Download } from 'lucide-react';
+import { Truck, DollarSign, TrendingUp, Calendar, Users, Building2, Search, Filter, ArrowRight, Receipt } from 'lucide-react';
 
 interface HtTrip { vehicleId: string; month?: string; serial?: string; vehicleType?: string; vehicleNumber?: string; driver1?: string; tripStart?: string; tripEnd?: string; days?: number | string; branch?: string; loadingPlace?: string; unloadingPlace?: string; rentalPaymentType?: string; fullRental?: number | string; revenue?: number | string; selling?: number | string; actualDriverExpense?: number | string; [k: string]: any }
 
@@ -98,6 +98,26 @@ export default function TripsPage() {
   const maxBranchRev = useMemo(() => Math.max(...revByBranch.map(d => d[1]), 1), [revByBranch]);
   const maxClientRev = useMemo(() => (revByClient.length > 0 ? revByClient[0][1] : 1), [revByClient]);
 
+  const exportColumns: ExportColumn[] = [
+    { header: tx.month, key: 'month' }, { header: tx.vehicle, key: 'vehicle' }, { header: tx.driver, key: 'driver' },
+    { header: tx.from, key: 'from' }, { header: tx.to, key: 'to' }, { header: tx.days, key: 'days' },
+    { header: tx.revenue, key: 'revenue' }, { header: tx.expenses, key: 'expenses' },
+    { header: tx.client, key: 'client' }, { header: tx.branch, key: 'branch' },
+  ];
+  const toExportRows = (rows: HtTrip[]) => rows.map(r => ({
+    month: r.month || '', vehicle: r.vehicleNumber || r.vehicleId, driver: r.driver1 || '',
+    from: r.loadingPlace || '', to: r.unloadingPlace || '', days: parseNum(r.days),
+    revenue: parseNum(r.revenue), expenses: parseNum(r.actualDriverExpense),
+    client: r.rentalPaymentType || '', branch: r.branch || '',
+  }));
+  // فلترة شهرٍ أو عميلٍ واحد تختصر آلاف الرحلات إلى عشرات؛ ومن غير تسميةِ النطاق
+  // كان الملفّ يخرج بالمفلتَر وحده وصاحبُه يحسبه سجلَّ الرحلات كلَّه.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Trips', rows: toExportRows(filtered), columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: 'Trips', rows: toExportRows(data), columns: exportColumns }] },
+  ];
+
   if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{tx.loading}</div>;
 
   const hasData = data.length > 0;
@@ -116,21 +136,7 @@ export default function TripsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-slate-900">{tx.title}</h1>
-        {filtered.length > 0 && (
-          <button type="button" onClick={() => exportToExcel(filtered.map(r => ({
-            month: r.month || '', vehicle: r.vehicleNumber || r.vehicleId, driver: r.driver1 || '',
-            from: r.loadingPlace || '', to: r.unloadingPlace || '', days: parseNum(r.days),
-            revenue: parseNum(r.revenue), expenses: parseNum(r.actualDriverExpense),
-            client: r.rentalPaymentType || '', branch: r.branch || '',
-          })), [
-            { header: tx.month, key: 'month' }, { header: tx.vehicle, key: 'vehicle' }, { header: tx.driver, key: 'driver' },
-            { header: tx.from, key: 'from' }, { header: tx.to, key: 'to' }, { header: tx.days, key: 'days' },
-            { header: tx.revenue, key: 'revenue' }, { header: tx.expenses, key: 'expenses' },
-            { header: tx.client, key: 'client' }, { header: tx.branch, key: 'branch' },
-          ], 'trips-data', 'Trips')} className="px-3 py-2 bg-emerald-500/20 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
-            <Download className="w-4 h-4" /> {tx.exportExcel}
-          </button>
-        )}
+        <ExportMenu fileName="trips-data" lang={lang === 'ar' ? 'ar' : 'en'} label={tx.exportExcel} options={exportOptions} />
       </div>
 
       {/* Filters */}

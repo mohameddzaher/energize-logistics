@@ -9,9 +9,10 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UserCog, Plus, X, RefreshCw, Lock, Unlock, KeyRound,
-  Trash2, Edit, MoreVertical, Shield, AlertTriangle, Eye, EyeOff, Download
+  Trash2, Edit, MoreVertical, Shield, AlertTriangle, Eye, EyeOff
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ALL_ROLE_DEFS, rolesGroupedBySection } from '@/lib/roles';
 import { getSectionLabel } from '@/lib/translations';
 
@@ -208,6 +209,23 @@ export default function UsersPage() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  const exportColumns: ExportColumn[] = [
+    { header: T.firstName, key: 'firstName', width: 16 },
+    { header: T.lastName, key: 'lastName', width: 16 },
+    { header: T.email, key: 'email', width: 28 },
+    { header: T.role, key: 'role', transform: (v: string) => roleLabels[v] || v?.replace('_', ' '), width: 20 },
+    { header: T.branch, key: 'branch.name', width: 16 },
+    { header: T.status, key: 'status', transform: (_: any, row: any) => statusLabels[getUserStatus(row)] || getUserStatus(row), width: 10 },
+    { header: T.lastLogin, key: 'lastLogin', transform: fmt.datetime, width: 22 },
+    { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
+  ];
+  // `/api/users` بلا ترقيمٍ ولا فلترة، والشاشة تعرض ما جاء كاملًا؛ فما في الذاكرة
+  // هو الكلّ فعلًا، ونطاقٌ ثانٍ لن يزيد إلّا اسمًا على الملفّ نفسه.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: T.title, rows: users, columns: exportColumns }] },
+  ];
 
   // Real-time updates
   useSocket('user:deleted', fetchUsers);
@@ -1169,22 +1187,7 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => exportToExcel(users, [
-              { header: T.firstName, key: 'firstName', width: 16 },
-              { header: T.lastName, key: 'lastName', width: 16 },
-              { header: T.email, key: 'email', width: 28 },
-              { header: T.role, key: 'role', transform: (v: string) => roleLabels[v] || v?.replace('_', ' '), width: 20 },
-              { header: T.branch, key: 'branch.name', width: 16 },
-              { header: T.status, key: 'status', transform: (_: any, row: any) => statusLabels[getUserStatus(row)] || getUserStatus(row), width: 10 },
-              { header: T.lastLogin, key: 'lastLogin', transform: fmt.datetime, width: 22 },
-              { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
-            ], `users-${new Date().toISOString().split('T')[0]}`, T.title)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
-          >
-            <Download className="w-4 h-4" /> {T.downloadExcel}
-          </button>
+          <ExportMenu fileName="users" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.downloadExcel} options={exportOptions} />
           <button
             type="button"
             onClick={() => { setLoading(true); fetchUsers(); }}

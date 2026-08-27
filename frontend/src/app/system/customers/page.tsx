@@ -9,9 +9,10 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import DataTable from '@/components/system/DataTable';
 import {
-  Plus, X, Users, AlertTriangle, Building2, Filter, ChevronDown, Trash2, Eye, EyeOff, Download,
+  Plus, X, Users, AlertTriangle, Building2, Filter, ChevronDown, Trash2, Eye, EyeOff,
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Customer {
   _id: string;
@@ -145,6 +146,7 @@ export default function CustomersPage() {
   const clientStatusLabels = getClientStatusLabels(T);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -183,8 +185,9 @@ export default function CustomersPage() {
       if (gradeFilter) params.append('grade', gradeFilter);
       if (clientStatusFilter) params.append('clientStatus', clientStatusFilter);
       const query = params.toString() ? `?${params.toString()}` : '';
-      const data = await api.get<{ customers: Customer[] }>(`/api/customers${query}`);
+      const data = await api.get<{ customers: Customer[]; total?: number }>(`/api/customers${query}`);
       setCustomers(data.customers || []);
+      setTotal(Number(data.total) || (data.customers || []).length);
     } catch (err: any) {
       setError(err.message || txx.failedToLoad);
     } finally {
@@ -334,31 +337,47 @@ export default function CustomersPage() {
     }
   };
 
-  const handleExportCustomers = () => {
-    if (customers.length === 0) return;
-    const columns = [
-      { header: T.customerNumber, key: 'customerNumber', width: 16 },
-      { header: T.companyName, key: 'companyName', width: 30 },
-      { header: T.contactPerson, key: 'contactPerson', width: 22 },
-      { header: T.email, key: 'email', width: 28 },
-      { header: T.phone, key: 'phone', width: 18 },
-      { header: T.office, key: 'office', width: 16 },
-      { header: T.salesManager, key: 'salesManager', width: 20 },
-      { header: T.grade, key: 'grade', width: 10 },
-      { header: T.clientStatus, key: 'clientStatus', transform: (v: string) => clientStatusLabels[v] || v?.replace(/_/g, ' ') || '', width: 20 },
-      { header: T.creditTerm, key: 'creditTerm', width: 18 },
-      { header: T.creditLimit, key: 'creditLimit', transform: fmt.money, width: 20 },
-      { header: T.currentOutstanding, key: 'currentOutstanding', transform: fmt.money, width: 20 },
-      { header: T.riskLevel, key: 'riskLevel', transform: fmt.status, width: 14 },
-      { header: T.riskScore, key: 'riskScore', width: 12 },
-      { header: T.lastPaymentDate, key: 'lastPaymentDate', transform: fmt.date, width: 18 },
-      { header: T.lastPaymentAmount, key: 'lastPaymentAmount', transform: fmt.money, width: 24 },
-      { header: T.stopped, key: 'isStopped', transform: fmt.yesNo, width: 10 },
-      { header: T.assignedCollector, key: 'assignedCollector', transform: (_: any, row: Customer) => row.assignedCollector ? `${row.assignedCollector.firstName} ${row.assignedCollector.lastName}` : '', width: 22 },
-    ];
-    const today = new Date().toISOString().split('T')[0];
-    exportToExcel(customers, columns, `${T.customers}_${today}`, T.customers);
+  const exportColumns: ExportColumn[] = [
+    { header: T.customerNumber, key: 'customerNumber', width: 16 },
+    { header: T.companyName, key: 'companyName', width: 30 },
+    { header: T.contactPerson, key: 'contactPerson', width: 22 },
+    { header: T.email, key: 'email', width: 28 },
+    { header: T.phone, key: 'phone', width: 18 },
+    { header: T.office, key: 'office', width: 16 },
+    { header: T.salesManager, key: 'salesManager', width: 20 },
+    { header: T.grade, key: 'grade', width: 10 },
+    { header: T.clientStatus, key: 'clientStatus', transform: (v: string) => clientStatusLabels[v] || v?.replace(/_/g, ' ') || '', width: 20 },
+    { header: T.creditTerm, key: 'creditTerm', width: 18 },
+    { header: T.creditLimit, key: 'creditLimit', transform: fmt.money, width: 20 },
+    { header: T.currentOutstanding, key: 'currentOutstanding', transform: fmt.money, width: 20 },
+    { header: T.riskLevel, key: 'riskLevel', transform: fmt.status, width: 14 },
+    { header: T.riskScore, key: 'riskScore', width: 12 },
+    { header: T.lastPaymentDate, key: 'lastPaymentDate', transform: fmt.date, width: 18 },
+    { header: T.lastPaymentAmount, key: 'lastPaymentAmount', transform: fmt.money, width: 24 },
+    { header: T.stopped, key: 'isStopped', transform: fmt.yesNo, width: 10 },
+    { header: T.assignedCollector, key: 'assignedCollector', transform: (_: any, row: Customer) => row.assignedCollector ? `${row.assignedCollector.firstName} ${row.assignedCollector.lastName}` : '', width: 22 },
+  ];
+  // فلاتر المكتب والخطورة والمهلة تُطبَّق على الخادم، وهو يرقّم بخمسين صفًّا افتراضيًّا
+  // ولا ترسل الصفحة `limit` أصلاً؛ فتصدير ما في الذاكرة كان يقصّ الجرد عند الخمسين صامتًا.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      if (officeFilter) params.set('office', officeFilter);
+      if (riskFilter) params.set('riskLevel', riskFilter);
+      if (creditTermFilter) params.set('creditTerm', creditTermFilter);
+      if (gradeFilter) params.set('grade', gradeFilter);
+      if (clientStatusFilter) params.set('clientStatus', clientStatusFilter);
+    }
+    const data = await api.get<{ customers: Customer[] }>(`/api/customers?${params.toString()}`);
+    return [{ name: T.customers, rows: data.customers || [], columns: exportColumns }];
   };
+  const hasActiveFilters = !!(officeFilter || riskFilter || creditTermFilter || gradeFilter || clientStatusFilter);
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: T.customers, rows: customers, columns: exportColumns }] },
+    { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(total) },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
 
   const updateField = (field: keyof CustomerForm, value: string | number) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -478,15 +497,7 @@ export default function CustomersPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleExportCustomers}
-            disabled={customers.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title={T.downloadExcel}
-          >
-            <Download className="w-4 h-4" />
-            {T.export}
-          </button>
+          <ExportMenu fileName={T.customers} lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.export} options={exportOptions} />
           <button
             onClick={() => setShowFilters(!showFilters)}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm hover:bg-slate-100 transition-colors"

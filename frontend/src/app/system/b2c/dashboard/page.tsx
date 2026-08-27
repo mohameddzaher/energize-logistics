@@ -14,6 +14,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import B2CRepProfileModal from '@/components/system/B2CRepProfileModal';
+import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportOption, type ExportSheet } from '@/components/ls2/ExportMenu';
 
 interface Project { _id: string; name: string; color?: string }
 interface Branch { _id: string; name: string; city?: string }
@@ -274,6 +275,201 @@ export default function B2CDashboard() {
 
   const formatPct = (v: number) => `${(v || 0).toFixed(1)}%`;
 
+  // ── تصدير Excel ───────────────────────────────────────────────────────────
+  // اللوحة ليست جدولًا واحدًا: مناديبُ وأيامٌ وأشهرٌ ومشاريعُ وفروعٌ وتقييمات،
+  // ولكلٍّ منها مفتاحُه ووحدتُه. تُصدَّر كلُّ واحدةٍ في ورقةٍ مستقلّة لأن دمجها
+  // في ورقةٍ واحدة يُفقدها ترويستَها ومعناها.
+  const ar = lang === 'ar';
+  const SCOPE = exportScopeLabels(ar);
+
+  // الملفّ يُفتح بعد أسابيع بعيدًا عن الشاشة وفلاترها، فيُكتب النطاق داخله
+  // صراحةً — وإلّا صار كلُّ ملفٍّ «أرقام B2C» بلا فترةٍ ولا مشروعٍ يُنسب إليه.
+  const scopeText = () => {
+    const parts: string[] = [year && month ? `${monthNames[(month as number) - 1]} ${year}` : (ar ? 'كل الشهور' : 'All months')];
+    if (project) parts.push(projects.find((p) => p._id === project)?.name || '');
+    if (branch) parts.push(branches.find((b) => b._id === branch)?.name || '');
+    if (rep) parts.push(reps.find((r) => r._id === rep)?.englishName || '');
+    if (dateFrom || dateTo) parts.push(`${dateFrom || '…'} → ${dateTo || '…'}`);
+    return parts.filter(Boolean).join(' · ');
+  };
+
+  const kpiCols: ExportColumn[] = [
+    { header: ar ? 'المؤشر' : 'Metric', key: 'label', width: 30 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 22 },
+  ];
+  const repCols: ExportColumn[] = [
+    { header: T.rep, key: 'englishName', width: 26 },
+    { header: T.arabicName, key: 'arabicName', width: 22 },
+    { header: T.project, key: 'project', transform: (v) => v || '—', width: 18 },
+    { header: T.branch, key: 'branch', transform: (v, r) => v || r.city || '—', width: 18 },
+    { header: T.monthlyTarget, key: 'monthlyTarget', width: 14 },
+    { header: T.totalOrders, key: 'totalOrders', width: 14 },
+    { header: T.workingDays, key: 'workingDays', width: 12 },
+    { header: T.avgDailyRate, key: 'dailyRate', transform: (v) => Number(v || 0).toFixed(1), width: 16 },
+    { header: T.performance, key: 'performancePercent', transform: (v) => formatPct(v), width: 12 },
+  ];
+  const dayCols: ExportColumn[] = [
+    { header: ar ? 'اليوم' : 'Date', key: 'dateKey', width: 14 },
+    { header: T.totalOrders, key: 'totalOrders', width: 14 },
+    { header: T.activeReps, key: 'repsActive', width: 14 },
+    { header: tx.didntWork, key: 'repsNotWorked', transform: (v) => v ?? 0, width: 14 },
+    { header: tx.target, key: 'targetSum', transform: (v) => v ?? '—', width: 14 },
+    { header: tx.achievementRate, key: 'achievementPercent', transform: (v) => (v == null ? '—' : formatPct(v)), width: 14 },
+    { header: T.aboveTarget, key: 'repsAboveTarget', transform: (v) => v ?? 0, width: 12 },
+  ];
+  const monthCols: ExportColumn[] = [
+    { header: tx.month, key: 'key', transform: (v) => monthLabel(v), width: 18 },
+    { header: T.totalOrders, key: 'totalOrders', width: 14 },
+    { header: T.workingDays, key: 'workingDays', width: 12 },
+    { header: T.activeReps, key: 'repsActive', width: 14 },
+    { header: T.avgDailyRate, key: 'avgDailyRate', transform: (v) => Number(v || 0).toFixed(1), width: 16 },
+  ];
+  const projectCols: ExportColumn[] = [
+    { header: T.project, key: 'name', width: 24 },
+    { header: T.totalOrders, key: 'totalOrders', width: 14 },
+    { header: T.activeReps, key: 'repsActive', width: 14 },
+  ];
+  const branchCols: ExportColumn[] = [
+    { header: T.branch, key: 'name', width: 24 },
+    { header: T.city, key: 'city', transform: (v) => v || '—', width: 16 },
+    { header: T.totalOrders, key: 'totalOrders', width: 14 },
+    { header: T.activeReps, key: 'repsActive', width: 14 },
+  ];
+  const evalCols: ExportColumn[] = [
+    { header: T.rep, key: 'englishName', width: 26 },
+    { header: T.arabicName, key: 'arabicName', width: 22 },
+    { header: T.project, key: 'project', transform: (v) => v || '—', width: 18 },
+    { header: T.grade, key: 'grade', width: 10 },
+    { header: T.totalOrders, key: 'totalOrders', width: 14 },
+    { header: T.monthsActive, key: 'monthsActive', width: 12 },
+    { header: T.avgPerformance, key: 'avgPerformance', transform: (v) => `${Number(v || 0).toFixed(1)}%`, width: 14 },
+    { header: T.consistency, key: 'consistency', transform: (v) => `${Number(v || 0).toFixed(0)}%`, width: 12 },
+    { header: T.trend, key: 'trend', transform: (v) => (v === 'rising' ? T.rising : v === 'falling' ? T.falling : T.stable), width: 12 },
+  ];
+  const deltaCols: ExportColumn[] = [
+    { header: T.rep, key: 'englishName', width: 26 },
+    { header: ar ? 'أول شهر (طلب/يوم)' : 'First month (orders/day)', key: 'firstMonthAvg', transform: (v) => Number(v || 0).toFixed(1), width: 20 },
+    { header: ar ? 'آخر شهر (طلب/يوم)' : 'Last month (orders/day)', key: 'lastMonthAvg', transform: (v) => Number(v || 0).toFixed(1), width: 20 },
+    { header: ar ? 'نسبة التغيّر' : 'Change', key: 'deltaPercent', transform: (v) => formatPct(v), width: 14 },
+  ];
+  const consistentCols: ExportColumn[] = [
+    { header: T.rep, key: 'englishName', width: 26 },
+    { header: T.totalOrders, key: 'totalOrders', width: 14 },
+    { header: T.monthsActive, key: 'monthsActive', width: 12 },
+    { header: T.consistency, key: 'consistency', transform: (v) => `${Number(v || 0).toFixed(0)}%`, width: 12 },
+  ];
+  const bestDayCols: ExportColumn[] = [
+    { header: T.rep, key: 'englishName', width: 26 },
+    { header: ar ? 'اليوم' : 'Date', key: 'dateKey', width: 14 },
+    { header: T.project, key: 'project', transform: (v) => v || '—', width: 18 },
+    { header: T.totalOrders, key: 'orders', width: 14 },
+  ];
+  const teamDayCols: ExportColumn[] = [
+    { header: ar ? 'اليوم' : 'Date', key: 'dateKey', width: 14 },
+    { header: T.totalOrders, key: 'totalOrders', width: 14 },
+    { header: T.activeReps, key: 'repsActive', width: 14 },
+  ];
+  const dowCols: ExportColumn[] = [
+    { header: ar ? 'يوم الأسبوع' : 'Day of week', key: 'dow', transform: (v) => (ar ? ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])[v] ?? v, width: 14 },
+    { header: ar ? 'متوسط الطلبات لكل مندوب' : 'Avg orders per rep', key: 'avgPerWorker', transform: (v) => Number(v || 0).toFixed(1), width: 22 },
+    { header: T.totalOrders, key: 'totalOrders', width: 14 },
+  ];
+
+  const kpiSheet = (d: any, scope: string): ExportSheet => ({
+    name: ar ? 'المؤشرات' : 'KPIs',
+    columns: kpiCols,
+    rows: [
+      { label: ar ? 'النطاق' : 'Scope', value: scope },
+      { label: T.totalOrders, value: d?.kpis?.totalOrders ?? 0 },
+      { label: T.activeReps, value: d?.kpis?.repsActive ?? 0 },
+      { label: T.workingDays, value: d?.kpis?.totalWorkingDays ?? 0 },
+      { label: T.avgDailyRate, value: Number(d?.kpis?.avgDailyRate || 0).toFixed(1) },
+      { label: T.avgPerformance, value: formatPct(d?.kpis?.avgPerformance || 0) },
+      { label: T.aboveTarget, value: d?.kpis?.aboveTargetReps ?? 0 },
+      { label: T.onTrack, value: d?.kpis?.onTrackReps ?? 0 },
+      { label: T.belowTarget, value: d?.kpis?.belowTargetReps ?? 0 },
+      { label: T.teamCapacity, value: d?.kpis?.teamCapacity ?? 0 },
+      { label: T.capacityUsed, value: formatPct(d?.kpis?.capacityUsedPercent || 0) },
+      { label: T.bestRep, value: d?.kpis?.bestRep?.englishName || '—' },
+      { label: T.bestDay, value: d?.kpis?.bestDay?.dateKey || '—' },
+      { label: tx.totalDaysOff, value: d?.kpis?.totalDaysOff ?? 0 },
+      { label: tx.noDataDays, value: d?.kpis?.totalNoDataDays ?? 0 },
+    ],
+  });
+  const overviewSheets = (d: any, scope: string): ExportSheet[] => [
+    kpiSheet(d, scope),
+    { name: T.byRep, rows: (d?.byRep || []) as any[], columns: repCols },
+    { name: ar ? 'الأيام' : 'Days', rows: (d?.byDay || []) as any[], columns: dayCols },
+    { name: T.byMonth, rows: (d?.byMonth || []) as any[], columns: monthCols },
+    { name: T.byProject, rows: (d?.byProject || []) as any[], columns: projectCols },
+    { name: T.byBranch, rows: (d?.byBranch || []) as any[], columns: branchCols },
+  ];
+  const analyticsListSheets = (d: any): ExportSheet[] => [
+    { name: ar ? 'الأكثر تحسّنًا' : 'Improvers', rows: (d?.topImprovers || []) as any[], columns: deltaCols },
+    { name: ar ? 'الأكثر تراجعًا' : 'Decliners', rows: (d?.topDecliners || []) as any[], columns: deltaCols },
+    { name: ar ? 'الأكثر ثباتًا' : 'Most consistent', rows: (d?.mostConsistent || []) as any[], columns: consistentCols },
+    { name: ar ? 'أفضل الأيام الفردية' : 'Best single days', rows: (d?.bestSingleDays || []) as any[], columns: bestDayCols },
+    { name: ar ? 'أفضل أيام الفريق' : 'Best team days', rows: (d?.topTeamDays || []) as any[], columns: teamDayCols },
+    { name: ar ? 'أيام الأسبوع' : 'Day of week', rows: (d?.byDayOfWeek || []) as any[], columns: dowCols },
+  ];
+  const evaluationSheets = (rows: any[]): ExportSheet[] => [{ name: T.evaluationTitle, rows, columns: evalCols }];
+  // الورقة الخاوية تُقرأ خطأً على أنّها بياناتٌ ضاعت، والشاشة نفسها لا تعرض
+  // مكانها إلّا «لا توجد بيانات» — فتُستبعَد من المصنَّف.
+  const nonEmpty = (sheets: ExportSheet[]) => sheets.filter((sh) => (sh.rows || []).length > 0);
+
+  const fetchEvaluationRows = async () => {
+    const params = new URLSearchParams();
+    if (project) params.set('project', project);
+    if (branch) params.set('branch', branch);
+    const d = await api.get<any>(`/api/b2c/evaluations?${params.toString()}`);
+    return d.evaluations || [];
+  };
+
+  const buildExportOptions = (): ExportOption[] => {
+    const d0 = dashboard;
+    if (!d0) return [];
+    const scope = scopeText();
+    return [
+      {
+        key: 'tab',
+        label: SCOPE.shown,
+        sheets: nonEmpty(
+          activeTab === 'evaluation' ? evaluationSheets(evaluations)
+            : activeTab === 'analytics' ? [kpiSheet(d0, scope), ...analyticsListSheets(d0)]
+              : overviewSheets(d0, scope)
+        ),
+      },
+      {
+        key: 'allTabs',
+        label: ar ? 'كل التبويبات (بالفلتر الحالي)' : 'All tabs (current filter)',
+        hint: scope,
+        // التقييمات لا تُجلَب إلّا عند فتح تبويبها، فلو بُني هذا الخيار من
+        // الذاكرة وحدها لخرج المصنَّف ناقصًا ورقةً كاملةً دون أن ينبّه أحد.
+        resolve: async () => {
+          const evals = evaluations.length ? evaluations : await fetchEvaluationRows();
+          return nonEmpty([...overviewSheets(d0, scope), ...analyticsListSheets(d0), ...evaluationSheets(evals)]);
+        },
+      },
+      {
+        key: 'unfiltered',
+        label: SCOPE.all,
+        hint: ar ? 'كل الفترات' : 'all periods',
+        // الشهرُ والمشروعُ والفرعُ والمندوبُ والمدى كلُّها تُطبَّق على الخادم،
+        // فالتصدير الشامل يجب أن يُعاد جلبه بلا معاملات — وإلّا صدّر شهرًا
+        // واحدًا تحت اسم «تصدير الكلّ».
+        resolve: async () => {
+          const [d, ev] = await Promise.all([
+            api.get<any>('/api/b2c/dashboard'),
+            api.get<any>('/api/b2c/evaluations'),
+          ]);
+          const scopeAll = ar ? 'كل الفترات — بلا فلاتر' : 'All periods — no filters';
+          return nonEmpty([...overviewSheets(d, scopeAll), ...analyticsListSheets(d), ...evaluationSheets(ev?.evaluations || [])]);
+        },
+      },
+    ];
+  };
+  const exportOptions = buildExportOptions();
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -292,6 +488,7 @@ export default function B2CDashboard() {
             }`}>
             <Filter className="w-4 h-4" /> {T.filters}
           </button>
+          {exportOptions.length > 0 && <ExportMenu fileName="b2c-dashboard" lang={lang as 'ar' | 'en'} options={exportOptions} />}
           <button type="button" onClick={fetchDashboard} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}>
             <RefreshCw className={`w-4 h-4 ${loading || refreshing ? 'animate-spin' : ''}`} />
           </button>

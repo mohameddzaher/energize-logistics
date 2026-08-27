@@ -6,8 +6,9 @@ import { getCollectorsTranslations, getCollectorsExtraTranslations } from '@/lib
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import StatCard from '@/components/system/StatCard';
-import { Users, Target, TrendingUp, Clock, Download } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { Users, Target, TrendingUp } from 'lucide-react';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from 'recharts';
@@ -58,6 +59,27 @@ export default function CollectorsPage() {
     );
   }
 
+  const exportColumns: ExportColumn[] = [
+    { header: txx.collector, key: 'collector.name', width: 22 },
+    { header: txx.role, key: 'collector.role', width: 16 },
+    { header: T.target, key: 'target', transform: fmt.money, width: 14 },
+    { header: T.totalCollected, key: 'totalCollected', transform: fmt.money, width: 18 },
+    { header: txx.assignedCollected, key: 'assignedCollected', transform: fmt.money, width: 20 },
+    { header: txx.extraCollected, key: 'extraCollected', transform: fmt.money, width: 18 },
+    { header: `${T.efficiency} %`, key: 'efficiency', width: 14 },
+    { header: txx.promises, key: 'totalPromises', width: 12 },
+    { header: txx.promiseFulfillmentPct, key: 'promiseFulfillment', width: 22 },
+    { header: txx.avgDelayDays, key: 'avgDelay', width: 18 },
+    { header: txx.activities, key: 'activityCount', width: 12 },
+    { header: T.assignedCustomers, key: 'assignedCustomers', width: 18 },
+  ];
+  // ترتيبُ المحصّلين يأتي محسوبًا كاملًا من الخادم بلا فلترٍ ولا ترقيم، والجدول
+  // يعرضه كلَّه؛ فنطاقٌ ثانٍ لن يزيد صفًّا واحدًا وإنّما يوحي بفرقٍ لا وجود له.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: 'Performance', rows: ranking, columns: exportColumns }] },
+  ];
+
   const totalCollected = ranking.reduce((s, r) => s + (r.totalCollected || 0), 0);
   const avgEfficiency = ranking.length > 0 ? Math.round(ranking.reduce((s, r) => s + (r.efficiency || 0), 0) / ranking.length) : 0;
   const totalTeamMembers = ranking.length;
@@ -66,22 +88,7 @@ export default function CollectorsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">{T.title}</h1>
-        <button type="button" onClick={() => exportToExcel(ranking, [
-          { header: txx.collector, key: 'collector.name', width: 22 },
-          { header: txx.role, key: 'collector.role', width: 16 },
-          { header: T.target, key: 'target', transform: fmt.money, width: 14 },
-          { header: T.totalCollected, key: 'totalCollected', transform: fmt.money, width: 18 },
-          { header: txx.assignedCollected, key: 'assignedCollected', transform: fmt.money, width: 20 },
-          { header: txx.extraCollected, key: 'extraCollected', transform: fmt.money, width: 18 },
-          { header: `${T.efficiency} %`, key: 'efficiency', width: 14 },
-          { header: txx.promises, key: 'totalPromises', width: 12 },
-          { header: txx.promiseFulfillmentPct, key: 'promiseFulfillment', width: 22 },
-          { header: txx.avgDelayDays, key: 'avgDelay', width: 18 },
-          { header: txx.activities, key: 'activityCount', width: 12 },
-          { header: T.assignedCustomers, key: 'assignedCustomers', width: 18 },
-        ], `collector-performance-${new Date().toISOString().split('T')[0]}`, 'Performance')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-          <Download className="w-4 h-4" /> {T.downloadExcel}
-        </button>
+        <ExportMenu fileName="collector-performance" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.downloadExcel} options={exportOptions} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

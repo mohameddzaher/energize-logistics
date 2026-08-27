@@ -13,9 +13,10 @@ import {
   Pause, Phone, Mail, MessageSquare, MapPin, Send,
   Loader2, Trash2, ChevronDown, ChevronUp, Calendar, Users, BarChart3,
   Lightbulb, ThumbsUp, ThumbsDown, AlertTriangle, RefreshCw,
-  Edit, CalendarClock, Download,
+  Edit, CalendarClock,
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Task {
   _id: string;
@@ -208,6 +209,46 @@ export default function TasksPage() {
       initialLoadDone.current = true;
     }
   }, [isAdmin, statusFilter, collectorFilter, contactMethodFilter, search, dateFrom, dateTo, page]);
+
+  const exportColumns: ExportColumn[] = [
+    { header: T.customer, key: 'customer.companyName', width: 24 },
+    { header: txx.exCustomerNumber, key: 'customer.customerNumber', width: 14 },
+    { header: T.assignedTo, key: 'assignedTo', transform: (_: any, row: any) => row.assignedTo ? `${row.assignedTo.firstName} ${row.assignedTo.lastName}` : '', width: 20 },
+    { header: txx.exCreatedBy, key: 'createdBy', transform: (_: any, row: any) => row.createdBy ? `${row.createdBy.firstName} ${row.createdBy.lastName}` : '', width: 20 },
+    { header: T.contactMethod, key: 'contactMethod', width: 16 },
+    { header: T.status, key: 'status', transform: fmt.status, width: 12 },
+    { header: txx.exOutstanding, key: 'customer.currentOutstanding', transform: fmt.money, width: 16 },
+    { header: T.collectedAmount, key: 'collectedAmount', transform: fmt.money, width: 18 },
+    { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
+    { header: txx.exCompletedAt, key: 'completedAt', transform: fmt.datetime, width: 20 },
+    { header: T.nextFollowUp, key: 'nextFollowUpDate', transform: fmt.date, width: 16 },
+    { header: txx.exNotes, key: 'actionNotes', width: 30 },
+    { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
+  ];
+  const hasActiveFilters = !!(statusFilter || collectorFilter || contactMethodFilter || search || dateFrom || dateTo);
+  // المتابعة تُفلتَر بمحصّلٍ أو بمدًى ثمّ تُصدَّر، والشاشة خمسون مهمّةً فقط؛ فكان
+  // الملفّ يحمل الصفحة الأولى باسم الفلتر كلّه. ونُبقي المسار على حاله (مهامّي
+  // للموظّف، الكلّ للمدير) حتّى لا يتسرّب في التصدير ما لا تُظهره الشاشة أصلًا.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      if (statusFilter) params.set('status', statusFilter);
+      if (collectorFilter) params.set('assignedTo', collectorFilter);
+      if (contactMethodFilter) params.set('contactMethod', contactMethodFilter);
+      if (search) params.set('search', search);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+    }
+    const endpoint = isAdmin ? '/api/tasks' : '/api/tasks/my-tasks';
+    const data = await api.get<any>(`${endpoint}?${params.toString()}`);
+    return [{ name: T.title, rows: data.tasks || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: T.title, rows: tasks, columns: exportColumns }] },
+    { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(total) },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
 
   // ─── FETCH FOLLOW-UP TASKS ──────────────────────────────────
   const fetchFollowUps = useCallback(async () => {
@@ -496,27 +537,7 @@ export default function TasksPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => exportToExcel(tasks, [
-              { header: T.customer, key: 'customer.companyName', width: 24 },
-              { header: txx.exCustomerNumber, key: 'customer.customerNumber', width: 14 },
-              { header: T.assignedTo, key: 'assignedTo', transform: (_: any, row: any) => row.assignedTo ? `${row.assignedTo.firstName} ${row.assignedTo.lastName}` : '', width: 20 },
-              { header: txx.exCreatedBy, key: 'createdBy', transform: (_: any, row: any) => row.createdBy ? `${row.createdBy.firstName} ${row.createdBy.lastName}` : '', width: 20 },
-              { header: T.contactMethod, key: 'contactMethod', width: 16 },
-              { header: T.status, key: 'status', transform: fmt.status, width: 12 },
-              { header: txx.exOutstanding, key: 'customer.currentOutstanding', transform: fmt.money, width: 16 },
-              { header: T.collectedAmount, key: 'collectedAmount', transform: fmt.money, width: 18 },
-              { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
-              { header: txx.exCompletedAt, key: 'completedAt', transform: fmt.datetime, width: 20 },
-              { header: T.nextFollowUp, key: 'nextFollowUpDate', transform: fmt.date, width: 16 },
-              { header: txx.exNotes, key: 'actionNotes', width: 30 },
-              { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
-            ], `tasks-${new Date().toISOString().split('T')[0]}`, T.title)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
-          >
-            <Download className="w-4 h-4" /> {T.downloadExcel}
-          </button>
+          <ExportMenu fileName="tasks" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.downloadExcel} options={exportOptions} />
           {isAdmin && (
             <button
               type="button"

@@ -6,6 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { getOperationsTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import { ArrowLeft, Upload, Plus, Loader2, FileSpreadsheet, Trash2, CheckCircle2 } from 'lucide-react';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import * as XLSX from 'xlsx';
 
 // ── Field Definitions ──
@@ -126,6 +127,7 @@ export default function NewOperationsPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();
   const T = getOperationsTranslations(lang);
+  const ar = lang === 'ar';
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isImportMode = searchParams.get('mode') === 'import';
@@ -257,6 +259,12 @@ export default function NewOperationsPage() {
     XLSX.writeFile(wb, 'operations-import-template.xlsx');
   };
 
+  // الصفوف المعروضة هنا نتيجةُ مطابقةٍ للأعمدة العربية ثم تعديلٍ يدويّ، ولا
+  // تُحفَظ في أيّ مكان قبل الضغط على «استيراد» — فالتصدير هو السبيل الوحيد إلى
+  // مراجعتها أو حفظ نسخةٍ منها قبل رفعها.
+  const exportCols = (defs: FieldDef[]): ExportColumn[] =>
+    defs.map((f) => ({ header: ar ? f.label : f.labelEn, key: f.key, width: 18 }));
+
   // Count how many fields were populated across all rows
   const mappedFieldCount = importRows.length > 0
     ? new Set(importRows.flatMap((r) => Object.keys(r).filter((k) => r[k]))).size
@@ -277,6 +285,23 @@ export default function NewOperationsPage() {
             {mode === 'single' ? T.fillDetailsBelow : T.uploadExcelDescription}
           </p>
         </div>
+        {mode === 'import' && importRows.length > 0 && (
+          <div className="ms-auto">
+            <ExportMenu
+              fileName="operations-import-preview" lang={ar ? 'ar' : 'en'}
+              options={[
+                { key: 'preview', label: ar ? 'أعمدة المعاينة' : 'Preview columns', sheets: [{ name: ar ? 'المعاينة' : 'Preview', rows: importRows, columns: exportCols(PREVIEW_COLUMNS) }] },
+                {
+                  key: 'all',
+                  // المعاينة تُظهر ثمانية أعمدة فقط بينما الاستيراد يرفع كلَّ
+                  // الحقول المُطابَقة، فالتصدير المختصر وحده يُخفي ما سيُرفع.
+                  label: ar ? `كل الحقول (${ALL_FIELDS.length} عموداً)` : `All fields (${ALL_FIELDS.length} columns)`,
+                  sheets: [{ name: ar ? 'كل الحقول' : 'All fields', rows: importRows, columns: exportCols(ALL_FIELDS) }],
+                },
+              ]}
+            />
+          </div>
+        )}
       </div>
 
       {/* Mode Toggle */}

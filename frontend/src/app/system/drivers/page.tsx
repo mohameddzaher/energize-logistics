@@ -6,8 +6,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Truck, Plus, Search, X, Check, Edit, Trash2, Loader2, Download } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { Truck, Plus, Search, X, Check, Edit, Trash2, Loader2 } from 'lucide-react';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
 import { getDriversTranslations, getDriversExtraTranslations } from '@/lib/translations';
 
@@ -106,6 +107,24 @@ export default function DriversPage() {
     d.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Name', key: 'name', width: 20 },
+    { header: 'Phone', key: 'phone', width: 16 },
+    { header: 'ID Number', key: 'idNumber', width: 16 },
+    { header: 'Branch', key: 'branch.name', width: 16 },
+    { header: 'Total Paid', key: 'totalPaid', transform: fmt.money, width: 14 },
+    { header: 'Status', key: 'isActive', transform: (v: boolean) => v ? 'Active' : 'Inactive', width: 10 },
+    { header: 'Notes', key: 'notes', width: 25 },
+    { header: 'Created At', key: 'createdAt', transform: fmt.date, width: 14 },
+  ];
+  // الصفحة تحمّل السائقين كلّهم ثمّ تفلترهم في الذاكرة، فبحثٌ منسيٌّ في الخانة
+  // كان يقصّ الملفّ على صمتٍ؛ العدّادان جنب النطاقين يكشفان الفرق قبل التصدير.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Drivers', rows: filtered, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: 'Drivers', rows: drivers, columns: exportColumns }] },
+  ];
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -127,18 +146,7 @@ export default function DriversPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => exportToExcel(filtered, [
-            { header: 'Name', key: 'name', width: 20 },
-            { header: 'Phone', key: 'phone', width: 16 },
-            { header: 'ID Number', key: 'idNumber', width: 16 },
-            { header: 'Branch', key: 'branch.name', width: 16 },
-            { header: 'Total Paid', key: 'totalPaid', transform: fmt.money, width: 14 },
-            { header: 'Status', key: 'isActive', transform: (v: boolean) => v ? 'Active' : 'Inactive', width: 10 },
-            { header: 'Notes', key: 'notes', width: 25 },
-            { header: 'Created At', key: 'createdAt', transform: fmt.date, width: 14 },
-          ], `drivers-${new Date().toISOString().split('T')[0]}`, 'Drivers')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-            <Download className="w-4 h-4" /> {T.downloadExcel}
-          </button>
+          <ExportMenu fileName="drivers" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.downloadExcel} options={exportOptions} />
           {canEdit && (
             <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
               <Plus className="w-4 h-4" />

@@ -21,6 +21,7 @@ import {
   Spinner, Badge, SmallBadge, Tabs, StatCard, Modal, Field, TextInput, Select, TextArea, PrimaryButton, Loader2,
 } from '@/components/hr/HRKit';
 import ReportButton from '@/components/system/ReportButton';
+import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import ContractFormModal from '@/components/hr/ContractFormModal';
 import { getHrEmployeesIdTranslations } from '@/lib/translations';
@@ -103,6 +104,171 @@ export default function EmployeeProfilePage() {
   const assignedAssets = data.assets.filter((a) => a.status === 'assigned');
   const terminated = e.employmentStatus === 'terminated';
 
+  // ── تصدير ملفّ الموظف ────────────────────────────────────────────────────
+  // نصُّ الحالة يُقرأ من نفس خرائط الشارات المعروضة، فلا يخرج في الملفّ مفتاحٌ
+  // برمجيّ («pending_hr») مكان الكلمة التي يراها المستخدم.
+  const statusText = (map: Record<string, { en: string; ar: string }>, key?: string) =>
+    (key && map[key] ? (ar ? map[key].ar : map[key].en) : (key || ''));
+
+  const kvCols: ExportColumn[] = [
+    { header: ar ? 'البند' : 'Field', key: 'label', width: 26 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 34 },
+  ];
+  // بطاقة النظرة العامة بندٌ وقيمة على الشاشة، فتُصدَّر صفًّا لكل بند؛ ولو صارت
+  // أعمدةً لخرج شيتٌ بصفٍّ واحدٍ وأربعين عمودًا لا يُقرأ.
+  // والحقول المالية تُحذف لغير فريق الموارد البشرية: الملفّ يخرج من النظام
+  // ويُتداول، فما لا يُمنح للدور لا يُصدَّر له.
+  const overviewSheet: ExportSheet = {
+    name: tx.tabOverview,
+    rows: ([
+      { label: ar ? 'الاسم' : 'Name', value: empName(e, lang) },
+      { label: ar ? 'الرقم الوظيفي' : 'Employee no.', value: e.employeeNumber || '' },
+      { label: ar ? 'المسمّى الوظيفي' : 'Job title', value: e.jobTitle || '' },
+      { label: ar ? 'الإدارة' : 'Department', value: e.department || '' },
+      { label: ar ? 'حالة الخدمة' : 'Employment status', value: statusText(EMPLOYMENT_STATUS, e.employmentStatus || 'active') },
+      { label: tx.iqamaExpiry, value: fmtDate(e.iqamaExpiry) },
+      ...profileRows(e, tx, vtx).filter((r) => staff || !r.financial),
+    ] as ProfileRow[]).filter((r) => r.value && r.value !== '—'),
+    columns: kvCols,
+  };
+
+  const docSheet: ExportSheet = {
+    name: ar ? 'الملفات' : 'Files',
+    rows: (data.documents || []) as any[],
+    columns: [
+      { header: ar ? 'اسم الملف' : 'Title', key: 'title', width: 28 },
+      { header: ar ? 'التصنيف' : 'Category', key: 'category', transform: (v) => docCategoryLabel(v || 'other', lang), width: 16 },
+      { header: ar ? 'تاريخ الرفع' : 'Uploaded', key: 'createdAt', transform: (v) => fmtDate(v), width: 13 },
+      { header: ar ? 'رفعه' : 'Uploaded by', key: 'uploadedBy', transform: (v) => (v ? userName(v) : ''), width: 20 },
+      { header: ar ? 'انتهاء المستند' : 'Expiry', key: 'expiryDate', transform: (v) => (v ? fmtDate(v) : ''), width: 13 },
+      { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 26 },
+      { header: ar ? 'الرابط' : 'Link', key: 'fileUrl', width: 40 },
+    ],
+  };
+
+  const leaveSheet: ExportSheet = {
+    name: tx.tabLeaves,
+    rows: data.leaves as any[],
+    columns: [
+      { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 18 },
+      { header: tx.colFrom, key: 'startDate', transform: (v) => fmtDate(v), width: 13 },
+      { header: tx.colTo, key: 'endDate', transform: (v) => fmtDate(v), width: 13 },
+      { header: tx.colDays, key: 'days', width: 9 },
+      { header: tx.colStatus, key: 'status', transform: (v) => statusText(LEAVE_STATUS, v), width: 18 },
+      { header: ar ? 'السبب' : 'Reason', key: 'reason', width: 28 },
+      { header: tx.colSubmitted, key: 'createdAt', transform: (v) => fmtDate(v), width: 13 },
+    ],
+  };
+
+  const custodySheet: ExportSheet = {
+    name: tx.tabCustody,
+    rows: data.assets as any[],
+    columns: [
+      { header: tx.colItem, key: 'name', width: 26 },
+      { header: tx.colType, key: 'type', transform: (v) => assetTypeLabel(v, lang), width: 16 },
+      { header: tx.colSerial, key: 'serialNumber', width: 20 },
+      { header: ar ? 'الماركة' : 'Brand', key: 'brand', width: 14 },
+      { header: ar ? 'الطراز' : 'Model', key: 'model', width: 14 },
+      { header: tx.colCondition, key: 'condition', transform: (v) => (v ? conditionLabel(v, lang) : ''), width: 14 },
+      { header: tx.colStatus, key: 'status', transform: (v) => (v === 'assigned' ? tx.assigned : tx.returned), width: 14 },
+      { header: tx.colAssigned, key: 'assignedDate', transform: (v) => fmtDate(v), width: 13 },
+      { header: ar ? 'تاريخ التسليم' : 'Returned', key: 'returnedDate', transform: (v) => (v ? fmtDate(v) : ''), width: 13 },
+      { header: ar ? 'الجهة المُسلِّمة' : 'Issued by section', key: 'issuedBySection', width: 16 },
+    ],
+  };
+
+  const vehicleAuthSheet: ExportSheet = {
+    name: vtx.empAuthHistory,
+    rows: (vehicleData?.authorizations || []) as any[],
+    columns: [
+      { header: vtx.plateNumber, key: 'vehicle', transform: (v) => plateOf(v), width: 14 },
+      { header: vtx.status, key: 'status', transform: (v) => statusText(AUTH_STATUS, v), width: 12 },
+      { header: vtx.startDate, key: 'startDate', transform: (v) => fmtDate(v), width: 13 },
+      { header: vtx.endDate, key: 'endDate', transform: (v) => (v ? fmtDate(v) : (ar ? 'حتى الآن' : 'now')), width: 13 },
+      { header: vtx.authType, key: 'authorizationType', width: 16 },
+      { header: vtx.documentNumber, key: 'documentNumber', width: 16 },
+      { header: vtx.documentExpiry, key: 'documentExpiry', transform: (v) => (v ? fmtDate(v) : ''), width: 13 },
+      { header: vtx.revokedReason, key: 'revokedReason', width: 24 },
+    ],
+  };
+
+  const vehicleAccidentSheet: ExportSheet = {
+    name: vtx.empAccidents,
+    rows: (vehicleData?.accidents || []) as any[],
+    columns: [
+      { header: vtx.date, key: 'date', transform: (v) => fmtDate(v), width: 13 },
+      { header: vtx.plateNumber, key: 'vehicle', transform: (v) => plateOf(v), width: 14 },
+      { header: vtx.description, key: 'description', width: 40 },
+      { header: vtx.location, key: 'location', width: 20 },
+      { header: vtx.faultParty, key: 'faultParty', transform: (v) => faultPartyLabel(v, lang), width: 14 },
+      { header: vtx.severity, key: 'severity', transform: (v) => statusText(ACCIDENT_SEVERITY, v || 'minor'), width: 12 },
+      { header: vtx.status, key: 'status', transform: (v) => statusText(ACCIDENT_STATUS, v || 'reported'), width: 14 },
+    ],
+  };
+
+  const contractSheet: ExportSheet = {
+    name: tx.tabContracts,
+    rows: data.contracts as any[],
+    columns: [
+      { header: tx.colType, key: 'type', transform: (v) => (v === 'unlimited' ? tx.contractUnlimited : tx.contractFixed), width: 14 },
+      { header: ar ? 'المسمّى الوظيفي' : 'Job title', key: 'jobTitle', width: 20 },
+      { header: tx.colStart, key: 'startDate', transform: (v) => fmtDate(v), width: 13 },
+      { header: tx.colEnd, key: 'endDate', transform: (v) => (v ? fmtDate(v) : ''), width: 13 },
+      { header: tx.colAnnualLeave, key: 'annualLeaveDays', width: 12 },
+      // الراتب والبدلات عمودان يُبنيان بشرطٍ لا يُخفيان بعد البناء: العمود الذي
+      // لا يُنشَأ لا يمكن أن يتسرّب في ملفٍّ يُفتَح خارج النظام.
+      ...(staff ? [
+        { header: tx.colSalary, key: 'basicSalary', transform: (v: any) => (v || 0).toLocaleString(), width: 14 },
+        { header: ar ? 'البدلات' : 'Allowances', key: 'allowances', transform: (v: any) => (v || 0).toLocaleString(), width: 14 },
+      ] as ExportColumn[] : []),
+      { header: tx.colStatus, key: 'status', transform: (v) => statusText(CONTRACT_STATUS, v), width: 12 },
+      { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 26 },
+    ],
+  };
+
+  const requestSheet: ExportSheet = {
+    name: tx.tabRequests,
+    rows: data.requests as any[],
+    columns: [
+      { header: tx.colSubject, key: 'subject', width: 34 },
+      { header: ar ? 'التصنيف' : 'Category', key: 'category', width: 18 },
+      { header: tx.colStatus, key: 'status', transform: (v) => statusText(REQUEST_STATUS, v), width: 14 },
+      { header: tx.colDate, key: 'createdAt', transform: (v) => fmtDateTime(v), width: 18 },
+    ],
+  };
+
+  const renewalSheet: ExportSheet = {
+    name: ar ? 'التجديدات' : 'Renewals',
+    rows: (data.renewals || []) as any[],
+    columns: [
+      { header: ar ? 'المستند' : 'Document', key: 'docType', transform: (v) => renewalTypeLabel(v, lang), width: 18 },
+      { header: ar ? 'الانتهاء السابق' : 'Previous expiry', key: 'previousExpiry', transform: (v) => (v ? fmtDate(v) : ''), width: 15 },
+      { header: ar ? 'الانتهاء الجديد' : 'New expiry', key: 'newExpiry', transform: (v) => (v ? fmtDate(v) : ''), width: 15 },
+      { header: ar ? 'الرقم الجديد' : 'New number', key: 'documentNumber', width: 18 },
+      { header: ar ? 'تاريخ التجديد' : 'Renewed at', key: 'renewedAt', transform: (v) => fmtDate(v), width: 13 },
+      { header: ar ? 'نفّذه' : 'Renewed by', key: 'renewedBy', transform: (v) => (v ? userName(v) : ''), width: 20 },
+      { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 26 },
+    ],
+  };
+
+  const auditCols: ExportColumn[] = [
+    { header: ar ? 'الإجراء' : 'Action', key: 'action', transform: (v) => auditActionLabel(v, lang), width: 20 },
+    { header: ar ? 'التاريخ' : 'When', key: 'createdAt', transform: (v) => fmtDateTime(v), width: 18 },
+    { header: ar ? 'المستخدم' : 'User', key: 'user', transform: (v) => (v ? userName(v) : ''), width: 20 },
+    { header: ar ? 'الحقول المتغيّرة' : 'Changed fields', key: 'changes', transform: (v) => (v?.after && typeof v.after === 'object' ? Object.keys(v.after).join('، ') : ''), width: 40 },
+  ];
+
+  const tabSheets: Record<string, ExportSheet[]> = {
+    overview: [overviewSheet],
+    documents: [docSheet],
+    leaves: [leaveSheet],
+    custody: [custodySheet],
+    vehicles: [vehicleAuthSheet, vehicleAccidentSheet],
+    contracts: [contractSheet],
+    requests: [requestSheet],
+    history: [renewalSheet, { name: ar ? 'سجل التغييرات' : 'Change log', rows: audit as any[], columns: auditCols }],
+  };
+
   const tabs = [
     { key: 'overview', label: tx.tabOverview },
     { key: 'documents', label: ar ? 'الملفات' : 'Files', badge: data.documents?.length || undefined },
@@ -131,17 +297,40 @@ export default function EmployeeProfilePage() {
           <p className="text-slate-500 text-sm mt-1">{e.jobTitle || '—'} {e.department ? `· ${e.department}` : ''} {e.employeeNumber ? `· #${e.employeeNumber}` : ''}</p>
           <p className="text-slate-500 text-xs mt-1">{e.user ? `${tx.linkedLogin}: ${userName(e.user)}` : tx.noLoginLinked}</p>
         </div>
-        {/* Quick actions (staff only) */}
-        {staff && (
-          <div className="flex flex-wrap items-center gap-2">
+        {/* Quick actions — الجميع يصدّرون، وما عدا ذلك لفريق الموارد البشرية */}
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportMenu fileName={`employee-${e.employeeNumber || id}`} lang={lang as 'ar' | 'en'}
+            options={[
+              { key: 'tab', label: ar ? 'التبويب الحالي' : 'Current tab', sheets: tabSheets[tab] || [overviewSheet] },
+              {
+                key: 'all', label: `${exportScopeLabels(ar).all} — ${ar ? 'ملفّ الموظف' : 'full employee file'}`,
+                hint: ar ? 'كل التبويبات' : 'all tabs',
+                // سجلّ التغييرات لا يُجلب إلا عند فتح تبويب «السجل»، فلو بُني
+                // الخيارُ من الحالة المحمّلة لخرج المصنَّفُ «الكامل» بلا سجلّ
+                // لمجرّد أن أحدًا لم يفتح التبويب. ويُجلب لموظّفي الموارد
+                // البشرية وحدهم لأن الخادم لا يُتيحه لغيرهم أصلًا.
+                resolve: async (): Promise<ExportSheet[]> => {
+                  let logs = audit;
+                  if (staff && !logs.length) {
+                    try { logs = (await api.get<{ logs: AuditEntry[] }>(`/api/hr/employees/${id}/audit`)).logs || []; } catch { logs = []; }
+                  }
+                  return [
+                    overviewSheet, docSheet, leaveSheet, custodySheet,
+                    vehicleAuthSheet, vehicleAccidentSheet, contractSheet, requestSheet, renewalSheet,
+                    ...(staff ? [{ name: ar ? 'سجل التغييرات' : 'Change log', rows: logs as any[], columns: auditCols }] : []),
+                  ];
+                },
+              },
+            ]} />
+          {staff && (<>
             <ReportButton subject="employee" id={String(e._id)} label={ar ? 'تقرير الموظف' : 'Employee report'} />
             <ActionBtn onClick={() => setShowEdit(true)} icon={<Edit className="w-4 h-4" />} label={ar ? 'تعديل' : 'Edit'} primary />
             <ActionBtn onClick={() => setShowRenew(true)} icon={<RefreshCw className="w-4 h-4" />} label={ar ? 'تجديد مستند' : 'Renew Doc'} />
             {terminated
               ? <ActionBtn onClick={reactivate} icon={<UserCheck className="w-4 h-4" />} label={ar ? 'إعادة تفعيل' : 'Reactivate'} />
               : <ActionBtn onClick={() => setShowTerminate(true)} icon={<UserX className="w-4 h-4" />} label={ar ? 'إنهاء الخدمة' : 'End Service'} danger />}
-          </div>
-        )}
+          </>)}
+        </div>
       </div>
 
       {/* Termination banner */}
@@ -547,8 +736,12 @@ function DocModal({ open, doc, employeeId, ar, onClose, onDone }: { open: boolea
   );
 }
 
-function Overview({ e, lang, tx, vtx }: { e: Employee; lang: 'en' | 'ar'; tx: ReturnType<typeof getHrEmployeesIdTranslations>; vtx: ReturnType<typeof getVehiclesText> }) {
-  const rows: [string, any][] = [
+// صفوف «نظرة عامة»: تعريفٌ واحد تقرؤه الشاشةُ ويقرؤه التصدير، فلا تُصان قائمةُ
+// الحقول في موضعين فيتخلّف أحدهما عن الآخر. و`financial` تُعلّم الحقول المالية
+// وحدها كي يُسقطها التصديرُ عمّن لا يملك صلاحية الموارد البشرية.
+type ProfileRow = { label: string; value: any; financial?: boolean };
+function profileRows(e: Employee, tx: ReturnType<typeof getHrEmployeesIdTranslations>, vtx: ReturnType<typeof getVehiclesText>): ProfileRow[] {
+  const rows: [string, any, boolean?][] = [
     [tx.arabicName, e.arabicName],
     [tx.nationality, e.nationality],
     [tx.gender, e.gender ? (e.gender === 'male' ? tx.male : tx.female) : ''],
@@ -569,14 +762,14 @@ function Overview({ e, lang, tx, vtx }: { e: Employee; lang: 'en' | 'ar'; tx: Re
     [tx.email, e.email],
     [tx.address, e.address],
     [tx.emergencyContact, e.emergencyContactName ? `${e.emergencyContactName} ${e.emergencyContactPhone || ''}` : ''],
-    [tx.basicSalary, e.basicSalary ? e.basicSalary.toLocaleString() : ''],
-    [vtx.iban, e.iban],
-    [vtx.bank, e.bank],
+    [tx.basicSalary, e.basicSalary ? e.basicSalary.toLocaleString() : '', true],
+    [vtx.iban, e.iban, true],
+    [vtx.bank, e.bank, true],
     [vtx.project2, e.project],
     [vtx.registerNumber, e.registerNumber],
     [vtx.absherNumber, e.absherNumber],
     [vtx.iqamaProfession, e.iqamaProfession],
-    [vtx.penaltyClause, e.penaltyClause ? e.penaltyClause.toLocaleString() : ''],
+    [vtx.penaltyClause, e.penaltyClause ? e.penaltyClause.toLocaleString() : '', true],
     [vtx.insuranceCompany, e.insuranceCompany],
     [vtx.insuranceExpiry, fmtDate(e.insuranceExpiry)],
     [vtx.socialInsuranceStatus, e.socialInsuranceStatus],
@@ -591,14 +784,19 @@ function Overview({ e, lang, tx, vtx }: { e: Employee; lang: 'en' | 'ar'; tx: Re
     [vtx.driverCardType, e.driverCardType],
     [vtx.driverCardExpiry, fmtDate(e.driverCardExpiry)],
   ];
+  return rows.map(([label, value, financial]) => ({ label, value, financial }));
+}
+
+function Overview({ e, lang, tx, vtx }: { e: Employee; lang: 'en' | 'ar'; tx: ReturnType<typeof getHrEmployeesIdTranslations>; vtx: ReturnType<typeof getVehiclesText> }) {
+  const rows = profileRows(e, tx, vtx);
   const iqamaB = expiryBadge(e.iqamaExpiry, lang);
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-3">
-        {rows.filter(([, v]) => v && v !== '—').map(([k, v]) => (
-          <div key={k} className="flex justify-between gap-4 border-b border-slate-200/70 pb-2">
-            <span className="text-slate-500 text-sm">{k}</span>
-            <span className="text-slate-900 text-sm text-end">{v}</span>
+        {rows.filter((r) => r.value && r.value !== '—').map((r) => (
+          <div key={r.label} className="flex justify-between gap-4 border-b border-slate-200/70 pb-2">
+            <span className="text-slate-500 text-sm">{r.label}</span>
+            <span className="text-slate-900 text-sm text-end">{r.value}</span>
           </div>
         ))}
         {e.iqamaExpiry && (

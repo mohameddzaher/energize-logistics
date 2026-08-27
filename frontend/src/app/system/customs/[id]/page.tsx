@@ -10,6 +10,7 @@ import { canEditSection } from '@/lib/sections';
 import { ArrowLeft, ArrowRight, Check, Loader2, Ship, Copy, Mail, Ban, RotateCcw, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
+import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { getCustomsTranslations, getCustomsIdExtraTranslations } from '@/lib/translations';
 
 const STAGE_ORDER = [
@@ -152,6 +153,147 @@ export default function CustomsDetailPage() {
   const updateContainer = (i: number, key: string, v: any) =>
     setContainers(containers.map((r, idx) => (idx === i ? { ...r, [key]: v } : r)));
 
+  // ---- Excel: شيتٌ لكل بطاقةٍ على الشاشة ----------------------------------
+  // بطاقات هذه الصفحة ليست جدولًا واحدًا: بيانات ومراحل ومصروفات وإيرادات
+  // وحاويات. دمجُها في شيتٍ واحد يخلط المصروف بالإيراد في عمودٍ واحد، فيصير
+  // مجموع الملفّ بلا معنى — ولذلك مصنّفٌ متعدّد الشيتات.
+  const kvCols: ExportColumn[] = [
+    { header: ar ? 'البند' : 'Field', key: 'label', width: 32 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 40 },
+  ];
+  const kv = (label: string, value: any) => ({ label, value: value === null || value === undefined || value === '' ? '—' : value });
+
+  const infoSheet: ExportSheet = {
+    name: ar ? 'بيانات المعاملة' : 'Transaction',
+    columns: kvCols,
+    rows: [
+      kv(ar ? 'الرقم المرجعي' : 'Reference', c.refNumber),
+      kv(T.blNumber, c.blNumber), kv(T.customerName, c.customerName),
+      kv(T.invoiceNumber, c.invoiceNumber), kv(T.invoiceDate, c.invoiceDate ? String(c.invoiceDate).slice(0, 10) : ''),
+      kv(T.port, c.port), kv(T.invoiceType, c.invoiceType),
+      kv(T.containerCount, c.containerCount), kv(T.totalWeight, c.totalWeight),
+      kv(T.invoiceValue, c.invoiceValue), kv(T.currency, c.currency),
+      kv(T.exporterCompany, c.exporterCompany), kv(T.countryOfOrigin, c.countryOfOrigin),
+      kv(T.hsCode, c.hsCode), kv(T.saberNumber, c.saberNumber), kv(T.assignedTo, c.assignedTo),
+      kv(T.branch, c.branch === 'dammam' ? T.dammam : T.jeddah),
+      kv(T.shippingAgent, c.shippingAgent), kv(T.shippingAgentEmail, c.shippingAgentEmail),
+      kv(ar ? 'المرحلة الحالية' : 'Current stage', c.cancelled ? T.cancelled : (T.stages[c.stage] || c.stage)),
+      kv(ar ? 'رقم البيان' : 'Declaration no.', c.declarationNumber),
+      kv(ar ? 'تاريخ البيان' : 'Declaration date', c.declarationDate),
+      kv(ar ? 'تاريخ استلام الورق' : 'Papers received', c.papersReceivedDate),
+      kv(ar ? 'موعد التفريغ' : 'Unloading appointment', c.unloadingAppointment),
+      kv(ar ? 'مكان التفريغ' : 'Unloading location', c.unloadingLocation),
+      kv(ar ? 'رقم إذن التسليم' : 'DO number', c.doNumber),
+      kv(ar ? 'رقم تصريح الخروج' : 'Exit permit no.', c.exitPermitNumber),
+      kv(ar ? 'المدينة' : 'City', c.city),
+      kv(ar ? 'الشهر' : 'Month', c.periodMonth ? MONTH_LABELS[Number(c.periodMonth) - 1][ar ? 0 : 1] : ''),
+      kv(ar ? 'السنة' : 'Year', c.periodYear),
+      kv(T.notes, c.notes),
+    ],
+  };
+
+  const pipelineSheet: ExportSheet = {
+    name: ar ? 'مراحل التخليص' : 'Pipeline',
+    columns: [
+      { header: '#', key: 'index', width: 6 },
+      { header: ar ? 'المرحلة' : 'Stage', key: 'stage', width: 30 },
+      { header: ar ? 'الحالة' : 'State', key: 'state', width: 18 },
+    ],
+    rows: STAGE_ORDER.map((sKey, i) => ({
+      index: i + 1,
+      stage: T.stages[sKey] || sKey,
+      state: i < currentIdx ? (ar ? 'مكتملة' : 'Done')
+        : (i === currentIdx && !c.cancelled) ? (ar ? 'المرحلة الحالية' : 'Current')
+          : (ar ? 'لم تبدأ' : 'Not started'),
+    })),
+  };
+
+  const tick = (v: any) => (v ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No'));
+  const checklistCols: ExportColumn[] = [
+    { header: ar ? 'المستند' : 'Item', key: 'label', width: 34 },
+    { header: ar ? 'متوفر' : 'Present', key: 'done', width: 12 },
+  ];
+  const documentsSheet: ExportSheet = {
+    name: ar ? 'مستندات المعاملة' : 'Documents',
+    columns: checklistCols,
+    rows: [
+      { label: T.docBl, done: tick(c.documents?.bl) },
+      { label: T.docCommercialInvoice, done: tick(c.documents?.commercialInvoice) },
+      { label: T.docCertificateOfOrigin, done: tick(c.documents?.certificateOfOrigin) },
+      { label: T.docPackingList, done: tick(c.documents?.packingList) },
+      { label: T.docSaber, done: tick(c.documents?.saber) },
+    ],
+  };
+  const agentPapersSheet: ExportSheet = {
+    name: ar ? 'أوراق المخلّص' : 'Agent papers',
+    columns: checklistCols,
+    rows: [
+      { label: T.paperBlStamped, done: tick(c.agentPapers?.blStamped) },
+      { label: T.paperCustomerAuth, done: tick(c.agentPapers?.customerAuthorization) },
+      { label: T.paperCompanyAuth, done: tick(c.agentPapers?.companyAuthorization) },
+    ],
+  };
+
+  const milestonesSheet: ExportSheet = {
+    name: ar ? 'مراحل السداد' : 'Payments',
+    columns: [
+      { header: ar ? 'البند' : 'Milestone', key: 'label', width: 32 },
+      { header: ar ? 'تم' : 'Done', key: 'done', width: 10 },
+      { header: ar ? 'التاريخ' : 'Date', key: 'date', width: 16 },
+    ],
+    rows: STAGE_DATE_FIELDS.map(([key, arLabel, enLabel]) => ({
+      label: ar ? arLabel : enLabel,
+      done: tick(c.stageDone?.[key]),
+      date: c.stageDates?.[key] || '—',
+    })),
+  };
+
+  const amountCols: ExportColumn[] = [
+    { header: ar ? 'البند' : 'Item', key: 'label', width: 32 },
+    { header: ar ? 'المبلغ (ر.س)' : 'Amount (SAR)', key: 'amount', width: 16 },
+  ];
+  // صفّ الإجمالي جزءٌ من البطاقة على الشاشة، وحذفه من الملفّ يجعل القارئ يجمع
+  // بنفسه فيختلف رقمه عن الرقم الذي تعرضه الصفحة.
+  const costsSheet: ExportSheet = {
+    name: ar ? 'التكاليف' : 'Costs',
+    columns: amountCols,
+    rows: [
+      ...COST_FIELDS.map(([key, arLabel, enLabel]) => ({ label: ar ? arLabel : enLabel, amount: n(c.costs?.[key]) })),
+      { label: ar ? 'إجمالي المصروفات' : 'Total costs', amount: costsTotal },
+    ],
+  };
+  const revenueSheet: ExportSheet = {
+    name: ar ? 'الإيرادات والفوترة' : 'Revenue',
+    columns: amountCols,
+    rows: [
+      ...REVENUE_FIELDS.map(([key, arLabel, enLabel]) => ({ label: ar ? arLabel : enLabel, amount: n(c.revenue?.[key]) })),
+      { label: ar ? 'حالة الفاتورة' : 'Invoice status', amount: c.billing?.invoiceStatus || '—' },
+      { label: ar ? 'رقم فاتورتنا' : 'Our invoice no.', amount: c.billing?.ourInvoiceNumber || '—' },
+      { label: ar ? 'تاريخ الفوترة' : 'Invoiced at', amount: c.billing?.invoicedAt || '—' },
+      { label: ar ? 'صافي الربح' : 'Net profit', amount: profit },
+      { label: ar ? 'هامش الربح %' : 'Margin %', amount: Math.round(margin * 10) / 10 },
+    ],
+  };
+
+  const containersSheet: ExportSheet = {
+    name: ar ? 'الحاويات' : 'Containers',
+    columns: [
+      { header: ar ? 'رقم الحاوية' : 'Container no.', key: 'containerNumber', width: 20 },
+      { header: ar ? 'تصريح الخروج' : 'Exit permit', key: 'exitPermit', width: 16 },
+      { header: ar ? 'البيان' : 'Declaration', key: 'declaration', width: 18 },
+      { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 34 },
+    ],
+    rows: containers,
+  };
+
+  const exportSheets: ExportSheet[] = [
+    infoSheet, pipelineSheet, documentsSheet, agentPapersSheet,
+    milestonesSheet, costsSheet, revenueSheet,
+    // جدول الحاويات لا يُرسَم أصلًا إن لم تُسجَّل حاوية، فشيتٌ فارغٌ باسمه
+    // يوحي بحاوياتٍ ضاعت من الملفّ لا بمعاملةٍ بلا حاويات.
+    ...(containers.length ? [containersSheet] : []),
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -166,6 +308,8 @@ export default function CustomsDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {saving && <span className="text-slate-400 text-xs flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /></span>}
+          <ExportMenu fileName={`customs-${c.refNumber || c.blNumber || c._id}`} lang={lang as 'ar' | 'en'}
+            options={[{ key: 'full', label: ar ? 'ملف المعاملة كاملًا' : 'The whole clearance', sheets: exportSheets }]} />
           {canEdit && (
             c.cancelled
               ? <button type="button" onClick={() => patch({ cancelled: false })} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/15 text-green-600 text-sm font-medium hover:bg-green-500/25 transition-colors"><RotateCcw className="w-4 h-4" /> {T.reactivate}</button>

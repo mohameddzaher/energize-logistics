@@ -6,12 +6,13 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Boxes, Plus, Edit, Trash2, Check, Info, UserPlus } from 'lucide-react';
-import { isHRStaff, Asset, Employee, empName, exportToExcel, today } from '@/lib/hr';
+import { isHRStaff, Asset, Employee, empName, today } from '@/lib/hr';
 import { useAssetVocab } from '@/hooks/useAssetVocab';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, StatCard,
+  Spinner, PageHeader, SearchInput, PrimaryButton, StatCard,
   Modal, Field, TextInput, TextArea, Select, SearchableSelect, Loader2,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrStockTranslations } from '@/lib/translations';
 
 const EMPTY = {
@@ -106,6 +107,32 @@ export default function HRStockPage() {
       .some((v) => (v || '').toLowerCase().includes(s));
   });
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Item', key: 'name', width: 22 },
+    { header: 'Type', key: 'type', transform: (v: any) => typeLabel(v, 'en'), width: 14 },
+    { header: 'Serial', key: 'serialNumber', width: 20 },
+    { header: 'Brand', key: 'brand', width: 14 },
+    { header: 'Model', key: 'model', width: 16 },
+    { header: 'Condition', key: 'condition', transform: (v: any) => conditionLabel(v, 'en'), width: 12 },
+    { header: 'Quantity', key: 'quantity', width: 10 },
+    { header: 'Location', key: 'location', width: 18 },
+    { header: 'Value', key: 'value', width: 12 },
+  ];
+  // فلترا النوع والحالة يمرّان على الخادم، فما في الذاكرة قطعةٌ من المخزن لا
+  // المخزنُ كلُّه؛ وجردٌ يُسمّى «الكلّ» وهو نوعٌ واحد خطأٌ لا يُكتشف إلّا متأخّرًا.
+  // والبحث في الذاكرة، فـ«المعروض» لا يحتاج جلبًا.
+  const fetchAllStock = async () => {
+    const d = await api.get<{ items: Asset[] }>('/api/hr/stock');
+    return [{ name: 'Stock', rows: d.items || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Stock', rows: filtered, columns: exportColumns }] },
+    (typeFilter || conditionFilter)
+      ? { key: 'all', label: scope.all, resolve: fetchAllStock }
+      : { key: 'all', label: scope.all, sheets: [{ name: 'Stock', rows: items, columns: exportColumns }] },
+  ];
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
@@ -116,17 +143,7 @@ export default function HRStockPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Boxes className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${totalUnits} ${tx.unitsAvailable}`}>
-        <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(filtered, [
-          { header: 'Item', key: 'name', width: 22 },
-          { header: 'Type', key: 'type', transform: (v: any) => typeLabel(v, 'en'), width: 14 },
-          { header: 'Serial', key: 'serialNumber', width: 20 },
-          { header: 'Brand', key: 'brand', width: 14 },
-          { header: 'Model', key: 'model', width: 16 },
-          { header: 'Condition', key: 'condition', transform: (v: any) => conditionLabel(v, 'en'), width: 12 },
-          { header: 'Quantity', key: 'quantity', width: 10 },
-          { header: 'Location', key: 'location', width: 18 },
-          { header: 'Value', key: 'value', width: 12 },
-        ], `hr-stock-${today()}`, 'Stock')} />
+        <ExportMenu fileName="hr-stock" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addToStock}</PrimaryButton>
       </PageHeader>
 

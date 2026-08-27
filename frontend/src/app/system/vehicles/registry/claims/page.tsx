@@ -10,7 +10,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -57,6 +57,19 @@ function ClaimsInner() {
     { header: t('الطرف الآخر', 'Counterparty'), key: 'counterpartyNameAr', width: 24 },
   ];
 
+  // البحث والحالة يُنفَّذان على الخادم، فالمصفوفة التي في اليد نتائجُ الفلتر لا
+  // سجلّ المطالبات؛ ومن غير نداءٍ ثانٍ بلا معاملات لا يوجد «كلّ» أصلًا.
+  const hasActiveFilters = !!(q.trim() || status);
+  const fetchAllForExport = async () => {
+    const all = await getClaims();
+    return [{ name: t('الحوادث', 'Claims'), rows: all.claims || [], columns: cols }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: t('الحوادث', 'Claims'), rows, columns: cols }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
+
   if (loading && !d) return <Spinner />;
 
   return (
@@ -78,8 +91,7 @@ function ClaimsInner() {
               <Plus className="w-4 h-4" />{t('تسجيل حادث', 'New accident')}
             </button>
           )}
-          <ExportMenu fileName="vehicle-claims" lang={lang as 'ar' | 'en'}
-            options={[{ key: 'all', label: t('تصدير', 'Export'), sheets: [{ name: t('الحوادث', 'Claims'), rows, columns: cols }] }]} />
+          <ExportMenu fileName="vehicle-claims" lang={lang as 'ar' | 'en'} options={exportOptions} />
         </div>
       </PageHeader>
 

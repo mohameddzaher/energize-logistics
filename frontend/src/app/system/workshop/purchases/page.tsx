@@ -9,10 +9,11 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart, Loader2, X, Check, Package, AlertCircle,
-  ChevronLeft, ChevronRight, Download, Search, Trash2, ExternalLink, Boxes, Plus,
+  ChevronLeft, ChevronRight, Search, Trash2, ExternalLink, Boxes, Plus,
 } from 'lucide-react';
 import Link from 'next/link';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getWorkshopPurchasesTranslations } from '@/lib/translations';
 
 interface PurchaseRequest {
@@ -178,19 +179,35 @@ export default function WorkshopPurchasesPage() {
 
 
 
-  const handleExport = () => {
-    exportToExcel(purchases, [
-      { header: 'Item', key: 'itemName', width: 25 },
-      { header: 'Quantity', key: 'quantity', width: 10 },
-      { header: 'Vehicle #', key: 'vehicleNumber', width: 15 },
-      { header: 'Requested By', key: 'requestedByName', width: 20 },
-      { header: 'Date', key: 'date', transform: fmt.date, width: 15 },
-      { header: 'Status', key: 'status', transform: fmt.status, width: 15 },
-      { header: 'Cost', key: 'cost', transform: fmt.money, width: 12 },
-      { header: 'Supplier', key: 'supplier', width: 20 },
-      { header: 'Invoice #', key: 'invoiceNumber', width: 15 },
-    ], 'workshop-purchases', 'Purchases');
+  const exportColumns: ExportColumn[] = [
+    { header: 'Item', key: 'itemName', width: 25 },
+    { header: 'Quantity', key: 'quantity', width: 10 },
+    { header: 'Vehicle #', key: 'vehicleNumber', width: 15 },
+    { header: 'Requested By', key: 'requestedByName', width: 20 },
+    { header: 'Date', key: 'date', transform: fmt.date, width: 15 },
+    { header: 'Status', key: 'status', transform: fmt.status, width: 15 },
+    { header: 'Cost', key: 'cost', transform: fmt.money, width: 12 },
+    { header: 'Supplier', key: 'supplier', width: 20 },
+    { header: 'Invoice #', key: 'invoiceNumber', width: 15 },
+  ];
+  // الترقيم على الخادم بعشرين صفًّا، والبحث نفسه على الخادم: تصدير ما في الذاكرة
+  // كان يعطي صفحةً واحدة باسم نتيجة الفلتر كلّها، فصار كلُّ نطاقٍ يُجلَب بحدّه.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      if (statusFilter) params.append('status', statusFilter);
+      if (debouncedSearch.trim()) params.append('search', debouncedSearch.trim());
+    }
+    const data = await api.get<any>(`/api/workshop/purchases?${params.toString()}`) || {};
+    return [{ name: 'Purchases', rows: data.purchases || [], columns: exportColumns }];
   };
+  const hasActiveFilters = !!(statusFilter || debouncedSearch.trim());
+  const scope = exportScopeLabels(isAr);
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: 'Purchases', rows: purchases, columns: exportColumns }] },
+    { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(total) },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
 
   const totalPages = Math.ceil(total / limit);
 
@@ -203,15 +220,7 @@ export default function WorkshopPurchasesPage() {
           <h1 className="text-2xl font-bold text-slate-900">{tx.pageTitle}</h1>
         </div>
         <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={purchases.length === 0}
-          className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
-        >
-          <Download className="w-4 h-4" />
-          {tx.export}
-        </button>
+        <ExportMenu fileName="workshop-purchases" lang={isAr ? 'ar' : 'en'} variant="subtle" label={tx.export} options={exportOptions} />
         {canCreate && (
           <button
             type="button"

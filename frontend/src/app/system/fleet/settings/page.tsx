@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { canAdminFleet } from '@/lib/fleet';
 import { Settings, Save, Target, CalendarClock, ListChecks, Truck } from 'lucide-react';
 
@@ -64,6 +65,26 @@ export default function FleetSettingsPage() {
   if (loading) return <Spinner />;
 
   const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50';
+  // خانة الهدف تعرض القيمة السارية فعلًا (الهدف الخاصّ، أو الافتراضيّ لمن لا
+  // هدف له) وقد تحمل تعديلًا لم يُحفَظ بعد — فالتصدير يأخذها من نفس الحالة
+  // التي تغذّي الخانة، لا من `monthlyTarget` المحفوظ، كي يطابق الملفُّ الشاشة.
+  const targetCols: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 18 },
+    { header: ar ? 'الاسم' : 'Name', key: 'name', width: 26, transform: (v) => v || '—' },
+    { header: ar ? 'الهدف الشهري' : 'Monthly target', key: '_id', width: 16, transform: (id: string) => Number(targets[id] ?? defaultMonthlyTarget) || 0 },
+    // عمودٌ لا تعرضه الشاشة لأنّها تُظهر القيمة السارية فقط: من يراجع الأهداف
+    // خارج النظام يحتاج تمييز المخصَّص من المتوارَث عن الافتراضيّ.
+    { header: ar ? 'مصدر الهدف' : 'Target source', key: 'monthlyTarget', width: 16, transform: (v) => (v == null || v === '' ? (ar ? 'الافتراضي' : 'Default') : (ar ? 'مخصَّص' : 'Custom')) },
+  ];
+  const configRows = [
+    { label: ar ? 'بونص الجمعة للسائق' : 'Friday driver bonus', value: fridayBonusAmount },
+    { label: ar ? 'الهدف الشهري الافتراضي للسيارة' : 'Default vehicle monthly target', value: defaultMonthlyTarget },
+  ];
+  const configCols: ExportColumn[] = [
+    { header: ar ? 'الإعداد' : 'Setting', key: 'label', width: 38 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 16 },
+  ];
+
   const dropdowns = [
     { type: 'fleet_rent_type', ar: 'نوع الإيجار', en: 'Rent types' },
     { type: 'fleet_payment_type', ar: 'نوع الدفع', en: 'Payment types' },
@@ -73,7 +94,21 @@ export default function FleetSettingsPage() {
   return (
     <div className="space-y-5 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Settings className="w-5 h-5" />} title={ar ? 'إعدادات إدارة الأسطول' : 'Fleet Settings'}
-        subtitle={ar ? 'الأرقام والقوائم القابلة للتعديل في القسم' : 'The section’s tunable numbers & lists'} />
+        subtitle={ar ? 'الأرقام والقوائم القابلة للتعديل في القسم' : 'The section’s tunable numbers & lists'}>
+        {/* أرقام القسم وأهداف السيارات جدولان مختلفان، فيخرجان في شيتين لا في
+            شيتٍ واحد يخلط سطرين من الإعدادات بعشرات السيارات. */}
+        <ExportMenu
+          fileName="fleet-settings" lang={ar ? 'ar' : 'en'}
+          options={[{
+            key: 'all',
+            label: ar ? 'الإعدادات والأهداف' : 'Settings & targets',
+            sheets: [
+              { name: ar ? 'أهداف السيارات' : 'Vehicle targets', rows: vehicles as any[], columns: targetCols },
+              { name: ar ? 'أرقام القسم' : 'Section numbers', rows: configRows, columns: configCols },
+            ],
+          }]}
+        />
+      </PageHeader>
 
       {/* أرقام القسم */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">

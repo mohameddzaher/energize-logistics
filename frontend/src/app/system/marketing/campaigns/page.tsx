@@ -10,8 +10,8 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Megaphone, Plus, Pencil, Trash2, RefreshCw, Loader2 } from 'lucide-react';
-import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Modal, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   canViewMarketing, canEditMarketing, PLATFORMS, OBJECTIVES, STATUSES,
   platformLabel, objectiveLabel, statusLabel, statusStyle, campaignName, personName,
@@ -100,31 +100,32 @@ export default function MarketingCampaignsPage() {
     catch (e: unknown) { notify((e as Error)?.message || 'Failed', 'error'); }
   };
 
-  const doExport = () => {
-    exportToExcel(
-      rows as unknown as Record<string, unknown>[],
-      [
-        { header: ar ? 'الحملة' : 'Campaign', key: 'name', transform: (_v, r) => campaignName(r as Campaign, L), width: 28 },
-        { header: ar ? 'المنصة' : 'Platform', key: 'platform', transform: (v) => platformLabel(v as string, L), width: 16 },
-        { header: ar ? 'الهدف' : 'Objective', key: 'objective', transform: (v) => objectiveLabel(v as string, L), width: 18 },
-        { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => statusLabel(v as string, L), width: 14 },
-        { header: ar ? 'من' : 'Start', key: 'startDate', transform: (v) => v || '', width: 14 },
-        { header: ar ? 'إلى' : 'End', key: 'endDate', transform: (v) => v || '', width: 14 },
-        { header: ar ? 'الميزانية' : 'Budget', key: 'budget', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'الإنفاق' : 'Spend', key: 'spend', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'الإيراد' : 'Revenue', key: 'revenue', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'الظهور' : 'Impressions', key: 'impressions', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'النقرات' : 'Clicks', key: 'clicks', transform: (v) => v ?? 0, width: 12 },
-        { header: ar ? 'العملاء المحتملون' : 'Leads', key: 'leads', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'التحويلات' : 'Conversions', key: 'conversions', transform: (v) => v ?? 0, width: 14 },
-        { header: 'CTR %', key: 'ctr', transform: (v) => Number(v ?? 0).toFixed(2), width: 10 },
-        { header: 'CPL', key: 'cpl', transform: (v) => Number(v ?? 0).toFixed(2), width: 10 },
-        { header: ar ? 'المسؤول' : 'Owner', key: 'owner', transform: (v) => personName(v as never), width: 20 },
-      ],
-      'marketing-campaigns',
-      ar ? 'الحملات' : 'Campaigns'
-    );
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'الحملة' : 'Campaign', key: 'name', transform: (_v, r) => campaignName(r as Campaign, L), width: 28 },
+    { header: ar ? 'المنصة' : 'Platform', key: 'platform', transform: (v) => platformLabel(v as string, L), width: 16 },
+    { header: ar ? 'الهدف' : 'Objective', key: 'objective', transform: (v) => objectiveLabel(v as string, L), width: 18 },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => statusLabel(v as string, L), width: 14 },
+    { header: ar ? 'من' : 'Start', key: 'startDate', transform: (v) => v || '', width: 14 },
+    { header: ar ? 'إلى' : 'End', key: 'endDate', transform: (v) => v || '', width: 14 },
+    { header: ar ? 'الميزانية' : 'Budget', key: 'budget', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'الإنفاق' : 'Spend', key: 'spend', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'الإيراد' : 'Revenue', key: 'revenue', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'الظهور' : 'Impressions', key: 'impressions', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'النقرات' : 'Clicks', key: 'clicks', transform: (v) => v ?? 0, width: 12 },
+    { header: ar ? 'العملاء المحتملون' : 'Leads', key: 'leads', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'التحويلات' : 'Conversions', key: 'conversions', transform: (v) => v ?? 0, width: 14 },
+    { header: 'CTR %', key: 'ctr', transform: (v) => Number(v ?? 0).toFixed(2), width: 10 },
+    { header: 'CPL', key: 'cpl', transform: (v) => Number(v ?? 0).toFixed(2), width: 10 },
+    { header: ar ? 'المسؤول' : 'Owner', key: 'owner', transform: (v) => personName(v as never), width: 20 },
+  ];
+  // الحملات تُفلتَر في المتصفّح (بحث وحالة ومنصّة)، وكان زرُّ التصدير يأخذ
+  // المفلتَر وحده باسم «الحملات» — فيخرج ملفٌّ ناقصٌ لا شيء فيه يشي بنقصه.
+  const scope = exportScopeLabels(ar);
+  const sheetName = ar ? 'الحملات' : 'Campaigns';
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: rows as unknown as Record<string, unknown>[], columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows: items as unknown as Record<string, unknown>[], columns: exportColumns }] },
+  ];
 
   if (!canViewMarketing(user)) {
     return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول إلى قسم التسويق.' : 'You are not authorized to view the Marketing section.'}</div>;
@@ -145,7 +146,7 @@ export default function MarketingCampaignsPage() {
         title={ar ? 'الحملات التسويقية' : 'Marketing Campaigns'}
         subtitle={ar ? 'كل حملة بميزانيتها وأهدافها ونتائجها' : 'Every campaign with its budget, objective and results'}
       >
-        <ExportButton onClick={doExport} label={ar ? 'تصدير Excel' : 'Export Excel'} />
+        <ExportMenu fileName="marketing-campaigns" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <RefreshCw className="w-4 h-4" /> {ar ? 'تحديث' : 'Refresh'}
         </button>

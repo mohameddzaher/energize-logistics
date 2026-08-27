@@ -7,10 +7,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
-import { Ship, Container, Search, Download, CheckCircle2, Circle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Ship, Container, Search, CheckCircle2, Circle, ChevronDown, ChevronRight } from 'lucide-react';
 import { KpiTile } from '@/components/system/Scorecard';
 import { CUSTOMS_STAGES, customsStageIndex, customsStageText, money, fmtDate, type Lang } from '@/lib/portal';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface CustomsFile {
   _id: string;
@@ -72,23 +72,26 @@ export default function PortalCustomsPage() {
   const active = items.filter((c) => !c.cancelled);
   const done = active.filter((c) => c.stage === 'invoiced').length;
 
-  const exportRows = () => exportToExcel(
-    filtered as unknown as Record<string, any>[],
-    [
-      { header: tx('Reference', 'الرقم المرجعي'), key: 'refNumber', width: 16 },
-      { header: tx('BL number', 'رقم البوليصة'), key: 'blNumber', width: 18 },
-      { header: tx('Declaration', 'رقم البيان'), key: 'declarationNumber', width: 18 },
-      { header: tx('Stage', 'المرحلة'), key: 'stage', transform: (v: string) => customsStageText(v, lang as Lang), width: 24 },
-      { header: tx('Port', 'الميناء'), key: 'port', width: 16 },
-      { header: tx('Containers', 'الحاويات'), key: 'containerCount', width: 12 },
-      { header: tx('Weight', 'الوزن'), key: 'totalWeight', width: 14 },
-      { header: tx('Invoice value', 'قيمة الفاتورة'), key: 'invoiceValue', transform: (v: number) => money(v), width: 16 },
-      { header: tx('Exporter', 'الشركة المصدّرة'), key: 'exporterCompany', width: 24 },
-      { header: tx('Opened', 'تاريخ الفتح'), key: 'createdAt', transform: (v: string) => fmtDate(v), width: 14 },
-    ],
-    'my-customs-files',
-    tx('My customs files', 'معاملات التخليص')
-  );
+  const exportColumns: ExportColumn[] = [
+    { header: tx('Reference', 'الرقم المرجعي'), key: 'refNumber', width: 16 },
+    { header: tx('BL number', 'رقم البوليصة'), key: 'blNumber', width: 18 },
+    { header: tx('Declaration', 'رقم البيان'), key: 'declarationNumber', width: 18 },
+    { header: tx('Stage', 'المرحلة'), key: 'stage', transform: (v: string) => customsStageText(v, lang as Lang), width: 24 },
+    { header: tx('Port', 'الميناء'), key: 'port', width: 16 },
+    { header: tx('Containers', 'الحاويات'), key: 'containerCount', width: 12 },
+    { header: tx('Weight', 'الوزن'), key: 'totalWeight', width: 14 },
+    { header: tx('Invoice value', 'قيمة الفاتورة'), key: 'invoiceValue', transform: (v: number) => money(v), width: 16 },
+    { header: tx('Exporter', 'الشركة المصدّرة'), key: 'exporterCompany', width: 24 },
+    { header: tx('Opened', 'تاريخ الفتح'), key: 'createdAt', transform: (v: string) => fmtDate(v), width: 14 },
+  ];
+  // `/api/portal/customs` يسلّم معاملات العميل كلَّها دفعةً واحدة، وفلترُ المرحلة
+  // والبحث يعملان في المتصفّح؛ فالزرّ الواحد كان يصدّر المرحلة المختارة ويسمّيها الملفَّ كلَّه.
+  const sheetName = tx('My customs files', 'معاملات التخليص');
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: filtered, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows: items, columns: exportColumns }] },
+  ];
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>;
@@ -103,9 +106,7 @@ export default function PortalCustomsPage() {
             {tx('Where each shipment stands on the clearance pipeline, with its documents and numbers.', 'موقع كل معاملة على مسار التخليص، مع أوراقها وأرقامها.')}
           </p>
         </div>
-        <button type="button" onClick={exportRows} className="inline-flex items-center gap-1.5 border border-slate-200 text-slate-700 text-sm px-3 py-1.5 rounded-lg hover:bg-slate-50">
-          <Download className="w-4 h-4" />{tx('Export Excel', 'تصدير Excel')}
-        </button>
+        <ExportMenu fileName="my-customs-files" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx('Export Excel', 'تصدير Excel')} options={exportOptions} />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

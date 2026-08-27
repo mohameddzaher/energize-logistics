@@ -9,12 +9,13 @@ import { getCRMTranslations } from '@/lib/translations';
 import { ListTodo, Plus, Trash2, Edit, CheckCircle2, Circle } from 'lucide-react';
 import {
   isCrmStaff, CrmTask, CrmCompany, CrmOptions, TASK_STATUS_STYLE, PRIORITY_STYLE,
-  companyName, userName, fmtDate, dueBadge, exportToExcel, fmt, today,
+  companyName, userName, fmtDate, dueBadge, fmt,
 } from '@/lib/crm';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Badge, SmallBadge, Modal, Tabs,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Badge, SmallBadge, Modal, Tabs,
   Field, TextInput, TextArea, Select,
 } from '@/components/crm/CrmKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const EMPTY = { title: '', description: '', company: '', assignedTo: '', dueDate: '', dueTime: '', priority: 'medium', status: 'todo' };
 
@@ -86,20 +87,35 @@ export default function CrmTasksPage() {
     try { await api.put(`/api/crm/tasks/${t._id}`, { status }); load(); } catch (e: any) { notify(e.message, 'error'); load(); }
   };
 
+  const exportColumns: ExportColumn[] = [
+    { header: T.taskTitle, key: 'title', width: 28 },
+    { header: T.company, key: 'company', transform: (v) => companyName(v), width: 22 },
+    { header: T.assignedTo, key: 'assignedTo', transform: (v) => userName(v), width: 18 },
+    { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
+    { header: T.priority, key: 'priority', width: 10 },
+    { header: T.status, key: 'status', width: 12 },
+  ];
+  // «مهامّي» والحالة والبحث كلّها تُطبَّق على الخادم، فتصديرُ ما في الذاكرة وأنت
+  // على تبويب «مهامّي» يعطي مهامَّك وحدها من غير أن يذكر الملفُّ ذلك.
+  // والخادم يسقّف هذا المسار بخمسمئة مهمّةٍ في الحالتين.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ tasks: CrmTask[] }>('/api/crm/tasks');
+    return [{ name: 'Tasks', rows: d.tasks || [], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(search.trim() || statusFilter || scope === 'mine');
+  const exportScope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? exportScope.shown : exportScope.all, sheets: [{ name: 'Tasks', rows: items, columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: exportScope.all, resolve: fetchAllForExport }] : []),
+  ];
+
   if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<ListTodo className="w-5 h-5" />} title={T.tasks} subtitle={`${items.length} ${T.tasks}`}>
-        <ExportButton label={T.export} onClick={() => exportToExcel(items, [
-          { header: T.taskTitle, key: 'title', width: 28 },
-          { header: T.company, key: 'company', transform: (v) => companyName(v), width: 22 },
-          { header: T.assignedTo, key: 'assignedTo', transform: (v) => userName(v), width: 18 },
-          { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
-          { header: T.priority, key: 'priority', width: 10 },
-          { header: T.status, key: 'status', width: 12 },
-        ], `crm-tasks-${today()}`, 'Tasks')} />
+        <ExportMenu fileName="crm-tasks" lang={ar ? 'ar' : 'en'} variant="subtle" label={T.export} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {T.addTask}</PrimaryButton>
       </PageHeader>
 

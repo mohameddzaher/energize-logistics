@@ -10,7 +10,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Thermometer, Flame, RefreshCw } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ls2Text, isLs2Staff, tireTempColor, coolantColor, statusStyle, type Lang, type Vehicle } from '@/lib/ls2';
 
 export default function Ls2TemperaturePage() {
@@ -51,8 +51,20 @@ export default function Ls2TemperaturePage() {
     { header: ar ? 'أعطال حساسات' : 'Sensor Faults', key: 'tireFaults', transform: (v) => v ?? '' },
     { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => { const st = statusStyle(v); return ar ? st.ar : st.en; } },
   ];
+  // الشاشة لا تعرض إلّا المركبات التي وصلت منها قراءةُ حرارة، بينما الخيار الوحيد
+  // القديم كان يصدّر الأسطول كلَّه — فيخرج الملفّ بصفوفٍ فارغةٍ لا يراها المستخدم
+  // على الشاشة ويحسب أنّها ناقصةُ القراءة. صار لكلّ معنًى نطاقُه وعدّادُه.
+  const scope = exportScopeLabels(ar);
   const exportOptions = [
-    { key: 'all', label: ar ? 'كل العربيات' : 'All vehicles', sheets: [{ name: ar ? 'الحرارة' : 'Temperature', rows: items, columns: exportColumns }] },
+    {
+      key: 'shown',
+      label: scope.shown,
+      sheets: [
+        { name: ar ? 'حرارة الكاوتش' : 'Tire temperature', rows: tireRows, columns: exportColumns },
+        { name: ar ? 'حرارة الموتور' : 'Engine coolant', rows: engineRows, columns: exportColumns },
+      ],
+    },
+    { key: 'all', label: scope.all, sheets: [{ name: ar ? 'الحرارة' : 'Temperature', rows: items, columns: exportColumns }] },
   ];
 
   if (!isLs2Staff(user)) return <div className="text-slate-500 p-8">{t.notAuthorized}</div>;

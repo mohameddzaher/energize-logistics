@@ -7,9 +7,10 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare, Plus, Search, Loader2, X, Check, Trash2, AlertCircle, AlertTriangle,
-  ChevronLeft, ChevronRight, Phone, User, Flag, Eye, Download,
+  ChevronLeft, ChevronRight, Phone, User, Flag, Eye,
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getComplaintsTranslations } from '@/lib/translations';
 
 interface Complaint {
@@ -174,20 +175,38 @@ export default function ComplaintsPage() {
     });
   };
 
-  const handleExport = () => {
-    exportToExcel(complaints, [
-      { header: tx.colSubject, key: 'subject', width: 25 },
-      { header: tx.colCategory, key: 'category', transform: fmt.status, width: 15 },
-      { header: tx.colPriority, key: 'priority', transform: fmt.status, width: 12 },
-      { header: tx.colStatus, key: 'status', transform: fmt.status, width: 15 },
-      { header: tx.colCustomer, key: 'customerName', width: 20 },
-      { header: tx.colPhone, key: 'customerPhone', width: 15 },
-      { header: tx.colDescription, key: 'description', width: 35 },
-      { header: tx.colResolution, key: 'resolution', width: 30 },
-      { header: tx.colCreated, key: 'createdAt', transform: fmt.date, width: 15 },
-      { header: tx.colResolved, key: 'resolvedAt', transform: fmt.date, width: 15 },
-    ], 'complaints', 'Complaints');
+  const exportColumns: ExportColumn[] = [
+    { header: tx.colSubject, key: 'subject', width: 25 },
+    { header: tx.colCategory, key: 'category', transform: fmt.status, width: 15 },
+    { header: tx.colPriority, key: 'priority', transform: fmt.status, width: 12 },
+    { header: tx.colStatus, key: 'status', transform: fmt.status, width: 15 },
+    { header: tx.colCustomer, key: 'customerName', width: 20 },
+    { header: tx.colPhone, key: 'customerPhone', width: 15 },
+    { header: tx.colDescription, key: 'description', width: 35 },
+    { header: tx.colResolution, key: 'resolution', width: 30 },
+    { header: tx.colCreated, key: 'createdAt', transform: fmt.date, width: 15 },
+    { header: tx.colResolved, key: 'resolvedAt', transform: fmt.date, width: 15 },
+  ];
+  const hasActiveFilters = !!(statusFilter || categoryFilter || priorityFilter || search);
+  // الصفحة عشرون شكوى فقط مهما بلغ عدد ما يطابق الفلتر، فتصدير ما في الذاكرة
+  // كان يسلّم ملفًّا مبتورًا يبدو كاملًا. نُعيد الجلب بحدٍّ مفتوح لنطاقَي الفلتر والكلّ.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      if (statusFilter) params.append('status', statusFilter);
+      if (categoryFilter) params.append('category', categoryFilter);
+      if (priorityFilter) params.append('priority', priorityFilter);
+      if (search) params.append('search', search);
+    }
+    const data = await api.get<any>(`/api/complaints?${params.toString()}`) || {};
+    return [{ name: 'Complaints', rows: data.complaints || [], columns: exportColumns }];
   };
+  const scope = exportScopeLabels(isAr);
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: 'Complaints', rows: complaints, columns: exportColumns }] },
+    { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(total) },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
 
   const totalPages = Math.ceil(total / limit);
 
@@ -205,15 +224,7 @@ export default function ComplaintsPage() {
           <h1 className="text-2xl font-bold text-slate-900">{tx.pageTitle}</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={complaints.length === 0}
-            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" />
-            {tx.export}
-          </button>
+          <ExportMenu fileName="complaints" lang={isAr ? 'ar' : 'en'} variant="subtle" label={tx.export} options={exportOptions} />
           <button onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e0611a] text-white px-4 py-2.5 rounded-lg font-medium transition-colors">
             <Plus className="w-4 h-4" />

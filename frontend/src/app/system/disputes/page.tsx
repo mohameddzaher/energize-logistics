@@ -9,9 +9,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle, Plus, X, ChevronDown, ChevronUp,
   Filter, RefreshCw, User, FileText, MessageSquare,
-  Search, Loader2, Calendar, Download
+  Search, Loader2, Calendar
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Dispute {
   _id: string;
@@ -118,6 +119,40 @@ export default function DisputesPage() {
   useEffect(() => {
     fetchDisputes();
   }, [fetchDisputes]);
+
+  const exportColumns: ExportColumn[] = [
+    { header: `${T.invoice} #`, key: 'invoice.invoiceNumber', width: 16 },
+    { header: T.customer, key: 'customer.companyName', width: 24 },
+    { header: T.reason, key: 'reason', width: 35 },
+    { header: T.status, key: 'status', transform: (v: string) => { const c = statusConfig[v]; return c ? (T as any)[c.labelKey] : v; }, width: 16 },
+    { header: T.firstName, key: 'raisedBy', transform: (_: any, row: any) => row.raisedBy ? `${row.raisedBy.firstName} ${row.raisedBy.lastName}` : '', width: 20 },
+    { header: T.name, key: 'assignedTo', transform: (_: any, row: any) => row.assignedTo ? `${row.assignedTo.firstName} ${row.assignedTo.lastName}` : '', width: 20 },
+    { header: T.resolution, key: 'resolution', width: 35 },
+    { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
+    { header: T.date, key: 'updatedAt', transform: fmt.date, width: 14 },
+  ];
+  // الشاشة لا ترسل `limit` أصلاً، والخادم يفرض خمسين صفًّا افتراضًا؛ فما في الذاكرة
+  // صفحةٌ أولى لا قائمةً كاملة، وتصديرُه باسم «الكلّ» كذبٌ صامت. نطاقات إعادة الجلب
+  // ترفع الحدّ صراحةً — والبحث كذلك يصير أصدق، لأنّ الخادم يفلتره بعد القَصّ لا قبله.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      params.set('status', statusFilter === 'all' ? 'unresolved' : statusFilter);
+      if (search) params.set('search', search);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+    }
+    const data = await api.get<any>(`/api/disputes?${params.toString()}`);
+    return [{ name: 'Disputes', rows: data.disputes || data || [], columns: exportColumns }];
+  };
+  // النطاقات ثلاثةٌ دائمًا لأنّ الشاشة مفلترةٌ حتّى في وضعها الافتراضي: «الكلّ» فيها
+  // تعني «غير المحسوم» وحده، فلا لحظةَ يتساوى فيها «نتائج الفلتر» مع الكلّ الحقيقي.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: 'Disputes', rows: disputes, columns: exportColumns }] },
+    { key: 'matching', label: scope.matching, resolve: () => fetchForExport(true) },
+    { key: 'all', label: scope.all, resolve: () => fetchForExport(false) },
+  ];
 
   const handleRealTime = useCallback(() => { fetchDisputes(true); }, [fetchDisputes]);
   useSocket('dispute:opened', handleRealTime);
@@ -280,23 +315,7 @@ export default function DisputesPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => exportToExcel(disputes, [
-              { header: `${T.invoice} #`, key: 'invoice.invoiceNumber', width: 16 },
-              { header: T.customer, key: 'customer.companyName', width: 24 },
-              { header: T.reason, key: 'reason', width: 35 },
-              { header: T.status, key: 'status', transform: (v: string) => { const c = statusConfig[v]; return c ? (T as any)[c.labelKey] : v; }, width: 16 },
-              { header: T.firstName, key: 'raisedBy', transform: (_: any, row: any) => row.raisedBy ? `${row.raisedBy.firstName} ${row.raisedBy.lastName}` : '', width: 20 },
-              { header: T.name, key: 'assignedTo', transform: (_: any, row: any) => row.assignedTo ? `${row.assignedTo.firstName} ${row.assignedTo.lastName}` : '', width: 20 },
-              { header: T.resolution, key: 'resolution', width: 35 },
-              { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
-              { header: T.date, key: 'updatedAt', transform: fmt.date, width: 14 },
-            ], `disputes-${new Date().toISOString().split('T')[0]}`, 'Disputes')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
-          >
-            <Download className="w-4 h-4" /> {T.downloadExcel}
-          </button>
+          <ExportMenu fileName="disputes" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.downloadExcel} options={exportOptions} />
           <button
             type="button"
             onClick={() => { fetchDisputes(); }}

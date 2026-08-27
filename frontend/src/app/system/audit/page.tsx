@@ -8,9 +8,10 @@ import DataTable from '@/components/system/DataTable';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ClipboardList, RefreshCw, Filter, ChevronDown, ChevronUp,
-  ChevronLeft, ChevronRight, Calendar, Search, X, Download
+  ChevronLeft, ChevronRight, Calendar, Search, X
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { SearchableSelect } from '@/components/hr/HRKit';
 
 interface AuditLog {
@@ -166,6 +167,38 @@ export default function AuditPage() {
 
   const hasActiveFilters = !!(entityFilter || userFilter || actionSearch || dateFrom || dateTo);
 
+  const exportColumns: ExportColumn[] = [
+    { header: T.date, key: 'createdAt', transform: fmt.datetime, width: 22 },
+    { header: T.user, key: 'user', transform: (_: any, row: any) => row.user ? `${row.user.firstName} ${row.user.lastName}` : txx.system, width: 20 },
+    { header: T.email, key: 'user.email', width: 24 },
+    { header: T.action, key: 'action', width: 20 },
+    { header: T.entity, key: 'entity', width: 14 },
+    { header: T.entityId, key: 'entityId', width: 26 },
+    { header: T.details, key: 'details', transform: (_: any, row: any) => changeSummary(row) || row.details || '', width: 48 },
+    { header: T.ipAddress, key: 'ipAddress', width: 16 },
+  ];
+  // السجلّ مرقَّمٌ على الخادم بخمسةٍ وعشرين سطرًا، والسجلّ نفسه يبلغ عشرات الآلاف؛
+  // فتصدير ما في الذاكرة كان يعطي ربع دقيقةٍ من التاريخ ويُسمّيه «تحميل السجلّ».
+  // لذلك نُعيد الجلب بحدٍّ مفتوح قبل التصدير كلّما طُلب أكثر من الصفحة الحاضرة.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      if (entityFilter) params.set('entity', entityFilter);
+      if (userFilter) params.set('user', userFilter);
+      if (actionSearch.trim()) params.set('action', actionSearch.trim());
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+    }
+    const data = await api.get<any>(`/api/audit?${params.toString()}`);
+    return [{ name: T.title, rows: data.logs || data.auditLogs || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: T.title, rows: logs, columns: exportColumns }] },
+    { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(pagination.total) },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
+
   const formatTimestamp = (date: string) => {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', {
@@ -298,22 +331,7 @@ export default function AuditPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => exportToExcel(logs, [
-              { header: T.date, key: 'createdAt', transform: fmt.datetime, width: 22 },
-              { header: T.user, key: 'user', transform: (_: any, row: any) => row.user ? `${row.user.firstName} ${row.user.lastName}` : txx.system, width: 20 },
-              { header: T.email, key: 'user.email', width: 24 },
-              { header: T.action, key: 'action', width: 20 },
-              { header: T.entity, key: 'entity', width: 14 },
-              { header: T.entityId, key: 'entityId', width: 26 },
-              { header: T.details, key: 'details', transform: (_: any, row: any) => changeSummary(row) || row.details || '', width: 48 },
-              { header: T.ipAddress, key: 'ipAddress', width: 16 },
-            ], `audit-log-${new Date().toISOString().split('T')[0]}`, T.title)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
-          >
-            <Download className="w-4 h-4" /> {T.downloadExcel}
-          </button>
+          <ExportMenu fileName="audit-log" lang={ar ? 'ar' : 'en'} variant="subtle" label={T.downloadExcel} options={exportOptions} />
           <button
             type="button"
             onClick={() => setShowFilters(!showFilters)}

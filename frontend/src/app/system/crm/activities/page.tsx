@@ -8,11 +8,12 @@ import api from '@/lib/api';
 import { getCRMTranslations, getCrmActivitiesExtraTranslations } from '@/lib/translations';
 import { Phone, Plus, Trash2, Edit, MessageCircle, Mail, Users, MapPin, StickyNote } from 'lucide-react';
 import {
-  isCrmStaff, CrmActivity, CrmCompany, CrmOptions, optLabel, companyName, userName, fmtDateTime, exportToExcel, fmt, today,
+  isCrmStaff, CrmActivity, CrmCompany, CrmOptions, optLabel, companyName, userName, fmtDateTime, fmt,
 } from '@/lib/crm';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Modal, Field, TextInput, TextArea, Select,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select,
 } from '@/components/crm/CrmKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const EMPTY = { type: 'call', subject: '', body: '', company: '', direction: 'outbound', outcome: '', date: '', durationMinutes: 0 };
 const ICONS: Record<string, any> = { call: Phone, meeting: Users, email: Mail, whatsapp: MessageCircle, visit: MapPin, note: StickyNote };
@@ -78,19 +79,34 @@ export default function CrmActivitiesPage() {
     try { await api.delete(`/api/crm/activities/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
+  const exportColumns: ExportColumn[] = [
+    { header: T.type, key: 'type', width: 12 },
+    { header: T.subject, key: 'subject', width: 30 },
+    { header: T.company, key: 'company', transform: (v) => companyName(v), width: 22 },
+    { header: T.date, key: 'date', transform: fmt.datetime, width: 18 },
+    { header: txx.by, key: 'createdBy', transform: (v) => userName(v), width: 18 },
+  ];
+  // البحث والنوع يُطبَّقان على الخادم، فما في الذاكرة نتيجةُ الفلتر لا السجلّ كلّه؛
+  // ومَن أراد الكلّ كان عليه مسحُ فلاتره ثمّ إعادة التصدير، ولن يتنبّه إلى ذلك أحد.
+  // ملاحظة: الخادم يسقّف هذا المسار بخمسمئة نشاطٍ في كلّ الأحوال، معروضًا كان أم مصدَّرًا.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ activities: CrmActivity[] }>('/api/crm/activities');
+    return [{ name: 'Activities', rows: d.activities || [], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(search.trim() || typeFilter);
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: 'Activities', rows: items, columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
+
   if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Phone className="w-5 h-5" />} title={T.activities} subtitle={`${items.length} ${T.activities}`}>
-        <ExportButton label={T.export} onClick={() => exportToExcel(items, [
-          { header: T.type, key: 'type', width: 12 },
-          { header: T.subject, key: 'subject', width: 30 },
-          { header: T.company, key: 'company', transform: (v) => companyName(v), width: 22 },
-          { header: T.date, key: 'date', transform: fmt.datetime, width: 18 },
-          { header: txx.by, key: 'createdBy', transform: (v) => userName(v), width: 18 },
-        ], `crm-activities-${today()}`, 'Activities')} />
+        <ExportMenu fileName="crm-activities" lang={ar ? 'ar' : 'en'} variant="subtle" label={T.export} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {T.logActivity}</PrimaryButton>
       </PageHeader>
 

@@ -9,10 +9,11 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader, StatCard, Select } from '@/components/hr/HRKit';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { canViewFleet, canEditFleet, fleetStatusLabel, fmtD, Lang } from '@/lib/fleet';
 import { useFleetLookups } from '@/hooks/useFleetLookups';
-import { UserRound, ArrowRight, Star, FileDown, Phone, Save } from 'lucide-react';
+import { UserRound, ArrowRight, Star, Phone, Save } from 'lucide-react';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import ReportButton from '@/components/system/ReportButton';
 
@@ -23,6 +24,15 @@ type Profile = {
 };
 
 const money = (n: number) => (Number(n) || 0).toLocaleString('en-US');
+
+const TRIPS_SHEET = 'Trips';
+const exportColumns: ExportColumn[] = [
+  { header: 'Waybill', key: 'waybillNumber' }, { header: 'From', key: 'fromCity' }, { header: 'To', key: 'toCity' },
+  { header: 'Plate', key: 'vehiclePlate' }, { header: 'Driver', key: 'driverName' },
+  { header: 'Load type', key: 'loadType' }, { header: 'Price', key: 'price' },
+  { header: 'Status', key: 'status', transform: (v) => fleetStatusLabel(v, 'en') },
+  { header: 'Load date', key: 'loadDate', transform: (v) => fmt.date(v) },
+];
 
 export default function FleetCustomerProfilePage() {
   const { lang, isRTL } = useLanguage();
@@ -63,28 +73,23 @@ export default function FleetCustomerProfilePage() {
     setSaving(false);
   };
 
-  const doExport = () => {
-    if (!data) return;
-    exportToExcel(data.shipments, [
-      { header: 'Waybill', key: 'waybillNumber' }, { header: 'From', key: 'fromCity' }, { header: 'To', key: 'toCity' },
-      { header: 'Plate', key: 'vehiclePlate' }, { header: 'Driver', key: 'driverName' },
-      { header: 'Load type', key: 'loadType' }, { header: 'Price', key: 'price' },
-      { header: 'Status', key: 'status', transform: (v) => fleetStatusLabel(v, 'en') },
-      { header: 'Load date', key: 'loadDate', transform: (v) => fmt.date(v) },
-    ], `customer-${data.customer.name}-${new Date().toISOString().slice(0, 10)}`, 'Trips');
-  };
-
   if (!canViewFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
   if (loading) return <Spinner />;
   if (!data) return <div className="text-slate-500 p-8">{ar ? 'العميل غير موجود' : 'Not found'}</div>;
   const c = data.customer;
+  // ملفّ عميلٍ واحد: الجدول أدناه هو كامل سجلّ رحلاته، لا فلترَ عليه ولا ترقيم،
+  // فنطاقٌ ثانٍ لن يزيد صفًّا واحدًا وإنّما يوهم المصدِّرَ بأنّ أمامه اختيارًا.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: TRIPS_SHEET, rows: data.shipments, columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-5 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<UserRound className="w-5 h-5" />} title={c.name}
         subtitle={c.customerType === 'heavy' ? (ar ? 'عميل نقل ثقيل' : 'Heavy transport customer') : c.customerType === 'branch' ? (ar ? 'عميل فروع' : 'Branch customer') : (ar ? 'عميل' : 'Customer')}>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={doExport} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm"><FileDown className="w-4 h-4" /> {ar ? 'تصدير' : 'Export'}</button>
+          <ExportMenu fileName={`customer-${c.name}`} lang={ar ? 'ar' : 'en'} variant="primary" label={ar ? 'تصدير' : 'Export'} options={exportOptions} />
           <button type="button" onClick={() => router.push('/system/fleet/dashboard')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><ArrowRight className="w-4 h-4" /> {ar ? 'رجوع' : 'Back'}</button>
         </div>
       </PageHeader>

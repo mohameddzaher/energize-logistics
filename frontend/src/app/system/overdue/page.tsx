@@ -8,8 +8,9 @@ import { getOverdueTranslations, getOverdueExtraTranslations } from '@/lib/trans
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import DataTable from '@/components/system/DataTable';
-import { AlertTriangle, Search, Filter, ChevronDown, Download } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { AlertTriangle, Search, Filter, ChevronDown } from 'lucide-react';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface OverdueInvoice {
   _id: string;
@@ -67,6 +68,35 @@ export default function OverduePage() {
   useEffect(() => {
     fetchOverdue();
   }, [fetchOverdue]);
+
+  const exportColumns: ExportColumn[] = [
+    { header: 'Customer', key: 'customer.companyName', width: 25 },
+    { header: 'Customer #', key: 'customer.customerNumber', width: 14 },
+    { header: 'Invoice #', key: 'invoiceNumber', width: 18 },
+    { header: 'Invoice Date', key: 'invoiceDate', transform: fmt.date, width: 14 },
+    { header: 'Due Date', key: 'dueDate', transform: fmt.date, width: 14 },
+    { header: 'Overdue Days', key: 'overdueDays', width: 14 },
+    { header: 'Amount', key: 'amount', transform: fmt.money, width: 15 },
+    { header: 'Outstanding', key: 'balance', transform: fmt.money, width: 15 },
+    { header: 'Collector', key: 'customer.assignedCollector', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
+    { header: 'Sales Manager', key: 'customer.salesManager', width: 18 },
+    { header: 'Grade', key: 'customer.grade', width: 8 },
+    { header: 'Status', key: 'status', transform: fmt.status, width: 12 },
+  ];
+  // الصفحة خمسون فاتورة والمتأخّرات تُعَدّ بالمئات؛ فمن يبحث ثمّ يصدّر كان يأخذ
+  // أوّل خمسينَ من نتيجته ويحسبها كلَّها. النطاقان الأخيران يعيدان الجلب بحدٍّ مفتوح.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters && search) params.set('search', search);
+    const data = await api.get<any>(`/api/analytics/overdue?${params}`);
+    return [{ name: 'Overdue', rows: data.invoices || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: 'Overdue', rows: invoices, columns: exportColumns }] },
+    { key: 'matching', label: search ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(total) },
+    ...(search ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
 
   useSocket('payment:logged', fetchOverdue);
   useSocket('invoice:updated', fetchOverdue);
@@ -175,36 +205,13 @@ export default function OverduePage() {
             <p className="text-slate-500 text-sm">{total} {txx.overdueInvoicesCount}</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            const suffix = search ? `_search-${search}` : '';
-            exportToExcel(
-              invoices,
-              [
-                { header: 'Customer', key: 'customer.companyName', width: 25 },
-                { header: 'Customer #', key: 'customer.customerNumber', width: 14 },
-                { header: 'Invoice #', key: 'invoiceNumber', width: 18 },
-                { header: 'Invoice Date', key: 'invoiceDate', transform: fmt.date, width: 14 },
-                { header: 'Due Date', key: 'dueDate', transform: fmt.date, width: 14 },
-                { header: 'Overdue Days', key: 'overdueDays', width: 14 },
-                { header: 'Amount', key: 'amount', transform: fmt.money, width: 15 },
-                { header: 'Outstanding', key: 'balance', transform: fmt.money, width: 15 },
-                { header: 'Collector', key: 'customer.assignedCollector', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
-                { header: 'Sales Manager', key: 'customer.salesManager', width: 18 },
-                { header: 'Grade', key: 'customer.grade', width: 8 },
-                { header: 'Status', key: 'status', transform: fmt.status, width: 12 },
-              ],
-              `Overdue_Invoices${suffix}_${new Date().toISOString().split('T')[0]}`,
-              'Overdue'
-            );
-          }}
-          disabled={invoices.length === 0}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Download className="w-4 h-4" />
-          {T.export}
-        </button>
+        <ExportMenu
+          fileName={`Overdue_Invoices${search ? `_search-${search}` : ''}`}
+          lang={lang === 'ar' ? 'ar' : 'en'}
+          variant="subtle"
+          label={T.export}
+          options={exportOptions}
+        />
       </div>
 
       {/* Search */}

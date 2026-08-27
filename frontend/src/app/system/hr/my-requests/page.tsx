@@ -7,9 +7,9 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { ClipboardList, Plus, Send, Link2, Check } from 'lucide-react';
 import { HRRequest, REQUEST_STATUS, REQUEST_CATEGORIES, categoryLabel, userName, fmtDateTime } from '@/lib/hr';
-import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Loader2, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyRequestsTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function MyRequestsPage() {
   const { notify } = useDialog();
@@ -50,21 +50,25 @@ export default function MyRequestsPage() {
     setBusy(false);
   };
 
-  const exportRows = () => {
-    exportToExcel(requests, [
-      { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 22 },
-      { header: tx.colSubject, key: 'subject', width: 32 },
-      { header: tx.colStatus, key: 'status', transform: (v) => (ar ? REQUEST_STATUS[v]?.ar : REQUEST_STATUS[v]?.en) || v, width: 16 },
-      { header: tx.colUpdated, key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 20 },
-    ], 'my-requests', tx.pageTitle);
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 22 },
+    { header: tx.colSubject, key: 'subject', width: 32 },
+    { header: tx.colStatus, key: 'status', transform: (v) => (ar ? REQUEST_STATUS[v]?.ar : REQUEST_STATUS[v]?.en) || v, width: 16 },
+    { header: tx.colUpdated, key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 20 },
+  ];
+  // طلباتي أنا وحدي، والجدول يعرضها كلَّها بلا بحثٍ ولا فلتر — فـ«المعروض» هو
+  // «الكلّ» حرفيًّا، وفصلُهما خيارين يوهم بفرقٍ لا وجود له.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: tx.pageTitle, rows: requests, columns: exportColumns }] },
+  ];
 
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<ClipboardList className="w-5 h-5" />} title={tx.pageTitle}>
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={exportRows} />
+        <ExportMenu fileName="my-requests" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <PrimaryButton onClick={() => setShowForm(true)}><Plus className="w-4 h-4" /> {tx.newRequest}</PrimaryButton>
       </PageHeader>
 

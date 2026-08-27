@@ -6,9 +6,9 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { BarChart3 } from 'lucide-react';
 import { isSalesStaff, money, pct, thisPeriod } from '@/lib/finance';
-import { Spinner, PageHeader, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { getSalesPerformanceTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function SalesPerformancePage() {
   const { user } = useAuth();
@@ -25,17 +25,21 @@ export default function SalesPerformancePage() {
   useEffect(() => { load(); }, [load]);
   useSocket('crm:deal', useCallback(() => load(), [load]));
 
-  const handleExport = () => {
-    exportToExcel(rows, [
-      { header: tx.colRep, key: 'rep', width: 24, transform: (_v, r) => r.rep?.name ?? '' },
-      { header: tx.colWon, key: 'wonValue', width: 16, transform: (_v, r) => money(r.wonValue) },
-      { header: lang === 'ar' ? 'عدد الصفقات الفائزة' : 'Won Count', key: 'wonCount', width: 14 },
-      { header: tx.colTarget, key: 'target', width: 16, transform: (v) => money(v) },
-      { header: tx.colAttainment, key: 'attainment', width: 14, transform: (v) => pct(v) },
-      { header: tx.colOpen, key: 'openValue', width: 16, transform: (_v, r) => money(r.openValue) },
-      { header: lang === 'ar' ? 'عدد الصفقات المفتوحة' : 'Open Count', key: 'openCount', width: 14 },
-    ], `sales-performance-${period}`, lang === 'ar' ? 'أداء المبيعات' : 'Sales Performance');
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: tx.colRep, key: 'rep', width: 24, transform: (_v, r) => r.rep?.name ?? '' },
+    { header: tx.colWon, key: 'wonValue', width: 16, transform: (_v, r) => money(r.wonValue) },
+    { header: lang === 'ar' ? 'عدد الصفقات الفائزة' : 'Won Count', key: 'wonCount', width: 14 },
+    { header: tx.colTarget, key: 'target', width: 16, transform: (v) => money(v) },
+    { header: tx.colAttainment, key: 'attainment', width: 14, transform: (v) => pct(v) },
+    { header: tx.colOpen, key: 'openValue', width: 16, transform: (_v, r) => money(r.openValue) },
+    { header: lang === 'ar' ? 'عدد الصفقات المفتوحة' : 'Open Count', key: 'openCount', width: 14 },
+  ];
+  // الجدول صفٌّ لكلّ مندوبٍ في الشهر المختار، يعرضه الخادم كاملًا بلا فلترٍ ولا ترقيم؛
+  // فنطاقٌ ثانٍ لن يزيد صفًّا، والشهرُ اختيارُ فترةٍ لا فلترٌ يُخفي مندوبين.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: lang === 'ar' ? 'أداء المبيعات' : 'Sales Performance', rows, columns: exportColumns }] },
+  ];
 
   if (!isSalesStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -44,7 +48,7 @@ export default function SalesPerformancePage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<BarChart3 className="w-5 h-5" />} title={tx.title}>
         <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" aria-label={tx.periodAria} />
-        <ExportButton onClick={handleExport} label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} />
+        <ExportMenu fileName={`sales-performance-${period}`} lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
       </PageHeader>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">

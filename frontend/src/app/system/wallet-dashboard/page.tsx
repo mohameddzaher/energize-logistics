@@ -6,9 +6,10 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
   Building2, Wallet, ArrowUpCircle, ArrowDownCircle, ShoppingCart,
-  TrendingUp, Users, AlertTriangle, Download, Calendar, CalendarRange,
+  TrendingUp, Users, AlertTriangle, Calendar, CalendarRange,
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
 import { getWalletDashboardTranslations, getWalletDashboardExtraTranslations } from '@/lib/translations';
 
@@ -68,20 +69,23 @@ export default function WalletDashboardPage() {
 
   const dateLabel = dateMode === 'range' ? `${dateFrom}_to_${dateTo}` : selectedDate;
 
-  const handleExportExcel = () => {
-    if (branches.length === 0) return;
-    const columns = [
-      { header: txx.colBranch, key: 'branch.name', width: 20 },
-      { header: txx.colBranchCode, key: 'branch.code', width: 12 },
-      { header: txx.colCollections, key: 'totalCollections', transform: fmt.money, width: 18 },
-      { header: txx.colExpenses, key: 'totalExpenses', transform: fmt.money, width: 18 },
-      { header: txx.colPurchases, key: 'totalPurchases', transform: fmt.money, width: 18 },
-      { header: txx.colNetMovement, key: 'netMovement', transform: fmt.money, width: 18 },
-      { header: txx.colClosingBalance, key: 'closingBalance', transform: fmt.money, width: 20 },
-      { header: txx.colActiveWallets, key: 'activeWallets', width: 14 },
-    ];
-    exportToExcel(branches, columns, `Wallet_Dashboard_${dateLabel}`, 'Branches');
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: txx.colBranch, key: 'branch.name', width: 20 },
+    { header: txx.colBranchCode, key: 'branch.code', width: 12 },
+    { header: txx.colCollections, key: 'totalCollections', transform: fmt.money, width: 18 },
+    { header: txx.colExpenses, key: 'totalExpenses', transform: fmt.money, width: 18 },
+    { header: txx.colPurchases, key: 'totalPurchases', transform: fmt.money, width: 18 },
+    { header: txx.colNetMovement, key: 'netMovement', transform: fmt.money, width: 18 },
+    { header: txx.colClosingBalance, key: 'closingBalance', transform: fmt.money, width: 20 },
+    { header: txx.colActiveWallets, key: 'activeWallets', width: 14 },
+  ];
+  // اليومُ أو المدى ليس فلترًا على صفوفٍ نملكها، بل هو التقرير نفسه: الخادم
+  // يحسب الأرقام لتلك الفترة وحدها ويعيد كلَّ الفروع. فلا معنى لنطاقٍ ثانٍ —
+  // اسمُ الملفّ يحمل الفترةَ حتّى لا يختلط ملفُّ يومٍ بملفِّ آخر.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: 'Branches', rows: branches as unknown as Record<string, any>[], columns: exportColumns }] },
+  ];
 
   const totals = branches.reduce((acc, b) => ({
     collections: acc.collections + b.totalCollections,
@@ -155,10 +159,7 @@ export default function WalletDashboardPage() {
             </>
           )}
 
-          <button type="button" onClick={handleExportExcel} disabled={branches.length === 0}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50" title={txx.exportToExcel}>
-            <Download className="w-4 h-4" /> {T.export}
-          </button>
+          <ExportMenu fileName={`Wallet_Dashboard_${dateLabel}`} lang={lang === 'ar' ? 'ar' : 'en'} label={T.export} options={exportOptions} />
         </div>
       </div>
 

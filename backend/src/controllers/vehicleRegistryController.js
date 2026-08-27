@@ -1247,12 +1247,19 @@ exports.expiring = async (req, res) => {
       summary[r.state] = (summary[r.state] || 0) + 1;
       byDoc[r.docKey] = (byDoc[r.docKey] || 0) + 1;
     }
-    res.json({
-      rows: rows.slice(0, 2000),
+    // ── السقف يُعلن نفسه، ويُرفَع عند الطلب ────────────────────────────────────
+    // الصفوف هنا مركبةٌ × مستند، فالألفان أقربُ ممّا تبدو. وكان القصّ صامتًا:
+    // الملخّص فوق يعدّ الكلّ والملفّ ينزل بألفين، فيقرأ المصدِّر ملفًّا ناقصًا
+    // وهو يحسبه كاملًا — وهذا ما يجعل «تصدير الكلّ» وعدًا لا يُوفى.
+    const CAP = Math.min(Number(req.query.limit) || 2000, 50000);
+    const body = {
+      rows: rows.slice(0, CAP),
       summary,
       byDoc: DOC_TYPES.map((d) => ({ key: d.key, ar: d.ar, en: d.en, count: byDoc[d.key] || 0 })),
       withinDays, docs: DOC_TYPES.map((d) => ({ key: d.key, ar: d.ar, en: d.en })),
-    });
+    };
+    if (rows.length > CAP) { body.truncated = true; body.limit = CAP; body.matched = rows.length; }
+    res.json(body);
   } catch (e) {
     console.error('vreg expiring', e);
     res.status(500).json({ message: 'تعذّر تحميل الانتهاءات' });

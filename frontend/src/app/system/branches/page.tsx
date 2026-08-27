@@ -6,8 +6,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, Plus, Search, X, Check, Edit, Trash2, Loader2, Download } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { Building2, Plus, Search, X, Check, Edit, Trash2, Loader2 } from 'lucide-react';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
 import { getBranchesTranslations, getBranchesExtraTranslations } from '@/lib/translations';
 
@@ -91,6 +92,21 @@ export default function BranchesPage() {
     (b.city && b.city.toLowerCase().includes(search.toLowerCase()))
   );
 
+  const exportColumns: ExportColumn[] = [
+    { header: T.name, key: 'name', width: 20 },
+    { header: T.code, key: 'code', width: 10 },
+    { header: T.city, key: 'city', width: 16 },
+    { header: T.status, key: 'isActive', transform: (v: boolean) => v ? T.active : T.inactive, width: 10 },
+    { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
+  ];
+  // النطاقان يُبنيان دائمًا حتى وإن تساويا؛ العدّاد جنب كلٍّ منهما هو ما يمنع
+  // المستخدمَ من تصدير المفلتَر وهو يحسبه الكلّ.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Branches', rows: filtered, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: 'Branches', rows: branches, columns: exportColumns }] },
+  ];
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -112,15 +128,7 @@ export default function BranchesPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => exportToExcel(filtered, [
-            { header: T.name, key: 'name', width: 20 },
-            { header: T.code, key: 'code', width: 10 },
-            { header: T.city, key: 'city', width: 16 },
-            { header: T.status, key: 'isActive', transform: (v: boolean) => v ? T.active : T.inactive, width: 10 },
-            { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
-          ], `branches-${new Date().toISOString().split('T')[0]}`, 'Branches')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-            <Download className="w-4 h-4" /> {T.downloadExcel}
-          </button>
+          <ExportMenu fileName="branches" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.downloadExcel} options={exportOptions} />
           {isSuperAdmin && (
             <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
               <Plus className="w-4 h-4" />

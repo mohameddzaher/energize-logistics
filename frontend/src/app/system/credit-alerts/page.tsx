@@ -7,8 +7,9 @@ import api from '@/lib/api';
 import DataTable from '@/components/system/DataTable';
 import { useSocket } from '@/hooks/useSocket';
 import { motion } from 'framer-motion';
-import { AlertTriangle, RefreshCw, TrendingUp, Shield, Download } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { AlertTriangle, RefreshCw, TrendingUp, Shield } from 'lucide-react';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function CreditAlertsPage() {
   const { user } = useAuth();
@@ -38,6 +39,26 @@ export default function CreditAlertsPage() {
   useSocket('payment:logged', fetchData);
   useSocket('invoice:created', fetchData);
   useSocket('customer:updated', fetchData);
+
+  const exportColumns: ExportColumn[] = [
+    { header: T.customer, key: 'companyName', width: 25 },
+    { header: txx.customerNumber, key: 'customerNumber', width: 14 },
+    { header: T.creditLimit, key: 'creditLimit', transform: fmt.money, width: 15 },
+    { header: T.currentOutstanding, key: 'currentOutstanding', transform: fmt.money, width: 15 },
+    { header: txx.remaining, key: 'remaining', transform: fmt.money, width: 15 },
+    { header: txx.usagePercent, key: 'usagePercent', width: 10 },
+    { header: txx.grade, key: 'grade', width: 8 },
+    { header: txx.creditTerm, key: 'creditTerm', width: 12 },
+    { header: txx.collector, key: 'assignedCollector', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
+    { header: txx.lastPaymentDate, key: 'lastPaymentDate', transform: fmt.date, width: 18 },
+    { header: txx.lastPaymentAmount, key: 'lastPaymentAmount', transform: fmt.money, width: 20 },
+  ];
+  // المسار يعيد كلّ الإنذارات دفعةً واحدة بلا ترقيمٍ ولا فلترةٍ على الخادم، وبحث
+  // الجدول محصورٌ داخل DataTable ولا نملكه هنا؛ فنطاقٌ ثانٍ سيكون نسخةً من الأوّل.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: 'Credit Alerts', rows: data?.alerts || [], columns: exportColumns }] },
+  ];
 
   const columns = [
     {
@@ -139,34 +160,7 @@ export default function CreditAlertsPage() {
           <p className="text-slate-500 text-sm mt-1">{T.subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              exportToExcel(
-                data?.alerts || [],
-                [
-                  { header: T.customer, key: 'companyName', width: 25 },
-                  { header: txx.customerNumber, key: 'customerNumber', width: 14 },
-                  { header: T.creditLimit, key: 'creditLimit', transform: fmt.money, width: 15 },
-                  { header: T.currentOutstanding, key: 'currentOutstanding', transform: fmt.money, width: 15 },
-                  { header: txx.remaining, key: 'remaining', transform: fmt.money, width: 15 },
-                  { header: txx.usagePercent, key: 'usagePercent', width: 10 },
-                  { header: txx.grade, key: 'grade', width: 8 },
-                  { header: txx.creditTerm, key: 'creditTerm', width: 12 },
-                  { header: txx.collector, key: 'assignedCollector', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
-                  { header: txx.lastPaymentDate, key: 'lastPaymentDate', transform: fmt.date, width: 18 },
-                  { header: txx.lastPaymentAmount, key: 'lastPaymentAmount', transform: fmt.money, width: 20 },
-                ],
-                `Credit_Alerts_${new Date().toISOString().split('T')[0]}`,
-                'Credit Alerts'
-              );
-            }}
-            disabled={!data?.alerts?.length}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4" />
-            {T.export}
-          </button>
+          <ExportMenu fileName="Credit_Alerts" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.export} options={exportOptions} />
           <button
             type="button"
             onClick={() => { setLoading(true); fetchData(); }}

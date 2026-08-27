@@ -6,9 +6,10 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Package, Plus, Edit, Undo2, Trash2, Check, Eye, Lock } from 'lucide-react';
-import { isHRStaff, Asset, Employee, empName, fmtDate, exportToExcel, today } from '@/lib/hr';
+import { isHRStaff, Asset, Employee, empName, fmtDate, today } from '@/lib/hr';
 import { useAssetVocab } from '@/hooks/useAssetVocab';
-import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrCustodyTranslations } from '@/lib/translations';
 
 const EMPTY = { employee: '', name: '', type: 'laptop', serialNumber: '', brand: '', model: '', condition: 'good', value: 0, assignedDate: '', notes: '' };
@@ -83,24 +84,40 @@ export default function CustodyPage() {
     .filter((a) => !sourceFilter || (sourceFilter === 'it' ? isItOwned(a) : !isItOwned(a)))
     .filter((a) => !search.trim() || a.name.toLowerCase().includes(search.toLowerCase()) || (a.serialNumber || '').toLowerCase().includes(search.toLowerCase()) || empName(a.employee).toLowerCase().includes(search.toLowerCase()));
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Employee', key: 'employee', transform: (v: any) => empName(v), width: 22 },
+    { header: 'Item', key: 'name', width: 20 },
+    { header: 'Type', key: 'type', transform: (v: any) => typeLabel(v, 'en'), width: 16 },
+    { header: 'Serial', key: 'serialNumber', width: 18 },
+    { header: 'Brand', key: 'brand', width: 14 },
+    { header: 'Condition', key: 'condition', width: 12 },
+    { header: 'Status', key: 'status', width: 12 },
+    { header: 'Assigned', key: 'assignedDate', width: 14 },
+    { header: 'Returned', key: 'returnedDate', width: 14 },
+    { header: 'Source', key: 'issuedBySection', transform: (v: any) => (v === 'it' ? tx.sourceIt : tx.sourceHr), width: 20 },
+  ];
+  // فلتر الحالة (مُسلَّمة/مُعادة) يُطبَّق على الخادم، فما في الذاكرة ليس كلّ
+  // العهد؛ لولا إعادة الجلب بلا الفلتر لخرج ملفُّ «الكلّ» وهو نصفُ السجلّ.
+  // أمّا البحث وفلتر المصدر فيعملان في الذاكرة، فـ«المعروض» صادقٌ بلا جلب.
+  const fetchAllAssets = async () => {
+    const d = await api.get<{ assets: Asset[] }>('/api/hr/assets');
+    return [{ name: 'Custody', rows: d.assets || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Custody', rows: filtered, columns: exportColumns }] },
+    statusFilter
+      ? { key: 'all', label: scope.all, resolve: fetchAllAssets }
+      : { key: 'all', label: scope.all, sheets: [{ name: 'Custody', rows: assets, columns: exportColumns }] },
+  ];
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Package className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${assets.filter((a) => a.status === 'assigned').length} ${tx.assignedCount}`}>
-        <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(filtered, [
-          { header: 'Employee', key: 'employee', transform: (v: any) => empName(v), width: 22 },
-          { header: 'Item', key: 'name', width: 20 },
-          { header: 'Type', key: 'type', transform: (v: any) => typeLabel(v, 'en'), width: 16 },
-          { header: 'Serial', key: 'serialNumber', width: 18 },
-          { header: 'Brand', key: 'brand', width: 14 },
-          { header: 'Condition', key: 'condition', width: 12 },
-          { header: 'Status', key: 'status', width: 12 },
-          { header: 'Assigned', key: 'assignedDate', width: 14 },
-          { header: 'Returned', key: 'returnedDate', width: 14 },
-          { header: 'Source', key: 'issuedBySection', transform: (v: any) => (v === 'it' ? tx.sourceIt : tx.sourceHr), width: 20 },
-        ], `custody-${today()}`, 'Custody')} />
+        <ExportMenu fileName="custody" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addCustody}</PrimaryButton>
       </PageHeader>
 

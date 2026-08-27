@@ -9,12 +9,12 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import {
-  ClipboardList, AlertTriangle, CheckCircle2, Clock, Search, Download, Users,
+  ClipboardList, AlertTriangle, CheckCircle2, Clock, Search, Users,
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { KpiTile } from '@/components/system/Scorecard';
 import { ActionCard } from '@/components/system/BusinessReviewKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   brMeta, brAllActions, brUpdateAction, brDelegate, brDeleteAction,
   type BrMeta, type BrAction, type Lang,
@@ -77,23 +77,35 @@ export default function ActionRegisterPage() {
     );
   }
 
-  const exportRows = () => exportToExcel(
-    shown as unknown as Record<string, any>[],
-    [
-      { header: t('Meeting', 'الاجتماع'), key: 'meetingRef', width: 14 },
-      { header: t('Action', 'البند'), key: 'title', width: 44 },
-      { header: t('Owner', 'المكلَّف'), key: 'assigneeName', width: 24 },
-      { header: t('Requested by', 'بطلب من'), key: 'raisedByName', width: 22 },
-      { header: t('Department', 'القسم'), key: 'department', width: 18 },
-      { header: t('Due', 'موعد التسليم'), key: 'dueDate', transform: (v: any) => fmtDate(v), width: 14 },
-      { header: t('Status', 'الحالة'), key: 'status', transform: (v: string) => vocabLabel(meta?.actionStatuses, v, L), width: 16 },
-      { header: t('Progress %', 'الإنجاز %'), key: 'progress', width: 12 },
-      { header: t('Overdue', 'متأخر'), key: 'isOverdue', transform: (v: boolean) => (v ? t('Yes', 'نعم') : t('No', 'لا')), width: 10 },
-      { header: t('Delegated to', 'موزّع على'), key: 'delegations', transform: (v: any[]) => (v || []).map((d) => d.assigneeName).join(' | '), width: 34 },
-    ],
-    'business-review-actions',
-    t('Action register', 'سجل المتابعة')
-  );
+  const exportColumns: ExportColumn[] = [
+    { header: t('Meeting', 'الاجتماع'), key: 'meetingRef', width: 14 },
+    { header: t('Action', 'البند'), key: 'title', width: 44 },
+    { header: t('Owner', 'المكلَّف'), key: 'assigneeName', width: 24 },
+    { header: t('Requested by', 'بطلب من'), key: 'raisedByName', width: 22 },
+    { header: t('Department', 'القسم'), key: 'department', width: 18 },
+    { header: t('Due', 'موعد التسليم'), key: 'dueDate', transform: (v: any) => fmtDate(v), width: 14 },
+    { header: t('Status', 'الحالة'), key: 'status', transform: (v: string) => vocabLabel(meta?.actionStatuses, v, L), width: 16 },
+    { header: t('Progress %', 'الإنجاز %'), key: 'progress', width: 12 },
+    { header: t('Overdue', 'متأخر'), key: 'isOverdue', transform: (v: boolean) => (v ? t('Yes', 'نعم') : t('No', 'لا')), width: 10 },
+    { header: t('Delegated to', 'موزّع على'), key: 'delegations', transform: (v: any[]) => (v || []).map((d) => d.assigneeName).join(' | '), width: 34 },
+  ];
+  const sheetName = t('Action register', 'سجل المتابعة');
+  // فلترُ الحالة والمكلَّف يجري على الخادم، والبحثُ و«المتأخر فقط» في الذاكرة؛
+  // فالسجلّ الظاهر قد يكون شريحةً صغيرةً من البنود. من يفتح الملفَّ ليجرد كلَّ
+  // ما على الجميع كان يأخذ شريحةَ الشاشة وحدها، فصار «الكلّ» يعيد النداء بلا فلاتر.
+  const fetchAllForExport = async () => {
+    const r = await brAllActions({});
+    return [{ name: sheetName, rows: (r.actions || []) as unknown as Record<string, any>[], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(q.trim() || status || assignee || onlyOverdue);
+  const scope = exportScopeLabels(lang === 'ar');
+  const shownSheets = [{ name: sheetName, rows: shown as unknown as Record<string, any>[], columns: exportColumns }];
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: shownSheets },
+        { key: 'all', label: scope.all, resolve: fetchAllForExport },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: shownSheets }];
 
   return (
     <div className="space-y-5">
@@ -105,10 +117,8 @@ export default function ActionRegisterPage() {
           'كل البنود التنفيذية من كل الاجتماعات — من عليه ماذا، وما الذي تأخّر.'
         )}
       >
-        <button type="button" onClick={exportRows}
-          className="inline-flex items-center gap-1.5 border border-slate-200 text-slate-700 text-sm px-3 py-1.5 rounded-lg hover:bg-slate-50">
-          <Download className="w-4 h-4" />{t('Export Excel', 'تصدير Excel')}
-        </button>
+        <ExportMenu fileName="business-review-actions" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle"
+          label={t('Export Excel', 'تصدير Excel')} options={exportOptions} />
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">

@@ -12,7 +12,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { Boxes } from 'lucide-react';
 import { getRegisters, fmtDate, daysText, money, STATE_META, stateLabel } from '@/lib/vehicleRegistry';
@@ -98,14 +98,21 @@ export default function Page() {
         { header: t('منها منتهية', 'Expired'), key: 'expired', width: 12 },
       ];
 
+  // شرائح الفلترة والبحث تعمل في الذاكرة، فالنطاقان حاضران معًا وعدّاداهما ظاهران؛
+  // بدونهما كان «تصدير المعروض» يخرج بشريحةٍ صغيرة والمستخدم يحسبه السجلّ كلَّه.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: reg?.ar || tab, rows: f.shown, columns: cols }] },
+    { key: 'all', label: scope.all, sheets: [{ name: reg?.ar || tab, rows, columns: cols }] },
+  ];
+
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Boxes className="w-5 h-5" />}
         title={t('سجلّات قسم المركبات', 'Vehicle registers')}
         subtitle={t('المُلّاك والمفوَّضون وأجهزة التتبّع وشرائح الوقود — كلها مبنيّة من المركبات نفسها',
                     'Owners, authorized persons, GPS units and fuel cards — all built from the vehicles themselves')}>
-        <ExportMenu fileName={`vehicle-${tab}`} lang={lang as 'ar' | 'en'}
-          options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: reg?.ar || tab, rows: f.shown, columns: cols }] }]} />
+        <ExportMenu fileName={`vehicle-${tab}`} lang={lang as 'ar' | 'en'} options={exportOptions} />
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-1.5">

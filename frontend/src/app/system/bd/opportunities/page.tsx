@@ -10,13 +10,14 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Compass, Plus, Edit, Trash2 } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
+  Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge,
   Modal, Field, TextInput, TextArea, Select,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   canViewBd, canEditBd, BdOpportunity, OPP_STAGE, OPP_TYPE, PRIORITY, ALL_STAGES,
   labelOf, optionsOf, bdName, userName, companyName, money, fmtDate, toDateInput,
-  listToText, textToList, exportToExcel,
+  listToText, textToList,
 } from '@/lib/bd';
 
 const EMPTY = {
@@ -123,21 +124,32 @@ export default function BdOpportunitiesPage() {
     catch (e: any) { notify(e.message, 'error'); }
   };
 
-  const doExport = () => {
-    exportToExcel(rows, [
-      { header: ar ? 'الاسم' : 'Name', key: 'name', transform: (_v, r) => bdName(r, lang) },
-      { header: ar ? 'النوع' : 'Type', key: 'type', transform: (v) => labelOf(OPP_TYPE, v, lang) },
-      { header: ar ? 'المرحلة' : 'Stage', key: 'stage', transform: (v) => labelOf(OPP_STAGE, v, lang) },
-      { header: ar ? 'الأولوية' : 'Priority', key: 'priority', transform: (v) => labelOf(PRIORITY, v, lang) },
-      { header: ar ? 'القيمة' : 'Value', key: 'estimatedValue' },
-      { header: ar ? 'العملة' : 'Currency', key: 'currency' },
-      { header: ar ? 'الاحتمالية %' : 'Probability %', key: 'probability' },
-      { header: ar ? 'تاريخ الإغلاق المتوقع' : 'Expected close', key: 'expectedCloseDate' },
-      { header: ar ? 'المسؤول' : 'Owner', key: 'ownerName', transform: (v, r) => v || userName(r.owner) },
-      { header: ar ? 'المنطقة' : 'Region', key: 'region' },
-      { header: ar ? 'الخطوة التالية' : 'Next step', key: 'nextStep' },
-    ], `bd-opportunities-${new Date().toISOString().slice(0, 10)}`, 'Opportunities');
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'الاسم' : 'Name', key: 'name', transform: (_v, r) => bdName(r, lang) },
+    { header: ar ? 'النوع' : 'Type', key: 'type', transform: (v) => labelOf(OPP_TYPE, v, lang) },
+    { header: ar ? 'المرحلة' : 'Stage', key: 'stage', transform: (v) => labelOf(OPP_STAGE, v, lang) },
+    { header: ar ? 'الأولوية' : 'Priority', key: 'priority', transform: (v) => labelOf(PRIORITY, v, lang) },
+    { header: ar ? 'القيمة' : 'Value', key: 'estimatedValue' },
+    { header: ar ? 'العملة' : 'Currency', key: 'currency' },
+    { header: ar ? 'الاحتمالية %' : 'Probability %', key: 'probability' },
+    { header: ar ? 'تاريخ الإغلاق المتوقع' : 'Expected close', key: 'expectedCloseDate' },
+    { header: ar ? 'المسؤول' : 'Owner', key: 'ownerName', transform: (v, r) => v || userName(r.owner) },
+    { header: ar ? 'المنطقة' : 'Region', key: 'region' },
+    { header: ar ? 'الخطوة التالية' : 'Next step', key: 'nextStep' },
+  ];
+  // الفلترة هنا تجري على الخادم، فما في الذاكرة هو نتيجة البحث والمرحلة معًا؛
+  // ومَن يريد السجلّ كاملًا لا يملك وسيلةً لرؤيته إلّا بمسح فلاتره أوّلًا،
+  // فنُعيد النداء بلا معاملاتٍ نيابةً عنه بدل أن يظنّ المفلتَر هو الكلّ.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ opportunities: BdOpportunity[] }>('/api/business-development/opportunities');
+    return [{ name: 'Opportunities', rows: d.opportunities || [], columns: exportColumns }];
   };
+  const hasActiveFilters = !!(search.trim() || stage);
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: 'Opportunities', rows, columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   if (!canViewBd(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
@@ -152,7 +164,7 @@ export default function BdOpportunitiesPage() {
         subtitle={`${rows.length} · ${money(totalValue)}`}
       >
         <div className="w-56"><SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث…' : 'Search…'} /></div>
-        <ExportButton onClick={doExport} label={ar ? 'تصدير' : 'Export'} />
+        <ExportMenu fileName="bd-opportunities" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير' : 'Export'} options={exportOptions} />
         {canEdit && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'فرصة جديدة' : 'New opportunity'}</PrimaryButton>}
       </PageHeader>
 

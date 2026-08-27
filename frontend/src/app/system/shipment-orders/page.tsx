@@ -12,9 +12,9 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { PackageSearch, Plus, Pencil, Trash2, FileDown, Loader2 } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, StatCard, Select, ErrorNotice,
+  Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   ShipmentOrder, OrderCustomer, ORDER_STATUSES, orderStatus, statusLabel,
   fmtDT, money, canEditOrders, canAdminOrders, Lang,
@@ -168,6 +168,41 @@ export default function ShipmentOrdersPage() {
   const togglePick = (id: string) =>
     setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Waybill', key: 'waybillNumber', width: 10 },
+    { header: 'Customer', key: 'customerName', width: 26 },
+    { header: 'From', key: 'fromCity', width: 14 },
+    { header: 'To', key: 'toCity', width: 14 },
+    { header: 'Truck', key: 'truckType', width: 12 },
+    { header: 'Driver', key: 'driverName', width: 18 },
+    { header: 'Pickup', key: 'pickupTime', transform: (v: any) => fmtDate(v), width: 14 },
+    { header: 'Sell', key: 'sellPrice', width: 10 },
+    { header: 'Buy', key: 'buyPrice', width: 10 },
+    { header: 'Status', key: 'status', transform: (v: any) => statusLabel(v, 'en'), width: 14 },
+    { header: 'Agent', key: 'agentName', width: 16 },
+  ];
+  // الترقيم على الخادم بخمسةٍ وعشرين صفًّا: فلترةُ مئتَي شحنة ثم التصدير كانت
+  // تُخرج الصفحة الظاهرة وحدها بلا أيّ إنذار، فصار كلُّ نطاقٍ يُجلَب من الخادم بحدّه.
+  const fetchForExport = async (withFilters: boolean) => {
+    const qs = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      if (debounced.trim()) qs.set('q', debounced.trim());
+      if (statusFilter) qs.set('status', statusFilter);
+      if (customerFilter) qs.set('customer', customerFilter);
+      if (fromDate) qs.set('from', fromDate);
+      if (toDate) qs.set('to', toDate);
+    }
+    const d = await api.get<{ orders: ShipmentOrder[]; total: number }>(`/api/shipment-orders/orders?${qs}`);
+    return [{ name: 'Orders', rows: d.orders || [], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(debounced.trim() || statusFilter || customerFilter || fromDate || toDate);
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: 'Orders', rows: orders, columns: exportColumns }] },
+    { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(total) },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
+
   if (loading) return <Spinner />;
 
   const inFlight = ['loading', 'uploaded', 'on_way'].reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
@@ -190,19 +225,7 @@ export default function ShipmentOrdersPage() {
               : (ar ? `تحميل ${picked.size} بوليصة` : `Download ${picked.size} waybills`)}
           </button>
         )}
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(orders, [
-          { header: 'Waybill', key: 'waybillNumber', width: 10 },
-          { header: 'Customer', key: 'customerName', width: 26 },
-          { header: 'From', key: 'fromCity', width: 14 },
-          { header: 'To', key: 'toCity', width: 14 },
-          { header: 'Truck', key: 'truckType', width: 12 },
-          { header: 'Driver', key: 'driverName', width: 18 },
-          { header: 'Pickup', key: 'pickupTime', transform: (v: any) => fmtDate(v), width: 14 },
-          { header: 'Sell', key: 'sellPrice', width: 10 },
-          { header: 'Buy', key: 'buyPrice', width: 10 },
-          { header: 'Status', key: 'status', transform: (v: any) => statusLabel(v, 'en'), width: 14 },
-          { header: 'Agent', key: 'agentName', width: 16 },
-        ], `shipment-orders-${new Date().toISOString().slice(0, 10)}`, 'Orders')} />
+        <ExportMenu fileName="shipment-orders" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
         {editor && (
           <PrimaryButton onClick={() => router.push('/system/shipment-orders/new')}>
             <Plus className="w-4 h-4" /> {ar ? 'إنشاء شحنة' : 'Create shipment'}

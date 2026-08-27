@@ -4,10 +4,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { motion } from 'framer-motion';
-import { CalendarDays, Clock, Plane, Hourglass, RefreshCw, Download } from 'lucide-react';
+import { CalendarDays, Clock, Plane, Hourglass, RefreshCw } from 'lucide-react';
 import { isRemoteStaff, fmtDuration } from '@/lib/remote';
 import { getRemoteDashboardTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface PerEmployee { userId: string; name: string; daysWorked: number; totalMinutes: number; leaveDays: number }
 interface DashData {
@@ -55,20 +55,18 @@ export default function RemoteDashboardPage() {
     { icon: <Hourglass className="w-6 h-6" />, label: tx.pendingLeaves, value: data?.summary.pendingLeaves ?? 0, color: 'text-amber-700 bg-amber-500/10' },
   ];
 
-  const handleExport = () => {
-    const rows = data?.perEmployee ?? [];
-    exportToExcel(
-      rows,
-      [
-        { header: tx.employee, key: 'name', width: 26 },
-        { header: tx.colDays, key: 'daysWorked', width: 14 },
-        { header: tx.colHours, key: 'totalMinutes', width: 16, transform: (v) => fmtDuration(v, ar ? 'ar' : 'en') },
-        { header: tx.leaveDays, key: 'leaveDays', width: 14 },
-      ],
-      'remote-dashboard',
-      tx.perEmployeeBreakdown,
-    );
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: tx.employee, key: 'name', width: 26 },
+    { header: tx.colDays, key: 'daysWorked', width: 14 },
+    { header: tx.colHours, key: 'totalMinutes', width: 16, transform: (v) => fmtDuration(v, ar ? 'ar' : 'en') },
+    { header: tx.leaveDays, key: 'leaveDays', width: 14 },
+  ];
+  // الصفوف هنا حصائلُ محسوبة للفترة المختارة لا سجلّاتٍ خامًا: نطاقٌ ثانٍ بلا فلترٍ
+  // لن يزيد صفًّا بل سيغيّر الأرقام نفسها إلى مدّةٍ أخرى، فيكون تضليلًا لا خيارًا.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: tx.perEmployeeBreakdown, rows: (data?.perEmployee ?? []) as unknown as Record<string, any>[], columns: exportColumns }] },
+  ];
 
   const canExport = staff && !!data && data.perEmployee.length > 0;
 
@@ -78,9 +76,7 @@ export default function RemoteDashboardPage() {
         <h1 className="text-2xl font-bold text-slate-900">{staff ? tx.teamDashboardTitle : tx.myDashboardTitle}</h1>
         <div className="flex items-center gap-2">
           {canExport && (
-            <button type="button" onClick={handleExport} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
-              <Download className="w-4 h-4" />{ar ? 'تصدير Excel' : 'Export Excel'}
-            </button>
+            <ExportMenu fileName="remote-dashboard" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
           )}
           <button type="button" onClick={load} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}><RefreshCw className="w-4 h-4" /></button>
         </div>

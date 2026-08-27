@@ -6,10 +6,11 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
   Building2, ArrowLeft, ArrowUpCircle, ArrowDownCircle, ShoppingCart,
-  TrendingUp, Users, Wallet, Receipt, AlertTriangle, Lock, Unlock, Download,
+  TrendingUp, Users, Wallet, Receipt, AlertTriangle, Lock, Unlock,
   Calendar, CalendarRange,
 } from 'lucide-react';
-import { exportMultiSheet, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
 import { getWalletDashboardTranslations, getWalletDashboardBranchIdExtraTranslations } from '@/lib/translations';
 
@@ -142,52 +143,45 @@ export default function BranchWalletDashboardPage() {
   const dateLabel = dateMode === 'range' ? `${dateFrom}_to_${dateTo}` : selectedDate;
   const dateDisplay = dateMode === 'range' ? `${dateFrom} to ${dateTo}` : selectedDate;
 
-  const handleExportExcel = () => {
-    if (transactions.length === 0 && wallets.length === 0) return;
-    const walletColumns = [
-      { header: T.user, key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
-      ...(dateMode === 'range' ? [{ header: T.date, key: 'date', width: 12 }] : []),
-      { header: txx.openingBalanceSar, key: 'openingBalance', transform: fmt.money, width: 20 },
-      { header: txx.collectionsSar, key: 'totalCollections', transform: fmt.money, width: 18 },
-      { header: txx.expensesSar, key: 'totalExpenses', transform: fmt.money, width: 18 },
-      { header: txx.purchasesSar, key: 'totalPurchases', transform: fmt.money, width: 18 },
-      { header: txx.closingBalanceSar, key: 'closingBalance', transform: fmt.money, width: 20 },
-      { header: T.status, key: 'isClosed', transform: (v: any) => v ? T.closed : T.open, width: 10 },
-      { header: txx.actualCashSar, key: 'actualCash', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : txx.notClosed), width: 18 },
-      { header: txx.cashDifferenceSar, key: 'cashDifference', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : txx.notClosed), width: 20 },
-    ];
-    const txColumns = [
-      ...(dateMode === 'range' ? [{ header: T.date, key: 'date', width: 12 }] : []),
-      { header: T.time, key: 'createdAt', transform: (v: any) => v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '', width: 8 },
-      { header: T.user, key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
-      { header: T.type, key: 'type', transform: (v: any) => v ? (txx[`type_${v}` as keyof typeof txx] || v.charAt(0).toUpperCase() + v.slice(1)) : '', width: 12 },
-      { header: txx.amountSar, key: 'amount', transform: fmt.money, width: 15 },
-      { header: txx.customer, key: 'customer', transform: (v: any) => v ? `${v.companyName} (${v.customerNumber})` : '', width: 25 },
-      { header: txx.invoiceNo, key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
-      { header: txx.invoiceAmount, key: 'invoice', transform: (v: any) => v?.amount != null ? fmt.money(v.amount) : '', width: 15 },
-      { header: txx.invoiceBalance, key: 'invoice', transform: (v: any) => v?.balance != null ? fmt.money(v.balance) : '', width: 15 },
-      { header: txx.deliveryStatementNo, key: 'deliveryStatementNumber', width: 20 },
-      { header: txx.vendor, key: 'vendor', transform: (v: any) => v?.name || '', width: 18 },
-      { header: txx.driver, key: 'driver', transform: (v: any) => v?.name || '', width: 18 },
-      { header: txx.category, key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
-      { header: txx.itemDescription, key: 'itemName', width: 22 },
-      { header: T.reference, key: 'reference', width: 15 },
-      { header: T.client, key: 'operationDetails', transform: (v: any) => v?.client || '', width: 18 },
-      { header: T.from, key: 'operationDetails', transform: (v: any) => v?.from || '', width: 15 },
-      { header: T.to2, key: 'operationDetails', transform: (v: any) => v?.to || '', width: 15 },
-      { header: txx.carTypeHeader, key: 'operationDetails', transform: (v: any) => v?.carType || '', width: 12 },
-      { header: T.length, key: 'operationDetails', transform: (v: any) => v?.length || '', width: 10 },
-      { header: T.carNumber, key: 'operationDetails', transform: (v: any) => v?.carNumber || '', width: 15 },
-      { header: T.reportDate, key: 'operationDetails', transform: (v: any) => v?.reportDate ? new Date(v.reportDate).toLocaleDateString('en-GB') : '', width: 14 },
-      { header: T.notes, key: 'notes', width: 25 },
-      { header: txx.flagged, key: 'isFlagged', transform: fmt.yesNo, width: 8 },
-    ];
-    const safeBranchName = branchName || txx.branch;
-    exportMultiSheet([
-      { name: 'Wallets', data: wallets, columns: walletColumns },
-      { name: 'Transactions', data: transactions, columns: txColumns },
-    ], `${safeBranchName}_Wallet_${dateLabel}`);
-  };
+  const walletColumns: ExportColumn[] = [
+    { header: T.user, key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
+    ...(dateMode === 'range' ? [{ header: T.date, key: 'date', width: 12 }] : []),
+    { header: txx.openingBalanceSar, key: 'openingBalance', transform: fmt.money, width: 20 },
+    { header: txx.collectionsSar, key: 'totalCollections', transform: fmt.money, width: 18 },
+    { header: txx.expensesSar, key: 'totalExpenses', transform: fmt.money, width: 18 },
+    { header: txx.purchasesSar, key: 'totalPurchases', transform: fmt.money, width: 18 },
+    { header: txx.closingBalanceSar, key: 'closingBalance', transform: fmt.money, width: 20 },
+    { header: T.status, key: 'isClosed', transform: (v: any) => v ? T.closed : T.open, width: 10 },
+    { header: txx.actualCashSar, key: 'actualCash', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : txx.notClosed), width: 18 },
+    { header: txx.cashDifferenceSar, key: 'cashDifference', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : txx.notClosed), width: 20 },
+  ];
+  const txColumns: ExportColumn[] = [
+    ...(dateMode === 'range' ? [{ header: T.date, key: 'date', width: 12 }] : []),
+    { header: T.time, key: 'createdAt', transform: (v: any) => v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '', width: 8 },
+    { header: T.user, key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
+    { header: T.type, key: 'type', transform: (v: any) => v ? (txx[`type_${v}` as keyof typeof txx] || v.charAt(0).toUpperCase() + v.slice(1)) : '', width: 12 },
+    { header: txx.amountSar, key: 'amount', transform: fmt.money, width: 15 },
+    { header: txx.customer, key: 'customer', transform: (v: any) => v ? `${v.companyName} (${v.customerNumber})` : '', width: 25 },
+    { header: txx.invoiceNo, key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
+    { header: txx.invoiceAmount, key: 'invoice', transform: (v: any) => v?.amount != null ? fmt.money(v.amount) : '', width: 15 },
+    { header: txx.invoiceBalance, key: 'invoice', transform: (v: any) => v?.balance != null ? fmt.money(v.balance) : '', width: 15 },
+    { header: txx.deliveryStatementNo, key: 'deliveryStatementNumber', width: 20 },
+    { header: txx.vendor, key: 'vendor', transform: (v: any) => v?.name || '', width: 18 },
+    { header: txx.driver, key: 'driver', transform: (v: any) => v?.name || '', width: 18 },
+    { header: txx.category, key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
+    { header: txx.itemDescription, key: 'itemName', width: 22 },
+    { header: T.reference, key: 'reference', width: 15 },
+    { header: T.client, key: 'operationDetails', transform: (v: any) => v?.client || '', width: 18 },
+    { header: T.from, key: 'operationDetails', transform: (v: any) => v?.from || '', width: 15 },
+    { header: T.to2, key: 'operationDetails', transform: (v: any) => v?.to || '', width: 15 },
+    { header: txx.carTypeHeader, key: 'operationDetails', transform: (v: any) => v?.carType || '', width: 12 },
+    { header: T.length, key: 'operationDetails', transform: (v: any) => v?.length || '', width: 10 },
+    { header: T.carNumber, key: 'operationDetails', transform: (v: any) => v?.carNumber || '', width: 15 },
+    { header: T.reportDate, key: 'operationDetails', transform: (v: any) => v?.reportDate ? new Date(v.reportDate).toLocaleDateString('en-GB') : '', width: 14 },
+    { header: T.notes, key: 'notes', width: 25 },
+    { header: txx.flagged, key: 'isFlagged', transform: fmt.yesNo, width: 8 },
+  ];
+  const safeBranchName = branchName || txx.branch;
 
   const filteredTx = transactions.filter((tx) => {
     if (typeFilter && tx.type !== typeFilter) return false;
@@ -196,6 +190,19 @@ export default function BranchWalletDashboardPage() {
   });
 
   const uniqueUsers = [...new Set(transactions.map((t) => `${t.user.firstName} ${t.user.lastName}`))];
+
+  // فلترا النوع والموظّف يعملان في الذاكرة على جدول الحركات وحده، وكان الزرّ
+  // يصدّر الحركاتِ كلَّها دائمًا مهما ضيّق المستخدمُ الجدولَ أمامه — فيخرج ملفٌّ
+  // لا يشبه الشاشة. النطاقان الآن يفصلان الحالتين، وشيتُ المحافظ لا يتأثّر بهما.
+  const scope = exportScopeLabels(lang === 'ar');
+  const walletSheet = { name: 'Wallets', rows: wallets as unknown as Record<string, any>[], columns: walletColumns };
+  const hasActiveFilters = !!typeFilter || !!userFilter;
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: [walletSheet, { name: 'Transactions', rows: filteredTx as unknown as Record<string, any>[], columns: txColumns }] },
+        { key: 'all', label: scope.all, sheets: [walletSheet, { name: 'Transactions', rows: transactions as unknown as Record<string, any>[], columns: txColumns }] },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: [walletSheet, { name: 'Transactions', rows: transactions as unknown as Record<string, any>[], columns: txColumns }] }];
 
   if (loading) {
     return (
@@ -256,10 +263,7 @@ export default function BranchWalletDashboardPage() {
             </>
           )}
 
-          <button type="button" onClick={handleExportExcel} disabled={transactions.length === 0 && wallets.length === 0}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50" title={txx.exportToExcel}>
-            <Download className="w-4 h-4" /> {T.export}
-          </button>
+          <ExportMenu fileName={`${safeBranchName}_Wallet_${dateLabel}`} lang={lang === 'ar' ? 'ar' : 'en'} label={T.export} options={exportOptions} />
         </div>
       </div>
 

@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { BarChart, Bar, Line, ComposedChart, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { ArrowLeft, ArrowRight, BarChart3, Download } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BarChart3 } from 'lucide-react';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const ORANGE = '#f37121';
 const SLATE = '#334155';
@@ -91,19 +91,32 @@ export default function CustomsAnalyticsPage() {
     [ar ? 'الإيرادات' : 'Revenue']: m.revenue,
   }));
 
-  const exportAll = () => {
-    exportToExcel(data.byCustomer, [
-      { header: ar ? 'العميل' : 'Customer', key: 'key', width: 26 },
-      { header: ar ? 'عدد البوالص' : 'BLs', key: 'count', width: 12 },
-      { header: ar ? 'عدد الحاويات' : 'Containers', key: 'containers', width: 14 },
-      { header: ar ? 'متوسط حاويات' : 'Avg containers', key: 'avgContainers', width: 15 },
-      { header: ar ? 'حصة الحاويات' : 'Container share', key: 'containerShare', width: 15, transform: (v) => pct(v) },
-      { header: ar ? 'إجمالي الفواتير' : 'Total invoiced', key: 'revenue', width: 16 },
-      { header: ar ? 'إجمالي المصاريف' : 'Total costs', key: 'costs', width: 16 },
-      { header: ar ? 'صافي الربح' : 'Net profit', key: 'profit', width: 14 },
-      { header: ar ? 'ترتيب' : 'Rank', key: 'rank', width: 10 },
-    ], 'customs-analytics-customers', ar ? 'تحليل العملاء' : 'Customers');
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'العميل' : 'Customer', key: 'key', width: 26 },
+    { header: ar ? 'عدد البوالص' : 'BLs', key: 'count', width: 12 },
+    { header: ar ? 'عدد الحاويات' : 'Containers', key: 'containers', width: 14 },
+    { header: ar ? 'متوسط حاويات' : 'Avg containers', key: 'avgContainers', width: 15 },
+    { header: ar ? 'حصة الحاويات' : 'Container share', key: 'containerShare', width: 15, transform: (v) => pct(v) },
+    { header: ar ? 'إجمالي الفواتير' : 'Total invoiced', key: 'revenue', width: 16 },
+    { header: ar ? 'إجمالي المصاريف' : 'Total costs', key: 'costs', width: 16 },
+    { header: ar ? 'صافي الربح' : 'Net profit', key: 'profit', width: 14 },
+    { header: ar ? 'ترتيب' : 'Rank', key: 'rank', width: 10 },
+  ];
+  const exportSheetName = ar ? 'تحليل العملاء' : 'Customers';
+  // فلتر السنة يُطبَّق على الخادم لا في المتصفّح، فالجدول المعروض هو سنةٌ واحدة
+  // بينما اسم الملفّ يوحي بالسجلّ كلّه؛ «الكلّ» يعيد النداء من غير السنة ليصدق الاسم.
+  const fetchAllForExport = async () => {
+    const res = await api.get<Analytics>('/api/customs-clearance/analytics');
+    return [{ name: exportSheetName, rows: res.byCustomer || [], columns: exportColumns }];
   };
+  const scope = exportScopeLabels(ar);
+  const shownSheets = [{ name: exportSheetName, rows: data.byCustomer, columns: exportColumns }];
+  const exportOptions = year
+    ? [
+      { key: 'shown', label: scope.shown, sheets: shownSheets },
+      { key: 'all', label: scope.all, resolve: fetchAllForExport },
+    ]
+    : [{ key: 'all', label: scope.all, sheets: shownSheets }];
 
   return (
     <div className="space-y-6">
@@ -121,10 +134,7 @@ export default function CustomsAnalyticsPage() {
           <option value="">{ar ? 'كل السنوات' : 'All years'}</option>
           {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
         </select>
-        <button type="button" onClick={exportAll}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-          <Download className="w-4 h-4" /> {ar ? 'تصدير Excel' : 'Export Excel'}
-        </button>
+        <ExportMenu fileName="customs-analytics-customers" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
       </PageHeader>
 
       {/* Totals */}

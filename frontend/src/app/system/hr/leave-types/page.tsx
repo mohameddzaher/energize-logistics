@@ -6,9 +6,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { Tags, Plus, Edit, Trash2, Check } from 'lucide-react';
 import { isHRStaff, LeaveType } from '@/lib/hr';
-import { Spinner, PageHeader, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, Loader2, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import { getHrLeaveTypesTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const EMPTY = { code: '', nameEn: '', nameAr: '', paid: true, affectsBalance: true, color: '#f37121', active: true, requiresAdvanceNotice: true, minAdvanceDays: 30 };
 
@@ -49,16 +49,20 @@ export default function LeaveTypesPage() {
   };
   const remove = async (t: LeaveType) => { if (!(await confirm(tx.deleteConfirm))) return; try { await api.delete(`/api/hr/leave-types/${t._id}`); load(); } catch (e: any) { notify(e.message, 'error'); } };
 
-  const exportXlsx = () => {
-    exportToExcel(types, [
-      { header: tx.colName, key: ar ? 'nameAr' : 'nameEn', width: 24 },
-      { header: tx.colCode, key: 'code', width: 16 },
-      { header: tx.colPaid, key: 'paid', transform: (v) => (v ? tx.yes : tx.no), width: 12 },
-      { header: tx.colAffectsBalance, key: 'affectsBalance', transform: (v) => (v ? tx.yes : tx.no), width: 18 },
-      { header: ar ? 'الإخطار المسبق (يوم)' : 'Advance notice (days)', key: 'minAdvanceDays', transform: (v, r: any) => (r.requiresAdvanceNotice === false ? (ar ? 'معفاة' : 'Exempt') : (v ?? 30)), width: 20 },
-      { header: tx.colActive, key: 'active', transform: (v) => (v ? tx.activeLabel : tx.inactiveLabel), width: 14 },
-    ], 'leave-types', tx.title);
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: tx.colName, key: ar ? 'nameAr' : 'nameEn', width: 24 },
+    { header: tx.colCode, key: 'code', width: 16 },
+    { header: tx.colPaid, key: 'paid', transform: (v) => (v ? tx.yes : tx.no), width: 12 },
+    { header: tx.colAffectsBalance, key: 'affectsBalance', transform: (v) => (v ? tx.yes : tx.no), width: 18 },
+    { header: ar ? 'الإخطار المسبق (يوم)' : 'Advance notice (days)', key: 'minAdvanceDays', transform: (v, r: any) => (r.requiresAdvanceNotice === false ? (ar ? 'معفاة' : 'Exempt') : (v ?? 30)), width: 20 },
+    { header: tx.colActive, key: 'active', transform: (v) => (v ? tx.activeLabel : tx.inactiveLabel), width: 14 },
+  ];
+  // الصفحة تعرض أنواع الإجازات كلَّها بلا بحثٍ ولا فلتر، فنطاقٌ ثانٍ سيخرج
+  // بالملفّ نفسه — واختيارٌ بين متطابقَين يوهم المستخدمَ بفرقٍ لا وجود له.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: tx.title, rows: types, columns: exportColumns }] },
+  ];
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -66,7 +70,7 @@ export default function LeaveTypesPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Tags className="w-5 h-5" />} title={tx.title} subtitle={`${types.length} ${tx.typesUnit}`}>
-        <ExportButton onClick={exportXlsx} label={ar ? 'تصدير Excel' : 'Export Excel'} />
+        <ExportMenu fileName="leave-types" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addType}</PrimaryButton>
       </PageHeader>
 

@@ -7,9 +7,9 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Target, Plus, Trash2, Edit } from 'lucide-react';
 import { isSalesStaff, isSalesAdmin, SalesTarget, money, userName, thisPeriod } from '@/lib/finance';
-import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
 import { getSalesTargetsTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const EMPTY = { rep: '', period: thisPeriod(), amountTarget: 0, dealsTarget: 0, notes: '' };
 
@@ -54,14 +54,23 @@ export default function SalesTargetsPage() {
     try { await api.delete(`/api/sales/targets/${t._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
-  const handleExport = () => {
-    exportToExcel(items, [
-      { header: tx.rep, key: 'rep', width: 24, transform: (v) => (v ? userName(v) : tx.wholeTeam) },
-      { header: tx.period, key: 'period', width: 14 },
-      { header: tx.amountTarget, key: 'amountTarget', width: 18, transform: (v) => money(v) },
-      { header: tx.dealsTarget, key: 'dealsTarget', width: 14 },
-    ], 'sales-targets', tx.pageTitle);
+  const exportColumns: ExportColumn[] = [
+    { header: tx.rep, key: 'rep', width: 24, transform: (v) => (v ? userName(v) : tx.wholeTeam) },
+    { header: tx.period, key: 'period', width: 14 },
+    { header: tx.amountTarget, key: 'amountTarget', width: 18, transform: (v) => money(v) },
+    { header: tx.dealsTarget, key: 'dealsTarget', width: 14 },
+  ];
+  // الشاشة لا تُظهر إلّا مستهدفات الشهر المختار لأنّ الفلترة على الخادم، ومن صدّر
+  // «الأهداف» ظنَّها كلَّها؛ فصار «الكلّ» نداءً بلا معامل الفترة يجلب كلَّ الشهور.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ targets: SalesTarget[] }>('/api/sales/targets');
+    return [{ name: tx.pageTitle, rows: (d.targets || []) as unknown as Record<string, any>[], columns: exportColumns }];
   };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: tx.pageTitle, rows: items as unknown as Record<string, any>[], columns: exportColumns }] },
+    { key: 'all', label: scope.all, resolve: fetchAllForExport },
+  ];
 
   if (!isSalesStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -70,7 +79,7 @@ export default function SalesTargetsPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Target className="w-5 h-5" />} title={tx.pageTitle}>
         <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" aria-label={tx.period} />
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={handleExport} />
+        <ExportMenu fileName="sales-targets" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         {canEdit && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.setTarget}</PrimaryButton>}
       </PageHeader>
 

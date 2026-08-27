@@ -7,9 +7,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Laptop, Plus, Edit, Undo2, Trash2, Check, Boxes, ArrowLeftRight, AlertTriangle, History, ClipboardCheck } from 'lucide-react';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
+  Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge,
   Modal, Field, TextInput, TextArea, Select, SearchableSelect, StatCard, Loader2,
 } from '@/components/hr/HRKit';
 import { useAssetVocab } from '@/hooks/useAssetVocab';
@@ -316,6 +316,34 @@ export default function ItCustodyPage() {
   // `register` لا من `stateCounts`، وإلا لتغيّر «عهدة بحوزة الموظفين» بضغطة فلتر.
   const anyFilter = !!(bucket || stateFilter || conditionFilter || otherType || search.trim());
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Employee', key: 'employee', transform: (v: any) => empName(v, 'en'), width: 24 },
+    { header: 'Item', key: 'name', width: 22 },
+    { header: 'Type', key: 'type', transform: (v: any) => custodyTypeLabel(v, 'en'), width: 14 },
+    { header: 'Serial', key: 'serialNumber', width: 20 },
+    { header: 'Brand', key: 'brand', width: 14 },
+    { header: 'Specs', key: 'specs', width: 28 },
+    { header: 'Condition', key: 'condition', transform: (v: any) => conditionLabel(v, 'en'), width: 12 },
+    { header: 'Value (per unit)', key: 'value', width: 14 },
+    { header: 'Assigned', key: 'assignedDate', width: 14 },
+    { header: 'Status', key: 'status', transform: (v: any) => custodyStatusLabel(v, 'en'), width: 12 },
+    { header: 'Returned', key: 'returnedDate', width: 14 },
+  ];
+  // الفلترة كلّها على الخادم بلا ترقيم، فما في الذاكرة هو نتيجة الفلتر كاملةً —
+  // أمّا «الكلّ» فلا سبيل إليه إلّا بنداءٍ ثانٍ بلا معاملات، وبدونه كان على من
+  // يريد السجل كاملًا أن يمسح فلاتره يدويًّا ثم يصدّر ويرجعها.
+  const fetchAllForExport = async () => {
+    const d = await api.get<CustodyListResponse>('/api/it/custody?scope=all');
+    return [{ name: 'Custody', rows: d.items || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = anyFilter
+    ? [
+        { key: 'shown', label: scope.shown, sheets: [{ name: 'Custody', rows: items, columns: exportColumns }] },
+        { key: 'all', label: scope.all, resolve: fetchAllForExport, hint: String(register.total) },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: [{ name: 'Custody', rows: items, columns: exportColumns }] }];
+
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
@@ -323,19 +351,7 @@ export default function ItCustodyPage() {
         title={ar ? 'عهد تقنية المعلومات' : 'IT Custody'}
         subtitle={ar ? `${register.assigned} عهدة بحوزة الموظفين` : `${register.assigned} items currently assigned`}
       >
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(items, [
-          { header: 'Employee', key: 'employee', transform: (v: any) => empName(v, 'en'), width: 24 },
-          { header: 'Item', key: 'name', width: 22 },
-          { header: 'Type', key: 'type', transform: (v: any) => custodyTypeLabel(v, 'en'), width: 14 },
-          { header: 'Serial', key: 'serialNumber', width: 20 },
-          { header: 'Brand', key: 'brand', width: 14 },
-          { header: 'Specs', key: 'specs', width: 28 },
-          { header: 'Condition', key: 'condition', transform: (v: any) => conditionLabel(v, 'en'), width: 12 },
-          { header: 'Value (per unit)', key: 'value', width: 14 },
-          { header: 'Assigned', key: 'assignedDate', width: 14 },
-          { header: 'Status', key: 'status', transform: (v: any) => custodyStatusLabel(v, 'en'), width: 12 },
-          { header: 'Returned', key: 'returnedDate', width: 14 },
-        ], `it-custody-${today()}`, 'Custody')} />
+        <ExportMenu fileName="it-custody" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
         <button type="button" onClick={openHandover} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
           <ClipboardCheck className="w-4 h-4" /> {ar ? 'استلام عهدة موظف' : 'Receive from employee'}
         </button>

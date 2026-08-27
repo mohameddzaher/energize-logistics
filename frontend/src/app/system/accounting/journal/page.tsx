@@ -9,9 +9,9 @@ import { FileText, Plus, Trash2, RefreshCw, X } from 'lucide-react';
 import {
   isFinanceStaff, isFinanceAdmin, ChartAccount, JournalEntry, accountName, money, fmtDate, today,
 } from '@/lib/finance';
-import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
 import { getAccountingJournalTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const emptyLine = () => ({ account: '', debit: '', credit: '', description: '' });
 
@@ -73,24 +73,29 @@ export default function JournalPage() {
     catch (e: any) { notify(e.message, 'error'); } finally { setSyncing(false); }
   };
 
-  const handleExport = () => {
-    const rows = entries.flatMap((e) => (e.lines || []).map((l) => ({
-      entryNumber: e.entryNumber,
-      date: e.date,
-      memo: e.memo,
-      account: l.account,
-      debit: l.debit,
-      credit: l.credit,
-    })));
-    exportToExcel(rows, [
-      { header: ar ? 'رقم القيد' : 'Entry #', key: 'entryNumber', width: 14 },
-      { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: (v) => fmtDate(v), width: 14 },
-      { header: ar ? 'البيان' : 'Memo', key: 'memo', transform: (v) => v || '', width: 28 },
-      { header: ar ? 'الحساب' : 'Account', key: 'account', transform: (v) => accountName(v, lang), width: 28 },
-      { header: tx.debit, key: 'debit', transform: (v) => v ? money(v, '') : '', width: 14 },
-      { header: tx.credit, key: 'credit', transform: (v) => v ? money(v, '') : '', width: 14 },
-    ], 'journal', ar ? 'دفتر اليومية' : 'Journal');
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'رقم القيد' : 'Entry #', key: 'entryNumber', width: 14 },
+    { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: (v) => fmtDate(v), width: 14 },
+    { header: ar ? 'البيان' : 'Memo', key: 'memo', transform: (v) => v || '', width: 28 },
+    { header: ar ? 'الحساب' : 'Account', key: 'account', transform: (v) => accountName(v, lang), width: 28 },
+    { header: tx.debit, key: 'debit', transform: (v) => v ? money(v, '') : '', width: 14 },
+    { header: tx.credit, key: 'credit', transform: (v) => v ? money(v, '') : '', width: 14 },
+  ];
+  const exportRows = entries.flatMap((e) => (e.lines || []).map((l) => ({
+    entryNumber: e.entryNumber,
+    date: e.date,
+    memo: e.memo,
+    account: l.account,
+    debit: l.debit,
+    credit: l.credit,
+  })));
+  // لا ترقيم هنا، لكنّ الخادم يقصّ دفتر اليومية عند خمسمئة قيدٍ في كلّ حال
+  // (`listJournal`)، فلا يوجد نطاقٌ يستحقّ اسم «الكلّ»: إعادة الجلب بلا بحثٍ
+  // ستعيد أحدثَ خمسمئة قيدٍ لا غير. فخيارٌ واحد يقول بصراحةٍ إنّه يصدّر المعروض.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: ar ? 'دفتر اليومية' : 'Journal', rows: exportRows, columns: exportColumns }] },
+  ];
 
   if (!isFinanceStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -101,7 +106,7 @@ export default function JournalPage() {
         <button type="button" onClick={sync} disabled={syncing} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} /> {tx.autoPost}
         </button>
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={handleExport} />
+        <ExportMenu fileName="journal" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.newEntry}</PrimaryButton>
       </PageHeader>
 

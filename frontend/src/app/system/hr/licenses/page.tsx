@@ -6,8 +6,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { ScrollText, Plus, Edit, Trash2, Check, Building2 } from 'lucide-react';
-import { isHRStaff, fmtDate, daysUntil, expiryBadge, exportToExcel, today } from '@/lib/hr';
-import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, StatCard, SmallBadge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
+import { isHRStaff, fmtDate, daysUntil, expiryBadge } from '@/lib/hr';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, SmallBadge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrLicensesTranslations } from '@/lib/translations';
 
 interface License {
@@ -113,20 +114,30 @@ export default function LicensesPage() {
     return { total: licenses.length, expired, soon, valid, categories: categories.length, locations: locations.length };
   }, [licenses, categories.length, locations.length]);
 
+  const exportColumns: ExportColumn[] = [
+    { header: tx.thCategory, key: 'category', width: 26 },
+    { header: tx.thName, key: 'name', width: 40 },
+    { header: tx.thDuration, key: 'duration', width: 16 },
+    { header: tx.thExpiry, key: 'expiryDate', width: 14 },
+    { header: tx.thLocation, key: 'location', width: 16 },
+    { header: tx.thDaysLeft, key: 'expiryDate', transform: (v: any) => { const d = daysUntil(v); return d === null ? '' : d; }, width: 12 },
+  ];
+  // الفلترة كلُّها في الذاكرة (بحث + تصنيف + موقع)، فالسجلّ الكامل حاضرٌ هنا
+  // ولا يحتاج جلبًا. والنطاقان يُبنيان دائمًا: العدّاد جنب كلٍّ منهما هو ما
+  // يكشف أنّ «المعروض» أقلُّ من «الكلّ» قبل أن يُفتح الملفّ لا بعده.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Licenses', rows: filtered, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: 'Licenses', rows: licenses, columns: exportColumns }] },
+  ];
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<ScrollText className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${licenses.length} ${tx.recordsUnit}`}>
-        <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(filtered, [
-          { header: tx.thCategory, key: 'category', width: 26 },
-          { header: tx.thName, key: 'name', width: 40 },
-          { header: tx.thDuration, key: 'duration', width: 16 },
-          { header: tx.thExpiry, key: 'expiryDate', width: 14 },
-          { header: tx.thLocation, key: 'location', width: 16 },
-          { header: tx.thDaysLeft, key: 'expiryDate', transform: (v: any) => { const d = daysUntil(v); return d === null ? '' : d; }, width: 12 },
-        ], `licenses-${today()}`, 'Licenses')} />
+        <ExportMenu fileName="licenses" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addLicense}</PrimaryButton>
       </PageHeader>
 

@@ -6,15 +6,15 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Server, Plus, Edit, Trash2, Check, ExternalLink } from 'lucide-react';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
+  Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge,
   Modal, Field, TextInput, TextArea, Select, SearchableSelect, StatCard, Loader2,
 } from '@/components/hr/HRKit';
 import {
   canViewIt, ItSystem, SYSTEM_TYPES, SYSTEM_STATUSES, ENVIRONMENTS, COST_PERIODS,
   systemTypeLabel, systemStatusLabel, environmentLabel, costPeriodLabel,
-  optionsOf, fmtDate, fmtMoney, today, daysUntil, renewalTone,
+  optionsOf, fmtDate, fmtMoney, daysUntil, renewalTone,
 } from '@/lib/it';
 
 const EMPTY = {
@@ -80,6 +80,33 @@ export default function ItSystemsPage() {
     return [s.name, s.nameAr, s.vendor, s.url, s.description].some((v) => (v || '').toLowerCase().includes(q));
   });
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Name', key: 'name', width: 26 },
+    { header: 'Arabic name', key: 'nameAr', width: 24 },
+    { header: 'Type', key: 'type', transform: (v: any) => systemTypeLabel(v, 'en'), width: 18 },
+    { header: 'Status', key: 'status', transform: (v: any) => systemStatusLabel(v, 'en'), width: 14 },
+    { header: 'Environment', key: 'environment', transform: (v: any) => environmentLabel(v, 'en'), width: 14 },
+    { header: 'Vendor', key: 'vendor', width: 20 },
+    { header: 'URL', key: 'url', width: 30 },
+    { header: 'Renewal', key: 'renewalDate', width: 14 },
+    { header: 'Cost', key: 'cost', width: 12 },
+    { header: 'Period', key: 'costPeriod', transform: (v: any) => costPeriodLabel(v, 'en'), width: 12 },
+  ];
+  // الحالة والنوع فلترتهما على الخادم، فالمحمَّل في الشاشة ليس سجلّ الأنظمة كلَّه؛
+  // «الكلّ» يعيد النداء بلا معاملات حتى لا يخرج ملفٌّ ناقصٌ باسم الكلّ.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ systems: ItSystem[] }>('/api/it/systems');
+    return [{ name: 'Systems', rows: d.systems || [], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(statusFilter || typeFilter || search.trim());
+  const scope = exportScopeLabels(ar);
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: [{ name: 'Systems', rows: filtered, columns: exportColumns }] },
+        { key: 'all', label: scope.all, resolve: fetchAllForExport },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: [{ name: 'Systems', rows: filtered, columns: exportColumns }] }];
+
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
@@ -101,18 +128,7 @@ export default function ItSystemsPage() {
         title={ar ? 'الأنظمة والخدمات' : 'Systems & Services'}
         subtitle={ar ? `${systems.length} نظام تحت إدارة تقنية المعلومات` : `${systems.length} systems under IT management`}
       >
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(filtered, [
-          { header: 'Name', key: 'name', width: 26 },
-          { header: 'Arabic name', key: 'nameAr', width: 24 },
-          { header: 'Type', key: 'type', transform: (v: any) => systemTypeLabel(v, 'en'), width: 18 },
-          { header: 'Status', key: 'status', transform: (v: any) => systemStatusLabel(v, 'en'), width: 14 },
-          { header: 'Environment', key: 'environment', transform: (v: any) => environmentLabel(v, 'en'), width: 14 },
-          { header: 'Vendor', key: 'vendor', width: 20 },
-          { header: 'URL', key: 'url', width: 30 },
-          { header: 'Renewal', key: 'renewalDate', width: 14 },
-          { header: 'Cost', key: 'cost', width: 12 },
-          { header: 'Period', key: 'costPeriod', transform: (v: any) => costPeriodLabel(v, 'en'), width: 12 },
-        ], `it-systems-${today()}`, 'Systems')} />
+        <ExportMenu fileName="it-systems" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'نظام جديد' : 'New system'}</PrimaryButton>
       </PageHeader>
 

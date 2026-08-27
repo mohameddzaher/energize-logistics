@@ -2,9 +2,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getVehicleAnalyticsFuelTranslations } from '@/lib/translations';
-import { Fuel, Truck, Activity, AlertTriangle, Search, Filter, Droplets, Gauge, Building2, Download } from 'lucide-react';
+import { Fuel, Truck, Activity, AlertTriangle, Search, Filter, Droplets, Gauge, Building2 } from 'lucide-react';
 
 interface PetroRow { vehicleId: string; branch?: string; vehicle?: string; model?: string; year?: string; fuel?: string; maxConsump?: number; currentRate?: number; status?: string; category?: string; consType?: string; [k: string]: any }
 
@@ -81,6 +81,23 @@ export default function FuelAnalysisPage() {
     return { total, active, dieselCount, gasolineCount, overLimit, monthlyAccounts, openedAccounts };
   }, [filtered]);
 
+  const exportColumns: ExportColumn[] = [
+    { header: '#', key: 'num' }, { header: tx.branch, key: 'branch' }, { header: tx.vehicle, key: 'vehicle' },
+    { header: tx.model, key: 'model' }, { header: tx.year, key: 'year' }, { header: tx.fuelType, key: 'fuel' },
+    { header: tx.consumption, key: 'consumption' }, { header: tx.status, key: 'status' }, { header: tx.category, key: 'category' },
+  ];
+  const toExportRows = (rows: PetroRow[]) => rows.map((r, i) => ({
+    num: r.num || i + 1, branch: r.branch || '', vehicle: r.vehicle || r.vehicleId, model: r.model || '',
+    year: r.year || '', fuel: r.fuel || '', consumption: getConsumptionPct(r).toFixed(0) + '%', status: r.status || '', category: r.category || '',
+  }));
+  // ستّة فلاتر مجتمعة على هذه الشاشة، وكان الزرّ يصدّر المفلتَر وحده بلا ما يقول ذلك؛
+  // مَن يريد سجلّ الوقود كاملًا كان عليه أن يمسح الفلاتر يدويًّا أوّلًا وهو لا يدري.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Fuel', rows: toExportRows(filtered), columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: 'Fuel', rows: toExportRows(data), columns: exportColumns }] },
+  ];
+
   if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{tx.loading}</div>;
 
   const kpiCards = [
@@ -97,18 +114,7 @@ export default function FuelAnalysisPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-slate-900">{tx.title}</h1>
-        {filtered.length > 0 && (
-          <button type="button" onClick={() => exportToExcel(filtered.map((r, i) => ({
-            num: r.num || i + 1, branch: r.branch || '', vehicle: r.vehicle || r.vehicleId, model: r.model || '',
-            year: r.year || '', fuel: r.fuel || '', consumption: getConsumptionPct(r).toFixed(0) + '%', status: r.status || '', category: r.category || '',
-          })), [
-            { header: '#', key: 'num' }, { header: tx.branch, key: 'branch' }, { header: tx.vehicle, key: 'vehicle' },
-            { header: tx.model, key: 'model' }, { header: tx.year, key: 'year' }, { header: tx.fuelType, key: 'fuel' },
-            { header: tx.consumption, key: 'consumption' }, { header: tx.status, key: 'status' }, { header: tx.category, key: 'category' },
-          ], 'fuel-analysis', 'Fuel')} className="px-3 py-2 bg-emerald-500/20 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
-            <Download className="w-4 h-4" /> {tx.exportExcel}
-          </button>
-        )}
+        <ExportMenu fileName="fuel-analysis" lang={lang === 'ar' ? 'ar' : 'en'} label={tx.exportExcel} options={exportOptions} />
       </div>
 
       {/* Filters */}

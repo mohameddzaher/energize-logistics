@@ -9,9 +9,10 @@ import { useSocket } from '@/hooks/useSocket';
 import DataTable from '@/components/system/DataTable';
 import {
   Phone, Plus, X, Filter, Calendar, MessageSquare,
-  CheckCircle2, Clock, Mail, MapPin, FileText, AlertCircle, Download
+  CheckCircle2, Clock, Mail, MapPin, FileText, AlertCircle
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const ACTIVITY_TYPES = [
   { value: 'call', label: 'Call', icon: Phone, color: 'bg-blue-500/20 text-blue-600' },
@@ -338,6 +339,41 @@ export default function CollectionsPage() {
 
   const hasActiveFilters = !!typeFilter;
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Date', key: 'createdAt', transform: fmt.datetime, width: 20 },
+    { header: 'Type', key: 'type', transform: fmt.status, width: 12 },
+    { header: 'Contact Type', key: 'contactType', transform: fmt.status, width: 14 },
+    { header: 'Customer', key: 'customer.companyName', width: 25 },
+    { header: 'Invoice #', key: 'invoice.invoiceNumber', width: 18 },
+    { header: 'Collector', key: 'collector', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
+    { header: 'Notes', key: 'notes', width: 30 },
+    { header: 'Amount Collected', key: 'amountCollected', transform: fmt.money, width: 18 },
+    { header: 'Status', key: 'status', transform: fmt.status, width: 12 },
+    { header: 'Promise Date', key: 'promiseDate', transform: fmt.date, width: 14 },
+    { header: 'Promise Amount', key: 'promiseAmount', transform: fmt.money, width: 16 },
+    { header: 'Promise Fulfilled', key: 'promiseFulfilled', transform: fmt.yesNo, width: 16 },
+    { header: 'Follow-Up Date', key: 'followUpDate', transform: fmt.date, width: 14 },
+    { header: 'Completed', key: 'completed', transform: fmt.yesNo, width: 12 },
+  ];
+  // تبويب الأنشطة مرقَّمٌ على الخادم بخمسين سطرًا، فتصدير ما في الذاكرة كان يقتطع
+  // نتائج الفلتر بلا إنذار؛ نُعيد الجلب بحدٍّ مفتوح. أمّا تبويب المتابعات فمسارُه
+  // `/api/collections/follow-ups` يفرض `.limit(50)` في الخلفيّة ولا يقبل معاملًا،
+  // فلا يصحّ أن نَعِد فيه بأكثر ممّا على الشاشة — خيارٌ واحد باسمه الصادق.
+  const fetchActivitiesForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters && typeFilter) params.set('type', typeFilter);
+    const data = await api.get<any>(`/api/collections?${params.toString()}`);
+    return [{ name: 'Activities', rows: data.activities || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = activeTab === 'activities'
+    ? [
+        { key: 'page', label: scope.page, sheets: [{ name: 'Activities', rows: activities, columns: exportColumns }] },
+        { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchActivitiesForExport(true), hint: String(total) },
+        ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchActivitiesForExport(false) }] : []),
+      ]
+    : [{ key: 'page', label: scope.page, sheets: [{ name: 'Follow-Ups', rows: followUps, columns: exportColumns }] }];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -370,39 +406,13 @@ export default function CollectionsPage() {
             <Filter className="w-4 h-4" />
             {T.filters}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              const dataToExport = activeTab === 'activities' ? activities : followUps;
-              const suffix = typeFilter ? `_${typeFilter}` : '';
-              exportToExcel(
-                dataToExport,
-                [
-                  { header: 'Date', key: 'createdAt', transform: fmt.datetime, width: 20 },
-                  { header: 'Type', key: 'type', transform: fmt.status, width: 12 },
-                  { header: 'Contact Type', key: 'contactType', transform: fmt.status, width: 14 },
-                  { header: 'Customer', key: 'customer.companyName', width: 25 },
-                  { header: 'Invoice #', key: 'invoice.invoiceNumber', width: 18 },
-                  { header: 'Collector', key: 'collector', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
-                  { header: 'Notes', key: 'notes', width: 30 },
-                  { header: 'Amount Collected', key: 'amountCollected', transform: fmt.money, width: 18 },
-                  { header: 'Status', key: 'status', transform: fmt.status, width: 12 },
-                  { header: 'Promise Date', key: 'promiseDate', transform: fmt.date, width: 14 },
-                  { header: 'Promise Amount', key: 'promiseAmount', transform: fmt.money, width: 16 },
-                  { header: 'Promise Fulfilled', key: 'promiseFulfilled', transform: fmt.yesNo, width: 16 },
-                  { header: 'Follow-Up Date', key: 'followUpDate', transform: fmt.date, width: 14 },
-                  { header: 'Completed', key: 'completed', transform: fmt.yesNo, width: 12 },
-                ],
-                `Collections_${activeTab}${suffix}_${new Date().toISOString().split('T')[0]}`,
-                activeTab === 'activities' ? 'Activities' : 'Follow-Ups'
-              );
-            }}
-            disabled={(activeTab === 'activities' ? activities : followUps).length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4" />
-            {T.export}
-          </button>
+          <ExportMenu
+            fileName={`Collections_${activeTab}${typeFilter ? `_${typeFilter}` : ''}`}
+            lang={lang === 'ar' ? 'ar' : 'en'}
+            variant="subtle"
+            label={T.export}
+            options={exportOptions}
+          />
           <button
             type="button"
             onClick={handleOpenModal}

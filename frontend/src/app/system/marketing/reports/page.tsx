@@ -11,8 +11,8 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { BarChart3, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer } from 'recharts';
-import { Spinner, PageHeader, StatCard, ExportButton } from '@/components/hr/HRKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import RangePicker from '@/components/marketing/RangePicker';
 import {
   canViewMarketing, REPORT_PERIODS, periodLabel, thisMonthToDate, num, money, pct,
@@ -39,31 +39,31 @@ export default function MarketingReportsPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('marketing:updated', useCallback(() => load(), [load]));
 
-  const doExport = () => {
-    if (!r) return;
-    exportToExcel(
-      r.rows as unknown as Record<string, unknown>[],
-      [
-        { header: ar ? 'الفترة' : 'Period', key: 'label', transform: (v) => v || '', width: 34 },
-        { header: ar ? 'الأنشطة' : 'Activities', key: 'activities', transform: (v) => v ?? 0, width: 12 },
-        { header: ar ? 'مرات الظهور' : 'Impressions', key: 'impressions', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'الوصول' : 'Reach', key: 'reach', transform: (v) => v ?? 0, width: 12 },
-        { header: ar ? 'النقرات' : 'Clicks', key: 'clicks', transform: (v) => v ?? 0, width: 12 },
-        { header: ar ? 'التفاعلات' : 'Engagements', key: 'engagements', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'العملاء المحتملون' : 'Leads', key: 'leads', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'التحويلات' : 'Conversions', key: 'conversions', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'الإنفاق' : 'Spend', key: 'spend', transform: (v) => v ?? 0, width: 14 },
-      ],
-      `marketing-report-${period}-${range.from}-${range.to}`,
-      ar ? 'التقرير' : 'Report'
-    );
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'الفترة' : 'Period', key: 'label', transform: (v) => v || '', width: 34 },
+    { header: ar ? 'الأنشطة' : 'Activities', key: 'activities', transform: (v) => v ?? 0, width: 12 },
+    { header: ar ? 'مرات الظهور' : 'Impressions', key: 'impressions', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'الوصول' : 'Reach', key: 'reach', transform: (v) => v ?? 0, width: 12 },
+    { header: ar ? 'النقرات' : 'Clicks', key: 'clicks', transform: (v) => v ?? 0, width: 12 },
+    { header: ar ? 'التفاعلات' : 'Engagements', key: 'engagements', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'العملاء المحتملون' : 'Leads', key: 'leads', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'التحويلات' : 'Conversions', key: 'conversions', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'الإنفاق' : 'Spend', key: 'spend', transform: (v) => v ?? 0, width: 14 },
+  ];
 
   if (!canViewMarketing(user)) {
     return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول إلى قسم التسويق.' : 'You are not authorized to view the Marketing section.'}</div>;
   }
   if (loading && !r) return <Spinner />;
   if (!r) return <div className="text-slate-500 p-8">{ar ? 'لا توجد بيانات.' : 'No data.'}</div>;
+
+  // نطاقٌ واحد لا قائمة: صفوفُ هذا التقرير هي الفتراتُ التي يبنيها الخادم للمدى
+  // المختار، ولا فلترَ بعدها في المتصفّح — فخيار «المعروض» وخيار «الكلّ» سيخرجان
+  // بالملفّ نفسه حرفًا بحرف، وقائمةٌ من خيارين متطابقين تُوهم بفرقٍ لا وجود له.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: ar ? 'التقرير' : 'Report', rows: r.rows as unknown as Record<string, unknown>[], columns: exportColumns }] },
+  ];
 
   const s = r.summary;
   const cards = [
@@ -94,7 +94,7 @@ export default function MarketingReportsPage() {
         title={ar ? 'التقرير الدوري للتسويق' : 'Marketing Periodic Report'}
         subtitle={ar ? 'ما تم إنجازه يومياً أو أسبوعياً أو شهرياً' : 'What was accomplished daily, weekly or monthly'}
       >
-        <ExportButton onClick={doExport} label={ar ? 'تصدير Excel' : 'Export Excel'} />
+        <ExportMenu fileName={`marketing-report-${period}-${range.from}-${range.to}`} lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <RefreshCw className="w-4 h-4" /> {ar ? 'تحديث' : 'Refresh'}
         </button>

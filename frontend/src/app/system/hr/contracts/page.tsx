@@ -6,8 +6,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { FileText, Plus, Edit, Ban, Check } from 'lucide-react';
-import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, fmtDate, exportToExcel, today } from '@/lib/hr';
-import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Badge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
+import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, fmtDate, today } from '@/lib/hr';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrContractsTranslations } from '@/lib/translations';
 import ContractsTabs from '@/components/hr/ContractsTabs';
 
@@ -81,6 +82,30 @@ export default function ContractsPage() {
     return n.includes(search.toLowerCase()) || (emp?.iqamaNumber || '').includes(search) || (emp?.employeeNumber || '').includes(search);
   });
 
+  const exportColumns: ExportColumn[] = [
+    { header: tx.colEmployee, key: 'employee', transform: (v: any) => empName(v), width: 22 },
+    { header: tx.colType, key: 'type', width: 12 },
+    { header: tx.colStart, key: 'startDate', width: 14 },
+    { header: tx.colEnd, key: 'endDate', width: 14 },
+    { header: tx.colAnnualLeave, key: 'annualLeaveDays', width: 14 },
+    { header: tx.colBasicSalary, key: 'basicSalary', width: 14 },
+    { header: tx.colStatus, key: 'status', width: 12 },
+  ];
+  // فلتر الحالة يُطبَّق على الخادم، فالذاكرة لا تحمل إلّا عقود تلك الحالة؛
+  // «الكلّ» لو صُدِّر منها لخرج ناقصًا وهو يدّعي الشمول، فلا بدّ من إعادة جلبٍ
+  // بلا الفلتر. والبحث نصّيٌّ في الذاكرة، فـ«المعروض» يبقى صادقًا كما هو.
+  const fetchAllContracts = async () => {
+    const d = await api.get<{ contracts: Contract[] }>('/api/hr/contracts');
+    return [{ name: 'Contracts', rows: d.contracts || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Contracts', rows: filtered, columns: exportColumns }] },
+    statusFilter
+      ? { key: 'all', label: scope.all, resolve: fetchAllContracts }
+      : { key: 'all', label: scope.all, sheets: [{ name: 'Contracts', rows: contracts, columns: exportColumns }] },
+  ];
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
@@ -88,15 +113,7 @@ export default function ContractsPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <ContractsTabs />
       <PageHeader icon={<FileText className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${contracts.length} ${tx.contractsUnit}`}>
-        <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(filtered, [
-          { header: tx.colEmployee, key: 'employee', transform: (v: any) => empName(v), width: 22 },
-          { header: tx.colType, key: 'type', width: 12 },
-          { header: tx.colStart, key: 'startDate', width: 14 },
-          { header: tx.colEnd, key: 'endDate', width: 14 },
-          { header: tx.colAnnualLeave, key: 'annualLeaveDays', width: 14 },
-          { header: tx.colBasicSalary, key: 'basicSalary', width: 14 },
-          { header: tx.colStatus, key: 'status', width: 12 },
-        ], `contracts-${today()}`, 'Contracts')} />
+        <ExportMenu fileName="contracts" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.newContract}</PrimaryButton>
       </PageHeader>
 

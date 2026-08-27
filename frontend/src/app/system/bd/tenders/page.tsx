@@ -9,14 +9,21 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Gavel, Plus, Edit, Trash2, Check, X } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge, StatCard,
+  Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge, StatCard,
   Modal, Field, TextInput, TextArea, Select,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   canViewBd, canEditBd, BdTender, BdOpportunity, TENDER_STATUS,
   labelOf, optionsOf, bdTitle, bdName, userName, money, fmtDate, toDateInput,
-  daysUntil, deadlineBadge, listToText, textToList, exportToExcel,
+  daysUntil, deadlineBadge, listToText, textToList,
 } from '@/lib/bd';
+
+const byDeadline = (list: BdTender[]) => [...list].sort((a, b) => {
+  const A = a.submissionDeadline || '9999-12-31';
+  const B = b.submissionDeadline || '9999-12-31';
+  return A < B ? -1 : A > B ? 1 : 0;
+});
 
 const EMPTY = {
   title: '', titleAr: '', entity: '', referenceNumber: '', submissionDeadline: '',
@@ -68,11 +75,7 @@ export default function BdTendersPage() {
   }, []);
 
   // Deadline-ascending, with undated tenders parked at the end.
-  const sorted = useMemo(() => [...rows].sort((a, b) => {
-    const A = a.submissionDeadline || '9999-12-31';
-    const B = b.submissionDeadline || '9999-12-31';
-    return A < B ? -1 : A > B ? 1 : 0;
-  }), [rows]);
+  const sorted = useMemo(() => byDeadline(rows), [rows]);
 
   const statusCounts = useMemo(() => {
     const m: Record<string, number> = {};
@@ -134,20 +137,31 @@ export default function BdTendersPage() {
     catch (e: any) { notify(e.message, 'error'); }
   };
 
-  const doExport = () => {
-    exportToExcel(sorted, [
-      { header: ar ? 'العنوان' : 'Title', key: 'title', transform: (_v, r) => bdTitle(r, lang) },
-      { header: ar ? 'الجهة' : 'Entity', key: 'entity' },
-      { header: ar ? 'الرقم المرجعي' : 'Reference', key: 'referenceNumber' },
-      { header: ar ? 'موعد التقديم' : 'Deadline', key: 'submissionDeadline' },
-      { header: ar ? 'الأيام المتبقية' : 'Days left', key: 'submissionDeadline', transform: (v) => daysUntil(v) ?? '' },
-      { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => labelOf(TENDER_STATUS, v, lang) },
-      { header: ar ? 'القيمة التقديرية' : 'Estimated value', key: 'estimatedValue' },
-      { header: ar ? 'الضمان الابتدائي' : 'Bid bond', key: 'bidBondAmount' },
-      { header: ar ? 'المستندات جاهزة' : 'Docs ready', key: 'documentsReady', transform: (v) => (v ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No')) },
-      { header: ar ? 'المسؤول' : 'Owner', key: 'ownerName', transform: (v, r) => v || userName(r.owner) },
-    ], `bd-tenders-${new Date().toISOString().slice(0, 10)}`, 'Tenders');
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'العنوان' : 'Title', key: 'title', transform: (_v, r) => bdTitle(r, lang) },
+    { header: ar ? 'الجهة' : 'Entity', key: 'entity' },
+    { header: ar ? 'الرقم المرجعي' : 'Reference', key: 'referenceNumber' },
+    { header: ar ? 'موعد التقديم' : 'Deadline', key: 'submissionDeadline' },
+    { header: ar ? 'الأيام المتبقية' : 'Days left', key: 'submissionDeadline', transform: (v) => daysUntil(v) ?? '' },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => labelOf(TENDER_STATUS, v, lang) },
+    { header: ar ? 'القيمة التقديرية' : 'Estimated value', key: 'estimatedValue' },
+    { header: ar ? 'الضمان الابتدائي' : 'Bid bond', key: 'bidBondAmount' },
+    { header: ar ? 'المستندات جاهزة' : 'Docs ready', key: 'documentsReady', transform: (v) => (v ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No')) },
+    { header: ar ? 'المسؤول' : 'Owner', key: 'ownerName', transform: (v, r) => v || userName(r.owner) },
+  ];
+  // الفلترة على الخادم: ما في الذاكرة حصيلةُ البحث والحالة لا السجلّ كلّه، فنُعيد
+  // النداء بلا معاملاتٍ لمن أراد الكلّ. والترتيب يُعاد هنا بعينه لأنّ ملفًّا
+  // بمواعيدَ غير مرتّبةٍ تصعب قراءته كما تُقرأ الشاشة.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ tenders: BdTender[] }>('/api/business-development/tenders');
+    return [{ name: 'Tenders', rows: byDeadline(d.tenders || []), columns: exportColumns }];
   };
+  const hasActiveFilters = !!(search.trim() || status);
+  const exportScope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? exportScope.shown : exportScope.all, sheets: [{ name: 'Tenders', rows: sorted, columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: exportScope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   if (!canViewBd(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
@@ -160,7 +174,7 @@ export default function BdTendersPage() {
         subtitle={`${rows.length} ${ar ? 'مناقصة' : 'tenders'}`}
       >
         <div className="w-56"><SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث…' : 'Search…'} /></div>
-        <ExportButton onClick={doExport} label={ar ? 'تصدير' : 'Export'} />
+        <ExportMenu fileName="bd-tenders" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير' : 'Export'} options={exportOptions} />
         {canEdit && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'مناقصة جديدة' : 'New tender'}</PrimaryButton>}
       </PageHeader>
 

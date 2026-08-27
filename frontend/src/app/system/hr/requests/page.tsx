@@ -5,11 +5,11 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { MessageSquare, Send, Link2, Download } from 'lucide-react';
+import { MessageSquare, Send, Link2 } from 'lucide-react';
 import { isHRStaff, HRRequest, REQUEST_STATUS, categoryLabel, userName, fmtDateTime } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, Badge, Modal, TextInput, Select, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import { getHrRequestsTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function HRRequestsPage() {
   const { notify } = useDialog();
@@ -59,15 +59,27 @@ export default function HRRequestsPage() {
   const filtered = requests.filter((r) => !search.trim() || r.subject.toLowerCase().includes(search.toLowerCase()) || userName(r.requester).toLowerCase().includes(search.toLowerCase()));
   const openCount = requests.filter((r) => r.status === 'open' || r.status === 'in_progress').length;
 
-  const handleExport = () => {
-    exportToExcel(filtered, [
-      { header: tx.colEmployee, key: 'requester', transform: (v) => userName(v), width: 22 },
-      { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 18 },
-      { header: tx.colSubject, key: 'subject', width: 32 },
-      { header: tx.colStatus, key: 'status', transform: (v) => (REQUEST_STATUS[v] ? (ar ? REQUEST_STATUS[v].ar : REQUEST_STATUS[v].en) : v), width: 16 },
-      { header: tx.colUpdated, key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 20 },
-    ], 'hr-requests', tx.pageTitle);
+  const exportColumns: ExportColumn[] = [
+    { header: tx.colEmployee, key: 'requester', transform: (v) => userName(v), width: 22 },
+    { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 18 },
+    { header: tx.colSubject, key: 'subject', width: 32 },
+    { header: tx.colStatus, key: 'status', transform: (v) => (REQUEST_STATUS[v] ? (ar ? REQUEST_STATUS[v].ar : REQUEST_STATUS[v].en) : v), width: 16 },
+    { header: tx.colUpdated, key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 20 },
+  ];
+  // فلتر الحالة يُطبَّق على الخادم: حين يكون «مغلق» لا تعرف الذاكرة بالطلبات
+  // المفتوحة شيئًا، فـ«الكلّ» يجب أن يعيد النداء بلا حالة. والبحث في الذاكرة،
+  // فـ«المعروض» صادقٌ كما هو.
+  const fetchAllRequests = async () => {
+    const d = await api.get<{ requests: HRRequest[] }>('/api/hr/requests');
+    return [{ name: tx.pageTitle, rows: d.requests || [], columns: exportColumns }];
   };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: tx.pageTitle, rows: filtered, columns: exportColumns }] },
+    statusFilter
+      ? { key: 'all', label: scope.all, resolve: fetchAllRequests }
+      : { key: 'all', label: scope.all, sheets: [{ name: tx.pageTitle, rows: requests, columns: exportColumns }] },
+  ];
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -82,9 +94,9 @@ export default function HRRequestsPage() {
           <option value="">{tx.allStatuses}</option>
           {Object.entries(REQUEST_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
         </select>
-        <button type="button" onClick={handleExport} className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm hover:bg-slate-50">
-          <Download className="w-4 h-4" /> {ar ? 'تصدير Excel' : 'Export Excel'}
-        </button>
+        <div className="w-full sm:w-auto shrink-0">
+          <ExportMenu fileName="hr-requests" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">

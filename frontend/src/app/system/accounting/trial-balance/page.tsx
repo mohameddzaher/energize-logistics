@@ -5,9 +5,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { Scale } from 'lucide-react';
 import { isFinanceStaff, accountName, money } from '@/lib/finance';
-import { Spinner, PageHeader, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { getAccountingTrialBalanceTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function TrialBalancePage() {
   const { user } = useAuth();
@@ -25,24 +25,23 @@ export default function TrialBalancePage() {
   if (!isFinanceStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading || !data) return <Spinner />;
 
-  const handleExport = () => {
-    exportToExcel(
-      data.rows,
-      [
-        { header: tx.account, key: 'account', width: 32, transform: (v: any) => accountName(v, lang) },
-        { header: tx.debit, key: 'debit', width: 16, transform: (v: any) => (v ? money(v, '') : '') },
-        { header: tx.credit, key: 'credit', width: 16, transform: (v: any) => (v ? money(v, '') : '') },
-      ],
-      'trial-balance',
-      tx.title,
-    );
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: tx.account, key: 'account', width: 32, transform: (v: any) => accountName(v, lang) },
+    { header: tx.debit, key: 'debit', width: 16, transform: (v: any) => (v ? money(v, '') : '') },
+    { header: tx.credit, key: 'credit', width: 16, transform: (v: any) => (v ? money(v, '') : '') },
+  ];
+  // ميزانُ مراجعةٍ لحظيّ بلا فلترٍ ولا ترقيم؛ وهو فوق ذلك لا يصحّ إلّا كاملًا:
+  // ميزانٌ منقوصُ الحسابات لا يتوازن، فنطاقٌ واحد هو الصادق الوحيد هنا.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: tx.title, rows: data.rows, columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Scale className="w-5 h-5" />} title={tx.title}
         subtitle={data.balanced ? tx.balanced : tx.notBalanced}>
-        <ExportButton label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} onClick={handleExport} />
+        <ExportMenu fileName="trial-balance" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
       </PageHeader>
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">

@@ -6,6 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { getWorkshopDashboardTranslations } from '@/lib/translations';
+import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import {
   BarChart3, Wrench, CheckCircle2, ShoppingCart, Loader2,
   AlertCircle, X, TrendingUp, Activity, Users, Clock, AlertTriangle,
@@ -82,6 +83,60 @@ export default function WorkshopDashboardPage() {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
   };
 
+  // ── تصدير Excel ───────────────────────────────────────────────────────────
+  // التاريخ يُكتب بنفس تقويم الشاشة ولغتها؛ لو صُدّر خامًا (ISO) لاختلف الملف
+  // عمّا يراه مسؤول الورشة أمامه فيشكّ في أنّهما مصدران مختلفان.
+  const xDate = (v?: string) => (v ? new Date(v).toLocaleDateString(isAr ? 'ar-EG' : 'en-US') : '');
+  const xDateTime = (v?: string) => (v ? new Date(v).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : '');
+
+  const kpiCols: ExportColumn[] = [
+    { header: isAr ? 'المؤشر' : 'Metric', key: 'label', width: 26 },
+    { header: isAr ? 'القيمة' : 'Value', key: 'value', width: 16 },
+  ];
+  const perDayCols: ExportColumn[] = [
+    { header: isAr ? 'التاريخ' : 'Date', key: 'date', transform: (v) => xDate(v), width: 14 },
+    { header: isAr ? 'عدد الطلبات' : 'Requests', key: 'count', width: 12 },
+  ];
+  const durationCols: ExportColumn[] = [
+    { header: isAr ? 'التاريخ' : 'Date', key: 'date', transform: (v) => xDate(v), width: 14 },
+    { header: tx.colAvgDuration, key: 'avgMinutes', transform: (v) => formatDuration(v), width: 14 },
+  ];
+  const statusCols: ExportColumn[] = [
+    { header: isAr ? 'الحالة' : 'Status', key: 'status', transform: (v) => (v === 'open' ? tx.statusOpen : v === 'in_progress' ? tx.statusInProgress : v === 'completed' ? tx.statusCompleted : v), width: 16 },
+    { header: isAr ? 'العدد' : 'Count', key: 'count', width: 10 },
+  ];
+  const activityCols: ExportColumn[] = [
+    { header: isAr ? 'التاريخ' : 'Date', key: 'createdAt', transform: (v) => xDateTime(v), width: 18 },
+    { header: isAr ? 'الوصف' : 'Description', key: 'description', width: 46 },
+    { header: isAr ? 'الإجراء' : 'Action', key: 'action', width: 16 },
+    { header: isAr ? 'المستخدم' : 'User', key: 'user', width: 20 },
+  ];
+  const purchaseCols: ExportColumn[] = [
+    { header: isAr ? 'الصنف' : 'Item', key: 'itemName', width: 28 },
+    { header: tx.qty, key: 'quantity', width: 10 },
+    { header: tx.vehicle, key: 'vehicleNumber', transform: (v) => v || '-', width: 14 },
+    { header: isAr ? 'التاريخ' : 'Date', key: 'date', transform: (v) => xDate(v), width: 14 },
+  ];
+  const employeeCols: ExportColumn[] = [
+    { header: tx.colEmployee, key: 'employeeName', width: 26 },
+    { header: tx.colCompleted, key: 'completedCount', width: 14 },
+    { header: isAr ? 'إجمالي الطلبات' : 'Total requests', key: 'totalRequests', width: 14 },
+    { header: tx.colAvgDuration, key: 'avgDuration', transform: (v) => formatDuration(v), width: 14 },
+  ];
+  const technicianCols: ExportColumn[] = [
+    { header: tx.colTechnician, key: '_id', width: 26 },
+    { header: tx.colTotalJobs, key: 'totalRequests', width: 14 },
+    { header: tx.colAvgDuration, key: 'avgDuration', transform: (v) => formatDuration(v), width: 14 },
+    { header: tx.colFastest, key: 'minDuration', transform: (v) => formatDuration(v), width: 12 },
+    { header: tx.colSlowest, key: 'maxDuration', transform: (v) => formatDuration(v), width: 12 },
+  ];
+  const vehicleCols: ExportColumn[] = [
+    { header: tx.colVehicleNumber, key: '_id', width: 16 },
+    { header: tx.colVisits, key: 'visits', width: 12 },
+    { header: tx.colTotalTime, key: 'totalDuration', transform: (v) => formatDuration(v), width: 16 },
+    { header: tx.colLastVisit, key: 'lastVisit', transform: (v) => xDate(v), width: 14 },
+  ];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -109,12 +164,48 @@ export default function WorkshopDashboardPage() {
   const maxDailyCount = Math.max(...(requestsPerDay?.map(d => d.count) || [1]), 1);
   const maxDuration = Math.max(...(durationTrend?.map(d => d.avgMinutes) || [1]), 1);
 
+  // اللوحة ليست جدولًا واحدًا بل تسعة جداول لكلٍّ منها ترويسته ووحدة قياسه،
+  // فدمجها في ورقةٍ واحدة يُذهب معناها — لذا ورقةٌ مستقلّة لكل جدول.
+  // والجداول الفارغة تُستبعَد لأن الشاشة نفسها تعرض مكانها «لا توجد بيانات»،
+  // فورقةٌ خاوية في الملف تُقرأ خطأً على أنّها بياناتٌ ضاعت.
+  const exportSheets: ExportSheet[] = ([
+    {
+      name: isAr ? 'المؤشرات' : 'KPIs',
+      rows: [
+        { label: tx.kpiTotalRequests, value: kpis.totalRequests },
+        { label: tx.kpiOpen, value: kpis.open },
+        { label: tx.kpiInProgress, value: kpis.inProgress },
+        { label: tx.kpiCompleted, value: kpis.completed },
+        { label: tx.kpiAvgDuration, value: formatDuration(kpis.avgDuration) },
+        { label: tx.kpiPendingPurchases, value: kpis.pendingPurchases },
+        { label: `${tx.weeklyComparison} — ${tx.thisWeek}`, value: weekComparison.thisWeek },
+        { label: `${tx.weeklyComparison} — ${tx.lastWeek}`, value: weekComparison.lastWeek },
+        { label: `${tx.weeklyComparison} — ${tx.change}`, value: `${weekComparison.change >= 0 ? '+' : ''}${weekComparison.change}%` },
+        { label: `${tx.inventoryAlert} — ${tx.itemsLowOnStock}`, value: lowStockCount },
+      ],
+      columns: kpiCols,
+    },
+    { name: tx.requestsPerDay, rows: requestsPerDay as any[], columns: perDayCols },
+    { name: tx.durationTrend, rows: durationTrend as any[], columns: durationCols },
+    { name: tx.statusDistribution, rows: statusDistribution as any[], columns: statusCols },
+    { name: tx.recentActivity, rows: recentActivity as any[], columns: activityCols },
+    { name: tx.pendingPurchases, rows: pendingPurchasesList as any[], columns: purchaseCols },
+    { name: tx.employeePerformance, rows: employeeStats as any[], columns: employeeCols },
+    { name: tx.technicianTeamPerformance, rows: technicianStats as any[], columns: technicianCols },
+    { name: tx.topVehicles, rows: topVehicles as any[], columns: vehicleCols },
+  ] as ExportSheet[]).filter((sh) => (sh.rows || []).length > 0);
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <BarChart3 className="w-7 h-7 text-[#f37121]" />
         <h1 className="text-2xl font-bold text-slate-900">{tx.pageTitle}</h1>
+        {/* الصفحة بلا فلاتر ولا تبويبات: نطاقٌ واحد ثابت، فخيارُ تصديرٍ واحد. */}
+        <div className="ms-auto">
+          <ExportMenu fileName="workshop-dashboard" lang={lang as 'ar' | 'en'}
+            options={[{ key: 'all', label: exportScopeLabels(isAr).all, sheets: exportSheets }]} />
+        </div>
       </div>
 
       {/* KPI Cards */}

@@ -16,6 +16,7 @@ import {
   AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Copy,
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import {
   canConfigurePerf, bandStyle, type Band, type Tier, type Template, type Criterion, type Settings,
 } from '@/lib/performance';
@@ -151,6 +152,101 @@ export default function PerformanceSettingsPage() {
     { key: 'tiers', ar: 'الطبقات والبونص', en: 'Tiers & bonus' },
   ] as const;
 
+  // ---- Export sheets -------------------------------------------------------
+  // بُنيت بعد بوّابة canConfigurePerf أعلاه لا قبلها: جدول البونص أرقام تعويضات،
+  // فلو حُسبت الشيتات قبل الحارس لصار في الصفحة ملفٌّ ماليّ جاهزٌ لمن لا يرى الشاشة.
+  const scope = exportScopeLabels(ar);
+  const templatesSheet: ExportSheet = {
+    name: ar ? 'النماذج' : 'Templates',
+    rows: templates as any[],
+    columns: [
+      { header: ar ? 'اسم النموذج' : 'Template', key: 'nameAr', width: 28 },
+      { header: ar ? 'بالإنجليزية' : 'English name', key: 'name', width: 24 },
+      { header: ar ? 'القسم' : 'Department', key: 'department', width: 22 },
+      { header: ar ? 'المسميات الوظيفية' : 'Job titles', key: 'jobTitles', transform: (v: any) => (v || []).join('، '), width: 30 },
+      { header: ar ? 'الطبقة' : 'Tier', key: 'tier', width: 8 },
+      { header: ar ? 'عدد المؤشرات' : 'Criteria', key: 'criteria', transform: (v: any) => (v || []).length, width: 12 },
+      { header: ar ? 'مجموع الأوزان %' : 'Total weight %', key: 'criteria', transform: (v: any) => (v || []).reduce((a: number, c: Criterion) => a + (Number(c.weight) || 0), 0), width: 14 },
+      { header: ar ? 'مفعّل' : 'Active', key: 'active', transform: (v: any) => (v ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No')), width: 10 },
+      { header: ar ? 'الوصف' : 'Description', key: 'descriptionAr', width: 34 },
+    ] as ExportColumn[],
+  };
+
+  // شيتٌ ثانٍ للمؤشرات لأن كل نموذج يحوي عدّة مؤشرات، وحشرُها في خانةٍ واحدة
+  // بجوار النموذج يمنع فرزَها أو مراجعة أوزانها — وهي أصل حساب الدرجة.
+  const criteriaRows = templates.flatMap((tpl) =>
+    [...(tpl.criteria || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c, i) => ({
+      template: tpl.nameAr || tpl.name, department: tpl.department, tier: tpl.tier,
+      index: i + 1, titleAr: c.titleAr, title: c.title, weight: c.weight,
+      descriptionAr: c.descriptionAr, dataSourceAr: c.dataSourceAr,
+      scale: (c.scale || []).map((sp) => `${sp.score}: ${sp.labelAr || sp.label}`).join(' | '),
+    }))
+  );
+  const criteriaSheet: ExportSheet = {
+    name: ar ? 'المؤشرات' : 'Criteria',
+    rows: criteriaRows,
+    columns: [
+      { header: ar ? 'النموذج' : 'Template', key: 'template', width: 28 },
+      { header: ar ? 'القسم' : 'Department', key: 'department', width: 22 },
+      { header: ar ? 'الطبقة' : 'Tier', key: 'tier', width: 8 },
+      { header: '#', key: 'index', width: 6 },
+      { header: ar ? 'المؤشر' : 'Criterion', key: 'titleAr', width: 34 },
+      { header: ar ? 'بالإنجليزية' : 'English', key: 'title', width: 26 },
+      { header: ar ? 'الوزن %' : 'Weight %', key: 'weight', width: 10 },
+      { header: ar ? 'الوصف' : 'Description', key: 'descriptionAr', width: 34 },
+      { header: ar ? 'مصدر البيانات' : 'Data source', key: 'dataSourceAr', width: 26 },
+      { header: ar ? 'سلّم التقييم' : 'Rating scale', key: 'scale', width: 60 },
+    ] as ExportColumn[],
+  };
+
+  // حدّ الاستحقاق قيمةٌ مفردة لا جدول، وهو يعيش في شاشة الشرائح نفسها، فأُلحق
+  // عمودًا بها: شريحةٌ بلا حدّ الاستحقاق لا يُفهم منها مَن يستحقّ البونص أصلًا.
+  const bandsSheet: ExportSheet = {
+    name: ar ? 'الشرائح' : 'Bands',
+    rows: settings.bands as any[],
+    columns: [
+      { header: ar ? 'الاسم بالعربية' : 'Arabic label', key: 'ar', width: 20 },
+      { header: ar ? 'بالإنجليزية' : 'English', key: 'en', width: 20 },
+      { header: ar ? 'من %' : 'From %', key: 'min', width: 10 },
+      { header: ar ? 'إلى %' : 'To %', key: 'max', width: 10 },
+      { header: ar ? 'اللون' : 'Colour', key: 'color', width: 12 },
+      { header: ar ? 'حدّ الاستحقاق %' : 'Eligibility %', key: 'key', transform: () => settings.eligibilityThreshold, width: 14 },
+    ] as ExportColumn[],
+  };
+
+  const tiersSheet: ExportSheet = {
+    name: ar ? 'الطبقات والبونص' : 'Tiers & bonus',
+    rows: settings.tiers as any[],
+    columns: [
+      { header: ar ? 'الطبقة' : 'Tier', key: 'tier', width: 8 },
+      { header: ar ? 'الاسم' : 'Name', key: 'ar', width: 24 },
+      { header: ar ? 'بالإنجليزية' : 'English', key: 'en', width: 22 },
+      { header: ar ? 'السقف (رواتب)' : 'Cap (salaries)', key: 'cap', width: 14 },
+      // عمودٌ لكل شريحة كما تُرسم على الشاشة تمامًا، لأن الشرائح تُضاف وتُحذف من
+      // الإعدادات نفسها، فقائمةٌ ثابتةٌ هنا كانت ستُسقط أيّ شريحةٍ جديدة بصمت.
+      ...settings.bands.map((b) => ({
+        header: `${ar ? 'بونص' : 'Bonus'} — ${ar ? b.ar : b.en}`,
+        key: 'bonus', transform: (v: any) => v?.[b.key] ?? 0, width: 16,
+      })),
+    ] as ExportColumn[],
+  };
+
+  const deptTierSheet: ExportSheet = {
+    name: ar ? 'طبقة كل قسم' : 'Department tiers',
+    rows: departments.map((d) => ({ department: d, tier: settings.departmentTiers?.[d] ?? null })),
+    columns: [
+      { header: ar ? 'القسم' : 'Department', key: 'department', width: 30 },
+      { header: ar ? 'الطبقة' : 'Tier', key: 'tier', transform: (v: any) => (v == null ? (ar ? '— افتراضي —' : '— default —') : v), width: 12 },
+      { header: ar ? 'اسم الطبقة' : 'Tier name', key: 'tier', transform: (v: any) => { const tr = settings.tiers.find((x) => x.tier === v); return tr ? (ar ? tr.ar : tr.en) : '—'; }, width: 24 },
+    ] as ExportColumn[],
+  };
+
+  const tabSheets: Record<typeof tab, ExportSheet[]> = {
+    templates: [templatesSheet, criteriaSheet],
+    bands: [bandsSheet],
+    tiers: [tiersSheet, deptTierSheet],
+  };
+
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
@@ -158,6 +254,11 @@ export default function PerformanceSettingsPage() {
         title={ar ? 'إعداد تقييم الأداء' : 'Performance configuration'}
         subtitle={ar ? 'المؤشرات وأوزانها وشرائح الأداء وجدول البونص — للمدير العام فقط' : 'Criteria, weights, bands and bonus tables — super admin only'}
       >
+        <ExportMenu fileName="performance-config" lang={lang as 'ar' | 'en'}
+          options={[
+            { key: 'tab', label: ar ? 'التبويب الحالي' : 'Current tab', sheets: tabSheets[tab] },
+            { key: 'all', label: `${scope.all} (${ar ? '٥ شيتات' : '5 sheets'})`, sheets: [templatesSheet, criteriaSheet, bandsSheet, tiersSheet, deptTierSheet] },
+          ]} />
         {tab !== 'templates' && (
           <button type="button" onClick={saveSettings} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {ar ? 'حفظ' : 'Save'}

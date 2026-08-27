@@ -10,7 +10,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Bell, RefreshCw, Check } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ls2Text, isLs2Staff, severityStyle, alertTypeLabel, alertMessage, timeAgo, ALERT_TYPE_LABELS, type Lang, type Alert } from '@/lib/ls2';
 
 export default function Ls2AlertsPage() {
@@ -67,16 +67,25 @@ export default function Ls2AlertsPage() {
     { header: ar ? 'آخر ظهور' : 'Last seen', key: 'lastSeenAt', transform: fmtDate, width: 18 },
     { header: ar ? 'تم الإقرار' : 'Acknowledged', key: 'acknowledgedAt', transform: fmtDate, width: 18 },
   ];
+  // الفلترة هنا على الخادم: ما في الذاكرة هو نتائج الفلتر كاملةً (لا ترقيم)، أمّا
+  // «الكلّ» فيلزمه نداءٌ ثانٍ بلا فلاتر — وبدونه كان مَن يفتح الشاشة على حالتها
+  // الافتراضيّة (المفتوحة فقط) يصدّر ملفًّا ناقصًا وهو يحسبه سجلّ التنبيهات كلَّه.
+  const hasActiveFilters = !!severity || !!type || status !== 'all';
+  const fetchAllForExport = async (): Promise<{ name: string; rows: Record<string, any>[]; columns: ExportColumn[] }[]> => {
+    const res = await api.get<{ items: Alert[] }>('/api/ls2/alerts?status=all');
+    return [{ name: t.alerts, rows: (res.items || []) as unknown as Record<string, any>[], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: t.alerts, rows: items as unknown as Record<string, any>[], columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Bell className="w-5 h-5" />} title={t.alerts} subtitle={`${items.length} · ${t.live}`}>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
-        <ExportMenu
-          fileName="ls2-alerts"
-          lang={lang as Lang}
-          options={[{ key: 'filtered', label: ar ? 'النتائج الحالية (حسب الفلاتر)' : 'Current results (as filtered)', sheets: [{ name: t.alerts, rows: items as unknown as Record<string, any>[], columns: exportColumns }] }]}
-        />
+        <ExportMenu fileName="ls2-alerts" lang={lang as Lang} options={exportOptions} />
       </PageHeader>
 
       <div className="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-2 shadow-sm">

@@ -6,11 +6,11 @@ import { getB2CTranslations, getB2cRepsPerformanceTranslations } from '@/lib/tra
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2, Cloud, Link2, Power, Zap, Copy, Eye, EyeOff, Plus, Edit3, Download } from 'lucide-react';
+import { Upload, FileSpreadsheet, X, Check, AlertCircle, RefreshCw, BarChart3, ArrowRight, Trash2, Cloud, Link2, Power, Zap, Copy, Eye, EyeOff, Plus, Edit3 } from 'lucide-react';
 import { useSocket } from '@/hooks/useSocket';
 import { useAuth } from '@/context/AuthContext';
 import { parseRepsExcel, buildBulkPayload, buildDiagnosticReport, type ExcelParseResult } from '@/lib/b2cExcelParser';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Project { _id: string; name: string; code?: string; color?: string }
 interface Branch { _id: string; name: string; city?: string }
@@ -296,17 +296,21 @@ export default function RepsPerformancePage() {
     }
   };
 
-  const handleExportUploads = () => {
-    exportToExcel(uploads, [
-      { header: lang === 'ar' ? 'التاريخ' : 'Date', key: 'createdAt', width: 20, transform: (v) => v ? new Date(v).toLocaleString() : '' },
-      { header: lang === 'ar' ? 'الملف' : 'File', key: 'fileName', width: 28, transform: (v) => v || '—' },
-      { header: lang === 'ar' ? 'بواسطة' : 'By', key: 'uploadedBy', width: 22, transform: (v) => v ? `${v.firstName} ${v.lastName}` : '—' },
-      { header: T.monthsDetected, key: 'monthsDetected', width: 24, transform: (v) => (v || []).join(', ') },
-      { header: T.daysInserted, key: 'daysInserted', width: 12 },
-      { header: T.daysUpdated, key: 'daysUpdated', width: 12 },
-      { header: T.daysSkipped, key: 'daysSkipped', width: 12 },
-    ], 'b2c-upload-history', lang === 'ar' ? 'سجل الرفع' : 'Upload History');
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: lang === 'ar' ? 'التاريخ' : 'Date', key: 'createdAt', width: 20, transform: (v) => v ? new Date(v).toLocaleString() : '' },
+    { header: lang === 'ar' ? 'الملف' : 'File', key: 'fileName', width: 28, transform: (v) => v || '—' },
+    { header: lang === 'ar' ? 'بواسطة' : 'By', key: 'uploadedBy', width: 22, transform: (v) => v ? `${v.firstName} ${v.lastName}` : '—' },
+    { header: T.monthsDetected, key: 'monthsDetected', width: 24, transform: (v) => (v || []).join(', ') },
+    { header: T.daysInserted, key: 'daysInserted', width: 12 },
+    { header: T.daysUpdated, key: 'daysUpdated', width: 12 },
+    { header: T.daysSkipped, key: 'daysSkipped', width: 12 },
+  ];
+  // `/api/b2c/uploads` يقصّ عند خمسين سجلًّا في الخادم ولا يقبل معاملًا يوسّعها،
+  // فلا سبيل إلى «الكلّ» من هنا؛ خيارٌ واحد باسمه الصريح خيرٌ من وعدٍ لا يُنفَّذ.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: lang === 'ar' ? 'سجل الرفع' : 'Upload History', rows: uploads, columns: exportColumns }] },
+  ];
 
   const handleDownloadDiagnostic = () => {
     if (!parseResult) return;
@@ -1283,11 +1287,7 @@ export default function RepsPerformancePage() {
           </h2>
           <div className="flex items-center gap-2">
             {uploads.length > 0 && (
-              <button type="button" onClick={handleExportUploads}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-700 border border-green-500/30 text-sm font-medium transition-colors">
-                <Download className="w-4 h-4" />
-                {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
-              </button>
+              <ExportMenu fileName="b2c-upload-history" lang={lang === 'ar' ? 'ar' : 'en'} variant="primary" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
             )}
             <button type="button" onClick={fetchAll} className="p-1.5 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100" title={tx.refresh}>
               <RefreshCw className="w-4 h-4" />

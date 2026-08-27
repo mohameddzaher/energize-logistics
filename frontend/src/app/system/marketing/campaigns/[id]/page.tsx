@@ -11,6 +11,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Megaphone, ArrowRight, Pencil, X, Loader2, Link as LinkIcon } from 'lucide-react';
 import { Spinner, PageHeader, StatCard, PrimaryButton, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
+import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import {
   canViewMarketing, canEditMarketing, PLATFORMS, OBJECTIVES, STATUSES,
   platformLabel, objectiveLabel, statusLabel, statusStyle, activityTypeLabel,
@@ -124,6 +125,62 @@ export default function MarketingCampaignPage() {
     </div>
   );
 
+  // ---- Excel: بيانات الحملة، ومؤشراتها، وأنشطتها -------------------------
+  // ثلاثة جداول لا جدول واحد: البطاقة تعريفٌ، والبطاقات الرقمية أداءٌ محسوب،
+  // والأنشطة صفوفٌ مؤرَّخة. دمجُها يُفقد صفوفَ الأنشطة معناها الزمني.
+  const kvCols: ExportColumn[] = [
+    { header: ar ? 'البند' : 'Field', key: 'label', width: 26 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 48 },
+  ];
+  const briefSheet: ExportSheet = {
+    name: ar ? 'بيانات الحملة' : 'Campaign',
+    columns: kvCols,
+    rows: [
+      { label: ar ? 'الحملة' : 'Campaign', value: campaignName(campaign, L) },
+      { label: ar ? 'الحالة' : 'Status', value: statusLabel(campaign.status, L) },
+      { label: ar ? 'المنصة' : 'Platform', value: platformLabel(campaign.platform, L) },
+      { label: ar ? 'الهدف' : 'Objective', value: objectiveLabel(campaign.objective, L) },
+      { label: ar ? 'المسؤول' : 'Owner', value: personName(campaign.owner) },
+      { label: ar ? 'تاريخ البداية' : 'Start date', value: campaign.startDate || '—' },
+      { label: ar ? 'تاريخ النهاية' : 'End date', value: campaign.endDate || '—' },
+      { label: ar ? 'الجمهور المستهدف' : 'Target audience', value: campaign.targetAudience || '—' },
+      { label: ar ? 'عدد الأنشطة' : 'Activities', value: activities.length },
+      { label: ar ? 'الوصف' : 'Description', value: campaign.description || '—' },
+      { label: ar ? 'ملاحظات' : 'Notes', value: campaign.notes || '—' },
+    ],
+  };
+  // المؤشرات تُصدَّر بصياغة البطاقات نفسها (العملة، الفواصل، النسبة، ×ROAS)
+  // حتى يطابق الرقمُ في الملفّ الرقمَ الذي قرأه المستخدم على الشاشة.
+  const metricsSheet: ExportSheet = {
+    name: ar ? 'مؤشرات الحملة' : 'Metrics',
+    columns: [
+      { header: ar ? 'المؤشر' : 'Metric', key: 'label', width: 26 },
+      { header: ar ? 'القيمة' : 'Value', key: 'value', width: 22 },
+    ],
+    rows: stats.map((x) => ({ label: x.label, value: x.value })),
+  };
+  const activitiesSheet: ExportSheet = {
+    name: ar ? 'أنشطة الحملة' : 'Activities',
+    columns: [
+      { header: ar ? 'التاريخ' : 'Date', key: 'date', width: 14 },
+      { header: ar ? 'العنوان' : 'Title', key: 'title', width: 34 },
+      { header: ar ? 'المنصة' : 'Platform', key: 'platform', transform: (v: any) => platformLabel(v, L), width: 16 },
+      { header: ar ? 'النوع' : 'Type', key: 'type', transform: (v: any) => activityTypeLabel(v, L), width: 16 },
+      { header: ar ? 'مرات الظهور' : 'Impressions', key: 'metrics.impressions', transform: (v: any) => num(v), width: 14 },
+      { header: ar ? 'النقرات' : 'Clicks', key: 'metrics.clicks', transform: (v: any) => num(v), width: 12 },
+      { header: ar ? 'العملاء المحتملون' : 'Leads', key: 'metrics.leads', transform: (v: any) => num(v), width: 14 },
+      { header: ar ? 'نفّذها' : 'By', key: 'performedByName', width: 22 },
+      { header: ar ? 'الرابط' : 'Link', key: 'link', width: 34 },
+    ],
+    rows: activities as any[],
+  };
+  const campaignSheets: ExportSheet[] = [
+    briefSheet, metricsSheet,
+    // بلا أنشطةٍ لا يعرض الجدول صفًّا واحدًا، فشيتٌ فارغٌ باسم «أنشطة الحملة»
+    // يُقرأ على أنه فقدان بيانات لا على أنه حملة لم تُنفَّذ أنشطتها بعد.
+    ...(activities.length ? [activitiesSheet] : []),
+  ];
+
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
@@ -134,6 +191,8 @@ export default function MarketingCampaignPage() {
         <button type="button" onClick={() => router.push('/system/marketing/campaigns')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} /> {ar ? 'كل الحملات' : 'All campaigns'}
         </button>
+        <ExportMenu fileName={`campaign-${(campaign.name || id).toLowerCase().replace(/\s+/g, '-')}`} lang={lang as 'ar' | 'en'}
+          options={[{ key: 'full', label: ar ? 'ملف الحملة كاملًا' : 'The whole campaign', sheets: campaignSheets }]} />
         {admin && !editing && (
           <PrimaryButton onClick={startEdit}><Pencil className="w-4 h-4" /> {ar ? 'تعديل' : 'Edit'}</PrimaryButton>
         )}

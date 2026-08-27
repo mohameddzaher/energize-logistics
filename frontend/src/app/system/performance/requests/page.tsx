@@ -15,6 +15,7 @@ import {
   Inbox, Check, X, Loader2, ExternalLink, Clock, CheckCircle2, XCircle,
 } from 'lucide-react';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { canConfigurePerf, pct, type Lang } from '@/lib/performance';
 
 interface RequestRow {
@@ -70,6 +71,31 @@ export default function PerformanceRequestsPage() {
     setBusy(null);
   };
 
+  // أعمدة التصدير مبنيّة على ما تعرضه الشاشة وحدها: النسبة المئوية دون
+  // الدرجة المرجّحة ولا الشريحة ولا مضاعِف البونص. تلك الثلاثة أرقام تعويضات
+  // لا تظهر في هذه الصفحة، فإدراجها في الملفّ يجعل التصدير يفشي ما تخفيه.
+  const scope = exportScopeLabels(ar);
+  const baseCols: ExportColumn[] = [
+    { header: ar ? 'الموظف' : 'Employee', key: 'employeeName', width: 24 },
+    { header: ar ? 'المسمى الوظيفي' : 'Job title', key: 'jobTitle', width: 22 },
+    { header: ar ? 'القسم' : 'Department', key: 'department', width: 20 },
+    { header: ar ? 'الفترة' : 'Period', key: 'periodKey', width: 12 },
+    { header: ar ? 'المُقيِّم' : 'Evaluator', key: 'evaluatorName', width: 22 },
+    { header: ar ? 'النتيجة الحالية' : 'Current result', key: 'percentage', transform: (v: any) => pct(v), width: 14 },
+    { header: ar ? 'سبب طلب التعديل' : 'Reason', key: 'editRequest.reason', width: 46 },
+    { header: ar ? 'مُقدِّم الطلب' : 'Requested by', key: 'editRequest.requestedByName', width: 22 },
+    { header: ar ? 'تاريخ الطلب' : 'Requested at', key: 'editRequest.requestedAt', transform: (v: any) => fmtDate(v, lang as Lang), width: 20 },
+  ];
+  const decidedCols: ExportColumn[] = [
+    ...baseCols,
+    { header: ar ? 'القرار' : 'Decision', key: 'editRequest.status', transform: (v: any) => (v === 'approved' ? (ar ? 'موافق' : 'Approved') : v === 'rejected' ? (ar ? 'مرفوض' : 'Rejected') : '—'), width: 12 },
+    { header: ar ? 'صاحب القرار' : 'Decided by', key: 'editRequest.decidedByName', width: 22 },
+    { header: ar ? 'تاريخ القرار' : 'Decided at', key: 'editRequest.decidedAt', transform: (v: any) => fmtDate(v, lang as Lang), width: 20 },
+    { header: ar ? 'ملاحظة القرار' : 'Decision note', key: 'editRequest.decisionNote', width: 40 },
+  ];
+  const pendingSheet = { name: ar ? 'قيد المراجعة' : 'Pending', rows: pending as any[], columns: baseCols };
+  const decidedSheet = { name: ar ? 'قرارات سابقة' : 'Decided', rows: recent as any[], columns: decidedCols };
+
   if (!canConfigurePerf(user?.role)) {
     return (
       <div className="p-8 text-slate-500">
@@ -87,7 +113,16 @@ export default function PerformanceRequestsPage() {
         subtitle={ar
           ? `${pending.length} طلب في انتظار قرارك`
           : `${pending.length} awaiting your decision`}
-      />
+      >
+        <ExportMenu fileName="performance-edit-requests" lang={lang as 'ar' | 'en'}
+          options={[
+            { key: 'pending', label: ar ? 'الطلبات المعلّقة' : 'Pending requests', sheets: [pendingSheet] },
+            // «القرارات السابقة» هي آخر خمسين قرارًا كما يرسلها الخادم، ولا يقبل
+            // المسار وسيطًا يوسّع النطاق، فلا يوجد تصديرٌ أشمل يُجلَب هنا.
+            { key: 'decided', label: ar ? 'القرارات السابقة' : 'Recent decisions', sheets: [decidedSheet] },
+            { key: 'all', label: `${scope.all} (${ar ? 'شيتان' : '2 sheets'})`, sheets: [pendingSheet, decidedSheet] },
+          ]} />
+      </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <StatCard label={ar ? 'قيد المراجعة' : 'Pending'} value={String(pending.length)} />

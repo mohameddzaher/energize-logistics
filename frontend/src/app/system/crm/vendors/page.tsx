@@ -12,6 +12,7 @@ import { Truck, Plus, Edit, Trash2, Eye, Check, X, RefreshCw, Star } from 'lucid
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, TextArea, Select, ContactButtons } from '@/components/crm/CrmKit';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import ReportButton from '@/components/system/ReportButton';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 type Vendor = Record<string, any>;
 interface Options { energizeReps: string[]; followUpStatuses: string[]; vendorTypes: string[]; headOffices: string[] }
@@ -116,6 +117,29 @@ export default function CrmVendorsPage() {
   const anyFilter = !!(debounced || fStatus || fRep || fType || fNew);
   const clearAll = () => { setSearch(''); setFStatus(''); setFRep(''); setFType(''); setFNew(''); };
 
+  // نفس الأعمدة تُستعمل للمعروض وللسجلّ كامله، وفيها ما لا يتّسع له الجدول
+  // (البريد، الأوراق، التوقيعان، تاريخ العقد، الملاحظات) لأن ملفّ الموردين
+  // يُراجَع للتعاقد لا للاطّلاع السريع.
+  const scope = exportScopeLabels(ar);
+  const vendorCols: ExportColumn[] = [
+    { header: t('Vendor', 'المورد'), key: 'name', width: 30 },
+    { header: t('New?', 'مورد جديد؟'), key: 'isNewVendor', transform: (v: any) => (v ? t('New', 'جديد') : t('Existing', 'قديم')), width: 12 },
+    { header: t('Representative', 'ممثل المورد'), key: 'representative', width: 22 },
+    { header: t('Phone', 'الهاتف'), key: 'mobile', width: 16 },
+    { header: t('Email', 'البريد'), key: 'email', width: 26 },
+    { header: t('Our rep', 'مندوبنا'), key: 'energizeRep', width: 20 },
+    { header: t('Type', 'النوع'), key: 'vendorType', width: 14 },
+    { header: t('Routes', 'الوجهات'), key: 'destinations', width: 30 },
+    { header: t('HQ', 'المقر الرئيسي'), key: 'headOffice', width: 18 },
+    { header: t('Cars', 'عدد العربيات'), key: 'carsCount', width: 12 },
+    { header: t('Has papers', 'الأوراق متوفرة'), key: 'hasPapers', transform: (v: any) => triState(v, ar), width: 14 },
+    { header: t('Vendor signed', 'وقّع المورد'), key: 'vendorSideSigned', transform: (v: any) => triState(v, ar), width: 14 },
+    { header: t('We signed', 'وقّعنا'), key: 'ourSideSigned', transform: (v: any) => triState(v, ar), width: 12 },
+    { header: t('Contract date', 'تاريخ العقد'), key: 'contractDate', width: 14 },
+    { header: t('Status', 'حالة المتابعة'), key: 'followUpStatus', width: 22 },
+    { header: t('Notes', 'ملاحظات'), key: 'notes', width: 40 },
+  ];
+
   if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{t('Not authorized', 'لا تملك صلاحية')}</div>;
   if (!loaded) return <Spinner />;
 
@@ -123,6 +147,20 @@ export default function CrmVendorsPage() {
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Truck className="w-5 h-5" />} title={t('Vendors', 'الموردين')} subtitle={`${items.length} ${t('carrier', 'ناقل')}`}>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t('Refresh', 'تحديث')}</button>
+        <ExportMenu fileName="crm-vendors" lang={lang as 'ar' | 'en'}
+          options={[
+            { key: 'shown', label: scope.shown, sheets: [{ name: t('Vendors', 'الموردين'), rows: items, columns: vendorCols }] },
+            {
+              key: 'all', label: scope.all,
+              hint: t('all', 'الكل'),
+              // التصفية تتم على الخادم، فما في الذاكرة هو نتيجة الفلتر لا السجلّ
+              // كلّه؛ ولذلك يُعاد الجلب بلا وسائط ليخرج «الكل» كلًّا بالفعل.
+              resolve: async () => {
+                const d = await api.get<{ items: Vendor[] }>('/api/crm-vendors');
+                return [{ name: t('Vendors', 'الموردين'), rows: d.items || [], columns: vendorCols }];
+              },
+            },
+          ]} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {t('Add vendor', 'إضافة مورد')}</PrimaryButton>
       </PageHeader>
 

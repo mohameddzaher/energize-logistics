@@ -11,7 +11,9 @@ import { ArrowLeft, ArrowRight, Truck, UserCheck, ArrowLeftRight, Ban, AlertTria
 import {
   Vehicle, VehicleAuthorization, VehicleAccident, VEHICLE_STATUS, AUTH_STATUS, ACCIDENT_SEVERITY, ACCIDENT_STATUS,
   FAULT_PARTY, isVehicleStaff, vehicleTypeLabel, faultPartyLabel, empRefName, getVehiclesText, fmtDate, fmtDateTime, today,
+  styledLabel,
 } from '@/lib/vehicles';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Spinner, Badge, SmallBadge, Tabs, Modal, Field, TextInput, TextArea, Select, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import { EmployeePicker } from '@/components/vehicles/EmployeePicker';
 
@@ -52,6 +54,67 @@ export default function VehicleDetailPage() {
 
   const v = data.vehicle;
   const active = data.authorizations.find((a) => a.status === 'active') || null;
+
+  // ── تصدير ملفّ المركبة ───────────────────────────────────────────────────
+  // بطاقةُ «تفاصيل المركبة» بندٌ وقيمة على الشاشة، فتُصدَّر كذلك: صفٌّ لكل بند.
+  // إفرادُها في شيتٍ بأعمدةٍ لكل حقل يُخرج جدولًا بصفٍّ واحدٍ وأربعين عمودًا،
+  // لا يُقرأ ولا يُطبَع.
+  const infoRows = [
+    [tx.plateNumber, v.plateNumber], [tx.type, vehicleTypeLabel(v.type, lang)],
+    [tx.status, styledLabel(VEHICLE_STATUS, v.status, lang)],
+    [tx.make, v.make], [tx.model, v.model], [tx.year, v.year], [tx.color, v.color],
+    [tx.branch, typeof v.branch === 'object' ? v.branch?.name : v.branch],
+    [tx.department, v.department], [tx.project, v.project],
+    [tx.registrationExpiry, fmtDate(v.registrationExpiry)], [tx.insuranceExpiry, fmtDate(v.insuranceExpiry)],
+    [tx.accidents, v.accidentCount || 0],
+    [tx.authorizedTo, active ? empRefName(active.employee, lang) : tx.parkedNoHolder],
+    [tx.startDate, active ? fmtDate(active.startDate) : ''],
+    [tx.authType, active?.authorizationType], [tx.documentNumber, active?.documentNumber],
+    [tx.documentExpiry, active ? fmtDate(active.documentExpiry) : ''],
+    [tx.issuedBy, active?.issuedBy],
+    [tx.notes, v.notes],
+  ].filter(([, val]) => val !== undefined && val !== null && val !== '' && val !== '—')
+    .map(([item, value]) => ({ item, value }));
+
+  const infoCols: ExportColumn[] = [
+    { header: ar ? 'البند' : 'Field', key: 'item', width: 24 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 34 },
+  ];
+  const authCols: ExportColumn[] = [
+    { header: tx.employee, key: 'employee', transform: (e) => empRefName(e, lang), width: 24 },
+    { header: tx.status, key: 'status', transform: (val) => styledLabel(AUTH_STATUS, val, lang), width: 12 },
+    { header: tx.startDate, key: 'startDate', transform: (val) => fmtDate(val), width: 13 },
+    { header: tx.endDate, key: 'endDate', transform: (val) => (val ? fmtDate(val) : (ar ? 'حتى الآن' : 'now')), width: 13 },
+    { header: tx.authType, key: 'authorizationType', width: 16 },
+    { header: tx.documentNumber, key: 'documentNumber', width: 16 },
+    { header: tx.documentExpiry, key: 'documentExpiry', transform: (val) => fmtDate(val), width: 13 },
+    { header: tx.issuedBy, key: 'issuedBy', width: 18 },
+    { header: tx.transferredFrom, key: 'transferredFrom', transform: (e) => empRefName(e, lang), width: 20 },
+    { header: tx.transferredTo, key: 'transferredTo', transform: (e) => empRefName(e, lang), width: 20 },
+    { header: tx.revokedReason, key: 'revokedReason', width: 24 },
+    { header: tx.notes, key: 'notes', width: 26 },
+  ];
+  const accidentCols: ExportColumn[] = [
+    { header: tx.date, key: 'date', transform: (val) => fmtDate(val), width: 13 },
+    { header: tx.employee, key: 'employee', transform: (e) => empRefName(e, lang), width: 24 },
+    { header: tx.description, key: 'description', width: 40 },
+    { header: tx.location, key: 'location', width: 20 },
+    { header: tx.reportNumber, key: 'reportNumber', width: 16 },
+    { header: tx.faultParty, key: 'faultParty', transform: (val) => faultPartyLabel(val, lang), width: 14 },
+    { header: tx.severity, key: 'severity', transform: (val) => styledLabel(ACCIDENT_SEVERITY, val || 'minor', lang), width: 12 },
+    { header: tx.status, key: 'status', transform: (val) => styledLabel(ACCIDENT_STATUS, val || 'reported', lang), width: 14 },
+    { header: tx.estimatedCost, key: 'estimatedCost', width: 14 },
+    { header: tx.actualCost, key: 'actualCost', width: 14 },
+    { header: tx.thirdPartyDetails, key: 'thirdPartyDetails', width: 30 },
+    { header: tx.actionTaken, key: 'actionTaken', width: 30 },
+    { header: tx.notes, key: 'notes', width: 26 },
+  ];
+  const infoSheet = { name: tx.vehicleDetails, rows: infoRows as any[], columns: infoCols };
+  const authSheet = { name: tx.tabAuthorizations, rows: data.authorizations as any[], columns: authCols };
+  const accidentSheet = { name: tx.tabAccidents, rows: data.accidents as any[], columns: accidentCols };
+  // الخيار الأوّل يتبع التبويب المفتوح لأن الضغط على «تصدير» وأنت في الحوادث
+  // يُقصد به الحوادث؛ والثاني ملفُّ المركبة كاملًا في مصنَّفٍ واحد.
+  const tabSheet = tab === 'authorizations' ? authSheet : tab === 'accidents' ? accidentSheet : infoSheet;
 
   const openAction = (a: Action) => {
     setAction(a);
@@ -112,6 +175,11 @@ export default function VehicleDetailPage() {
           {active && <button type="button" onClick={() => openAction('transfer')} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"><ArrowLeftRight className="w-4 h-4" /> {tx.transfer}</button>}
           {active && <button type="button" onClick={() => openAction('revoke')} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700"><Ban className="w-4 h-4" /> {tx.revoke}</button>}
           <button type="button" onClick={() => openAction('accident')} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"><AlertTriangle className="w-4 h-4" /> {tx.reportAccident}</button>
+          <ExportMenu fileName={`vehicle-${v.plateNumber || id}`} lang={lang as 'ar' | 'en'}
+            options={[
+              { key: 'tab', label: ar ? 'التبويب الحالي' : 'Current tab', sheets: [tabSheet] },
+              { key: 'all', label: `${exportScopeLabels(ar).all} — ${ar ? 'ملفّ المركبة' : 'full vehicle file'}`, sheets: [infoSheet, authSheet, accidentSheet] },
+            ]} />
         </div>
       </div>
 

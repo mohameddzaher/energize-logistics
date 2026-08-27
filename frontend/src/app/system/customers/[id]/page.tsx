@@ -10,10 +10,11 @@ import DataTable from '@/components/system/DataTable';
 import {
   ArrowLeft, Building2, Mail, Phone, CreditCard, Shield, MapPin,
   FileText, DollarSign, Clock, AlertTriangle, TrendingUp, X,
-  Calendar, CheckCircle, Activity, Lightbulb, Edit3, User, Download, FileSpreadsheet,
+  Calendar, CheckCircle, Activity, Lightbulb, Edit3, User, Download,
   ClipboardList,
 } from 'lucide-react';
-import { exportMultiSheet, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import ReportButton from '@/components/system/ReportButton';
 import { useLanguage } from '@/context/LanguageContext';
@@ -362,66 +363,6 @@ export default function CustomerDetailPage() {
     }
   };
 
-  const handleExportCustomerDetails = () => {
-    if (!customer) return;
-
-    const customerInfoColumns = [
-      { header: 'Field', key: 'field', width: 22 },
-      { header: 'Value', key: 'value', width: 35 },
-    ];
-    const customerInfoData = [
-      { field: 'Customer Number', value: customer.customerNumber || '-' },
-      { field: 'Company Name', value: customer.companyName },
-      { field: 'Contact Person', value: customer.contactPerson },
-      { field: 'Email', value: customer.email },
-      { field: 'Phone', value: customer.phone },
-      { field: 'Office', value: customer.office || '-' },
-      { field: 'Sales Manager', value: customer.salesManager || '-' },
-      { field: 'Grade', value: customer.grade || '-' },
-      { field: 'Client Status', value: customer.clientStatus ? (clientStatusLabels[customer.clientStatus] || customer.clientStatus.replace(/_/g, ' ')) : '-' },
-      { field: 'Credit Term', value: `${customer.creditTerm} days` },
-      { field: 'Credit Limit (SAR)', value: fmt.money(customer.creditLimit) },
-      { field: 'Outstanding (SAR)', value: fmt.money(customer.currentOutstanding) },
-      { field: 'Risk Level', value: `${customer.riskLevel} (${customer.riskScore}%)` },
-      { field: 'Stopped', value: customer.isStopped ? 'Yes' : 'No' },
-      { field: 'Customer Since', value: fmt.date(customer.createdAt) },
-      { field: 'Last Payment Date', value: fmt.date(customer.lastPaymentDate || '') },
-      { field: 'Last Payment Amount (SAR)', value: customer.lastPaymentAmount != null ? fmt.money(customer.lastPaymentAmount) : '-' },
-      { field: 'Assigned Collector', value: customer.assignedCollector ? `${customer.assignedCollector.firstName} ${customer.assignedCollector.lastName}` : '-' },
-    ];
-
-    const invoiceExportColumns = [
-      { header: 'Invoice #', key: 'invoiceNumber', width: 16 },
-      { header: 'Amount (SAR)', key: 'amount', transform: fmt.money, width: 16 },
-      { header: 'Paid (SAR)', key: 'paidAmount', transform: fmt.money, width: 16 },
-      { header: 'Balance (SAR)', key: 'balance', transform: fmt.money, width: 16 },
-      { header: 'Status', key: 'status', transform: fmt.status, width: 14 },
-      { header: 'Issue Date', key: 'issueDate', transform: fmt.date, width: 14 },
-      { header: 'Due Date', key: 'dueDate', transform: fmt.date, width: 14 },
-    ];
-
-    const paymentExportColumns = [
-      { header: 'Payment Date', key: 'paymentDate', transform: fmt.date, width: 16 },
-      { header: 'Amount (SAR)', key: 'amount', transform: fmt.money, width: 16 },
-      { header: 'Method', key: 'paymentMethod', transform: (v: string) => v?.replace(/_/g, ' ') || '-', width: 18 },
-      { header: 'Invoice #', key: 'invoice', transform: (_: any, row: Payment) => row.invoice?.invoiceNumber || '-', width: 16 },
-      { header: 'Collected By', key: 'receivedBy', transform: (_: any, row: Payment) => row.receivedBy ? `${row.receivedBy.firstName} ${row.receivedBy.lastName}` : '-', width: 22 },
-      { header: 'Notes', key: 'notes', width: 30 },
-    ];
-
-    const safeName = customer.companyName.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '_').slice(0, 30);
-    const today = new Date().toISOString().split('T')[0];
-
-    exportMultiSheet(
-      [
-        { name: 'Customer Info', data: customerInfoData, columns: customerInfoColumns },
-        { name: 'Invoices', data: invoices, columns: invoiceExportColumns },
-        { name: 'Payments', data: payments, columns: paymentExportColumns },
-      ],
-      `Customer_${safeName}_Details_${today}`
-    );
-  };
-
   const handleDownloadStatement = async () => {
     try {
       const dateQuery = statementFrom && statementTo
@@ -617,6 +558,65 @@ export default function CustomerDetailPage() {
 
   if (!customer) return null;
 
+  const customerInfoColumns: ExportColumn[] = [
+    { header: 'Field', key: 'field', width: 22 },
+    { header: 'Value', key: 'value', width: 35 },
+  ];
+  const customerInfoData = [
+    { field: 'Customer Number', value: customer.customerNumber || '-' },
+    { field: 'Company Name', value: customer.companyName },
+    { field: 'Contact Person', value: customer.contactPerson },
+    { field: 'Email', value: customer.email },
+    { field: 'Phone', value: customer.phone },
+    { field: 'Office', value: customer.office || '-' },
+    { field: 'Sales Manager', value: customer.salesManager || '-' },
+    { field: 'Grade', value: customer.grade || '-' },
+    { field: 'Client Status', value: customer.clientStatus ? (clientStatusLabels[customer.clientStatus] || customer.clientStatus.replace(/_/g, ' ')) : '-' },
+    { field: 'Credit Term', value: `${customer.creditTerm} days` },
+    { field: 'Credit Limit (SAR)', value: fmt.money(customer.creditLimit) },
+    { field: 'Outstanding (SAR)', value: fmt.money(customer.currentOutstanding) },
+    { field: 'Risk Level', value: `${customer.riskLevel} (${customer.riskScore}%)` },
+    { field: 'Stopped', value: customer.isStopped ? 'Yes' : 'No' },
+    { field: 'Customer Since', value: fmt.date(customer.createdAt) },
+    { field: 'Last Payment Date', value: fmt.date(customer.lastPaymentDate || '') },
+    { field: 'Last Payment Amount (SAR)', value: customer.lastPaymentAmount != null ? fmt.money(customer.lastPaymentAmount) : '-' },
+    { field: 'Assigned Collector', value: customer.assignedCollector ? `${customer.assignedCollector.firstName} ${customer.assignedCollector.lastName}` : '-' },
+  ];
+  const invoiceExportColumns: ExportColumn[] = [
+    { header: 'Invoice #', key: 'invoiceNumber', width: 16 },
+    { header: 'Amount (SAR)', key: 'amount', transform: fmt.money, width: 16 },
+    { header: 'Paid (SAR)', key: 'paidAmount', transform: fmt.money, width: 16 },
+    { header: 'Balance (SAR)', key: 'balance', transform: fmt.money, width: 16 },
+    { header: 'Status', key: 'status', transform: fmt.status, width: 14 },
+    { header: 'Issue Date', key: 'issueDate', transform: fmt.date, width: 14 },
+    { header: 'Due Date', key: 'dueDate', transform: fmt.date, width: 14 },
+  ];
+  const paymentExportColumns: ExportColumn[] = [
+    { header: 'Payment Date', key: 'paymentDate', transform: fmt.date, width: 16 },
+    { header: 'Amount (SAR)', key: 'amount', transform: fmt.money, width: 16 },
+    { header: 'Method', key: 'paymentMethod', transform: (v: string) => v?.replace(/_/g, ' ') || '-', width: 18 },
+    { header: 'Invoice #', key: 'invoice', transform: (_: any, row: Payment) => row.invoice?.invoiceNumber || '-', width: 16 },
+    { header: 'Collected By', key: 'receivedBy', transform: (_: any, row: Payment) => row.receivedBy ? `${row.receivedBy.firstName} ${row.receivedBy.lastName}` : '-', width: 22 },
+    { header: 'Notes', key: 'notes', width: 30 },
+  ];
+  const safeName = customer.companyName.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '_').slice(0, 30);
+  // صفحةُ عميلٍ واحد: لا فلتر هنا يقسم البيانات، فنطاقٌ ثانٍ كان سيكرّر الملفَّ نفسه.
+  // لكنّ `/api/invoices` يرقّم بخمسين افتراضيًّا، فلو صدّرنا ما في الذاكرة لخرج
+  // مصنّفٌ يزعم أنّه سجلّ العميل كلّه وهو أوّل خمسين فاتورة؛ لذا نعيد جلبها بلا سقف.
+  const scope = exportScopeLabels(lang === 'ar');
+  const buildExportSheets = async () => {
+    const full = await api.get<{ invoices: Invoice[] }>(`/api/invoices?customer=${customerId}&page=1&limit=100000`)
+      .catch(() => ({ invoices })); // لو تعذّر الجلب فالمعروض خيرٌ من لا شيء
+    return [
+      { name: 'Customer Info', rows: customerInfoData, columns: customerInfoColumns },
+      { name: 'Invoices', rows: full.invoices || [], columns: invoiceExportColumns },
+      { name: 'Payments', rows: payments, columns: paymentExportColumns },
+    ];
+  };
+  const exportOptions = [
+    { key: 'all', label: scope.all, resolve: buildExportSheets },
+  ];
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -696,15 +696,7 @@ export default function CustomerDetailPage() {
             <Download className="w-4 h-4" />
             {T.export}
           </button>
-          <button
-            type="button"
-            onClick={handleExportCustomerDetails}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 text-sm hover:bg-slate-100 transition-colors"
-            title={txx.exportToExcel}
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            {T.downloadExcel}
-          </button>
+          <ExportMenu fileName={`Customer_${safeName}_Details`} lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.downloadExcel} options={exportOptions} />
           {isAdmin && (
             <button
               type="button"

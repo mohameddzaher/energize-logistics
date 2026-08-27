@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ScoreBadge, ScoreBar, ScoreBreakdown, BandLegend, KpiTile, FlagPill, type ScoreBand, type ScoreBreakdownItem } from '@/components/system/Scorecard';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Flag { key: string; ar: string; en: string }
 interface CustomerKpi {
@@ -104,27 +104,30 @@ export default function CrmCustomerKpisPage() {
   if (!allowed) return <div className="text-slate-500 p-8">{tx('Not authorized', 'غير مصرّح')}</div>;
   if (loading && !data) return <Spinner />;
 
-  const exportRows = () => exportToExcel(
-    items as unknown as Record<string, any>[],
-    [
-      { header: tx('Customer', 'العميل'), key: 'name', width: 30 },
-      { header: tx('Score', 'التقييم'), key: 'score', width: 10 },
-      { header: tx('Band', 'التصنيف'), key: ar ? 'bandAr' : 'bandEn', width: 16 },
-      { header: tx('Revenue', 'الإيرادات'), key: 'revenue', transform: (v: number) => v?.toLocaleString(), width: 16 },
-      { header: tx('Outstanding', 'المستحق'), key: 'outstanding', transform: (v: number) => v?.toLocaleString(), width: 16 },
-      { header: tx('Overdue', 'المتأخر'), key: 'overdueAmount', transform: (v: number) => v?.toLocaleString(), width: 16 },
-      { header: tx('Avg days late', 'متوسط التأخير'), key: 'avgDaysLate', transform: (v: number | null) => v ?? '—', width: 14 },
-      { header: tx('Shipments', 'الشحنات'), key: 'shipments', width: 12 },
-      { header: tx('Heavy transport', 'نقل ثقيل'), key: 'fleetTrips', width: 12 },
-      { header: tx('Shipment orders', 'طلبات شحن'), key: 'shipmentOrders', width: 12 },
-      { header: tx('Customs files', 'معاملات تخليص'), key: 'customsJobs', width: 14 },
-      { header: tx('Growth %', 'النمو %'), key: 'revenueGrowthPct', transform: (v: number | null) => v ?? '—', width: 12 },
-      { header: tx('Days since contact', 'أيام منذ آخر تواصل'), key: 'daysSinceLastTouch', transform: (v: number | null) => v ?? '—', width: 18 },
-      { header: tx('Owner', 'المسؤول'), key: 'owner', width: 20 },
-    ],
-    `crm-customer-kpis-${from}_${to}`,
-    tx('Customer KPIs', 'مؤشرات العملاء')
-  );
+  const exportColumns: ExportColumn[] = [
+    { header: tx('Customer', 'العميل'), key: 'name', width: 30 },
+    { header: tx('Score', 'التقييم'), key: 'score', width: 10 },
+    { header: tx('Band', 'التصنيف'), key: ar ? 'bandAr' : 'bandEn', width: 16 },
+    { header: tx('Revenue', 'الإيرادات'), key: 'revenue', transform: (v: number) => v?.toLocaleString(), width: 16 },
+    { header: tx('Outstanding', 'المستحق'), key: 'outstanding', transform: (v: number) => v?.toLocaleString(), width: 16 },
+    { header: tx('Overdue', 'المتأخر'), key: 'overdueAmount', transform: (v: number) => v?.toLocaleString(), width: 16 },
+    { header: tx('Avg days late', 'متوسط التأخير'), key: 'avgDaysLate', transform: (v: number | null) => v ?? '—', width: 14 },
+    { header: tx('Shipments', 'الشحنات'), key: 'shipments', width: 12 },
+    { header: tx('Heavy transport', 'نقل ثقيل'), key: 'fleetTrips', width: 12 },
+    { header: tx('Shipment orders', 'طلبات شحن'), key: 'shipmentOrders', width: 12 },
+    { header: tx('Customs files', 'معاملات تخليص'), key: 'customsJobs', width: 14 },
+    { header: tx('Growth %', 'النمو %'), key: 'revenueGrowthPct', transform: (v: number | null) => v ?? '—', width: 12 },
+    { header: tx('Days since contact', 'أيام منذ آخر تواصل'), key: 'daysSinceLastTouch', transform: (v: number | null) => v ?? '—', width: 18 },
+    { header: tx('Owner', 'المسؤول'), key: 'owner', width: 20 },
+  ];
+  // التصنيف والخدمة والبحث تُصفّي الجدول في المتصفّح بعد جلب الفترة كاملةً،
+  // فكان الزرُّ الواحد يصدّر شريحةً مصفّاةً باسم «مؤشّرات العملاء» بلا تمييز.
+  const scope = exportScopeLabels(ar);
+  const sheetName = tx('Customer KPIs', 'مؤشرات العملاء');
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: items as unknown as Record<string, unknown>[], columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows: (data?.items || []) as unknown as Record<string, unknown>[], columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-5">
@@ -144,9 +147,7 @@ export default function CrmCustomerKpisPage() {
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             {tx('Refresh', 'تحديث')}
           </button>
-          <button type="button" onClick={exportRows} className="text-slate-700 text-sm border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50">
-            {tx('Export Excel', 'تصدير Excel')}
-          </button>
+          <ExportMenu fileName={`crm-customer-kpis-${from}_${to}`} lang={ar ? 'ar' : 'en'} variant="subtle" label={tx('Export Excel', 'تصدير Excel')} options={exportOptions} />
         </div>
       </PageHeader>
 

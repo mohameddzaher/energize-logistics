@@ -16,7 +16,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import RangePicker from '@/components/ls2/RangePicker';
-import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import {
   ls2Text, isLs2Staff, severityStyle, statusStyle, maintStyle, alertTypeLabel, alertMessage, fmtNum, fmtKm, timeAgo, tireTempColor, coolantColor, thisMonthToDate, type Lang, type DateRange,
 } from '@/lib/ls2';
@@ -160,10 +160,12 @@ export default function Ls2DashboardPage() {
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> {t.live}
         </span>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
+        {/* لوحةٌ لا فلتر صفوفٍ فيها: كلّ شيتاتها هي مجملُ ما حسبه الخادم، فلا يوجد
+            «معروضٌ» يختلف عن «كلّ» — ونطاقان يخرجان بالملفّ نفسه يضلّلان لا يفيدان. */}
         <ExportMenu
           fileName="ls2-dashboard"
           lang={lang as Lang}
-          options={[{ key: 'all', label: ar ? 'تقرير اللوحة (كل الأقسام)' : 'Dashboard report (all panels)', sheets: exportSheets }]}
+          options={[{ key: 'all', label: exportScopeLabels(ar).all, sheets: exportSheets }]}
         />
       </PageHeader>
 

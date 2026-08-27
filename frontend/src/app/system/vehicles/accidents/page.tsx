@@ -9,11 +9,12 @@ import api from '@/lib/api';
 import { AlertTriangle, Edit, Trash2, Check } from 'lucide-react';
 import {
   VehicleAccident, ACCIDENT_SEVERITY, ACCIDENT_STATUS, FAULT_PARTY, isVehicleStaff, isVehicleAdmin,
-  faultPartyLabel, empRefName, plateOf, getVehiclesText, fmtDate, exportToExcel, today,
+  faultPartyLabel, empRefName, plateOf, getVehiclesText, fmtDate, today,
 } from '@/lib/vehicles';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, Badge, Modal, Field, TextInput, TextArea, Select, PrimaryButton, Loader2,
+  Spinner, PageHeader, SearchInput, Badge, Modal, Field, TextInput, TextArea, Select, PrimaryButton, Loader2,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function VehicleAccidentsPage() {
   const { confirm, notify } = useDialog();
@@ -74,22 +75,36 @@ export default function VehicleAccidentsPage() {
     try { await api.delete(`/api/vehicles/accidents/${a._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
+  const exportColumns: ExportColumn[] = [
+    { header: tx.date, key: 'date', width: 14 },
+    { header: tx.plateNumber, key: 'vehicle', transform: (v: any) => plateOf(v), width: 14 },
+    { header: tx.employee, key: 'employee', transform: (v: any) => empRefName(v, lang), width: 22 },
+    { header: tx.description, key: 'description', width: 36 },
+    { header: tx.faultParty, key: 'faultParty', transform: (v: any) => faultPartyLabel(v, lang), width: 14 },
+    { header: tx.severity, key: 'severity', transform: (v: any) => (ACCIDENT_SEVERITY[v]?.[ar ? 'ar' : 'en'] || v), width: 12 },
+    { header: tx.status, key: 'status', transform: (v: any) => (ACCIDENT_STATUS[v]?.[ar ? 'ar' : 'en'] || v), width: 12 },
+    { header: tx.actualCost, key: 'actualCost', width: 12 },
+  ];
+  // البحث والحالة يُطبَّقان على الخادم، فما في الذاكرة نتائجُ الفلتر لا السجلّ كلّه؛
+  // «الكلّ» يلزمه نداءٌ ثانٍ بلا معاملات، وإلّا كان الاسمان لملفٍّ واحد ناقص.
+  const hasActiveFilters = !!(search.trim() || statusFilter);
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ accidents: VehicleAccident[] }>('/api/vehicles/accidents');
+    return [{ name: 'Accidents', rows: (d.accidents || []) as unknown as Record<string, any>[], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Accidents', rows: accidents as unknown as Record<string, any>[], columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<AlertTriangle className="w-5 h-5" />} title={tx.accidentsTitle} subtitle={`${accidents.length} ${tx.accidentsUnit}`}>
-        <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(accidents, [
-          { header: tx.date, key: 'date', width: 14 },
-          { header: tx.plateNumber, key: 'vehicle', transform: (v: any) => plateOf(v), width: 14 },
-          { header: tx.employee, key: 'employee', transform: (v: any) => empRefName(v, lang), width: 22 },
-          { header: tx.description, key: 'description', width: 36 },
-          { header: tx.faultParty, key: 'faultParty', transform: (v: any) => faultPartyLabel(v, lang), width: 14 },
-          { header: tx.severity, key: 'severity', transform: (v: any) => (ACCIDENT_SEVERITY[v]?.[ar ? 'ar' : 'en'] || v), width: 12 },
-          { header: tx.status, key: 'status', transform: (v: any) => (ACCIDENT_STATUS[v]?.[ar ? 'ar' : 'en'] || v), width: 12 },
-          { header: tx.actualCost, key: 'actualCost', width: 12 },
-        ], `accidents-${today()}`, 'Accidents')} />
+        <ExportMenu fileName="accidents" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3">

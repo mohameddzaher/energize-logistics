@@ -8,8 +8,9 @@ import { getInvoicesTranslations, getInvoicesExtraTranslations } from '@/lib/tra
 import DataTable from '@/components/system/DataTable';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, FileText, Filter, X, Calendar, AlertTriangle, CheckCircle, Trash2, Download } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { Plus, FileText, Filter, X, Calendar, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Customer {
   _id: string;
@@ -253,6 +254,47 @@ export default function InvoicesPage() {
 
   const hasActiveFilters = statusFilter || dateFrom || dateTo || overdueOnly;
 
+  const exportColumns: ExportColumn[] = [
+    { header: T.invoiceNumber, key: 'invoiceNumber', width: 18 },
+    { header: T.customer, key: 'customer.companyName', width: 25 },
+    { header: T.amount, key: 'amount', transform: fmt.money, width: 15 },
+    { header: T.paidAmount, key: 'paidAmount', transform: fmt.money, width: 15 },
+    { header: T.balance, key: 'balance', transform: fmt.money, width: 15 },
+    { header: T.invoiceDate, key: 'invoiceDate', transform: fmt.date, width: 14 },
+    { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
+    { header: T.remainingDays, key: 'remainingDays', width: 16 },
+    { header: T.overdueDays, key: 'overdueDays', width: 14 },
+    { header: T.status, key: 'status', transform: fmt.status, width: 12 },
+    { header: T.creditTerm, key: 'creditTerm', width: 12 },
+  ];
+  // الترقيم على الخادم: ما في الذاكرة خمسون صفًّا مهما بلغ عدد نتائج الفلتر،
+  // فتصدير «المعروض» من غير إعادة جلبٍ كان يعطي ملفًّا ناقصًا بلا أيّ إنذار.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      if (statusFilter) params.set('status', statusFilter);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      if (overdueOnly) params.set('overdue', 'true');
+    }
+    const data = await api.get<InvoicesResponse>(`/api/invoices?${params.toString()}`);
+    return [{ name: T.title, rows: data.invoices || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: T.title, rows: invoices, columns: exportColumns }] },
+    { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(total) },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
+  const exportSuffix = (() => {
+    const parts: string[] = [];
+    if (statusFilter) parts.push(statusFilter);
+    if (dateFrom) parts.push(`from-${dateFrom}`);
+    if (dateTo) parts.push(`to-${dateTo}`);
+    if (overdueOnly) parts.push('overdue');
+    return parts.length > 0 ? `_${parts.join('_')}` : '';
+  })();
+
   const formatCurrency = (val: number) => {
     return 'SAR ' + Math.round(val || 0).toLocaleString('en-US');
   };
@@ -369,40 +411,7 @@ export default function InvoicesPage() {
           <p className="text-slate-500 text-sm mt-1">{total} {T.invoices}</p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              const filterParts: string[] = [];
-              if (statusFilter) filterParts.push(statusFilter);
-              if (dateFrom) filterParts.push(`from-${dateFrom}`);
-              if (dateTo) filterParts.push(`to-${dateTo}`);
-              if (overdueOnly) filterParts.push('overdue');
-              const suffix = filterParts.length > 0 ? `_${filterParts.join('_')}` : '';
-              exportToExcel(
-                invoices,
-                [
-                  { header: T.invoiceNumber, key: 'invoiceNumber', width: 18 },
-                  { header: T.customer, key: 'customer.companyName', width: 25 },
-                  { header: T.amount, key: 'amount', transform: fmt.money, width: 15 },
-                  { header: T.paidAmount, key: 'paidAmount', transform: fmt.money, width: 15 },
-                  { header: T.balance, key: 'balance', transform: fmt.money, width: 15 },
-                  { header: T.invoiceDate, key: 'invoiceDate', transform: fmt.date, width: 14 },
-                  { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
-                  { header: T.remainingDays, key: 'remainingDays', width: 16 },
-                  { header: T.overdueDays, key: 'overdueDays', width: 14 },
-                  { header: T.status, key: 'status', transform: fmt.status, width: 12 },
-                  { header: T.creditTerm, key: 'creditTerm', width: 12 },
-                ],
-                `${T.title}${suffix}_${new Date().toISOString().split('T')[0]}`,
-                T.title
-              );
-            }}
-            disabled={invoices.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4" />
-            {T.export}
-          </button>
+          <ExportMenu fileName={`${T.title}${exportSuffix}`} lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.export} options={exportOptions} />
           <button
             type="button"
             onClick={() => setShowFilters(!showFilters)}

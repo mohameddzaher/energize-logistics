@@ -18,9 +18,9 @@ import {
   ChevronDown,
   Trash2,
   AlertTriangle,
-  Download,
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
 import { getPaymentsTranslations, getPaymentsExtraTranslations } from '@/lib/translations';
 
@@ -193,6 +193,41 @@ export default function PaymentsPage() {
   useEffect(() => {
     fetchPayments();
   }, [fetchPayments]);
+
+  const exportColumns: ExportColumn[] = [
+    { header: T.paymentDate, key: 'paymentDate', transform: fmt.date, width: 14 },
+    { header: T.invoice + ' #', key: 'invoice.invoiceNumber', width: 18 },
+    { header: T.customer, key: 'customer.companyName', width: 25 },
+    { header: T.amount, key: 'amount', transform: fmt.money, width: 15 },
+    { header: T.paymentMethod, key: 'paymentMethod', transform: (v: any) => (PAYMENT_METHODS[v as string] || v), width: 16 },
+    { header: T.notes, key: 'notes', width: 30 },
+    { header: T.receivedBy, key: 'receivedBy', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
+    { header: T.date, key: 'createdAt', transform: fmt.datetime, width: 20 },
+  ];
+  // المحصّل يفلتر بمدًى زمنيٍّ فتظهر مئات السدادات، والشاشة تعرض خمسين منها فقط؛
+  // فكان «تصدير» المدى يخرج بأوّل خمسينَ بلا أيّ إشارةٍ إلى الباقي. النطاقان
+  // المعتمدان على إعادة الجلب يرفعان الحدّ صراحةً حتّى يطابق الملفُّ ما وعد به اسمُه.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+    }
+    const data = await api.get<PaymentsResponse>(`/api/payments?${params.toString()}`);
+    return [{ name: 'Payments', rows: data.payments || [], columns: exportColumns }];
+  };
+  const exportSuffix = (() => {
+    const parts: string[] = [];
+    if (dateFrom) parts.push(`from-${dateFrom}`);
+    if (dateTo) parts.push(`to-${dateTo}`);
+    return parts.length > 0 ? `_${parts.join('_')}` : '';
+  })();
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: 'Payments', rows: payments, columns: exportColumns }] },
+    { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(total) },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
 
   // Real-time updates
   useSocket('payment:logged', fetchPayments);
@@ -567,35 +602,13 @@ export default function PaymentsPage() {
               <span className="w-2 h-2 rounded-full bg-[#f37121]" />
             )}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              const filterParts: string[] = [];
-              if (dateFrom) filterParts.push(`from-${dateFrom}`);
-              if (dateTo) filterParts.push(`to-${dateTo}`);
-              const suffix = filterParts.length > 0 ? `_${filterParts.join('_')}` : '';
-              exportToExcel(
-                payments,
-                [
-                  { header: T.paymentDate, key: 'paymentDate', transform: fmt.date, width: 14 },
-                  { header: T.invoice + ' #', key: 'invoice.invoiceNumber', width: 18 },
-                  { header: T.customer, key: 'customer.companyName', width: 25 },
-                  { header: T.amount, key: 'amount', transform: fmt.money, width: 15 },
-                  { header: T.paymentMethod, key: 'paymentMethod', transform: (v: any) => (PAYMENT_METHODS[v as string] || v), width: 16 },
-                  { header: T.notes, key: 'notes', width: 30 },
-                  { header: T.receivedBy, key: 'receivedBy', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 18 },
-                  { header: T.date, key: 'createdAt', transform: fmt.datetime, width: 20 },
-                ],
-                `Payments${suffix}_${new Date().toISOString().split('T')[0]}`,
-                'Payments'
-              );
-            }}
-            disabled={payments.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4" />
-            {T.downloadExcel}
-          </button>
+          <ExportMenu
+            fileName={`Payments${exportSuffix}`}
+            lang={lang === 'ar' ? 'ar' : 'en'}
+            variant="subtle"
+            label={T.downloadExcel}
+            options={exportOptions}
+          />
           <button
             type="button"
             onClick={handleOpenPaymentModal}

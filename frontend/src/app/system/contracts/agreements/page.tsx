@@ -12,6 +12,7 @@ import {
   Spinner, PageHeader, SearchInput, Modal, Field, TextInput, TextArea, Select,
   PrimaryButton, ErrorNotice, SmallBadge, Tabs,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { DeptContract, DEPT_LABELS, DEPT_CONTRACT_STATUS, canViewContracts, canEditContracts, fmtN, fmtD, foldAr } from '@/lib/contracts';
 import { useDialog } from '@/components/system/DialogProvider';
 
@@ -133,6 +134,42 @@ export default function AgreementsPage() {
     ...Object.entries(DEPT_LABELS).map(([k, l]) => ({ key: k, label: `${ar ? l.ar : l.en} (${contracts.filter((c) => c.department === k).length})` })),
   ];
   const soon = new Date(Date.now() + 60 * 86400000);
+  // صياغة موحّدة لأسماء النطاقات عبر كل شاشات النظام: «الكلّ» هنا هو «الكلّ» هناك.
+  const scope = exportScopeLabels(ar);
+
+  // «منتهٍ» و«يقارب الانتهاء» لونان في عمود التاريخ لا نصّان، فيُشتقّان هنا
+  // صراحةً بنفس عتبة الستين يومًا — وإلا خرج الملف بلا أهمّ ما تُقرأ به القائمة.
+  const withExpiryFlag = (list: DeptContract[]) => list.map((c) => ({
+    ...c,
+    expiryFlag: c.status !== 'active' || !c.endDate ? ''
+      : new Date(c.endDate) < new Date() ? (ar ? 'انتهى' : 'Ended')
+        : new Date(c.endDate) < soon ? (ar ? 'ينتهي خلال ٦٠ يومًا' : 'Ends within 60 days')
+          : (ar ? 'ساري' : 'Running'),
+  }));
+
+  // الأعمدة ترتيبها ترتيبُ الجدول على الشاشة، ثم حقول العقد التي لا يتّسع لها
+  // العرض (السداد والقيمة والتجديد والملاحظات): من يفتح الملف يريد السجل كاملًا
+  // لا صورةً من الشاشة، والمرفقات تُعَدُّ عددًا لأن الملفات نفسها لا تُصدَّر.
+  const cols: ExportColumn[] = [
+    { header: ar ? 'الجهة' : 'Party', key: 'partyName', width: 28 },
+    { header: ar ? 'القسم' : 'Department', key: 'department', transform: (v) => { const d = DEPT_LABELS[v]; return d ? (ar ? d.ar : d.en) : (v || ''); }, width: 18 },
+    { header: ar ? 'النوع' : 'Type', key: 'partyType', transform: (v) => (v === 'vendor' ? (ar ? 'مورد' : 'Vendor') : (ar ? 'عميل' : 'Customer')), width: 10 },
+    { header: ar ? 'الموضوع' : 'Subject', key: 'subject', width: 30 },
+    { header: ar ? 'جهة الاتصال' : 'Contact', key: 'contactPerson', width: 18 },
+    { header: ar ? 'الجوال' : 'Phone', key: 'phone', width: 14 },
+    { header: ar ? 'البريد' : 'Email', key: 'email', width: 22 },
+    { header: ar ? 'تاريخ العقد' : 'Contract date', key: 'contractDate', transform: (v) => fmtD(v), width: 13 },
+    { header: ar ? 'تاريخ البدء' : 'Start', key: 'startDate', transform: (v) => fmtD(v), width: 13 },
+    { header: ar ? 'ينتهي في' : 'Ends', key: 'endDate', transform: (v) => fmtD(v), width: 13 },
+    { header: ar ? 'تنبيه الانتهاء' : 'Expiry flag', key: 'expiryFlag', width: 18 },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => { const x = DEPT_CONTRACT_STATUS[v as keyof typeof DEPT_CONTRACT_STATUS]; return x ? (ar ? x.ar : x.en) : (v || ''); }, width: 12 },
+    { header: ar ? 'سياسة التجديد' : 'Renewal policy', key: 'renewalPolicy', width: 24 },
+    { header: ar ? 'مدة السداد (يوم)' : 'Payment term (days)', key: 'paymentTermDays', transform: (v) => (v == null ? '' : v), width: 14 },
+    { header: ar ? 'قيمة العقد' : 'Value', key: 'value', transform: (v) => (v == null ? '' : fmtN(v)), width: 14 },
+    { header: ar ? 'عدد المرفقات' : 'Files', key: 'attachments', transform: (v) => (v || []).length, width: 11 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 34 },
+    { header: ar ? 'أضافه' : 'Added by', key: 'createdByName', width: 18 },
+  ];
 
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -141,6 +178,21 @@ export default function AgreementsPage() {
         title={ar ? 'عقود الأقسام' : 'Department Contracts'}
         subtitle={ar ? 'عقود العملاء والموردين لكل قسم — إدارة الأسطول وB2C و3PL وغيرها، بملفاتها المرفقة' : 'Customer & vendor contracts per department'}
       >
+        <ExportMenu fileName="department-contracts" lang={ar ? 'ar' : 'en'}
+          options={[
+            {
+              key: 'shown',
+              label: scope.shown,
+              sheets: [{ name: ar ? 'العقود' : 'Contracts', rows: withExpiryFlag(filtered), columns: cols }],
+            },
+            {
+              // الخادم يُرجع السجلّ كاملًا بلا ترقيم صفحات، فالخيار الشامل يُبنى
+              // مما في الصفحة بلا إعادة جلب — لا خطر هنا من تصدير التبويب باسم «الكل».
+              key: 'all',
+              label: scope.all,
+              sheets: [{ name: ar ? 'العقود' : 'Contracts', rows: withExpiryFlag(contracts), columns: cols }],
+            },
+          ]} />
         {canEdit && <PrimaryButton onClick={openNew}><span className="inline-flex items-center gap-1.5"><Plus className="w-4 h-4" />{ar ? 'إضافة عقد' : 'Add contract'}</span></PrimaryButton>}
       </PageHeader>
 

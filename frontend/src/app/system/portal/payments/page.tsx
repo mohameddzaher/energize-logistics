@@ -2,8 +2,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { CreditCard, Download } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { CreditCard } from 'lucide-react';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
 import { getPortalTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
@@ -13,12 +14,14 @@ export default function ClientPaymentsPage() {
   const { lang } = useLanguage();
   const T = getPortalTranslations(lang);
   const [payments, setPayments] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const fetchPayments = useCallback(async () => {
     try {
       const data = await api.get<any>('/api/payments');
       setPayments(data.payments || []);
+      setTotal(Number(data.total) || (data.payments || []).length);
     } catch (err) {
       console.error(err);
     } finally {
@@ -42,21 +45,24 @@ export default function ClientPaymentsPage() {
 
   const totalPaid = payments.reduce((s, p) => s + (p.amount || 0), 0);
 
-  const handleExport = () => {
-    if (!payments.length) return;
-    exportToExcel(
-      payments,
-      [
-        { header: T.paymentDate, key: 'paymentDate', transform: fmt.date, width: 14 },
-        { header: T.invoiceNumber, key: 'invoice.invoiceNumber', width: 14 },
-        { header: T.amount, key: 'amount', transform: fmt.money, width: 16 },
-        { header: T.paymentMethod, key: 'paymentMethod', transform: (v: any) => v?.replace('_', ' ') || '', width: 16 },
-        { header: T.reference, key: 'reference', width: 20 },
-      ],
-      'Payment_History',
-      'Payments'
-    );
+  const exportColumns: ExportColumn[] = [
+    { header: T.paymentDate, key: 'paymentDate', transform: fmt.date, width: 14 },
+    { header: T.invoiceNumber, key: 'invoice.invoiceNumber', width: 14 },
+    { header: T.amount, key: 'amount', transform: fmt.money, width: 16 },
+    { header: T.paymentMethod, key: 'paymentMethod', transform: (v: any) => v?.replace('_', ' ') || '', width: 16 },
+    { header: T.reference, key: 'reference', width: 20 },
+  ];
+  // `/api/payments` يرقّم افتراضيًّا بخمسين صفًّا والصفحة لا تعرض غيرها، فتصديرها
+  // كان يقدّم خمسين دفعةً على أنّها سجلّ السداد كلّه؛ «الكلّ» يعيد الجلب بلا سقفٍ عمليّ.
+  const fetchAllForExport = async () => {
+    const d = await api.get<any>('/api/payments?page=1&limit=100000');
+    return [{ name: 'Payments', rows: d.payments || [], columns: exportColumns }];
   };
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: 'Payments', rows: payments, columns: exportColumns }] },
+    { key: 'all', label: scope.all, resolve: fetchAllForExport, hint: String(total) },
+  ];
 
   return (
     <div className="space-y-6">
@@ -66,14 +72,7 @@ export default function ClientPaymentsPage() {
           {T.myPayments}
         </h1>
         {payments.length > 0 && (
-          <button
-            type="button"
-            onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm font-medium rounded-lg transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            {T.export}
-          </button>
+          <ExportMenu fileName="Payment_History" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.export} options={exportOptions} />
         )}
       </div>
 

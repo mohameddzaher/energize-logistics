@@ -10,8 +10,8 @@ import {
   isProcStaff, isProcManager, PurchaseRequest, ProcOptions, PR_STATUS_STYLE, PRIORITY_STYLE,
   optLabel, vendorName, userName, money, fmtDate,
 } from '@/lib/procurement';
-import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, TextArea, Select, ExportButton } from '@/components/hr/HRKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import VendorSelect from '@/components/system/VendorSelect';
 import { getProcurementRequestsTranslations } from '@/lib/translations';
@@ -87,17 +87,28 @@ export default function PurchaseRequestsPage() {
 
   const statusLabel = (key: string) => { const s = (opts?.PR_STATUSES || []).find((x) => x.key === key); return s ? (ar ? s.nameAr : s.nameEn) : key; };
   const priorityLabel = (key: string) => { const p = (opts?.PRIORITIES || []).find((x) => x.key === key); return p ? (ar ? p.nameAr : p.nameEn) : key; };
-  const handleExport = () => {
-    exportToExcel(items, [
-      { header: '#', key: 'requestNumber', width: 16 },
-      { header: ar ? 'العنوان' : 'Title', key: 'title', width: 28 },
-      { header: ar ? 'القسم' : 'Department', key: 'department', width: 18 },
-      { header: tx.colRequester, key: 'requester', width: 20, transform: (_v, r) => userName(r.requester) },
-      { header: tx.colEstimate, key: 'totalEstimate', width: 16, transform: (v) => money(v) },
-      { header: tx.colPriority, key: 'priority', width: 14, transform: (v) => priorityLabel(v) },
-      { header: tx.colStatus, key: 'status', width: 18, transform: (v) => statusLabel(v) },
-    ], 'purchase-requests', ar ? 'طلبات الشراء' : 'Purchase Requests');
+  const exportColumns: ExportColumn[] = [
+    { header: '#', key: 'requestNumber', width: 16 },
+    { header: ar ? 'العنوان' : 'Title', key: 'title', width: 28 },
+    { header: ar ? 'القسم' : 'Department', key: 'department', width: 18 },
+    { header: tx.colRequester, key: 'requester', width: 20, transform: (_v, r) => userName(r.requester) },
+    { header: tx.colEstimate, key: 'totalEstimate', width: 16, transform: (v) => money(v) },
+    { header: tx.colPriority, key: 'priority', width: 14, transform: (v) => priorityLabel(v) },
+    { header: tx.colStatus, key: 'status', width: 18, transform: (v) => statusLabel(v) },
+  ];
+  // البحثُ والحالة يُنفَّذان على الخادم، فالقائمة الحاضرة نتيجةُ فلترٍ لا السجلّ كلّه؛
+  // ولذلك «الكلّ» يعيد النداء بلا معاملات بدل أن يسمّي المفلتَر كلًّا.
+  const REQUESTS_SHEET = ar ? 'طلبات الشراء' : 'Purchase Requests';
+  const hasActiveFilters = !!(search.trim() || statusF);
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ requests: PurchaseRequest[] }>('/api/procurement/requests');
+    return [{ name: REQUESTS_SHEET, rows: (d.requests || []) as unknown as Record<string, any>[], columns: exportColumns }];
   };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: REQUESTS_SHEET, rows: items as unknown as Record<string, any>[], columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   if (!isProcStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -105,7 +116,7 @@ export default function PurchaseRequestsPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<ClipboardList className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${items.length}`}>
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={handleExport} />
+        <ExportMenu fileName="purchase-requests" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.newRequest}</PrimaryButton>
       </PageHeader>
 

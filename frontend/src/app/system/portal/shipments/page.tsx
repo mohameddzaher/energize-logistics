@@ -9,9 +9,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
-import { Truck, Package, Search, Download, MapPin } from 'lucide-react';
+import { Truck, Package, Search, MapPin } from 'lucide-react';
 import { statusText, statusColor, money, fmtDate, type Lang, type PortalService } from '@/lib/portal';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 type TripType = 'heavy' | 'orders' | 'vendor';
 
@@ -85,21 +85,24 @@ function ShipmentsInner() {
       ...(services.some((s) => s.key === 'shipment_orders') ? [{ key: 'orders' as TripType, label: tx('Shipment orders', 'طلبات الشحن'), icon: Package }] : []),
     ];
 
-  const exportRows = () => exportToExcel(
-    filtered as unknown as Record<string, any>[],
-    [
-      { header: tx('Waybill #', 'رقم البوليصة'), key: 'waybillNumber', width: 14 },
-      { header: tx('Date', 'التاريخ'), key: 'loadDate', transform: (v: any, r: any) => fmtDate(v || r.createdAt), width: 14 },
-      { header: tx('From', 'من'), key: 'fromCity', width: 16 },
-      { header: tx('To', 'إلى'), key: 'toCity', width: 16 },
-      { header: tx('Truck', 'المركبة'), key: 'vehiclePlate', transform: (v: any, r: any) => v || r.vehicleName || '—', width: 16 },
-      { header: tx('Driver', 'السائق'), key: 'driverName', width: 20 },
-      { header: tx('Status', 'الحالة'), key: 'status', transform: (v: string) => statusText(v, lang as Lang), width: 16 },
-      { header: tx('Amount', 'المبلغ'), key: 'price', transform: (_v: any, r: any) => money(priceOf(r)), width: 14 },
-    ],
-    `my-shipments-${type}`,
-    tx('My shipments', 'شحناتي')
-  );
+  const exportColumns: ExportColumn[] = [
+    { header: tx('Waybill #', 'رقم البوليصة'), key: 'waybillNumber', width: 14 },
+    { header: tx('Date', 'التاريخ'), key: 'loadDate', transform: (v: any, r: any) => fmtDate(v || r.createdAt), width: 14 },
+    { header: tx('From', 'من'), key: 'fromCity', width: 16 },
+    { header: tx('To', 'إلى'), key: 'toCity', width: 16 },
+    { header: tx('Truck', 'المركبة'), key: 'vehiclePlate', transform: (v: any, r: any) => v || r.vehicleName || '—', width: 16 },
+    { header: tx('Driver', 'السائق'), key: 'driverName', width: 20 },
+    { header: tx('Status', 'الحالة'), key: 'status', transform: (v: string) => statusText(v, lang as Lang), width: 16 },
+    { header: tx('Amount', 'المبلغ'), key: 'price', transform: (_v: any, r: any) => money(priceOf(r)), width: 14 },
+  ];
+  // رحلات التبويب كلُّها محمّلة، وفلترا الحالة والبحث يقصّان في المتصفّح وحده؛
+  // «الكلّ» هنا يعني كلّ رحلات الخدمة المعروضة لا كلّ ما نجح فيه البحث.
+  const sheetName = tx('My shipments', 'شحناتي');
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: filtered, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows: items, columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-5">
@@ -110,10 +113,7 @@ function ShipmentsInner() {
             {tx('Every trip with its waybill number and current status.', 'كل رحلة برقم بوليصتها وحالتها الحالية.')}
           </p>
         </div>
-        <button type="button" onClick={exportRows} className="inline-flex items-center gap-1.5 border border-slate-200 text-slate-700 text-sm px-3 py-1.5 rounded-lg hover:bg-slate-50">
-          <Download className="w-4 h-4" />
-          {tx('Export Excel', 'تصدير Excel')}
-        </button>
+        <ExportMenu fileName={`my-shipments-${type}`} lang={ar ? 'ar' : 'en'} variant="subtle" label={tx('Export Excel', 'تصدير Excel')} options={exportOptions} />
       </div>
 
       {tabs.length > 1 && (

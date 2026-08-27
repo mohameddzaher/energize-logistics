@@ -15,6 +15,7 @@ import {
   Phone, MapPin, Truck, CalendarDays, TrendingUp, Table2, Pencil,
 } from 'lucide-react';
 import { Spinner, ErrorNotice, SmallBadge, Modal, Field, TextInput, TextArea, PrimaryButton } from '@/components/hr/HRKit';
+import ExportMenu, { type ExportSheet } from '@/components/ls2/ExportMenu';
 import { ContractVendor, UtilisationRow, VENDOR_STATUS, MONTH_AR, canViewContracts, canEditContracts, fmtN, fmtD, pct } from '@/lib/contracts';
 import { useDialog } from '@/components/system/DialogProvider';
 
@@ -25,29 +26,34 @@ const readFileAsDataUrl = (f: File) => new Promise<string>((resolve, reject) => 
   r.readAsDataURL(f);
 });
 
+// عنوان الجدول المستورد وتنسيق خليّته رُفعا خارج المكوّن لأن التصدير يسمّي بهما
+// أوراقه ويكتب بهما قيمه: لو بقيا داخله لخرج الملف بأسماء نوعٍ خام وبكسورٍ
+// عشرية مكان النسب المئوية التي يراها المستخدم على الشاشة.
+const profileTableTitle = (type: string, ar: boolean) => ({
+  branchDistribution: ar ? 'توزيع الطلبات حسب الفرع' : 'Orders by branch',
+  monthlyDistribution: ar ? 'التوزيع الشهري' : 'Monthly distribution',
+  destinationDistribution: ar ? 'توزيع خطوط السير' : 'Lane distribution',
+  trips: ar ? 'سجل الرحلات والتسعير' : 'Trips & pricing log',
+  kpis: ar ? 'مؤشرات الأداء' : 'KPIs',
+  unclassified: ar ? 'بيانات إضافية' : 'Extra data',
+}[type] || String(type || ''));
+
+const fmtCell = (v: any) => {
+  if (v == null) return '—';
+  if (typeof v === 'number') return v > 0 && v < 1 ? `${(v * 100).toFixed(1)}%` : v.toLocaleString('en-US');
+  return String(v);
+};
+
 // Generic renderer for one imported profile table — layouts differ per vendor,
 // so we render sourceHeaders + rows as-is (values may be numbers or shares).
 function ProfileTable({ t, ar }: { t: any; ar: boolean }) {
-  const TITLE: Record<string, string> = {
-    branchDistribution: ar ? 'توزيع الطلبات حسب الفرع' : 'Orders by branch',
-    monthlyDistribution: ar ? 'التوزيع الشهري' : 'Monthly distribution',
-    destinationDistribution: ar ? 'توزيع خطوط السير' : 'Lane distribution',
-    trips: ar ? 'سجل الرحلات والتسعير' : 'Trips & pricing log',
-    kpis: ar ? 'مؤشرات الأداء' : 'KPIs',
-    unclassified: ar ? 'بيانات إضافية' : 'Extra data',
-  };
   const rows: any[] = Array.isArray(t.rows) ? t.rows : [];
   if (!rows.length) return null;
   const cols = Object.keys(rows[0]);
-  const fmtCell = (v: any) => {
-    if (v == null) return '—';
-    if (typeof v === 'number') return v > 0 && v < 1 ? `${(v * 100).toFixed(1)}%` : v.toLocaleString('en-US');
-    return String(v);
-  };
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
       <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-1.5 font-bold text-sm text-slate-800">
-        <Table2 className="w-4 h-4 text-cyan-700" />{TITLE[t.type] || t.type}
+        <Table2 className="w-4 h-4 text-cyan-700" />{profileTableTitle(t.type, ar)}
         <span className="text-[11px] text-slate-400 font-normal ms-auto">{rows.length} {ar ? 'صف' : 'rows'}</span>
       </div>
       <div className="overflow-x-auto max-h-72 overflow-y-auto">
@@ -149,13 +155,14 @@ export default function VendorProfilePage() {
   const st = VENDOR_STATUS[vendor.status || 'unsigned'];
   const Back = isRTL ? ArrowRight : ArrowLeft;
 
-  const infoRows: { label: string; value: React.ReactNode }[] = [
+  // الجوال وحده يُعرض رابطًا، فيحمل نصَّه صراحةً: تصديرُ عقدة React ينتج «[object Object]».
+  const infoRows: { label: string; value: React.ReactNode; text?: string }[] = [
     { label: ar ? 'السجل التجاري' : 'CR number', value: vendor.crNumber || '—' },
     { label: ar ? 'نوع المورد' : 'Type', value: vendor.vendorType || '—' },
     { label: ar ? 'مندوب التنشيط' : 'Energize rep', value: vendor.energizeRep || '—' },
     { label: ar ? 'مندوب التشغيل' : 'Operations rep', value: vendor.operationsRep || '—' },
     { label: ar ? 'ممثل المورد' : 'Contact', value: vendor.contactPerson || '—' },
-    { label: ar ? 'الجوال' : 'Phone', value: vendor.phone ? <a href={`tel:${vendor.phone}`} className="text-cyan-700 hover:underline" dir="ltr">{vendor.phone}</a> : '—' },
+    { label: ar ? 'الجوال' : 'Phone', text: vendor.phone || '—', value: vendor.phone ? <a href={`tel:${vendor.phone}`} className="text-cyan-700 hover:underline" dir="ltr">{vendor.phone}</a> : '—' },
     { label: ar ? 'المقر الرئيسي' : 'HQ', value: vendor.headquarters || '—' },
     { label: ar ? 'الوجهات' : 'Destinations', value: vendor.destinations || '—' },
     { label: ar ? 'أنواع السيارات' : 'Vehicle types', value: vendor.vehicleTypes || '—' },
@@ -166,6 +173,86 @@ export default function VendorProfilePage() {
     { label: ar ? 'التسعير' : 'Pricing', value: vendor.pricingNotes || '—' },
     { label: ar ? 'الحالة التشغيلية' : 'Operational status', value: vendor.operationalStatus || '—' },
   ];
+
+  // ملفُّ المورد عدّة جداول صغيرة لا جدولٌ واحد، فيخرج بورقةٍ لكلٍّ منها كما هي
+  // على الشاشة — تسطيحُها في ورقةٍ واحدة يخلط أعمدةً لا تشترك في معنى.
+  const labelValueCols = [
+    { header: ar ? 'البند' : 'Item', key: 'label', width: 26 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 44 },
+  ];
+  const sheets: ExportSheet[] = [{
+    name: ar ? 'بيانات المورد' : 'Vendor',
+    rows: [
+      { label: ar ? 'المورد' : 'Vendor', value: vendor.name },
+      { label: ar ? 'حالة العقد' : 'Contract status', value: ar ? st.ar : st.en },
+      ...infoRows.map((r) => ({ label: r.label, value: r.text ?? String(r.value ?? '') })),
+      { label: ar ? 'عدد السيارات' : 'Fleet', value: fmtN(vendor.fleetSize) },
+      { label: ar ? 'إجمالي الطلبات المسجلة' : 'Total recorded orders', value: fmtN(totals.orders) },
+      { label: ar ? 'متوسط الاستغلال' : 'Avg utilisation', value: totals.capacity ? pct(totals.utilisation) : '—' },
+      { label: ar ? 'أشهر مسجلة' : 'Months on record', value: fmtN(utilisation.length) },
+      { label: ar ? 'مستندات مستلمة' : 'Documents received', value: vendor.documentsReceived ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No') },
+      { label: ar ? 'مستندات ناقصة' : 'Missing documents', value: vendor.missingDocuments || '—' },
+      { label: ar ? 'التقييم' : 'Rating', value: vendor.rating ? `${vendor.rating}/5` : '—' },
+      { label: ar ? 'ملاحظات التقييم' : 'Rating notes', value: vendor.ratingNotes || '—' },
+      { label: ar ? 'ملاحظات المتابعة' : 'Follow-up notes', value: [vendor.followUpNotes, vendor.notes].filter(Boolean).join(' — ') || '—' },
+    ],
+    columns: labelValueCols,
+  }];
+
+  // الأوراق التالية تُضاف فقط إن كان لها ما يقابله على الشاشة: الصفحة تعرض
+  // «لا توجد مرفقات» و«لا توجد بيانات تشغيل» نصًّا، وورقةٌ فارغة في الملف تُقرأ
+  // خطأً على أنها بيانات مفقودة.
+  if ((vendor.attachments || []).length) {
+    sheets.push({
+      name: ar ? 'المرفقات' : 'Attachments',
+      rows: (vendor.attachments || []) as any[],
+      columns: [
+        { header: ar ? 'الوصف' : 'Title', key: 'title', transform: (v, r) => v || r.fileName || '', width: 30 },
+        { header: ar ? 'اسم الملف' : 'File', key: 'fileName', width: 30 },
+        { header: ar ? 'الحجم (ك.ب)' : 'Size (KB)', key: 'size', transform: (v) => Number((v || 0) / 1024).toFixed(0), width: 12 },
+        { header: ar ? 'تاريخ الرفع' : 'Uploaded', key: 'uploadedAt', transform: (v) => fmtD(v), width: 14 },
+        { header: ar ? 'رفعه' : 'Uploaded by', key: 'uploadedByName', width: 20 },
+      ],
+    });
+  }
+  if (utilisation.length) {
+    sheets.push({
+      name: ar ? 'التاريخ التشغيلي' : 'Monthly history',
+      // نسبة الاستغلال تُحسب صفًّا صفًّا كما في الجدول، وتُشتقّ حقلًا مستقلًّا كي
+      // لا يتكرّر مفتاح العمود «orders» مرّتين في الورقة نفسها.
+      rows: utilisation.map((r) => ({ ...r, utilisationPct: r.expectedMonthlyCapacity ? pct(r.orders / r.expectedMonthlyCapacity) : '—' })),
+      columns: [
+        { header: ar ? 'الشهر' : 'Month', key: 'month', transform: (v, r) => (ar ? `${MONTH_AR[v]} ${r.year}` : `${r.year}-${String(v).padStart(2, '0')}`), width: 16 },
+        { header: ar ? 'الطلبات' : 'Orders', key: 'orders', transform: (v) => fmtN(v), width: 12 },
+        { header: ar ? 'الطاقة المتوقعة' : 'Capacity', key: 'expectedMonthlyCapacity', transform: (v) => fmtN(v), width: 14 },
+        { header: ar ? 'الاستغلال' : 'Utilisation', key: 'utilisationPct', width: 12 },
+        { header: ar ? 'مندوب التشغيل' : 'Ops rep', key: 'operationsRep', width: 20 },
+      ],
+    });
+  }
+
+  const usedSheetNames = new Set(sheets.map((x) => x.name));
+  for (const pt of (vendor.profileTables || [])) {
+    const ptRows: any[] = Array.isArray(pt.rows) ? pt.rows : [];
+    if (!ptRows.length) continue;
+    const keys = Object.keys(ptRows[0]);
+    const heads: string[] = pt.sourceHeaders?.length === keys.length ? pt.sourceHeaders : keys;
+    // أسماء أوراق إكسل لا يجوز تكرارها، وبعض الموردين لهم أكثر من جدولٍ من النوع
+    // نفسه — فيُرقَّم المكرّر بدل أن يسقط الملفُّ كلُّه عند التوليد.
+    let name = profileTableTitle(pt.type, ar);
+    if (usedSheetNames.has(name)) { let n = 2; while (usedSheetNames.has(`${name} ${n}`)) n += 1; name = `${name} ${n}`; }
+    usedSheetNames.add(name);
+    // مفاتيح هذه الجداول هي ترويسات ملفّات إكسل المستوردة، وقد تحمل نقطةً
+    // («No.» مثلًا) — والمصدِّر يقرأ المفتاح مسارًا منقّطًا، فتخرج الخانة فارغة.
+    // لذلك تُعاد تسمية الأعمدة داخليًّا وتُنسخ الصفوف عليها.
+    const safeRow = (r: any) => Object.fromEntries(keys.map((k, i) => [`c${i}`, r?.[k]]));
+    sheets.push({
+      name,
+      // صف الإجمالي جزءٌ من الجدول على الشاشة، فيُلحَق بآخر الصفوف لا يُسقَط.
+      rows: (pt.totalRow ? [...ptRows, pt.totalRow] : ptRows).map(safeRow),
+      columns: keys.map((k, i) => ({ header: String(heads[i] ?? k), key: `c${i}`, transform: (v: any) => fmtCell(v) })),
+    });
+  }
 
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -182,6 +269,8 @@ export default function VendorProfilePage() {
           </div>
         </div>
         <div className="ms-auto flex items-center gap-2">
+          <ExportMenu fileName={`vendor-${vendor.crNumber || id}`} lang={ar ? 'ar' : 'en'}
+            options={[{ key: 'profile', label: ar ? 'ملف المورد كاملًا' : 'The whole vendor profile', sheets }]} />
           <button onClick={() => { setRatingDraft({ rating: vendor.rating || 0, ratingNotes: vendor.ratingNotes || '' }); setShowRating(true); }}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-amber-400 text-sm font-medium text-slate-700">
             <Star className={`w-4 h-4 ${vendor.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} />

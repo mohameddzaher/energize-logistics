@@ -12,7 +12,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import Link from 'next/link';
@@ -69,6 +69,14 @@ export default function Page() {
     { header: t('القسط (ر.س)', 'Premium'), key: 'totalPremiumSar', width: 14 },
   ];
 
+  // الشرائح والبحث يعملان في الذاكرة: الجدول يعرض `f.shown` بينما كان الزرّ يصدّر
+  // `rows` كلَّها — فمَن فلتر «منتهية» وضغط تصدير خرج بوثائق سارية معها ولم ينتبه.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: t('الوثائق', 'Policies'), rows: f.shown, columns: cols }] },
+    { key: 'all', label: scope.all, sheets: [{ name: t('الوثائق', 'Policies'), rows, columns: cols }] },
+  ];
+
   if (loading) return <Spinner />;
 
   return (
@@ -84,8 +92,7 @@ export default function Page() {
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold">
           <Car className="w-4 h-4" /> {t('عرض مركبةً مركبة', 'Per-vehicle view')}
         </Link>
-        <ExportMenu fileName="vehicle-insurance-policies" lang={lang as 'ar' | 'en'}
-          options={[{ key: 'all', label: t('تصدير', 'Export'), sheets: [{ name: t('الوثائق', 'Policies'), rows, columns: cols }] }]} />
+        <ExportMenu fileName="vehicle-insurance-policies" lang={lang as 'ar' | 'en'} options={exportOptions} />
       </PageHeader>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

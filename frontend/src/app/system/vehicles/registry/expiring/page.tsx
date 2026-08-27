@@ -18,7 +18,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { CalendarClock, RefreshCw, ArrowRight, Settings, BellOff } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import SelectionBar from '@/components/ls2/SelectionBar';
@@ -112,6 +112,20 @@ function ExpiringInner() {
     { header: t('التنبيه مفعّل', 'Alert on'), key: 'alertEnabled', transform: (v) => (v === false ? t('لا', 'No') : t('نعم', 'Yes')), width: 12 },
   ];
 
+  // المدة والمستند والحالة تُطبَّق على الخادم، والبحث و«المتوقّف تنبيهه» في الذاكرة؛
+  // فالصفوف التي في اليد شريحةٌ من شريحة. «الكلّ» يعيد النداء بلا نافذةٍ زمنيّة،
+  // وإلّا كان مَن فتح الشاشة على ستّين يومًا يصدّر ملفًّا يظنّه سجلّ الانتهاءات كلَّه.
+  const hasActiveFilters = !!(needle || mutedOnly || doc || state || within !== '' || !includeExpired);
+  const fetchAllForExport = async () => {
+    const res = await getExpiring({ withinDays: undefined, includeExpired: '1' });
+    return [{ name: t('الانتهاءات', 'Expiries'), rows: (res.rows || []) as unknown as Record<string, any>[], columns: cols }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: t('الانتهاءات', 'Expiries'), rows: rows as unknown as Record<string, any>[], columns: cols }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
+
   if (loading && !d) return <Spinner />;
 
   return (
@@ -133,8 +147,7 @@ function ExpiringInner() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
             <Settings className="w-4 h-4" /> {t('إعدادات التنبيهات', 'Alert settings')}
           </Link>
-          <ExportMenu fileName="vehicle-expiries" lang={lang as 'ar' | 'en'}
-            options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: t('الانتهاءات', 'Expiries'), rows, columns: cols }] }]} />
+          <ExportMenu fileName="vehicle-expiries" lang={lang as 'ar' | 'en'} options={exportOptions} />
         </div>
       </PageHeader>
 

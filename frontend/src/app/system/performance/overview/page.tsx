@@ -16,7 +16,7 @@ import {
 } from 'recharts';
 import { Building2, RefreshCw, ArrowLeft, ArrowRight, Info } from 'lucide-react';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   canConfigurePerf, bandStyle, pct, periodLabel, periodKey, currentPeriod,
   type Lang, type Period, type Settings, type Band,
@@ -74,6 +74,26 @@ export default function PerformanceOverviewPage() {
     .filter((d) => d.avgPercentage != null)
     .sort((a, b) => (b.avgPercentage || 0) - (a.avgPercentage || 0))
     .map((d) => ({ name: d.department, value: d.avgPercentage as number }));
+
+  // نظرةٌ تنفيذيّة مجمَّعة: صفٌّ لكلّ قسمٍ في الفترة المختارة، بلا فلترٍ يُخفي صفوفًا
+  // ولا ترقيمٍ يقتطع منها — فنطاقٌ ثانٍ سيُخرج الملفَّ نفسه لا أكثر.
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'القسم' : 'Department', key: 'department', width: 24 },
+    { header: ar ? 'عدد الموظفين' : 'Headcount', key: 'headcount', width: 14 },
+    { header: ar ? 'تم تقييمهم' : 'Evaluated', key: 'evaluated', width: 14 },
+    { header: ar ? 'التغطية %' : 'Coverage %', key: 'coverage', width: 14 },
+    { header: ar ? 'متوسط الأداء %' : 'Avg %', key: 'avg', width: 14 },
+    { header: ar ? 'الطبقة' : 'Tier', key: 'tier', width: 10 },
+    { header: ar ? 'البونص (رواتب)' : 'Bonus (salaries)', key: 'bonus', width: 18 },
+  ];
+  const exportRows = (data?.departments || []).map((d) => ({
+    department: d.department, headcount: d.headcount, evaluated: d.evaluated,
+    coverage: d.coverage, avg: d.avgPercentage ?? '', tier: d.tier ?? '', bonus: d.bonusSalaries,
+  }));
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: ar ? 'تفصيل الأقسام' : 'Department breakdown', rows: exportRows, columns: exportColumns }] },
+  ];
 
   const bandOf = (pctVal: number): Band | undefined =>
     (data?.settings?.bands || []).find((b, i, arr) =>
@@ -165,28 +185,7 @@ export default function PerformanceOverviewPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <p className="text-sm font-semibold text-slate-800">{ar ? 'تفصيل الأقسام' : 'Department breakdown'}</p>
-          <button
-            type="button"
-            onClick={() => exportToExcel(
-              (data?.departments || []).map((d) => ({
-                department: d.department, headcount: d.headcount, evaluated: d.evaluated,
-                coverage: d.coverage, avg: d.avgPercentage ?? '', tier: d.tier ?? '', bonus: d.bonusSalaries,
-              })),
-              [
-                { header: ar ? 'القسم' : 'Department', key: 'department', width: 24 },
-                { header: ar ? 'عدد الموظفين' : 'Headcount', key: 'headcount', width: 14 },
-                { header: ar ? 'تم تقييمهم' : 'Evaluated', key: 'evaluated', width: 14 },
-                { header: ar ? 'التغطية %' : 'Coverage %', key: 'coverage', width: 14 },
-                { header: ar ? 'متوسط الأداء %' : 'Avg %', key: 'avg', width: 14 },
-                { header: ar ? 'الطبقة' : 'Tier', key: 'tier', width: 10 },
-                { header: ar ? 'البونص (رواتب)' : 'Bonus (salaries)', key: 'bonus', width: 18 },
-              ],
-              `performance-overview-${periodKey(period)}`
-            )}
-            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium"
-          >
-            {ar ? 'تصدير Excel' : 'Export Excel'}
-          </button>
+          <ExportMenu fileName={`performance-overview-${periodKey(period)}`} lang={ar ? 'ar' : 'en'} variant="primary" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

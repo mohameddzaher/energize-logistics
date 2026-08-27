@@ -10,11 +10,11 @@ import {
   isProcStaff, isProcManager, VendorBill, ProcOptions, BILL_STATUS_STYLE,
   vendorName, money, fmtDate, today,
 } from '@/lib/procurement';
-import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, Select, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import VendorSelect from '@/components/system/VendorSelect';
 import { getProcurementBillsTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function VendorBillsPage() {
   const { confirm, notify } = useDialog();
@@ -69,17 +69,27 @@ export default function VendorBillsPage() {
     const o = (opts?.BILL_STATUSES || []).find((x) => x.key === s);
     return o ? (ar ? o.nameAr : o.nameEn) : s;
   };
-  const handleExport = () => {
-    exportToExcel(items, [
-      { header: '#', key: 'billNumber', width: 16 },
-      { header: tx.vendor, key: 'vendor', width: 24, transform: (v) => vendorName(v) },
-      { header: tx.vendorInvoiceNo, key: 'vendorInvoiceNumber', width: 18 },
-      { header: tx.total, key: 'total', width: 14, transform: (v) => money(v) },
-      { header: tx.balance, key: 'balance', width: 14, transform: (v) => money(v) },
-      { header: tx.due, key: 'dueDate', width: 14, transform: (v) => fmtDate(v) },
-      { header: tx.status, key: 'status', width: 14, transform: (v) => statusLabel(v) },
-    ], 'bills', tx.pageTitle);
+  const exportColumns: ExportColumn[] = [
+    { header: '#', key: 'billNumber', width: 16 },
+    { header: tx.vendor, key: 'vendor', width: 24, transform: (v) => vendorName(v) },
+    { header: tx.vendorInvoiceNo, key: 'vendorInvoiceNumber', width: 18 },
+    { header: tx.total, key: 'total', width: 14, transform: (v) => money(v) },
+    { header: tx.balance, key: 'balance', width: 14, transform: (v) => money(v) },
+    { header: tx.due, key: 'dueDate', width: 14, transform: (v) => fmtDate(v) },
+    { header: tx.status, key: 'status', width: 14, transform: (v) => statusLabel(v) },
+  ];
+  // البحثُ وحالةُ الفاتورة يُطبَّقان على الخادم، فما في الذاكرة هو نتيجة الفلتر لا
+  // السجلّ كلّه؛ ولذلك يُجلَب «الكلّ» من جديدٍ بلا معاملاتٍ بدل تصدير المعروض باسمه.
+  const hasActiveFilters = !!(search.trim() || statusF);
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ bills: VendorBill[] }>('/api/procurement/bills');
+    return [{ name: tx.pageTitle, rows: (d.bills || []) as unknown as Record<string, any>[], columns: exportColumns }];
   };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: tx.pageTitle, rows: items as unknown as Record<string, any>[], columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   if (!isProcStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -87,7 +97,7 @@ export default function VendorBillsPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Receipt className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${items.length}`}>
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={handleExport} />
+        <ExportMenu fileName="bills" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.newBill}</PrimaryButton>
       </PageHeader>
 

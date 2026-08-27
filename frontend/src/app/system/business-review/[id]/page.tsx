@@ -19,6 +19,7 @@ import {
   CheckCircle2, AlertTriangle, MessageSquare, Printer, Lock, Unlock,
 } from 'lucide-react';
 import { Spinner } from '@/components/hr/HRKit';
+import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { StatusPill, ActionCard, PersonSelect, DueBadge, Progress } from '@/components/system/BusinessReviewKit';
 import {
   brMeta, brMeeting, brSaveMinutes, brCreateAction, brUpdateAction, brDelegate,
@@ -132,6 +133,135 @@ export default function MeetingPage() {
     );
   }
 
+  // ---- Excel: الاجتماع كما تراه هذه الشاشة، شيتٌ لكل جدول ------------------
+  // `meeting` و`actions` هما ما أرسله الخادم لهذا المستخدم بعينه بعد تطبيق
+  // قواعد الرؤية (البنود والتكليفات محفوظة في مجموعاتٍ منفصلة تُصفَّى هناك)، فلا
+  // يُجلب هنا شيءٌ إضافي: كل جلبٍ زائد يعني تصديرَ ما لا تعرضه الصفحة.
+  const ar = lang === 'ar';
+  const kvCols: ExportColumn[] = [
+    { header: ar ? 'البند' : 'Field', key: 'label', width: 24 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 48 },
+  ];
+  const brActions: BrAction[] = actions;
+  const delegations = brActions.flatMap((a) => (a.delegations || []).map((d) => ({ ...d, parent: a.title })));
+  const updateRows = brActions.flatMap((a) => (a.updates || []).map((u) => ({ ...u, parent: a.title })));
+
+  const factsSheet: ExportSheet = {
+    name: ar ? 'بيانات الاجتماع' : 'Meeting',
+    columns: kvCols,
+    rows: [
+      { label: t('Reference', 'الرقم المرجعي'), value: meeting.refNumber },
+      { label: t('Title', 'عنوان الاجتماع'), value: meeting.title },
+      { label: t('Cadence', 'الدورة'), value: vocabLabel(meta?.cadences, meeting.cadence, L) },
+      { label: t('Status', 'الحالة'), value: vocabLabel(meta?.meetingStatuses, meeting.status, L) },
+      { label: t('Scheduled for', 'موعد الانعقاد'), value: fmtDateTime(meeting.scheduledAt) },
+      { label: t('Actually held', 'انعقد فعليًا'), value: meeting.heldAt ? fmtDateTime(meeting.heldAt) : t('Not yet', 'لم ينعقد بعد') },
+      { label: t('Duration', 'المدة'), value: meeting.durationMinutes ? `${meeting.durationMinutes} ${t('min', 'دقيقة')}` : '—' },
+      { label: t('Location', 'المكان'), value: meeting.location || '—' },
+      { label: t('Minuted by', 'كاتب المحضر'), value: meeting.scribeName || '—' },
+      { label: t('Created by', 'أنشأه'), value: meeting.createdByName || '—' },
+      { label: t('Departments', 'الأقسام'), value: (meeting.departments || []).map((d) => deptLabel(d, L)).join(' · ') || '—' },
+      { label: t('Closed at', 'وقت الإقفال'), value: meeting.completedAt ? `${fmtDateTime(meeting.completedAt)}${meeting.completedByName ? ` · ${meeting.completedByName}` : ''}` : '—' },
+      { label: t('Summary', 'الخلاصة'), value: meeting.summary || '—' },
+    ],
+  };
+
+  const attendeesSheet: ExportSheet = {
+    name: ar ? 'سجل الحضور' : 'Attendance',
+    columns: [
+      { header: t('Name', 'الاسم'), key: 'name', width: 26 },
+      { header: t('Chair', 'رئيس الاجتماع'), key: 'isChair', transform: (v: any) => (v ? t('Yes', 'نعم') : ''), width: 12 },
+      { header: t('Department', 'القسم'), key: 'department', transform: (v: any, r: any) => v || deptLabel(r.role, L), width: 22 },
+      { header: t('Attendance', 'الحضور'), key: 'attendance', transform: (v: any) => attendanceLabel(v, L), width: 14 },
+      { header: t('Recorded at', 'وقت التسجيل'), key: 'attendanceAt', transform: (v: any) => (v ? fmtDateTime(v) : '—'), width: 20 },
+      { header: t('Recorded by', 'سجّله'), key: 'attendanceByName', width: 22 },
+      { header: t('Reason / note', 'سبب الاعتذار'), key: 'excuseReason', width: 34 },
+    ],
+    rows: (meeting.attendees || []) as any[],
+  };
+
+  const agendaSheet: ExportSheet = {
+    name: ar ? 'جدول الأعمال' : 'Agenda',
+    columns: [
+      { header: '#', key: 'n', width: 6 },
+      { header: t('Item', 'البند'), key: 'title', width: 46 },
+      { header: t('Presenter', 'مُقدِّم البند'), key: 'presenterName', width: 24 },
+      { header: t('Department', 'القسم'), key: 'department', transform: (v: any) => (v ? deptLabel(v, L) : '—'), width: 22 },
+    ],
+    rows: (meeting.agenda || []).map((a, i) => ({ ...a, n: i + 1 })) as any[],
+  };
+
+  const minutesSheet: ExportSheet = {
+    name: ar ? 'محضر الاجتماع' : 'Minutes',
+    columns: [
+      { header: t('Topic', 'الموضوع'), key: 'heading', width: 30 },
+      { header: t('Department', 'القسم'), key: 'department', transform: (v: any) => (v ? deptLabel(v, L) : '—'), width: 22 },
+      { header: t('What was discussed', 'ما نوقش وتقرَّر'), key: 'body', width: 80 },
+    ],
+    rows: (meeting.minutes || []) as any[],
+  };
+
+  const actionsSheet: ExportSheet = {
+    name: ar ? 'البنود التنفيذية' : 'Actions',
+    columns: [
+      { header: t('Action', 'البند'), key: 'title', width: 40 },
+      { header: t('Owner', 'المكلَّف'), key: 'assigneeName', width: 24 },
+      { header: t('Requested by', 'بطلب من'), key: 'raisedByName', width: 22 },
+      { header: t('Department', 'القسم'), key: 'department', transform: (v: any) => (v ? deptLabel(v, L) : '—'), width: 22 },
+      { header: t('Status', 'الحالة'), key: 'status', transform: (v: any) => vocabLabel(meta?.actionStatuses, v, L), width: 16 },
+      { header: t('Priority', 'الأولوية'), key: 'priority', transform: (v: any) => vocabLabel(meta?.priorities, v, L), width: 14 },
+      { header: t('Due', 'تاريخ الاستحقاق'), key: 'dueDate', transform: (v: any) => fmtDate(v), width: 16 },
+      { header: t('Overdue', 'متأخر'), key: 'isOverdue', transform: (v: any, r: any) => (v && OPEN_STATUSES.includes(r.status) ? t('Yes', 'نعم') : ''), width: 10 },
+      { header: t('Progress %', 'نسبة الإنجاز %'), key: 'progress', width: 14 },
+      { header: t('Completed on', 'اكتمل في'), key: 'completedAt', transform: (v: any) => fmtDate(v), width: 16 },
+      { header: t('Description', 'الوصف'), key: 'description', width: 60 },
+    ],
+    rows: brActions as any[],
+  };
+
+  const delegationsSheet: ExportSheet = {
+    name: ar ? 'التكليفات الفرعية' : 'Delegated tasks',
+    columns: [
+      { header: t('Parent action', 'البند الأصلي'), key: 'parent', width: 36 },
+      { header: t('Task', 'التكليف'), key: 'title', width: 36 },
+      { header: t('Assignee', 'المكلَّف'), key: 'assigneeName', width: 24 },
+      { header: t('Assigned by', 'كلَّفه'), key: 'assignedByName', width: 22 },
+      { header: t('Status', 'الحالة'), key: 'status', transform: (v: any) => vocabLabel(meta?.actionStatuses, v, L), width: 16 },
+      { header: t('Due', 'تاريخ الاستحقاق'), key: 'dueDate', transform: (v: any) => fmtDate(v), width: 16 },
+      { header: t('Progress %', 'نسبة الإنجاز %'), key: 'progress', transform: (v: any) => v ?? 0, width: 14 },
+    ],
+    rows: delegations as any[],
+  };
+
+  // الشاشة تعرض آخر ثمانية تحديثاتٍ لكل بند توفيرًا للمساحة، والملفّ يحمل السجلّ
+  // كاملًا: هو ذاته ما يخصّ هذا المستخدم، والاقتصار على ثمانيةٍ في مِلفٍّ يُراجَع
+  // لاحقًا يقطع خيط المتابعة عند أوّل بندٍ نشِط.
+  const updatesSheet: ExportSheet = {
+    name: ar ? 'متابعة البنود' : 'Action updates',
+    columns: [
+      { header: t('Action', 'البند'), key: 'parent', width: 36 },
+      { header: t('By', 'صاحب التحديث'), key: 'byName', width: 24 },
+      { header: t('Status change', 'تغيّر الحالة'), key: 'statusTo', transform: (v: any, r: any) => (v ? `${vocabLabel(meta?.actionStatuses, r.statusFrom, L)} → ${vocabLabel(meta?.actionStatuses, v, L)}` : '—'), width: 30 },
+      { header: t('Note', 'الملاحظة'), key: 'text', width: 60 },
+      { header: t('At', 'التاريخ'), key: 'at', transform: (v: any) => fmtDateTime(v), width: 20 },
+    ],
+    rows: updateRows as any[],
+  };
+
+  // الجداول الفارغة لا تُرسَم على الشاشة أصلًا — تُستبدل بجملةٍ («لم يُكتب المحضر
+  // بعد»)، فشيتٌ فارغٌ يحمل اسمها يُقرأ على أنه بياناتٌ ضاعت لا على أنها لم تُكتب.
+  const actionSheets: ExportSheet[] = [
+    actionsSheet,
+    ...(delegations.length ? [delegationsSheet] : []),
+    ...(updateRows.length ? [updatesSheet] : []),
+  ];
+  const recordSheets: ExportSheet[] = [
+    factsSheet, attendeesSheet,
+    ...(meeting.agenda?.length ? [agendaSheet] : []),
+    ...(meeting.minutes?.length ? [minutesSheet] : []),
+    ...(brActions.length ? actionSheets : []),
+  ];
+
   const tabs: { key: Tab; label: string; icon: any; badge?: number }[] = [
     { key: 'record', label: t('Full record', 'السجل الشامل'), icon: ScrollText },
     { key: 'agenda', label: t('Agenda & attendees', 'الأجندة والحضور'), icon: Users },
@@ -178,6 +308,11 @@ export default function MeetingPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <ExportMenu fileName={`meeting-${meeting.refNumber || id}`} lang={lang as 'ar' | 'en'}
+              options={[
+                { key: 'record', label: t('The whole record', 'السجل الشامل'), sheets: recordSheets },
+                { key: 'actions', label: t('Actions & follow-up', 'البنود التنفيذية والمتابعة'), sheets: actionSheets, disabled: !brActions.length },
+              ]} />
             <button type="button" onClick={() => printMinutes(meeting._id)} disabled={printing}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:border-[#f37121] hover:text-[#f37121] disabled:opacity-60">
               {printing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}

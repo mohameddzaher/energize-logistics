@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { FileText, Plus, Trash2, PackageCheck, Receipt, X, FileSpreadsheet } from 'lucide-react';
+import { FileText, Plus, Trash2, PackageCheck, Receipt, X } from 'lucide-react';
 import {
   isProcStaff, isProcManager, PurchaseOrder, ProcOptions, PO_STATUS_STYLE,
   vendorName, money, fmtDate,
@@ -13,7 +13,7 @@ import {
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
 import VendorSelect from '@/components/system/VendorSelect';
 import { getProcurementOrdersTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const emptyItem = () => ({ description: '', quantity: 1, unitPrice: 0 });
 
@@ -76,16 +76,26 @@ export default function PurchaseOrdersPage() {
     const s = (opts?.PO_STATUSES || []).find((x) => x.key === key);
     return s ? (ar ? s.nameAr : s.nameEn) : key;
   };
-  const handleExport = () => {
-    exportToExcel(items, [
-      { header: '#', key: 'poNumber', width: 16 },
-      { header: tx.vendor, key: 'vendor', width: 24, transform: (_v, r) => vendorName(r.vendor) },
-      { header: tx.total, key: 'total', width: 16, transform: (v, r) => money(v, r.currency) },
-      { header: tx.vat, key: 'vatAmount', width: 14, transform: (v) => money(v, '') },
-      { header: tx.status, key: 'status', width: 16, transform: (v) => statusLabel(v) },
-      { header: tx.expected, key: 'expectedDate', width: 16, transform: (v) => fmtDate(v) },
-    ], 'purchase-orders', tx.purchaseOrders);
+  const exportColumns: ExportColumn[] = [
+    { header: '#', key: 'poNumber', width: 16 },
+    { header: tx.vendor, key: 'vendor', width: 24, transform: (_v, r) => vendorName(r.vendor) },
+    { header: tx.total, key: 'total', width: 16, transform: (v, r) => money(v, r.currency) },
+    { header: tx.vat, key: 'vatAmount', width: 14, transform: (v) => money(v, '') },
+    { header: tx.status, key: 'status', width: 16, transform: (v) => statusLabel(v) },
+    { header: tx.expected, key: 'expectedDate', width: 16, transform: (v) => fmtDate(v) },
+  ];
+  // البحثُ والحالة يُنفَّذان على الخادم، فالقائمة الحاضرة نتيجةُ فلترٍ لا السجلّ كلّه؛
+  // ولذلك «الكلّ» يعيد النداء بلا معاملات بدل أن يسمّي المفلتَر كلًّا.
+  const hasActiveFilters = !!(search.trim() || statusF);
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ orders: PurchaseOrder[] }>('/api/procurement/orders');
+    return [{ name: tx.purchaseOrders, rows: (d.orders || []) as unknown as Record<string, any>[], columns: exportColumns }];
   };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: tx.purchaseOrders, rows: items as unknown as Record<string, any>[], columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   if (!isProcStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -93,7 +103,7 @@ export default function PurchaseOrdersPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<FileText className="w-5 h-5" />} title={tx.purchaseOrders} subtitle={`${items.length}`}>
-        <button type="button" onClick={handleExport} disabled={items.length === 0} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200 disabled:opacity-50"><FileSpreadsheet className="w-4 h-4" /> {ar ? 'تصدير Excel' : 'Export Excel'}</button>
+        <ExportMenu fileName="purchase-orders" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.newOrder}</PrimaryButton>
       </PageHeader>
 

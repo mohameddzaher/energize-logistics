@@ -11,8 +11,8 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { ListChecks, Plus, Pencil, Trash2, RefreshCw, Loader2, Link as LinkIcon } from 'lucide-react';
-import { Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Modal, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import RangePicker from '@/components/marketing/RangePicker';
 import {
   canViewMarketing, canEditMarketing, PLATFORMS, ACTIVITY_TYPES,
@@ -105,30 +105,37 @@ export default function MarketingActivitiesPage() {
     catch (e: unknown) { notify((e as Error)?.message || 'Failed', 'error'); }
   };
 
-  const doExport = () => {
-    exportToExcel(
-      items as unknown as Record<string, unknown>[],
-      [
-        { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: (v) => v || '', width: 14 },
-        { header: ar ? 'العنوان' : 'Title', key: 'title', transform: (v) => v || '', width: 30 },
-        { header: ar ? 'الحملة' : 'Campaign', key: 'campaign', transform: (v) => (v && typeof v === 'object' ? campaignName(v as Campaign, L) : ''), width: 24 },
-        { header: ar ? 'المنصة' : 'Platform', key: 'platform', transform: (v) => platformLabel(v as string, L), width: 16 },
-        { header: ar ? 'النوع' : 'Type', key: 'type', transform: (v) => activityTypeLabel(v as string, L), width: 14 },
-        { header: ar ? 'الظهور' : 'Impressions', key: 'metrics.impressions', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'الوصول' : 'Reach', key: 'metrics.reach', transform: (v) => v ?? 0, width: 12 },
-        { header: ar ? 'النقرات' : 'Clicks', key: 'metrics.clicks', transform: (v) => v ?? 0, width: 12 },
-        { header: ar ? 'إعجابات' : 'Likes', key: 'metrics.likes', transform: (v) => v ?? 0, width: 10 },
-        { header: ar ? 'تعليقات' : 'Comments', key: 'metrics.comments', transform: (v) => v ?? 0, width: 10 },
-        { header: ar ? 'مشاركات' : 'Shares', key: 'metrics.shares', transform: (v) => v ?? 0, width: 10 },
-        { header: ar ? 'العملاء المحتملون' : 'Leads', key: 'metrics.leads', transform: (v) => v ?? 0, width: 14 },
-        { header: ar ? 'نفّذها' : 'Performed by', key: 'performedByName', transform: (v) => v || '', width: 20 },
-        { header: ar ? 'الرابط' : 'Link', key: 'link', transform: (v) => v || '', width: 32 },
-        { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', transform: (v) => v || '', width: 28 },
-      ],
-      'marketing-activities',
-      ar ? 'الأنشطة' : 'Activities'
-    );
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: (v) => v || '', width: 14 },
+    { header: ar ? 'العنوان' : 'Title', key: 'title', transform: (v) => v || '', width: 30 },
+    { header: ar ? 'الحملة' : 'Campaign', key: 'campaign', transform: (v) => (v && typeof v === 'object' ? campaignName(v as Campaign, L) : ''), width: 24 },
+    { header: ar ? 'المنصة' : 'Platform', key: 'platform', transform: (v) => platformLabel(v as string, L), width: 16 },
+    { header: ar ? 'النوع' : 'Type', key: 'type', transform: (v) => activityTypeLabel(v as string, L), width: 14 },
+    { header: ar ? 'الظهور' : 'Impressions', key: 'metrics.impressions', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'الوصول' : 'Reach', key: 'metrics.reach', transform: (v) => v ?? 0, width: 12 },
+    { header: ar ? 'النقرات' : 'Clicks', key: 'metrics.clicks', transform: (v) => v ?? 0, width: 12 },
+    { header: ar ? 'إعجابات' : 'Likes', key: 'metrics.likes', transform: (v) => v ?? 0, width: 10 },
+    { header: ar ? 'تعليقات' : 'Comments', key: 'metrics.comments', transform: (v) => v ?? 0, width: 10 },
+    { header: ar ? 'مشاركات' : 'Shares', key: 'metrics.shares', transform: (v) => v ?? 0, width: 10 },
+    { header: ar ? 'العملاء المحتملون' : 'Leads', key: 'metrics.leads', transform: (v) => v ?? 0, width: 14 },
+    { header: ar ? 'نفّذها' : 'Performed by', key: 'performedByName', transform: (v) => v || '', width: 20 },
+    { header: ar ? 'الرابط' : 'Link', key: 'link', transform: (v) => v || '', width: 32 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', transform: (v) => v || '', width: 28 },
+  ];
+  // الفلترة كلّها على الخادم — المدى الزمنيّ أوّلها — فما في الذاكرة هو شهرٌ واحد
+  // افتراضًا لا السجلّ كلّه؛ ومَن صدّر ظنّ أنّه أخذ الأنشطة جميعها. خيار «الكلّ»
+  // يعيد النداء بلا مدًى ولا منصّةٍ ولا نوع. والخادم يسقّف المسار بثلاثة آلاف نشاط.
+  const sheetName = ar ? 'الأنشطة' : 'Activities';
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ items: Activity[] }>('/api/marketing/activities');
+    return [{ name: sheetName, rows: (d.items || []) as unknown as Record<string, unknown>[], columns: exportColumns }];
   };
+  const hasActiveFilters = !!(q.trim() || platform !== 'all' || type !== 'all' || campaign !== 'all' || range.from || range.to);
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: sheetName, rows: items as unknown as Record<string, unknown>[], columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   if (!canViewMarketing(user)) {
     return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول إلى قسم التسويق.' : 'You are not authorized to view the Marketing section.'}</div>;
@@ -150,7 +157,7 @@ export default function MarketingActivitiesPage() {
         title={ar ? 'سجل الأنشطة التسويقية' : 'Marketing Activity Log'}
         subtitle={ar ? 'كل ما نُشر ومتى وبأي نتيجة' : 'Everything we published, when, and what it returned'}
       >
-        <ExportButton onClick={doExport} label={ar ? 'تصدير Excel' : 'Export Excel'} />
+        <ExportMenu fileName="marketing-activities" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <RefreshCw className="w-4 h-4" /> {ar ? 'تحديث' : 'Refresh'}
         </button>

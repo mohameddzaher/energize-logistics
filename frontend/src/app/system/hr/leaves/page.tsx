@@ -6,8 +6,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarCheck, Check, X, FileDown, PenTool } from 'lucide-react';
-import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, exportToExcel, today } from '@/lib/hr';
-import { Spinner, PageHeader, SearchInput, ExportButton, Badge, Modal, TextArea, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
+import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel } from '@/lib/hr';
+import { Spinner, PageHeader, SearchInput, Badge, Modal, TextArea, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrLeavesTranslations } from '@/lib/translations';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
 import type { Signature } from '@/components/SignatureManager';
@@ -73,21 +74,36 @@ export default function HRLeavesPage() {
   });
   const pendingCount = leaves.filter((l) => l.status === 'pending_manager' || l.status === 'pending_hr').length;
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Employee', key: 'employee', transform: (v: any) => empName(v), width: 22 },
+    { header: 'Type', key: 'leaveType', transform: (v: any) => leaveTypeLabel(v, 'en'), width: 16 },
+    { header: 'From', key: 'startDate', width: 14 },
+    { header: 'To', key: 'endDate', width: 14 },
+    { header: 'Days', key: 'days', width: 8 },
+    { header: 'Status', key: 'status', width: 16 },
+    { header: 'Reason', key: 'reason', width: 28 },
+  ];
+  // فلتر الحالة يمرّ على الخادم، فحين يكون «قيد الاعتماد» مثلًا لا تحمل الذاكرة
+  // سواه؛ فـ«الكلّ» يعيد النداء بلا حالةٍ وإلّا خرج سجلُّ الإجازات مبتورًا.
+  const fetchAllLeaves = async () => {
+    const d = await api.get<{ leaves: LeaveRequest[] }>('/api/hr/leaves');
+    return [{ name: 'Leaves', rows: d.leaves || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Leaves', rows: filtered, columns: exportColumns }] },
+    statusFilter
+      ? { key: 'all', label: scope.all, resolve: fetchAllLeaves }
+      : { key: 'all', label: scope.all, sheets: [{ name: 'Leaves', rows: leaves, columns: exportColumns }] },
+  ];
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<CalendarCheck className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${pendingCount} ${tx.pending}`}>
-        <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(filtered, [
-          { header: 'Employee', key: 'employee', transform: (v: any) => empName(v), width: 22 },
-          { header: 'Type', key: 'leaveType', transform: (v: any) => leaveTypeLabel(v, 'en'), width: 16 },
-          { header: 'From', key: 'startDate', width: 14 },
-          { header: 'To', key: 'endDate', width: 14 },
-          { header: 'Days', key: 'days', width: 8 },
-          { header: 'Status', key: 'status', width: 16 },
-          { header: 'Reason', key: 'reason', width: 28 },
-        ], `leaves-${today()}`, 'Leaves')} />
+        <ExportMenu fileName="leaves" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3">

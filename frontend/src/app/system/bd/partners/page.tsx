@@ -10,13 +10,14 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Handshake, Plus, Edit, Trash2 } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
+  Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge,
   Modal, Field, TextInput, TextArea, Select,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   canViewBd, canEditBd, BdPartner, PARTNER_TYPE, PARTNER_STATUS,
   labelOf, optionsOf, bdName, userName, fmtDate, toDateInput,
-  listToText, textToList, exportToExcel,
+  listToText, textToList,
 } from '@/lib/bd';
 
 const EMPTY = {
@@ -104,22 +105,33 @@ export default function BdPartnersPage() {
     catch (e: any) { notify(e.message, 'error'); }
   };
 
-  const doExport = () => {
-    exportToExcel(rows, [
-      { header: ar ? 'الاسم' : 'Name', key: 'name', transform: (_v, r) => bdName(r, lang) },
-      { header: ar ? 'النوع' : 'Type', key: 'type', transform: (v) => labelOf(PARTNER_TYPE, v, lang) },
-      { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => labelOf(PARTNER_STATUS, v, lang) },
-      { header: ar ? 'الدولة' : 'Country', key: 'country' },
-      { header: ar ? 'المدينة' : 'City', key: 'city' },
-      { header: ar ? 'جهة الاتصال' : 'Contact', key: 'contactName' },
-      { header: ar ? 'البريد' : 'Email', key: 'contactEmail' },
-      { header: ar ? 'الهاتف' : 'Phone', key: 'contactPhone' },
-      { header: ar ? 'بداية الاتفاقية' : 'Agreement start', key: 'agreementStart' },
-      { header: ar ? 'نهاية الاتفاقية' : 'Agreement end', key: 'agreementEnd' },
-      { header: ar ? 'الخدمات' : 'Services', key: 'services', transform: (v) => (v || []).join(', ') },
-      { header: ar ? 'المسؤول' : 'Owner', key: 'ownerName', transform: (v, r) => v || userName(r.owner) },
-    ], `bd-partners-${new Date().toISOString().slice(0, 10)}`, 'Partners');
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'الاسم' : 'Name', key: 'name', transform: (_v, r) => bdName(r, lang) },
+    { header: ar ? 'النوع' : 'Type', key: 'type', transform: (v) => labelOf(PARTNER_TYPE, v, lang) },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => labelOf(PARTNER_STATUS, v, lang) },
+    { header: ar ? 'الدولة' : 'Country', key: 'country' },
+    { header: ar ? 'المدينة' : 'City', key: 'city' },
+    { header: ar ? 'جهة الاتصال' : 'Contact', key: 'contactName' },
+    { header: ar ? 'البريد' : 'Email', key: 'contactEmail' },
+    { header: ar ? 'الهاتف' : 'Phone', key: 'contactPhone' },
+    { header: ar ? 'بداية الاتفاقية' : 'Agreement start', key: 'agreementStart' },
+    { header: ar ? 'نهاية الاتفاقية' : 'Agreement end', key: 'agreementEnd' },
+    { header: ar ? 'الخدمات' : 'Services', key: 'services', transform: (v) => (v || []).join(', ') },
+    { header: ar ? 'المسؤول' : 'Owner', key: 'ownerName', transform: (v, r) => v || userName(r.owner) },
+  ];
+  // الفلترة على الخادم: ما في الذاكرة هو حصيلة البحث والحالة، لا السجلّ كلّه.
+  // ومَن أراد الكلّ كان عليه أن يمسح فلاتره أوّلًا ويعيد التصدير، فنُعيد النداء
+  // بلا معاملاتٍ نيابةً عنه حتى لا يخرج بملفٍّ ناقصٍ يحسبه كاملًا.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ partners: BdPartner[] }>('/api/business-development/partners');
+    return [{ name: 'Partners', rows: d.partners || [], columns: exportColumns }];
   };
+  const hasActiveFilters = !!(search.trim() || status);
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: 'Partners', rows, columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   if (!canViewBd(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
@@ -132,7 +144,7 @@ export default function BdPartnersPage() {
         subtitle={`${rows.length} ${ar ? 'شريك' : 'partners'}`}
       >
         <div className="w-56"><SearchInput value={search} onChange={setSearch} placeholder={ar ? 'بحث…' : 'Search…'} /></div>
-        <ExportButton onClick={doExport} label={ar ? 'تصدير' : 'Export'} />
+        <ExportMenu fileName="bd-partners" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير' : 'Export'} options={exportOptions} />
         {canEdit && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'شريك جديد' : 'New partner'}</PrimaryButton>}
       </PageHeader>
 

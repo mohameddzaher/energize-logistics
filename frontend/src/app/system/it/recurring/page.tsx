@@ -7,11 +7,11 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
-import { exportToExcel } from '@/utils/exportExcel';
-import { Spinner, PageHeader, SearchInput, ExportButton, SmallBadge, SearchableSelect } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { Spinner, PageHeader, SearchInput, SmallBadge, SearchableSelect } from '@/components/hr/HRKit';
 import {
   canViewIt, RecurringGroup, Ticket, TICKET_CATEGORIES, TICKET_STATUSES,
-  categoryLabel, ticketStatusLabel, optionsOf, fmtDate, fmtDuration, today,
+  categoryLabel, ticketStatusLabel, optionsOf, fmtDate, fmtDuration,
 } from '@/lib/it';
 
 export default function RecurringPage() {
@@ -49,6 +49,31 @@ export default function RecurringPage() {
     return g.sampleTitle.toLowerCase().includes(s) || categoryLabel(g.category, lang).toLowerCase().includes(s);
   });
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Problem', key: 'sampleTitle', width: 40 },
+    { header: 'Category', key: 'category', transform: (v: any) => categoryLabel(v, 'en'), width: 18 },
+    { header: 'Occurrences', key: 'count', width: 12 },
+    { header: 'First seen', key: 'firstReportedAt', width: 14 },
+    { header: 'Last seen', key: 'lastReportedAt', width: 14 },
+    { header: 'Avg resolution', key: 'avgResolutionMinutes', transform: (v: any) => fmtDuration(v, 'en'), width: 16 },
+    { header: 'Affected departments', key: 'affectedDepartments', transform: (v: any) => (v || []).join(', '), width: 32 },
+  ];
+  // التصنيف يُفلتَر على الخادم، والتجميع نفسه يجري هناك: تصدير المعروض وحده كان
+  // يُخرج مجموعاتِ تصنيفٍ واحد باسم «المشكلات المتكرّرة» كلّها، فصار «الكلّ»
+  // نداءً بلا معامل التصنيف.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ groups: RecurringGroup[] }>('/api/it/tickets/recurring');
+    return [{ name: 'Recurring', rows: d.groups || [], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(categoryFilter || search.trim());
+  const scope = exportScopeLabels(ar);
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: [{ name: 'Recurring', rows: filtered, columns: exportColumns }] },
+        { key: 'all', label: scope.all, resolve: fetchAllForExport },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: [{ name: 'Recurring', rows: filtered, columns: exportColumns }] }];
+
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
@@ -61,15 +86,7 @@ export default function RecurringPage() {
         title={ar ? 'المشكلات المتكررة' : 'Recurring Problems'}
         subtitle={ar ? `${filtered.length} مشكلة متكررة · ${totalRepeats} بلاغ` : `${filtered.length} recurring problems · ${totalRepeats} tickets`}
       >
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(filtered, [
-          { header: 'Problem', key: 'sampleTitle', width: 40 },
-          { header: 'Category', key: 'category', transform: (v: any) => categoryLabel(v, 'en'), width: 18 },
-          { header: 'Occurrences', key: 'count', width: 12 },
-          { header: 'First seen', key: 'firstReportedAt', width: 14 },
-          { header: 'Last seen', key: 'lastReportedAt', width: 14 },
-          { header: 'Avg resolution', key: 'avgResolutionMinutes', transform: (v: any) => fmtDuration(v, 'en'), width: 16 },
-          { header: 'Affected departments', key: 'affectedDepartments', transform: (v: any) => (v || []).join(', '), width: 32 },
-        ], `it-recurring-${today()}`, 'Recurring')} />
+        <ExportMenu fileName="it-recurring" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3">

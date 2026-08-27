@@ -6,7 +6,8 @@ import {
   Upload, FileSpreadsheet, X, AlertCircle, Loader2, Download,
   CheckCircle2, FileText, ChevronDown, ChevronUp, RotateCcw,
 } from 'lucide-react';
-import { parseDispatchSheetExcel, type DispatchSheetParseResult } from '@/lib/dispatchSheetExcelParser';
+import { parseDispatchSheetExcel, type DispatchSheetParseResult, type DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   generateDispatchSheetsZip,
   triggerDownload,
@@ -19,6 +20,7 @@ export default function DispatchSheetsPage() {
   const { lang, isRTL } = useLanguage();
   const T = getDispatchSheetsTranslations(lang);
   const txx = getOperationsDispatchSheetsExtraTranslations(lang);
+  const ar = lang === 'ar';
 
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -119,18 +121,68 @@ export default function DispatchSheetsPage() {
     [parseResult],
   );
 
+  // الملفّ المرفوع يُقرأ في المتصفّح ولا يُحفَظ في قاعدة البيانات، فلا سبيل إلى
+  // مراجعة ما قرأه النظام فعلًا إلا بتصديره — وهو الفارق بين «ما كتبه الفرع في
+  // الإكسل» و«ما ستطبعه البوليصة».
+  const SHEET_COLUMNS: ExportColumn[] = [
+    { header: ar ? 'صف الملف' : 'File row', key: 'rowIndex', width: 10 },
+    { header: ar ? 'كشف التخريج' : 'Dispatch #', key: 'dispatchNumber', width: 16 },
+    { header: ar ? 'التاريخ' : 'Date', key: 'date', width: 14 },
+    { header: ar ? 'اسم العميل' : 'Customer', key: 'customerName', width: 26 },
+    { header: ar ? 'الفرع' : 'Branch', key: 'branch', width: 16 },
+    { header: ar ? 'من' : 'From', key: 'fromLocation', width: 18 },
+    { header: ar ? 'إلى' : 'To', key: 'toLocation', width: 18 },
+    { header: ar ? 'رقم السيارة' : 'Plate', key: 'plateNumber', width: 16 },
+    { header: ar ? 'الماركة' : 'Brand', key: 'carBrand', width: 14 },
+    { header: ar ? 'نوع السيارة' : 'Car type', key: 'carType', width: 14 },
+    { header: ar ? 'لون السيارة' : 'Colour', key: 'carColor', width: 12 },
+    { header: ar ? 'نوع الإيجار' : 'Rental type', key: 'rentalType', width: 14 },
+    { header: ar ? 'اسم السائق' : 'Driver', key: 'driverName', width: 24 },
+    { header: ar ? 'جوال السائق' : 'Driver phone', key: 'driverPhone', width: 16 },
+    { header: ar ? 'رقم الإقامة' : 'Iqama #', key: 'driverIqama', width: 16 },
+    { header: ar ? 'جنسية السائق' : 'Nationality', key: 'driverNationality', width: 14 },
+    { header: ar ? 'سلفة السائق' : 'Driver advance', key: 'driverAdvance', width: 14 },
+    // العمود المُشتَقّ الوحيد: الصفوف الناقصة تُطبَع بوليصةً ناقصة، فيجب أن
+    // يظهر سبب النقص في الملفّ نفسه لا في الشاشة وحدها.
+    {
+      header: ar ? 'حقول ناقصة' : 'Missing fields', key: 'missingRequired', width: 30,
+      transform: (v: string[]) => (Array.isArray(v) && v.length ? v.join('، ') : ''),
+    },
+  ];
+  // الملفّ الناقص أعمدةً تُخفي الصفحةُ ملخّصَه وترفض توليد بوليصاته، فلا يُعرض
+  // له زرّ تصدير أيضًا كي لا يخرج ملفٌّ يبدو سليمًا من قراءةٍ أعلنت الشاشةُ فشلَها.
+  const allRows: DispatchSheetRow[] = (parseResult && parseResult.missingColumns.length === 0) ? parseResult.rows : [];
+
   const progressPct = progress ? Math.round((progress.current / progress.total) * 100) : 0;
   const canGenerate = !!parseResult && parseResult.rows.length > 0 && parseResult.missingColumns.length === 0;
 
   return (
     <div className="max-w-5xl mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-slate-900 text-2xl font-bold flex items-center gap-2">
-          <FileSpreadsheet className="w-6 h-6" style={{ color: ORANGE }} />
-          {T.title}
-        </h1>
-        <p className="text-slate-500 text-sm mt-1">{T.subtitle}</p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-slate-900 text-2xl font-bold flex items-center gap-2">
+            <FileSpreadsheet className="w-6 h-6" style={{ color: ORANGE }} />
+            {T.title}
+          </h1>
+          <p className="text-slate-500 text-sm mt-1">{T.subtitle}</p>
+        </div>
+        {allRows.length > 0 && (
+          <ExportMenu
+            fileName="dispatch-sheets-parsed" lang={ar ? 'ar' : 'en'}
+            options={[
+              { key: 'all', label: exportScopeLabels(ar).all, sheets: [{ name: ar ? 'كشوف التخريج' : 'Dispatch sheets', rows: allRows as any[], columns: SHEET_COLUMNS }] },
+              {
+                key: 'missing',
+                label: ar ? 'الصفوف الناقصة فقط' : 'Rows with missing fields only',
+                // جدول «الصفوف الناقصة» في الشاشة يعرض رقم الصف والحقل الناقص
+                // فحسب، ومن يُصلح الملفّ الأصلي يحتاج بقيّة بيانات الصف معه.
+                sheets: [{ name: ar ? 'صفوف ناقصة' : 'Missing', rows: rowsWithMissing as any[], columns: SHEET_COLUMNS }],
+                disabled: rowsWithMissing.length === 0,
+              },
+            ]}
+          />
+        )}
       </div>
 
       {/* Upload zone (hide once a file is parsed) */}

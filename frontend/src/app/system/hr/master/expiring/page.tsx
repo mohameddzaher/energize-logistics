@@ -11,7 +11,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { CalendarClock } from 'lucide-react';
 import { getHrExpiring, STATE_META, stateLabel, fmtDate, daysText } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
@@ -57,6 +57,22 @@ function ExpiringInner() {
     { header: t('القسم', 'Department'), key: 'department', width: 18 },
   ];
 
+  // الشاشة تفتح على مدّةٍ افتراضيّة (٦٠ يومًا) — أي أنّها مفلترة قبل أن يلمسها
+  // أحد. فمَن صدّر ظانًّا أنّه أخذ كلّ الانتهاءات كان يأخذ نافذةً ضيّقة بلا أن
+  // يُنبَّه؛ و«الكلّ» هنا يعيد النداء بلا مدّةٍ ولا مستندٍ ولا حالة.
+  const hasActiveFilters = within !== '' || !!doc || !!state || !includeExpired;
+  const fetchAllExpiring = async () => {
+    const full = await getHrExpiring({ includeExpired: '1', status: 'active' });
+    return [{ name: t('الانتهاءات', 'Expiries'), rows: full.rows || [], columns: cols }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: [{ name: t('الانتهاءات', 'Expiries'), rows, columns: cols }] },
+        { key: 'all', label: scope.all, resolve: fetchAllExpiring },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: [{ name: t('الانتهاءات', 'Expiries'), rows, columns: cols }] }];
+
   if (loading && !d) return <Spinner />;
 
   return (
@@ -66,8 +82,7 @@ function ExpiringInner() {
       <PageHeader icon={<CalendarClock className="w-5 h-5" />}
         title={t('انتهاءات مستندات الموظفين', 'Employee document expiries')}
         subtitle={t('كل مستند له تاريخ — اختر المدة التي تهمّك', 'Every dated document — pick the window that matters')}>
-        <ExportMenu fileName="hr-expiries" lang={lang as 'ar' | 'en'}
-          options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: t('الانتهاءات', 'Expiries'), rows, columns: cols }] }]} />
+        <ExportMenu fileName="hr-expiries" lang={lang as 'ar' | 'en'} options={exportOptions} />
       </PageHeader>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">

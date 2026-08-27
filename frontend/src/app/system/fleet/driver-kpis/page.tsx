@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ScoreBadge, ScoreBar, ScoreBreakdown, BandLegend, KpiTile, type ScoreBand, type ScoreBreakdownItem } from '@/components/system/Scorecard';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import PeriodFilter, { PeriodBanner, periodParams, type Period } from '@/components/fleet/PeriodFilter';
 import ReportButton from '@/components/system/ReportButton';
 
@@ -91,26 +91,31 @@ export default function FleetDriverKpisPage() {
   if (!allowed) return <div className="text-slate-500 p-8">{tx('Not authorized', 'غير مصرّح')}</div>;
   if (loading && !data) return <Spinner />;
 
-  const exportRows = () => exportToExcel(
-    items as unknown as Record<string, any>[],
-    [
-      { header: tx('Driver', 'السائق'), key: 'name', width: 26 },
-      { header: tx('Score', 'التقييم'), key: 'score', width: 10 },
-      { header: tx('Band', 'التصنيف'), key: ar ? 'bandAr' : 'bandEn', width: 14 },
-      { header: tx('Loads', 'الحمولات'), key: 'trips', width: 10 },
-      { header: tx('Income', 'الدخل'), key: 'income', transform: (v: number) => v?.toLocaleString(), width: 14 },
-      { header: tx('Driver expense', 'مصروف السائق'), key: 'expense', transform: (v: number) => v?.toLocaleString(), width: 14 },
-      { header: tx('Delivered', 'وصلت'), key: 'done', width: 10 },
-      { header: tx('Late', 'متأخرة'), key: 'late', width: 10 },
-      { header: tx('Cancelled', 'ملغاة', ), key: 'cancelled', width: 10 },
-      { header: tx('On-time %', 'نسبة الالتزام %'), key: 'onTimeRate', transform: (v: number | null) => v ?? '—', width: 14 },
-      { header: tx('Follow-up %', 'انتظام المتابعة %'), key: 'followUpRate', transform: (v: number | null) => v ?? '—', width: 16 },
-      { header: tx('Truck', 'المركبة'), key: 'vehicle', transform: (v: any) => v?.plate || '—', width: 14 },
-      { header: tx('Phone', 'الجوال'), key: 'phone', width: 16 },
-    ],
-    'fleet-driver-kpis',
-    tx('Driver KPIs', 'تقييم السائقين')
-  );
+  const exportColumns: ExportColumn[] = [
+    { header: tx('Driver', 'السائق'), key: 'name', width: 26 },
+    { header: tx('Score', 'التقييم'), key: 'score', width: 10 },
+    { header: tx('Band', 'التصنيف'), key: ar ? 'bandAr' : 'bandEn', width: 14 },
+    { header: tx('Loads', 'الحمولات'), key: 'trips', width: 10 },
+    { header: tx('Income', 'الدخل'), key: 'income', transform: (v: number) => v?.toLocaleString(), width: 14 },
+    { header: tx('Driver expense', 'مصروف السائق'), key: 'expense', transform: (v: number) => v?.toLocaleString(), width: 14 },
+    { header: tx('Delivered', 'وصلت'), key: 'done', width: 10 },
+    { header: tx('Late', 'متأخرة'), key: 'late', width: 10 },
+    { header: tx('Cancelled', 'ملغاة', ), key: 'cancelled', width: 10 },
+    { header: tx('On-time %', 'نسبة الالتزام %'), key: 'onTimeRate', transform: (v: number | null) => v ?? '—', width: 14 },
+    { header: tx('Follow-up %', 'انتظام المتابعة %'), key: 'followUpRate', transform: (v: number | null) => v ?? '—', width: 16 },
+    { header: tx('Truck', 'المركبة'), key: 'vehicle', transform: (v: any) => v?.plate || '—', width: 14 },
+    { header: tx('Phone', 'الجوال'), key: 'phone', width: 16 },
+  ];
+  // البحثُ وإخفاءُ الخاملين يفلتران في الذاكرة على قائمة الفترة كلّها؛ من صدّر
+  // وهو يظنّ أنّه أخذ السائقين جميعًا بينما البحث فعّالٌ يخرج بملفٍّ ناقصٍ صامت،
+  // فصار لكلّ نطاقٍ عدّادُه الظاهر.
+  const scope = exportScopeLabels(ar);
+  const sheetName = tx('Driver KPIs', 'تقييم السائقين');
+  const allRows = (data?.items || []) as unknown as Record<string, any>[];
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: items as unknown as Record<string, any>[], columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows: allRows, columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-5">
@@ -127,9 +132,7 @@ export default function FleetDriverKpisPage() {
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             {tx('Refresh', 'تحديث')}
           </button>
-          <button type="button" onClick={exportRows} className="inline-flex items-center gap-1.5 text-slate-700 text-sm border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50">
-            {tx('Export Excel', 'تصدير Excel')}
-          </button>
+          <ExportMenu fileName="fleet-driver-kpis" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx('Export Excel', 'تصدير Excel')} options={exportOptions} />
         </div>
       </PageHeader>
 

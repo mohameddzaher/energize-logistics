@@ -8,11 +8,12 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Users, Plus, Edit, Trash2 } from 'lucide-react';
 import {
-  isHRStaff, Employee, EMPLOYMENT_STATUS, empName, exportToExcel, today,
+  isHRStaff, Employee, EMPLOYMENT_STATUS, empName,
 } from '@/lib/hr';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Badge, Select,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Select,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import { getHrEmployeesTranslations } from '@/lib/translations';
 
@@ -63,26 +64,44 @@ export default function HREmployeesPage() {
     try { await api.delete(`/api/hr/employees/${e._id}`); load(); } catch (err: any) { notify(err.message, 'error'); }
   };
 
+  const exportColumns: ExportColumn[] = [
+    { header: tx.colName, key: 'firstName', transform: (_: any, r: any) => empName(r), width: 22 },
+    { header: tx.colArabicName, key: 'arabicName', width: 22 },
+    { header: tx.colEmpNumber, key: 'employeeNumber', width: 12 },
+    { header: tx.colJobTitle, key: 'jobTitle', width: 18 },
+    { header: tx.colIdType, key: 'idType', width: 12 },
+    { header: tx.colIqama, key: 'iqamaNumber', width: 16 },
+    { header: tx.colIqamaExpiry, key: 'iqamaExpiry', width: 14 },
+    { header: tx.colNationalId, key: 'nationalId', width: 16 },
+    { header: tx.colNationality, key: 'nationality', width: 14 },
+    { header: tx.colPhone, key: 'phone', width: 16 },
+    { header: tx.colStatus, key: 'employmentStatus', width: 12 },
+    { header: tx.colHireDate, key: 'hireDate', width: 14 },
+  ];
+  // البحث وفلتر الحالة كلاهما على الخادم، فالذاكرة لا تحمل إلّا نتائجهما:
+  // زرُّ تصديرٍ واحد كان يكتب «الموظّفون» على ملفٍّ فيه ما طابق كلمة البحث
+  // وحدَه. ولذلك «الكلّ» يعيد النداء مجرَّدًا من المعاملات، ولا يُعرَض أصلًا
+  // حين لا فلتر — إذ يكون المعروضُ هو الكلَّ بعينه.
+  const hasActiveFilters = !!(debouncedSearch.trim() || statusFilter);
+  const fetchAllEmployees = async () => {
+    const d = await api.get<{ employees: Employee[] }>('/api/hr/employees');
+    return [{ name: 'Employees', rows: d.employees || [], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: [{ name: 'Employees', rows: employees, columns: exportColumns }] },
+        { key: 'all', label: scope.all, resolve: fetchAllEmployees },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: [{ name: 'Employees', rows: employees, columns: exportColumns }] }];
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Users className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${employees.length} ${tx.employeesUnit}`}>
-        <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(employees, [
-          { header: tx.colName, key: 'firstName', transform: (_: any, r: any) => empName(r), width: 22 },
-          { header: tx.colArabicName, key: 'arabicName', width: 22 },
-          { header: tx.colEmpNumber, key: 'employeeNumber', width: 12 },
-          { header: tx.colJobTitle, key: 'jobTitle', width: 18 },
-          { header: tx.colIdType, key: 'idType', width: 12 },
-          { header: tx.colIqama, key: 'iqamaNumber', width: 16 },
-          { header: tx.colIqamaExpiry, key: 'iqamaExpiry', width: 14 },
-          { header: tx.colNationalId, key: 'nationalId', width: 16 },
-          { header: tx.colNationality, key: 'nationality', width: 14 },
-          { header: tx.colPhone, key: 'phone', width: 16 },
-          { header: tx.colStatus, key: 'employmentStatus', width: 12 },
-          { header: tx.colHireDate, key: 'hireDate', width: 14 },
-        ], `employees-${today()}`, 'Employees')} />
+        <ExportMenu fileName="employees" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addEmployee}</PrimaryButton>
       </PageHeader>
 

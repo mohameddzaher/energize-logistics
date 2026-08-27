@@ -13,6 +13,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Truck, MapPin, RefreshCw, ChevronLeft, ChevronRight, Check, Loader2, Clock, X } from 'lucide-react';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, Select, TextInput } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   SHIPMENT_STATUSES, PAYMENT_METHODS, statusStyle, locName, fmtDateTime, fmtMoney, fmtNum,
   timelineMeta, isOpsStaff, isOpsAdmin, opsText, type Paginated,
@@ -156,6 +157,61 @@ export default function OpsShipmentsPage() {
     setSavingStatus(false);
   };
 
+  const payLabel = (v?: string) => {
+    const m = PAYMENT_METHODS.find((x) => x.value === v);
+    return m ? (lang === 'ar' ? m.ar : m.en) : (v || '—');
+  };
+
+  // الأعمدة نفسها المعروضة في الجدول، مع رقم المرجع وهاتف السائق ومالك السيارة
+  // لأنّ من يراجع كشفًا خارج الشاشة يحتاج ما يتّصل به ويطابق عليه.
+  const SHIPMENT_COLUMNS: ExportColumn[] = [
+    { header: lang === 'ar' ? 'كشف التخريج' : 'Statement #', key: 'graduation_statement_num', width: 16 },
+    { header: lang === 'ar' ? 'رقم المرجع' : 'Reference #', key: 'reference_num', width: 16 },
+    { header: lang === 'ar' ? 'الحالة' : 'Status', key: 'status', width: 16, transform: (v) => { const st = statusStyle(v); return st ? (lang === 'ar' ? st.ar : st.en) : (v || '—'); } },
+    { header: lang === 'ar' ? 'من' : 'From', key: 'address_from', width: 26 },
+    { header: lang === 'ar' ? 'إلى' : 'To', key: 'address_to', width: 26 },
+    { header: lang === 'ar' ? 'السائق' : 'Driver', key: 'driver', width: 22, transform: (_v, r) => driverName(r, lang) },
+    { header: lang === 'ar' ? 'هاتف السائق' : 'Driver phone', key: 'driver.admin.phone', width: 16, transform: (_v, r) => driverPhone(r) || '—' },
+    { header: lang === 'ar' ? 'رقم السيارة' : 'Car #', key: 'car.car_number', width: 16 },
+    { header: lang === 'ar' ? 'مالك السيارة' : 'Car owner', key: 'car.owner', width: 24, transform: (_v, r) => carOwnerName(r, lang) },
+    { header: lang === 'ar' ? 'العميل' : 'Customer', key: 'user.name', width: 26, transform: (v) => locName(v, lang) || '—' },
+    { header: lang === 'ar' ? 'الفرع' : 'Branch', key: 'branch.name', width: 18, transform: (v) => locName(v, lang) || '—' },
+    { header: lang === 'ar' ? 'البيع' : 'Selling', key: 'selling_price', width: 14, transform: (v) => fmtMoney(v) },
+    { header: lang === 'ar' ? 'الدفع' : 'Pay', key: 'payment_method', width: 14, transform: (v) => payLabel(v) },
+    { header: lang === 'ar' ? 'الإنشاء' : 'Created', key: 'created_at', width: 20, transform: (v) => fmtDateTime(v, lang) },
+  ];
+
+  // الجدول مرقّم من الخادم (٢٥ صفًّا للصفحة)، فتصدير «كل النتائج» لا يجوز أن
+  // يُبنى من `items` — لا بدّ من إعادة الجلب بنفس الفلتر. ونحن نمرّ على الصفحات
+  // بحدٍّ ١٠٠ للصفحة لأنّ منصّة UPL الخارجية تتحقّق من المعاملات بصرامة ولا
+  // نضمن قبولها حدًّا أكبر؛ والسقف يمنع عشرات النداءات لو كان الفلتر واسعًا.
+  const fetchAllFiltered = async (): Promise<Row[]> => {
+    const PAGE_LIMIT = 100;
+    const MAX_PAGES = 30;
+    const out: Row[] = [];
+    for (let p = 1; p <= MAX_PAGES; p += 1) {
+      const qs = new URLSearchParams();
+      qs.set('page', String(p)); qs.set('limit', String(PAGE_LIMIT)); qs.set('lang', lang);
+      qs.set('sort[updated_at]', 'desc');
+      if (debounced) {
+        if (searchField === 'graduation' || searchField === 'reference' || searchField === '') qs.set('search', debounced);
+        else qs.set(searchField, debounced);
+      }
+      statuses.forEach((st) => qs.append('status', st));
+      if (dateFrom) qs.set('date_from', dateFrom);
+      if (dateTo) qs.set('date_to', dateTo);
+      if (branchFilter) qs.set('branches', branchFilter);
+      const d = await api.get<Paginated<Row>>(`/api/ops/shipments?${qs.toString()}`);
+      out.push(...(d.items || []));
+      if (!d.items?.length || p >= (d.meta?.totalPages || 1)) break;
+    }
+    // نفس المطابقة الدقيقة التي يطبّقها الجدول: بحث UPL العامّ ضبابيّ وقد يُعيد
+    // كشفًا آخر تصادف أن رقمًا فيه يحوي نفس الأرقام.
+    if (debounced && searchField === 'graduation') return out.filter((x) => String(x.graduation_statement_num) === debounced);
+    if (debounced && searchField === 'reference') return out.filter((x) => String(x.reference_num) === debounced);
+    return out;
+  };
+
   const totalPages = meta?.totalPages || 1;
   const selectedTotal = statuses.length ? statuses.reduce((a, s) => a + (counts[s] || 0), 0) : (counts.all ?? Object.values(counts).reduce((a, b) => a + b, 0));
   if (!isOpsStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
@@ -164,6 +220,18 @@ export default function OpsShipmentsPage() {
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Truck className="w-5 h-5" />} title={lang === 'ar' ? 'الشحنات' : 'Shipments'} subtitle={`${fmtNum(meta?.totalItems ?? items.length)} ${tx.total} · ${tx.live}`}>
+        <ExportMenu
+          fileName="ops-shipments" lang={lang === 'ar' ? 'ar' : 'en'}
+          options={[
+            { key: 'page', label: exportScopeLabels(lang === 'ar').page, sheets: [{ name: lang === 'ar' ? 'الشحنات' : 'Shipments', rows: items, columns: SHIPMENT_COLUMNS }] },
+            {
+              key: 'filtered',
+              label: exportScopeLabels(lang === 'ar').matching,
+              hint: fmtNum(meta?.totalItems ?? items.length),
+              resolve: async () => [{ name: lang === 'ar' ? 'الشحنات' : 'Shipments', rows: await fetchAllFiltered(), columns: SHIPMENT_COLUMNS }],
+            },
+          ]}
+        />
         <button type="button" onClick={() => { load(); loadCounts(); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {tx.refresh}</button>
       </PageHeader>
 

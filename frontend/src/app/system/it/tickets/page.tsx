@@ -7,9 +7,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { LifeBuoy, Plus, Edit, Trash2, Check, RefreshCw, ExternalLink } from 'lucide-react';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
+  Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge,
   Modal, Field, TextInput, TextArea, SearchableSelect, Loader2,
 } from '@/components/hr/HRKit';
 import {
@@ -119,6 +119,36 @@ export default function ItTicketsPage() {
       .some((v) => (v || '').toLowerCase().includes(s));
   });
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Ticket #', key: 'ticketNumber', width: 12 },
+    { header: 'Title', key: 'title', width: 32 },
+    { header: 'Category', key: 'category', transform: (v: any) => categoryLabel(v, 'en'), width: 16 },
+    { header: 'Priority', key: 'priority', transform: (v: any) => priorityLabel(v, 'en'), width: 12 },
+    { header: 'Status', key: 'status', transform: (v: any) => ticketStatusLabel(v, 'en'), width: 14 },
+    { header: 'Requester', key: 'requesterName', width: 22 },
+    { header: 'Department', key: 'requesterDepartment', width: 18 },
+    { header: 'Reported', key: 'reportedAt', width: 14 },
+    { header: 'Resolution time', key: 'resolutionMinutes', transform: (v: any) => fmtDuration(v, 'en'), width: 16 },
+    { header: 'Recurring', key: 'isRecurring', transform: (v: any) => (v ? 'Yes' : 'No'), width: 10 },
+    { header: 'Resolution', key: 'resolution', width: 40 },
+    { header: 'Root cause', key: 'rootCause', width: 32 },
+  ];
+  // الحالة والتصنيف والأولويّة والمدى الزمني كلّها فلاتر خادم، فالبلاغات المحمّلة
+  // هي نتيجة الفلتر لا السجلّ؛ و«الكلّ» يلزمه نداءٌ بلا معاملات، وإلّا لسُمّي
+  // ملفُّ شهرٍ واحد «الكلَّ» وهو ليس كذلك.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ tickets: Ticket[] }>('/api/it/tickets');
+    return [{ name: 'Tickets', rows: d.tickets || [], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(statusFilter || categoryFilter || priorityFilter || from || to || search.trim());
+  const scope = exportScopeLabels(ar);
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: [{ name: 'Tickets', rows: filtered, columns: exportColumns }] },
+        { key: 'all', label: scope.all, resolve: fetchAllForExport },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: [{ name: 'Tickets', rows: filtered, columns: exportColumns }] }];
+
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
@@ -129,20 +159,7 @@ export default function ItTicketsPage() {
         title={ar ? 'بلاغات الدعم الفني' : 'Support Tickets'}
         subtitle={`${filtered.length} ${ar ? 'بلاغ' : 'tickets'}`}
       >
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(filtered, [
-          { header: 'Ticket #', key: 'ticketNumber', width: 12 },
-          { header: 'Title', key: 'title', width: 32 },
-          { header: 'Category', key: 'category', transform: (v: any) => categoryLabel(v, 'en'), width: 16 },
-          { header: 'Priority', key: 'priority', transform: (v: any) => priorityLabel(v, 'en'), width: 12 },
-          { header: 'Status', key: 'status', transform: (v: any) => ticketStatusLabel(v, 'en'), width: 14 },
-          { header: 'Requester', key: 'requesterName', width: 22 },
-          { header: 'Department', key: 'requesterDepartment', width: 18 },
-          { header: 'Reported', key: 'reportedAt', width: 14 },
-          { header: 'Resolution time', key: 'resolutionMinutes', transform: (v: any) => fmtDuration(v, 'en'), width: 16 },
-          { header: 'Recurring', key: 'isRecurring', transform: (v: any) => (v ? 'Yes' : 'No'), width: 10 },
-          { header: 'Resolution', key: 'resolution', width: 40 },
-          { header: 'Root cause', key: 'rootCause', width: 32 },
-        ], `it-tickets-${today()}`, 'Tickets')} />
+        <ExportMenu fileName="it-tickets" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'بلاغ جديد' : 'New ticket'}</PrimaryButton>
       </PageHeader>
 

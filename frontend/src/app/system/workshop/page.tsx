@@ -7,9 +7,10 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wrench, Plus, Search, Loader2, X, Check, Trash2, Eye,
-  AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, CheckCircle2, Download,
+  AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, CheckCircle2,
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getWorkshopTranslations } from '@/lib/translations';
 
 interface Part {
@@ -272,20 +273,38 @@ export default function WorkshopPage() {
     }));
   };
 
-  const handleExport = () => {
-    exportToExcel(requests, [
-      { header: tx.colVehicle, key: 'vehicleNumber', width: 15 },
-      { header: tx.colType, key: 'vehicleType', width: 15 },
-      { header: tx.colDriver, key: 'driverName', width: 20 },
-      { header: tx.colTechnician, key: 'technicianName', width: 20 },
-      { header: tx.colStatus, key: 'status', transform: fmt.status, width: 15 },
-      { header: tx.colStartTime, key: 'startTime', transform: fmt.datetime, width: 20 },
-      { header: tx.colEndTime, key: 'endTime', transform: fmt.datetime, width: 20 },
-      { header: tx.colDurationMin, key: 'duration', width: 15 },
-      { header: tx.colWorkDescription, key: 'workDescription', width: 30 },
-      { header: tx.colNotes, key: 'notes', width: 30 },
-    ], 'maintenance-requests', 'Maintenance');
+  const exportColumns: ExportColumn[] = [
+    { header: tx.colVehicle, key: 'vehicleNumber', width: 15 },
+    { header: tx.colType, key: 'vehicleType', width: 15 },
+    { header: tx.colDriver, key: 'driverName', width: 20 },
+    { header: tx.colTechnician, key: 'technicianName', width: 20 },
+    { header: tx.colStatus, key: 'status', transform: fmt.status, width: 15 },
+    { header: tx.colStartTime, key: 'startTime', transform: fmt.datetime, width: 20 },
+    { header: tx.colEndTime, key: 'endTime', transform: fmt.datetime, width: 20 },
+    { header: tx.colDurationMin, key: 'duration', width: 15 },
+    { header: tx.colWorkDescription, key: 'workDescription', width: 30 },
+    { header: tx.colNotes, key: 'notes', width: 30 },
+  ];
+  // الترقيم على الخادم بعشرين صفًّا: من يفلتر مئتَي طلب صيانة ثم يصدّر كان يأخذ
+  // عشرين منها ويحسبها الكلّ، فصار كلُّ نطاقٍ يُجلَب من الخادم بحدّه هو.
+  const fetchForExport = async (withFilters: boolean) => {
+    const params = new URLSearchParams({ page: '1', limit: '100000' });
+    if (withFilters) {
+      if (statusFilter) params.append('status', statusFilter);
+      if (search) params.append('search', search);
+      if (dateFrom) params.append('dateFrom', dateFrom);
+      if (dateTo) params.append('dateTo', dateTo);
+    }
+    const data = await api.get<any>(`/api/workshop/maintenance?${params.toString()}`) || {};
+    return [{ name: 'Maintenance', rows: data.requests || [], columns: exportColumns }];
   };
+  const hasActiveFilters = !!(statusFilter || search || dateFrom || dateTo);
+  const scope = exportScopeLabels(isAr);
+  const exportOptions = [
+    { key: 'page', label: scope.page, sheets: [{ name: 'Maintenance', rows: requests, columns: exportColumns }] },
+    { key: 'matching', label: hasActiveFilters ? scope.matching : scope.all, resolve: () => fetchForExport(true), hint: String(total) },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
+  ];
 
   const totalPages = Math.ceil(total / limit);
 
@@ -307,14 +326,7 @@ export default function WorkshopPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleExport}
-            disabled={requests.length === 0}
-            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" />
-            {tx.export}
-          </button>
+          <ExportMenu fileName="maintenance-requests" lang={isAr ? 'ar' : 'en'} variant="subtle" label={tx.export} options={exportOptions} />
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 bg-[#f37121] hover:bg-[#e0611a] text-white px-4 py-2.5 rounded-lg font-medium transition-colors"

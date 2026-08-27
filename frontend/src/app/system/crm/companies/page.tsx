@@ -10,12 +10,13 @@ import { getCRMTranslations } from '@/lib/translations';
 import { Building2, Plus, Edit, Trash2, Eye, Search as SearchIcon } from 'lucide-react';
 import {
   isCrmStaff, isCrmAdmin, CrmCompany, CrmOptions, COMPANY_STATUS_STYLE, optLabel,
-  companyName, userName, exportToExcel, fmt, today,
+  companyName, userName, fmt,
 } from '@/lib/crm';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Badge, Modal,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal,
   Field, TextInput, TextArea, Select, StarRating, ContactButtons,
 } from '@/components/crm/CrmKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ManagedSelect from '@/components/system/ManagedSelect';
 
 const EMPTY = {
@@ -129,26 +130,41 @@ export default function CrmCompaniesPage() {
     try { await api.patch(`/api/crm/companies/${c._id}/rate`, { rating }); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Name', key: 'name', width: 26 },
+    { header: 'Arabic Name', key: 'arabicName', width: 22 },
+    { header: 'Status', key: 'status', width: 12 },
+    { header: 'Type', key: 'type', width: 12 },
+    { header: 'Rating', key: 'rating', width: 8 },
+    { header: 'Industry', key: 'industry', width: 16 },
+    { header: 'Phone', key: 'phone', width: 16 },
+    { header: 'WhatsApp', key: 'whatsapp', width: 16 },
+    { header: 'Email', key: 'email', width: 24 },
+    { header: 'City', key: 'city', width: 14 },
+    { header: 'Owner', key: 'owner', transform: (v) => userName(v), width: 18 },
+    { header: 'Created', key: 'createdAt', transform: fmt.date, width: 14 },
+  ];
+  // البحث والحالة والمسؤول تُطبَّق كلّها على الخادم، فالمصدَّر من الذاكرة هو
+  // نتيجةُ الفلتر لا قاعدةُ العملاء؛ ومَن أراد الكلّ كان عليه مسحُ ثلاثة فلاتر
+  // قبل الضغط. الخادم يسقّف هذا المسار بألفَي شركة، عرضًا كان أم تصديرًا.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ companies: CrmCompany[] }>('/api/crm/companies');
+    return [{ name: 'Companies', rows: d.companies || [], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(search.trim() || status || owner);
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: 'Companies', rows: items, columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
+
   if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Building2 className="w-5 h-5" />} title={T.companies} subtitle={`${total} ${T.companies}`}>
-        <ExportButton label={T.export} onClick={() => exportToExcel(items, [
-          { header: 'Name', key: 'name', width: 26 },
-          { header: 'Arabic Name', key: 'arabicName', width: 22 },
-          { header: 'Status', key: 'status', width: 12 },
-          { header: 'Type', key: 'type', width: 12 },
-          { header: 'Rating', key: 'rating', width: 8 },
-          { header: 'Industry', key: 'industry', width: 16 },
-          { header: 'Phone', key: 'phone', width: 16 },
-          { header: 'WhatsApp', key: 'whatsapp', width: 16 },
-          { header: 'Email', key: 'email', width: 24 },
-          { header: 'City', key: 'city', width: 14 },
-          { header: 'Owner', key: 'owner', transform: (v) => userName(v), width: 18 },
-          { header: 'Created', key: 'createdAt', transform: fmt.date, width: 14 },
-        ], `crm-companies-${today()}`, 'Companies')} />
+        <ExportMenu fileName="crm-companies" lang={ar ? 'ar' : 'en'} variant="subtle" label={T.export} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {T.addCompany}</PrimaryButton>
       </PageHeader>
 

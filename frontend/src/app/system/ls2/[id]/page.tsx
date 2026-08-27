@@ -19,6 +19,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ReportButton from '@/components/system/ReportButton';
 import RangePicker from '@/components/ls2/RangePicker';
+import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import {
   ls2Text, isLs2Staff, isLs2Admin, severityStyle, statusStyle, maintStyle, alertTypeLabel, alertMessage, tireTempColor, tirePressColor, coolantColor,
   fmtNum, fmtKm, fmtDate, fmtDateTime, fmtDuration, timeAgo, osmLink, thisMonthToDate, type Lang, type Vehicle, type Alert, type Tire, type ServiceInterval, type DateRange, type TripsResult, type VehicleFuel, type TrackPoint,
@@ -155,6 +156,125 @@ export default function Ls2VehicleDetailPage() {
     { label: t.gsm, value: v.gsmSignal != null ? `${Math.round((v.gsmSignal / 31) * 100)}%` : '—', icon: Satellite, accent: 'text-slate-700' },
   ];
 
+  // ── تصدير ملفّ الشاحنة ───────────────────────────────────────────────────
+  const ar = lang === 'ar';
+  const kvCols: ExportColumn[] = [
+    { header: ar ? 'البند' : 'Field', key: 'item', width: 26 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', width: 32 },
+  ];
+  // هوية الشاحنة وقراءاتُها بندٌ وقيمة كما هي على الشاشة — كارتٌ لكل قراءة —
+  // فتُصدَّر صفًّا لكل بند لا عمودًا، وإلا خرج شيتٌ بصفٍّ واحدٍ وثلاثين عمودًا.
+  const infoSheet: ExportSheet = {
+    name: t.identity,
+    rows: ([
+      [t.plate, v.plate || v.name],
+      [t.driver, v.driver],
+      [t.status, lang === 'ar' ? st.ar : st.en],
+      [t.lastSeen, fmtDateTime(v.lastMessageAt, lang as Lang)],
+      [t.odometer, fmtKm(v.odometerKm)],
+      [t.engineHours, v.engineHours != null ? `${fmtNum(v.engineHours)} h` : ''],
+      [t.maintenance, lang === 'ar' ? maintStyle(v.maintenanceStatus).ar : maintStyle(v.maintenanceStatus).en],
+      [t.speed, v.speed != null ? `${v.speed} km/h` : ''],
+      [t.ignitionLabel, v.ignition == null ? '' : (v.ignition ? t.on : t.off)],
+      [t.coolant, v.coolantC != null ? `${v.coolantC}°C` : ''],
+      [t.maxTireTemp, v.maxTireTempC != null ? `${v.maxTireTempC}°C` : ''],
+      [t.fuel, v.fuelPct != null ? `${v.fuelPct}%` : ''],
+      [t.weight, v.weightKg != null ? `${fmtNum(v.weightKg)} kg` : ''],
+      [t.rpm, v.rpm != null ? fmtNum(v.rpm) : ''],
+      [t.voltage, v.mainPowerV != null ? `${v.mainPowerV} V` : ''],
+      [t.backupBattery, v.backupBatteryV != null ? `${v.backupBatteryV} V` : ''],
+      [t.gsm, v.gsmSignal != null ? `${Math.round((v.gsmSignal / 31) * 100)}%` : ''],
+      [t.totalFuelUsed, v.totalFuelUsedL != null ? `${fmtNum(v.totalFuelUsedL)} L` : ''],
+      [t.tireBrand, v.tireBrand],
+      [t.tireSensorsCol, v.tireSensors?.label],
+      [t.brand, [v.profile?.brand, v.profile?.modelYear].filter(Boolean).join(' · ')],
+      [t.vehicleType, v.profile?.vehicleType],
+      [t.vin, v.profile?.vin],
+      [t.simIccid, v.profile?.simIccid],
+      [t.installDate, v.profile?.installDate],
+      [t.lsUnitId, v.profile?.lsUnitId],
+      [t.location, v.position ? `${v.position.lat}, ${v.position.lng}` : ''],
+    ] as [string, any][])
+      .filter(([, val]) => val !== undefined && val !== null && val !== '' && val !== '—')
+      .map(([item, value]) => ({ item, value })),
+    columns: kvCols,
+  };
+
+  const serviceSheet: ExportSheet = {
+    name: t.servicePlan,
+    rows: intervals as any[],
+    columns: [
+      { header: t.serviceName, key: 'name', width: 26 },
+      { header: t.status, key: 'statusLevel', transform: (val) => (lang === 'ar' ? maintStyle(val).ar : maintStyle(val).en), width: 12 },
+      { header: t.lastService, key: 'lastServiceAt', transform: (val) => fmtDate(val, lang as Lang), width: 14 },
+      { header: `${t.lastService} (${t.odometer})`, key: 'lastServiceKm', transform: (val) => (val != null ? fmtKm(val) : ''), width: 14 },
+      { header: t.remaining, key: 'remainingKm', transform: (_val, row: ServiceInterval) => { const r = remainOf(row); return `${fmtNum(r.value)} ${r.unit}`; }, width: 14 },
+      { header: t.nextService, key: 'nextServiceKm', transform: (_val, row: ServiceInterval) => remainOf(row).next, width: 16 },
+      { header: t.services, key: 'serviceCount', width: 10 },
+    ],
+  };
+
+  const tireSheet: ExportSheet = {
+    name: t.tireLayout,
+    rows: (v.tires || []) as any[],
+    columns: [
+      { header: t.axle, key: 'axle', width: 9 },
+      { header: ar ? 'الموضع' : 'Position', key: 'position', width: 10 },
+      { header: ar ? 'الحرارة (°م)' : 'Temp (°C)', key: 'tempC', width: 12 },
+      { header: ar ? 'الضغط (psi)' : 'Pressure (psi)', key: 'pressurePsi', width: 14 },
+      { header: ar ? 'عطل حسّاس' : 'Sensor fault', key: 'fault', transform: (val) => (val ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No')), width: 12 },
+    ],
+  };
+
+  // التنبيهات المفتوحة وحدها — الشاشة لا تعرض المغلقة، والملفُّ صورةُ الشاشة.
+  const alertSheet: ExportSheet = {
+    name: t.alerts,
+    rows: openAlerts as any[],
+    columns: [
+      { header: t.type, key: 'type', transform: (val) => alertTypeLabel(val, lang as Lang), width: 20 },
+      { header: t.severity, key: 'severity', transform: (val) => (lang === 'ar' ? severityStyle(val).ar : severityStyle(val).en), width: 12 },
+      { header: ar ? 'الرسالة' : 'Message', key: 'message', transform: (_val, row: Alert) => alertMessage(row, lang as Lang), width: 40 },
+      { header: ar ? 'القيمة' : 'Value', key: 'value', transform: (val, row: Alert) => (val == null ? '' : `${val} ${row.unit || ''}`.trim()), width: 12 },
+      { header: ar ? 'أول ظهور' : 'First seen', key: 'firstSeenAt', transform: (val) => fmtDateTime(val, lang as Lang), width: 18 },
+      { header: ar ? 'آخر ظهور' : 'Last seen', key: 'lastSeenAt', transform: (val) => fmtDateTime(val, lang as Lang), width: 18 },
+    ],
+  };
+
+  const dailySheet: ExportSheet = {
+    name: t.dailyDistance,
+    rows: history as any[],
+    columns: [
+      { header: ar ? 'التاريخ' : 'Date', key: 'date', width: 13 },
+      { header: `${t.distance} (${t.km})`, key: 'km', transform: (val) => Math.round(Number(val) || 0), width: 12 },
+    ],
+  };
+
+  const tripSheet: ExportSheet = {
+    name: t.trips,
+    rows: (activity?.trips || []) as any[],
+    columns: [
+      { header: `${t.startLabel} — ${ar ? 'الوقت' : 'time'}`, key: 'beginTime', width: 18 },
+      { header: `${t.startLabel} — ${t.location}`, key: 'beginLocation', width: 34 },
+      { header: `${t.endLabel} — ${ar ? 'الوقت' : 'time'}`, key: 'endTime', width: 18 },
+      { header: `${t.endLabel} — ${t.location}`, key: 'endLocation', width: 34 },
+      { header: `${t.distance} (${t.km})`, key: 'km', transform: (val) => Math.round(Number(val) || 0), width: 12 },
+      { header: t.duration, key: 'durationSec', transform: (val) => fmtDuration(val, lang as Lang), width: 14 },
+      { header: t.maxSpeed, key: 'maxSpeed', width: 12 },
+      { header: t.avgSpeedL, key: 'avgSpeed', width: 12 },
+    ],
+  };
+
+  const stopSheet: ExportSheet = {
+    name: t.stops,
+    rows: (activity?.stops || []) as any[],
+    columns: [
+      { header: t.location, key: 'location', width: 40 },
+      { header: t.startLabel, key: 'from', width: 18 },
+      { header: t.endLabel, key: 'to', width: 18 },
+      { header: t.duration, key: 'durationSec', transform: (val) => fmtDuration(val, lang as Lang), width: 14 },
+    ],
+  };
+
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <button type="button" onClick={() => router.back()} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} /> {lang === 'ar' ? 'رجوع' : 'Back'}</button>
@@ -170,6 +290,18 @@ export default function Ls2VehicleDetailPage() {
         {/* التقرير الشامل — telemetry + maintenance + loads + income in one PDF */}
         <ReportButton subject="vehicle" id={`u${v.unitId}`} label={lang === 'ar' ? 'التقرير الشامل' : 'Full report'} />
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
+        {/* الرحلات والوقفات والمسافة اليومية كلّها محكومة بالمدة المختارة أعلاه،
+            فخيارٌ يحملها لا بدّ أن يُسمّي مداها؛ والخيار الأوّل حالةُ الشاحنة
+            الآن وحدها لمن يريد ملفًّا لا تتغيّر أرقامه بتغيّر المدة. */}
+        <ExportMenu fileName={`ls2-vehicle-${v.plate || v.unitId}`} lang={lang as 'ar' | 'en'}
+          options={[
+            { key: 'now', label: ar ? 'حالة الشاحنة الآن' : 'Truck state now', sheets: [infoSheet, serviceSheet, tireSheet, alertSheet] },
+            {
+              key: 'period',
+              label: `${exportScopeLabels(ar).all} — ${range.from} → ${range.to}`,
+              sheets: [infoSheet, serviceSheet, tireSheet, alertSheet, dailySheet, tripSheet, stopSheet],
+            },
+          ]} />
       </PageHeader>
 
       {/* Vehicle identity (mirrored from Location Solutions). Always rendered:

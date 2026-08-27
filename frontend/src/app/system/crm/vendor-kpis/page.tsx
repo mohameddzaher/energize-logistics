@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ScoreBadge, ScoreBar, ScoreBreakdown, BandLegend, KpiTile, FlagPill, type ScoreBand, type ScoreBreakdownItem } from '@/components/system/Scorecard';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Flag { key: string; ar: string; en: string }
 interface VendorKpi {
@@ -92,27 +92,30 @@ export default function CrmVendorKpisPage() {
   if (!allowed) return <div className="text-slate-500 p-8">{tx('Not authorized', 'غير مصرّح')}</div>;
   if (loading && !data) return <Spinner />;
 
-  const exportRows = () => exportToExcel(
-    items as unknown as Record<string, any>[],
-    [
-      { header: tx('Vendor', 'المورد'), key: 'name', width: 30 },
-      { header: tx('Score', 'التقييم'), key: 'score', width: 10 },
-      { header: tx('Band', 'التصنيف'), key: ar ? 'bandAr' : 'bandEn', width: 16 },
-      { header: tx('Loads', 'الحمولات'), key: 'loads', width: 10 },
-      { header: tx('Utilisation %', 'التشغيل من الطاقة %'), key: 'utilisationPct', transform: (v: number | null) => v ?? '—', width: 18 },
-      { header: tx('Share %', 'الحصة %'), key: 'sharePct', width: 12 },
-      { header: tx('Cost', 'التكلفة'), key: 'cost', transform: (v: number) => v?.toLocaleString(), width: 16 },
-      { header: tx('Margin %', 'الهامش %'), key: 'marginPct', transform: (v: number | null) => v ?? '—', width: 12 },
-      { header: tx('Contract %', 'اكتمال العقد %'), key: 'contractScore', width: 14 },
-      { header: tx('Cars', 'عدد السيارات'), key: 'carsCount', transform: (v: number | null) => v ?? '—', width: 12 },
-      { header: tx('Days since last load', 'أيام منذ آخر تشغيل'), key: 'daysSinceLastLoad', transform: (v: number | null) => v ?? '—', width: 20 },
-      { header: tx('Rep', 'مندوب تنشيط'), key: 'energizeRep', width: 20 },
-      { header: tx('Head office', 'المقر'), key: 'headOffice', width: 18 },
-      { header: tx('Mobile', 'الجوال'), key: 'mobile', width: 16 },
-    ],
-    `crm-vendor-kpis-${from}_${to}`,
-    tx('Vendor KPIs', 'مؤشرات الموردين')
-  );
+  const exportColumns: ExportColumn[] = [
+    { header: tx('Vendor', 'المورد'), key: 'name', width: 30 },
+    { header: tx('Score', 'التقييم'), key: 'score', width: 10 },
+    { header: tx('Band', 'التصنيف'), key: ar ? 'bandAr' : 'bandEn', width: 16 },
+    { header: tx('Loads', 'الحمولات'), key: 'loads', width: 10 },
+    { header: tx('Utilisation %', 'التشغيل من الطاقة %'), key: 'utilisationPct', transform: (v: number | null) => v ?? '—', width: 18 },
+    { header: tx('Share %', 'الحصة %'), key: 'sharePct', width: 12 },
+    { header: tx('Cost', 'التكلفة'), key: 'cost', transform: (v: number) => v?.toLocaleString(), width: 16 },
+    { header: tx('Margin %', 'الهامش %'), key: 'marginPct', transform: (v: number | null) => v ?? '—', width: 12 },
+    { header: tx('Contract %', 'اكتمال العقد %'), key: 'contractScore', width: 14 },
+    { header: tx('Cars', 'عدد السيارات'), key: 'carsCount', transform: (v: number | null) => v ?? '—', width: 12 },
+    { header: tx('Days since last load', 'أيام منذ آخر تشغيل'), key: 'daysSinceLastLoad', transform: (v: number | null) => v ?? '—', width: 20 },
+    { header: tx('Rep', 'مندوب تنشيط'), key: 'energizeRep', width: 20 },
+    { header: tx('Head office', 'المقر'), key: 'headOffice', width: 18 },
+    { header: tx('Mobile', 'الجوال'), key: 'mobile', width: 16 },
+  ];
+  // التصنيف و«العاملون فقط» والبحث تُصفّي الجدول في المتصفّح بعد جلب الفترة
+  // كاملةً، فكان الزرُّ الواحد يصدّر شريحةً مصفّاةً باسم مؤشّرات الموردين كلِّهم.
+  const scope = exportScopeLabels(ar);
+  const sheetName = tx('Vendor KPIs', 'مؤشرات الموردين');
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: items as unknown as Record<string, unknown>[], columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows: (data?.items || []) as unknown as Record<string, unknown>[], columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-5">
@@ -132,9 +135,7 @@ export default function CrmVendorKpisPage() {
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             {tx('Refresh', 'تحديث')}
           </button>
-          <button type="button" onClick={exportRows} className="text-slate-700 text-sm border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50">
-            {tx('Export Excel', 'تصدير Excel')}
-          </button>
+          <ExportMenu fileName={`crm-vendor-kpis-${from}_${to}`} lang={ar ? 'ar' : 'en'} variant="subtle" label={tx('Export Excel', 'تصدير Excel')} options={exportOptions} />
         </div>
       </PageHeader>
 

@@ -2,8 +2,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { FileText, Download } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { FileText } from 'lucide-react';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
 import { getPortalTranslations, getPortalInvoicesExtraTranslations } from '@/lib/translations';
 import { useSocket } from '@/hooks/useSocket';
@@ -42,27 +43,25 @@ export default function ClientInvoicesPage() {
     );
   }
 
-  const handleExport = () => {
-    if (!data?.invoices?.length) return;
-    exportToExcel(
-      data.invoices,
-      [
-        { header: T.invoiceNumber, key: 'invoiceNumber', width: 14 },
-        { header: T.amount, key: 'amount', transform: fmt.money, width: 16 },
-        { header: txx.paid, key: 'paidAmount', transform: fmt.money, width: 16 },
-        { header: T.balance, key: 'balance', transform: fmt.money, width: 16 },
-        { header: T.invoiceDate, key: 'invoiceDate', transform: fmt.date, width: 14 },
-        { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
-        { header: txx.days, key: 'overdueDays', transform: (_v: any, row: any) =>
-          row.isOverdue ? `-${row.overdueDays}${txx.dayUnit}` : row.status === 'paid' ? txx.paid : `${row.remainingDays}${txx.dayUnit}`,
-          width: 10,
-        },
-        { header: T.status, key: 'status', transform: fmt.status, width: 12 },
-      ],
-      'My_Invoices',
-      'Invoices'
-    );
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: T.invoiceNumber, key: 'invoiceNumber', width: 14 },
+    { header: T.amount, key: 'amount', transform: fmt.money, width: 16 },
+    { header: txx.paid, key: 'paidAmount', transform: fmt.money, width: 16 },
+    { header: T.balance, key: 'balance', transform: fmt.money, width: 16 },
+    { header: T.invoiceDate, key: 'invoiceDate', transform: fmt.date, width: 14 },
+    { header: T.dueDate, key: 'dueDate', transform: fmt.date, width: 14 },
+    { header: txx.days, key: 'overdueDays', transform: (_v: any, row: any) =>
+      row.isOverdue ? `-${row.overdueDays}${txx.dayUnit}` : row.status === 'paid' ? txx.paid : `${row.remainingDays}${txx.dayUnit}`,
+      width: 10,
+    },
+    { header: T.status, key: 'status', transform: fmt.status, width: 12 },
+  ];
+  // بوّابة العميل تعرض فواتيره كلَّها بلا فلترٍ ولا ترقيم، فالجدول والملفّ صِنوان:
+  // نطاقٌ ثانٍ هنا كان سيولّد الملفَّ نفسه مرّتين ويوهم بفرقٍ لا وجود له.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: 'Invoices', rows: data?.invoices || [], columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-6">
@@ -72,14 +71,7 @@ export default function ClientInvoicesPage() {
           {T.myInvoices}
         </h1>
         {data?.invoices?.length > 0 && (
-          <button
-            type="button"
-            onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm font-medium rounded-lg transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            {T.export}
-          </button>
+          <ExportMenu fileName="My_Invoices" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.export} options={exportOptions} />
         )}
       </div>
 

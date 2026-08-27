@@ -9,9 +9,9 @@ import { BookOpen, Plus, Edit, Trash2, Eye } from 'lucide-react';
 import {
   isFinanceStaff, isFinanceAdmin, ChartAccount, ACCOUNT_TYPE_STYLE, accountName, money, fmtDate,
 } from '@/lib/finance';
-import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, TextArea, Select, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, TextArea, Select } from '@/components/hr/HRKit';
 import { getAccountingAccountsTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
 const EMPTY = { code: '', nameEn: '', nameAr: '', type: 'asset', description: '' };
@@ -65,13 +65,27 @@ export default function ChartOfAccountsPage() {
   const openLedger = async (a: ChartAccount) => {
     try { setLedger(await api.get(`/api/accounting/ledger/${a._id}`)); } catch (e: any) { notify(e.message, 'error'); }
   };
-  const exportXlsx = () => {
-    exportToExcel(items, [
-      { header: tx.code, key: 'code', width: 14 },
-      { header: tx.name, key: 'nameEn', width: 28, transform: (_v, r) => (ar && r.nameAr ? r.nameAr : r.nameEn) },
-      { header: tx.type, key: 'type', width: 16, transform: (v) => (ar ? ACCOUNT_TYPE_STYLE[v]?.ar : ACCOUNT_TYPE_STYLE[v]?.en) || v },
-    ], 'chart-of-accounts', tx.pageTitle);
+  const exportColumns: ExportColumn[] = [
+    { header: tx.code, key: 'code', width: 14 },
+    { header: tx.name, key: 'nameEn', width: 28, transform: (_v, r) => (ar && r.nameAr ? r.nameAr : r.nameEn) },
+    { header: tx.type, key: 'type', width: 16, transform: (v) => (ar ? ACCOUNT_TYPE_STYLE[v]?.ar : ACCOUNT_TYPE_STYLE[v]?.en) || v },
+  ];
+  // البحث ونوع الحساب يُفلتَران على الخادم، فـ`items` ليست إلّا نتيجة الفلتر القائم.
+  // من يصدّر وهو يريد شجرة الحسابات كاملةً كان يخرج بملفٍّ منقوص بلا إنذار؛
+  // لذلك يعيد نطاق «الكلّ» النداءَ بلا معاملاتٍ ليأتي بكلّ الحسابات فعلًا.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ accounts: ChartAccount[] }>('/api/accounting/accounts');
+    return [{ name: tx.pageTitle, rows: (d.accounts || []) as unknown as Record<string, any>[], columns: exportColumns }];
   };
+  const hasActiveFilters = !!search.trim() || !!typeF;
+  const scope = exportScopeLabels(ar);
+  const shownSheets = [{ name: tx.pageTitle, rows: items as unknown as Record<string, any>[], columns: exportColumns }];
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: shownSheets },
+        { key: 'all', label: scope.all, resolve: fetchAllForExport },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: shownSheets }];
 
   if (!isFinanceStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
@@ -79,7 +93,7 @@ export default function ChartOfAccountsPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<BookOpen className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${items.length}`}>
-        <ExportButton onClick={exportXlsx} label={ar ? 'تصدير Excel' : 'Export Excel'} />
+        <ExportMenu fileName="chart-of-accounts" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.newAccount}</PrimaryButton>
       </PageHeader>
 

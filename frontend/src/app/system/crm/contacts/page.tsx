@@ -8,12 +8,13 @@ import api from '@/lib/api';
 import { getCRMTranslations, getCrmContactsExtraTranslations } from '@/lib/translations';
 import { Users, Plus, Edit, Trash2, Star } from 'lucide-react';
 import {
-  isCrmStaff, CrmContact, CrmCompany, companyName, contactName, exportToExcel, fmt, today,
+  isCrmStaff, CrmContact, CrmCompany, companyName, contactName, fmt,
 } from '@/lib/crm';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Modal,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Modal,
   Field, TextInput, TextArea, Select, StarRating, ContactButtons,
 } from '@/components/crm/CrmKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const EMPTY = { company: '', firstName: '', lastName: '', arabicName: '', title: '', department: '', email: '', phone: '', mobile: '', whatsapp: '', linkedinUrl: '', isPrimary: false, rating: 0, notes: '' };
 
@@ -76,23 +77,38 @@ export default function CrmContactsPage() {
     try { await api.delete(`/api/crm/contacts/${c._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
+  const exportColumns: ExportColumn[] = [
+    { header: T.firstName, key: 'firstName', width: 18 },
+    { header: T.lastName, key: 'lastName', width: 18 },
+    { header: T.company, key: 'company', transform: (v) => companyName(v), width: 24 },
+    { header: txx.colTitle, key: 'title', width: 18 },
+    { header: T.phone, key: 'phone', width: 16 },
+    { header: T.mobile, key: 'mobile', width: 16 },
+    { header: T.email, key: 'email', width: 24 },
+    { header: T.primary, key: 'isPrimary', transform: fmt.yesNo, width: 8 },
+    { header: txx.colCreated, key: 'createdAt', transform: fmt.date, width: 14 },
+  ];
+  // فلترةُ الشركة والبحث تجريان على الخادم: تصديرُ ما في الذاكرة وأنت مُصفٍّ على
+  // شركةٍ واحدة يعطي جهاتِ اتصالها وحدها، ولا شيء في الملفّ يقول ذلك.
+  // والخادم يسقّف هذا المسار بخمسمئة جهةٍ في الحالتين.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ contacts: CrmContact[] }>('/api/crm/contacts');
+    return [{ name: 'Contacts', rows: d.contacts || [], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(search.trim() || companyFilter);
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: 'Contacts', rows: items, columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
+
   if (!isCrmStaff(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية' : 'Not authorized'}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Users className="w-5 h-5" />} title={T.contacts} subtitle={`${items.length} ${T.contacts}`}>
-        <ExportButton label={T.export} onClick={() => exportToExcel(items, [
-          { header: T.firstName, key: 'firstName', width: 18 },
-          { header: T.lastName, key: 'lastName', width: 18 },
-          { header: T.company, key: 'company', transform: (v) => companyName(v), width: 24 },
-          { header: txx.colTitle, key: 'title', width: 18 },
-          { header: T.phone, key: 'phone', width: 16 },
-          { header: T.mobile, key: 'mobile', width: 16 },
-          { header: T.email, key: 'email', width: 24 },
-          { header: T.primary, key: 'isPrimary', transform: fmt.yesNo, width: 8 },
-          { header: txx.colCreated, key: 'createdAt', transform: fmt.date, width: 14 },
-        ], `crm-contacts-${today()}`, 'Contacts')} />
+        <ExportMenu fileName="crm-contacts" lang={ar ? 'ar' : 'en'} variant="subtle" label={T.export} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {T.addContact}</PrimaryButton>
       </PageHeader>
 

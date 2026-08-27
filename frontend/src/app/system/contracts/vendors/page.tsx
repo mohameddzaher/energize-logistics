@@ -14,7 +14,7 @@ import {
   Spinner, PageHeader, SearchInput, Modal, Field, TextInput, TextArea, Select,
   PrimaryButton, ErrorNotice, SmallBadge, SearchableSelect,
 } from '@/components/hr/HRKit';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   ContractVendor, VENDOR_STATUS, canViewContracts, canEditContracts, fmtN, fmtD, foldAr,
 } from '@/lib/contracts';
@@ -120,23 +120,26 @@ function VendorsPageInner() {
     missingDocs: vendors.filter((v) => v.status === 'signed' && !v.documentsReceived).length,
   };
 
-  const exportRows = () => exportToExcel(
-    filtered,
-    [
-      { header: ar ? 'اسم المورد' : 'Vendor', key: 'name', width: 34 },
-      { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v: string) => ((VENDOR_STATUS as any)[v] ? (ar ? (VENDOR_STATUS as any)[v].ar : (VENDOR_STATUS as any)[v].en) : v), width: 12 },
-      { header: ar ? 'مندوب التنشيط' : 'Rep', key: 'energizeRep', width: 12 },
-      { header: ar ? 'ممثل المورد' : 'Contact', key: 'contactPerson', width: 16 },
-      { header: ar ? 'الجوال' : 'Phone', key: 'phone', width: 14 },
-      { header: ar ? 'المقر' : 'HQ', key: 'headquarters', width: 12 },
-      { header: ar ? 'عدد السيارات' : 'Fleet', key: 'fleetSize', width: 10 },
-      { header: ar ? 'تاريخ العقد' : 'Contract date', key: 'contractDate', transform: (v: string) => fmtD(v), width: 12 },
-      { header: ar ? 'الوجهات' : 'Destinations', key: 'destinations', width: 28 },
-      { header: ar ? 'المستندات' : 'Docs', key: 'documentsReceived', transform: (v: boolean) => (v ? (ar ? 'مكتملة' : 'complete') : (ar ? 'ناقصة' : 'missing')), width: 10 },
-    ],
-    'contract-vendors',
-    ar ? 'الموردون' : 'Vendors'
-  );
+  const exportColumns: ExportColumn[] = [
+    { header: ar ? 'اسم المورد' : 'Vendor', key: 'name', width: 34 },
+    { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v: string) => ((VENDOR_STATUS as any)[v] ? (ar ? (VENDOR_STATUS as any)[v].ar : (VENDOR_STATUS as any)[v].en) : v), width: 12 },
+    { header: ar ? 'مندوب التنشيط' : 'Rep', key: 'energizeRep', width: 12 },
+    { header: ar ? 'ممثل المورد' : 'Contact', key: 'contactPerson', width: 16 },
+    { header: ar ? 'الجوال' : 'Phone', key: 'phone', width: 14 },
+    { header: ar ? 'المقر' : 'HQ', key: 'headquarters', width: 12 },
+    { header: ar ? 'عدد السيارات' : 'Fleet', key: 'fleetSize', width: 10 },
+    { header: ar ? 'تاريخ العقد' : 'Contract date', key: 'contractDate', transform: (v: string) => fmtD(v), width: 12 },
+    { header: ar ? 'الوجهات' : 'Destinations', key: 'destinations', width: 28 },
+    { header: ar ? 'المستندات' : 'Docs', key: 'documentsReceived', transform: (v: boolean) => (v ? (ar ? 'مكتملة' : 'complete') : (ar ? 'ناقصة' : 'missing')), width: 10 },
+  ];
+  // بطاقات الحالة أعلى الصفحة تفلتر الجدول من غير أن يشعر المصدِّر أنّه فلتر،
+  // فكان زرُّ التصدير الواحد يعطي الموقّعين وحدهم ويُسمّيه سجلَّ الموردين كلَّه.
+  const scope = exportScopeLabels(ar);
+  const sheetName = ar ? 'الموردون' : 'Vendors';
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: filtered, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows: vendors, columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -145,7 +148,7 @@ function VendorsPageInner() {
         title={ar ? 'سجل موردي 3PL' : '3PL Vendor Register'}
         subtitle={ar ? `${fmtN(vendors.length)} مورد · ${fmtN(counts.signed)} موقّع · إجمالي أسطول ${fmtN(vendors.reduce((s, v) => s + (v.fleetSize || 0), 0))} سيارة` : `${fmtN(vendors.length)} vendors`}
       >
-        <button onClick={exportRows} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium">{ar ? 'تصدير Excel' : 'Export'}</button>
+        <ExportMenu fileName="contract-vendors" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export'} options={exportOptions} />
         {canEdit && (
           <PrimaryButton onClick={openNew}><span className="inline-flex items-center gap-1.5"><Plus className="w-4 h-4" />{ar ? 'إضافة مورد' : 'Add vendor'}</span></PrimaryButton>
         )}

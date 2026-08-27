@@ -9,9 +9,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Tags, Plus, Edit, Trash2, Check } from 'lucide-react';
-import { Spinner, PageHeader, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, Loader2, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, PrimaryButton, SmallBadge, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import { getSettingsReferenceDataTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface LookupType { type: string; module: string; nameEn: string; nameAr: string; canManage: boolean }
 interface LookupItem { _id: string; type: string; key: string; nameEn: string; nameAr: string; color?: string; isActive: boolean; isSystem: boolean }
@@ -95,13 +95,22 @@ export default function ReferenceDataPage() {
 
   const toggleActive = async (it: LookupItem) => { try { await api.put(`/api/lookups/${it._id}`, { isActive: !it.isActive }); loadItems(activeType); } catch (e: any) { notify(e.message, 'error'); } };
 
-  const exportItems = () => {
-    exportToExcel(items, [
-      { header: tx.colName, key: ar ? 'nameAr' : 'nameEn', width: 28 },
-      { header: tx.colKey, key: 'key', width: 22 },
-      { header: tx.colStatus, key: 'isActive', transform: (v: any) => (v ? tx.active : tx.inactive), width: 14 },
-    ], 'reference-data', current ? (ar ? current.nameAr : current.nameEn) : tx.pageTitle);
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: tx.colName, key: ar ? 'nameAr' : 'nameEn', width: 28 },
+    { header: tx.colKey, key: 'key', width: 22 },
+    { header: tx.colStatus, key: 'isActive', transform: (v: any) => (v ? tx.active : tx.inactive), width: 14 },
+  ];
+  // القائمة المختارة تصل من الخادم كاملةً بلا ترقيمٍ ولا فلتر، والشريط الجانبيّ
+  // تنقّلٌ بين قوائم مستقلّة لا فلترةٌ على قائمةٍ واحدة؛ فنطاقٌ ثانٍ هنا سيصدّر
+  // الملفّ نفسه تحت اسمٍ آخر، وهو أسوأ من نطاقٍ واحد صريح.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    {
+      key: 'all',
+      label: scope.all,
+      sheets: [{ name: current ? (ar ? current.nameAr : current.nameEn) : tx.pageTitle, rows: items, columns: exportColumns }],
+    },
+  ];
 
   if (!user) return <Spinner />;
   if (loading) return <Spinner />;
@@ -113,7 +122,7 @@ export default function ReferenceDataPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Tags className="w-5 h-5" />} title={tx.pageTitle} subtitle={tx.pageSubtitle}>
-        {!!items.length && <ExportButton onClick={exportItems} label={ar ? 'تصدير Excel' : 'Export Excel'} />}
+        {!!items.length && <ExportMenu fileName="reference-data" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />}
         {canManage && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addItem}</PrimaryButton>}
       </PageHeader>
 

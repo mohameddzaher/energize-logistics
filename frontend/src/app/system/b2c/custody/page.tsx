@@ -11,6 +11,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Wallet, Plus, ArrowDownCircle, ArrowUpCircle, Edit, Trash2, Check, Loader2, Users, X, Search } from 'lucide-react';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, TextArea, Select, StatCard } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportOption } from '@/components/ls2/ExportMenu';
 import { canEditSection } from '@/lib/sections';
 
 const MANAGER_ROLES = ['super_admin', 'admin', 'b2c_manager'];
@@ -118,15 +119,63 @@ export default function B2CCustodyPage() {
   const setRange = (from: string, to: string) => { setWFrom(from); setWTo(to); };
   const anyFilter = !!(wFrom || wTo || wDebounced);
 
+  // ── تصدير Excel ───────────────────────────────────────────────────────────
+  // الأعمدة هي أعمدة الجدول نفسه وبنفس صياغاته (اسم المُنفِّذ، مسمّى طريقة
+  // الدفع، تنسيق التاريخ)، فما يُطبع من الملف يطابق ما رآه المُراجِع على الشاشة.
+  const methodLabel = (v?: string) => (v ? (ar ? METHODS.find((m) => m.value === v)?.ar : METHODS.find((m) => m.value === v)?.en) || v : '—');
+  const entryCols: ExportColumn[] = [
+    { header: t('Date', 'التاريخ'), key: 'createdAt', transform: (v) => fmt(v, lang), width: 20 },
+    { header: t('Type', 'النوع'), key: 'direction', transform: (v) => (v === 'in' ? t('Received', 'استلام') : t('Spent', 'صرف')), width: 12 },
+    // المبلغ يخرج رقمًا لا نصًّا كي تصحّ عليه جمعياتُ إكسل، والإشارة تأتي من
+    // عمود «النوع» — إذ لا معنى لجمع عمودٍ فيه «+» و«−» كنصوص.
+    { header: `${t('Amount', 'المبلغ')} (${SAR})`, key: 'amount', transform: (v) => Number(v) || 0, width: 14 },
+    { header: t('Method', 'الطريقة'), key: 'method', transform: (v) => methodLabel(v), width: 14 },
+    { header: t('For / note', 'السبب'), key: 'reason', transform: (v) => v || '—', width: 40 },
+    { header: t('By', 'بواسطة'), key: 'createdBy', transform: (v) => personName(v), width: 22 },
+    { header: t('Wallet', 'المحفظة'), key: 'projectManager', transform: (v) => personName(v), width: 22 },
+  ];
+  // أرصدة كل المديرين شيتٌ للمديرين وحدهم: مدير المشروع لا يرى على الشاشة إلّا
+  // محفظته، فلا يجوز أن يُخرج له التصديرُ أرصدةَ زملائه — والخادم يرفضها أصلًا.
+  const managerCols: ExportColumn[] = [
+    { header: t('Project manager', 'مدير المشروع'), key: 'firstName', transform: (_v, r) => personName(r), width: 26 },
+    { header: t('Current balance', 'الرصيد الحالي'), key: 'balance', transform: (v) => Number(v) || 0, width: 16 },
+    { header: t('Total received', 'إجمالي الوارد'), key: 'totalIn', transform: (v) => Number(v) || 0, width: 16 },
+    { header: t('Total spent', 'إجمالي الصادر'), key: 'totalOut', transform: (v) => Number(v) || 0, width: 16 },
+    { header: t('Email', 'البريد'), key: 'email', width: 26 },
+  ];
+
   if (!isManager && user?.role !== 'b2c_project_lead') return <div className="text-slate-500 p-8">{t('Not authorized', 'لا تملك صلاحية')}</div>;
   if (!loaded) return <Spinner />;
 
   const selectedManager = managers.find((m) => String(m._id) === selectedPM);
   const showWallet = wallet && (!isManager || selectedPM);
 
+  const SCOPE = exportScopeLabels(ar);
+  const historySheetName = t('Movements', 'الحركات');
+  const exportOptions: ExportOption[] = [
+    ...(showWallet && wallet ? [
+      { key: 'shown', label: SCOPE.shown, sheets: [{ name: historySheetName, rows: (wallet.entries || []) as any[], columns: entryCols }] },
+      {
+        key: 'all',
+        label: SCOPE.all,
+        // المدى الزمنيّ والبحث يُطبَّقان على الخادم لا في المتصفّح، فالخيار
+        // الشامل لا بدّ أن يُعيد الجلب بلا معاملات — وإلّا خرج ملفٌّ يحمل اسم
+        // «الكلّ» وليس فيه إلّا حركاتُ الفترة المعروضة، وهذا في العهدة تضليل.
+        resolve: async () => {
+          const d = await api.get<Wallet2>(isManager ? `/api/b2c-wallet/${selectedPM}` : '/api/b2c-wallet/me');
+          return [{ name: historySheetName, rows: (d.entries || []) as any[], columns: entryCols }];
+        },
+      },
+    ] as ExportOption[] : []),
+    ...(isManager && managers.length ? [
+      { key: 'managers', label: t('Project-manager balances', 'أرصدة مديري المشاريع'), sheets: [{ name: t('Balances', 'الأرصدة'), rows: managers as any[], columns: managerCols }] },
+    ] as ExportOption[] : []),
+  ];
+
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Wallet className="w-5 h-5" />} title={t('Custody Wallets', 'العهدة')} subtitle={isManager ? t('Grant & audit project-manager custody', 'منح ومتابعة عهد مديري المشاريع') : t('Your custody wallet', 'محفظة العهدة الخاصة بك')}>
+        {exportOptions.length > 0 && <ExportMenu fileName="b2c-custody" lang={lang as 'ar' | 'en'} options={exportOptions} />}
         {isManager
           ? <PrimaryButton onClick={openGrant}><Plus className="w-4 h-4" /> {t('Grant custody', 'منح عهدة')}</PrimaryButton>
           : <>

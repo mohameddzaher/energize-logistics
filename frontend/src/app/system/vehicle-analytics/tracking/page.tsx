@@ -2,10 +2,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import vehicleDB from '@/lib/vehicleAnalyticsDB';
 import { useLanguage } from '@/context/LanguageContext';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { detectTrips, type GPSMovement } from '@/lib/tripDetection';
 import { getVehicleAnalyticsTrackingTranslations } from '@/lib/translations';
-import { MapPin, Truck, Gauge, AlertTriangle, Search, Filter, Navigation, Activity, Zap, Download, Route } from 'lucide-react';
+import { MapPin, Truck, Gauge, AlertTriangle, Search, Filter, Navigation, Activity, Zap, Route } from 'lucide-react';
 
 interface GpsMovement { vehicleId: string; beginning?: string; end?: string; initialLocation?: string; finalLocation?: string; duration?: string; distance?: number | string; maxSpeed?: number | string; avgSpeed?: number | string; [k: string]: any }
 interface GpsOdometer { vehicleId: string; date?: string; driver?: string; initial?: number | string; final?: number | string; distance?: number | string; [k: string]: any }
@@ -139,6 +139,25 @@ export default function GpsTrackingPage() {
   if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">{tx.loading}</div>;
 
   const hasData = movements.length > 0 || odometer.length > 0;
+
+  const exportColumns: ExportColumn[] = [
+    { header: tx.vehicle, key: 'vehicleId' }, { header: tx.start, key: 'beginning' }, { header: tx.end, key: 'end' },
+    { header: tx.initialLocation, key: 'initialLocation' }, { header: tx.finalLocation, key: 'finalLocation' },
+    { header: tx.duration, key: 'duration' }, { header: tx.distance, key: 'distance' },
+    { header: tx.maxSpeedCol, key: 'maxSpeed' }, { header: tx.avgSpeedCol, key: 'avgSpeed' },
+  ];
+  const toExportRows = (rows: GpsMovement[]) => rows.map(r => ({
+    vehicleId: r.vehicleId, beginning: r.beginning || '', end: r.end || '',
+    initialLocation: r.initialLocation || '', finalLocation: r.finalLocation || '',
+    duration: r.duration || '', distance: parseNum(r.distance), maxSpeed: parseNum(r.maxSpeed), avgSpeed: parseNum(r.avgSpeed),
+  }));
+  // فلترة مركبةٍ واحدة قد تُبقي عشرات الحركات من آلافٍ في القاعدة، وكان الزرّ
+  // يصدّر المفلتَر صامتًا؛ فمن أراد سجلّ التتبّع كلَّه خرج بجزءٍ منه لا يعلم حدَّه.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'GPS', rows: toExportRows(filteredMovements), columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: 'GPS', rows: toExportRows(movements), columns: exportColumns }] },
+  ];
   const kpiCards = [
     { label: tx.totalTracked, value: kpis.trackedVehicles, icon: Truck, color: 'text-blue-600', bg: 'bg-blue-400/10' },
     { label: tx.totalKm, value: fmtNum(kpis.totalKm), icon: MapPin, color: 'text-purple-600', bg: 'bg-purple-400/10' },
@@ -152,20 +171,7 @@ export default function GpsTrackingPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-slate-900">{tx.title}</h1>
-        {(filteredMovements.length > 0 || filteredOdometer.length > 0) && (
-          <button type="button" onClick={() => exportToExcel(filteredMovements.map(r => ({
-            vehicleId: r.vehicleId, beginning: r.beginning || '', end: r.end || '',
-            initialLocation: r.initialLocation || '', finalLocation: r.finalLocation || '',
-            duration: r.duration || '', distance: parseNum(r.distance), maxSpeed: parseNum(r.maxSpeed), avgSpeed: parseNum(r.avgSpeed),
-          })), [
-            { header: tx.vehicle, key: 'vehicleId' }, { header: tx.start, key: 'beginning' }, { header: tx.end, key: 'end' },
-            { header: tx.initialLocation, key: 'initialLocation' }, { header: tx.finalLocation, key: 'finalLocation' },
-            { header: tx.duration, key: 'duration' }, { header: tx.distance, key: 'distance' },
-            { header: tx.maxSpeedCol, key: 'maxSpeed' }, { header: tx.avgSpeedCol, key: 'avgSpeed' },
-          ], 'gps-tracking', 'GPS')} className="px-3 py-2 bg-emerald-500/20 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500/30 flex items-center gap-1">
-            <Download className="w-4 h-4" /> {tx.exportExcel}
-          </button>
-        )}
+        {hasData && <ExportMenu fileName="gps-tracking" lang={lang === 'ar' ? 'ar' : 'en'} label={tx.exportExcel} options={exportOptions} />}
       </div>
 
       {/* Filters */}

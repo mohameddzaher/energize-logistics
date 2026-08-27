@@ -9,8 +9,7 @@ import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck } fro
 import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, today, earliestStartDate, daysUntil } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Tabs, StatCard, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyLeavesTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
-import { Download } from 'lucide-react';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function MyLeavesPage() {
   const { confirm, notify } = useDialog();
@@ -91,22 +90,30 @@ export default function MyLeavesPage() {
     setBusy(false);
   };
 
-  const exportMine = () => exportToExcel(leaves, [
+  const mineColumns: ExportColumn[] = [
     { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 20 },
     { header: tx.colFrom, key: 'startDate', transform: (v) => fmtDate(v), width: 14 },
     { header: tx.colTo, key: 'endDate', transform: (v) => fmtDate(v), width: 14 },
     { header: tx.colDays, key: 'days', width: 8 },
     { header: tx.colStatus, key: 'status', transform: (v) => (LEAVE_STATUS[v] ? (ar ? LEAVE_STATUS[v].ar : LEAVE_STATUS[v].en) : v), width: 16 },
-  ], 'my-leaves', tx.pageTitle);
-
-  const exportTeam = () => exportToExcel(teamLeaves, [
+  ];
+  const teamColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'requester', transform: (v) => userName(v), width: 22 },
     { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 20 },
     { header: tx.colFrom, key: 'startDate', transform: (v) => fmtDate(v), width: 14 },
     { header: tx.colTo, key: 'endDate', transform: (v) => fmtDate(v), width: 14 },
     { header: tx.colDays, key: 'days', width: 8 },
     { header: tx.colStatus, key: 'status', transform: (v) => (LEAVE_STATUS[v] ? (ar ? LEAVE_STATUS[v].ar : LEAVE_STATUS[v].en) : v), width: 16 },
-  ], 'team-leaves', tx.tabTeam);
+  ];
+  // كلُّ تبويبٍ هنا نطاقٌ قائم بذاته — طلباتي كلُّها، وطلبات فريقي كلُّها — بلا
+  // بحثٍ ولا فلتر. فالنطاق الثاني سيكرّر الملفّ نفسه بعنوانٍ آخر لا أكثر.
+  const scope = exportScopeLabels(ar);
+  const mineExportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: tx.pageTitle, rows: leaves, columns: mineColumns }] },
+  ];
+  const teamExportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: tx.tabTeam, rows: teamLeaves, columns: teamColumns }] },
+  ];
 
   if (loading) return <Spinner />;
   const teamPending = teamLeaves.filter((l) => l.status === 'pending_manager').length;
@@ -139,9 +146,7 @@ export default function MyLeavesPage() {
         <div className="space-y-3">
         {leaves.length > 0 && (
           <div className="flex justify-end">
-            <button type="button" onClick={exportMine} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm">
-              <Download className="w-4 h-4" /> {ar ? 'تصدير Excel' : 'Export Excel'}
-            </button>
+            <ExportMenu fileName="my-leaves" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={mineExportOptions} />
           </div>
         )}
         <Card>
@@ -167,9 +172,7 @@ export default function MyLeavesPage() {
         <div className="space-y-3">
         {teamLeaves.length > 0 && (
           <div className="flex justify-end">
-            <button type="button" onClick={exportTeam} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm">
-              <Download className="w-4 h-4" /> {ar ? 'تصدير Excel' : 'Export Excel'}
-            </button>
+            <ExportMenu fileName="team-leaves" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={teamExportOptions} />
           </div>
         )}
         <Card>

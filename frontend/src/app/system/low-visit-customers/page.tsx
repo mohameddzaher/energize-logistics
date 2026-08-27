@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { UserX, Search, ArrowLeft, Loader2, X, Download } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { UserX, Search, ArrowLeft, Loader2, X } from 'lucide-react';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { getLowVisitTranslations, getLowVisitCustomersExtraTranslations } from '@/lib/translations';
@@ -71,6 +72,24 @@ export default function LowVisitCustomersPage() {
       })
     : customers;
 
+  const exportColumns: ExportColumn[] = [
+    { header: txx.colCompanyName, key: 'companyName', width: 26 },
+    { header: txx.colCustomerNumber, key: 'customerNumber', width: 16 },
+    { header: txx.colOutstandingSar, key: 'currentOutstanding', transform: fmt.money, width: 20 },
+    { header: txx.colRiskLevel, key: 'riskLevel', width: 12 },
+    { header: txx.colAssignedCollector, key: 'assignedCollector', transform: (_: any, row: any) => row.assignedCollector ? `${row.assignedCollector.firstName} ${row.assignedCollector.lastName}` : '', width: 22 },
+    { header: txx.colTotalTasks, key: 'totalTasks', width: 12 },
+    { header: txx.colLastTaskDate, key: 'lastTaskDate', transform: fmt.date, width: 16 },
+    { header: txx.colDaysSinceLastTask, key: 'daysSinceLastTask', transform: (v: number | null) => v !== null ? String(v) : txx.never, width: 22 },
+  ];
+  // القائمة كلّها تصل من الخادم دفعةً واحدة والبحث يقصّها في المتصفّح فقط،
+  // فمن صدّر وخانة البحث ممتلئة كان يظنّه جردًا كاملًا للعملاء المهمَلين.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: T.title, rows: filtered, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: T.title, rows: customers, columns: exportColumns }] },
+  ];
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -100,18 +119,7 @@ export default function LowVisitCustomersPage() {
             <p className="text-slate-500 text-sm">{filtered.length} {T.subtitle}</p>
           </div>
         </div>
-        <button type="button" onClick={() => exportToExcel(filtered, [
-          { header: txx.colCompanyName, key: 'companyName', width: 26 },
-          { header: txx.colCustomerNumber, key: 'customerNumber', width: 16 },
-          { header: txx.colOutstandingSar, key: 'currentOutstanding', transform: fmt.money, width: 20 },
-          { header: txx.colRiskLevel, key: 'riskLevel', width: 12 },
-          { header: txx.colAssignedCollector, key: 'assignedCollector', transform: (_: any, row: any) => row.assignedCollector ? `${row.assignedCollector.firstName} ${row.assignedCollector.lastName}` : '', width: 22 },
-          { header: txx.colTotalTasks, key: 'totalTasks', width: 12 },
-          { header: txx.colLastTaskDate, key: 'lastTaskDate', transform: fmt.date, width: 16 },
-          { header: txx.colDaysSinceLastTask, key: 'daysSinceLastTask', transform: (v: number | null) => v !== null ? String(v) : txx.never, width: 22 },
-        ], `low-visit-customers-${new Date().toISOString().split('T')[0]}`, T.title)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-          <Download className="w-4 h-4" /> {T.downloadExcel}
-        </button>
+        <ExportMenu fileName="low-visit-customers" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.downloadExcel} options={exportOptions} />
       </div>
 
       {/* Search */}

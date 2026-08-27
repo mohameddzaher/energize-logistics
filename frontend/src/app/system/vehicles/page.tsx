@@ -9,12 +9,13 @@ import api from '@/lib/api';
 import { Truck, Plus, Edit, Trash2, Check } from 'lucide-react';
 import {
   Vehicle, VEHICLE_TYPES, VEHICLE_STATUS, isVehicleStaff, isVehicleAdmin,
-  vehicleTypeLabel, empRefName, getVehiclesText, fmtDate, exportToExcel, today,
+  vehicleTypeLabel, empRefName, getVehiclesText, fmtDate,
 } from '@/lib/vehicles';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, Badge, Modal, Field,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field,
   TextInput, Select, TextArea, Loader2,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 const EMPTY = {
   plateNumber: '', type: 'car', make: '', model: '', year: '', color: '',
@@ -90,22 +91,37 @@ export default function VehiclesPage() {
     try { await api.delete(`/api/vehicles/${v._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
+  const exportColumns: ExportColumn[] = [
+    { header: tx.plateNumber, key: 'plateNumber', width: 16 },
+    { header: tx.type, key: 'type', transform: (v: any) => vehicleTypeLabel(v, lang), width: 14 },
+    { header: tx.make, key: 'make', width: 14 },
+    { header: tx.model, key: 'model', width: 14 },
+    { header: tx.status, key: 'status', transform: (v: any) => (VEHICLE_STATUS[v]?.[ar ? 'ar' : 'en'] || v), width: 14 },
+    { header: tx.authorizedTo, key: 'currentEmployee', transform: (_: any, r: any) => empRefName(r.currentEmployee, lang), width: 22 },
+    { header: tx.department, key: 'department', width: 16 },
+    { header: tx.project, key: 'project', width: 16 },
+  ];
+  // البحث والنوع والحالة تُطبَّق على الخادم، ولوحةُ المؤشّرات تفتح هذه الصفحة
+  // مفلترةً مسبقًا بـ ?status=/?type=؛ فمَن دخل من كارتٍ وصدّر كان يأخذ شريحةً
+  // من الأسطول وهو يظنّه الأسطول كلَّه. «الكلّ» يعيد النداء بلا معاملات.
+  const hasActiveFilters = !!(search.trim() || typeFilter || statusFilter);
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ vehicles: Vehicle[] }>('/api/vehicles');
+    return [{ name: 'Vehicles', rows: (d.vehicles || []) as unknown as Record<string, any>[], columns: exportColumns }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Vehicles', rows: vehicles as unknown as Record<string, any>[], columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
+
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Truck className="w-5 h-5" />} title={tx.fleetTitle} subtitle={`${vehicles.length} ${tx.vehiclesUnit}`}>
-        <ExportButton label={tx.exportExcel} onClick={() => exportToExcel(vehicles, [
-          { header: tx.plateNumber, key: 'plateNumber', width: 16 },
-          { header: tx.type, key: 'type', transform: (v: any) => vehicleTypeLabel(v, lang), width: 14 },
-          { header: tx.make, key: 'make', width: 14 },
-          { header: tx.model, key: 'model', width: 14 },
-          { header: tx.status, key: 'status', transform: (v: any) => (VEHICLE_STATUS[v]?.[ar ? 'ar' : 'en'] || v), width: 14 },
-          { header: tx.authorizedTo, key: 'currentEmployee', transform: (_: any, r: any) => empRefName(r.currentEmployee, lang), width: 22 },
-          { header: tx.department, key: 'department', width: 16 },
-          { header: tx.project, key: 'project', width: 16 },
-        ], `vehicles-${today()}`, 'Vehicles')} />
+        <ExportMenu fileName="vehicles" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {tx.addVehicle}</PrimaryButton>
       </PageHeader>
 

@@ -21,7 +21,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Search, Check, X, Pencil, ArrowUpDown, RefreshCw, ArrowRight, Plus, Trash2 } from 'lucide-react';
 import {
   getHrRecords, updateEmployeeFields, renewHrDocument, renewHrBulk, RENEWABLE_GROUPS,
@@ -146,6 +146,24 @@ function GroupInner() {
     })),
   ];
 
+  // كلُّ فلاتر هذه الشاشة تُطبَّق على الخادم — البحث ولوحة الفلاتر والحالة
+  // والمدّة — فالذاكرة لا تحمل إلّا نتيجتها. زرُّ «تصدير المعروض» وحدَه كان
+  // يترك مَن يريد كشف المجموعة كاملةً بلا سبيلٍ إليه إلّا رفعُ الفلاتر يدويًّا
+  // واحدًا واحدًا ثمّ إعادتها. و«الكلّ» يعيد النداء مجرَّدًا منها كلِّها.
+  const hasActiveFilters = !!(q.trim() || field || status || state || within || !includeExpired
+    || Object.values(filters).some((v) => v !== '' && v != null));
+  const fetchAllRecords = async () => {
+    const full = await getHrRecords(group, {});
+    return [{ name: ar ? g.ar : g.en, rows: full.rows, columns: cols }];
+  };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: [{ name: ar ? g.ar : g.en, rows, columns: cols }] },
+        { key: 'all', label: scope.all, resolve: fetchAllRecords },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: [{ name: ar ? g.ar : g.en, rows, columns: cols }] }];
+
   const toggleSort = (key: string) => {
     if (sort === key) setDir((x) => (x === 'asc' ? 'desc' : 'asc'));
     else { setSort(key); setDir('asc'); }
@@ -163,8 +181,7 @@ function GroupInner() {
 
       <PageHeader icon={<Pencil className="w-5 h-5" />} title={ar ? g.ar : g.en}
         subtitle={t('اضغط أي خانة ناقصة واملأها من هنا مباشرة', 'Click any missing cell and fill it right here')}>
-        <ExportMenu fileName={`hr-${group}`} lang={lang as 'ar' | 'en'}
-          options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: ar ? g.ar : g.en, rows, columns: cols }] }]} />
+        <ExportMenu fileName={`hr-${group}`} lang={lang as 'ar' | 'en'} options={exportOptions} />
         {canEdit && (
           <button onClick={() => setForm({ mode: 'create', row: null })}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-semibold">

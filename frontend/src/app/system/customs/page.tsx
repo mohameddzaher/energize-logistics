@@ -8,11 +8,11 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, Download, BarChart3 } from 'lucide-react';
+import { Ship, Plus, Search, X, Check, Trash2, Loader2, ScrollText, Container, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { getCustomsTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Clearance {
   _id: string;
@@ -132,27 +132,32 @@ export default function CustomsPage() {
 
   const money = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-  const handleExport = () => {
-    exportToExcel(filtered, [
-      { header: T.refNumber, key: 'refNumber', width: 18 },
-      { header: T.blNumber, key: 'blNumber', width: 18, transform: (v) => v || '—' },
-      { header: T.customerName, key: 'customerName', width: 22, transform: (v) => v || '—' },
-      { header: T.branch, key: 'branch', width: 14, transform: (v) => (v === 'dammam' ? T.dammam : T.jeddah) },
-      { header: ar ? 'المدينة' : 'City', key: 'city', width: 14, transform: (v) => v || '—' },
-      { header: ar ? 'الشهر' : 'Month', key: 'periodMonth', width: 12, transform: (v) => (v ? MONTH_LABELS[v - 1][ar ? 0 : 1] : '—') },
-      { header: ar ? 'السنة' : 'Year', key: 'periodYear', width: 10, transform: (v) => v || '—' },
-      { header: ar ? 'وكيل الشحن' : 'Shipping agent', key: 'shippingAgent', width: 20, transform: (v) => v || '—' },
-      { header: ar ? 'رقم البيان' : 'Declaration no.', key: 'declarationNumber', width: 16, transform: (v) => v || '—' },
-      { header: T.containerCount, key: 'containerCount', width: 14, transform: (v) => v || 0 },
-      { header: ar ? 'إجمالي المصروفات' : 'Total costs', key: 'costs.total', width: 16, transform: money },
-      { header: ar ? 'أجور التخليص' : 'Clearance fee', key: 'revenue.clearanceFee', width: 16, transform: money },
-      { header: ar ? 'إجمالي الفاتورة' : 'Total invoiced', key: 'revenue.totalInvoiced', width: 16, transform: money },
-      { header: ar ? 'صافي الربح' : 'Net profit', key: 'revenue.profit', width: 14, transform: money },
-      { header: ar ? 'حالة الفاتورة' : 'Invoice status', key: 'billing.invoiceStatus', width: 16, transform: (v) => v || '—' },
-      { header: ar ? 'رقم فاتورتنا' : 'Our invoice no.', key: 'billing.ourInvoiceNumber', width: 16, transform: (v) => v || '—' },
-      { header: T.stage, key: 'stage', width: 20, transform: (v, r) => (r.cancelled ? T.cancelled : T.stages[v] || v) },
-    ], 'customs-clearances', T.title);
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: T.refNumber, key: 'refNumber', width: 18 },
+    { header: T.blNumber, key: 'blNumber', width: 18, transform: (v) => v || '—' },
+    { header: T.customerName, key: 'customerName', width: 22, transform: (v) => v || '—' },
+    { header: T.branch, key: 'branch', width: 14, transform: (v) => (v === 'dammam' ? T.dammam : T.jeddah) },
+    { header: ar ? 'المدينة' : 'City', key: 'city', width: 14, transform: (v) => v || '—' },
+    { header: ar ? 'الشهر' : 'Month', key: 'periodMonth', width: 12, transform: (v) => (v ? MONTH_LABELS[v - 1][ar ? 0 : 1] : '—') },
+    { header: ar ? 'السنة' : 'Year', key: 'periodYear', width: 10, transform: (v) => v || '—' },
+    { header: ar ? 'وكيل الشحن' : 'Shipping agent', key: 'shippingAgent', width: 20, transform: (v) => v || '—' },
+    { header: ar ? 'رقم البيان' : 'Declaration no.', key: 'declarationNumber', width: 16, transform: (v) => v || '—' },
+    { header: T.containerCount, key: 'containerCount', width: 14, transform: (v) => v || 0 },
+    { header: ar ? 'إجمالي المصروفات' : 'Total costs', key: 'costs.total', width: 16, transform: money },
+    { header: ar ? 'أجور التخليص' : 'Clearance fee', key: 'revenue.clearanceFee', width: 16, transform: money },
+    { header: ar ? 'إجمالي الفاتورة' : 'Total invoiced', key: 'revenue.totalInvoiced', width: 16, transform: money },
+    { header: ar ? 'صافي الربح' : 'Net profit', key: 'revenue.profit', width: 14, transform: money },
+    { header: ar ? 'حالة الفاتورة' : 'Invoice status', key: 'billing.invoiceStatus', width: 16, transform: (v) => v || '—' },
+    { header: ar ? 'رقم فاتورتنا' : 'Our invoice no.', key: 'billing.ourInvoiceNumber', width: 16, transform: (v) => v || '—' },
+    { header: T.stage, key: 'stage', width: 20, transform: (v, r) => (r.cancelled ? T.cancelled : T.stages[v] || v) },
+  ];
+  // المعاملات كلّها تصل دفعةً واحدة وفلاتر السنة والشهر وحالة الفاتورة والبحث
+  // تعمل في المتصفّح؛ فمن صدّر وهو على فلتر شهرٍ واحد كان يحمل ملفًّا يسمّيه سجلَّ السنة.
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: scope.shown, sheets: [{ name: T.title, rows: filtered, columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: T.title, rows: list, columns: exportColumns }] },
+  ];
 
   if (loading) {
     return (
@@ -181,9 +186,7 @@ export default function CustomsPage() {
           <Link href="/system/customs/guide" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
             <ScrollText className="w-4 h-4" /> {T.openGuide}
           </Link>
-          <button type="button" onClick={handleExport} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-            <Download className="w-4 h-4" /> {lang === 'ar' ? 'تصدير Excel' : 'Export Excel'}
-          </button>
+          <ExportMenu fileName="customs-clearances" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
           {canEdit && (
             <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
               <Plus className="w-4 h-4" /> {T.addClearance}

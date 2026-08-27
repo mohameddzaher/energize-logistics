@@ -9,9 +9,10 @@ import { useSocket } from '@/hooks/useSocket';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Edit, Lock, Unlock, Loader2, CheckCircle2,
-  ArrowRight, Save, X, Download
+  ArrowRight, Save, X
 } from 'lucide-react';
-import { exportToExcel, fmt } from '@/utils/exportExcel';
+import { fmt } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Workflow {
   _id: string;
@@ -340,6 +341,19 @@ export default function WorkflowDetailPage() {
   const sc = STAGE_CONFIG[workflow.stage] || STAGE_CONFIG.draft;
   const transitions = getTransitions();
 
+  // شاشةُ عمليّةٍ واحدة: الملفّ صفٌّ واحد هو هذه العمليّة بحقولها كلّها — لا فلترَ
+  // هنا ولا ترقيم، ونطاقٌ ثانٍ سيُخرج الملفَّ نفسه ويوهم بأنّ أمام المصدِّر اختيارًا.
+  const exportColumns: ExportColumn[] = SECTIONS.flatMap((sec) => sec.fields).map((f: any) => ({
+    header: f.labelEn || f.label,
+    key: f.key,
+    transform: f.type === 'date' ? fmt.date : f.type === 'number' ? fmt.money : undefined,
+    width: 18,
+  }));
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: txx.workflowDetailsSheet, rows: [workflow as unknown as Record<string, any>], columns: exportColumns }] },
+  ];
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 w-full">
       {/* Header */}
@@ -364,20 +378,7 @@ export default function WorkflowDetailPage() {
 
         <div className="flex items-center gap-2">
           {!editing && (
-            <button type="button" onClick={() => {
-              if (!workflow) return;
-              const allFields = SECTIONS.flatMap((s) => s.fields);
-              const exportData = [workflow];
-              const columns = allFields.map((f) => ({
-                header: f.labelEn || f.label,
-                key: f.key,
-                transform: f.type === 'date' ? fmt.date : f.type === 'number' ? fmt.money : undefined,
-                width: 18,
-              }));
-              exportToExcel(exportData, columns, `operation-${workflow.reportNumber || workflow._id}`, txx.workflowDetailsSheet);
-            }} className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors flex items-center gap-2">
-              <Download className="w-4 h-4" /> {T.exportExcel}
-            </button>
+            <ExportMenu fileName={`operation-${workflow.reportNumber || workflow._id}`} lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={T.exportExcel} options={exportOptions} />
           )}
           {editing ? (
             <>

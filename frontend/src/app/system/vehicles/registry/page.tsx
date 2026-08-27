@@ -12,6 +12,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { VReg, statusColor, statusLabel, DOC_TYPES, fmtDate, money, daysText, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
 import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight } from 'lucide-react';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
@@ -103,6 +104,42 @@ function VehicleRegistryListInner() {
     insurancePolicy: { ar: 'وثيقة التأمين', en: 'Policy' },
   };
 
+  // أعمدة التصدير — نفس أعمدة الجدول ومعها ما يُسأل عنه خارج الشاشة (الهيكل،
+  // أرقام المستندات، المفوَّض، القسط). تواريخ المستندات تُبنى من DOC_TYPES نفسها
+  // التي يبني منها الخادمُ حالاتِها، فلا يفترق مستندٌ ظهر في «الانتهاءات» عن
+  // عمودٍ لا وجود له في الملفّ.
+  const cols: ExportColumn[] = [
+    { header: ar ? 'اللوحة' : 'Plate', key: 'plateNumber', width: 14 },
+    { header: ar ? 'رقم الهيكل' : 'Chassis', key: 'chassisNumber', width: 20 },
+    { header: ar ? 'القطاع' : 'Sector', key: 'sectorAr', width: 16 },
+    { header: ar ? 'الإدارة' : 'Department', key: 'departmentAr', width: 16 },
+    { header: ar ? 'المدينة' : 'City', key: 'cityAr', width: 12 },
+    { header: ar ? 'نوع التسجيل' : 'Registration type', key: 'registrationTypeAr', width: 14 },
+    { header: ar ? 'الماركة' : 'Brand', key: 'brandAr', width: 14 },
+    { header: ar ? 'الطراز' : 'Model', key: 'modelAr', width: 14 },
+    { header: ar ? 'سنة الصنع' : 'Year', key: 'modelYear', width: 10 },
+    { header: ar ? 'اللون' : 'Color', key: 'colorAr', width: 12 },
+    { header: ar ? 'المالك' : 'Owner', key: 'ownerNameAr', width: 26 },
+    { header: ar ? 'حالة التشغيل' : 'Service status', key: 'serviceStatusAr', width: 14 },
+    { header: ar ? 'المفوَّض' : 'Authorised holder', key: 'authorizedPerson.name', width: 22 },
+    { header: ar ? 'رقم التفويض' : 'Authorisation no.', key: 'authorizedPerson.authorizationNumber', width: 16 },
+    ...DOC_TYPES.map((d): ExportColumn => ({
+      header: ar ? `انتهاء ${d.ar}` : `${d.en} expiry`,
+      key: d.key,
+      transform: (_v, row: VReg) => fmtDate(d.datePath(row)),
+      width: 14,
+    })),
+    { header: ar ? 'رقم وثيقة التأمين' : 'Policy number', key: 'insurance.policyNumber', width: 18 },
+    { header: ar ? 'شركة التأمين' : 'Insurer', key: 'insurance.companyAr', width: 20 },
+    { header: ar ? 'قسط التأمين' : 'Premium (SAR)', key: 'insurance.premiumSar', transform: (v) => (v == null ? '' : money(v)), width: 14 },
+    { header: ar ? 'الحالة العامة' : 'Overall status', key: 'overallStatus', transform: (v) => statusLabel(v || 'valid', ar), width: 14 },
+    { header: ar ? 'المتبقّي' : 'Days left', key: 'overallDays', transform: (v) => daysText(v, ar), width: 18 },
+    // النقطة البنفسجية في الجدول لا تقول ما الناقص؛ الملفّ يتّسع لتفصيلها،
+    // وهو المقصود من تصديره أصلًا: قائمة عملٍ تُوزَّع لا صورةٌ للشاشة.
+    { header: ar ? 'نواقص لوجستي' : 'Logisti gaps', key: 'logistiGaps', transform: (v: string[]) => (v || []).join(' · '), width: 30 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notesAr', width: 30 },
+  ];
+
   const del = async (v: VReg) => {
     if (!(await confirm(ar ? `حذف المركبة ${v.plateNumber}؟` : `Delete ${v.plateNumber}?`))) return;
     try { await api.delete(`/api/vehicle-registry/${v._id}`); notify(ar ? 'تم الحذف' : 'Deleted', 'success'); load(); }
@@ -123,6 +160,20 @@ function VehicleRegistryListInner() {
           <Link href="/system/vehicles/registry/dashboard" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><BarChart3 className="w-4 h-4" /> {ar ? 'التحليلات' : 'Analytics'}</Link>
           <Link href="/system/vehicles/registry/expiring" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm"><CalendarClock className="w-4 h-4" /> {ar ? 'الانتهاءات والتجديد' : 'Expiries & Renewals'}</Link>
           {canEdit && <button onClick={() => { setEditing(null); setShowForm(true); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'إضافة' : 'Add'}</button>}
+          <ExportMenu fileName="vehicle-registry" lang={lang as 'ar' | 'en'}
+            options={[
+              { key: 'filtered', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'المركبات' : 'Vehicles', rows: rows as any[], columns: cols }] },
+              {
+                key: 'all', label: exportScopeLabels(ar).all, hint: ar ? 'كل المركبات' : 'all vehicles',
+                // «الكل» لا يُبنى من الصفوف المحمّلة: هذه ثمرةُ الفلتر الحاليّ
+                // وسقفُها ٢٠٠٠ صف، فبناؤه منها يُخرج ملفًّا اسمُه «الكل» وفيه
+                // ما نجا من الفلتر وحده.
+                resolve: async () => {
+                  const d = await api.get<{ vehicles: VReg[] }>('/api/vehicle-registry?limit=5000');
+                  return [{ name: ar ? 'المركبات' : 'Vehicles', rows: (d.vehicles || []) as any[], columns: cols }];
+                },
+              },
+            ]} />
         </div>
       </PageHeader>
 

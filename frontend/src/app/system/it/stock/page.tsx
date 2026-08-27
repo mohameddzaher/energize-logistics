@@ -6,9 +6,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Boxes, Plus, Edit, Trash2, Check, UserPlus } from 'lucide-react';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
-  Spinner, PageHeader, SearchInput, ExportButton, PrimaryButton, SmallBadge,
+  Spinner, PageHeader, SearchInput, PrimaryButton, SmallBadge,
   Modal, Field, TextInput, TextArea, Select, SearchableSelect, StatCard, Loader2,
 } from '@/components/hr/HRKit';
 import { useAssetVocab } from '@/hooks/useAssetVocab';
@@ -121,6 +121,31 @@ export default function ItStockPage() {
       .some((v) => (v || '').toLowerCase().includes(s));
   });
 
+  const exportColumns: ExportColumn[] = [
+    { header: 'Item', key: 'name', width: 22 },
+    { header: 'Type', key: 'type', transform: (v: any) => custodyTypeLabel(v, 'en'), width: 14 },
+    { header: 'Serial', key: 'serialNumber', width: 20 },
+    { header: 'Brand', key: 'brand', width: 14 },
+    { header: 'Specs', key: 'specs', width: 28 },
+    { header: 'Condition', key: 'condition', transform: (v: any) => conditionLabel(v, 'en'), width: 12 },
+    { header: 'Quantity', key: 'quantity', width: 10 },
+    { header: 'Value (per unit)', key: 'value', width: 14 },
+  ];
+  // النوع والحالة الفنّية فلترتهما على الخادم، فما في `items` ليس المستودع كلّه؛
+  // ولذلك يلزم «الكلَّ» نداءٌ بلا معاملات بدل أن يصدّر بقايا الفلتر على أنّه السجل.
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ items: StockItem[] }>('/api/it/stock');
+    return [{ name: 'Stock', rows: d.items || [], columns: exportColumns }];
+  };
+  const hasActiveFilters = !!(typeFilter || conditionFilter || search.trim());
+  const scope = exportScopeLabels(ar);
+  const exportOptions = hasActiveFilters
+    ? [
+        { key: 'shown', label: scope.shown, sheets: [{ name: 'Stock', rows: filtered, columns: exportColumns }] },
+        { key: 'all', label: scope.all, resolve: fetchAllForExport },
+      ]
+    : [{ key: 'all', label: scope.all, sheets: [{ name: 'Stock', rows: filtered, columns: exportColumns }] }];
+
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
@@ -139,16 +164,7 @@ export default function ItStockPage() {
         title={ar ? 'مستودع تقنية المعلومات' : 'IT Stock'}
         subtitle={ar ? `${totalUnits} وحدة متاحة للتسليم` : `${totalUnits} units available to hand out`}
       >
-        <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={() => exportToExcel(filtered, [
-          { header: 'Item', key: 'name', width: 22 },
-          { header: 'Type', key: 'type', transform: (v: any) => custodyTypeLabel(v, 'en'), width: 14 },
-          { header: 'Serial', key: 'serialNumber', width: 20 },
-          { header: 'Brand', key: 'brand', width: 14 },
-          { header: 'Specs', key: 'specs', width: 28 },
-          { header: 'Condition', key: 'condition', transform: (v: any) => conditionLabel(v, 'en'), width: 12 },
-          { header: 'Quantity', key: 'quantity', width: 10 },
-          { header: 'Value (per unit)', key: 'value', width: 14 },
-        ], `it-stock-${today()}`, 'Stock')} />
+        <ExportMenu fileName="it-stock" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة للمستودع' : 'Add to stock'}</PrimaryButton>
       </PageHeader>
 

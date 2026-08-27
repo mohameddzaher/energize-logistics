@@ -15,6 +15,7 @@ import {
   ArrowUpRight, ArrowDownRight, RefreshCw,
 } from 'lucide-react';
 import { Spinner, PageHeader, StatCard, ErrorNotice, Modal, Field, TextInput, Select, PrimaryButton, SearchableSelect } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { useDialog } from '@/components/system/DialogProvider';
 import {
   CATEGORY_LABELS, CategoryKey, MONTH_AR, canViewContracts, canEditContracts,
@@ -118,6 +119,115 @@ export default function ContractsAnalysisPage() {
   const t = data?.totals;
   const share = (n: number) => (t && t.orders ? pct(n / t.orders) : '—');
 
+  // الصفحة ليست جدولًا واحدًا بل ستّة تحليلات متجاورة، فيخرج الملف بورقةٍ لكل
+  // تحليل: دمجها في ورقة واحدة يُفقد الأعمدة معناها ويمنع الفرز والجمع.
+  // ويأخذ البنّاء التحليل وسيطًا لأن الخيار الثاني يصدّر تحليلًا آخر مجلوبًا.
+  const buildSheets = (d: Analysis): ExportSheet[] => {
+    const catLabel = (k: CategoryKey) => (ar ? CATEGORY_LABELS[k].ar : CATEGORY_LABELS[k].en);
+    const keys = Object.keys(CATEGORY_LABELS) as CategoryKey[];
+    const labelValue: ExportColumn[] = [
+      { header: ar ? 'البند' : 'Item', key: 'label', width: 30 },
+      { header: ar ? 'القيمة' : 'Value', key: 'value', width: 18 },
+    ];
+
+    // أعمدة الأشهر تُبنى من نافذة التحليل نفسها لأن عددها يتغيّر بتغيّر الفترة،
+    // ومفاتيحها منقّطة (months.2026-01) فتقرأ الخريطة الشهرية مباشرةً.
+    const monthCols: ExportColumn[] = d.window.months.map((m) => ({
+      header: monthLabel(m, ar), key: `months.${m}`, transform: (v: any) => (v == null ? '' : v), width: 12,
+    }));
+
+    return [
+      {
+        name: ar ? 'ملخّص التصنيفات' : 'Category split',
+        rows: keys.map((k) => ({
+          category: catLabel(k),
+          orders: d.totals.byCategory[k] || 0,
+          share: d.totals.orders ? pct((d.totals.byCategory[k] || 0) / d.totals.orders) : '—',
+          vendors: (d.totals.categoryVendorCounts as Record<string, number>)[k] ?? '',
+        })),
+        columns: [
+          { header: ar ? 'التصنيف' : 'Category', key: 'category', width: 26 },
+          { header: ar ? 'الطلبات' : 'Orders', key: 'orders', width: 12 },
+          { header: ar ? 'النسبة' : 'Share', key: 'share', width: 10 },
+          { header: ar ? 'عدد الموردين' : 'Vendors', key: 'vendors', width: 12 },
+        ],
+      },
+      {
+        name: ar ? 'الاتجاه الشهري' : 'Monthly trend',
+        rows: d.trend as any[],
+        columns: [
+          { header: ar ? 'الشهر' : 'Month', key: 'month', transform: (v) => monthLabel(v, ar), width: 16 },
+          { header: ar ? 'إجمالي الطلبات' : 'Total', key: 'total', width: 14 },
+          ...keys.map((k) => ({ header: catLabel(k), key: k, width: 16 })),
+        ],
+      },
+      {
+        name: ar ? 'أعلى الموردين' : 'Top vendors',
+        rows: d.topVendors as any[],
+        columns: [
+          { header: ar ? 'المورد' : 'Vendor', key: 'vendorName', width: 30 },
+          { header: ar ? 'الحالة' : 'Status', key: 'category', transform: (v) => catLabel(v as CategoryKey), width: 22 },
+          { header: ar ? 'عدد السيارات' : 'Fleet', key: 'fleetSize', width: 12 },
+          ...monthCols,
+          { header: ar ? 'إجمالي الفترة' : 'Total', key: 'totalOrders', width: 14 },
+        ],
+      },
+      {
+        name: ar ? 'الطاقة المهدرة' : 'Wasted capacity',
+        rows: d.wastedCapacity as any[],
+        columns: [
+          { header: ar ? 'المورد' : 'Vendor', key: 'vendorName', width: 30 },
+          { header: ar ? 'عدد السيارات' : 'Fleet', key: 'fleetSize', width: 12 },
+          { header: ar ? 'الطلبات' : 'Orders', key: 'totalOrders', width: 12 },
+          { header: ar ? 'الطاقة المتوقعة' : 'Capacity', key: 'capacity', width: 14 },
+          { header: ar ? 'الاستغلال' : 'Utilisation', key: 'utilisation', transform: (v) => pct(v || 0), width: 12 },
+        ],
+      },
+      {
+        name: ar ? 'أداء المناديب' : 'Rep performance',
+        rows: d.reps as any[],
+        columns: [
+          { header: ar ? 'المندوب' : 'Rep', key: 'rep', width: 24 },
+          { header: ar ? 'الطلبات' : 'Orders', key: 'orders', width: 12 },
+          { header: ar ? 'عدد الموردين' : 'Vendors', key: 'vendors', width: 12 },
+          { header: ar ? 'منهم موقّعون' : 'Signed', key: 'signed', width: 12 },
+        ],
+      },
+      {
+        name: ar ? 'النمو والتراجع' : 'Movers',
+        // بطاقتان على الشاشة ومعناهما واحد (فرق أول شهر عن آخره)، فتُدمجان في
+        // ورقةٍ واحدة يميّزها عمود الاتجاه ليمكن فرزها معًا.
+        rows: [
+          ...d.movers.growth.map((m) => ({ ...m, direction: ar ? 'نمو' : 'Growth' })),
+          ...d.movers.decline.map((m) => ({ ...m, direction: ar ? 'تراجع' : 'Decline' })),
+        ],
+        columns: [
+          { header: ar ? 'المورد' : 'Vendor', key: 'vendorName', width: 30 },
+          { header: ar ? 'الاتجاه' : 'Direction', key: 'direction', width: 12 },
+          { header: ar ? 'أول شهر' : 'First month', key: 'from', width: 12 },
+          { header: ar ? 'آخر شهر' : 'Last month', key: 'to', width: 12 },
+          { header: ar ? 'الفرق' : 'Delta', key: 'delta', width: 12 },
+        ],
+      },
+      {
+        name: ar ? 'ثبات الموردين' : 'Vendor stability',
+        rows: [
+          { label: ar ? 'الفترة' : 'Window', value: d.window.months.map((m) => monthLabel(m, ar)).join(' + ') },
+          { label: ar ? 'إجمالي طلبات الفترة' : 'Total orders', value: fmtN(d.totals.orders) },
+          { label: ar ? 'مورد فريد خلال الفترة' : 'Unique vendors', value: fmtN(d.stability.uniqueVendors) },
+          { label: ar ? 'نشط في كل الأشهر' : 'Active all months', value: fmtN(d.stability.stableAllMonths) },
+          { label: ar ? 'دخل في آخر شهر' : 'New in last month', value: fmtN(d.stability.newInLast) },
+          { label: ar ? 'توقف بعد أول شهر' : 'Stopped after first', value: fmtN(d.stability.stoppedAfterFirst) },
+        ],
+        columns: labelValue,
+      },
+    ];
+  };
+
+  const monthKey = (m: { year: number; month: number }) => `${m.year}-${String(m.month).padStart(2, '0')}`;
+  // صياغة موحّدة لأسماء النطاقات عبر كل شاشات النظام: «الكلّ» هنا هو «الكلّ» هناك.
+  const scope = exportScopeLabels(ar);
+
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
@@ -127,6 +237,29 @@ export default function ContractsAnalysisPage() {
           ? `${data.window.months.map((m) => monthLabel(m, true)).join(' + ')} · ${fmtN(t!.orders)} طلب · ${fmtN(t!.uniqueVendors)} مورد فريد`
           : `${data.window.months.join(' + ')} · ${fmtN(t!.orders)} orders`) : ''}
       >
+        {data && (
+          <ExportMenu fileName="vendor-utilisation-analysis" lang={ar ? 'ar' : 'en'}
+            options={[
+              {
+                key: 'window',
+                label: scope.shown,
+                sheets: buildSheets(data),
+              },
+              {
+                key: 'all',
+                label: scope.all,
+                hint: available.length ? `${available.length} ${ar ? 'شهرًا' : 'months'}` : '',
+                disabled: available.length < 2,
+                // التحليل كلّه يُحسب على الخادم لنافذة الشهرين المختارة، ولا تحمل
+                // الصفحة إلا نتيجتها — فالتصدير الشامل يُعاد طلبه بأوسع مدى مسجّل،
+                // وبناؤه من المعروض كان سيصدّر ثلاثة أشهر باسم «كل الأشهر».
+                resolve: async () => {
+                  const wide = await api.get<Analysis>(`/api/contracts/analysis?from=${monthKey(available[0])}&to=${monthKey(available[available.length - 1])}`);
+                  return buildSheets(wide);
+                },
+              },
+            ]} />
+        )}
         {canEdit && (
           <PrimaryButton onClick={() => setShowEntry(true)}>
             <span className="inline-flex items-center gap-1.5"><Plus className="w-4 h-4" />{ar ? 'إدخال أرقام شهر' : 'Enter month data'}</span>

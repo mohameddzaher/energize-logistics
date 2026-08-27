@@ -13,6 +13,7 @@ import {
   Spinner, PageHeader, SearchInput, Modal, Field, TextInput, TextArea, Select,
   PrimaryButton, ErrorNotice, SmallBadge, StatCard,
 } from '@/components/hr/HRKit';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ContractProspect, canViewContracts, canEditContracts, fmtN, fmtD, foldAr } from '@/lib/contracts';
 import { useDialog } from '@/components/system/DialogProvider';
 
@@ -101,6 +102,34 @@ export default function ProspectsPage() {
     converted: prospects.filter((p) => p.convertedVendor).length,
   };
 
+  // «الوجهات» و«الملاحظات» لا يتّسع لهما الجدول (الملاحظات مقصوصة بسطرين)، وهما
+  // بالضبط ما يحتاجه من يتابع التنشيط خارج الشاشة — فيخرجان كاملين في الملف.
+  const cols: ExportColumn[] = [
+    { header: ar ? 'اسم الشركة' : 'Company', key: 'companyName', width: 28 },
+    { header: ar ? 'جهة الاتصال' : 'Contact', key: 'contactPerson', width: 18 },
+    { header: ar ? 'الجوال' : 'Phone', key: 'phone', width: 14 },
+    { header: ar ? 'المقر' : 'HQ', key: 'headquarters', width: 16 },
+    { header: ar ? 'الوجهات' : 'Destinations', key: 'destinations', width: 26 },
+    { header: ar ? 'نوع السيارات' : 'Vehicles', key: 'vehicleType', width: 16 },
+    // نفس ترتيب الشارة على الشاشة: «تحوّل إلى مورد» يسبق حالة الاهتمام، لأن
+    // المحوَّل قد يكون مسجّلًا «مهتمًّا» فيبدو في الملف صفًّا ما زال قيد التنشيط.
+    {
+      header: ar ? 'الاهتمام' : 'Interest',
+      key: 'interestStatus',
+      transform: (v, r) => (r.convertedVendor ? (ar ? 'تحوّل إلى مورد' : 'Converted')
+        : r.isInterested === true ? (v || (ar ? 'مهتم' : 'Interested'))
+          : r.isInterested === false ? (v || (ar ? 'غير مهتم' : 'Not interested'))
+            : (v || (ar ? 'قيد المتابعة' : 'Following up'))),
+      width: 18,
+    },
+    { header: ar ? 'تاريخ التواصل' : 'Contacted', key: 'contactDate', transform: (v) => fmtD(v), width: 14 },
+    { header: ar ? 'المتابع' : 'Assigned to', key: 'assignedTo', width: 18 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 40 },
+  ];
+  const sheetName = ar ? 'التنشيط' : 'Prospects';
+  // صياغة موحّدة لأسماء النطاقات عبر كل شاشات النظام: «الكلّ» هنا هو «الكلّ» هناك.
+  const scope = exportScopeLabels(ar);
+
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
@@ -108,6 +137,27 @@ export default function ProspectsPage() {
         title={ar ? 'تنشيط الموردين الجدد' : 'Prospect Outreach'}
         subtitle={ar ? 'شركات تم التواصل معها ولم تتعاقد بعد — تابعها ثم حوّل المهتم منها إلى مورد بضغطة' : 'Contacted, not yet contracted'}
       >
+        <ExportMenu fileName="vendor-prospects" lang={ar ? 'ar' : 'en'}
+          options={[
+            {
+              key: 'shown',
+              label: scope.shown,
+              sheets: [{ name: sheetName, rows: filtered, columns: cols }],
+            },
+            {
+              // قائمة المكالمات التالية: المهتمّون الذين لم يُحوَّلوا بعد. تُبنى من
+              // نفس شرط بطاقة «مهتم» أعلى الصفحة كي يتطابق الملف مع العدّاد.
+              key: 'interested',
+              label: ar ? 'المهتمّون غير المحوَّلين' : 'Interested, not yet converted',
+              sheets: [{ name: sheetName, rows: prospects.filter((p) => p.isInterested === true && !p.convertedVendor), columns: cols }],
+            },
+            {
+              // الخادم يُرجع السجلّ كاملًا بلا ترقيم، فلا حاجة لإعادة جلبٍ هنا.
+              key: 'all',
+              label: scope.all,
+              sheets: [{ name: sheetName, rows: prospects, columns: cols }],
+            },
+          ]} />
         {canEdit && <PrimaryButton onClick={openNew}><span className="inline-flex items-center gap-1.5"><Plus className="w-4 h-4" />{ar ? 'إضافة شركة' : 'Add prospect'}</span></PrimaryButton>}
       </PageHeader>
 

@@ -5,9 +5,9 @@ import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { Wallet } from 'lucide-react';
 import { isFinanceStaff, money, fmtDate } from '@/lib/finance';
-import { Spinner, PageHeader, StatCard, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import { getAccountingReceivablesTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function ReceivablesPage() {
   const { user } = useAuth();
@@ -26,20 +26,24 @@ export default function ReceivablesPage() {
   if (loading || !data) return <Spinner />;
   const b = data.buckets;
 
-  const handleExport = () => {
-    exportToExcel(data.rows, [
-      { header: tx.invoice, key: 'invoice', width: 18 },
-      { header: tx.customer, key: 'customer', transform: (_v, r) => r.customer?.companyName || '—', width: 24 },
-      { header: tx.balance, key: 'balance', transform: (v) => money(v, ''), width: 16 },
-      { header: tx.due, key: 'dueDate', transform: (v) => fmtDate(v), width: 14 },
-      { header: tx.daysOverdue, key: 'daysOverdue', transform: (v) => (v > 0 ? v : '—'), width: 14 },
-    ], 'receivables', lang === 'ar' ? 'الذمم المدينة' : 'Receivables');
-  };
+  const exportColumns: ExportColumn[] = [
+    { header: tx.invoice, key: 'invoice', width: 18 },
+    { header: tx.customer, key: 'customer', transform: (_v, r) => r.customer?.companyName || '—', width: 24 },
+    { header: tx.balance, key: 'balance', transform: (v) => money(v, ''), width: 16 },
+    { header: tx.due, key: 'dueDate', transform: (v) => fmtDate(v), width: 14 },
+    { header: tx.daysOverdue, key: 'daysOverdue', transform: (v) => (v > 0 ? v : '—'), width: 14 },
+  ];
+  // تقريرُ أعمارِ ديونٍ بلا فلترٍ ولا ترقيم: الشاشة هي الكلّ حرفيًّا، ولو أضفنا
+  // نطاقًا ثانيًا لأنتج الملفَّ نفسَه وأوهم المستخدمَ أنّ بينهما فرقًا.
+  const scope = exportScopeLabels(lang === 'ar');
+  const exportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: lang === 'ar' ? 'الذمم المدينة' : 'Receivables', rows: data.rows, columns: exportColumns }] },
+  ];
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Wallet className="w-5 h-5" />} title={tx.title} subtitle={money(data.total)}>
-        <ExportButton label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} onClick={handleExport} />
+        <ExportMenu fileName="receivables" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
       </PageHeader>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard label={tx.current} value={money(b.current)} accent="text-green-600" />

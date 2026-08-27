@@ -4,10 +4,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
 import { motion } from 'framer-motion';
-import { Clock, LogIn, LogOut, CheckCircle2, RefreshCw, Download } from 'lucide-react';
+import { Clock, LogIn, LogOut, CheckCircle2, RefreshCw } from 'lucide-react';
 import { isRemoteStaff, fmtDuration, fmtTime } from '@/lib/remote';
 import { getRemoteAttendanceTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface AttRecord {
   _id: string;
@@ -151,30 +151,33 @@ function StaffAttendance({ ar, isRTL }: { ar: boolean; isRTL: boolean }) {
     api.get<{ employees: EmployeeOpt[] }>('/api/remote/employees').then((d) => setEmployees(d.employees || [])).catch(() => {});
   }, []);
 
-  const handleExport = () => {
-    exportToExcel(
-      records,
-      [
-        { header: tx.employee, key: 'user', width: 26, transform: (u: AttRecord['user']) => (u ? `${u.firstName} ${u.lastName}` : '—') },
-        { header: tx.date, key: 'date', width: 14 },
-        { header: tx.in, key: 'checkIn', width: 12, transform: (v: string) => fmtTime(v) },
-        { header: tx.out, key: 'checkOut', width: 12, transform: (v: string) => (v ? fmtTime(v) : '—') },
-        { header: tx.hours, key: 'durationMinutes', width: 12, transform: (v: number) => fmtDuration(v, ar ? 'ar' : 'en') },
-        { header: tx.status, key: 'status', width: 14, transform: (v: AttRecord['status']) => (v === 'present' ? tx.statusComplete : tx.statusOpen) },
-      ],
-      'remote-attendance',
-      tx.teamAttendance
-    );
+  const exportColumns: ExportColumn[] = [
+    { header: tx.employee, key: 'user', width: 26, transform: (u: AttRecord['user']) => (u ? `${u.firstName} ${u.lastName}` : '—') },
+    { header: tx.date, key: 'date', width: 14 },
+    { header: tx.in, key: 'checkIn', width: 12, transform: (v: string) => fmtTime(v) },
+    { header: tx.out, key: 'checkOut', width: 12, transform: (v: string) => (v ? fmtTime(v) : '—') },
+    { header: tx.hours, key: 'durationMinutes', width: 12, transform: (v: number) => fmtDuration(v, ar ? 'ar' : 'en') },
+    { header: tx.status, key: 'status', width: 14, transform: (v: AttRecord['status']) => (v === 'present' ? tx.statusComplete : tx.statusOpen) },
+  ];
+  // الفلترةُ (موظّف/من/إلى) تجري على الخادم، فما في الذاكرة سجلّاتُ الفلتر وحدها؛
+  // ومن أراد سجلّ الفريق كلّه احتاج نداءً جديدًا بلا معاملات لا تصديرًا لما يراه.
+  const hasActiveFilters = !!(userId || from || to);
+  const fetchAllForExport = async () => {
+    const d = await api.get<{ records: AttRecord[] }>('/api/remote/attendance');
+    return [{ name: tx.teamAttendance, rows: (d.records || []) as unknown as Record<string, any>[], columns: exportColumns }];
   };
+  const scope = exportScopeLabels(ar);
+  const exportOptions = [
+    { key: 'shown', label: hasActiveFilters ? scope.shown : scope.all, sheets: [{ name: tx.teamAttendance, rows: records as unknown as Record<string, any>[], columns: exportColumns }] },
+    ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
+  ];
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2"><Clock className="w-6 h-6 text-[#f37121]" />{tx.teamAttendance}</h1>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={handleExport} disabled={records.length === 0} className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-50">
-            <Download className="w-4 h-4" />{ar ? 'تصدير Excel' : 'Export Excel'}
-          </button>
+          <ExportMenu fileName="remote-attendance" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
           <button type="button" onClick={load} className="p-2 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100" title={tx.refresh}><RefreshCw className="w-4 h-4" /></button>
         </div>
       </div>

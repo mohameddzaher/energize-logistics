@@ -10,9 +10,9 @@ import {
   empName, userName, fmtDate, leaveTypeLabel, expiryBadge,
   EMPLOYMENT_STATUS, LEAVE_STATUS, assetTypeLabel,
 } from '@/lib/hr';
-import { Spinner, PageHeader, Badge, SmallBadge, Tabs, StatCard, ExportButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, Badge, SmallBadge, Tabs, StatCard } from '@/components/hr/HRKit';
 import { getHrMeTranslations } from '@/lib/translations';
-import { exportToExcel } from '@/utils/exportExcel';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 interface Me { employee: Employee | null; contracts: Contract[]; activeContract: Contract | null; balance: LeaveBalance | null; leaves: LeaveRequest[]; assets: Asset[]; }
 
@@ -68,20 +68,28 @@ export default function MyProfilePage() {
   ];
   const iqamaB = expiryBadge(e.iqamaExpiry, lang);
 
-  const exportLeaves = () => exportToExcel(data.leaves, [
+  const leaveColumns: ExportColumn[] = [
     { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 18 },
     { header: tx.colFrom, key: 'startDate', transform: (v) => fmtDate(v), width: 14 },
     { header: tx.colTo, key: 'endDate', transform: (v) => fmtDate(v), width: 14 },
     { header: tx.colDays, key: 'days', width: 10 },
     { header: tx.colStatus, key: 'status', transform: (v) => (lang === 'ar' ? LEAVE_STATUS[v]?.ar : LEAVE_STATUS[v]?.en) || v, width: 14 },
-  ], 'my-leaves', tx.tabLeaves);
-
-  const exportCustody = () => exportToExcel(data.assets, [
+  ];
+  const custodyColumns: ExportColumn[] = [
     { header: tx.colItem, key: 'name', width: 22 },
     { header: tx.colType, key: 'type', transform: (v) => assetTypeLabel(v, lang), width: 16 },
     { header: tx.colSerial, key: 'serialNumber', transform: (v) => v || '—', width: 18 },
     { header: tx.colStatus, key: 'status', transform: (v) => v === 'assigned' ? tx.badgeAssigned : tx.badgeReturned, width: 14 },
-  ], 'my-custody', tx.tabCustody);
+  ];
+  // ملفّ الموظّف عن نفسه: كلُّ ما يعرضه هذان الجدولان هو كلُّ ما عنده، بلا بحثٍ
+  // ولا فلتر. فنطاقٌ ثانٍ لن يزيد صفًّا واحدًا، وإنّما يوهم بأنّ المعروض ناقص.
+  const scope = exportScopeLabels(lang === 'ar');
+  const leaveExportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: tx.tabLeaves, rows: data.leaves, columns: leaveColumns }] },
+  ];
+  const custodyExportOptions = [
+    { key: 'all', label: scope.all, sheets: [{ name: tx.tabCustody, rows: data.assets, columns: custodyColumns }] },
+  ];
 
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -120,7 +128,7 @@ export default function MyProfilePage() {
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           {data.leaves.length > 0 && (
             <div className="flex justify-end p-3 border-b border-slate-200">
-              <ExportButton onClick={exportLeaves} label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} />
+              <ExportMenu fileName="my-leaves" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={leaveExportOptions} />
             </div>
           )}
           <div className="overflow-x-auto">
@@ -140,7 +148,7 @@ export default function MyProfilePage() {
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           {data.assets.length > 0 && (
             <div className="flex justify-end p-3 border-b border-slate-200">
-              <ExportButton onClick={exportCustody} label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} />
+              <ExportMenu fileName="my-custody" lang={lang === 'ar' ? 'ar' : 'en'} variant="subtle" label={lang === 'ar' ? 'تصدير Excel' : 'Export Excel'} options={custodyExportOptions} />
             </div>
           )}
           <div className="overflow-x-auto">

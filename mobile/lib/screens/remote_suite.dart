@@ -508,9 +508,14 @@ class _RemoteAnnouncementsScreenState extends State<RemoteAnnouncementsScreen> {
     }
   }
 
-  Future<void> _create() async {
-    final title = TextEditingController();
-    final body = TextEditingController();
+  void _create() => _sheet();
+
+  /// إعلان: نشرًا وتعديلًا في استمارةٍ واحدة.
+  /// والتعديل لا يُشعر أحدًا — حذفُ الإعلان ونشرُه من جديد كان يُرسل إشعارًا
+  /// ثانيًا للفريق عن الخبر نفسه فيُقرأ خبرًا جديدًا.
+  Future<void> _sheet({Map<String, dynamic>? existing}) async {
+    final title = TextEditingController(text: (existing?['title'] ?? '').toString());
+    final body = TextEditingController(text: (existing?['body'] ?? '').toString());
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -518,7 +523,8 @@ class _RemoteAnnouncementsScreenState extends State<RemoteAnnouncementsScreen> {
         child: Padding(
           padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('إعلان جديد', 'New announcement'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Text(existing == null ? tr('إعلان جديد', 'New announcement') : tr('تعديل الإعلان', 'Edit announcement'),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 12),
             TextField(controller: title, decoration: InputDecoration(labelText: tr('العنوان *', 'Title *'))),
             const SizedBox(height: 10),
@@ -529,15 +535,20 @@ class _RemoteAnnouncementsScreenState extends State<RemoteAnnouncementsScreen> {
               child: FilledButton(
                 onPressed: () async {
                   if (title.text.trim().isEmpty || body.text.trim().isEmpty) return;
+                  final payload = {'title': title.text.trim(), 'body': body.text.trim()};
                   try {
-                    await Api.instance.post('/api/remote/announcements', {'title': title.text.trim(), 'body': body.text.trim()});
+                    if (existing == null) {
+                      await Api.instance.post('/api/remote/announcements', payload);
+                    } else {
+                      await Api.instance.put('/api/remote/announcements/${existing['_id']}', payload);
+                    }
                     if (c.mounted) Navigator.pop(c);
                     _load();
                   } catch (e) {
                     if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
                   }
                 },
-                child: Text(tr('نشر', 'Publish')),
+                child: Text(existing == null ? tr('نشر', 'Publish') : tr('حفظ', 'Save')),
               ),
             ),
           ]),
@@ -577,6 +588,13 @@ class _RemoteAnnouncementsScreenState extends State<RemoteAnnouncementsScreen> {
                                   Row(children: [
                                     Expanded(child: Text((r['title'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                     Chip2(_d(r['createdAt']), T.inkFaint, icon: Icons.schedule_outlined),
+                                    if (staff)
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        tooltip: tr('تعديل', 'Edit'),
+                                        icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
+                                        onPressed: () => _sheet(existing: r),
+                                      ),
                                     if (staff)
                                       IconButton(
                                         icon: const Icon(Icons.delete_outline, size: 19, color: T.danger),

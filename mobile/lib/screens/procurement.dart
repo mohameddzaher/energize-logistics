@@ -715,18 +715,27 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
-  // فاتورة مورد مستقلة: مورد + مبلغ قبل الضريبة + ضريبة + رقم فاتورة + تواريخ.
-  Future<void> _createBill() async {
-    final vendor = await pickFromApi(context,
-        endpoint: '/api/procurement/options', listKey: 'vendors',
-        label: (v) => _vendorName(v), title: tr('اختر المورد', 'Pick vendor'));
-    if (vendor == null || !mounted) return;
-    final subtotal = TextEditingController();
-    final vat = TextEditingController();
-    final invoiceNo = TextEditingController();
-    final notes = TextEditingController();
-    DateTime billDate = DateTime.now();
-    DateTime? dueDate;
+  void _createBill() => _billSheet();
+
+  /// فاتورة مورد: إنشاءً وتعديلًا في استمارةٍ واحدة.
+  ///
+  /// والمورّد لا يُغيَّر عند التعديل: ذاك التزامٌ لجهةٍ أخرى، يُحذف ويُسجَّل
+  /// باسمها. والقيد المحاسبيّ يُعاد ترحيله في الخادم مع تغيّر المبلغ، فلا
+  /// يُقفَل الشهر بميزانٍ لا يطابق فواتيره.
+  Future<void> _billSheet({Map<String, dynamic>? existing}) async {
+    Map<String, dynamic>? vendor;
+    if (existing == null) {
+      vendor = await pickFromApi(context,
+          endpoint: '/api/procurement/options', listKey: 'vendors',
+          label: (v) => _vendorName(v), title: tr('اختر المورد', 'Pick vendor'));
+      if (vendor == null || !mounted) return;
+    }
+    final subtotal = TextEditingController(text: existing == null ? '' : _money(existing['subtotal']).replaceAll(',', ''));
+    final vat = TextEditingController(text: existing == null ? '' : _money(existing['vatAmount']).replaceAll(',', ''));
+    final invoiceNo = TextEditingController(text: (existing?['vendorInvoiceNumber'] ?? '').toString());
+    final notes = TextEditingController(text: (existing?['notes'] ?? '').toString());
+    DateTime billDate = DateTime.tryParse((existing?['billDate'] ?? '').toString()) ?? DateTime.now();
+    DateTime? dueDate = DateTime.tryParse((existing?['dueDate'] ?? '').toString());
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -736,7 +745,10 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
         padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${tr('فاتورة مورد جديدة', 'New vendor bill')} — ${_vendorName(vendor)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Text(existing == null
+                ? '${tr('فاتورة مورد جديدة', 'New vendor bill')} — ${_vendorName(vendor)}'
+                : '${tr('تعديل الفاتورة', 'Edit bill')} ${existing['billNumber'] ?? ''} — ${_vendorName(existing['vendor'])}',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 12),
             TextField(controller: invoiceNo, decoration: InputDecoration(labelText: tr('رقم فاتورة المورد', 'Vendor invoice #'))),
             const SizedBox(height: 10),
@@ -762,27 +774,51 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
             const SizedBox(height: 10),
             TextField(controller: notes, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
             const SizedBox(height: 14),
-            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إنشاء الفاتورة', 'Create bill')))),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(existing == null ? tr('إنشاء الفاتورة', 'Create bill') : tr('حفظ', 'Save')))),
           ]),
         ),
       )),
     );
     if (ok != true) return;
     if ((num.tryParse(subtotal.text) ?? 0) <= 0) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أدخل المبلغ قبل الضريبة', 'Enter the subtotal')))); return; }
+    final body = {
+      if (existing == null) 'vendor': vendor!['_id'],
+      'subtotal': num.tryParse(subtotal.text) ?? 0,
+      'vatAmount': num.tryParse(vat.text) ?? 0,
+      'vendorInvoiceNumber': invoiceNo.text.trim(),
+      'billDate': billDate.toIso8601String().split('T').first,
+      if (dueDate != null) 'dueDate': dueDate!.toIso8601String().split('T').first,
+      'notes': notes.text.trim(),
+    };
     try {
-      await Api.instance.post('/api/procurement/bills', {
-        'vendor': vendor['_id'],
-        'subtotal': num.tryParse(subtotal.text) ?? 0,
-        'vatAmount': num.tryParse(vat.text) ?? 0,
-        if (invoiceNo.text.trim().isNotEmpty) 'vendorInvoiceNumber': invoiceNo.text.trim(),
-        'billDate': billDate.toIso8601String().split('T').first,
-        if (dueDate != null) 'dueDate': dueDate!.toIso8601String().split('T').first,
-        if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim(),
-      });
+      if (existing == null) {
+        await Api.instance.post('/api/procurement/bills', body);
+      } else {
+        await Api.instance.put('/api/procurement/bills/${existing['_id']}', body);
+      }
       _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
+  }
+
+  Future<void> _deleteBill(Map<String, dynamic> r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف الفاتورة', 'Delete bill')),
+        content: Text(tr(
+            'حذف الفاتورة ${r['billNumber'] ?? ''} نهائيًّا؟ يُعكَس معها قيدُها المحاسبيّ.',
+            'Permanently delete bill ${r['billNumber'] ?? ''}? Its journal entry is reversed with it.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try { await Api.instance.delete('/api/procurement/bills/${r['_id']}'); _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
 
   Future<void> _pay(Map<String, dynamic> r) async {
@@ -895,6 +931,18 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
                                             icon: const Icon(Icons.payment_rounded, size: 17),
                                             label: Text(tr('دفع', 'Pay'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                                           ),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          tooltip: tr('تعديل', 'Edit'),
+                                          onPressed: () => _billSheet(existing: r),
+                                          icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
+                                        ),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          tooltip: tr('حذف', 'Delete'),
+                                          onPressed: () => _deleteBill(r),
+                                          icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
+                                        ),
                                       ]),
                                     ]),
                                   ),

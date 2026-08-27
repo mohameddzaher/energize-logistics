@@ -742,6 +742,58 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
   }
 
+  /// تعديل دفعة — والخادم يعيد حساب أثرها على الفاتورة ورصيد العميل معًا.
+  /// والعميل والفاتورة لا يُغيَّران هنا: تلك دفعةٌ أخرى، تُحذف وتُسجَّل.
+  Future<void> _editPayment(Map<String, dynamic> r) async {
+    final amount = TextEditingController(text: '${r['amount'] ?? ''}');
+    final reference = TextEditingController(text: (r['reference'] ?? '').toString());
+    final notes = TextEditingController(text: (r['notes'] ?? '').toString());
+    String method = (r['paymentMethod'] ?? 'bank_transfer').toString();
+    const methods = [
+      ('bank_transfer', 'تحويل بنكي', 'Bank transfer'), ('cash', 'نقدًا', 'Cash'),
+      ('check', 'شيك', 'Cheque'), ('online', 'إلكتروني', 'Online'), ('other', 'أخرى', 'Other'),
+    ];
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('تعديل الدفعة', 'Edit payment'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المبلغ *', 'Amount *'))),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            initialValue: method,
+            decoration: InputDecoration(labelText: tr('طريقة الدفع', 'Method')),
+            items: methods.map((m) => DropdownMenuItem(value: m.$1, child: Text(tr(m.$2, m.$3)))).toList(),
+            onChanged: (v) => setS(() => method = v ?? method),
+          ),
+          const SizedBox(height: 10),
+          TextField(controller: reference, decoration: InputDecoration(labelText: tr('المرجع', 'Reference'))),
+          const SizedBox(height: 10),
+          TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')))),
+        ]),
+      )),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.put('/api/payments/${r['_id']}', {
+        'amount': num.tryParse(amount.text.trim()) ?? 0,
+        'paymentMethod': method,
+        'reference': reference.text.trim(),
+        'notes': notes.text.trim(),
+      });
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
@@ -815,6 +867,15 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                                         ]),
                                       ),
                                       Text('${_money(r['amount'])} ر.س', style: const TextStyle(fontWeight: FontWeight.w800, color: T.success)),
+                                      // الدفعة كانت تُسجَّل وتُحذف ولا تُصحَّح:
+                                      // خطأُ رقمٍ واحد يعني حذفها وإعادة
+                                      // تسجيلها، فيضيع تاريخُها ومن استلمها.
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        tooltip: tr('تعديل', 'Edit'),
+                                        onPressed: () => _editPayment(r),
+                                        icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
+                                      ),
                                     ]),
                                   ),
                                 );

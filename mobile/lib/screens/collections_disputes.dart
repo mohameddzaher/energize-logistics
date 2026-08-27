@@ -188,6 +188,64 @@ class _CollectionsScreenState extends State<CollectionsScreen> {
     }
   }
 
+  /// تعديل نشاط تحصيل — الملاحظات والمبلغ والمواعيد. والعميل لا يُغيَّر:
+  /// نشاطٌ سُجِّل على عميلٍ آخر يُحذف ويُسجَّل، فتغييرُه يقلب سجلَّي عميلين.
+  Future<void> _editActivity(Map<String, dynamic> f) async {
+    final notes = TextEditingController(text: (f['notes'] ?? '').toString());
+    final amount = TextEditingController(text: f['amountCollected'] == null ? '' : '${f['amountCollected']}');
+    final promise = TextEditingController(text: f['promiseAmount'] == null ? '' : '${f['promiseAmount']}');
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${tr('تعديل المتابعة', 'Edit activity')} — ${_customerName(f['customer'])}',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('الملاحظات', 'Notes'))),
+          const SizedBox(height: 10),
+          TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المبلغ المحصّل', 'Amount collected'))),
+          const SizedBox(height: 10),
+          TextField(controller: promise, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('مبلغ الوعد', 'Promise amount'))),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')))),
+        ]),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.put('/api/collections/${f['_id']}', {
+        'notes': notes.text.trim(),
+        if (amount.text.trim().isNotEmpty) 'amountCollected': num.tryParse(amount.text.trim()) ?? 0,
+        if (promise.text.trim().isNotEmpty) 'promiseAmount': num.tryParse(promise.text.trim()) ?? 0,
+      });
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _deleteActivity(Map<String, dynamic> f) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف المتابعة', 'Delete activity')),
+        content: Text(tr('حذف هذه المتابعة؟ لا تؤثّر على أرصدة العميل ولا على فواتيره.',
+            'Delete this activity? It does not affect balances or invoices.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try { await Api.instance.delete('/api/collections/${f['_id']}'); _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+  }
+
   // تسجيل متابعة تحصيل جديدة: اختيار العميل + النوع + الملاحظات (+ مبلغ محصّل).
   Future<void> _logActivity() async {
     final customer = await pickFromApi(context,
@@ -291,14 +349,28 @@ class _CollectionsScreenState extends State<CollectionsScreen> {
                                     Text(f['notes'], style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                                   ],
                                   const SizedBox(height: 6),
-                                  Align(
-                                    alignment: AlignmentDirectional.centerEnd,
-                                    child: FilledButton.tonalIcon(
+                                  Row(children: [
+                                    // نشاطٌ سُجِّل على العميل الخطأ كان يبقى في
+                                    // سجلّه أبدًا ويدخل في تقارير التحصيل عنه.
+                                    IconButton(
+                                      visualDensity: VisualDensity.compact,
+                                      tooltip: tr('تعديل', 'Edit'),
+                                      onPressed: () => _editActivity(f),
+                                      icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
+                                    ),
+                                    IconButton(
+                                      visualDensity: VisualDensity.compact,
+                                      tooltip: tr('حذف', 'Delete'),
+                                      onPressed: () => _deleteActivity(f),
+                                      icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
+                                    ),
+                                    const Spacer(),
+                                    FilledButton.tonalIcon(
                                       onPressed: () => _complete(f),
                                       icon: const Icon(Icons.check, size: 17),
                                       label: Text(tr('إنهاء', 'Complete'), style: const TextStyle(fontSize: 12.5)),
                                     ),
-                                  ),
+                                  ]),
                                 ]),
                               ),
                             );
@@ -382,6 +454,25 @@ class _DisputesScreenState extends State<DisputesScreen> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
+  }
+
+  Future<void> _deleteDispute(Map<String, dynamic> disp) async {
+    final inv = disp['invoice'] is Map ? (disp['invoice']['invoiceNumber'] ?? '').toString() : '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف النزاع', 'Delete dispute')),
+        content: Text(tr('حذف النزاع${inv.isEmpty ? '' : ' على الفاتورة $inv'}؟ ترجع الفاتورة إلى حالتها قبله.',
+            'Delete this dispute${inv.isEmpty ? '' : ' on invoice $inv'}? The invoice returns to its prior status.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try { await Api.instance.delete('/api/disputes/${disp['_id']}'); _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
 
   // فتح نزاع جديد على فاتورة: اختيار الفاتورة + سبب النزاع.
@@ -479,19 +570,27 @@ class _DisputesScreenState extends State<DisputesScreen> {
                                         const SizedBox(height: 5),
                                         Text('${tr('الحل', 'Resolution')}: ${disp['resolution']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: T.success)),
                                       ],
-                                      if (disp['status'] != 'resolved') ...[
-                                        const SizedBox(height: 6),
-                                        Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                                          if (disp['status'] == 'open')
+                                      const SizedBox(height: 6),
+                                      Row(children: [
+                                        // الحذف يُرجع الفاتورة إلى حالها قبل
+                                        // النزاع، فلا تبقى مجمّدةً بلا سبب.
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          tooltip: tr('حذف النزاع', 'Delete dispute'),
+                                          onPressed: () => _deleteDispute(disp),
+                                          icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
+                                        ),
+                                        const Spacer(),
+                                        if (disp['status'] != 'resolved' && disp['status'] == 'open')
                                             TextButton(onPressed: () => _update(disp, 'under_review'), child: Text(tr('مراجعة', 'Review'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.info))),
-                                          const SizedBox(width: 4),
+                                        const SizedBox(width: 4),
+                                        if (disp['status'] != 'resolved')
                                           FilledButton.tonal(
                                             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6)),
                                             onPressed: () => _update(disp, 'resolved'),
                                             child: Text(tr('حل', 'Resolve'), style: const TextStyle(fontSize: 12.5)),
                                           ),
-                                        ]),
-                                      ],
+                                      ]),
                                     ]),
                                   ),
                                 );

@@ -95,6 +95,16 @@ function DocumentFamilyPageInner({
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(sp?.get('q') || '');
   const [chip, setChip] = useState('');
+  // ── الفلتر الداخليّ: مدى الأيام حتى الانتهاء ────────────────────────────────
+  //
+  // الفلتر الأساسيّ يجيب عن «أيّ مركبات؟» — قطاعًا ومدينةً ومالكًا. وهذا يجيب عن
+  // سؤالٍ آخر لا يُغني عنه: «ما الذي ينتهي قبل كذا يومًا؟» وهما يعملان معًا لا
+  // بدلًا من بعض: «بطاقات تشغيل النقل الثقيل في جدّة التي تنتهي خلال أسبوع»
+  // سؤالٌ واحد، وكان يحتاج شاشتين.
+  //
+  // ويُقرأ من العنوان كبقيّة الفلاتر، فالرابط يُرسَل ويُفتح على ما فُلتِر عليه.
+  const [within, setWithin] = useState(sp?.get('within') || '');
+  const [includeExpired, setIncludeExpired] = useState(sp?.get('incExp') !== '0');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [renewing, setRenewing] = useState<RenewTarget | null>(null);
   const [bulk, setBulk] = useState<RenewTarget[] | null>(null);
@@ -132,9 +142,11 @@ function DocumentFamilyPageInner({
     const p = new URLSearchParams();
     if (q.trim()) p.set('q', q.trim());
     for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) p.set(k, String(v));
+    if (within) p.set('within', within);
+    if (!includeExpired) p.set('incExp', '0');
     const s = p.toString();
     router.replace(`${path}${s ? `?${s}` : ''}`, { scroll: false });
-  }, [q, JSON.stringify(filters), router, path]);
+  }, [q, JSON.stringify(filters), within, includeExpired, router, path]);
 
   // ── الشرائح: حالةُ **هذا** المستند وحده ──────────────────────────────────
   // لا حالة المركبة العامّة: مركبةٌ تأمينها منتهٍ وبطاقةُ تشغيلها سارية ليست
@@ -152,7 +164,26 @@ function DocumentFamilyPageInner({
   ])), [ar, docKey, chips]);
 
   const search = useCallback((v: VReg) => (searchIn ? searchIn(v) : [v.plateNumber, v.ownerNameAr]), [searchIn]);
-  const f = useChipFilter(rows, CHIPS, chip, q, search);
+  const chipFiltered = useChipFilter(rows, CHIPS, chip, q, search);
+
+  // ── ويُطبَّق مدى الأيام فوق الشرائح، لا بدلًا منها ──────────────────────────
+  // الترتيب مقصود: الشريحة تقول «منتهٍ» والمدى يقول «خلال سبعة» — واجتماعُهما
+  // «المنتهي أو الذي ينتهي خلال سبعة»، وهو ما يُسأل عنه فعلًا.
+  //
+  // والمركبة بلا تاريخٍ مسجَّل تخرج من أيّ مدًى: لا تاريخ لها يُقاس، وإدخالُها
+  // في «ينتهي خلال سبعة» يجعل الرقم يعِد بعملٍ لا يوجد.
+  const f = useMemo(() => {
+    if (!docKey || within === '') return chipFiltered;
+    const n = Number(within);
+    if (!Number.isFinite(n)) return chipFiltered;
+    const shown = chipFiltered.shown.filter((v: VReg) => {
+      const st = stateOf(v, docKey);
+      if (st.days == null) return false;
+      if (st.days < 0) return includeExpired;   // المنتهي: يُضمّ أو يُستبعَد صراحةً
+      return st.days <= n;
+    });
+    return { ...chipFiltered, shown };
+  }, [chipFiltered, docKey, within, includeExpired]);
 
   // صفٌّ مسطَّح للتصدير: نفس الدوالّ التي تُرسم بها الخلايا، فالملفّ لا يختلف
   // عن الشاشة ولا يحتاج تعريفًا ثانيًا للأعمدة.
@@ -226,6 +257,45 @@ function DocumentFamilyPageInner({
           resultLabel={t('المركبات المطابقة', 'Matching vehicles')}
         />
       </div>
+
+      {/* ── الفلتر الداخليّ: «ما الذي ينتهي قبل كذا يومًا؟» ────────────────────
+          يعمل مع الفلتر الأساسيّ فوقه لا بدلًا منه، ومع شرائح الحالة تحته.
+          والمدّة رقمٌ يُكتب لا قائمةٌ ثابتة: الأزرار اختصارٌ للشائع، ومَن أراد
+          سبعةً وأربعين يومًا يكتبها. */}
+      {!!docKey && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center gap-2">
+          <span className="text-[12.5px] font-bold text-slate-700">{t('ينتهي خلال', 'Expiring within')}</span>
+          <input type="number" min={0} max={3650} value={within}
+            onChange={(e) => setWithin(e.target.value)}
+            placeholder={t('كل المدد', 'Any')}
+            className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-center font-bold" />
+          <span className="text-[12px] text-slate-500">{t('يوم', 'days')}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {[7, 15, 30, 60, 90, 180].map((n) => (
+              <button key={n} onClick={() => setWithin(String(n))}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                  within === String(n) ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                }`}>{n}</button>
+            ))}
+            <button onClick={() => setWithin('')}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
+                within === '' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+              }`}>{t('الكل', 'All')}</button>
+          </div>
+          {within !== '' && (
+            <label className="flex items-center gap-1.5 text-[12px] text-slate-600 cursor-pointer ms-1">
+              <input type="checkbox" checked={includeExpired}
+                onChange={(e) => setIncludeExpired(e.target.checked)} className="accent-[#f37121]" />
+              {t('يشمل المنتهي', 'Include expired')}
+            </label>
+          )}
+          {within !== '' && (
+            <span className="text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 ms-auto">
+              {t(`المعروض ${f.shown.length} مركبة`, `${f.shown.length} shown`)}
+            </span>
+          )}
+        </div>
+      )}
 
       <FilterBar chips={CHIPS} counts={f.counts} active={chip} onChange={setChip}
         query={q} onQuery={setQ} placeholder={t('ابحث بلوحة أو رقم…', 'Search plate or number…')}

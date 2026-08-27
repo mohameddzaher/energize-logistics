@@ -58,6 +58,17 @@ const fleetCustomerSchema = new mongoose.Schema({
   customerType: { type: String, enum: ['heavy', 'branch'], default: 'heavy', index: true },
   // تقييمنا للعميل (0–5) — يظهر في ترتيب العملاء بالتحليلات.
   rating: { type: Number, default: 0, min: 0, max: 5 },
+  // نوع الدفع المتفق عليه معه — مفتاحٌ من قائمة fleet_payment_type (cash/tax).
+  // يُملأ تلقائيًا في الحمولة عند اختيار العميل، ويبقى قابلًا للتعديل هناك:
+  // العميل الضريبي قد يدفع حمولةً واحدة كاشًا، فالاتفاق افتراضٌ لا قيد.
+  paymentType: { type: String, trim: true, default: '' },
+  // الرقم الضريبي والعنوان — يظهران في الفاتورة، ويأتيان من الـCRM إن وُجد.
+  taxNumber: { type: String, trim: true, default: '' },
+  address: { type: String, trim: true, default: '' },
+  // ربطٌ بسجلّ الشركة في الـCRM. السجلّان مستقلّان بالنشأة — أُدخل كلٌّ منهما
+  // في قسمه — فلا يجمعهما إلّا الاسم المطبَّع، ولذلك يُخزَّن المفتاح ويُفهرَس.
+  crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true },
+  nameKey: { type: String, trim: true, default: '', index: true },
   routes: [{
     fromCity: { type: String, trim: true, default: '' },
     toCity: { type: String, trim: true, default: '' },

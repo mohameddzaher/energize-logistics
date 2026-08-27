@@ -328,6 +328,14 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                         _customer = c;
                         final ct = (c['customerType'] ?? '').toString();
                         if (ct.isNotEmpty) { _customerType = ct; }
+                        // نوع الدفع المتفق عليه معه يُملأ تلقائيًّا، ويبقى
+                        // قابلًا للتعديل هنا: العميل الضريبيّ قد يدفع حمولةً
+                        // واحدة كاشًا، فالاتفاق افتراضٌ لا قيد.
+                        final pt = (c['paymentType'] ?? '').toString();
+                        if (pt.isNotEmpty) {
+                          final hit = _paymentTypes.where((x) => (x['key'] ?? '').toString() == pt);
+                          if (hit.isNotEmpty) _paymentTypeItem = hit.first;
+                        }
                       }); }
                     },
                     child: AppCard(
@@ -342,6 +350,11 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                                 color: _customer == null ? T.inkFaint : T.ink,
                               )),
                         ),
+                        if (_customer != null && (_customer!['paymentType'] ?? '').toString().isNotEmpty)
+                          Chip2(
+                            (_customer!['paymentType'] == 'tax') ? tr('ضريبي', 'Tax') : tr('كاش', 'Cash'),
+                            (_customer!['paymentType'] == 'tax') ? T.violet : T.success,
+                          ),
                         Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, color: T.inkFaint),
                       ]),
                     ),

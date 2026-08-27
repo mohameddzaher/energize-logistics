@@ -253,7 +253,24 @@ function DocumentFamilyPageInner({
     { key: 'missing', label: t('بلا تاريخ مسجَّل', 'No date on file'), tone: 'slate', test: (v: VReg) => stateOf(v, docKey).state === 'missing' },
   ])), [ar, docKey, chips]);
 
-  const search = useCallback((v: VReg) => (searchIn ? searchIn(v) : [v.plateNumber, v.ownerNameAr]), [searchIn]);
+  // ── البحث يمرّ مرّتين، فلا بدّ أن يتّفقا ──────────────────────────────────
+  // الخادم يبحث في كلّ حقلٍ نصّيّ في المركبة، ثم تُصفَّى النتيجةُ هنا مرّةً
+  // أخرى بالنصّ نفسه. فلو كانت هذه الغربلةُ تنظر في حقلين فقط أسقطت ما وجده
+  // الخادم في حقلٍ ثالث — تكتب رقم هويّة المفوَّض فيصله الصفّ ثم تحذفه الشاشة.
+  // ولذلك تُجمع هنا **كلُّ** قيم الصفّ، وما يمرّره النداء يُضاف إليها لا يحلّ
+  // محلَّها.
+  const deepValues = (o: any, depth = 0): (string | number)[] => {
+    if (o == null || depth > 3) return [];
+    if (Array.isArray(o)) return o.flatMap((x) => deepValues(x, depth + 1));
+    if (typeof o === 'object') return Object.entries(o)
+      .filter(([k]) => k !== '_id' && k !== '__v')
+      .flatMap(([, x]) => deepValues(x, depth + 1));
+    return typeof o === 'string' || typeof o === 'number' ? [o] : [];
+  };
+  const search = useCallback(
+    (v: VReg) => [...deepValues(v), ...(searchIn ? searchIn(v) : [])],
+    [searchIn],
+  );
   const chipFiltered = useChipFilter(rows, CHIPS, chip, q, search);
 
   // ── ويُطبَّق مدى الأيام فوق الشرائح، لا بدلًا منها ──────────────────────────
@@ -428,7 +445,8 @@ function DocumentFamilyPageInner({
       )}
 
       <FilterBar chips={CHIPS} counts={f.counts} active={chip} onChange={setChip}
-        query={q} onQuery={setQ} placeholder={t('ابحث بلوحة أو رقم…', 'Search plate or number…')}
+        query={q} onQuery={setQ}
+        placeholder={t('ابحث بأيّ شيء — لوحة، هيكل، مالك، رقم هويّة، رقم وثيقة، سريال جهاز…', 'Search anything — plate, chassis, owner, ID, policy, serial…')}
         shown={f.shown.length} total={rows.length} ar={ar} />
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">

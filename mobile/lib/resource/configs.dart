@@ -95,17 +95,36 @@ final fleetCustomersCfg = ResourceConfig(
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => FleetCustomerProfileScreen(customerId: (r['_id'] ?? '').toString()))),
   arTitle: 'عملاء الأسطول', enTitle: 'Fleet Customers', icon: Icons.people_outline,
   endpoint: '/api/fleet/customers', listKey: 'customers', liveEvent: 'fleet:customers',
-  searchFields: const ['name', 'phone', 'email'],
+  searchFields: const ['name', 'phone', 'email', 'taxNumber'],
   titleOf: (r) => _s(r, 'name'),
-  subtitleOf: (r) => [_s(r, 'phone'), _s(r, 'email')].where((x) => x.isNotEmpty).join(' · '),
+  // السطر الثاني يحمل أرقامه لا بيانات تواصله وحدها: مئتا عميلٍ في قائمةٍ
+  // بلا أرقام جردٌ يُمرَّر لا سجلٌّ يُقرأ منه من الأكثر تعاملًا.
+  subtitleOf: (r) {
+    final trips = (r['trips'] ?? 0).toString();
+    final income = (r['income'] ?? 0);
+    final parts = <String>[
+      if ((r['trips'] ?? 0) != 0) 'حمولات: $trips',
+      if (income != 0) 'الدخل: $income',
+      _s(r, 'phone'),
+    ];
+    return parts.where((x) => x.isNotEmpty).join(' · ');
+  },
   chipsOf: (r) => [
-    if (r['customerType'] == 'heavy') ('نقل ثقيل', T.violet),
-    if (r['customerType'] == 'branch') ('عميل فروع', T.info),
+    // نوع الدفع المتفق عليه: هو ما يُملأ تلقائيًّا في كل حمولةٍ جديدة له.
+    if (r['paymentType'] == 'tax') ('ضريبي', T.violet),
+    if (r['paymentType'] == 'cash') ('كاش', T.success),
+    if ((r['openTrips'] ?? 0) != 0) ('${r['openTrips']} جارية', T.warn),
+    if (r['crmCompany'] != null) ('مرتبط بالـCRM', T.info),
+    if (r['isActive'] == false) ('معطَّل', T.inkFaint),
   ],
   fields: const [
     FieldSpec('name', 'اسم العميل', 'Name', required: true),
+    FieldSpec('paymentType', 'نوع الدفع المتفق عليه', 'Agreed payment type', type: FieldType.select,
+        options: [('tax', 'ضريبي', 'Tax invoice'), ('cash', 'كاش', 'Cash')]),
     FieldSpec('phone', 'رقم الجوال', 'Phone', type: FieldType.phone),
     FieldSpec('email', 'البريد الإلكتروني', 'Email', type: FieldType.email),
+    FieldSpec('taxNumber', 'الرقم الضريبي', 'Tax number'),
+    FieldSpec('address', 'العنوان', 'Address'),
     FieldSpec('customerType', 'نوع العميل', 'Customer type', type: FieldType.select,
         options: [('heavy', 'نقل ثقيل', 'Heavy transport'), ('branch', 'عميل فروع', 'Branch customer')]),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),

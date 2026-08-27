@@ -108,9 +108,16 @@ function CreateFleetShipmentInner() {
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const vehicle = useMemo(() => vehicles.find((v) => v._id === vehicleId) || null, [vehicles, vehicleId]);
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
-  // اختيار عميل يملأ «نوع العميل» تلقائيًا من نوعه المسجَّل (قابل للتعديل بعدها).
+  // اختيار عميلٍ يملأ ما اتُّفق عليه معه: فئتَه ونوعَ الدفع. وكلاهما يبقى
+  // قابلًا للتعديل هنا — الاتفاق افتراضٌ لحمولةٍ جديدة لا قيدٌ عليها، فالعميل
+  // الضريبيّ قد يدفع حمولةً واحدة كاشًا.
   useEffect(() => {
-    if (customer?.customerType) setForm((f) => ({ ...f, customerType: customer.customerType }));
+    if (!customer) return;
+    setForm((f) => ({
+      ...f,
+      ...(customer.customerType ? { customerType: customer.customerType } : {}),
+      ...(customer.paymentType ? { paymentType: customer.paymentType } : {}),
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
   const driverOf = (id: string) => drivers.find((d) => d._id === id) || null;
@@ -249,6 +256,17 @@ function CreateFleetShipmentInner() {
                   placeholder={ar ? 'الجوال' : 'Phone'} className={inputCls + ' sm:w-40'} />
                 <button type="button" onClick={() => { setNewCustomerOpen(false); setNewCustomer({ name: '', phone: '' }); }}
                   className="p-2.5 text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-4 h-4" /></button>
+              </div>
+            )}
+            {customer && (customer.paymentType || customer.taxNumber) && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {customer.paymentType && (
+                  <span className={`px-2.5 py-1 rounded-full font-semibold ${customer.paymentType === 'tax' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                    {ar ? 'المتفق عليه: ' : 'Agreed: '}{customer.paymentType === 'tax' ? (ar ? 'ضريبي' : 'Tax invoice') : (ar ? 'كاش' : 'Cash')}
+                  </span>
+                )}
+                {customer.taxNumber && <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-mono">{customer.taxNumber}</span>}
+                <span className="text-slate-400">{ar ? 'مُلئ تلقائيًّا — عدِّله لهذه الحمولة إن اختلف.' : 'Prefilled — change it for this shipment if it differs.'}</span>
               </div>
             )}
             {customer && (customer.routes || []).length > 0 && (

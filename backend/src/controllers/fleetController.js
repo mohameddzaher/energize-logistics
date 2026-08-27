@@ -7,6 +7,11 @@ const { createNotification } = require('../services/notificationService');
 // on the board comes from that mirror, joined by normalized plate digits.
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 const { plateKey, vehiclePlateKey } = require('../utils/plateKey');
+// عملاء الأسطول وشركات الـCRM سجلّان مستقلّان يجمعهما الاسم المطبَّع وحده.
+const CrmCompany = require('../models/CrmCompany');
+const CrmActivity = require('../models/CrmActivity');
+const CrmDeal = require('../models/CrmDeal');
+const { nameKey } = require('../utils/nameKey');
 // Live GPS → "السيارة داخل نطاق جدة الآن" (and: reached its trip's destination).
 const { cityForPoint, sameCity } = require('../utils/saCities');
 
@@ -348,11 +353,14 @@ exports.createShipment = async (req, res) => {
       emit('fleet:customers', {});
     }
     if (data.customer) {
-      const c = await FleetCustomer.findById(data.customer).select('name customerType').lean();
+      const c = await FleetCustomer.findById(data.customer).select('name customerType paymentType').lean();
       if (c) {
         data.customerName = c.name;
         // لقطة نوع العميل على الحمولة إن لم يُحدَّد صراحةً (للتقارير).
         if (!data.customerType && c.customerType) data.customerType = c.customerType;
+        // نوع الدفع المتفق عليه مع العميل يُملأ تلقائيًّا — وما أرسلته الواجهة
+        // يفوز دائمًا: الاتفاق افتراضٌ لحمولةٍ جديدة، لا قيدٌ على هذه الحمولة.
+        if (!data.paymentType && c.paymentType) data.paymentType = c.paymentType;
       }
     }
 
@@ -700,7 +708,10 @@ exports.listVehicles = async (req, res) => {
     // free for the next trip and must not keep wearing its old destination.
     const PICKER_BUSY = ['requesting', 'loading', 'uploaded', 'on_way', 'late'];
     const [ls2, trips] = await Promise.all([
-      Ls2Vehicle.find({}).select('plate name position status lastMessageAt').lean(),
+      // حالةُ الصيانة تُقرأ مع الموقع في النداء نفسه: قرارُ «أيّ شاحنةٍ
+      // نُحمّل عليها» يحتاج الاثنين معًا — والشاحنةُ التي صيانتُها متأخّرة
+      // تُشحن اليوم وتقف في الطريق غدًا.
+      Ls2Vehicle.find({}).select('plate name position status lastMessageAt maintenanceStatus kmToService nextServiceName').lean(),
       FleetShipment.find({ vehicle: { $in: vehicles.map((v) => v._id) }, status: { $in: PICKER_BUSY } })
         .sort({ createdAt: -1 })
         .select('vehicle status fromCity toCity expectedArrival waybillNumber')
@@ -726,6 +737,11 @@ exports.listVehicles = async (req, res) => {
           ...v,
           drivers: byVehicle[String(v._id)] || [],
           live: lv ? { city: liveCity, status: lv.status || null, lastMessageAt: lv.lastMessageAt || null } : null,
+          maintenance: lv ? {
+            status: lv.maintenanceStatus || 'ok',
+            kmToService: lv.kmToService ?? null,
+            nextServiceName: lv.nextServiceName || '',
+          } : null,
           trip: trip && {
             waybillNumber: trip.waybillNumber, status: trip.status,
             fromCity: trip.fromCity, toCity: trip.toCity, expectedArrival: trip.expectedArrival,
@@ -776,48 +792,230 @@ exports.deleteVehicle = async (req, res) => {
 
 // ── Customers ───────────────────────────────────────────────────────────────
 
-const CUSTOMER_EDITABLE = ['name', 'phone', 'email', 'customerType', 'rating', 'routes', 'notes', 'isActive'];
+const CUSTOMER_EDITABLE = [
+  'name', 'phone', 'email', 'customerType', 'rating', 'routes', 'notes', 'isActive',
+  'paymentType', 'taxNumber', 'address', 'crmCompany',
+];
+
+/**
+ * يربط العميل بشركة الـCRM بالاسم المطبَّع، ويخزّن المفتاح.
+ * السجلّان أُدخل كلٌّ منهما في قسمه ولا يجمعهما معرّف، فالاسم هو الوصلة
+ * الوحيدة — و٢١٥ من ٢١٩ عميلًا في شيت المتابعة وُجدوا في الـCRM بهذه الطريقة.
+ * والربط لا يُفرض: من ربطه مستخدمٌ يدويًّا يبقى على ربطه.
+ */
+async function linkCrm(doc) {
+  const key = nameKey(doc.name || '');
+  const patch = { nameKey: key };
+  if (!doc.crmCompany && key) {
+    const hit = await CrmCompany.findOne({ $or: [{ name: rx(doc.name) }, { arabicName: rx(doc.name) }] })
+      .select('_id name arabicName').lean();
+    // rx يطابق جزئيًّا، فيُشترط تطابق المفتاح المطبَّع تمامًا قبل الربط.
+    if (hit && (nameKey(hit.name) === key || nameKey(hit.arabicName) === key)) patch.crmCompany = hit._id;
+  }
+  return patch;
+}
+
+/**
+ * صفوف العملاء مُثراةً بأرقامهم — تعريفٌ واحد تقرأ منه القائمةُ ولوحةُ الفلاتر.
+ *
+ * الجدول بلا أرقامٍ جردٌ لا تحليل، فتُحسب الرحلاتُ والدخلُ وآخرُ رحلة لكلّ
+ * عميل في تجميعةٍ واحدة لا استعلامٍ لكلّ صفّ. وكونُ المصدر واحدًا هو ما يضمن
+ * أن يكون العدد المكتوب بجانب خيار الفلتر هو عددُ ما يفتحه فعلًا.
+ */
+async function customerRows(req) {
+  const customers = await FleetCustomer.find().sort({ name: 1 }).limit(5000).lean();
+
+  const scope = await supervisorVehicleIds(req);
+  const match = { customer: { $in: customers.map((c) => c._id) } };
+  if (scope) match.vehicle = { $in: scope };
+  const agg = await FleetShipment.aggregate([
+    { $match: match },
+    { $group: {
+      _id: '$customer',
+      trips: { $sum: 1 },
+      income: { $sum: { $ifNull: ['$price', 0] } },
+      lastTrip: { $max: { $ifNull: ['$loadDate', '$createdAt'] } },
+      firstTrip: { $min: { $ifNull: ['$loadDate', '$createdAt'] } },
+      openTrips: { $sum: { $cond: [{ $in: ['$status', ['requesting', 'loading', 'uploaded', 'on_way', 'late']] }, 1, 0] } },
+    } },
+  ]);
+  const stats = new Map(agg.map((a) => [String(a._id), a]));
+
+  // الشركات المرتبطة تُجلب دفعةً واحدة — لا استعلامَ داخل حلقة.
+  const crmIds = customers.map((c) => c.crmCompany).filter(Boolean);
+  const crm = crmIds.length
+    ? new Map((await CrmCompany.find({ _id: { $in: crmIds } }).select('name arabicName status rating').lean())
+      .map((c) => [String(c._id), c]))
+    : new Map();
+
+  return customers.map((c) => {
+    const st = stats.get(String(c._id)) || {};
+    return {
+      ...c,
+      trips: st.trips || 0,
+      income: st.income || 0,
+      openTrips: st.openTrips || 0,
+      lastTrip: st.lastTrip || null,
+      firstTrip: st.firstTrip || null,
+      avgTrip: st.trips ? Math.round((st.income || 0) / st.trips) : 0,
+      crm: c.crmCompany ? crm.get(String(c.crmCompany)) || null : null,
+    };
+  });
+}
+
+/** تعريفُ كلّ فلترٍ مرّةً واحدة: اسمُه، وقيمتُه من الصفّ، وترتيبُ خياراته. */
+const CUSTOMER_FILTERS = [
+  { key: 'paymentType', ar: 'نوع الدفع', en: 'Payment type',
+    of: (c) => (c.paymentType === 'tax' ? 'ضريبي' : c.paymentType === 'cash' ? 'كاش' : '—') },
+  { key: 'customerType', ar: 'فئة العميل', en: 'Customer category',
+    of: (c) => (c.customerType === 'heavy' ? 'نقل ثقيل' : c.customerType === 'branch' ? 'فروع' : '—') },
+  { key: 'state', ar: 'الحالة', en: 'State', of: (c) => (c.isActive === false ? 'معطَّل' : 'نشط') },
+  { key: 'crmLink', ar: 'الربط بالـCRM', en: 'CRM link', of: (c) => (c.crmCompany ? 'مرتبط' : 'غير مرتبط') },
+  { key: 'activity', ar: 'الحركة', en: 'Activity',
+    of: (c) => (c.openTrips > 0 ? 'له حمولةٌ جارية' : c.trips > 0 ? 'تعامَلنا معه' : 'بلا حمولات') },
+  { key: 'routesSet', ar: 'أسعار المسارات', en: 'Route prices',
+    of: (c) => ((c.routes || []).length ? 'مسجَّلة' : 'غير مسجَّلة') },
+  { key: 'rating', ar: 'التقييم', en: 'Rating', of: (c) => (c.rating ? `${c.rating} ★` : 'بلا تقييم') },
+];
+
+/** يطبّق الفلاتر المتعدّدة القيم (القيم مفصولة بفواصل) وبحثًا نصّيًّا حرًّا. */
+function applyCustomerFilters(rows, query) {
+  let out = rows;
+  for (const d of CUSTOMER_FILTERS) {
+    const raw = query[d.key];
+    if (raw == null || raw === '') continue;
+    const want = new Set(String(raw).split(',').map((x) => x.trim()).filter(Boolean));
+    if (!want.size) continue;
+    out = out.filter((c) => want.has(d.of(c)));
+  }
+  const q = nameKey(query.search || '');
+  if (q) {
+    out = out.filter((c) => [c.name, c.phone, c.email, c.taxNumber, c.crm?.name, c.crm?.arabicName]
+      .some((v) => nameKey(String(v || '')).includes(q)));
+  }
+  return out;
+}
 
 exports.listCustomers = async (req, res) => {
   try {
-    const customers = await FleetCustomer.find({ isActive: { $ne: false } }).sort({ name: 1 }).limit(500).lean();
-    res.json({ customers });
+    const rows = await customerRows(req);
+    // الافتراض إخفاءُ المعطَّلين — إلّا أن يُطلبوا صراحةً أو يُفلتَر بالحالة.
+    const all = req.query.includeInactive === '1' || req.query.includeInactive === 'true' || !!req.query.state;
+    const base = all ? rows : rows.filter((c) => c.isActive !== false);
+    res.json({ customers: applyCustomerFilters(base, req.query), total: base.length });
   } catch (error) {
+    console.error('fleet listCustomers error:', error);
     res.status(500).json({ message: 'Failed to load customers' });
+  }
+};
+
+/**
+ * خيارات الفلاتر — وعددُ كلّ خيارٍ محسوبٌ **بعد بقيّة الفلاتر**، فما تراه هو
+ * ما ستحصل عليه، ولا يُعرَض خيارٌ عددُه صفر فتضغطه فتجد الشاشة فارغة.
+ */
+exports.customerFilterOptions = async (req, res) => {
+  try {
+    const rows = await customerRows(req);
+    const filters = CUSTOMER_FILTERS.map((d) => {
+      const others = { ...req.query };
+      delete others[d.key];
+      const scoped = applyCustomerFilters(rows, others);
+      const counts = new Map();
+      for (const c of scoped) { const v = d.of(c); counts.set(v, (counts.get(v) || 0) + 1); }
+      return {
+        key: d.key, ar: d.ar, en: d.en,
+        values: [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count),
+      };
+    }).filter((f) => f.values.length > 1);
+    res.json({ filters });
+  } catch (error) {
+    console.error('fleet customerFilterOptions error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل الفلاتر' });
   }
 };
 
 exports.createCustomer = async (req, res) => {
   try {
-    if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ message: 'Customer name is required' });
-    const customer = await FleetCustomer.create({ ...pick(req.body, CUSTOMER_EDITABLE), createdBy: req.user._id });
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ message: 'Customer name is required' });
+    // اسمٌ مكرَّر يُنشئ عميلَين لنفس الشركة، فتنقسم حمولاته بين ملفَّين.
+    const clash = await FleetCustomer.findOne({ nameKey: nameKey(name) }).select('_id name').lean();
+    if (clash) return res.status(400).json({ message: `عميلٌ بهذا الاسم موجود: «${clash.name}»` });
+
+    const body = { ...pick(req.body, CUSTOMER_EDITABLE), name, createdBy: req.user._id };
+    Object.assign(body, await linkCrm(body));
+    const customer = await FleetCustomer.create(body);
+    await logAudit({ user: req.user, action: 'create', entity: 'FleetCustomer', entityId: customer._id, changes: { name }, ipAddress: req.ip });
     emit('fleet:customers', {});
     res.status(201).json({ customer });
   } catch (error) {
+    console.error('fleet createCustomer error:', error);
     res.status(500).json({ message: 'Failed to create the customer' });
   }
 };
 
 exports.updateCustomer = async (req, res) => {
   try {
-    const customer = await FleetCustomer.findByIdAndUpdate(req.params.id, pick(req.body, CUSTOMER_EDITABLE), { new: true });
+    const body = pick(req.body, CUSTOMER_EDITABLE);
+    if (body.name !== undefined) {
+      body.name = String(body.name).trim();
+      if (!body.name) return res.status(400).json({ message: 'Customer name is required' });
+      const clash = await FleetCustomer.findOne({ nameKey: nameKey(body.name), _id: { $ne: req.params.id } }).select('name').lean();
+      if (clash) return res.status(400).json({ message: `عميلٌ بهذا الاسم موجود: «${clash.name}»` });
+      Object.assign(body, await linkCrm({ ...body, crmCompany: req.body.crmCompany }));
+    }
+    const customer = await FleetCustomer.findByIdAndUpdate(req.params.id, body, { new: true });
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
-    await FleetShipment.updateMany({ customer: customer._id }, { customerName: customer.name });
+    if (body.name) await FleetShipment.updateMany({ customer: customer._id }, { customerName: customer.name });
+    await logAudit({ user: req.user, action: 'update', entity: 'FleetCustomer', entityId: customer._id, changes: body, ipAddress: req.ip });
     emit('fleet:customers', {});
     res.json({ customer });
   } catch (error) {
+    console.error('fleet updateCustomer error:', error);
     res.status(500).json({ message: 'Failed to update the customer' });
   }
 };
 
+/**
+ * الإزالة تعطيلٌ لا حذف — حمولاته السابقة تشير إليه، وحذفُه يترك ملفَّاتٍ
+ * معلَّقة. أمّا `?purge=1` فحذفٌ فعليّ يُسمح به وحده حين لا حمولة له إطلاقًا
+ * (عميلٌ أُدخل خطأً)، فلا شيء ليُيتَّم.
+ */
 exports.deleteCustomer = async (req, res) => {
   try {
-    const customer = await FleetCustomer.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+    const purge = req.query.purge === '1' || req.query.purge === 'true';
+    const customer = await FleetCustomer.findById(req.params.id);
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
+
+    if (purge) {
+      const n = await FleetShipment.countDocuments({ customer: customer._id });
+      if (n) return res.status(400).json({ message: `لا يُحذف نهائيًّا: له ${n} حمولة. عطِّله بدل ذلك.` });
+      await FleetCustomer.deleteOne({ _id: customer._id });
+      await logAudit({ user: req.user, action: 'delete', entity: 'FleetCustomer', entityId: customer._id, changes: { name: customer.name, purge: true }, ipAddress: req.ip });
+      emit('fleet:customers', {});
+      return res.json({ message: 'Customer deleted' });
+    }
+
+    customer.isActive = false;
+    await customer.save();
+    await logAudit({ user: req.user, action: 'delete', entity: 'FleetCustomer', entityId: customer._id, changes: { name: customer.name }, ipAddress: req.ip });
     emit('fleet:customers', {});
     res.json({ message: 'Customer removed' });
   } catch (error) {
+    console.error('fleet deleteCustomer error:', error);
     res.status(500).json({ message: 'Failed to remove the customer' });
+  }
+};
+
+/** إعادة تفعيل عميلٍ عُطِّل — لأنّ التعطيل قرارٌ يُراجَع. */
+exports.restoreCustomer = async (req, res) => {
+  try {
+    const customer = await FleetCustomer.findByIdAndUpdate(req.params.id, { isActive: true }, { new: true });
+    if (!customer) return res.status(404).json({ message: 'Customer not found' });
+    emit('fleet:customers', {});
+    res.json({ customer });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to restore the customer' });
   }
 };
 
@@ -1371,22 +1569,67 @@ exports.getCustomerProfile = async (req, res) => {
     // يعرض الملفّ آخرَ ألفٍ ويبدو كأنّه كلُّ تاريخه — فيُقرأ دخلُه ناقصًا.
     const { rows: shipments, truncated: shipmentsTruncated } = await cappedFind(
       FleetShipment.find(q)
-        .select('waybillNumber vehiclePlate driverName fromCity toCity status price fullRent loadType rentType paymentType customerType loadDate createdAt supervisorName')
+        .select('waybillNumber vehiclePlate driverName fromCity toCity status price fullRent driverExpense loadType rentType paymentType customerType loadDate createdAt supervisorName')
         .sort({ loadDate: -1, createdAt: -1 }),
       askedLimit(req.query, 1000, 20000),
     );
-    const income = shipments.reduce((a, s) => a + (Number(s.price) || 0), 0);
+    const num = (v) => Number(v) || 0;
+    const income = shipments.reduce((a, s) => a + num(s.price), 0);
+    const fullRent = shipments.reduce((a, s) => a + num(s.fullRent), 0);
     const byStatus = {};
     for (const s of shipments) byStatus[s.status] = (byStatus[s.status] || 0) + 1;
+
+    // تجميعاتُ الملفّ: بالشهر (منحنى)، وبالمسار وبالسيارة (ترتيب). كلُّها من
+    // الصفوف المحمّلة أصلًا — لا استعلامَ إضافيّ لكلّ زاوية.
+    const bump = (map, key, s) => {
+      if (!key) return;
+      const cur = map.get(key) || { key, trips: 0, income: 0 };
+      cur.trips += 1; cur.income += num(s.price);
+      map.set(key, cur);
+    };
+    const months = new Map(); const routes = new Map(); const vehicles = new Map(); const pay = new Map();
+    for (const s of shipments) {
+      const d = s.loadDate || s.createdAt;
+      if (d) bump(months, new Date(d).toISOString().slice(0, 7), s);
+      bump(routes, [s.fromCity, s.toCity].filter(Boolean).join(' ← '), s);
+      bump(vehicles, s.vehiclePlate, s);
+      bump(pay, s.paymentType || '—', s);
+    }
+    const top = (map, n) => [...map.values()].sort((a, b) => b.income - a.income || b.trips - a.trips).slice(0, n);
+
+    // بطاقة الـCRM: الشركة المرتبطة ونشاطُها — «مرتبط بالـCRM» يجب أن يعني
+    // شيئًا يُقرأ في الصفحة، لا وصلةً في قاعدة البيانات فقط.
+    let crm = null;
+    if (customer.crmCompany) {
+      const company = await CrmCompany.findById(customer.crmCompany)
+        .select('name arabicName status type rating score industry city phone email owner').lean();
+      if (company) {
+        const [activities, deals] = await Promise.all([
+          CrmActivity.countDocuments({ company: company._id }).catch(() => 0),
+          CrmDeal.countDocuments({ company: company._id }).catch(() => 0),
+        ]);
+        crm = { company, activities, deals };
+      }
+    }
+
     res.json({
       ...(shipmentsTruncated && { truncated: true, note: CAP_NOTE_AR }),
       customer,
+      crm,
       stats: {
-        trips: shipments.length, income,
+        trips: shipments.length, income, fullRent,
+        // فرق «الإيجار كامل» عن الإيجار حصّةُ قسم الفروع في سيناريو 3PL.
+        branchShare: Math.max(0, fullRent - shipments.filter((s) => num(s.fullRent) > 0).reduce((a, s) => a + num(s.price), 0)),
+        driverExpense: shipments.reduce((a, s) => a + num(s.driverExpense), 0),
         avgTripIncome: shipments.length ? Math.round(income / shipments.length) : 0,
         byStatus,
+        openTrips: shipments.filter((s) => ['requesting', 'loading', 'uploaded', 'on_way', 'late'].includes(s.status)).length,
         firstTrip: shipments.length ? shipments[shipments.length - 1].loadDate || shipments[shipments.length - 1].createdAt : null,
         lastTrip: shipments.length ? shipments[0].loadDate || shipments[0].createdAt : null,
+        byMonth: [...months.values()].sort((a, b) => a.key.localeCompare(b.key)),
+        topRoutes: top(routes, 8),
+        topVehicles: top(vehicles, 8),
+        byPaymentType: [...pay.values()],
       },
       shipments,
     });
@@ -1801,8 +2044,63 @@ exports.getVehicleAnalytics = async (req, res) => {
       return a + (fr > 0 ? Math.max(0, fr - (Number(s.price) || 0)) : 0);
     }, 0);
 
+    // ── حالةُ الشاحنة الفنّية من لوكيشن سوليوشن ومخزن النقل الثقيل ──────────
+    //
+    // القسمان يتكلّمان عن الشاحنة نفسها: هذا يقول كم أدخلت، وذاك يقول متى
+    // صيانتها وما رُكّب عليها. وكانا شاشتين لا تلتقيان، فيُقرَّر تشغيلُ شاحنةٍ
+    // صيانتُها متأخّرة لأنّ الرقم الذي أمام المقرِّر لا يذكر الصيانة.
+    //
+    // والجمعُ بمفتاح اللوحة الرقميّ لا بالنصّ: اللوحة تُكتب هنا «1080 RXA»
+    // وهناك «1080» و«ر خ ا ١٠٨٠»، ولا تتطابق حرفيًّا أبدًا.
+    const vKey = plateKey(vehicle.plate) || vehiclePlateKey(vehicle.plate);
+    let tech = null;
+    if (vKey) {
+      const Ls2TireAsset = require('../models/Ls2TireAsset');
+      const Ls2ServiceLog = require('../models/Ls2ServiceLog');
+      const Ls2Repair = require('../models/Ls2Repair');
+      const { Ls2StoreMovement } = require('../models/Ls2Store');
+      const plateRx = new RegExp(String(vehicle.plate).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const digits = String(vehicle.plate).replace(/\D/g, '');
+      const digitsRx = digits ? new RegExp(`(^|\\D)${digits}(\\D|$)`) : plateRx;
+
+      const [ls2v, tires, services, repairs, issued] = await Promise.all([
+        Ls2Vehicle.findOne({ $or: [{ plateKey: vKey }, { plate: plateRx }] })
+          .select('plate name maintenanceStatus kmToService nextServiceName nextServiceKm odometerKm lastMessageAt status services').lean().catch(() => null),
+        Ls2TireAsset.countDocuments({ plateKey: vKey, status: 'mounted' }).catch(() => 0),
+        Ls2ServiceLog.find({ plate: plateRx }).sort({ createdAt: -1 }).limit(10)
+          .select('plate createdAt items note byName odometerKm').lean().catch(() => []),
+        Ls2Repair.find({ plate: plateRx, status: { $ne: 'done' } }).sort({ createdAt: -1 }).limit(20)
+          .select('plate category status description cost createdAt').lean().catch(() => []),
+        // ما صُرف من المخزن على هذه الشاحنة — القطع التي رُكّبت عليها فعلًا.
+        // ولوحةُ المخزن تُكتب بصيغةٍ ثالثة: «أ ص ي 5096» أو «2708» بينما هنا
+        // «5096 VXA». فالجمعُ بالأرقام وحدها، محفوفةً بحدٍّ يمنع «1082» من
+        // مطابقة «21082».
+        Ls2StoreMovement.find({ type: 'out', reversed: { $ne: true }, vehiclePlate: digitsRx })
+          .sort({ createdAt: -1 }).limit(50)
+          .select('itemName quantity reason createdAt performedByName').lean().catch(() => []),
+      ]);
+
+      tech = {
+        ls2: ls2v ? {
+          plate: ls2v.plate,
+          maintenanceStatus: ls2v.maintenanceStatus || 'ok',
+          kmToService: ls2v.kmToService,
+          nextServiceName: ls2v.nextServiceName || '',
+          nextServiceKm: ls2v.nextServiceKm,
+          odometerKm: ls2v.odometerKm,
+          lastMessageAt: ls2v.lastMessageAt || null,
+        } : null,
+        mountedTires: tires,
+        openRepairs: repairs,
+        recentServices: services,
+        partsIssued: issued,
+        partsCount: issued.length,
+      };
+    }
+
     const body = {
       vehicle: { ...vehicle, drivers: seatDrivers, currentTrip: currentTrip || null },
+      tech,
       period: { from: start, to: end, monthsInRange, preset: period.preset },
       totals: {
         trips: t.trips, income: t.income, fullRent: t.fullRent, driverExpense: t.driverExpense,

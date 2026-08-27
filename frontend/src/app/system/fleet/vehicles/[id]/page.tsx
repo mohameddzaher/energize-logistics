@@ -24,7 +24,7 @@ import {
   type FleetVehicleAnalytics, fleetStatus, fleetStatusLabel, fmtD, fmtDT,
   canViewFleet, money, shipmentCustomerId, type Lang,
 } from '@/lib/fleet';
-import { Car, ArrowLeft, Route, Users, Target, PackageSearch } from 'lucide-react';
+import { Car, ArrowLeft, Route, Users, Target, PackageSearch, Wrench, ExternalLink } from 'lucide-react';
 
 const ORANGE = '#f37121';
 
@@ -179,6 +179,93 @@ function VehicleAnalyticsInner() {
             style={{ width: `${Math.max(0, Math.min(100, t.achievedPct ?? 0))}%` }} />
         </div>
       </div>
+
+      {/* ── الحالة الفنّية: لوكيشن سوليوشن ومخزن النقل الثقيل ────────────────
+          الأرقام فوق تقول ماذا كسبت الشاحنة؛ وهذه تقول هل تصلح أن تُشغَّل غدًا.
+          والسؤالان يُقرَّران معًا أو لا يُقرَّران — ولهذا صارا شاشةً واحدة. */}
+      {d.tech && (d.tech.ls2 || d.tech.partsCount > 0 || d.tech.mountedTires > 0) && (
+        <div className={`rounded-2xl border p-4 shadow-sm ${d.tech.ls2?.maintenanceStatus === 'overdue' ? 'border-red-200 bg-red-50/40'
+          : d.tech.ls2?.maintenanceStatus === 'due' ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <p className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+              <Wrench className="w-4 h-4 text-slate-400" />
+              {ar ? 'الحالة الفنّية — لوكيشن سوليوشن والمخزن' : 'Technical state — Location Solutions & store'}
+            </p>
+            <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(d.vehicle.plate)}`}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline">
+              <ExternalLink className="w-3.5 h-3.5" /> {ar ? 'فتحها في لوكيشن سوليوشن' : 'Open in Location Solutions'}
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="rounded-xl bg-white border border-slate-200 p-3">
+              <p className="text-[11px] text-slate-500">{ar ? 'الصيانة' : 'Maintenance'}</p>
+              <p className={`font-bold text-sm mt-0.5 ${d.tech.ls2?.maintenanceStatus === 'overdue' ? 'text-red-600'
+                : d.tech.ls2?.maintenanceStatus === 'due' ? 'text-amber-600' : 'text-emerald-600'}`}>
+                {d.tech.ls2 ? (d.tech.ls2.maintenanceStatus === 'overdue' ? (ar ? 'متأخّرة' : 'Overdue')
+                  : d.tech.ls2.maintenanceStatus === 'due' ? (ar ? 'مستحقّة' : 'Due') : (ar ? 'سليمة' : 'OK')) : '—'}
+              </p>
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200 p-3">
+              <p className="text-[11px] text-slate-500">{ar ? 'المتبقّي للصيانة' : 'Km to service'}</p>
+              <p className="font-bold text-sm mt-0.5 text-slate-800">
+                {d.tech.ls2?.kmToService != null
+                  ? `${money(d.tech.ls2.kmToService)} ${ar ? 'كم' : 'km'}`
+                  : '—'}
+              </p>
+              {!!d.tech.ls2?.nextServiceName && <p className="text-[10px] text-slate-400 mt-0.5 truncate">{d.tech.ls2.nextServiceName}</p>}
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200 p-3">
+              <p className="text-[11px] text-slate-500">{ar ? 'العدّاد' : 'Odometer'}</p>
+              <p className="font-bold text-sm mt-0.5 text-slate-800">{d.tech.ls2?.odometerKm != null ? money(d.tech.ls2.odometerKm) : '—'}</p>
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200 p-3">
+              <p className="text-[11px] text-slate-500">{ar ? 'إطاراتٌ مركّبة' : 'Mounted tyres'}</p>
+              <p className="font-bold text-sm mt-0.5 text-slate-800">{d.tech.mountedTires || '—'}</p>
+            </div>
+            <div className="rounded-xl bg-white border border-slate-200 p-3">
+              <p className="text-[11px] text-slate-500">{ar ? 'إصلاحاتٌ مفتوحة' : 'Open repairs'}</p>
+              <p className={`font-bold text-sm mt-0.5 ${d.tech.openRepairs.length ? 'text-red-600' : 'text-slate-800'}`}>{d.tech.openRepairs.length || '—'}</p>
+            </div>
+          </div>
+
+          {(d.tech.partsIssued.length > 0 || d.tech.recentServices.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              {d.tech.partsIssued.length > 0 && (
+                <div className="rounded-xl bg-white border border-slate-200 p-3">
+                  <p className="text-xs font-bold text-slate-700 mb-2">
+                    {ar ? `قطعٌ صُرفت عليها من المخزن (${d.tech.partsCount})` : `Parts issued from the store (${d.tech.partsCount})`}
+                  </p>
+                  <ul className="space-y-1 max-h-52 overflow-y-auto">
+                    {d.tech.partsIssued.slice(0, 20).map((m) => (
+                      <li key={m._id} className="flex items-center justify-between gap-2 text-[11.5px]">
+                        <span className="text-slate-600 truncate">{m.itemName}</span>
+                        <span className="shrink-0 text-slate-400">×{m.quantity} · {fmtD(m.createdAt)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {d.tech.recentServices.length > 0 && (
+                <div className="rounded-xl bg-white border border-slate-200 p-3">
+                  <p className="text-xs font-bold text-slate-700 mb-2">{ar ? 'آخر الصيانات' : 'Recent services'}</p>
+                  <ul className="space-y-1 max-h-52 overflow-y-auto">
+                    {d.tech.recentServices.map((sv) => (
+                      <li key={sv._id} className="flex items-center justify-between gap-2 text-[11.5px]">
+                        <span className="text-slate-600 truncate">
+                          {(sv.items || []).filter((i) => i.status === 'done').length || 0} {ar ? 'بندًا' : 'items'}
+                          {sv.byName ? ` · ${sv.byName}` : ''}
+                        </span>
+                        <span className="shrink-0 text-slate-400">{fmtD(sv.createdAt)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {d.monthlyTrend.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

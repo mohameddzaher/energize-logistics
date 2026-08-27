@@ -51,10 +51,12 @@ router.delete('/vehicles/:id', authorize(...ADMIN_ROLES), fleet.deleteVehicle);
 
 // Customers
 router.get('/customers', fleet.listCustomers);
+router.get('/customers/filters', fleet.customerFilterOptions);
 router.get('/customers/:id/profile', fleet.getCustomerProfile); // العميل + سجل رحلاته الكامل
 router.post('/customers', authorize(...EDIT_ROLES), fleet.createCustomer);
 router.put('/customers/:id', authorize(...EDIT_ROLES), fleet.updateCustomer);
 router.delete('/customers/:id', authorize(...ADMIN_ROLES), fleet.deleteCustomer);
+router.post('/customers/:id/restore', authorize(...ADMIN_ROLES), fleet.restoreCustomer);
 
 // Dashboard + rich analytics
 router.get('/dashboard', fleet.getDashboard);

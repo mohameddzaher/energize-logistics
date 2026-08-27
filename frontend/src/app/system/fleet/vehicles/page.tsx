@@ -10,7 +10,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Truck, Plus, Pencil, Trash2, Check, Loader2, UserCog, BarChart3 } from 'lucide-react';
+import { Truck, Plus, Pencil, Trash2, Check, Loader2, UserCog, BarChart3, Wrench } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, Select, SmallBadge, StatCard, ErrorNotice, SearchableSelect,
 } from '@/components/hr/HRKit';
@@ -31,6 +31,8 @@ const VEHICLE_COLUMNS = [
   { header: 'Supervisor', key: 'supervisorName', width: 20 },
   { header: 'Carrying now', key: 'trip', transform: (v: any) => (v ? `WB ${v.waybillNumber} → ${v.toCity || ''}` : 'Idle'), width: 24 },
   { header: 'Live city', key: 'live', transform: (v: any) => v?.city || '', width: 14 },
+  { header: 'Maintenance', key: 'maintenance', transform: (v: any) => (v ? (v.status === 'overdue' ? 'Overdue' : v.status === 'due' ? 'Due' : 'OK') : ''), width: 14 },
+  { header: 'Km to service', key: 'maintenance', transform: (v: any) => (v?.kmToService ?? ''), width: 14 },
   { header: 'Notes', key: 'notes', width: 28 },
 ];
 
@@ -50,6 +52,7 @@ export default function FleetVehiclesPage() {
   const [search, setSearch] = useState('');
   const [gpsFilter, setGpsFilter] = useState('');
   const [seatsFilter, setSeatsFilter] = useState('');
+  const [maintFilter, setMaintFilter] = useState('');
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<FleetVehicle | null>(null);
@@ -122,6 +125,7 @@ export default function FleetVehiclesPage() {
     if (seatsFilter === '0' && seats !== 0) return false;
     if (seatsFilter === '1' && seats !== 1) return false;
     if (seatsFilter === '2' && seats < 2) return false;
+    if (maintFilter && (v.maintenance?.status || '') !== maintFilter) return false;
     const s = foldAr(search.trim());
     if (!s) return true;
     const names = (v.drivers || []).map((d) => d.name).join(' ');
@@ -134,6 +138,8 @@ export default function FleetVehiclesPage() {
   const withNone = vehicles.filter((v) => seatCount(v) === 0).length;
   const withOne = vehicles.filter((v) => seatCount(v) === 1).length;
   const withTwo = vehicles.filter((v) => seatCount(v) >= 2).length;
+  const maintOverdue = vehicles.filter((v) => v.maintenance?.status === 'overdue').length;
+  const maintDue = vehicles.filter((v) => v.maintenance?.status === 'due').length;
 
   const th = 'text-start font-semibold px-4 py-3 whitespace-nowrap';
 
@@ -153,11 +159,15 @@ export default function FleetVehiclesPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <StatCard label={ar ? 'إجمالي السيارات' : 'Total vehicles'} value={vehicles.length} />
         <StatCard label={ar ? 'بدون سائق' : 'No driver'} value={withNone} accent={withNone > 0 ? 'text-red-600' : 'text-slate-900'} />
         <StatCard label={ar ? 'بسائق واحد' : 'One driver'} value={withOne} />
         <StatCard label={ar ? 'بسائقين' : 'Two drivers'} value={withTwo} accent="text-emerald-600" />
+        <StatCard label={ar ? 'صيانةٌ متأخّرة' : 'Maintenance overdue'} value={maintOverdue}
+          accent={maintOverdue > 0 ? 'text-red-600' : 'text-slate-900'} />
+        <StatCard label={ar ? 'صيانةٌ مستحقّة' : 'Maintenance due'} value={maintDue}
+          accent={maintDue > 0 ? 'text-amber-600' : 'text-slate-900'} />
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">
@@ -169,6 +179,14 @@ export default function FleetVehiclesPage() {
           <Select value={gpsFilter} onChange={(e) => setGpsFilter(e.target.value)}>
             <option value="">{ar ? 'كل أنواع GPS' : 'All GPS'}</option>
             {GPS_TYPES.map((g) => <option key={g} value={g}>{g}</option>)}
+          </Select>
+        </div>
+        <div className="w-52 grow sm:grow-0">
+          <Select value={maintFilter} onChange={(e) => setMaintFilter(e.target.value)}>
+            <option value="">{ar ? 'كل حالات الصيانة' : 'All maintenance'}</option>
+            <option value="overdue">{ar ? 'صيانةٌ متأخّرة' : 'Overdue'}</option>
+            <option value="due">{ar ? 'صيانةٌ مستحقّة' : 'Due soon'}</option>
+            <option value="ok">{ar ? 'سليمة' : 'OK'}</option>
           </Select>
         </div>
         <div className="w-44 grow sm:grow-0">
@@ -186,6 +204,7 @@ export default function FleetVehiclesPage() {
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className={th}>{ar ? 'اللوحة' : 'Plate'}</th>
             <th className={th}>{ar ? 'نوع التيدر' : 'Trailer type'}</th>
+            <th className={th}>{ar ? 'الصيانة' : 'Maintenance'}</th>
             <th className={th}>GPS</th>
             <th className={th}>{ar ? 'السائقون عليها' : 'Drivers'}</th>
             <th className={th}>{ar ? 'المشرف المسؤول' : 'Supervisor'}</th>
@@ -203,6 +222,25 @@ export default function FleetVehiclesPage() {
                   {v.name && <span className="block text-xs text-slate-500">{v.name}</span>}
                 </td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{v.trailerType || '—'}</td>
+                {/* ── الصيانة من لوكيشن سوليوشن ──────────────────────────────
+                    القسمان يتكلّمان عن الشاحنة نفسها؛ وفصلُهما هو ما يجعل
+                    شاحنةً صيانتُها متأخّرة تُحمَّل اليوم وتقف في الطريق غدًا. */}
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {!v.maintenance ? <span className="text-slate-300">—</span> : (
+                    <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(v.plate)}`}
+                      className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg font-semibold hover:opacity-80 ${
+                        v.maintenance.status === 'overdue' ? 'bg-red-50 text-red-700'
+                          : v.maintenance.status === 'due' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}
+                      title={v.maintenance.nextServiceName || undefined}>
+                      <Wrench className="w-3 h-3" />
+                      {v.maintenance.status === 'overdue' ? (ar ? 'متأخّرة' : 'Overdue')
+                        : v.maintenance.status === 'due' ? (ar ? 'مستحقّة' : 'Due') : (ar ? 'سليمة' : 'OK')}
+                      {v.maintenance.kmToService != null && (
+                        <span className="opacity-70 font-normal">{Number(v.maintenance.kmToService).toLocaleString('en-US')} {ar ? 'كم' : 'km'}</span>
+                      )}
+                    </Link>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   {v.gpsType
                     ? <SmallBadge bg={v.gpsType === 'LS' ? 'bg-emerald-500/15' : 'bg-blue-500/15'}
@@ -249,7 +287,7 @@ export default function FleetVehiclesPage() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-slate-500 py-12">
+              <tr><td colSpan={8} className="text-center text-slate-500 py-12">
                 {vehicles.length === 0
                   ? (ar ? 'لا توجد سيارات بعد.' : 'No vehicles yet.')
                   : (ar ? 'لا نتائج مطابقة للبحث.' : 'No matches.')}

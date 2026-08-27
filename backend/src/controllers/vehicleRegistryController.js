@@ -309,6 +309,20 @@ const REASON_BY_LABEL = Object.fromEntries(
 );
 
 // يبني فلتر Mongo من الـ query (متعدد القيم + بحث + نطاق سنة).
+/**
+ * كلُّ حقلٍ نصّيٍّ في المركبة قابلٌ للبحث — تُقرأ الحقول من المخطَّط نفسه.
+ *
+ * كانت قائمةً مكتوبةً بأسماء الحقول، فكلُّ حقلٍ يُضاف إلى النموذج يولد خارج
+ * البحث في صمت. ورقم هوية المفوَّض كان من هؤلاء: تُدخله في الخانة فتخرج
+ * الشاشة فارغةً وهو مخزَّنٌ في القاعدة — وذلك أسوأ من غياب البحث، لأنّ
+ * الفراغ يُقرأ «لا يوجد» لا «لم أبحث فيه».
+ *
+ * والاشتقاق من المخطَّط يجعل القائمة تكبر مع النموذج بلا تذكُّرٍ من أحد.
+ */
+const SEARCHABLE_PATHS = Object.entries(VehicleMaster.schema.paths)
+  .filter(([path, def]) => def.instance === 'String' && !path.startsWith('_') && path !== '__v')
+  .map(([path]) => path);
+
 function buildFilter(q) {
   const f = { isActive: { $ne: false } };
   const and = [];
@@ -387,16 +401,7 @@ function buildFilter(q) {
   }
   if (q.q && String(q.q).trim()) {
     const rx = new RegExp(String(q.q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    and.push({ $or: [
-      { plateNumber: rx }, { chassisNumber: rx }, { serialNumber: rx }, { brandAr: rx }, { modelAr: rx },
-      { ownerNameAr: rx }, { 'insurance.policyNumber': rx }, { 'insurance.companyAr': rx },
-      { 'fuelCard.cardNumber': rx }, { 'operatingCard.cardNumber': rx }, { notesAr: rx },
-      // أعمدة الماستر النهائي: البحث بسريال جهاز التتبّع أو برقم التفويض أو
-      // باللوحة كما تُطبع على فاتورة الوقود — وهي الصيغ التي تصل بها الأوراق.
-      { 'gps.serialImei': rx }, { 'authorizedPerson.name': rx },
-      { 'authorizedPerson.authorizationNumber': rx }, { 'fuelCard.plateOnInvoiceAr': rx },
-      { commercialRegistration: rx },
-    ] });
+    and.push({ $or: SEARCHABLE_PATHS.map((f) => ({ [f]: rx })) });
   }
   // فلتر انتهاء مستند خلال مدة، أو منتهي، أو ضمن نطاق تاريخي.
   if (q.expiringDoc && q.expiringWithin) {

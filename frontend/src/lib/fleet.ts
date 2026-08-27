@@ -18,6 +18,8 @@ export interface FleetVehicle {
   drivers?: { _id: string; name: string; phone?: string; working?: boolean }[];
   // إثراء حي وقت الاختيار: أين هي الآن، وماذا تحمل بالفعل، وهل وصلت وجهتها.
   live?: { city: string | null; status?: string | null; lastMessageAt?: string | null } | null;
+  /** حالة الصيانة من لوكيشن سوليوشن — تُقرأ مع الموقع لأنّ القرار يحتاجهما معًا. */
+  maintenance?: { status: 'ok' | 'due' | 'overdue'; kmToService: number | null; nextServiceName: string } | null;
   trip?: { waybillNumber: number; status: string; fromCity: string; toCity: string; expectedArrival: string | null } | null;
   atDestination?: boolean;
 }
@@ -59,6 +61,21 @@ export interface FleetCustomer {
   rating?: number;
   routes: { fromCity: string; toCity: string; price: number | null }[];
   notes?: string;
+  /** نوع الدفع المتفق عليه — مفتاح من fleet_payment_type (tax/cash). */
+  paymentType?: string;
+  taxNumber?: string;
+  address?: string;
+  isActive?: boolean;
+  /** ربطُه بشركته في الـCRM، ولقطةٌ منها للعرض. */
+  crmCompany?: string | null;
+  crm?: { _id: string; name: string; arabicName?: string; status?: string; rating?: number } | null;
+  /** أرقامه — تأتي محسوبةً مع القائمة، فالجدول لا يستعلم صفًّا صفًّا. */
+  trips?: number;
+  income?: number;
+  openTrips?: number;
+  avgTrip?: number;
+  lastTrip?: string | null;
+  firstTrip?: string | null;
 }
 
 export interface FleetShipment {
@@ -235,6 +252,23 @@ export interface FleetVehicleAnalytics {
   monthlyTrend: { month: string; trips: number; income: number; driverExpense: number }[];
   shipments: FleetShipment[];
   truncated: boolean;
+  /**
+   * الحالة الفنّية للشاحنة من قسم لوكيشن سوليوشن ومخزن النقل الثقيل.
+   * القسمان يتكلّمان عن الشاحنة نفسها، وفصلُهما عن أرقامها التشغيلية هو ما
+   * يجعل شاحنةً صيانتُها متأخّرة تُشغَّل لأنّ الشاشة أمام المقرِّر لا تذكرها.
+   */
+  tech?: {
+    ls2: {
+      plate: string; maintenanceStatus: 'ok' | 'due' | 'overdue';
+      kmToService: number | null; nextServiceName: string; nextServiceKm: number | null;
+      odometerKm: number | null; lastMessageAt: string | null;
+    } | null;
+    mountedTires: number;
+    openRepairs: { _id: string; category?: string; status: string; description?: string; cost?: number; createdAt: string }[];
+    recentServices: { _id: string; createdAt: string; byName?: string; note?: string; odometerKm?: number; items?: { label?: string; status?: string }[] }[];
+    partsIssued: { _id: string; itemName: string; quantity: number; reason?: string; createdAt: string; performedByName?: string }[];
+    partsCount: number;
+  } | null;
 }
 
 export interface FleetLoadsAnalysis {

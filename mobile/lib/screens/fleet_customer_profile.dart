@@ -52,6 +52,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
   String? _error;
   bool _saving = false;
   String _type = '';
+  String _payType = '';
   int _rating = 0;
   late final void Function() _onLive;
 
@@ -90,6 +91,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
         _data = d;
         if (results.length > 1) _loadTypes = List<Map<String, dynamic>>.from(results[1]['items'] ?? []);
         _type = (c['customerType'] ?? '').toString();
+        _payType = (c['paymentType'] ?? '').toString();
         _rating = (c['rating'] is num) ? (c['rating'] as num).toInt() : 0;
         _loading = false;
         _error = null;
@@ -102,7 +104,8 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
   Future<void> _saveMeta() async {
     setState(() => _saving = true);
     try {
-      await Api.instance.put('/api/fleet/customers/${widget.customerId}', {'customerType': _type, 'rating': _rating});
+      await Api.instance.put('/api/fleet/customers/${widget.customerId}',
+          {'customerType': _type, 'rating': _rating, 'paymentType': _payType});
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحفظ', 'Saved'))));
       _load();
     } catch (e) {
@@ -153,9 +156,34 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                           _tile(tr('إجمالي الدخل', 'Total income'), _money(stats['income']), T.success, Icons.payments_outlined),
                           _tile(tr('متوسط الرحلة', 'Avg / trip'), _money(stats['avgTripIncome']), T.navy, Icons.trending_up_rounded),
                           _tile(tr('آخر رحلة', 'Last trip'), _dt(stats['lastTrip']?.toString()), T.info, Icons.event_outlined),
+                          _tile(tr('رحلاتٌ جارية', 'Open trips'), '${stats['openTrips'] ?? 0}', T.warn, Icons.local_shipping_outlined),
+                          _tile(tr('مصروف السائقين', 'Driver expense'), _money(stats['driverExpense']), T.danger, Icons.money_off_outlined),
                         ],
                       ),
                       const SizedBox(height: 12),
+                      // ── الربط بالـCRM ─────────────────────────────────────
+                      // العميل هنا وشركتُه في الـCRM سجلّان مستقلّان يجمعهما
+                      // الاسم المطبَّع. وحين يجتمعان يجب أن يُريا.
+                      if (d['crm'] != null) ...[
+                        AppCard(
+                          child: Row(children: [
+                            const Icon(Icons.link_rounded, size: 18, color: T.info),
+                            const SizedBox(width: 8),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(
+                                (Map<String, dynamic>.from(d['crm']['company'] ?? {})['arabicName'] ??
+                                        Map<String, dynamic>.from(d['crm']['company'] ?? {})['name'] ?? '—')
+                                    .toString(),
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${tr('أنشطة', 'Activities')}: ${d['crm']['activities'] ?? 0} · ${tr('صفقات', 'Deals')}: ${d['crm']['deals'] ?? 0}',
+                                style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                            ])),
+                          ]),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       // بيانات العميل + التقييم
                       AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -181,6 +209,18 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                             Expanded(child: _seg(tr('نقل ثقيل', 'Heavy'), _type == 'heavy', () => setState(() => _type = 'heavy'))),
                             const SizedBox(width: 8),
                             Expanded(child: _seg(tr('عملاء الفروع', 'Branch'), _type == 'branch', () => setState(() => _type = 'branch'))),
+                          ]),
+                          const SizedBox(height: 12),
+                          // نوع الدفع المتفق عليه: يُملأ تلقائيًّا في كل حمولةٍ
+                          // جديدة لهذا العميل، ويبقى قابلًا للتعديل في تلك
+                          // الحمولة وحدها — الاتفاق افتراضٌ لا قيد.
+                          Text(tr('نوع الدفع المتفق عليه', 'Agreed payment type'),
+                              style: const TextStyle(fontSize: 12.5, color: T.inkFaint, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 6),
+                          Row(children: [
+                            Expanded(child: _seg(tr('ضريبي', 'Tax'), _payType == 'tax', () => setState(() => _payType = _payType == 'tax' ? '' : 'tax'))),
+                            const SizedBox(width: 8),
+                            Expanded(child: _seg(tr('كاش', 'Cash'), _payType == 'cash', () => setState(() => _payType = _payType == 'cash' ? '' : 'cash'))),
                           ]),
                           const SizedBox(height: 12),
                           Text(tr('تقييمنا للعميل', 'Our rating'), style: const TextStyle(fontSize: 12.5, color: T.inkFaint, fontWeight: FontWeight.w600)),

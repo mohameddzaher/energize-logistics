@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -32,6 +34,26 @@ class DocField {
   const DocField(this.ar, this.en, this.get, {this.mono = false});
 }
 
+/// حقلٌ من حقول العائلة **يُكتب** — وهو غيرُ `DocField` الذي يُعرَض.
+///
+/// العرضُ قد يكون محسوبًا: «مفتوح — بلا سقف» نصٌّ يُبنى من حقلين، ولا يُكتب في
+/// أيّ منهما بهذه الصيغة. أمّا ما يُكتب فلا بدّ له من مسارٍ حقيقيّ في المركبة،
+/// وإلا حُفظ في لا مكان وعاد الصفُّ كما كان بعد التحديث.
+class DocEditField {
+  /// المسار في مستند المركبة: `operatingCard.cardNumber`.
+  final String path;
+  final String ar, en;
+
+  /// text · date · number · flag
+  final String kind;
+
+  /// خانةُ الاختيار تكتب نصًّا لا صحيحًا/خطأً: «مفتوح» في `fuelCard.limitStatus`.
+  final String on, off;
+  final bool mono;
+  const DocEditField(this.path, this.ar, this.en,
+      {this.kind = 'text', this.on = 'open', this.off = '', this.mono = false});
+}
+
 /// شريحةُ تصفيةٍ محلّيةٍ فوق الصفوف المحمَّلة.
 class DocChip {
   final String key, ar, en;
@@ -53,6 +75,13 @@ class DocFamily {
   final List<DocField> fields;
   final List<String> Function(Map v) searchIn;
   final List<DocChip>? chips;
+
+  /// حقولُ هذه العائلة وحدها — وبها وحدها تُفتَح الإضافةُ والتعديل والمسح.
+  ///
+  /// ولا تُفتَح من هنا استمارةُ المركبة الكاملة: فيها سبعةٌ وأربعون حقلًا تخصّ
+  /// سبعَ عائلاتٍ أخرى، ومن فتحها ليصحّح رقمَ بطاقةٍ مرّ على التأمين والفحص في
+  /// طريقه — فتصير كلُّ شاشةٍ بابًا خلفيًّا إلى كل شيء. تلك شاشةُ سجل المركبات.
+  final List<DocEditField> editable;
   const DocFamily({
     required this.docKey,
     required this.arTitle,
@@ -61,11 +90,66 @@ class DocFamily {
     required this.fields,
     required this.searchIn,
     this.chips,
+    this.editable = const [],
   });
 }
 
 String _s(dynamic v) => (v == null) ? '' : v.toString();
 Map _sub(Map v, String k) => (v[k] is Map) ? v[k] as Map : const {};
+/// قراءةُ مسارٍ منقوط — المسار نصٌّ لا يُعرَف إلا وقت التشغيل.
+dynamic _readPath(Map v, String path) {
+  dynamic cur = v;
+  for (final k in path.split('.')) {
+    if (cur is! Map) return null;
+    cur = cur[k];
+  }
+  return cur;
+}
+
+/// ما يُرسَل إلى الخادم **متداخلٌ دائمًا**، لا `{'gps.serialImei': …}`.
+///
+/// `express-mongo-sanitize` على الخادم يحذف كلَّ مفتاحٍ فيه نقطة قبل أن يصل إلى
+/// المتحكّم، فالمسارُ المنقوط يُرسَل ويختفي في صمت: تظهر «تم الحفظ» ولا يتغيّر
+/// شيء. والمتحكّم هو الذي يُسطِّح المتداخلَ فيدمج بدل أن يستبدل الكائنَ كلَّه.
+void _writePath(Map<String, dynamic> out, String path, dynamic val) {
+  final ks = path.split('.');
+  Map<String, dynamic> cur = out;
+  for (final k in ks.sublist(0, ks.length - 1)) {
+    cur[k] = (cur[k] is Map<String, dynamic>) ? cur[k] : <String, dynamic>{};
+    cur = cur[k] as Map<String, dynamic>;
+  }
+  cur[ks.last] = val;
+}
+
+Map<String, dynamic> _buildPatch(List<DocEditField> fields, Map<String, dynamic> vals) {
+  final out = <String, dynamic>{};
+  for (final f in fields) {
+    final raw = vals[f.path];
+    dynamic v;
+    if (f.kind == 'number') {
+      v = (raw == null || '$raw'.trim().isEmpty) ? null : num.tryParse('$raw'.trim());
+    } else if (f.kind == 'date') {
+      v = (raw == null || '$raw'.isEmpty) ? null : raw;
+    } else if (f.kind == 'flag') {
+      v = (raw == true) ? f.on : f.off;
+    } else {
+      v = raw ?? '';
+    }
+    _writePath(out, f.path, v);
+  }
+  return out;
+}
+
+/// أوّلُ جزءٍ من كل مسار — الكائنُ الذي تعيش فيه العائلة (`gps`, `insurance`…).
+List<String> _rootsOf(List<DocEditField> fields) =>
+    fields.map((f) => f.path.split('.').first).toSet().toList();
+
+/// أهذه المركبة مسجَّلٌ عليها شيءٌ من هذه العائلة أصلًا؟
+bool _hasDoc(Map v, List<DocEditField> fields) => fields.any((f) {
+      final x = _readPath(v, f.path);
+      return x != null && '$x'.isNotEmpty;
+    });
+
 String _fold(String s) => s
     .replaceAll(RegExp('[أإآ]'), 'ا')
     .replaceAll('ى', 'ي')
@@ -144,6 +228,278 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
       // متى ينتهي لا يظهر في أي تنبيه، فينتهي ولا يعلم أحد.
       DocChip('none', 'بلا تاريخ مسجَّل', 'No date on file', T.inkFaint, (v) => _state(v, k)['status'] == 'none'),
     ];
+  }
+
+  // ── مَن يكتب في القسم: نفس القسمة التي في الخادم وفي الموقع ───────────────
+  // ثلاث قوائم متفرّقة كانت تفترق عند أوّل دورٍ جديد، فمديرُ المركبات يرى قسمه
+  // ولا يقدر يعدّل فيه من الجوّال وحده.
+  static const _editRoles = {'super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
+    'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'};
+  static const _adminRoles = {'super_admin', 'admin', 'vehicles_manager', 'hr_manager'};
+
+  /// اختيارُ المركبة التي يُسجَّل عليها المستند.
+  ///
+  /// و«الإنشاء» هنا ليس إنشاءَ مركبة: المركبةُ تُولد في شاشة سجل المركبات بلوحتها
+  /// وهيكلها وقطاعها، ولا يصحّ أن تُولد من شاشة بطاقات التشغيل ببطاقةٍ فقط فتدخل
+  /// الأسطولَ ناقصةَ الهوية من بابٍ جانبيّ. الذي ينقص فعلًا مستندٌ لم يُسجَّل بعد
+  /// على مركبةٍ قائمة — فالقائمة تبدأ بمن لا مستندَ له.
+  Future<Map<String, dynamic>?> _pickVehicle() async {
+    final fields = widget.family.editable;
+    List<Map<String, dynamic>>? pool;
+    var onlyMissing = true;
+    var q = '';
+    // القائمةُ تُجلب غيرَ مفلترة: فلترُ الشاشة سؤالٌ عن المعروض، لا حدٌّ لما
+    // يجوز تسجيلُه — من يفلتر على «المنتهي» لا يقصد منعَ مركبةٍ سارية.
+    Api.instance.get('/api/vehicle-registry?limit=2000').then((d) {
+      pool = List<Map<String, dynamic>>.from(d['vehicles'] ?? []);
+    }).catchError((_) { pool = <Map<String, dynamic>>[]; });
+
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setSheet) {
+        // إعادةُ الرسم حتى تصل القائمة — لا مؤقّت ولا تحميلٌ مسبق قبل الفتح.
+        if (pool == null) {
+          Future.delayed(const Duration(milliseconds: 120), () { if (c.mounted) setSheet(() {}); });
+        }
+        final all = pool ?? const <Map<String, dynamic>>[];
+        final q2 = _fold(q);
+        final list = all.where((v) {
+          if (onlyMissing && _hasDoc(v, fields)) return false;
+          if (q2.isEmpty) return true;
+          return [_s(v['plateNumber']), _s(v['ownerNameAr']), _s(v['departmentAr']), _s(v['sectorAr'])]
+              .any((x) => _fold(x).contains(q2));
+        }).take(400).toList();
+        return Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: SizedBox(
+            height: MediaQuery.of(c).size.height * 0.7,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('اختر المركبة', 'Pick a vehicle'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 10),
+              TextField(
+                autofocus: false,
+                onChanged: (v) => setSheet(() => q = v),
+                decoration: InputDecoration(hintText: tr('ابحث بلوحة أو مالك أو إدارة…', 'Search plate, owner or department…'), prefixIcon: const Icon(Icons.search)),
+              ),
+              // الافتراضُ «التي بلا بيانات»: هي سببُ فتح الشاشة. ومن أراد تصحيح
+              // مركبةٍ مسجَّلة يرفع العلامة — لا يُمنع منها.
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: onlyMissing,
+                onChanged: (b) => setSheet(() => onlyMissing = b),
+                title: Text(tr('التي لا بيانات لها فقط', 'Only vehicles with no data'), style: const TextStyle(fontSize: 12.5)),
+              ),
+              Expanded(
+                child: pool == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : list.isEmpty
+                        ? Center(child: Text(tr('لا مركبات مطابقة', 'No matching vehicles'), style: const TextStyle(color: T.inkFaint)))
+                        : ListView.separated(
+                            itemCount: list.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (c2, i) => ListTile(
+                              dense: true,
+                              title: Text(_s(list[i]['plateNumber']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                              subtitle: Text([_s(list[i]['ownerNameAr']), _s(list[i]['departmentAr']), _s(list[i]['cityAr'])].where((x) => x.isNotEmpty).join(' · '),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5)),
+                              onTap: () => Navigator.pop(c, list[i]),
+                            ),
+                          ),
+              ),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
+
+  /// استمارةُ العائلة — حقولُها وحدها، على مركبةٍ قائمة.
+  Future<void> _editDoc(Map<String, dynamic>? row) async {
+    final fields = widget.family.editable;
+    if (fields.isEmpty) return;
+    var v = row;
+    if (v == null) {
+      v = await _pickVehicle();
+      if (v == null || !mounted) return;
+    }
+    final target = v;
+    final vals = <String, dynamic>{};
+    final ctrls = <String, TextEditingController>{};
+    for (final f in fields) {
+      final raw = _readPath(target, f.path);
+      if (f.kind == 'flag') {
+        vals[f.path] = raw != null && '$raw' == f.on;
+      } else if (f.kind == 'date') {
+        vals[f.path] = raw == null ? '' : '$raw'.split('T').first;
+      } else {
+        vals[f.path] = raw == null ? '' : '$raw';
+        ctrls[f.path] = TextEditingController(text: '$raw' == 'null' ? '' : '${raw ?? ''}');
+      }
+      if (f.kind == 'number' || f.kind == 'text') {
+        ctrls[f.path]!.addListener(() => vals[f.path] = ctrls[f.path]!.text);
+      }
+    }
+
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(
+        builder: (c, setSheet) => Padding(
+          padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr(widget.family.arTitle, widget.family.enTitle),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              Text(_s(target['plateNumber']), style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
+              const SizedBox(height: 12),
+              ...fields.map((f) {
+                if (f.kind == 'flag') {
+                  return SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: vals[f.path] == true,
+                    onChanged: (b) => setSheet(() => vals[f.path] = b),
+                    title: Text(tr(f.ar, f.en), style: const TextStyle(fontSize: 13)),
+                  );
+                }
+                if (f.kind == 'date') {
+                  final cur = '${vals[f.path] ?? ''}';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
+                      label: Text('${tr(f.ar, f.en)}: ${cur.isEmpty ? tr('—', '—') : cur}'),
+                      onPressed: () async {
+                        final init = DateTime.tryParse(cur) ?? DateTime.now();
+                        final d = await showDatePicker(context: c, initialDate: init, firstDate: DateTime(2000), lastDate: DateTime(2040));
+                        if (d != null) setSheet(() => vals[f.path] = d.toIso8601String().split('T').first);
+                      },
+                    ),
+                  );
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: TextField(
+                    controller: ctrls[f.path],
+                    keyboardType: f.kind == 'number' ? TextInputType.number : TextInputType.text,
+                    textDirection: f.mono ? TextDirection.ltr : null,
+                    decoration: InputDecoration(labelText: tr(f.ar, f.en)),
+                  ),
+                );
+              }),
+              Text(
+                tr('لا يُكتب من هنا إلا حقول هذا المستند — بقيّة بيانات المركبة تُعدَّل من شاشة سجل المركبات.',
+                    'Only this document\u2019s fields are written here — the rest of the vehicle is edited in the vehicle registry.'),
+                style: const TextStyle(fontSize: 11.5, color: T.inkFaint),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save'))),
+            ]),
+          ),
+        ),
+      ),
+    );
+    for (final ctl in ctrls.values) { ctl.dispose(); }
+    if (ok != true) return;
+    try {
+      await Api.instance.put('/api/vehicle-registry/${target['_id']}', _buildPatch(fields, vals));
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحفظ', 'Saved'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  // ── «حذف» في شاشة مستند: مسحُ المستند لا مسحُ المركبة ─────────────────────
+  // المركبة موجودةٌ في الواقع ولها لوحةٌ وحوادثُ وتفاويض؛ خطأٌ في رقم بطاقتها
+  // لا يعني أنها لم تعد موجودة، وحذفُها من هنا يمحو معها ستَّ عائلاتٍ لا تظهر
+  // في هذه الشاشة أصلًا — ضررٌ لا يراه الضاغطُ على الزرّ.
+  Future<void> _clearDoc(Map<String, dynamic> v) async {
+    final fields = widget.family.editable;
+    if (fields.isEmpty) return;
+    final name = tr(widget.family.arTitle, widget.family.enTitle);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('مسح بيانات المستند', 'Clear document data')),
+        content: Text(tr(
+            'ستُفرَّغ خانات «$name» على المركبة ${_s(v['plateNumber'])}. المركبة نفسها تبقى في السجلّ ببقيّة مستنداتها.',
+            'The «$name» fields on ${_s(v['plateNumber'])} will be emptied. The vehicle stays in the registry with its other documents.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: T.danger),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(tr('مسح البيانات', 'Clear data')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final patch = _buildPatch(fields, const {});
+    // ويُمسح معها `statusCode`: هو سببُ غياب التاريخ («غير مطلوب»، «لدى البنك»)،
+    // وإبقاؤه بعد تفريغٍ صريح يجعل الصفَّ يعتذر عن نقصٍ لم يعد قائمًا.
+    for (final r in _rootsOf(fields)) { _writePath(patch, '$r.statusCode', ''); }
+    try {
+      await Api.instance.put('/api/vehicle-registry/${v['_id']}', patch);
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم مسح بيانات المستند', 'Document data cleared'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  // ── حذفُ المركبة نفسها: لمن يملك الحذف، وبكتابة اللوحة بخطّ اليد ───────────
+  // زرٌّ يُضغط بالخطأ في قائمةٍ من ثلاثمئة يمحو مركبةً بحوادثها وتفاويضها وسجلّ
+  // تجديداتها كلِّه. وكتابةُ اللوحة تُجبر على قراءة أيِّ صفٍّ يُحذَف قبل حذفه.
+  Future<void> _deleteVehicle(Map<String, dynamic> v) async {
+    final plate = _s(v['plateNumber']).trim();
+    final typed = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setD) => AlertDialog(
+          title: Text(tr('حذف المركبة نهائيًا', 'Delete vehicle permanently')),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr(
+                'هذا ليس مسحًا للمستند. ستُحذف المركبة $plate من السجلّ نهائيًا بكل مستنداتها وتفاويضها وسجلّ تجديداتها — ولا رجعة.',
+                'This is not clearing the document. Vehicle $plate will be removed from the registry with every document, authorisation and renewal record — this cannot be undone.'),
+                style: const TextStyle(fontSize: 12.5)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: typed,
+              onChanged: (_) => setD(() {}),
+              textDirection: TextDirection.ltr,
+              decoration: InputDecoration(labelText: tr('اكتب رقم اللوحة للتأكيد', 'Type the plate to confirm'), hintText: plate),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: T.danger),
+              onPressed: typed.text.trim() == plate ? () => Navigator.pop(c, true) : null,
+              child: Text(tr('حذف المركبة', 'Delete vehicle')),
+            ),
+          ],
+        ),
+      ),
+    );
+    typed.dispose();
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/vehicle-registry/${v['_id']}');
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حُذفت المركبة $plate', 'Deleted $plate'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
   }
 
   /// تجديدٌ يقبل الرقم الجديد: بطاقة التشغيل تخرج برقمٍ جديد كل مرة، والتفويض
@@ -264,6 +620,14 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final f = widget.family;
+    final auth = context.watch<AuthProvider>();
+    // لا كتابةَ بلا حقولٍ معلومة: عائلةٌ لم تُصرّح بحقولها تبقى للقراءة والتجديد
+    // كما كانت — فلا يظهر زرٌّ لا يعرف أين يكتب.
+    final canEdit = f.editable.isNotEmpty
+        && (_editRoles.contains(auth.role) || auth.canEditSection('Vehicles'));
+    /// الحذف الحقيقيّ صلاحيةٌ أضيق من التعديل — وهذه هي القسمة نفسها في الخادم.
+    final canDelete = _adminRoles.contains(auth.role)
+        || (auth.role != 'client' && auth.canEditSection('Vehicles'));
     final q = _fold(_q);
     final searched = q.isEmpty
         ? _rows
@@ -274,6 +638,11 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
 
     return AppScaffold(
       title: Text(tr(f.arTitle, f.enTitle)),
+      floatingActionButton: !canEdit ? null : FloatingActionButton.extended(
+        onPressed: () => _editDoc(null),
+        icon: const Icon(Icons.add),
+        label: Text(tr('إضافة', 'Add')),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
@@ -372,15 +741,38 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                         ]),
                                       );
                                     }),
-                                    if (k != null) ...[
+                                    if (k != null || canEdit) ...[
                                       const SizedBox(height: 6),
                                       Align(
                                         alignment: AlignmentDirectional.centerEnd,
-                                        child: TextButton.icon(
-                                          onPressed: () => _renew(v),
-                                          icon: const Icon(Icons.autorenew_rounded, size: 17),
-                                          label: Text(tr('تجديد', 'Renew')),
-                                        ),
+                                        child: Wrap(spacing: 2, children: [
+                                          if (k != null)
+                                            TextButton.icon(
+                                              onPressed: () => _renew(v),
+                                              icon: const Icon(Icons.autorenew_rounded, size: 17),
+                                              label: Text(tr('تجديد', 'Renew')),
+                                            ),
+                                          if (canEdit)
+                                            IconButton(
+                                              tooltip: tr('تعديل بيانات هذا المستند', 'Edit this document'),
+                                              icon: const Icon(Icons.edit_outlined, size: 18),
+                                              onPressed: () => _editDoc(v),
+                                            ),
+                                          // المِمحاة لا سلّةُ المهملات: الأيقونةُ
+                                          // نفسها تقول إن الممسوح بياناتٌ لا مركبة.
+                                          if (canEdit && _hasDoc(v, f.editable))
+                                            IconButton(
+                                              tooltip: tr('مسح بيانات هذا المستند', 'Clear this document'),
+                                              icon: const Icon(Icons.backspace_outlined, size: 18, color: T.danger),
+                                              onPressed: () => _clearDoc(v),
+                                            ),
+                                          if (canEdit && canDelete)
+                                            IconButton(
+                                              tooltip: tr('حذف المركبة نهائيًا', 'Delete vehicle permanently'),
+                                              icon: const Icon(Icons.delete_forever_outlined, size: 18, color: T.danger),
+                                              onPressed: () => _deleteVehicle(v),
+                                            ),
+                                        ]),
                                       ),
                                     ],
                                   ]),
@@ -419,6 +811,17 @@ final vehicleInsuranceFamily = DocFamily(
     }),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(_sub(v, 'insurance')['policyNumber']), _s(_sub(v, 'insurance')['companyAr']), _s(v['ownerNameAr'])],
+  // و«قيمة التأمين» خانتان لا واحدة: رقمٌ حين ندفعه نحن، ونصٌّ حين يدفعه المموِّل
+  // («ملكية بنك الراجحي»). دمجُهما يجبر المدخِل على ترك الرقم فارغًا فتُعدّ
+  // المركبة بلا تأمين وهي مؤمَّنة.
+  editable: const [
+    DocEditField('insurance.policyNumber', 'رقم وثيقة التأمين', 'Policy number', mono: true),
+    DocEditField('insurance.companyAr', 'شركة التأمين', 'Insurer'),
+    DocEditField('insurance.coverageTypeAr', 'نوع التأمين', 'Coverage type'),
+    DocEditField('insurance.expiryDate', 'تاريخ انتهاء التأمين', 'Insurance expiry', kind: 'date'),
+    DocEditField('insurance.premiumSar', 'قيمة التأمين (ر.س)', 'Premium (SAR)', kind: 'number'),
+    DocEditField('insurance.premiumStatusAr', 'جهة سداد القسط', 'Who pays the premium'),
+  ],
 );
 
 final vehicleOperatingCardFamily = DocFamily(
@@ -432,6 +835,12 @@ final vehicleOperatingCardFamily = DocFamily(
     DocField('المالك', 'Owner', (v) => _s(v['ownerNameAr'])),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(_sub(v, 'operatingCard')['cardNumber']), _s(v['ownerNameAr']), _s(v['departmentAr'])],
+  // الرقمُ والتاريخ هما البطاقةُ كلُّها — والإدارةُ والمالك يُعرَضان ولا يُكتبان
+  // من هنا: هما هويّةُ المركبة لا مستندُها.
+  editable: const [
+    DocEditField('operatingCard.cardNumber', 'رقم بطاقة التشغيل', 'Operating card number', mono: true),
+    DocEditField('operatingCard.expiryDate', 'تاريخ الانتهاء', 'Expiry date', kind: 'date'),
+  ],
 );
 
 final vehicleAuthorizationFamily = DocFamily(
@@ -448,6 +857,16 @@ final vehicleAuthorizationFamily = DocFamily(
   searchIn: (v) => [
     _s(v['plateNumber']), _s(_sub(v, 'authorizedPerson')['name']),
     _s(_sub(v, 'authorizedPerson')['iqamaNumber']), _s(_sub(v, 'authorizedPerson')['authorizationNumber']),
+  ],
+  // ورقةُ التفويض كاملةً: مَن، وبأيّ إقامة، وبأيّ رقم، ومن متى إلى متى. واسمٌ
+  // بلا رقمِ تفويضٍ ولا مدّة لا يُثبِت صفةَ السائق أمام أحد.
+  editable: const [
+    DocEditField('authorizedPerson.name', 'اسم المفوَّض', 'Authorised person'),
+    DocEditField('authorizedPerson.iqamaNumber', 'رقم الإقامة', 'Iqama number', mono: true),
+    DocEditField('authorizedPerson.jobTitleAr', 'المسمّى الوظيفي', 'Job title'),
+    DocEditField('authorizedPerson.authorizationNumber', 'رقم التفويض', 'Authorisation number', mono: true),
+    DocEditField('authorizedPerson.startDate', 'تاريخ بداية التفويض', 'Start date', kind: 'date'),
+    DocEditField('authorizedPerson.expiryDate', 'تاريخ نهاية التفويض', 'End date', kind: 'date'),
   ],
 );
 
@@ -470,6 +889,17 @@ final vehicleFuelCardFamily = DocFamily(
     }),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(_sub(v, 'fuelCard')['cardNumber']), _s(_sub(v, 'fuelCard')['plateOnInvoiceAr'])],
+  // «مفتوح» علامةٌ لا رقم: صفرٌ في خانة السقف يعني «ممنوع الصرف»، وفراغٌ يعني
+  // «لا نعلم» — وكلاهما عكسُ المقصود. فالعلامةُ مفتاحٌ يكتب `open`.
+  editable: const [
+    DocEditField('fuelCard.cardNumber', 'رقم شريحة بترو اب', 'Petro App chip number', mono: true),
+    DocEditField('fuelCard.plateOnInvoiceAr', 'رقم اللوحة في فاتورة بترو اب', 'Plate on Petro App invoice'),
+    DocEditField('fuelCard.provider', 'المزوّد', 'Provider'),
+    DocEditField('fuelCard.statusAr', 'حالة الشريحة', 'Chip status'),
+    DocEditField('fuelCard.consumptionTypeAr', 'نوع الاستهلاك', 'Consumption type'),
+    DocEditField('fuelCard.limitSar', 'حد الاستهلاك (ر.س)', 'Consumption limit (SAR)', kind: 'number'),
+    DocEditField('fuelCard.limitStatus', 'مفتوح — بلا سقف صرف', 'Open — no spending ceiling', kind: 'flag', on: 'open'),
+  ],
   chips: [
     const DocChip('', 'الكل', 'All', T.navy),
     DocChip('has', 'لها شريحة', 'Has a chip', T.success, (v) => _s(_sub(v, 'fuelCard')['cardNumber']).isNotEmpty),
@@ -493,6 +923,16 @@ final vehicleGpsFamily = DocFamily(
     DocField('تاريخ انتهاء الـGPS', 'Subscription expiry', (v) => fmtDate(_sub(v, 'gps')['expiryDate'])),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(_sub(v, 'gps')['serialImei']), _s(_sub(v, 'gps')['deviceModel']), _s(_sub(v, 'gps')['provider'])],
+  // وحالةُ الجهاز حقلٌ مستقلّ عن تاريخ الاشتراك: جهازٌ مسروق باشتراكٍ ساري وضعٌ
+  // قائم، ولو اشتُقّت إحداهما من الأخرى لضاع.
+  editable: const [
+    DocEditField('gps.deviceModel', 'جهاز GPS', 'GPS device'),
+    DocEditField('gps.deviceStatusAr', 'حالة جهاز GPS', 'Device status'),
+    DocEditField('gps.provider', 'شركة الـGPS', 'GPS provider'),
+    DocEditField('gps.serialImei', 'سريال GPS', 'GPS serial', mono: true),
+    DocEditField('gps.simNumber', 'رقم الشريحة', 'SIM number', mono: true),
+    DocEditField('gps.expiryDate', 'تاريخ انتهاء الـGPS', 'Subscription expiry', kind: 'date'),
+  ],
 );
 
 final vehicleLicenceFamily = DocFamily(
@@ -507,6 +947,12 @@ final vehicleLicenceFamily = DocFamily(
     DocField('المالك', 'Owner', (v) => _s(v['ownerNameAr'])),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(v['ownerNameAr']), _s(_sub(v, 'vehicleLicense')['expiryDateHijri'])],
+  // التاريخان يُكتبان معًا لا أحدُهما: من أدخل واحدًا وترك الآخر أعاد الخلافَ
+  // الذي جاء العمودان لرفعه.
+  editable: const [
+    DocEditField('vehicleLicense.expiryDate', 'انتهاء رخصة السير (ميلادي)', 'Licence expiry (Gregorian)', kind: 'date'),
+    DocEditField('vehicleLicense.expiryDateHijri', 'انتهاء رخصة السير (هجري)', 'Licence expiry (Hijri)', mono: true),
+  ],
 );
 
 final vehicleInspectionFamily = DocFamily(
@@ -519,4 +965,11 @@ final vehicleInspectionFamily = DocFamily(
     DocField('تاريخ انتهاء الفحص (هجري)', 'Inspection expiry (Hijri)', (v) => _s(_sub(v, 'inspection')['expiryDateHijri']), mono: true),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(v['ownerNameAr']), _s(_sub(v, 'inspection')['statusAr'])],
+  // حالةُ الفحص تُكتب نصًّا كما في الملف المصدر ولا تُشتقّ من التاريخ: المقطورةُ
+  // لا تُفحص أصلًا، وتاريخُها الفارغ ليس رسوبًا.
+  editable: const [
+    DocEditField('inspection.statusAr', 'حالة الفحص', 'Inspection status'),
+    DocEditField('inspection.expiryDate', 'تاريخ انتهاء الفحص (ميلادي)', 'Inspection expiry (Gregorian)', kind: 'date'),
+    DocEditField('inspection.expiryDateHijri', 'تاريخ انتهاء الفحص (هجري)', 'Inspection expiry (Hijri)', mono: true),
+  ],
 );

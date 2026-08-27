@@ -14,7 +14,7 @@ const logAudit = require('../utils/auditLogger');
 const { cappedFind, askedLimit, CAP_NOTE_AR } = require('../utils/capped');
 const { saveEmployeeFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
-const { emitToUser } = require('../websocket/socketManager');
+const { emitToUser, emitToAll } = require('../websocket/socketManager');
 const { computeBalance, leaveDays } = require('../utils/leaveBalance');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
@@ -32,6 +32,30 @@ const denyNonStaff = (req, res) => {
 };
 
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
+
+/**
+ * إبطال ذاكرة الموظفين بعد أي كتابة عليهم.
+ *
+ * ثلاث شاشاتٍ تقرأ الموظّف نفسه من ثلاث ذاكرات: سجلّ الموظفين (`hr:employees:`
+ * لثلاثين ثانية)، ولوحة الموارد البشرية (`dash:hr:` لثلاثين)، وماستر الموارد
+ * البشرية كلُّه (`hrm:` لستّين). ولم تكن الكتابةُ تُبطل واحدةً منها — رغم أنّ
+ * التعليق فوق ذاكرة السجلّ يَعِد بذلك — فالموظّف يُعدَّل أو يُحذف ثم يعود في
+ * القائمة كما كان لدقيقة، فيُعاد التعديل مرّةً ثانية ظنًّا أنّه لم يُحفظ.
+ *
+ * ومعها بثٌّ لـ`hr:master`: صفحات الماستر لا تسمع `hr:employee` (وهو موجَّهٌ إلى
+ * موظفي الموارد البشرية أنفسهم لا إلى الجميع)، فكانت تبقى على أرقامها القديمة
+ * حتى يُحدِّثها أحدٌ بيده. وهذا ما تفعله `emit()` في hrMasterController بالضبط،
+ * فالكتابتان تصيران متكافئتين أيًّا كان بابُ التعديل.
+ */
+const bustEmployeeCaches = () => {
+  try {
+    const cache = require('../utils/ttlCache');
+    cache.clear('hr:employees:');
+    cache.clear('dash:hr:');
+    cache.clear('hrm:');
+  } catch (e) {}
+  try { emitToAll('hr:master', {}); } catch (e) {}
+};
 
 // All active HR back-office users — the reviewers/recipients for HR events.
 // The FULL_ACCESS roles (IT) see the same pages, so they get the same realtime
@@ -215,6 +239,7 @@ exports.createEmployee = async (req, res) => {
     const body = { ...req.body, createdBy: req.user._id };
     delete body.user; // linking is done from the Users screen, not here
     const employee = await Employee.create(body);
+    bustEmployeeCaches();
     await logAudit({ user: req.user._id, action: 'create_employee', entity: 'Employee', entityId: employee._id, changes: { after: { name: fullName(employee) } }, ipAddress: req.ip });
     try { emitToUser(String(req.user._id), 'hr:employee', { id: String(employee._id) }); } catch (e) {}
     await notifyHR({ title: 'New employee added', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
@@ -276,6 +301,7 @@ exports.updateEmployee = async (req, res) => {
       employee[f] = next;
     }
     await employee.save();
+    bustEmployeeCaches();
     if (Object.keys(after).length) {
       await logAudit({ user: req.user._id, action: 'update_employee', entity: 'Employee', entityId: employee._id, changes: { before, after }, ipAddress: req.ip });
     }
@@ -302,6 +328,7 @@ exports.deleteEmployee = async (req, res) => {
     await EmployeeDocument.deleteMany({ employee: employee._id });
     await EmployeeRenewal.deleteMany({ employee: employee._id });
     await employee.deleteOne();
+    bustEmployeeCaches();
     await logAudit({ user: req.user._id, action: 'delete_employee', entity: 'Employee', entityId: employee._id, changes: { before: { name: fullName(employee) } }, ipAddress: req.ip });
     await notifyHR({ title: 'Employee removed', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.json({ message: 'Employee deleted' });
@@ -371,6 +398,7 @@ exports.renewDocument = async (req, res) => {
       documentNumber: documentNumber || '', notes: notes || '',
       renewedBy: req.user._id, renewedAt: new Date(),
     });
+    bustEmployeeCaches();
     await logAudit({ user: req.user._id, action: 'renew_document', entity: 'Employee', entityId: employee._id, changes: { before: { docType, expiry: previousExpiry }, after: { expiry: newExpiry, documentNumber } }, ipAddress: req.ip });
     await notifyHR({ title: 'Document renewed', message: `${docType} for ${fullName(employee)}`, relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.status(201).json({ employee, renewal });
@@ -406,6 +434,7 @@ exports.terminateEmployee = async (req, res) => {
       { $set: { status: 'terminated', terminatedAt: when, terminationReason: reason, custodyReturned: true } }
     );
 
+    bustEmployeeCaches();
     await logAudit({ user: req.user._id, action: 'terminate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { reason, date: when } }, ipAddress: req.ip });
     await notifyHR({ title: 'Employee terminated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     try { emitToUser(String(req.user._id), 'hr:contract', { id: String(employee._id) }); } catch (e) {}
@@ -427,6 +456,7 @@ exports.reactivateEmployee = async (req, res) => {
     employee.terminatedAt = undefined;
     employee.terminationReason = '';
     await employee.save();
+    bustEmployeeCaches();
     await logAudit({ user: req.user._id, action: 'reactivate_employee', entity: 'Employee', entityId: employee._id, changes: { after: { employmentStatus: 'active' } }, ipAddress: req.ip });
     await notifyHR({ title: 'Employee reactivated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.json({ employee });

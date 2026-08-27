@@ -42,6 +42,8 @@ export interface HrOverview {
 
 export interface RecordRow {
   _id: string; employeeNumber: string; name: string;
+  /** يُرجَع في كل مجموعة وإن لم يكن من حقولها — كل جداول القسم تعرضه وبه يُبحَث. */
+  iqamaNumber?: string;
   department?: string; branchName?: string; project?: string;
   workStatusText?: string; employmentStatus?: string;
   values: Record<string, any>;
@@ -69,7 +71,24 @@ export const STATE_META: Record<string, { ar: string; en: string; color: string;
 export const statusLabel = (c: string, ar: boolean) => (STATUS_META[c] ? (ar ? STATUS_META[c].ar : STATUS_META[c].en) : c);
 export const stateLabel = (c: string, ar: boolean) => (STATE_META[c] ? (ar ? STATE_META[c].ar : STATE_META[c].en) : c);
 
-export const fmtDate = (d?: string | Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : '—');
+export const fmtDate = (d?: string | Date | null) => {
+  if (!d) return '—';
+  const x = new Date(d);
+  return isNaN(x.getTime()) ? String(d) : x.toISOString().slice(0, 10);
+};
+
+/**
+ * القيمة كما يقبلها `<input type="date">`.
+ *
+ * حقول التواريخ في هذا الملفّ تحمل أحيانًا كلمةً إدارية لا تاريخًا («مطلوب»)،
+ * و`new Date('مطلوب').toISOString()` يرمي استثناءً يُسقِط الشاشة كلَّها لا
+ * الخانةَ وحدها — فيصير حقلٌ واحدٌ سيّئُ الكتابة كافيًا لتعطيل الصفحة.
+ */
+export const toDateInput = (v?: string | Date | null) => {
+  if (!v) return '';
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+};
 export const daysText = (n: number | null | undefined, ar: boolean) => {
   if (n === null || n === undefined) return '—';
   if (n < 0) return ar ? `متأخر ${Math.abs(n)} يوم` : `${Math.abs(n)}d overdue`;

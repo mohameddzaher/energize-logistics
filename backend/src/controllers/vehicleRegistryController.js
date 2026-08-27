@@ -554,9 +554,40 @@ exports.create = async (req, res) => {
   }
 };
 
+// ── تحديثٌ يدمج، لا يستبدل ───────────────────────────────────────────────────
+//
+// كان `$set: req.body` يكتب الكائنَ الفرعيَّ كاملًا: من أرسل
+// `{ operatingCard: { expiryDate } }` كان يمحو `cardNumber` و`statusCode` معه،
+// وهو ما يجعل صفحةَ عائلةٍ تُعدّل حقلين فتُتلِف حقولًا لا تعرضها أصلًا. والمشروعُ
+// في القائمة جزئيّ — لا ترجع `insurance.status` ولا `fuelCard.consumptionTypeCode` —
+// فالواجهة لا تملك أصلًا ما تعيد إرساله لتحفظه.
+//
+// ولماذا التسطيحُ هنا لا في الواجهة: `express-mongo-sanitize` يحذف كلَّ مفتاحٍ
+// فيه نقطة قبل أن يصل إلى المتحكّم، فمسارٌ منقوطٌ يُرسَل من المتصفّح يختفي في
+// صمت — يقول المستخدم «حفظت» ولا شيء تغيّر.
+const NEVER_SET = new Set(['_id', '__v', 'createdAt', 'updatedAt', 'docStatuses', 'overallStatus', 'overallDays']);
+
+const flattenPatch = (src, prefix = '', out = {}) => {
+  for (const [k, v] of Object.entries(src || {})) {
+    if (!prefix && NEVER_SET.has(k)) continue;
+    const path = prefix ? `${prefix}.${k}` : k;
+    // المصفوفة تُكتب كاملةً عن قصد: `logistiGaps` و`missingItems` قوائمُ تُستبدل
+    // لا حقولٌ تُدمَج، ودمجُ عناصرها بالفهرس يبقي عنصرًا حُذف.
+    const isPlain = v && typeof v === 'object' && !Array.isArray(v)
+      && Object.getPrototypeOf(v) === Object.prototype;
+    if (!isPlain) { out[path] = v; continue; }
+    // كائنٌ فارغ لا يعني «فرِّغ ما تحته» — يعني «لا شيء هنا». وكتابتُه `{}`
+    // كانت تمسح المستند كلَّه على مركبةٍ لم يُقصَد فيها تعديل.
+    if (Object.keys(v).length) flattenPatch(v, path, out);
+  }
+  return out;
+};
+
 exports.update = async (req, res) => {
   try {
-    const v = await VehicleMaster.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true });
+    const $set = flattenPatch(req.body);
+    if (!Object.keys($set).length) return res.status(400).json({ message: 'لا حقول للتعديل' });
+    const v = await VehicleMaster.findByIdAndUpdate(req.params.id, { $set }, { new: true, runValidators: true });
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
     emit('vreg:updated', {});
     res.json({ vehicle: v });

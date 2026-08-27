@@ -28,8 +28,8 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { RenewModal, BulkRenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
-import { ArrowRight, RefreshCw } from 'lucide-react';
-import { VReg, DOC_TYPES, daysText, STATE_META, canEditVehicles } from '@/lib/vehicleRegistry';
+import { ArrowRight, RefreshCw, Plus, Pencil, Eraser, Trash2, X, Save, Search } from 'lucide-react';
+import { VReg, DOC_TYPES, daysText, STATE_META, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
 
 /** عمودٌ واحد: كيف يُقرأ من المركبة، وكيف يُسمّى، وكيف يُرسَم. */
 export type DocColumn = {
@@ -40,6 +40,78 @@ export type DocColumn = {
   /** أرقامُ الأوراق تُقرأ يسارًا إلى يمين مهما كانت لغة الصفحة. */
   mono?: boolean;
   width?: number;
+};
+
+/**
+ * حقلٌ واحد قابلٌ للتحرير من حقول هذه العائلة.
+ *
+ * وهو غيرُ `DocColumn` عمدًا: العمود يَعرِض وقد يكون محسوبًا («مفتوح — بلا سقف»
+ * نصٌّ يُبنى من حقلين)، والحقل يُكتب فيُحفَظ فلا بدّ له من مسارٍ حقيقيّ في
+ * المركبة. جعلُهما واحدًا كان يعني إمّا أعمدةً لا تُحرَّر أو حقولًا تُكتب في
+ * لا مكان.
+ */
+export type DocField = {
+  /** المسار في مستند المركبة: `operatingCard.cardNumber`. */
+  path: string;
+  ar: string; en: string;
+  kind?: 'text' | 'date' | 'number' | 'flag';
+  /** خانةُ اختيارٍ تكتب نصًّا: «مفتوح» في `fuelCard.limitStatus` ليست صحيحًا/خطأً. */
+  on?: string; off?: string;
+  mono?: boolean;
+  /** يأخذ عرضَ الشبكة كلَّه — للأسماء الطويلة. */
+  wide?: boolean;
+  hint?: string;
+};
+
+/** قراءةُ مسارٍ منقوط. `?.` لا يكفي هنا لأن المسار نصٌّ لا يُعرَف إلا وقت التشغيل. */
+const readPath = (o: any, path: string) =>
+  path.split('.').reduce((a: any, k) => (a == null ? a : a[k]), o);
+
+/** بناءُ كائنٍ متداخل من مسارٍ منقوط — **متداخلًا لا منقوطًا**، انظر أدناه. */
+const writePath = (o: any, path: string, val: any) => {
+  const ks = path.split('.');
+  let cur = o;
+  for (const k of ks.slice(0, -1)) { if (!cur[k] || typeof cur[k] !== 'object') cur[k] = {}; cur = cur[k]; }
+  cur[ks[ks.length - 1]] = val;
+  return o;
+};
+
+/**
+ * ما يُرسَل إلى الخادم متداخلٌ دائمًا، لا `{'operatingCard.cardNumber': …}`.
+ *
+ * `express-mongo-sanitize` على الخادم يحذف كلَّ مفتاحٍ فيه نقطة قبل أن يصل إلى
+ * المتحكّم، فالمسارُ المنقوط يُرسَل ويختفي في صمت: تظهر رسالةُ «تم الحفظ» ولا
+ * يتغيّر شيء. والمتحكّم هو الذي يُسطِّح المتداخلَ إلى مساراتٍ فيدمج بدل أن يستبدل.
+ */
+const buildPatch = (fields: DocField[], vals: Record<string, any>) => {
+  const out: any = {};
+  for (const f of fields) {
+    const raw = vals[f.path];
+    let v: any;
+    if (f.kind === 'number') v = raw === '' || raw == null ? null : Number(raw);
+    else if (f.kind === 'date') v = raw ? raw : null;
+    else if (f.kind === 'flag') v = raw ? (f.on ?? 'open') : (f.off ?? '');
+    else v = raw ?? '';
+    writePath(out, f.path, v);
+  }
+  return out;
+};
+
+/** أوّلُ جزءٍ من كل مسار — الكائنُ الذي تعيش فيه العائلة (`gps`, `insurance`…). */
+const rootsOf = (fields: DocField[]) =>
+  [...new Set(fields.map((f) => f.path.split('.')[0]).filter((r) => r))];
+
+/** أهذه المركبة مسجَّلٌ عليها شيءٌ من هذه العائلة أصلًا؟ */
+const hasDoc = (v: VReg, fields: DocField[]) =>
+  fields.some((f) => { const x = readPath(v, f.path); return x !== null && x !== undefined && x !== ''; });
+
+/** قيمةُ الحقل كما تقبلها خانةُ الإدخال — التاريخ يُقتطع إلى `YYYY-MM-DD`. */
+const inputValue = (v: VReg | null, f: DocField) => {
+  const raw = v ? readPath(v, f.path) : undefined;
+  if (f.kind === 'flag') return !!raw && raw === (f.on ?? 'open');
+  if (raw === null || raw === undefined) return '';
+  if (f.kind === 'date') return String(raw).slice(0, 10);
+  return raw;
 };
 
 /**
@@ -55,7 +127,7 @@ const stateOf = (v: VReg, docKey: string) => {
 };
 
 function DocumentFamilyPageInner({
-  docKey, path, icon, titleAr, titleEn, subtitleAr, subtitleEn, columns, fileName, searchIn, chips,
+  docKey, path, icon, titleAr, titleEn, subtitleAr, subtitleEn, columns, fileName, searchIn, chips, fields,
 }: {
   /**
    * مفتاح المستند ذي تاريخ الانتهاء — أو `null` لعائلةٍ لا تنتهي.
@@ -77,15 +149,31 @@ function DocumentFamilyPageInner({
   searchIn?: (v: VReg) => (string | number | null | undefined)[];
   /** شرائح خاصة بالعائلة — تحلّ محلّ شرائح الحالة حين لا مستندَ ينتهي. */
   chips?: Chip[];
+  /**
+   * حقولُ هذه العائلة وحدها — وبها وحدها تُفتَح الإضافةُ والتعديل والمسح.
+   *
+   * ولماذا لا تُفتَح استمارةُ المركبة الكاملة من هنا: فيها سبعةٌ وأربعون حقلًا
+   * تخصّ سبعَ عائلاتٍ أخرى، ومن يفتحها ليصحّح رقمَ بطاقة تشغيلٍ يمرّ على التأمين
+   * والفحص والوقود في طريقه — فتصير كلُّ صفحةٍ بابًا خلفيًّا إلى كل شيء، ويصير
+   * وجودُ سبع صفحاتٍ بلا معنى. تلك مهمّةُ صفحة السجل العامّة.
+   *
+   * وتركُها فارغةً يُبقي الصفحةَ للقراءة والتجديد كما كانت — لا تظهر أزرارٌ لا
+   * تعرف أين تكتب.
+   */
+  fields?: DocField[];
 }) {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const { user } = useAuth();
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
   const sp = useSearchParams();
   const router = useRouter();
   const canEdit = canEditVehicles(user);
+  /** الحذف الحقيقيّ صلاحيةٌ أضيق من التعديل — وهذه هي القسمة نفسها في الخادم. */
+  const canDelete = canAdminVehicles(user);
+  /** لا كتابةَ بلا حقولٍ معلومة: صفحةٌ لم تُصرّح بحقولها تبقى كما كانت. */
+  const editable = canEdit && !!fields?.length;
 
   const doc = docKey ? DOC_TYPES.find((d) => d.key === docKey) : undefined;
   const renewable = !!doc && canEdit;
@@ -108,6 +196,8 @@ function DocumentFamilyPageInner({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [renewing, setRenewing] = useState<RenewTarget | null>(null);
   const [bulk, setBulk] = useState<RenewTarget[] | null>(null);
+  /** استمارةُ العائلة: `vehicle: null` تعني «اختر المركبة أوّلًا» — أي إنشاء. */
+  const [form, setForm] = useState<{ vehicle: VReg | null } | null>(null);
 
   // كل ما في العنوان فلترٌ يُمرَّر للخادم كما هو. القائمة المكتوبة بالاسم كانت
   // تُسقِط أي فلترٍ خارجها في صمت، فتفتح الشاشةُ الأسطول كلَّه وهي تقول إنها
@@ -211,6 +301,39 @@ function DocumentFamilyPageInner({
     documentNumber: doc?.numberOf(v) || '',
   });
 
+  /** ما يُسمّى به المستند في التأكيدات والرسائل — اسمُه إن كان مستندًا، وإلا عنوانُ الصفحة. */
+  const famLabel = doc ? (ar ? doc.ar : doc.en) : t(titleAr, titleEn);
+
+  // ── «حذف» في صفحة مستند: مسحُ المستند لا مسحُ المركبة ──────────────────────
+  //
+  // المركبة موجودةٌ في الواقع ولها لوحةٌ وهيكلٌ وحوادثُ وتفاويض؛ انتهاءُ بطاقة
+  // تشغيلها أو خطأٌ في رقمها لا يعني أنها لم تعد موجودة. وحذفُها من هنا كان
+  // يمحو معها ستَّ عائلاتٍ أخرى لا تظهر في هذه الشاشة أصلًا — وهو ضررٌ لا يراه
+  // الضاغطُ على الزرّ. فالإجراءُ المتلِف الصحيح هنا هو تفريغُ هذه العائلة وحدها،
+  // والمركبةُ تبقى في السجلّ صفًّا خانتُه فارغة — وهذا بالضبط ما تُظهره
+  // شريحةُ «بلا تاريخ مسجَّل» بوصفه عملًا مطلوبًا.
+  const clearDoc = useCallback(async (v: VReg) => {
+    if (!fields?.length) return;
+    const ok = await confirm({
+      title: t('مسح بيانات المستند', 'Clear document data'),
+      tone: 'danger',
+      confirmLabel: t('مسح البيانات', 'Clear data'),
+      message: t(
+        `ستُفرَّغ خانات «${famLabel}» على المركبة ${v.plateNumber}. المركبة نفسها تبقى في السجلّ ببقيّة مستنداتها، وتظهر هنا بلا بيانات.`,
+        `The «${famLabel}» fields on vehicle ${v.plateNumber} will be emptied. The vehicle itself stays in the registry with its other documents, and appears here with no data.`),
+    });
+    if (!ok) return;
+    // ويُمسح معها `statusCode`: هو سببُ غياب التاريخ («غير مطلوب»، «لدى البنك»)،
+    // وإبقاؤه بعد تفريغٍ صريح يجعل الصفَّ يعتذر عن نقصٍ لم يعد قائمًا.
+    const patch = buildPatch(fields, {});
+    for (const r of rootsOf(fields)) writePath(patch, `${r}.statusCode`, '');
+    try {
+      await api.put(`/api/vehicle-registry/${v._id}`, patch);
+      notify(t('تم مسح بيانات المستند', 'Document data cleared'), 'success');
+      load();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+  }, [fields, famLabel, confirm, notify, load, ar]);
+
   const allShownPicked = f.shown.length > 0 && f.shown.every((v: VReg) => picked.has(v._id));
   const toggleAll = () => setPicked((p) => {
     const n = new Set(p);
@@ -236,6 +359,13 @@ function DocumentFamilyPageInner({
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold">
             <RefreshCw className="w-4 h-4" />
             {t(`تجديد ${picked.size} مستند`, `Renew ${picked.size}`)}
+          </button>
+        )}
+        {editable && (
+          <button onClick={() => setForm({ vehicle: null })}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f14] text-white text-sm font-semibold">
+            <Plus className="w-4 h-4" />
+            {t('إضافة', 'Add')}
           </button>
         )}
         <ExportMenu fileName={fileName} lang={lang as 'ar' | 'en'}
@@ -316,7 +446,7 @@ function DocumentFamilyPageInner({
                   <th key={c.key} className="px-3 py-3 text-start font-bold whitespace-nowrap">{ar ? c.ar : c.en}</th>
                 ))}
                 {docKey && <th className="px-3 py-3 text-start font-bold whitespace-nowrap">{t('الحالة', 'State')}</th>}
-                {renewable && <th className="px-3 py-3" />}
+                {(renewable || editable) && <th className="px-3 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -353,12 +483,32 @@ function DocumentFamilyPageInner({
                         </span>
                       </td>
                     )}
-                    {renewable && (
+                    {(renewable || editable) && (
                       <td className="px-3 py-2">
-                        <button onClick={() => setRenewing(targetOf(v))}
-                          className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11.5px] font-semibold hover:bg-emerald-100 whitespace-nowrap">
-                          {t('تجديد', 'Renew')}
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {renewable && (
+                            <button onClick={() => setRenewing(targetOf(v))}
+                              className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11.5px] font-semibold hover:bg-emerald-100 whitespace-nowrap">
+                              {t('تجديد', 'Renew')}
+                            </button>
+                          )}
+                          {editable && (
+                            <button onClick={() => setForm({ vehicle: v })}
+                              title={t('تعديل بيانات هذا المستند', 'Edit this document')}
+                              className="p-1.5 rounded-lg bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {/* المِمحاة لا سلّةُ المهملات: الأيقونةُ نفسها تقول إن
+                              الممسوح بياناتٌ لا مركبة. */}
+                          {editable && hasDoc(v, fields!) && (
+                            <button onClick={() => clearDoc(v)}
+                              title={t('مسح بيانات هذا المستند', 'Clear this document')}
+                              className="p-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-100">
+                              <Eraser className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -382,6 +532,12 @@ function DocumentFamilyPageInner({
         <BulkRenewModal rows={bulk} ar={ar} onClose={() => setBulk(null)}
           onDone={() => { setBulk(null); setPicked(new Set()); load(); }} />
       )}
+      {form && !!fields?.length && (
+        <DocFormModal vehicle={form.vehicle} fields={fields} famLabel={famLabel} ar={ar}
+          canDelete={canDelete}
+          onClose={() => setForm(null)}
+          onDone={() => { setForm(null); load(); }} />
+      )}
     </div>
   );
 }
@@ -390,6 +546,248 @@ function DocumentFamilyPageInner({
 // صريحًا عند أوّل تعديلٍ في غلاف القسم.
 export default function DocumentFamilyPage(props: Parameters<typeof DocumentFamilyPageInner>[0]) {
   return <Suspense fallback={<Spinner />}><DocumentFamilyPageInner {...props} /></Suspense>;
+}
+
+
+// ── استمارةُ العائلة: إنشاءٌ وتعديل، وحذفُ المركبة خلف بابٍ مغلق ─────────────
+//
+// و«الإنشاء» هنا ليس إنشاءَ مركبة. المركبةُ تُولد في صفحة السجل العامّة بلوحتها
+// وهيكلها وقطاعها، ولا يصحّ أن تُولد من صفحة بطاقات التشغيل ببطاقةٍ ولوحةٍ فقط —
+// فتدخل الأسطولَ ناقصةَ الهوية من بابٍ جانبيّ. الذي ينقص فعلًا هو **مستندٌ لم
+// يُسجَّل بعد على مركبةٍ قائمة**: مئةٌ وخمسَ عشرة مركبةً بلا رقم بطاقة تشغيل،
+// وطريقُ إدخالها كان يمرّ باستمارة السبعة والأربعين حقلًا. فالإنشاء هنا: اختر
+// المركبة — والقائمةُ تبدأ بمن لا مستندَ له — ثم املأ حقول العائلة وحدها.
+function DocFormModal({ vehicle, fields, famLabel, ar, canDelete, onClose, onDone }: {
+  vehicle: VReg | null;
+  fields: DocField[];
+  famLabel: string;
+  ar: boolean;
+  canDelete: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { notify } = useDialog();
+  const creating = !vehicle;
+
+  const [target, setTarget] = useState<VReg | null>(vehicle);
+  const [vals, setVals] = useState<Record<string, any>>(
+    () => Object.fromEntries(fields.map((f) => [f.path, inputValue(vehicle, f)])));
+  const [saving, setSaving] = useState(false);
+
+  // ── قائمةُ الاختيار تُجلب غيرَ مفلترة ──────────────────────────────────────
+  // فلترُ الشاشة سؤالٌ عن **المعروض**، لا حدٌّ لما يجوز تسجيلُه: من يفلتر على
+  // «المنتهي» ثم يضغط «إضافة» لا يقصد أن يُمنع من مركبةٍ سارية.
+  const [pool, setPool] = useState<VReg[] | null>(null);
+  const [pq, setPq] = useState('');
+  const [onlyMissing, setOnlyMissing] = useState(true);
+  useEffect(() => {
+    if (!creating) return;
+    api.get<{ vehicles: VReg[] }>('/api/vehicle-registry?limit=2000')
+      .then((d) => setPool(d.vehicles || []))
+      .catch((e: any) => notify(e?.message || 'Failed', 'error'));
+  }, [creating, notify]);
+
+  const candidates = useMemo(() => {
+    const q = pq.trim().toLowerCase();
+    return (pool || []).filter((v) => {
+      if (onlyMissing && hasDoc(v, fields)) return false;
+      if (!q) return true;
+      return [v.plateNumber, v.ownerNameAr, v.departmentAr, v.sectorAr]
+        .some((x) => String(x || '').toLowerCase().includes(q));
+    }).slice(0, 400);
+  }, [pool, pq, onlyMissing, fields]);
+
+  /** اختيارُ مركبةٍ يملأ الاستمارة بما عليها فعلًا — لا بفراغٍ يمحو ما هو مسجَّل. */
+  const pick = (v: VReg) => {
+    setTarget(v);
+    setVals(Object.fromEntries(fields.map((f) => [f.path, inputValue(v, f)])));
+  };
+
+  const save = async () => {
+    if (!target) { notify(t('اختر المركبة أوّلًا', 'Pick a vehicle first'), 'error'); return; }
+    setSaving(true);
+    try {
+      await api.put(`/api/vehicle-registry/${target._id}`, buildPatch(fields, vals));
+      notify(t('تم الحفظ', 'Saved'), 'success');
+      onDone();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setSaving(false); }
+  };
+
+  // ── حذفُ المركبة نفسها: خلف إفصاحٍ وكتابةِ اللوحة بخطّ اليد ────────────────
+  // زرٌّ يُضغط بالخطأ في صفٍّ من ثلاثمئة صفّ يمحو مركبةً بحوادثها وتفاويضها
+  // وتاريخِ تجديداتها كلِّه. وكتابةُ اللوحة ليست تشديدًا شكليًّا: هي تُجبر على
+  // قراءة أيِّ صفٍّ يُحذَف قبل حذفه.
+  const [showDanger, setShowDanger] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [killing, setKilling] = useState(false);
+  const armed = !!target && typed.trim() === String(target.plateNumber || '').trim();
+  const destroy = async () => {
+    if (!target || !armed) return;
+    setKilling(true);
+    try {
+      await api.delete(`/api/vehicle-registry/${target._id}`);
+      notify(t(`حُذفت المركبة ${target.plateNumber}`, `Deleted ${target.plateNumber}`), 'success');
+      onDone();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setKilling(false); }
+  };
+
+  const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-bold text-lg text-slate-900">
+            {creating ? t(`إضافة ${famLabel}`, `Add ${famLabel}`) : t(`تعديل ${famLabel}`, `Edit ${famLabel}`)}
+          </h3>
+          <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
+        </div>
+        <p className="text-sm text-slate-500 mb-4">
+          {target
+            ? <>{target.plateNumber}{target.ownerNameAr ? ` · ${target.ownerNameAr}` : ''}</>
+            : t('اختر المركبة التي تريد تسجيل هذا المستند عليها', 'Pick the vehicle to record this document on')}
+          {creating && target && (
+            <button onClick={() => setTarget(null)} className="ms-2 text-[#f37121] hover:underline text-[12px]">
+              {t('تغيير المركبة', 'change vehicle')}
+            </button>
+          )}
+        </p>
+
+        {/* ── منتقي المركبة ─────────────────────────────────────────────── */}
+        {creating && !target && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-3" />
+                <input value={pq} onChange={(e) => setPq(e.target.value)} autoFocus
+                  placeholder={t('ابحث بلوحة أو مالك أو إدارة…', 'Search plate, owner or department…')}
+                  className={`${inp} ps-9`} />
+              </div>
+              {/* الافتراضُ «التي بلا بيانات»: هي سببُ فتح النافذة. ومن أراد
+                  تصحيحَ مركبةٍ مسجَّلة يرفع العلامة — لا يُمنع منها. */}
+              <label className="flex items-center gap-1.5 text-[12.5px] text-slate-600 cursor-pointer">
+                <input type="checkbox" checked={onlyMissing} className="accent-[#f37121]"
+                  onChange={(e) => setOnlyMissing(e.target.checked)} />
+                {t('التي لا بيانات لها فقط', 'Only vehicles with no data')}
+              </label>
+            </div>
+            <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 max-h-72 overflow-y-auto">
+              {pool === null && <div className="p-4"><Spinner /></div>}
+              {pool !== null && !candidates.length && (
+                <p className="px-3 py-6 text-center text-sm text-slate-500">
+                  {t('لا مركبات مطابقة', 'No matching vehicles')}
+                </p>
+              )}
+              {candidates.map((v) => (
+                <button key={v._id} onClick={() => pick(v)}
+                  className="w-full text-start px-3 py-2 hover:bg-orange-50 flex items-center justify-between gap-3">
+                  <span className="font-semibold text-slate-900 text-[13px]">{v.plateNumber}</span>
+                  <span className="text-[12px] text-slate-500 truncate">
+                    {[v.ownerNameAr, v.departmentAr, v.cityAr].filter(Boolean).join(' · ')}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {pool !== null && (
+              <p className="text-[11.5px] text-slate-500">
+                {t(`${candidates.length} مركبة معروضة من ${pool.length}`, `${candidates.length} of ${pool.length} shown`)}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── حقول العائلة وحدها ────────────────────────────────────────── */}
+        {target && (
+          <>
+            {creating && hasDoc(target, fields) && (
+              <p className="mb-3 text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                {t('على هذه المركبة بياناتٌ مسجَّلة لهذا المستند — ما تحفظه سيحلّ محلَّها.',
+                   'This vehicle already has data for this document — saving will replace it.')}
+              </p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {fields.map((fl) => (
+                <div key={fl.path} className={fl.wide ? 'md:col-span-2' : ''}>
+                  {fl.kind === 'flag' ? (
+                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer h-full pt-5">
+                      <input type="checkbox" className="accent-[#f37121]" checked={!!vals[fl.path]}
+                        onChange={(e) => setVals((p) => ({ ...p, [fl.path]: e.target.checked }))} />
+                      {ar ? fl.ar : fl.en}
+                    </label>
+                  ) : (
+                    <>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        {ar ? fl.ar : fl.en}
+                        {fl.hint && <span className="font-normal text-slate-400"> ({fl.hint})</span>}
+                      </label>
+                      <input
+                        type={fl.kind === 'date' ? 'date' : fl.kind === 'number' ? 'number' : 'text'}
+                        value={vals[fl.path] ?? ''}
+                        onChange={(e) => setVals((p) => ({ ...p, [fl.path]: e.target.value }))}
+                        className={`${inp} ${fl.mono ? 'font-mono' : ''}`}
+                        {...(fl.mono ? { dir: 'ltr' } : {})} />
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-3 text-[11px] text-slate-500 bg-slate-50 rounded-lg px-3 py-2 leading-relaxed">
+              {t('لا يُكتب من هنا إلا حقول هذا المستند — بقيّة بيانات المركبة تُعدَّل من صفحة سجل المركبات.',
+                 'Only this document\u2019s fields are written here — the rest of the vehicle is edited in the vehicle registry.')}
+            </p>
+
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">
+                {t('إلغاء', 'Cancel')}
+              </button>
+              <button onClick={save} disabled={saving}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f14] text-white text-sm font-semibold disabled:opacity-60">
+                <Save className="w-4 h-4" /> {t('حفظ', 'Save')}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── حذفُ المركبة كلِّها — لمن يملك الحذف، وفي التعديل وحده ─────── */}
+        {!creating && canDelete && target && (
+          <div className="mt-5 pt-4 border-t border-slate-200">
+            {!showDanger ? (
+              <button onClick={() => setShowDanger(true)}
+                className="inline-flex items-center gap-1.5 text-[12px] text-red-600 hover:text-red-800 hover:underline">
+                <Trash2 className="w-3.5 h-3.5" />
+                {t('حذف المركبة من السجلّ نهائيًا', 'Permanently delete this vehicle')}
+              </button>
+            ) : (
+              <div className="rounded-xl border-2 border-red-300 bg-red-50 p-3 space-y-2">
+                <p className="text-[12.5px] text-red-800 font-semibold leading-relaxed">
+                  {t(`هذا ليس مسحًا لـ«${famLabel}». ستُحذف المركبة ${target.plateNumber} من سجلّ المركبات نهائيًا، بكل مستنداتها وتفاويضها وسجلّ تجديداتها — ولا رجعة.`,
+                     `This is not clearing «${famLabel}». Vehicle ${target.plateNumber} will be permanently removed from the registry with every document, authorisation and renewal record — this cannot be undone.`)}
+                </p>
+                <label className="block text-[11.5px] font-semibold text-red-800">
+                  {t(`اكتب رقم اللوحة للتأكيد: ${target.plateNumber}`, `Type the plate to confirm: ${target.plateNumber}`)}
+                </label>
+                <input value={typed} onChange={(e) => setTyped(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-red-300 text-sm bg-white" />
+                <div className="flex gap-2">
+                  <button onClick={() => { setShowDanger(false); setTyped(''); }}
+                    className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-[12.5px]">
+                    {t('تراجع', 'Back')}
+                  </button>
+                  <button onClick={destroy} disabled={!armed || killing}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 text-white text-[12.5px] font-semibold disabled:opacity-40">
+                    <Trash2 className="w-3.5 h-3.5" /> {t('حذف المركبة نهائيًا', 'Delete vehicle')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** أعمدةٌ تتكرّر في كل عائلة: اللوحة أوّلًا، ثم ما يُعرَف به موضعُ المركبة. */

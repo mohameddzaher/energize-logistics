@@ -661,7 +661,18 @@ exports.updateFields = async (req, res) => {
         if (v === '' || v === null) { emp[k] = null; applied[k] = null; continue; }
         const dt = new Date(v);
         if (isNaN(dt)) { rejected.push(k); continue; }
-        emp[k] = dt; applied[k] = dt;
+        // أكثرُ حقول التواريخ هنا **نصٌّ** في المخطَّط بصيغة YYYY-MM-DD (انظر
+        // models/Employee)، وإسنادُ كائن تاريخٍ إلى حقلٍ نصّيّ يخزّن ناتج
+        // `Date.toString()` كاملًا: «Fri Jan 01 2027 03:00:00 GMT+0300 (…)».
+        // فيبقى التاريخ يُقرأ على الشاشة ولا يُقارَن — الترتيبُ النصّيّ يختلّ،
+        // ومطابقةُ الاستيراد بالصيغة القياسية تسقط، ويظهر في التصدير سطرٌ
+        // بلغةٍ أخرى. والعطب صامت: لا شيء يبدو خاطئًا حتى يُسأل الملفّ سؤالًا
+        // يعتمد على الصيغة. فيُكتب بصيغة الحقل نفسه، ويبقى الكائن لما عُرِّف
+        // في المخطَّط تاريخًا حقًّا.
+        const iso = /^\d{4}-\d{2}-\d{2}$/.test(String(v).trim())
+          ? String(v).trim() : dt.toISOString().slice(0, 10);
+        emp[k] = Employee.schema.path(k)?.instance === 'String' ? iso : dt;
+        applied[k] = emp[k];
       } else if (f.type === 'bool') {
         emp[k] = v === true || v === 'true' || v === '1'; applied[k] = emp[k];
       } else {

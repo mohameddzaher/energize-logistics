@@ -8,6 +8,12 @@
 //
 // الملء بيحصل **من نفس المكان**: تدوس على الخانة الناقصة وتكتبها. الحفظ بيشيل
 // حالة «مطلوب» على السيرفر، فالعدّاد فوق بينقص لوحده.
+//
+// وفوق الملء خانةً خانة، للصفحة ثلاثة أفعالٍ كاملة على بيانات المجموعة:
+// «إضافة» تفتح ملفّ المجموعة لموظّفٍ لا بيانات له فيها، و«تعديل» تفتح حقول
+// المجموعة وحدَها لشخصٍ واحد مجتمعةً — لا استمارة الموظّف كلَّها، فتلك في ملفّه
+// وتكرارها هنا يُفرغ هذه الصفحات من معناها — و«تفريغ» تمحو بيانات هذه المجموعة
+// عنده وحدَه. ولا شيء منها يحذف موظّفًا: انظر components/hr/HrGroupModals.
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -16,11 +22,11 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { Search, Check, X, Pencil, ArrowUpDown, RefreshCw, ArrowRight } from 'lucide-react';
+import { Search, Check, X, Pencil, ArrowUpDown, RefreshCw, ArrowRight, Plus, Trash2 } from 'lucide-react';
 import {
   getHrRecords, updateEmployeeFields, renewHrDocument, renewHrBulk, RENEWABLE_GROUPS,
   STATUS_META, STATE_META, statusLabel, stateLabel,
-  fmtDate, daysText, type RecordRow, type FieldDef,
+  fmtDate, toDateInput, daysText, type RecordRow, type FieldDef,
 } from '@/lib/hrMaster';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { canEditSection } from '@/lib/sections';
@@ -28,6 +34,7 @@ import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel'
 import { HR_DATE_FIELDS, HR_NUM_RANGES } from '@/lib/hrMaster';
 import MasterNav from '@/components/hr/MasterNav';
 import ContractsTabs from '@/components/hr/ContractsTabs';
+import { HrGroupFormModal, HrGroupClearModal } from '@/components/hr/HrGroupModals';
 
 const QUICK = [30, 60, 90, 180];
 
@@ -71,6 +78,11 @@ function GroupInner() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState(false);
   const [renewing, setRenewing] = useState<RecordRow | null>(null);
+  // ── إنشاء / تعديل / تفريغ ──────────────────────────────────────────────────
+  // نموذجٌ واحد للحالتين: «إضافة» تختار الموظّف ثم تملأ، و«تعديل» تبدأ بموظّفٍ
+  // معروف. فصلُهما مكوّنين يجعل حقلًا يُضاف إلى المجموعة يظهر في أحدهما فقط.
+  const [form, setForm] = useState<{ mode: 'create' | 'edit'; row: RecordRow | null } | null>(null);
+  const [clearing, setClearing] = useState<RecordRow | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -153,6 +165,12 @@ function GroupInner() {
         subtitle={t('اضغط أي خانة ناقصة واملأها من هنا مباشرة', 'Click any missing cell and fill it right here')}>
         <ExportMenu fileName={`hr-${group}`} lang={lang as 'ar' | 'en'}
           options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: ar ? g.ar : g.en, rows, columns: cols }] }]} />
+        {canEdit && (
+          <button onClick={() => setForm({ mode: 'create', row: null })}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-semibold">
+            <Plus className="w-4 h-4" />{t('إضافة بيانات', 'Add data')}
+          </button>
+        )}
       </PageHeader>
 
       {/* الفلتر — يشمل ما جاء محمولًا من النظرة الشاملة، ظاهرًا وقابلًا للرفع */}
@@ -296,17 +314,18 @@ function GroupInner() {
                     </button>
                   </th>
                 )}
-                {renewable && canEdit && <th className="px-3 py-3" />}
+                {canEdit && <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('إجراءات', 'Actions')}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
                 <Row key={r._id} r={r} fields={g.fields} isDoc={g.document} ar={ar} t={t}
                   canEdit={canEdit} onSaved={load} notify={notify} router={router}
-                  renewable={renewable} picked={picked} setPicked={setPicked} onRenew={setRenewing} />
+                  renewable={renewable} picked={picked} setPicked={setPicked} onRenew={setRenewing}
+                  onEdit={(x: RecordRow) => setForm({ mode: 'edit', row: x })} onClear={setClearing} />
               ))}
               {!rows.length && (
-                <tr><td colSpan={g.fields.length + (g.document ? 5 : 4) + (renewable && canEdit ? 2 : 0)} className="px-3 py-12 text-center text-slate-500">
+                <tr><td colSpan={4 + g.fields.length + (g.document ? 1 : 0) + (renewable && canEdit ? 1 : 0) + (canEdit ? 1 : 0)} className="px-3 py-12 text-center text-slate-500">
                   {t('لا نتائج بالفلاتر دي', 'Nothing matches these filters')}
                 </td></tr>
               )}
@@ -338,13 +357,24 @@ function GroupInner() {
           onClose={() => setRenewing(null)}
           onDone={() => { setRenewing(null); load(); }} />
       )}
+
+      <HrGroupFormModal
+        open={!!form} mode={form?.mode || 'create'} group={group} groupLabel={ar ? g.ar : g.en}
+        fields={g.fields} row={form?.row || null} ar={ar}
+        onClose={() => setForm(null)}
+        onDone={() => { setForm(null); load(); }} />
+
+      <HrGroupClearModal
+        open={!!clearing} groupLabel={ar ? g.ar : g.en} fields={g.fields} row={clearing} ar={ar}
+        onClose={() => setClearing(null)}
+        onDone={() => { setClearing(null); load(); }} />
     </div>
   );
 }
 
 // ── صف موظف: كل خانة قابلة للتعديل في مكانها ─────────────────────────────────
 function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
-  renewable, picked, setPicked, onRenew }: any) {
+  renewable, picked, setPicked, onRenew, onEdit, onClear }: any) {
   const m = r.state ? STATE_META[r.state] : null;
   const sel = renewable && canEdit;
   return (
@@ -378,12 +408,26 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router,
           {r.daysRemaining == null ? <span className="text-slate-500">—</span> : daysText(r.daysRemaining, ar)}
         </td>
       )}
-      {sel && (
+      {/* الأفعال الثلاثة في عمودٍ واحد. التجديد يبقى أوّلها في المستندات لأنّه
+          أكثرها تكرارًا، والتفريغ آخرها وحده بلونٍ يقول إنّه لا يُشبه ما قبله. */}
+      {canEdit && (
         <td className="px-3 py-2.5">
-          <button onClick={() => onRenew(r)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold">
-            <RefreshCw className="w-3.5 h-3.5" />{t('تجديد', 'Renew')}
-          </button>
+          <div className="inline-flex items-center gap-1">
+            {sel && (
+              <button onClick={() => onRenew(r)} title={t('تجديد', 'Renew')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold">
+                <RefreshCw className="w-3.5 h-3.5" />{t('تجديد', 'Renew')}
+              </button>
+            )}
+            <button onClick={() => onEdit(r)} title={t('تعديل بيانات المجموعة', 'Edit this group’s data')}
+              className="p-1.5 rounded-md text-slate-600 hover:text-[#f37121] hover:bg-slate-100">
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onClear(r)} title={t('تفريغ بيانات المجموعة', 'Clear this group’s data')}
+              className="p-1.5 rounded-md text-slate-600 hover:text-red-600 hover:bg-red-50">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </td>
       )}
     </tr>
@@ -400,7 +444,9 @@ function Cell({ r, f, ar, t, canEdit, onSaved, notify }: any) {
 
   const start = () => {
     if (!canEdit) return;
-    setVal(f.type === 'date' && raw ? new Date(raw).toISOString().slice(0, 10) : (raw ?? ''));
+    // التاريخ غير المقروء («مطلوب» مكتوبةً في خانة تاريخ) كان يرمي استثناءً هنا
+    // فيُسقِط الجدول كلَّه بدل أن تُفتَح الخانة فارغةً لتُصحَّح.
+    setVal(f.type === 'date' ? toDateInput(raw) : (raw ?? ''));
     setEditing(true);
   };
 

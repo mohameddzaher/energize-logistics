@@ -6,7 +6,7 @@
 // أخرى، وهي المفتاح الوحيد لمطابقة بند الفاتورة بالمركبة. وسقفٌ «مفتوح» ليس
 // سقفًا عاليًا — هو لا سقف، وهو أوّل ما يُسأل عنه في مراجعة الوقود.
 import { Fuel } from 'lucide-react';
-import DocumentFamilyPage, { commonColumns, type DocColumn } from '@/components/vehicles/DocumentFamilyPage';
+import DocumentFamilyPage, { commonColumns, type DocColumn, type DocField } from '@/components/vehicles/DocumentFamilyPage';
 import { type Chip } from '@/components/ls2/FilterBar';
 import { useLanguage } from '@/context/LanguageContext';
 import { money, type VReg } from '@/lib/vehicleRegistry';
@@ -24,6 +24,20 @@ const COLUMNS: DocColumn[] = [
     get: (v) => (v.fuelCard?.limitStatus === 'open' ? 'مفتوح — بلا سقف'
       : v.fuelCard?.limitSar != null ? money(v.fuelCard.limitSar) : ''),
   },
+];
+
+// «مفتوح» علامةٌ لا رقم: صفرٌ في خانة السقف يعني «ممنوع الصرف»، وفراغٌ يعني
+// «لا نعلم» — وكلاهما عكسُ المقصود. فالعلامةُ خانةُ اختيارٍ تكتب `open`، وحين
+// تُرفع يعود السقفُ إلى الرقم المكتوب.
+const FIELDS: DocField[] = [
+  { path: 'fuelCard.cardNumber', ar: 'رقم شريحة بترو اب', en: 'Petro App chip number', mono: true },
+  { path: 'fuelCard.plateOnInvoiceAr', ar: 'رقم اللوحة في فاتورة بترو اب', en: 'Plate on Petro App invoice' },
+  { path: 'fuelCard.provider', ar: 'المزوّد', en: 'Provider' },
+  { path: 'fuelCard.statusAr', ar: 'حالة الشريحة', en: 'Chip status' },
+  { path: 'fuelCard.consumptionTypeAr', ar: 'نوع الاستهلاك', en: 'Consumption type' },
+  { path: 'fuelCard.limitSar', ar: 'حد الاستهلاك (ر.س)', en: 'Consumption limit (SAR)', kind: 'number' },
+  { path: 'fuelCard.limitStatus', ar: 'مفتوح — بلا سقف صرف', en: 'Open — no spending ceiling',
+    kind: 'flag', on: 'open', off: '' },
 ];
 
 export default function Page() {
@@ -48,6 +62,7 @@ export default function Page() {
       subtitleEn="Chip number, the plate as printed on the invoice, status, consumption type and limit"
       fileName="vehicle-fuel-cards"
       columns={COLUMNS}
+      fields={FIELDS}
       searchIn={(v) => [v.plateNumber, v.fuelCard?.cardNumber, v.fuelCard?.plateOnInvoiceAr, v.ownerNameAr]}
     />
   );

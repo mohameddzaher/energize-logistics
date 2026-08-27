@@ -7,7 +7,7 @@
 // بالاتجاهين: «ما الذي تغطّيه هذه الوثيقة؟» و«بأيّ وثيقةٍ هذه المركبة مؤمَّنة
 // وإلى متى وبكم؟». الثانية لم يكن لها جواب في أي شاشة.
 import { ShieldCheck } from 'lucide-react';
-import DocumentFamilyPage, { commonColumns, type DocColumn } from '@/components/vehicles/DocumentFamilyPage';
+import DocumentFamilyPage, { commonColumns, type DocColumn, type DocField } from '@/components/vehicles/DocumentFamilyPage';
 import { fmtDate, money } from '@/lib/vehicleRegistry';
 
 const COLUMNS: DocColumn[] = [
@@ -25,6 +25,19 @@ const COLUMNS: DocColumn[] = [
   },
 ];
 
+// و«قيمة التأمين» خانتان لا واحدة: رقمٌ حين ندفعه نحن، ونصٌّ حين يدفعه المموِّل
+// («ملكية بنك الراجحي»). دمجُهما في خانةٍ واحدة يجبر المدخِل على ترك الرقم
+// فارغًا فتُعدّ المركبة بلا تأمين وهي مؤمَّنة.
+const FIELDS: DocField[] = [
+  { path: 'insurance.policyNumber', ar: 'رقم وثيقة التأمين', en: 'Policy number', mono: true },
+  { path: 'insurance.companyAr', ar: 'شركة التأمين', en: 'Insurer' },
+  { path: 'insurance.coverageTypeAr', ar: 'نوع التأمين', en: 'Coverage type' },
+  { path: 'insurance.expiryDate', ar: 'تاريخ انتهاء التأمين', en: 'Insurance expiry', kind: 'date' },
+  { path: 'insurance.premiumSar', ar: 'قيمة التأمين (ر.س)', en: 'Premium (SAR)', kind: 'number' },
+  { path: 'insurance.premiumStatusAr', ar: 'جهة سداد القسط', en: 'Who pays the premium',
+    hint: 'إن كان القسط على المموِّل' },
+];
+
 export default function Page() {
   return (
     <DocumentFamilyPage
@@ -36,6 +49,7 @@ export default function Page() {
       subtitleEn="Each vehicle's policy, insurer, coverage, premium and expiry"
       fileName="vehicle-insurance"
       columns={COLUMNS}
+      fields={FIELDS}
       searchIn={(v) => [v.plateNumber, v.insurance?.policyNumber, v.insurance?.companyAr, v.ownerNameAr]}
     />
   );

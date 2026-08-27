@@ -54,11 +54,10 @@ const GROUPS = [
       { key: 'branchName', ar: 'الفرع', en: 'Branch', type: 'text', groupable: true },
       { key: 'directManagerName', ar: 'المدير المباشر', en: 'Line manager', type: 'text', groupable: true },
       { key: 'jobTitle', ar: 'المسمى الوظيفي', en: 'Job title', type: 'text', groupable: true },
-      // ── ولماذا السجلّ التجاريّ حقلُ موظّف ────────────────────────────────────
-      // الشركة تُوظِّف على أكثر من سجلٍّ تجاريّ، والموظّف مسجَّلٌ على واحدٍ بعينه.
-      // وهو الذي تُبنى عليه أسئلةُ الجهات: «كم على السجلّ الفلانيّ؟» فبغير حقلٍ
-      // قابلٍ للفلترة كان الجواب يُعَدّ باليد من ملفٍّ خارج النظام.
-      { key: 'registerNumber', ar: 'رقم السجل التجاري', en: 'Commercial register', type: 'text', groupable: true },
+      // رقم السجلّ التجاريّ كان هنا، وانتقل إلى مجموعة «السجل والتأمينات
+      // الاجتماعية» تحت — لأنّه والتأمينات وجهان لتسجيلٍ واحد، لا حقلان.
+      // ولا يجوز أن يُذكر في مجموعتين: `getField` تُرجع أولاهما، وتُبنى منه
+      // بطاقتان وفلتران بالمفتاح نفسه فتظهر اللوحة مرّتين لشيءٍ واحد.
       { key: 'workStatusText', ar: 'حالة العمل', en: 'Work status', type: 'text', groupable: true },
       { key: 'systemStatus', ar: 'داخل النظام', en: 'In system', type: 'text', groupable: true },
       { key: 'hireDate', ar: 'تاريخ التعيين', en: 'Hire date', type: 'date' },
@@ -67,8 +66,31 @@ const GROUPS = [
     ],
   },
   {
-    key: 'gosi', ar: 'التأمينات الاجتماعية', en: 'GOSI', icon: 'shield',
-    fields: [{ key: 'gosiNumber', ar: 'الرقم التأميني', en: 'GOSI number', type: 'text' }],
+    // ── السجل والتأمينات الاجتماعية ──────────────────────────────────────────
+    // كانت المجموعة رقمًا تأمينيًّا وحده. وملفُّ «السجل و التأمينات الاجتماعية»
+    // أظهر أنّ الثلاثة خبرٌ واحد: الموظّف مسجَّلٌ على سجلٍّ تجاريٍّ بعينه، وحالتُه
+    // في التأمينات مترتّبةٌ على ذلك التسجيل، ورقمُه التأمينيّ أثرُه. وفي الملفّ
+    // نفسه: الخمسة والخمسون الذين لا سجلَّ لهم هم بأعيانهم الخمسة والخمسون
+    // الذين تأميناتُهم «غير مطلوبة» — فصلُهما في شاشتين يجعل الجواب نصفين.
+    //
+    // والمفتاح `socialInsurance` لا `gosi`: الاسم القديم يصف واحدًا من ثلاثة.
+    // والقديم يبقى صالحًا في `getGroup` — انظر `GROUP_ALIASES`.
+    key: 'socialInsurance', ar: 'السجل والتأمينات الاجتماعية', en: 'Register & social insurance', icon: 'shield',
+    fields: [
+      // ── ولماذا السجلّ التجاريّ حقلُ موظّف ────────────────────────────────────
+      // الشركة تُوظِّف على أكثر من سجلٍّ تجاريّ، والموظّف مسجَّلٌ على واحدٍ بعينه.
+      // وهو الذي تُبنى عليه أسئلةُ الجهات: «كم على السجلّ الفلانيّ؟» فبغير حقلٍ
+      // قابلٍ للفلترة كان الجواب يُعَدّ باليد من ملفٍّ خارج النظام.
+      { key: 'registerNumber', ar: 'رقم السجل التجاري', en: 'Commercial register', type: 'text', groupable: true },
+      // حالة التأمينات تسعُ ثلاثَ قيمٍ لا رابعَ لها («نشط»، «غير نشط»)، والثالثة
+      // ليست قيمةً بل قرارٌ إداريّ يُكتب عَلَمَ حالةٍ («غير مطلوب») — انظر تحت.
+      // وقابليّتُها للفلترة هي بيت القصيد: «مَن ليس نشطًا في التأمينات؟» سؤالٌ
+      // يُسأل شهريًّا وكان جوابه يُعَدّ باليد من ملفٍّ خارج النظام.
+      { key: 'socialInsuranceStatus', ar: 'حالة التأمينات', en: 'Insurance status', type: 'text', groupable: true },
+      // الرقم التأمينيّ فريدٌ لكلّ موظّف، فلا يُعلَّم `groupable`: توزيعُه
+      // ثلاثمئةٌ وستّون سطرًا كلٌّ منها «١» — قائمةٌ لا تُقرأ ولا يُفلتَر بها.
+      { key: 'gosiNumber', ar: 'الرقم التأميني', en: 'GOSI number', type: 'text' },
+    ],
   },
   {
     key: 'banking', ar: 'البيانات البنكية', en: 'Banking', icon: 'bank',
@@ -163,7 +185,15 @@ const GROUPS = [
 ];
 
 const GROUP_KEYS = GROUPS.map((g) => g.key);
-const getGroup = (key) => GROUPS.find((g) => g.key === key) || null;
+/**
+ * أسماءٌ قديمة لمجموعاتٍ أُعيدت تسميتها.
+ *
+ * `/system/hr/master/gosi` عنوانٌ محفوظٌ في مفضّلات الناس ومكتوبٌ في روابطَ
+ * قديمة. وبغير هذه الخريطة يردّ الخادم «المجموعة غير معروفة» على رابطٍ كان
+ * يعمل أمس، ولا شيء في الشاشة يقول لفاتحه إلى أين ذهبت صفحته.
+ */
+const GROUP_ALIASES = { gosi: 'socialInsurance' };
+const getGroup = (key) => GROUPS.find((g) => g.key === (GROUP_ALIASES[key] || key)) || null;
 const DOCUMENT_GROUPS = GROUPS.filter((g) => g.document);
 const ALL_FIELDS = GROUPS.flatMap((g) => g.fields.map((f) => ({ ...f, group: g.key, groupAr: g.ar })));
 const getField = (key) => ALL_FIELDS.find((f) => f.key === key) || null;
@@ -214,6 +244,6 @@ const stateOf = (expiry, statusCode, alert = {}, now = new Date()) => {
 };
 
 module.exports = {
-  GROUPS, GROUP_KEYS, getGroup, DOCUMENT_GROUPS, ALL_FIELDS, getField, statusKeyOf,
+  GROUPS, GROUP_KEYS, GROUP_ALIASES, getGroup, DOCUMENT_GROUPS, ALL_FIELDS, getField, statusKeyOf,
   STATUS_LABELS, statusLabel, STATE_LABELS, daysLeft, stateOf,
 };

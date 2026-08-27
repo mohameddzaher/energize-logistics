@@ -5,10 +5,17 @@
  *   node src/scripts/importFinalHrData2026.js --dry     خطّة كاملة بلا كتابة
  *   node src/scripts/importFinalHrData2026.js --yes     تنفيذ
  *
- * المصدر: seeds/data/hr-2026-08/ — ثلاثة عشر ملفًّا، كلٌّ منها عمودٌ أو عمودان
- * على مفتاحٍ واحد: «رقم الهوية». أحدَ عشَرَ منها تحمل الـ٣٦٠ نفسها بلا زيادةٍ ولا
+ * المصدر: seeds/data/hr-2026-08/ — أربعة عشر ملفًّا، كلٌّ منها عمودٌ أو عمودان
+ * على مفتاحٍ واحد: «رقم الهوية». اثنا عشَرَ منها تحمل الـ٣٦٠ نفسها بلا زيادةٍ ولا
  * نقص، واثنان (رخص العمل والعقود) يحملان مجموعةً أضيق فيها اسمان خارج الـ٣٦٠،
  * فالمجموع اثنان وستّون وثلاثمئة رقم هوية.
+ *
+ * ── والسجلُّ والتأميناتُ خبرٌ واحد ───────────────────────────────────────────
+ * الملفّ الرابع عشر («ملف السجل و التأمينات الاجتماعية») يحمل العمودين معًا،
+ * وليس ذلك مصادفةَ ترتيب: الخمسةُ والخمسون الذين تركهم فارغين في «رقم السجل»
+ * هم بأعيانهم الخمسةُ والخمسون المكتوب عندهم «غيرمطلوب» في التأمينات. فمن
+ * ليس على سجلٍّ ليس عليه تأمينات، وفراغُ سجلّه قرارٌ لا نقص. ولذلك يُنسَخ
+ * «غير مطلوب» من التأمينات إلى السجلّ — انظر `registerFollowsInsurance`.
  *
  * ── المفتاح، ولماذا يُطبَّع قبل المقارنة ────────────────────────────────────
  * إكسل يكتب رقم الهوية عددًا، وقاعدتنا تحفظه نصًّا، وقد تصل الأرقام هندية
@@ -210,6 +217,21 @@ const SHEETS = [
     cols: [{ header: 'تاريخ انتهاء رخصة العمل', field: 'workPermitExpiry', kind: 'date' }],
   },
   {
+    // ── السجل والتأمينات الاجتماعية ────────────────────────────────────────
+    // موضعُه بعد «السجل للموظفين.xlsx» مقصود: الملفّان يحملان العمود نفسه،
+    // والأخيرُ في هذه القائمة هو الذي يفوز بقيمته في `p.fields`. وهذا أحدثُهما
+    // تسليمًا فهو المرجع؛ ولو سبقه لبقي رقمُ السجلّ القديم مكتوبًا فوق الجديد.
+    file: 'ملف السجل و التأمينات الاجتماعية للموظفين .xlsx',
+    registerFollowsInsurance: true,
+    cols: [
+      // «٠» هنا رسمُ إكسل للخانة الفارغة لا رقمَ سجلّ — و`sentinel` يقرؤه فراغًا
+      // فلا يُخزَّن أبدًا. ولو خُزِّن لصار «٠» سجلًّا تجاريًّا لخمسةٍ وخمسين
+      // موظّفًا وخيارًا في فلتر السجلّات يُسأل عنه ولا وجودَ له.
+      { header: 'رقم السجل', field: 'registerNumber', kind: 'digits' },
+      { header: 'التأمينات الاجتماعية', field: 'socialInsuranceStatus', kind: 'gosiStatus' },
+    ],
+  },
+  {
     // العقود: صفٌّ لكلّ عقد. أعمدتُه تُقرأ هنا لقطةً على الموظّف، وتُقرأ مرّةً
     // ثانيةً في القسم ③ لتصير وثيقةَ عقدٍ قائمةً بذاتها.
     file: 'ملف عقود الموظفين.xlsx',
@@ -264,6 +286,16 @@ function readCell(kind, raw) {
       if (/^(ذكر|male|m)$/i.test(t)) return 'male';
       if (/^(انثى|أنثى|female|f)$/i.test(t)) return 'female';
       return null;
+    }
+    case 'gosiStatus': {
+      // الحقل نصٌّ حرٌّ في الموديل، وفي القاعدة قيمٌ عربيّة كتبتها استيراداتٌ
+      // سابقة. فتُوحَّد صياغةُ ما نعرفه هنا: «غيرنشط» و«غير نشط» حالةٌ واحدة،
+      // وتركُهما كما وردا يصنع خيارين في الفلتر لشيءٍ واحد فيُقسَم العدّاد.
+      // وما لا نعرفه يمرّ كما هو — لا تُخترَع له قيمة ولا يُطرَح.
+      const t = S(raw);
+      if (/^نشط$/.test(t)) return 'نشط';
+      if (/^غير\s*نشط$/.test(t)) return 'غير نشط';
+      return t || null;
     }
     case 'freelancer':
       return /فري\s*لانسر|freelanc/i.test(S(raw));
@@ -400,6 +432,16 @@ function readSheet(file) {
         // العقد الحاليّ لا آخرُ صفٍّ في الورقة.
         bucket[c.field] = value;
       }
+
+      // ── فراغُ السجلّ عند «غير مطلوب» قرارٌ لا نقص ────────────────────────────
+      // تركُه «مطلوبًا» يضع خمسةً وخمسين اسمًا في قائمة عمل الموارد البشرية
+      // لجمع رقمِ سجلٍّ قرّر الملفُّ نفسه — في العمود المجاور — أنّه غير مطلوب.
+      // وهو نفسُ الخلط الذي يجعل القائمة كذبًا (انظر رأس الملف).
+      if (spec.registerFollowsInsurance
+        && p.statuses.socialInsuranceStatus === 'not_required'
+        && !filled(p.fields.registerNumber)) {
+        p.statuses.registerNumber = 'not_required';
+      }
     }
     sheetStats.push({ file: spec.file, headerRow, rows: rowsRead, dup, ids: spec.contracts ? new Set(contractRows.map((r) => r.key)).size : seen.size });
   }
@@ -409,11 +451,14 @@ function readSheet(file) {
   // وخمسين خانةً فارغة ويحمل ملفُّ العقود لبعضها رقمًا. تركُها «مطلوبةً» ونحن
   // نملك جوابها في الحزمة ذاتها يضع أسماءً في قائمة عملٍ لا عملَ فيها. المرجع
   // يبقى ملفَّ السجلّ حين ينطق، والخلافُ يُطبَع ولا يُبتلَع.
-  let regFilled = 0; const regConflict = [];
+  // ورقمٌ حقيقيٌّ في ملفّ العقود يسبق عَلَمَ «غير مطلوب» المنسوخَ من التأمينات:
+  // مَن له رقمُ سجلٍّ مكتوبٌ فهو على سجلّ، والعَلَم كان استنتاجًا من فراغٍ لا خبرًا.
+  let regFilled = 0; let regOverNotRequired = 0; const regConflict = [];
   for (const p of plan.values()) {
     const fb = p.fallback.registerNumber;
     if (!fb) continue;
     if (!filled(p.fields.registerNumber)) {
+      if (p.statuses.registerNumber === 'not_required') regOverNotRequired++;
       p.fields.registerNumber = fb;
       delete p.statuses.registerNumber;
       regFilled++;
@@ -493,6 +538,11 @@ function readSheet(file) {
   };
   const created = [];
   const workStatusDrift = [];
+  // ── ولماذا يُفرَد رقمُ السجلّ بإعلان ────────────────────────────────────────
+  // تغيُّرُه على موظّفٍ ليس ملءَ فراغ: هو نقلُه من سجلٍّ تجاريٍّ إلى آخر، وعليه
+  // تُبنى تقاريرُ الجهات واشتراكاتُ التأمينات. وهو يمرّ في هذا السكربت كأيّ حقلٍ
+  // آخر فلا يراه أحد — فيُطبَع باسمه ورقميه ليقرأه إنسان ويتأكّد.
+  const regChanged = [];
   const empByKey = new Map();   // key → مستند الموظّف بعد الحفظ (يحتاجه القسم ③)
 
   for (const p of [...plan.values()]) {
@@ -594,6 +644,9 @@ function readSheet(file) {
         continue;
       }
       if (String(before ?? '') === String(cv ?? '')) continue;
+      if (k === 'registerNumber' && filled(before)) {
+        regChanged.push(`${p.key} · ${name}: عندنا ${show(before)} · والملفّ ${show(cv)}`);
+      }
 
       // (ب) سجلٌّ لمسه إنسانٌ بعد آخر استيراد: الشيت يملأ الفارغ ولا يكتب فوق
       //    المكتوب. لقطةُ ورقٍ أُخذت قبل أن يفتح الموظّف الشاشة ليست أحدثَ ممّا
@@ -750,6 +803,15 @@ function readSheet(file) {
     console.log(`\nالسجلّ التجاريّ: ${regFilled} خانةً فارغةً في «ملف السجل» سدّها «ملف عقود الموظفين»`
       + `${regConflict.length ? ` · ${regConflict.length} خلافًا` : ''}`);
     regConflict.slice(0, 15).forEach((c) => console.log('   ' + c));
+  }
+  const regNotRequired = [...plan.values()].filter((p) => p.statuses.registerNumber === 'not_required').length;
+  if (regNotRequired || regOverNotRequired) {
+    console.log(`\nرقم السجل: ${regNotRequired} خانةً فارغةً قُرئت «غير مطلوب» لأنّ تأمينات صاحبها «غير مطلوبة» — لا «مطلوب»`
+      + `${regOverNotRequired ? ` · و${regOverNotRequired} منها ردّها ملفُّ العقود برقمٍ حقيقيّ` : ''}`);
+  }
+  if (regChanged.length) {
+    console.log(`\nرقم سجلٍّ تجاريٍّ مكتوبٍ عندنا يخالف الملفّ (${regChanged.length}) — الملفّ هو المرجع، فتأكّدوا منها:`);
+    regChanged.forEach((r) => console.log('   ' + r));
   }
   if (workStatusDrift.length) {
     console.log(`\n«حاله العمل» تخالف حالة التوظيف عندنا (${workStatusDrift.length}) — لم تُغيَّر، تُقرَّر على الشاشة:`);

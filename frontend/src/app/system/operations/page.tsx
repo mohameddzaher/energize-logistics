@@ -11,7 +11,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import {
-  ClipboardList, Plus, Search, Filter, FilterX, Upload,
+  ClipboardList, Plus, Search, Filter, FilterX,
   Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, Calendar, AlertCircle,
   CheckSquare, Check
 } from 'lucide-react';
@@ -86,6 +86,46 @@ const EMPTY_OPTIONS: ColumnFilterOption[] = [];
 const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
 const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
 
+// ── أعمدة التصدير ────────────────────────────────────────────────────────────
+// مكتوبةٌ هنا لا مشتقّةٌ من الجدول: الجدول يُخفي الأعمدة المالية عمّن لا يراها،
+// والملفّ يخرج بما طلبه صاحبه — فاشتقاقُه من الشاشة كان سيُسقط أعمدةً بحسب مَن
+// ضغط الزرّ لا بحسب ما في البيانات.
+const EXPORT_COLUMNS = [
+  { header: 'رقم الطلب', key: 'reportNumber', width: 14 },
+  { header: 'تاريخ الطلب', key: 'reportDate', width: 12 },
+  { header: 'من', key: 'fromLocation', width: 14 },
+  { header: 'إلى', key: 'toLocation', width: 14 },
+  { header: 'الفرع', key: 'branch', width: 14 },
+  { header: 'مالك السيارة', key: 'carOwner', width: 22 },
+  { header: 'رقم السيارة', key: 'carNumber', width: 14 },
+  { header: 'نوع الملكية', key: 'ownerType', width: 12 },
+  { header: 'حالة التنفيذ', key: 'executionStatus', width: 16 },
+  { header: 'حالة الطلب', key: 'applicationStatus', width: 16 },
+  { header: 'طريقة الدفع', key: 'paymentMethod', width: 14 },
+  { header: 'العميل', key: 'username', width: 20 },
+  { header: 'هاتف العميل', key: 'userPhone', width: 14 },
+  { header: 'قيمة الشراء', key: 'purchaseValue', width: 12 },
+  { header: 'قيمة البيع', key: 'sellingValue', width: 12 },
+  { header: 'السائق', key: 'driverName', width: 20 },
+  { header: 'نوع الشاحنة', key: 'truckType', width: 14 },
+  { header: 'حجم الشاحنة', key: 'truckSize', width: 12 },
+  { header: 'المندوب', key: 'representativeName', width: 18 },
+  { header: 'مراجعة العمليات', key: 'operationsReview', width: 14 },
+  { header: 'تاريخ السداد', key: 'paymentDate', width: 12 },
+  { header: 'فرع السداد', key: 'payingBranch', width: 14 },
+  { header: 'رقم المستند', key: 'documentNumber', width: 14 },
+  { header: 'تاريخ الإرسال', key: 'sendingDate', width: 12 },
+  { header: 'تاريخ التسليم', key: 'deliveryDate', width: 12 },
+  { header: 'مراجعة المحاسبة', key: 'accountingReview', width: 14 },
+  { header: 'رقم الفاتورة', key: 'invoiceNumber', width: 14 },
+  { header: 'صافي الفاتورة', key: 'netInvoice', width: 12 },
+  { header: 'الضريبة', key: 'tax', width: 10 },
+  { header: 'إجمالي الفاتورة', key: 'totalInvoice', width: 14 },
+  { header: 'تاريخ الفاتورة', key: 'invoiceDate', width: 12 },
+  { header: 'تاريخ التحصيل', key: 'collectionDate', width: 12 },
+  { header: 'المرحلة', key: 'stage', width: 16 },
+];
+
 export default function OperationsWorkflowPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -157,6 +197,8 @@ export default function OperationsWorkflowPage() {
   const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
   const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
   const [openField, setOpenField] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   // عدّادُ فتحاتٍ لا مجرّد اسم العمود: إعادةُ فتح العمود نفسه يجب أن تُعيد طلب قيمه،
   // وإلا بقيت القائمة على نتيجة بحثٍ سابق جزئية والمستخدم يظنّها كلَّ القيم.
   const [openNonce, setOpenNonce] = useState(0);
@@ -454,12 +496,58 @@ export default function OperationsWorkflowPage() {
     });
   };
 
-  const handleExportExcel = () => {
-    // الملف يخرج بنفس شرط الشاشة — بما فيه فلاتر الأعمدة والبحث — وإلا نزّل المستخدم
-    // الجدول كلّه وهو يظنّه نسخةً ممّا يراه.
-    const exportParams = buildParams();
-    const qs = exportParams.toString() ? `?${exportParams.toString()}` : '';
-    window.open(`/api/workflows/export${qs}`, '_blank');
+  /**
+   * التصدير يمرّ بعميل الـAPI لا بـ`window.open`.
+   *
+   * كان يفتح تبويبًا على مسارٍ نسبيّ، والخادم على نطاقٍ غير نطاق الواجهة وكوكيز
+   * الجلسة مربوطةٌ بنطاقه وحده — فيصل الطلب إلى المستضيف بلا مصادقة ويردّ
+   * «Authentication required» في صفحةٍ بيضاء بدل أن ينزّل ملفًّا.
+   *
+   * وثلاثة نطاقات لا واحد: الصفحة المعروضة، أو ما طابق الفلتر كلَّه مهما بلغ
+   * عدده، أو الجدول كلّه. والفرق ليس ترفًا: تفلتر فيبقى مئتا صفٍّ وتعرض الشاشة
+   * خمسين، فتصديرُ «المعروض» يعطيك خُمس ما طلبتَ وأنت تحسبه كلَّه.
+   */
+  /**
+   * الصفّ كما يُقرأ لا كما يُخزَّن.
+   *
+   * الحالات تُحفَظ بمفاتيحها الخام (`bond_received`) وتُعرَض مترجمة. والملفّ
+   * يذهب إلى مَن لا يفتح النظام — محاسبٍ أو مراجعٍ خارجيّ — فخروجُه بالمفاتيح
+   * يجعله غير مقروء لمن كُتب له.
+   */
+  const exportRow = (w: Workflow) => ({
+    ...w,
+    reportDate: formatDate(w.reportDate),
+    paymentDate: formatDate(w.paymentDate),
+    sendingDate: formatDate(w.sendingDate),
+    deliveryDate: formatDate(w.deliveryDate),
+    invoiceDate: formatDate(w.invoiceDate),
+    collectionDate: formatDate(w.collectionDate),
+    executionStatus: trStatus(w.executionStatus),
+    applicationStatus: trStatus(w.applicationStatus),
+    paymentMethod: trPayment(w.paymentMethod),
+    stage: stageLabels[w.stage] || w.stage,
+    operationsReview: w.operationsReview ? (lang === 'ar' ? 'تمّت' : 'Done') : '',
+    accountingReview: w.accountingReview ? (lang === 'ar' ? 'تمّت' : 'Done') : '',
+  });
+
+  const doExport = async (scope: 'page' | 'filtered' | 'all') => {
+    setExporting(true);
+    try {
+      let data: Workflow[] = workflows;
+      if (scope !== 'page') {
+        const p = scope === 'all' ? new URLSearchParams() : buildParams();
+        p.set('page', '1');
+        p.set('limit', '100000');
+        const d = await api.get<{ workflows: Workflow[] }>(`/api/workflows?${p.toString()}`);
+        data = d.workflows || [];
+      }
+      if (!data.length) { notify(lang === 'ar' ? 'لا صفوف للتصدير' : 'Nothing to export', 'error'); return; }
+      const { exportToExcel } = await import('@/utils/exportExcel');
+      exportToExcel(data.map(exportRow), EXPORT_COLUMNS, `operations-${new Date().toISOString().slice(0, 10)}`,
+        lang === 'ar' ? 'الطلبات' : 'Workflows');
+    } catch (e: any) {
+      notify(e?.message || (lang === 'ar' ? 'تعذّر التصدير' : 'Export failed'), 'error');
+    } finally { setExporting(false); setExportOpen(false); }
   };
 
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('en-GB') : '-';
@@ -559,14 +647,36 @@ export default function OperationsWorkflowPage() {
               )}
             </div>
           )}
-          <button type="button" onClick={handleExportExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-            <FileSpreadsheet className="w-4 h-4" /> {T.exportExcel}
-          </button>
+          {/* التصدير باختيار نطاقه: المعروض، أو ما طابق الفلتر كلَّه، أو الجدول
+              كلّه. وعددُ كلٍّ مكتوبٌ بجانبه، فلا يُنزّل أحدٌ خمسين صفًّا وهو
+              يحسبها مئتين. */}
+          <div className="relative">
+            <button type="button" onClick={() => setExportOpen((v) => !v)} disabled={exporting}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors disabled:opacity-60">
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+              {T.exportExcel}
+            </button>
+            {exportOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
+                <div className="absolute z-50 mt-1 end-0 w-72 bg-white border border-slate-200 rounded-xl shadow-2xl p-1.5">
+                  {([
+                    ['page', lang === 'ar' ? 'الصفحة المعروضة' : 'Current page', workflows.length],
+                    ['filtered', lang === 'ar' ? 'كلّ ما طابق الفلتر' : 'Everything matching the filter', total],
+                    ['all', lang === 'ar' ? 'الجدول كلّه (بلا فلتر)' : 'The whole table (no filter)', null],
+                  ] as const).map(([k, label, n]) => (
+                    <button key={k} type="button" onClick={() => doExport(k as 'page' | 'filtered' | 'all')}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-start text-[13px] text-slate-700 hover:bg-slate-100">
+                      <span>{label}</span>
+                      {n != null && <b className="text-[11.5px] text-slate-400 tabular-nums">{n}</b>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           {canCreate && (
             <>
-              <button type="button" onClick={() => router.push('/system/operations/new?mode=import')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-                <Upload className="w-4 h-4" /> {T.importExcel}
-              </button>
               <button type="button" onClick={() => router.push('/system/operations/new')} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium transition-colors">
                 <Plus className="w-4 h-4" /> {T.newRequest}
               </button>

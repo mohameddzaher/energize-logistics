@@ -12,7 +12,10 @@ export interface FieldCard extends FieldDef {
   group: string; total: number;
   counts: Record<string, number>;
   required: number;
+  /** أعلى ٢٥ قيمة فقط — القائمة الكاملة في لوحة الفلترة. */
   values?: { value: string; count: number }[];
+  /** عدد القيم المختلفة كلّها، لا عدد ما وصل منها. */
+  valuesTotal?: number;
 }
 export interface GroupCard {
   key: string; ar: string; en: string; icon: string; document: boolean;
@@ -112,7 +115,7 @@ export const renewHrBulk = (body: {
 
 /** المجموعات التي لها تاريخ انتهاء، فيصحّ فيها التجديد. */
 export const RENEWABLE_GROUPS = new Set([
-  'iqama', 'passport', 'contract', 'medicalInsurance', 'healthCertificate', 'driverCard', 'drivingLicense',
+  'iqama', 'passport', 'contract', 'workPermit', 'medicalInsurance', 'healthCertificate', 'driverCard', 'drivingLicense',
 ]);
 
 export const getHrFieldConfig = () =>
@@ -141,6 +144,7 @@ export const HR_NUM_RANGES: NumRangeDef[] = [
   { key: 'passportExpiryDays', ar: 'الجواز — الأيام المتبقّية', en: 'Passport — days left', unitAr: 'يوم', unitEn: 'days' },
   { key: 'insuranceExpiryDays', ar: 'التأمين الطبي — الأيام المتبقّية', en: 'Medical — days left', unitAr: 'يوم', unitEn: 'days' },
   { key: 'licenseExpiryDays', ar: 'رخصة القيادة — الأيام المتبقّية', en: 'Licence — days left', unitAr: 'يوم', unitEn: 'days' },
+  { key: 'workPermitExpiryDays', ar: 'رخصة العمل — الأيام المتبقّية', en: 'Work permit — days left', unitAr: 'يوم', unitEn: 'days' },
 ];
 
 export const HR_DATE_FIELDS = [
@@ -148,7 +152,9 @@ export const HR_DATE_FIELDS = [
   { key: 'dateOfBirth', ar: 'تاريخ الميلاد', en: 'Date of birth' },
   { key: 'iqamaExpiry', ar: 'انتهاء الإقامة', en: 'Iqama expiry' },
   { key: 'passportExpiry', ar: 'انتهاء الجواز', en: 'Passport expiry' },
+  { key: 'contractStartDate', ar: 'بداية العقد', en: 'Contract start' },
   { key: 'contractEndDate', ar: 'نهاية العقد', en: 'Contract end' },
+  { key: 'workPermitExpiry', ar: 'انتهاء رخصة العمل', en: 'Work permit expiry' },
   { key: 'insuranceExpiry', ar: 'انتهاء التأمين الطبي', en: 'Medical insurance expiry' },
   { key: 'healthCertExpiry', ar: 'انتهاء الشهادة الصحية', en: 'Health certificate expiry' },
   { key: 'driverCardExpiry', ar: 'انتهاء بطاقة السائق', en: 'Driver card expiry' },

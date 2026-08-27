@@ -48,11 +48,25 @@ const FILTERABLE = [...new Set([
   'gender', 'driverCardStatus', 'insuranceClass', 'contractStatusText', 'systemStatus',
 ])].filter((k) => !['isOutsideKingdom', 'isFreelancer'].includes(k));
 
-// حقول التاريخ التي تقبل مدى (من/إلى).
-const DATE_FILTERABLE = [
-  'hireDate', 'dateOfBirth', 'iqamaExpiry', 'passportExpiry', 'contractEndDate',
-  'insuranceExpiry', 'healthCertExpiry', 'driverCardExpiry', 'licenseExpiry',
-];
+// حقول التاريخ التي تقبل مدى (من/إلى) — مشتقّة هي الأخرى من تعريف الحقول.
+//
+// كانت قائمةً مكتوبةً باليد، فكلُّ حقل تاريخٍ يُضاف هناك يبقى خارج الفلترة حتى
+// يتذكّره أحدٌ هنا — وهو ما لا يُكتشَف بخطأ، بل بمستخدمٍ يكتب مدًى فلا يتغيّر
+// شيء. الاشتقاق يجعل النسيان مستحيلًا.
+const DATE_FILTERABLE = H.ALL_FIELDS.filter((f) => f.type === 'date').map((f) => f.key);
+
+// ── الحقول المنطقية ──────────────────────────────────────────────────────────
+// اللوحة تعرض قيمها كما تُقرأ («نعم»/«لا») لأنّ ذلك ما يفهمه من ينظر، وهي
+// مستثناةٌ من FILTERABLE فوق لأنّ $in على نصٍّ لا يطابق حقلًا منطقيًّا في BSON.
+// فكانت تصل إلى الخادم ولا يقرؤها أحد: تضغط «فري لانسر» فلا يتغيّر شيء ولا
+// يقول شيءٌ لماذا. تُترجَم هنا إلى true/false قبل أن تصير شرطًا.
+const BOOL_FILTERABLE = ['isOutsideKingdom', 'isFreelancer'];
+const asBool = (v) => {
+  const t = String(v ?? '').trim();
+  if (['نعم', 'true', '1'].includes(t)) return true;
+  if (['لا', 'false', '0'].includes(t)) return false;
+  return null;
+};
 
 function buildFilter(q) {
   // سجلات حسابات الدخول التلقائية مش موظفين — بتخرج من كل عدّاد وكل قايمة هنا.
@@ -84,7 +98,15 @@ function buildFilter(q) {
     else if (wantsBlank) f[k] = { $in: ['', null] };
     else f[k] = { $in: rest };
   }
-  // الحقول المنطقية: تقبل نعم/لا صراحةً بدل أن تكون «مفعَّلة أو لا شيء».
+  // الحقول المنطقية باسمها الحقيقيّ، كما ترسلها لوحة الفلترة.
+  for (const field of BOOL_FILTERABLE) {
+    const vals = [...new Set(multi(q[field]).map(asBool).filter((v) => v !== null))];
+    // القيمتان معًا = بلا شرط: «نعم أو لا» يشمل الجميع، وشرطٌ يشمل الجميع
+    // شرطٌ زائد يُبطئ ولا يُنقِص.
+    if (vals.length !== 1) continue;
+    f[field] = vals[0] ? true : { $ne: true };
+  }
+  // والأزرار الجاهزة في الشاشة ترسل اسمًا مختصرًا؛ وهي أصرح فتُطبَّق بعده.
   for (const [qk, field] of [['outsideKingdom', 'isOutsideKingdom'], ['freelancer', 'isFreelancer']]) {
     if (q[qk] === '1') f[field] = true;
     else if (q[qk] === '0') f[field] = { $ne: true };
@@ -118,10 +140,8 @@ const asDate = (v) => {
 // فالفلتر بالسنوات يبقى صحيحًا غدًا والمدى المكتوب بالتاريخ يشيخ.
 const YEAR_SPAN_FIELDS = { dateOfBirth: 'age', hireDate: 'tenure' };
 // وحقولُ الانتهاء يُسأل عنها بالأيام المتبقّية: «ما ينتهي خلال ثلاثين يومًا».
-const DAYS_LEFT_FIELDS = [
-  'iqamaExpiry', 'passportExpiry', 'contractEndDate', 'insuranceExpiry',
-  'healthCertExpiry', 'driverCardExpiry', 'licenseExpiry',
-];
+// وهي بالتعريف تواريخُ انتهاء المستندات، فتُقرأ منها لا تُكتب بجانبها.
+const DAYS_LEFT_FIELDS = H.DOCUMENT_GROUPS.map((g) => g.expiryField).filter(Boolean);
 
 const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 /** فرقُ السنوات الكاملة بين تاريخٍ واليوم — سنٌّ أو أقدميّة. */
@@ -200,6 +220,11 @@ function dateRangePred(q) {
 // التطبيق. لغتان للفلترة تعنيان حتمًا رقمين مختلفين للسؤال نفسه.
 exports._buildFilter = buildFilter;
 exports._dateRangePred = dateRangePred;
+// وتُصدَّر معهما قائمةُ حقول التاريخ: شرطُ المدى يُطبَّق على القيمة **بعد**
+// جلبها، فالحقل الذي لا يُجلَب يبدو «بلا تاريخ» فيسقط من كلّ مدًى بصمت. ومَن
+// يشتقّ مشروعَه بيده ينسى حقلًا يُضاف هنا، ولا يُكتشَف ذلك بخطأ بل بمستخدمٍ
+// يكتب مدًى فتعود الشاشة فارغة بلا سبب ظاهر.
+exports._DATE_FILTERABLE = DATE_FILTERABLE;
 
 /** جلب الموظفين بكل شروط الاستعلام — شروط قاعدة البيانات ثم شروط التواريخ. */
 async function findEmployees(q, select) {
@@ -285,15 +310,9 @@ const TENURE_BANDS = [
   { ar: '٦ إلى ١٠ سنوات', en: '6–10y', min: 6, max: 11 },
   { ar: 'أكثر من ١٠ سنوات', en: 'Over 10y', min: 11, max: null },
 ];
-const HORIZON_DOCS = [
-  { key: 'iqamaExpiry', ar: 'انتهاء الإقامات', en: 'Iqama expiry' },
-  { key: 'contractEndDate', ar: 'انتهاء العقود', en: 'Contract end' },
-  { key: 'passportExpiry', ar: 'انتهاء الجوازات', en: 'Passport expiry' },
-  { key: 'insuranceExpiry', ar: 'انتهاء التأمين الطبي', en: 'Medical insurance' },
-  { key: 'healthCertExpiry', ar: 'انتهاء الشهادات الصحية', en: 'Health certificate' },
-  { key: 'driverCardExpiry', ar: 'انتهاء بطاقات السائقين', en: 'Driver card' },
-  { key: 'licenseExpiry', ar: 'انتهاء رخص القيادة', en: 'Driving licence' },
-];
+// آفاق الانتهاء: مجموعةُ مستنداتٍ واحدة = بطاقةُ أفقٍ واحدة، مشتقّةً من تعريف
+// المجموعات. مجموعةٌ تُضاف هناك كانت تبقى بلا أفقٍ هنا حتى يتذكّرها أحد.
+const HORIZON_DOCS = H.DOCUMENT_GROUPS.map((g) => ({ key: g.expiryField, ar: `انتهاء ${g.ar}`, en: `${g.en} expiry` }));
 
 const buildAnalytics = (rows) => {
   const out = [];
@@ -417,15 +436,24 @@ exports.overview = async (req, res) => {
             values.set(v, (values.get(v) || 0) + 1);
           }
         }
+        // ── التوزيع في البطاقة: أعلى القيم لا كلُّها ────────────────────────────
+        // أعمدةٌ مفتاحُها فريدٌ لكلّ موظّف (البريد، الرقم الوظيفيّ، جوال أبشر)
+        // توزيعُها ثلاثمئةٌ وستّون سطرًا كلٌّ منها «١» — ليس توزيعًا يُقرأ، وهو
+        // في الشبكة مئاتُ الكيلوبايتات تُنقَل في كلّ فتحةٍ للّوحة ولا تُعرض.
+        // البطاقة تعرض عشرين، فتُرسَل خمسٌ وعشرون ومعها العدد الحقيقيّ للقيم
+        // حتى لا يقول العنوان «التوزيع (٢٥)» وهي اثنتان وثمانون. والقائمة
+        // الكاملة مكانُها لوحةُ الفلترة: هناك يُبحَث ويُختار.
+        const list = f.groupable
+          ? [...values.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count)
+          : null;
         return {
           key: f.key, ar: f.ar, en: f.en, type: f.type, group: g.key,
           total: employees.length,
           counts,
           // «مطلوب» هو الرقم اللي بيتصرف فيه — بيتقدّم في الترتيب.
           required: counts.required,
-          values: f.groupable
-            ? [...values.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count)
-            : undefined,
+          values: list ? list.slice(0, 25) : undefined,
+          valuesTotal: list ? list.length : undefined,
         };
       });
       const out = {

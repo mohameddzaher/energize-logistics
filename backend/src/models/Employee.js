@@ -90,6 +90,12 @@ const employeeSchema = new mongoose.Schema(
     contractStatusText: { type: String, trim: true, default: '' },  // حاله العقد (ساري ...)
     contractStartDate: { type: String, default: '' },               // تاريخ الانشاء — YYYY-MM-DD
     contractEndDate: { type: String, default: '' },                 // تاريخ الانتهاء_2 — YYYY-MM-DD
+    // ── ولماذا نصٌّ لا رقم ─────────────────────────────────────────────────────
+    // لوحة الفلترة ترسل قيمها نصًّا، و$in على حقلٍ رقميٍّ لا يطابق «٢١» أبدًا
+    // فتعود الشاشة فارغة بلا خطأ يُنبِّه. الرقم المُلزِم يبقى في وثيقة العقد
+    // (Contract.annualLeaveDays) وعليه يقوم حساب رصيد الإجازات؛ وهذا لقطةٌ منه.
+    annualLeaveDays: { type: String, trim: true, default: '' },      // الاجازه السنوية
+    probationPeriod: { type: String, trim: true, default: '' },      // فترة التجربة
 
     // Insurance
     insuranceCompany: { type: String, trim: true },  // شركه التامين
@@ -158,6 +164,12 @@ const employeeSchema = new mongoose.Schema(
     // إجازة/خروج نهائي/لا يعمل). واللي مش فيه خرج قبل كده وسجله محفوظ كتاريخ.
     // الفرق ده لازم يفضل واضح، وإلا «عدد الموظفين» بيبقى رقم مالوش معنى.
     inCurrentMaster: { type: Boolean, default: false, index: true },
+
+    // ── متى لمسَ الاستيرادُ هذا السجلّ آخرَ مرّة ───────────────────────────────
+    // الشيت لقطةٌ من ورق، ومَن فتح الشاشة بعده كان ينظر إلى الموظّف نفسه. فبمقارنة
+    // `updatedAt` بهذا التاريخ يُعرَف أنّ إنسانًا كتب بعد آخر استيراد، فلا تمحو
+    // خانةٌ فارغة في الشيت ما كتبه. (نفس قاعدة a348299b في قسم المركبات.)
+    lastImportAt: { type: Date, default: null },
 
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

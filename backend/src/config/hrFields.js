@@ -21,7 +21,9 @@ const GROUPS = [
   {
     key: 'identity', ar: 'الهوية والبيانات الشخصية', en: 'Identity', icon: 'user',
     fields: [
-      { key: 'employeeNumber', ar: 'الرقم الوظيفي', en: 'Employee no.', type: 'text' },
+      // الرقم الوظيفيّ قابلٌ للفلترة لأنّه يُسأل به مباشرةً: يصل الرقم في ورقةٍ
+      // أو رسالة، فيُبحث عن صاحبه. وبغير ذلك يبقى عمودًا يُقرأ ولا يُسأل عنه.
+      { key: 'employeeNumber', ar: 'الرقم الوظيفي', en: 'Employee no.', type: 'text', groupable: true },
       { key: 'arabicName', ar: 'الاسم', en: 'Name', type: 'text' },
       { key: 'iqamaNumber', ar: 'رقم الهوية/الإقامة', en: 'ID number', type: 'text' },
       { key: 'idType', ar: 'نوع الهوية', en: 'ID type', type: 'text', groupable: true },
@@ -33,12 +35,14 @@ const GROUPS = [
   {
     key: 'contact', ar: 'بيانات التواصل', en: 'Contact', icon: 'phone',
     fields: [
-      { key: 'email', ar: 'البريد الشخصي', en: 'Personal email', type: 'text' },
+      { key: 'email', ar: 'البريد الشخصي', en: 'Personal email', type: 'text', groupable: true },
       { key: 'companyEmail', ar: 'بريد الشركة', en: 'Company email', type: 'text' },
-      { key: 'absherNumber', ar: 'جوال أبشر', en: 'Absher phone', type: 'text' },
+      { key: 'absherNumber', ar: 'جوال أبشر', en: 'Absher phone', type: 'text', groupable: true },
       { key: 'companyNumber', ar: 'جوال الشركة', en: 'Company phone', type: 'text' },
       { key: 'originCountryNumber', ar: 'جوال بلد الإقامة', en: 'Home-country phone', type: 'text' },
-      { key: 'address', ar: 'العنوان الوطني', en: 'National address', type: 'text' },
+      // العنوان الوطنيّ رمزٌ مكانيّ لا نصٌّ حرّ («JDBE3757»)، فالفلترة به تجمع
+      // ساكني المبنى الواحد — وهو سؤالٌ يُسأل عند السكن المشترك والنقل.
+      { key: 'address', ar: 'العنوان الوطني', en: 'National address', type: 'text', groupable: true },
     ],
   },
   {
@@ -49,6 +53,12 @@ const GROUPS = [
       { key: 'department', ar: 'القسم', en: 'Department', type: 'text', groupable: true },
       { key: 'branchName', ar: 'الفرع', en: 'Branch', type: 'text', groupable: true },
       { key: 'directManagerName', ar: 'المدير المباشر', en: 'Line manager', type: 'text', groupable: true },
+      { key: 'jobTitle', ar: 'المسمى الوظيفي', en: 'Job title', type: 'text', groupable: true },
+      // ── ولماذا السجلّ التجاريّ حقلُ موظّف ────────────────────────────────────
+      // الشركة تُوظِّف على أكثر من سجلٍّ تجاريّ، والموظّف مسجَّلٌ على واحدٍ بعينه.
+      // وهو الذي تُبنى عليه أسئلةُ الجهات: «كم على السجلّ الفلانيّ؟» فبغير حقلٍ
+      // قابلٍ للفلترة كان الجواب يُعَدّ باليد من ملفٍّ خارج النظام.
+      { key: 'registerNumber', ar: 'رقم السجل التجاري', en: 'Commercial register', type: 'text', groupable: true },
       { key: 'workStatusText', ar: 'حالة العمل', en: 'Work status', type: 'text', groupable: true },
       { key: 'systemStatus', ar: 'داخل النظام', en: 'In system', type: 'text', groupable: true },
       { key: 'hireDate', ar: 'تاريخ التعيين', en: 'Hire date', type: 'date' },
@@ -91,9 +101,29 @@ const GROUPS = [
     fields: [
       { key: 'contractStatusText', ar: 'حالة العقد', en: 'Contract status', type: 'text', groupable: true },
       { key: 'qiwaContractNumber', ar: 'رقم عقد قوى', en: 'Qiwa contract no.', type: 'text' },
-      { key: 'contractOccupation', ar: 'المهنة في العقد', en: 'Contract occupation', type: 'text' },
+      { key: 'contractOccupation', ar: 'المهنة في العقد', en: 'Contract occupation', type: 'text', groupable: true },
       { key: 'contractStartDate', ar: 'بداية العقد', en: 'Start', type: 'date' },
       { key: 'contractEndDate', ar: 'نهاية العقد', en: 'End', type: 'date' },
+      // ── ولماذا نصٌّ لا رقم ───────────────────────────────────────────────────
+      // الفلترة تصل من اللوحة قيمًا نصّية، فحقلٌ رقميٌّ في القاعدة لا يطابق
+      // «٢١» أبدًا وتعود الشاشة فارغة. والرقم المُلزِم يبقى في وثيقة العقد
+      // (Contract.annualLeaveDays) وهي مرجع حساب رصيد الإجازات؛ وهذا لقطةٌ منه.
+      { key: 'annualLeaveDays', ar: 'الإجازة السنوية', en: 'Annual leave days', type: 'text', groupable: true },
+      // فترة التجربة «غير مطلوبة» في كل عقود هذا الملف. ووجودُ الحقل هو ما
+      // يجعل ذلك قرارًا مكتوبًا لا فراغًا صامتًا يُقرأ لاحقًا نقصًا في البيانات.
+      { key: 'probationPeriod', ar: 'فترة التجربة', en: 'Probation', type: 'text', groupable: true },
+    ],
+  },
+  {
+    // ── رخص العمل ──────────────────────────────────────────────────────────────
+    // مستندٌ حكوميّ له تاريخُ انتهاءٍ مستقلّ عن الإقامة، ويُغرَّم على تأخّره.
+    // كان حقلُه في الموظّف موجودًا (`workPermitExpiry`) وخارجَ هذا الملف، فلم
+    // يظهر في بطاقةٍ ولا في شاشة الانتهاءات ولا في فلتر — أي أنّ تاريخًا نملكه
+    // لم يكن أحدٌ يراه إلا بفتح سجلّ الموظّف واحدًا واحدًا.
+    key: 'workPermit', ar: 'رخص العمل', en: 'Work permits', icon: 'license', document: true,
+    expiryField: 'workPermitExpiry',
+    fields: [
+      { key: 'workPermitExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
     ],
   },
   {

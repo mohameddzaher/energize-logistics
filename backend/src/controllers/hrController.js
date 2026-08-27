@@ -115,11 +115,12 @@ exports.listEmployees = async (req, res) => {
     const rows = await cache.wrap(cacheKey, 30000, () => Employee.find(filter)
       // حقول التواريخ كلها مطلوبة في المشروع لأن شرط المدى يُطبَّق على القيمة
       // بعد جلبها؛ الحقل غير المجلوب يبدو «بلا تاريخ» فيسقط من كل مدى بصمت.
-      .select('firstName lastName arabicName employeeNumber jobTitle department employmentStatus '
-        + 'phone email iqamaNumber nationalId nationality photo workLocation branchName '
-        + 'project branch directManager user createdAt '
-        + 'hireDate dateOfBirth iqamaExpiry passportExpiry contractEndDate insuranceExpiry '
-        + 'healthCertExpiry driverCardExpiry licenseExpiry')
+      // ولذلك تُؤخَذ من مصدرها لا تُكتب هنا: كانت مكتوبةً بيدٍ، فكلُّ تاريخٍ
+      // يُضاف إلى الفلترة يبقى ساقطًا هنا حتى يتذكّره أحد — وأثرُه صامت.
+      .select(['firstName lastName arabicName employeeNumber jobTitle department employmentStatus',
+        'phone email iqamaNumber nationalId nationality photo workLocation branchName',
+        'project branch directManager user createdAt',
+        ...master._DATE_FILTERABLE].join(' '))
       .populate('user', 'firstName lastName email role')
       .populate('directManager', 'firstName lastName email')
       .populate('branch', 'name')
@@ -336,6 +337,9 @@ const GROUP_DOC_TYPE = {
   iqama: 'iqama',
   passport: 'passport',
   contract: 'contract',
+  // رخص العمل: اسم المجموعة واسم المستند واحدٌ هنا، ووجودُه في هذا الجسر هو ما
+  // يجعل زرَّ التجديد في صفحتها يعمل بدل أن يردّ «نوع المستند غير معروف».
+  workPermit: 'workPermit',
   medicalInsurance: 'insurance',
   healthCertificate: 'healthCert',
   driverCard: 'driverCard',

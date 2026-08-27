@@ -381,7 +381,8 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
       {!!f.values?.length && (
         <>
           <button onClick={() => setOpen((v) => !v)} className="text-[10px] text-slate-400 hover:text-slate-700 mt-0.5">
-            {open ? t('إخفاء التوزيع', 'Hide breakdown') : t(`التوزيع (${f.values.length})`, `Breakdown (${f.values.length})`)}
+            {open ? t('إخفاء التوزيع', 'Hide breakdown')
+                  : t(`التوزيع (${f.valuesTotal ?? f.values.length})`, `Breakdown (${f.valuesTotal ?? f.values.length})`)}
           </button>
           {open && (
             <div className="mt-1 space-y-0.5 ps-2 border-s-2 border-slate-100">
@@ -392,6 +393,15 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
                   <b className="text-slate-700 tabular-nums">{v.count}</b>
                 </button>
               ))}
+              {/* البطاقة تعرض الأعلى؛ وبغير هذا السطر يظنّ القارئ أنّ ما رآه كلُّ
+                  القيم فيبني على ناقصٍ لا يعرف أنّه ناقص. الاختيار من بينها كلّها
+                  في لوحة الفلترة فوق. */}
+              {(f.valuesTotal ?? 0) > 20 && (
+                <p className="text-[10px] text-slate-400 pt-0.5">
+                  {t(`أعلى ٢٠ من ${f.valuesTotal} — الباقي في لوحة الفلترة`,
+                     `Top 20 of ${f.valuesTotal} — the rest is in the filter panel`)}
+                </p>
+              )}
             </div>
           )}
         </>

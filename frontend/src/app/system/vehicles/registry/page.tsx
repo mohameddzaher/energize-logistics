@@ -14,6 +14,7 @@ import { VReg, statusColor, statusLabel, DOC_TYPES, fmtDate, money, daysText, ca
 import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ManagedSelect from '@/components/system/ManagedSelect';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight } from 'lucide-react';
 
 const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'];
@@ -269,21 +270,59 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <h3 className="font-bold text-lg">{vehicle ? (ar ? 'تعديل مركبة' : 'Edit vehicle') : (ar ? 'إضافة مركبة' : 'Add vehicle')}</h3>
           <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
         </div>
+        {/* ── الحقول ذات الاختيارات صارت قوائم لا كتابةً حرّة ─────────────────
+            الحقل الحرّ يُكتب بألف صيغة: «مرسيدس» و«MercedesBenz» و«MERCEDES»
+            ثلاثةُ صفوف لشيءٍ واحد، فيصير في الفلتر ثلاثةَ خيارات وفي التحليل
+            ثلاثَ ماركات. والقائمة تُدار من إعدادات القسم، ومَن ينقصه خيارٌ
+            يضيفه من داخلها فيراه كلُّ من بعده. */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div><L>{ar ? 'رقم اللوحة *' : 'Plate *'}</L><input className={inp} value={f.plateNumber} onChange={(e) => set('plateNumber', e.target.value)} /></div>
           <div><L>{ar ? 'رقم الهيكل' : 'Chassis'}</L><input className={inp} value={f.chassisNumber || ''} onChange={(e) => set('chassisNumber', e.target.value)} /></div>
-          <div><L>{ar ? 'القطاع' : 'Sector'}</L><input className={inp} value={f.sectorAr || ''} onChange={(e) => set('sectorAr', e.target.value)} /></div>
-          <div><L>{ar ? 'نوع التسجيل' : 'Registration type'}</L><input className={inp} value={f.registrationTypeAr || ''} onChange={(e) => set('registrationTypeAr', e.target.value)} /></div>
-          <div><L>{ar ? 'الماركة' : 'Brand'}</L><input className={inp} value={f.brandAr || ''} onChange={(e) => set('brandAr', e.target.value)} /></div>
+          <div><L>{ar ? 'الرقم التسلسلي' : 'Serial'}</L><input className={inp} value={f.serialNumber || ''} onChange={(e) => set('serialNumber', e.target.value)} /></div>
+          <div><L>{ar ? 'القطاع' : 'Sector'}</L><ManagedSelect storeLabel type="vehicle_sector" value={f.sectorAr || ''} onChange={(v) => set('sectorAr', v)} /></div>
+          <div><L>{ar ? 'نوع التسجيل' : 'Registration type'}</L><ManagedSelect storeLabel type="vehicle_registration_type" value={f.registrationTypeAr || ''} onChange={(v) => set('registrationTypeAr', v)} /></div>
+          <div><L>{ar ? 'الماركة' : 'Brand'}</L><ManagedSelect storeLabel type="vehicle_brand" value={f.brandAr || ''} onChange={(v) => set('brandAr', v)} /></div>
           <div><L>{ar ? 'الطراز' : 'Model'}</L><input className={inp} value={f.modelAr || ''} onChange={(e) => set('modelAr', e.target.value)} /></div>
           <div><L>{ar ? 'سنة الصنع' : 'Year'}</L><input type="number" className={inp} value={f.modelYear || ''} onChange={(e) => set('modelYear', e.target.value ? Number(e.target.value) : null)} /></div>
-          <div><L>{ar ? 'اللون' : 'Color'}</L><input className={inp} value={f.colorAr || ''} onChange={(e) => set('colorAr', e.target.value)} /></div>
+          <div><L>{ar ? 'اللون' : 'Colour'}</L><ManagedSelect storeLabel type="vehicle_color" value={f.colorAr || ''} onChange={(v) => set('colorAr', v)} /></div>
+          <div><L>{ar ? 'حالة التشغيل' : 'Service status'}</L><ManagedSelect storeLabel type="vehicle_service_status" value={f.serviceStatusAr || ''} onChange={(v) => set('serviceStatusAr', v)} /></div>
+          <div><L>{ar ? 'حالة الحيازة' : 'Possession'}</L><ManagedSelect storeLabel type="vehicle_possession_status" value={f.possessionStatusAr || ''} onChange={(v) => set('possessionStatusAr', v)} /></div>
           <div className="md:col-span-2"><L>{ar ? 'المالك' : 'Owner'}</L><input className={inp} value={f.ownerNameAr || ''} onChange={(e) => set('ownerNameAr', e.target.value)} /></div>
+
+          <div className="md:col-span-2 pt-2 border-t border-slate-100"><p className="text-[12px] font-bold text-slate-500">{ar ? 'التأمين' : 'Insurance'}</p></div>
+          <div><L>{ar ? 'شركة التأمين' : 'Insurer'}</L><ManagedSelect storeLabel type="vehicle_insurance_company" value={f.insurance?.companyAr || ''} onChange={(v) => setSub('insurance', 'companyAr', v)} /></div>
+          <div><L>{ar ? 'نوع التغطية' : 'Coverage type'}</L><ManagedSelect storeLabel type="vehicle_coverage_type" value={f.insurance?.coverageTypeAr || ''} onChange={(v) => setSub('insurance', 'coverageTypeAr', v)} /></div>
+          <div><L>{ar ? 'رقم الوثيقة' : 'Policy no.'}</L><input className={inp} value={f.insurance?.policyNumber || ''} onChange={(e) => setSub('insurance', 'policyNumber', e.target.value)} /></div>
           <div><L>{ar ? 'تاريخ انتهاء التأمين' : 'Insurance expiry'}</L><input type="date" className={inp} value={(f.insurance?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('insurance', 'expiryDate', e.target.value || null)} /></div>
           <div><L>{ar ? 'قسط التأمين' : 'Premium'}</L><input type="number" className={inp} value={f.insurance?.premiumSar || ''} onChange={(e) => setSub('insurance', 'premiumSar', e.target.value ? Number(e.target.value) : null)} /></div>
+          <div><L>{ar ? 'حالة القسط' : 'Premium status'}</L><ManagedSelect storeLabel type="vehicle_premium_status" value={f.insurance?.premiumStatusAr || ''} onChange={(v) => setSub('insurance', 'premiumStatusAr', v)} /></div>
+
+          <div className="md:col-span-2 pt-2 border-t border-slate-100"><p className="text-[12px] font-bold text-slate-500">{ar ? 'المستندات' : 'Documents'}</p></div>
+          <div><L>{ar ? 'رقم بطاقة التشغيل' : 'Operating card no.'}</L><input className={inp} value={f.operatingCard?.cardNumber || ''} onChange={(e) => setSub('operatingCard', 'cardNumber', e.target.value)} /></div>
           <div><L>{ar ? 'انتهاء بطاقة التشغيل' : 'Operating card expiry'}</L><input type="date" className={inp} value={(f.operatingCard?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('operatingCard', 'expiryDate', e.target.value || null)} /></div>
-          <div><L>{ar ? 'انتهاء رخصة السير' : 'License expiry'}</L><input type="date" className={inp} value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('vehicleLicense', 'expiryDate', e.target.value || null)} /></div>
+          <div><L>{ar ? 'انتهاء رخصة السير' : 'Licence expiry'}</L><input type="date" className={inp} value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('vehicleLicense', 'expiryDate', e.target.value || null)} /></div>
+          <div><L>{ar ? 'حالة الفحص' : 'Inspection status'}</L><ManagedSelect storeLabel type="vehicle_inspection_status" value={f.inspection?.statusAr || ''} onChange={(v) => setSub('inspection', 'statusAr', v)} /></div>
           <div><L>{ar ? 'انتهاء الفحص' : 'Inspection expiry'}</L><input type="date" className={inp} value={(f.inspection?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('inspection', 'expiryDate', e.target.value || null)} /></div>
+
+          <div className="md:col-span-2 pt-2 border-t border-slate-100"><p className="text-[12px] font-bold text-slate-500">{ar ? 'الوقود والتتبّع' : 'Fuel & tracking'}</p></div>
+          <div><L>{ar ? 'مزوّد شريحة الوقود' : 'Fuel provider'}</L><ManagedSelect storeLabel type="vehicle_fuel_provider" value={f.fuelCard?.provider || ''} onChange={(v) => setSub('fuelCard', 'provider', v)} /></div>
+          <div><L>{ar ? 'رقم شريحة الوقود' : 'Fuel card no.'}</L><input className={inp} value={f.fuelCard?.cardNumber || ''} onChange={(e) => setSub('fuelCard', 'cardNumber', e.target.value)} /></div>
+          <div><L>{ar ? 'حالة الشريحة' : 'Card status'}</L><ManagedSelect storeLabel type="vehicle_fuel_card_status" value={f.fuelCard?.statusAr || ''} onChange={(v) => setSub('fuelCard', 'statusAr', v)} /></div>
+          <div><L>{ar ? 'نوع الاستهلاك' : 'Consumption type'}</L><ManagedSelect storeLabel type="vehicle_consumption_type" value={f.fuelCard?.consumptionTypeAr || ''} onChange={(v) => setSub('fuelCard', 'consumptionTypeAr', v)} /></div>
+          <div><L>{ar ? 'شركة الـGPS' : 'GPS provider'}</L><ManagedSelect storeLabel type="vehicle_gps_provider" value={f.gps?.provider || ''} onChange={(v) => setSub('gps', 'provider', v)} /></div>
+          <div><L>{ar ? 'جهاز GPS' : 'GPS device'}</L><ManagedSelect storeLabel type="vehicle_gps_device" value={f.gps?.deviceModel || ''} onChange={(v) => setSub('gps', 'deviceModel', v)} /></div>
+          <div><L>{ar ? 'سريال GPS' : 'GPS serial'}</L><input className={inp} value={f.gps?.serialImei || ''} onChange={(e) => setSub('gps', 'serialImei', e.target.value)} /></div>
+          <div><L>{ar ? 'حالة جهاز GPS' : 'GPS device status'}</L><ManagedSelect storeLabel type="vehicle_gps_device_status" value={f.gps?.deviceStatusAr || ''} onChange={(v) => setSub('gps', 'deviceStatusAr', v)} /></div>
+          <div><L>{ar ? 'انتهاء اشتراك GPS' : 'GPS expiry'}</L><input type="date" className={inp} value={(f.gps?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('gps', 'expiryDate', e.target.value || null)} /></div>
+
+          <div className="md:col-span-2 pt-2 border-t border-slate-100"><p className="text-[12px] font-bold text-slate-500">{ar ? 'التفويض بالقيادة' : 'Driving authorisation'}</p></div>
+          <div><L>{ar ? 'اسم المفوَّض' : 'Authorised person'}</L><input className={inp} value={f.authorizedPerson?.name || ''} onChange={(e) => setSub('authorizedPerson', 'name', e.target.value)} /></div>
+          <div><L>{ar ? 'الوظيفة' : 'Job title'}</L><ManagedSelect storeLabel type="vehicle_job_title" value={f.authorizedPerson?.jobTitleAr || ''} onChange={(v) => setSub('authorizedPerson', 'jobTitleAr', v)} /></div>
+          <div><L>{ar ? 'رقم الإقامة' : 'Iqama number'}</L><input className={inp} value={f.authorizedPerson?.iqamaNumber || ''} onChange={(e) => setSub('authorizedPerson', 'iqamaNumber', e.target.value)} /></div>
+          <div><L>{ar ? 'رقم التفويض' : 'Authorisation no.'}</L><input className={inp} value={f.authorizedPerson?.authorizationNumber || ''} onChange={(e) => setSub('authorizedPerson', 'authorizationNumber', e.target.value)} /></div>
+          <div><L>{ar ? 'بداية التفويض' : 'Auth. start'}</L><input type="date" className={inp} value={(f.authorizedPerson?.startDate || '').slice(0, 10)} onChange={(e) => setSub('authorizedPerson', 'startDate', e.target.value || null)} /></div>
+          <div><L>{ar ? 'نهاية التفويض' : 'Auth. expiry'}</L><input type="date" className={inp} value={(f.authorizedPerson?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('authorizedPerson', 'expiryDate', e.target.value || null)} /></div>
+
           <div className="md:col-span-2"><L>{ar ? 'ملاحظات' : 'Notes'}</L><textarea className={inp} rows={2} value={f.notesAr || ''} onChange={(e) => set('notesAr', e.target.value)} /></div>
         </div>
         <div className="flex justify-end gap-2 mt-5">

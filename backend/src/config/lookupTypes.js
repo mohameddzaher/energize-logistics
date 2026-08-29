@@ -9,12 +9,44 @@
 const crmDefaults = require('./crmDefaults');
 const procurementDefaults = require('./procurementDefaults');
 const assetDefaults = require('./assetDefaults');
+const vehicleDefaults = require('./vehicleDefaults');
 
 // Roles that can manage every lookup regardless of module.
 const BASE_WRITE_ROLES = ['super_admin', 'admin'];
 
 const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations_staff'];
+const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_staff', 'hr_manager', 'finance_manager'];
+
+/**
+ * قوائم قسم المركبات: كلُّ حقلٍ ذي اختياراتٍ ثابتة صار قائمةً تُدار من إعدادات
+ * القسم بدل حقلٍ حرٍّ يُكتب بألف صيغة. راجع config/vehicleDefaults.js للسبب.
+ *
+ * وهي تُخزَّن بالاسم العربيّ لا بالمفتاح — الحقول تحمل النصّ العربيّ منذ أوّل
+ * استيراد وتقرؤه الفلاتر والتصديرات، فالمقصود حصرُ ما يُكتب لا تغييرُ ما يُخزَّن.
+ */
+const vehicleList = (type, nameAr, nameEn, seed) => ({
+  type, module: 'vehicles', nameAr, nameEn, roles: VEHICLE_ROLES, storeLabel: true, seed,
+});
+
 const REGISTRY = [
+  vehicleList('vehicle_coverage_type', 'نوع تغطية التأمين', 'Insurance Coverage Types', vehicleDefaults.coverageTypes),
+  vehicleList('vehicle_insurance_company', 'شركات التأمين', 'Insurance Companies', vehicleDefaults.insuranceCompanies),
+  vehicleList('vehicle_premium_status', 'حالة قسط التأمين', 'Premium Statuses', vehicleDefaults.premiumStatuses),
+  vehicleList('vehicle_sector', 'قطاعات المركبات', 'Vehicle Sectors', vehicleDefaults.sectors),
+  vehicleList('vehicle_registration_type', 'أنواع التسجيل', 'Registration Types', vehicleDefaults.registrationTypes),
+  vehicleList('vehicle_possession_status', 'حالة الحيازة', 'Possession Statuses', vehicleDefaults.possessionStatuses),
+  vehicleList('vehicle_service_status', 'حالة تشغيل المركبة', 'Service Statuses', vehicleDefaults.serviceStatuses),
+  vehicleList('vehicle_color', 'ألوان المركبات', 'Vehicle Colours', vehicleDefaults.colors),
+  vehicleList('vehicle_brand', 'ماركات المركبات', 'Vehicle Brands', vehicleDefaults.brands),
+  vehicleList('vehicle_fuel_provider', 'مزوّدو شرائح الوقود', 'Fuel-card Providers', vehicleDefaults.fuelProviders),
+  vehicleList('vehicle_fuel_card_status', 'حالة شريحة الوقود', 'Fuel-card Statuses', vehicleDefaults.fuelCardStatuses),
+  vehicleList('vehicle_consumption_type', 'نوع استهلاك الوقود', 'Consumption Types', vehicleDefaults.consumptionTypes),
+  vehicleList('vehicle_gps_provider', 'شركات التتبّع', 'GPS Providers', vehicleDefaults.gpsProviders),
+  vehicleList('vehicle_gps_device', 'أجهزة التتبّع', 'GPS Devices', vehicleDefaults.gpsDevices),
+  vehicleList('vehicle_gps_device_status', 'حالة جهاز التتبّع', 'GPS Device Statuses', vehicleDefaults.gpsDeviceStatuses),
+  vehicleList('vehicle_inspection_status', 'حالة الفحص', 'Inspection Statuses', vehicleDefaults.inspectionStatuses),
+  vehicleList('vehicle_job_title', 'وظائف المفوَّضين', 'Authorised-person Job Titles', vehicleDefaults.jobTitles),
+
   // ── إدارة الأسطول — قوائم منسدلة قابلة للتعديل ────────────────────────────
   {
     type: 'fleet_rent_type',

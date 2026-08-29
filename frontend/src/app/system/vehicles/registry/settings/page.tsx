@@ -9,7 +9,8 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { RegConfig, DOC_TYPES } from '@/lib/vehicleRegistry';
-import { Settings, Save, CalendarClock } from 'lucide-react';
+import { Settings, Save, CalendarClock, Bell, Tags } from 'lucide-react';
+import ReferenceDataManager from '@/components/system/ReferenceDataManager';
 import { canAdminVehicles } from '@/lib/vehicleRegistry';
 import { useSocket } from '@/hooks/useSocket';
 
@@ -23,6 +24,10 @@ export default function VehicleRegistrySettings() {
   const [cfg, setCfg] = useState<RegConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // ── تبويبان: عتبات التنبيه، والقوائم المنسدلة ─────────────────────────────
+  // القوائم كانت تُدار من شاشةٍ عامّة في «الأدوات» لا يفتحها أحدٌ من داخل
+  // القسم، فتبقى الحقول حرّةً بحكم الأمر الواقع. وهي هنا الآن حيث تُستعمل.
+  const [tab, setTab] = useState<'alerts' | 'lists'>('alerts');
 
   const load = useCallback(async () => {
     try { const d = await api.get<{ config: RegConfig }>('/api/vehicle-registry/settings'); setCfg(d.config); }
@@ -44,12 +49,29 @@ export default function VehicleRegistrySettings() {
 
   if (loading || !cfg) return <Spinner />;
 
+  const TabBtn = ({ k, icon, label }: { k: 'alerts' | 'lists'; icon: React.ReactNode; label: string }) => (
+    <button type="button" onClick={() => setTab(k)}
+      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-bold border transition-colors ${
+        tab === k ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'}`}>
+      {icon}{label}
+    </button>
+  );
+
   return (
-    <div className="space-y-4 w-full max-w-3xl pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
-      <PageHeader icon={<Settings className="w-5 h-5" />} title={ar ? 'إعدادات القسم — التنبيهات' : 'Section Settings — Alerts'}
-        subtitle={ar ? 'حدّد لكل مستند متى يبدأ التنبيه قبل انتهائه' : 'Set how early each document warns'}>
+    <div className={`space-y-4 w-full pb-10 ${tab === 'alerts' ? 'max-w-3xl' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+      <PageHeader icon={<Settings className="w-5 h-5" />} title={ar ? 'إعدادات القسم' : 'Section Settings'}
+        subtitle={ar ? 'عتبات التنبيه للمستندات، والقوائم المنسدلة التي تُملأ منها حقول المركبة'
+                     : 'Document alert thresholds, and the dropdown lists that fill the vehicle fields'}>
         <Link href="/system/vehicles/registry/expiring" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><CalendarClock className="w-4 h-4" /> {ar ? 'الانتهاءات والتجديد' : 'Expiries & Renewals'}</Link>
       </PageHeader>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <TabBtn k="alerts" icon={<Bell className="w-4 h-4" />} label={ar ? 'عتبات التنبيه' : 'Alert thresholds'} />
+        <TabBtn k="lists" icon={<Tags className="w-4 h-4" />} label={ar ? 'القوائم المنسدلة' : 'Dropdown lists'} />
+      </div>
+
+      {tab === 'lists' && <ReferenceDataManager module="vehicles" embedded />}
+      {tab === 'alerts' && (<>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
         {[...DOC_TYPES, { key: 'corporatePolicy', ar: 'وثائق تأمين الشركة', en: 'Company policies' }].map((d) => {
@@ -97,6 +119,7 @@ export default function VehicleRegistrySettings() {
           <Save className="w-4 h-4" /> {ar ? 'حفظ الإعدادات' : 'Save settings'}
         </button>
       )}
+      </>)}
     </div>
   );
 }

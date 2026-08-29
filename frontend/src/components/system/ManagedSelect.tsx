@@ -44,6 +44,7 @@ export default function ManagedSelect({
   placeholder,
   required,
   disabled,
+  storeLabel,
 }: {
   type: string;
   value: string;
@@ -51,6 +52,17 @@ export default function ManagedSelect({
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
+  /**
+   * يُخزّن **الاسم العربيّ** بدل المفتاح.
+   *
+   * حقولٌ كثيرة في النظام تحمل النصّ العربيّ نفسه منذ أوّل استيراد — قطاع
+   * المركبة ولونها ونوع تغطية تأمينها — وتقرؤه الفلاتر والتصديرات والتقارير
+   * مباشرةً. فتحويلها إلى مفاتيح يُبطل ذلك كلَّه دفعةً واحدة.
+   *
+   * والمقصود ليس تغييرَ ما يُخزَّن بل **حصرَ ما يُكتب**: يبقى المخزَّن نصًّا
+   * عربيًّا، لكنّه لا يأتي إلّا من القائمة — فلا تصير «مرسيدس» ثلاثَ ماركات.
+   */
+  storeLabel?: boolean;
 }) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
@@ -85,7 +97,7 @@ export default function ManagedSelect({
       const en = nameEn.trim() || nameAr.trim();
       const { item } = await api.post<{ item: LookupItem }>('/api/lookups', { type, nameEn: en, nameAr: nameAr.trim() || en });
       await load();
-      onChange(item.key); // select the freshly created option
+      onChange(storeLabel ? item.nameAr : item.key); // select the freshly created option
       setAdding(false);
       setNameEn('');
       setNameAr('');
@@ -95,8 +107,11 @@ export default function ManagedSelect({
     setSaving(false);
   };
 
-  // If the saved value is inactive/missing, still show it so the field isn't blank.
-  const hasValue = value && items.some((i) => i.key === value);
+  const optionValue = (i: LookupItem) => (storeLabel ? i.nameAr : i.key);
+  // القيمة المحفوظة التي خرجت من القائمة (عُطِّلت أو أُدخلت قبل توحيدها) تبقى
+  // معروضةً كخيارٍ يتيم: حذفُها من الشاشة يجعل الحقل يبدو فارغًا وهو ليس كذلك،
+  // فيُحفَظ الفراغ فوق قيمةٍ صحيحة عند أوّل تعديلٍ لحقلٍ آخر.
+  const hasValue = value && items.some((i) => optionValue(i) === value);
 
   return (
     <div>
@@ -110,7 +125,7 @@ export default function ManagedSelect({
         <option value="">{placeholder || (ar ? 'اختر…' : 'Select…')}</option>
         {value && !hasValue && <option value={value}>{value}</option>}
         {items.map((i) => (
-          <option key={i._id} value={i.key}>
+          <option key={i._id} value={optionValue(i)}>
             {ar ? i.nameAr : i.nameEn}
           </option>
         ))}

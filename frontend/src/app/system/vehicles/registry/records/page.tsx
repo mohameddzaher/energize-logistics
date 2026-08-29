@@ -46,7 +46,11 @@ export default function Page() {
     router.push(`/system/vehicles/registry${p ? `?${p}` : ''}`);
   };
 
-  if (loading) return <Spinner />;
+  // ── لا خطّافَ بعد خروجٍ مبكر ──────────────────────────────────────────────
+  // كانت `if (loading) return <Spinner/>` تسبق نداء `useChipFilter`، فتُرسَم
+  // الصفحة أوّلًا بخطّافاتٍ أقلّ ثم بأكثر، وReact يرمي استثناءً يظهر للمستخدم
+  // شاشةً بيضاء: «Application error: a client-side exception has occurred».
+  // فالخطّافات كلُّها فوق، والخروج المبكر تحتها.
   const reg = d?.registers?.[tab];
   const rows: any[] = reg?.items || [];
 
@@ -73,8 +77,15 @@ export default function Page() {
         { key: 'one', label: t('مركبة واحدة', 'Single vehicle'), tone: 'slate', test: (x: any) => (x.vehicles || 0) === 1 },
       ];
 
-  const search = (x: any) => [x.value, x.plateNumber, x.iqamaNumber, x.jobTitleAr, x.deviceModel, x.provider, x.commercialRegistration, x.statusAr];
+  // والبحث يمرّ على كلّ قيمةٍ في الصفّ لا على قائمةٍ مكتوبة: السجلّات مختلفة
+  // الأعمدة، وقائمةٌ واحدة تصلح لواحدٍ منها وتُسقط حقول الباقي بصمت.
+  const search = useCallback((x: any) => Object.entries(x || {})
+    .filter(([k]) => k !== 'filter' && k !== 'vehicleId')
+    .flatMap(([, val]) => (Array.isArray(val) ? val : [val]))
+    .filter((val) => typeof val === 'string' || typeof val === 'number') as (string | number)[], []);
   const f = useChipFilter(rows, CHIPS, filter, q, search);
+
+  if (loading) return <Spinner />;
 
   const cols: ExportColumn[] = tab === 'gpsUnits'
     ? [

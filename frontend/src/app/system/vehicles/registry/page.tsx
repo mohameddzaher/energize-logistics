@@ -7,6 +7,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { syncUrl } from '@/lib/urlSync';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { VReg, statusColor, statusLabel, DOC_TYPES, fmtDate, money, daysText, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
@@ -70,9 +71,8 @@ function VehicleRegistryListInner() {
     const p = new URLSearchParams();
     if (q.trim()) p.set('q', q.trim());
     for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) p.set(k, String(v));
-    const s = p.toString();
-    router.replace(`/system/vehicles/registry${s ? `?${s}` : ''}`, { scroll: false });
-  }, [q, JSON.stringify(filters), router]);
+    syncUrl('/system/vehicles/registry', p);
+  }, [q, JSON.stringify(filters)]);
 
   /** الرجوع إلى النظرة الشاملة حاملًا الفلتر الحاليّ — لا مُلقيًا به. */
   const backToOverview = () => {

@@ -8,6 +8,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { getOperationsTranslations } from '@/lib/translations';
 import { SHIPMENT_STATUSES, PAYMENT_METHODS } from '@/lib/ops';
 import api from '@/lib/api';
+import ExportMenu from '@/components/ls2/ExportMenu';
 import { useSocket } from '@/hooks/useSocket';
 import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import {
@@ -197,8 +198,6 @@ export default function OperationsWorkflowPage() {
   const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
   const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
   const [openField, setOpenField] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
   // عدّادُ فتحاتٍ لا مجرّد اسم العمود: إعادةُ فتح العمود نفسه يجب أن تُعيد طلب قيمه،
   // وإلا بقيت القائمة على نتيجة بحثٍ سابق جزئية والمستخدم يظنّها كلَّ القيم.
   const [openNonce, setOpenNonce] = useState(0);
@@ -530,24 +529,21 @@ export default function OperationsWorkflowPage() {
     accountingReview: w.accountingReview ? (lang === 'ar' ? 'تمّت' : 'Done') : '',
   });
 
-  const doExport = async (scope: 'page' | 'filtered' | 'all') => {
-    setExporting(true);
-    try {
-      let data: Workflow[] = workflows;
-      if (scope !== 'page') {
-        const p = scope === 'all' ? new URLSearchParams() : buildParams();
-        p.set('page', '1');
-        p.set('limit', '100000');
-        const d = await api.get<{ workflows: Workflow[] }>(`/api/workflows?${p.toString()}`);
-        data = d.workflows || [];
-      }
-      if (!data.length) { notify(lang === 'ar' ? 'لا صفوف للتصدير' : 'Nothing to export', 'error'); return; }
-      const { exportToExcel } = await import('@/utils/exportExcel');
-      exportToExcel(data.map(exportRow), EXPORT_COLUMNS, `operations-${new Date().toISOString().slice(0, 10)}`,
-        lang === 'ar' ? 'الطلبات' : 'Workflows');
-    } catch (e: any) {
-      notify(e?.message || (lang === 'ar' ? 'تعذّر التصدير' : 'Export failed'), 'error');
-    } finally { setExporting(false); setExportOpen(false); }
+  /** يجلب نطاقًا كاملًا من الخادم ويعيده شيتًا واحدًا جاهزًا للتصدير. */
+  const exportSheets = async (scope: 'page' | 'filtered' | 'all') => {
+    let data: Workflow[] = workflows;
+    if (scope !== 'page') {
+      const p = scope === 'all' ? new URLSearchParams() : buildParams();
+      p.set('page', '1');
+      p.set('limit', '100000');
+      const d = await api.get<{ workflows: Workflow[] }>(`/api/workflows?${p.toString()}`);
+      data = d.workflows || [];
+    }
+    return [{
+      name: lang === 'ar' ? 'الطلبات' : 'Workflows',
+      rows: data.map(exportRow) as unknown as Record<string, any>[],
+      columns: EXPORT_COLUMNS,
+    }];
   };
 
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('en-GB') : '-';
@@ -647,34 +643,23 @@ export default function OperationsWorkflowPage() {
               )}
             </div>
           )}
-          {/* التصدير باختيار نطاقه: المعروض، أو ما طابق الفلتر كلَّه، أو الجدول
-              كلّه. وعددُ كلٍّ مكتوبٌ بجانبه، فلا يُنزّل أحدٌ خمسين صفًّا وهو
-              يحسبها مئتين. */}
-          <div className="relative">
-            <button type="button" onClick={() => setExportOpen((v) => !v)} disabled={exporting}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors disabled:opacity-60">
-              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-              {T.exportExcel}
-            </button>
-            {exportOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
-                <div className="absolute z-50 mt-1 end-0 w-72 bg-white border border-slate-200 rounded-xl shadow-2xl p-1.5">
-                  {([
-                    ['page', lang === 'ar' ? 'الصفحة المعروضة' : 'Current page', workflows.length],
-                    ['filtered', lang === 'ar' ? 'كلّ ما طابق الفلتر' : 'Everything matching the filter', total],
-                    ['all', lang === 'ar' ? 'الجدول كلّه (بلا فلتر)' : 'The whole table (no filter)', null],
-                  ] as const).map(([k, label, n]) => (
-                    <button key={k} type="button" onClick={() => doExport(k as 'page' | 'filtered' | 'all')}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-start text-[13px] text-slate-700 hover:bg-slate-100">
-                      <span>{label}</span>
-                      {n != null && <b className="text-[11.5px] text-slate-400 tabular-nums">{n}</b>}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          {/* ── التصدير: الزرّ الموحَّد لا زرٌّ تكتبه هذه الصفحة بيدها ───────
+              كانت هذه الشاشة وحدها ترسم قائمتها الخاصّة، فبدت شريطَ نصٍّ بجانب
+              أزرار بقيّة النظام. والزرّ الموحَّد يحمل الأيقونة والسهم والحالة
+              نفسها في تسعين شاشة — واختلافُ شاشةٍ واحدة يجعل المستخدم يبحث عن
+              التصدير فيها كأنّها نظامٌ آخر.
+              وثلاثة نطاقات لا واحد، وعددُ كلٍّ بجانبه: تفلتر فيبقى مئتا صفّ
+              وتعرض الشاشة خمسين، فتصديرُ «المعروض» يعطيك خُمس ما طلبتَ. */}
+          <ExportMenu
+            fileName="operations"
+            lang={lang === 'ar' ? 'ar' : 'en'}
+            variant="subtle"
+            label={T.exportExcel}
+            options={[
+              { key: 'page', label: lang === 'ar' ? `الصفحة المعروضة (${workflows.length})` : `Current page (${workflows.length})`, resolve: () => exportSheets('page') },
+              { key: 'filtered', label: lang === 'ar' ? `كلّ ما طابق الفلتر (${total})` : `Everything matching the filter (${total})`, resolve: () => exportSheets('filtered') },
+              { key: 'all', label: lang === 'ar' ? 'الجدول كلّه (بلا فلتر)' : 'The whole table (no filter)', resolve: () => exportSheets('all') },
+            ]} />
           {canCreate && (
             <>
               <button type="button" onClick={() => router.push('/system/operations/new')} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e06010] text-white text-sm font-medium transition-colors">

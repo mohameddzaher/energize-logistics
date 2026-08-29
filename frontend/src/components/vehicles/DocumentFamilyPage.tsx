@@ -22,6 +22,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import { syncUrl } from '@/lib/urlSync';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -234,9 +235,8 @@ function DocumentFamilyPageInner({
     for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) p.set(k, String(v));
     if (within) p.set('within', within);
     if (!includeExpired) p.set('incExp', '0');
-    const s = p.toString();
-    router.replace(`${path}${s ? `?${s}` : ''}`, { scroll: false });
-  }, [q, JSON.stringify(filters), within, includeExpired, router, path]);
+    syncUrl(path, p);
+  }, [q, JSON.stringify(filters), within, includeExpired, path]);
 
   // ── الشرائح: حالةُ **هذا** المستند وحده ──────────────────────────────────
   // لا حالة المركبة العامّة: مركبةٌ تأمينها منتهٍ وبطاقةُ تشغيلها سارية ليست

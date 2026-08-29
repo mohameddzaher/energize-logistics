@@ -69,18 +69,33 @@ exports.getDashboard = async (req, res) => {
       date_to: endOfDay(req.query.date_to),
       branches: req.query.branches,
     };
-    const [home, stats, charts] = await Promise.allSettled([
+    // ── محاولةٌ ثانية قبل الاستسلام ──────────────────────────────────────────
+    // المنصّة خارجيّة وشبكتُها تتعثّر، والفشلة الواحدة العابرة كانت تكفي.
+    const once = () => Promise.allSettled([
       upl.get('/admins/operation-app-home', { lang }),
       upl.get('/admin/reports/stats', { query, lang }),
       upl.get('/admin/reports/charts-maps-tables', { query, lang }),
     ]);
-    const payload = {
-      home: home.status === 'fulfilled' ? home.value.data : null,
-      stats: stats.status === 'fulfilled' ? stats.value.data : null,
-      charts: charts.status === 'fulfilled' ? charts.value.data : null,
-    };
-    cache.set(key, payload, CACHE_TTL);
-    res.json(payload);
+    const pick = (r) => (r.status === 'fulfilled' ? r.value.data : null);
+    let [home, stats, charts] = (await once()).map(pick);
+    if (!home && !stats) {
+      await new Promise((r) => setTimeout(r, 400));
+      const second = (await once()).map(pick);
+      home = home || second[0]; stats = stats || second[1]; charts = charts || second[2];
+    }
+
+    const payload = { home, stats, charts };
+
+    // ── ولا يُخزَّن الفراغ ────────────────────────────────────────────────────
+    // كان الردّ الفارغ يُخزَّن كأنّه جواب، فتعرض البطاقات أصفارًا ويعيدها كلُّ
+    // تحديثٍ حتى تنتهي مدّة التخزين — والمستخدم يقرأ الصفر حقيقةً: «لا شحنات».
+    // وصفرٌ كاذب أسوأ من خطأٍ صريح، لأنّه يُبنى عليه قرار.
+    if (home || stats) {
+      cache.set(key, payload, CACHE_TTL);
+      return res.json(payload);
+    }
+    // ولا يُخفى الفشل: العلامة تجعل الشاشة تعرض «—» وزرّ إعادة المحاولة بدل صفر.
+    res.status(200).json({ ...payload, upstreamUnavailable: true });
   } catch (error) {
     fail(res, error, 'Failed to load operations dashboard');
   }

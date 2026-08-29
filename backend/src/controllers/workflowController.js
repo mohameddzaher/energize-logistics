@@ -218,8 +218,27 @@ exports.getWorkflows = async (req, res) => {
 
 // Build the same match filter getWorkflows uses (stage/date/search/pendingOnly)
 // so stats and the table always agree. Kept as a helper for the stats endpoint.
-/** بلا تاريخ سداد — تعريفٌ واحد يستعمله العدّاد والفلتر معًا. */
-const PENDING_PAYMENT = { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] };
+/**
+ * «فاتورة لم تصل» — تعريفٌ واحد يستعمله العدّاد والفلتر معًا.
+ *
+ * شرطان لا واحد:
+ *
+ * ١) **بلا تاريخ سداد.** كان الشرط يجمع غيابه وغيابَ رقم الفاتورة معًا، فكشفٌ
+ *    سُدِّد ولم تُسجَّل فاتورته يخرج من العدّ وهو ليس منتظَرًا.
+ *
+ * ٢) **غير ملغًى.** والملغى لا سداد له بطبيعته — لا لأنّ الفاتورة تأخّرت بل
+ *    لأنّ الشحنة لم تحدث. وعدُّه كان يقلب البطاقة رأسًا على عقب: ٥٦٤٢ في
+ *    الفترة، منها ٤١٥٢ ملغًى — ولا واحدٌ من الأربعة آلاف له تاريخ سداد ولن
+ *    يكون. فالرقم الذي يُقرأ «متأخّرات» كان ثلاثة أرباعه شحناتٍ ملغاة، والعمل
+ *    الحقيقيّ ١٤٩٠ مدفونًا تحتها.
+ */
+const CANCELLED = ['cancelled', 'canceled'];
+const PENDING_PAYMENT = {
+  $and: [
+    { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] },
+    { applicationStatus: { $nin: CANCELLED } },
+  ],
+};
 
 function buildWorkflowFilter(query, skipField) {
   const { stage, search, dateFrom, dateTo, pendingOnly } = query || {};
@@ -230,13 +249,28 @@ function buildWorkflowFilter(query, skipField) {
   // يخرج كذلك. والسؤال الذي تُطرَح البطاقة لأجله واحد: «أيُّ كشفٍ لم يصل سداده؟»
   // فشرطُه واحد.
   if (pendingOnly === 'true') {
-    filter.$and = [PENDING_PAYMENT];
+    filter.$and = [...(filter.$and || []), PENDING_PAYMENT];
   }
   if (stage) filter.stage = stage;
+  // ── الفترة تُقاس بتاريخ الكشف لا بلحظة إدخاله ─────────────────────────────
+  //
+  // كان الفلتر على `createdAt` — وهي لحظةُ كتابة الصفّ في قاعدتنا لا تاريخُ
+  // العمل. وسبعةٌ وعشرون ألفًا من ثلاثةٍ وثلاثين ألفًا أُدخلت دفعةً واحدة يوم
+  // ٣٠ يونيو، فسؤال «أرِني كشوف يناير» كان يرجع فارغًا: لا صفَّ **أُدخل** في
+  // يناير وإن كانت كشوفُه كلُّها فيه. والشاشة تعرض صفرًا فيُقرأ «لا عمل» لا
+  // «فلترتُ بالعمود الخطأ».
+  //
+  // و`reportDate` يحمل وقتًا حقيقيًّا من منصّة التشغيل، فالمدى يُبنى على اليوم
+  // كاملًا في الطرفين كي لا يسقط كشفُ الساعة الحادية عشرة ليلًا من يومه.
   if (dateFrom || dateTo) {
-    filter.createdAt = {};
-    if (dateFrom) filter.createdAt.$gte = new Date(dateFrom + 'T00:00:00.000Z');
-    if (dateTo) filter.createdAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
+    const range = {};
+    if (dateFrom) range.$gte = new Date(dateFrom + 'T00:00:00.000Z');
+    if (dateTo) range.$lte = new Date(dateTo + 'T23:59:59.999Z');
+    // والكشف الذي لا تاريخ له يُقاس بلحظة إدخاله — أفضل ما يُعرف عنه.
+    filter.$and = [...(filter.$and || []), { $or: [
+      { reportDate: range },
+      { $and: [{ $or: [{ reportDate: null }, { reportDate: { $exists: false } }] }, { createdAt: range }] },
+    ] }];
   }
   if (search) {
     filter.$or = [

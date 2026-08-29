@@ -7,7 +7,7 @@ const { emitToAll } = require('../websocket/socketManager');
 // مفتاح **سجل المركبات** (حروف + أرقام)، لا مفتاح الأرقام الذي يستعمله النقل
 // الثقيل. الأرقام وحدها تتصادم هنا: «ل أ 1080» دراجة و«أ ص ر 1080» تريلا —
 // ومفتاح الأرقام يقيّد حادثة الدراجة على التريلا. التفصيل في utils/plateKey.
-const { registryPlateKey: plateKey } = require('../utils/plateKey');
+const { registryPlateKey: plateKey, flexSpaceRegex } = require('../utils/plateKey');
 
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} cache.clear('vreg:'); };
 
@@ -400,7 +400,10 @@ function buildFilter(q) {
     and.push({ modelYear: yr });
   }
   if (q.q && String(q.q).trim()) {
-    const rx = new RegExp(String(q.q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    // البحث لا يبالي بعدد المسافات: راجع flexSpaceRegex — لوحةُ الحرفين تُنسخ
+    // من أبشر بمسافتين وتُخزَّن عندنا بواحدة، فكان الموظّف يمسح مسافةً بيده
+    // ليجد ما يبحث عنه.
+    const rx = flexSpaceRegex(q.q);
     and.push({ $or: SEARCHABLE_PATHS.map((f) => ({ [f]: rx })) });
   }
   // فلتر انتهاء مستند خلال مدة، أو منتهي، أو ضمن نطاق تاريخي.
@@ -537,8 +540,36 @@ exports.getOne = async (req, res) => {
 // A bad field is the user's problem to fix, not a server fault: say WHICH field
 // and return 400. These used to fall into the generic 500 handler below, so the
 // form showed "Failed to create vehicle" with no idea what was wrong.
+/** اسمُ الحقل المكرَّر كما يقرؤه المستخدم — لا مسارُه في المخطَّط. */
+const FIELD_AR = {
+  plateNumber: 'رقم اللوحة',
+  chassisNumber: 'رقم الهيكل',
+  serialNumber: 'الرقم التسلسلي',
+  'operatingCard.cardNumber': 'رقم بطاقة التشغيل',
+  'gps.serialImei': 'سريال جهاز التتبّع',
+  'fuelCard.cardNumber': 'رقم شريحة الوقود',
+  'authorizedPerson.authorizationNumber': 'رقم التفويض',
+};
+
 const badInput = (e, res) => {
-  if (e.code === 11000) { res.status(400).json({ message: 'رقم اللوحة أو الهيكل مكرر' }); return true; }
+  // ── التكرار يُسمّى بالحقل والقيمة ─────────────────────────────────────────
+  // «رقم اللوحة أو الهيكل مكرر» رسالةٌ تترك المستخدم يخمّن أيّهما ومَن يحمله.
+  // ومونجو يعيد الحقل والقيمة في الخطأ نفسه، فتُقرأ منه ويُبحث عن المركبة
+  // الأخرى — فيصير الردّ «هذا الرقم على المركبة الفلانية» لا «خطأ».
+  if (e.code === 11000) {
+    const field = Object.keys(e.keyPattern || {})[0] || '';
+    const value = (e.keyValue || {})[field];
+    const label = FIELD_AR[field] || field || 'أحد الأرقام الفريدة';
+    return VehicleMaster.findOne({ [field]: value }).select('plateNumber').lean()
+      .then((other) => {
+        res.status(400).json({
+          message: other
+            ? `${label} «${value}» مسجَّلٌ على المركبة ${other.plateNumber} — ولا يتكرّر على مركبتين.`
+            : `${label} «${value}» مكرَّر — ولا يتكرّر على مركبتين.`,
+        });
+      })
+      .catch(() => { res.status(400).json({ message: `${label} مكرَّر` }); }) && true;
+  }
   if (e.name === 'ValidationError') {
     const first = Object.values(e.errors || {})[0];
     res.status(400).json({ message: first?.message || 'بيانات غير صالحة' });

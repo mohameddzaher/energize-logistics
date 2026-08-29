@@ -67,6 +67,7 @@ export default function OpsShipmentsPage() {
   const [branchFilter, setBranchFilter] = useState('');
   const [branches, setBranches] = useState<Row[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [countsState, setCountsState] = useState<'loading' | 'ok' | 'error'>('loading');
 
   const [detail, setDetail] = useState<Row | null>(null);
   const [timeline, setTimeline] = useState<any[] | null>(null);
@@ -107,6 +108,7 @@ export default function OpsShipmentsPage() {
   useEffect(() => { load(); }, [load]);
   // Quick status counts strip — scoped to the active branch/date filters, live.
   const loadCounts = useCallback(async () => {
+    setCountsState('loading');
     try {
       const qs = new URLSearchParams({ lang });
       if (branchFilter) qs.set('branches', branchFilter);
@@ -120,7 +122,12 @@ export default function OpsShipmentsPage() {
       const map: Record<string, number> = {};
       src.forEach((s: any) => { map[s.status] = Number(s.count); });
       setCounts(map);
-    } catch { /* ignore */ }
+      // ── والصفر لا يُعرَض إلّا حين يكون جوابًا ──────────────────────────────
+      // البطاقات تُجلب من منصّة التشغيل الخارجيّة، وكان فشلُ النداء يُبتلع
+      // صامتًا فتبقى الأعداد أصفارًا — والمستخدم يقرأ الصفر حقيقةً: «لا شحنات
+      // اليوم». وصفرٌ كاذب يُبنى عليه قرار، فصار الفشل يُعلن ويُعاد.
+      setCountsState(dash?.upstreamUnavailable || !Object.keys(map).length ? 'error' : 'ok');
+    } catch { setCountsState('error'); }
   }, [lang, branchFilter, dateFrom, dateTo]);
   useEffect(() => { loadCounts(); }, [loadCounts]);
 
@@ -242,10 +249,20 @@ export default function OpsShipmentsPage() {
       )}
 
       {/* Quick analysis cards — per-status counts, multi-selectable (live) */}
+      {countsState === 'error' && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
+          <span>{lang === 'ar'
+            ? 'تعذّر جلب أعداد الحالات من منصّة التشغيل — الأرقام أدناه غير مؤكّدة.'
+            : 'Could not fetch status counts from the operations platform — the numbers below are not confirmed.'}</span>
+          <button type="button" onClick={loadCounts} className="shrink-0 px-2.5 py-1 rounded-lg bg-white border border-amber-300 font-semibold hover:bg-amber-100">
+            {lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <button type="button" onClick={() => setStatuses([])}
           className={`text-start rounded-xl p-3 border transition-all ${statuses.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>
-          <p className="text-xl font-bold">{fmtNum(counts.all ?? Object.values(counts).reduce((a, b) => a + b, 0))}</p>
+          <p className="text-xl font-bold">{countsState === 'ok' ? fmtNum(counts.all ?? Object.values(counts).reduce((a, b) => a + b, 0)) : '—'}</p>
           <p className="text-[11px] mt-0.5">{tx.all}</p>
         </button>
         {SHIPMENT_STATUSES.map((s) => {
@@ -253,7 +270,7 @@ export default function OpsShipmentsPage() {
           return (
             <button key={s.key} type="button" onClick={() => toggleStatus(s.key)}
               className={`text-start rounded-xl p-3 border transition-all ${on ? `${s.bg} ${s.text} border-current ring-2 ring-offset-1 ring-current` : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>
-              <p className="text-xl font-bold">{fmtNum(counts[s.key] ?? 0)}</p>
+              <p className="text-xl font-bold">{countsState === 'ok' ? fmtNum(counts[s.key] ?? 0) : '—'}</p>
               <p className="text-[11px] mt-0.5 flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />{lang === 'ar' ? s.ar : s.en}</p>
             </button>
           );

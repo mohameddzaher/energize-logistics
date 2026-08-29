@@ -323,6 +323,44 @@ const SEARCHABLE_PATHS = Object.entries(VehicleMaster.schema.paths)
   .filter(([path, def]) => def.instance === 'String' && !path.startsWith('_') && path !== '__v')
   .map(([path]) => path);
 
+/**
+ * ── حقولٌ تُطلَب، لا وثيقةٌ كاملة ─────────────────────────────────────────────
+ *
+ * الرابط إلى قاعدة البيانات مقيَّدٌ عند مئة كيلوبايت في الثانية تقريبًا — قياسٌ
+ * ثابتٌ مهما كان الحجم. فزمنُ الشاشة يساوي عددَ البايتات التي تجرّها، لا عدد
+ * وثائقها ولا تعقيد استعلامها: المحرّك ينفّذ استعلام الأسطول كلِّه في مللي
+ * ثانيةٍ واحدة، ثم تُستقبَل النتيجة في ثمانية آلاف.
+ *
+ * ولذلك لا تُقرأ وثيقةٌ كاملة لشاشةٍ تستعمل عشرها. هذه الحقول هي ما تحتاجه
+ * فعلًا شاشاتُ النظرة الشاملة والانتهاءات وسجلّات القسم — وهي التي تقرأ
+ * الأسطول كلَّه — وبها تنزل الحمولة من ستّمئة وسبعين كيلوبايت إلى نحو ثمانين.
+ *
+ * وما يُضاف إلى النموذج لاحقًا ولا يُضاف هنا لا يظهر في هذه الشاشات: هذا هو
+ * ثمن المشروع الضيّق، ويُدفَع مرّةً واحدة مقابل شاشةٍ تفتح في ثانية بدل ثمان.
+ */
+const DOC_PATHS = [...new Set(VDOC.DOCUMENTS.flatMap((d) => [
+  d.path, d.statusPath, d.numberPath, d.startPath, ...(d.extra || []),
+].filter(Boolean)))];
+
+/** ما تحتاجه شاشاتُ التجميع: تصنيفُ المركبة، وحالةُ كلّ مستند وتاريخُه. */
+const AGG_FIELDS = [...new Set([
+  'plateNumber', 'plateKey', 'sectorAr', 'sectorCode', 'registrationTypeAr',
+  'departmentAr', 'cityAr', 'possessionStatusAr', 'serviceStatusAr', 'serviceStatusCode',
+  'brandAr', 'modelAr', 'modelYear', 'colorAr', 'ownerNameAr', 'commercialRegistration',
+  'tamStatusAr', 'accidentCount', 'missingItems', 'logistiGaps', 'insurancePolicy',
+  'isActive', 'notesAr',
+  ...DOC_PATHS,
+  // حقولٌ تقرؤها سجلّات القسم في تفاصيل صفوفها.
+  'insurance.companyAr', 'insurance.coverageTypeAr', 'insurance.premiumSar', 'insurance.premiumStatusAr',
+  'fuelCard.provider', 'fuelCard.cardNumber', 'fuelCard.statusAr', 'fuelCard.plateOnInvoiceAr',
+  'fuelCard.consumptionTypeAr', 'fuelCard.limitSar', 'fuelCard.limitStatus',
+  'gps.provider', 'gps.deviceModel', 'gps.deviceStatusAr', 'gps.serialImei', 'gps.simNumber',
+  'authorizedPerson.name', 'authorizedPerson.iqamaNumber', 'authorizedPerson.jobTitleAr',
+  'authorizedPerson.authorizationNumber', 'authorizedPerson.startDate',
+  'operatingCard.cardNumber', 'inspection.statusAr',
+  'vehicleLicense.expiryDateHijri', 'inspection.expiryDateHijri',
+])].join(' ');
+
 function buildFilter(q) {
   const f = { isActive: { $ne: false } };
   const and = [];
@@ -1023,9 +1061,9 @@ exports.overview = async (req, res) => {
 
     const filter = buildFilter(req.query);
     const [vehicles, cfg, allClaims, policies] = await Promise.all([
-      VehicleMaster.find(filter).lean(),
+      VehicleMaster.find(filter).select(AGG_FIELDS).lean(),
       getConfig(),
-      VehicleClaim.find({ isActive: true }).lean(),
+      VehicleClaim.find({ isActive: true }).select('vehiclePlateKey plateNumber status cost isActive date').lean(),
       CorporatePolicy.find({ isActive: true }).lean(),
     ]);
 
@@ -1218,7 +1256,7 @@ exports.overview = async (req, res) => {
 // بينهم، بيفرّق في **الفلتر** مش في **الحساب**.
 async function buildExpiryRows(query = {}) {
   const [vehicles, cfg] = await Promise.all([
-    VehicleMaster.find(buildFilter(query)).lean(),
+    VehicleMaster.find(buildFilter(query)).select(AGG_FIELDS).lean(),
     getConfig(),
   ]);
   const rows = [];
@@ -1539,7 +1577,7 @@ const S = (v) => String(v ?? '').trim();
 exports.registers = async (req, res) => {
   try {
     const cfg = await getConfig();
-    const vehicles = await VehicleMaster.find({ isActive: { $ne: false } }).lean();
+    const vehicles = await VehicleMaster.find({ isActive: { $ne: false } }).select(AGG_FIELDS).lean();
 
     /** حالة أسوأ مستند على المركبة — بها نعرف «كم مركبة عند هذا المالك متعثّرة». */
     const worstOf = (v) => {

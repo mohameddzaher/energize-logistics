@@ -147,6 +147,50 @@ const DERIVED_DEFS = [
     select: [dt.path], options: horizonOptions(dt.path),
   })),
 
+  // ── «كم مركبةً بلا بطاقة تشغيل، ومَن هي؟» ────────────────────────────────
+  //
+  // هذا هو السؤال الذي يُسأل من الإدارة، وهو غيرُ سؤال الانتهاء تمامًا. ولا
+  // يُقرأ من التاريخ: مركبةٌ بلا تاريخٍ قد لا تحتاج المستند أصلًا (دراجةٌ
+  // ناريّة لا بطاقة تشغيل لها) وقد تحتاجه ولم يُستخرج — والفرق هو كلُّ الفرق.
+  // فخلطُهما يجعل الرقمَ الذي ينظر إليه صاحبُ الشركة يقول نقصًا لا وجود له.
+  //
+  // والوضع الإداريّ مسجَّلٌ في `statusCode` منذ الاستيراد: `required` مطلوبٌ
+  // ولم يُستخرج، و`not_required` غيرُ مطلوب. وشريحةٌ لكلٍّ، مستندًا مستندًا.
+  ...DOC_TYPES.map((dt) => {
+    const NOT_REQ = ['not_required', 'not_in_use'];
+    const ELSEWHERE = ['with_bank', 'with_aljabr', 'unknown', 'unmapped'];
+    const noDate = () => ({ $or: [{ [dt.path]: null }, { [dt.path]: { $exists: false } }] });
+    const code = (v) => String(getPath(v, dt.statusPath) || '');
+    const hasDate = (v) => !!getPath(v, dt.path);
+    return {
+      key: `${dt.key}Need`, ar: `${dt.ar} — الوضع`, en: `${dt.en} — status`,
+      groupAr: 'وجود المستندات', groupEn: 'Document presence',
+      select: [dt.path, dt.statusPath],
+      options: [
+        {
+          value: 'مطلوب — غير موجود', en: 'Required — missing',
+          cond: () => ({ $and: [noDate(), { [dt.statusPath]: { $nin: [...NOT_REQ, ...ELSEWHERE] } }] }),
+          test: (v) => !hasDate(v) && ![...NOT_REQ, ...ELSEWHERE].includes(code(v)),
+        },
+        {
+          value: 'غير مطلوب', en: 'Not required',
+          cond: () => ({ [dt.statusPath]: { $in: NOT_REQ } }),
+          test: (v) => NOT_REQ.includes(code(v)),
+        },
+        {
+          value: 'موجود', en: 'On file',
+          cond: () => ({ [dt.path]: { $ne: null, $exists: true } }),
+          test: (v) => hasDate(v),
+        },
+        {
+          value: 'لدى جهةٍ أخرى', en: 'Held elsewhere',
+          cond: () => ({ $and: [noDate(), { [dt.statusPath]: { $in: ELSEWHERE } }] }),
+          test: (v) => !hasDate(v) && ELSEWHERE.includes(code(v)),
+        },
+      ],
+    };
+  }),
+
   // ── والمركبة كلّها في سؤال واحد ─────────────────────────────────────────
   // الشرائح الثلاث متنافية عمدًا: مركبةٌ فيها منتهٍ **و** قاربَ آخرُ على الانتهاء
   // تُعدّ في «منتهٍ» وحدها. ولولا ذلك لفاق مجموع الشرائح عدد الأسطول، وهو أوّل

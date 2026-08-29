@@ -31,7 +31,7 @@ import { RenewModal, type RenewTarget } from '@/components/vehicles/RenewModals'
 import VehicleDocuments from '@/components/vehicles/VehicleDocuments';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
-  VReg, statusColor, statusLabel, STATUS_META, DOC_TYPES, fmtDate, money, daysText, canEditVehicles,
+  VReg, statusColor, statusLabel, STATUS_META, DOC_TYPES, fmtDate, money, daysText, canEditVehicles, toHijri,
 } from '@/lib/vehicleRegistry';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -383,7 +383,7 @@ export default function VehicleRegistryDetail() {
           <Row label={t('رقم بطاقة التشغيل', 'Operating card no.')} mono>{val(v.operatingCard?.cardNumber)}</Row>
           <DateRow label={t('انتهاء بطاقة التشغيل', 'Op. card expiry')} date={v.operatingCard?.expiryDate} docKey="operatingCard" />
           <DateRow label={t('انتهاء رخصة السير', 'Licence expiry')} date={v.vehicleLicense?.expiryDate} docKey="vehicleLicense" />
-          <Row label={t('انتهاء الرخصة (هجري)', 'Licence expiry (Hijri)')} mono>{val(v.vehicleLicense?.expiryDateHijri)}</Row>
+          <Row label={t('انتهاء الرخصة (هجري)', 'Licence expiry (Hijri)')} mono>{val(toHijri(v.vehicleLicense?.expiryDate))}</Row>
         </Section>
 
         <Section title={t('الفحص الدوري', 'Periodic inspection')} icon={<ClipboardCheck className="w-4 h-4" />}
@@ -392,7 +392,7 @@ export default function VehicleRegistryDetail() {
           hrefLabel={t('صفحة الفحص', 'Inspection page')}>
           <Row label={t('حالة الفحص', 'Status')}>{val(v.inspection?.statusAr)}</Row>
           <DateRow label={t('انتهاء الفحص', 'Expiry')} date={v.inspection?.expiryDate} docKey="inspection" />
-          <Row label={t('انتهاء الفحص (هجري)', 'Expiry (Hijri)')} mono>{val(v.inspection?.expiryDateHijri)}</Row>
+          <Row label={t('انتهاء الفحص (هجري)', 'Expiry (Hijri)')} mono>{val(toHijri(v.inspection?.expiryDate))}</Row>
         </Section>
 
         {!!v.notesAr && (

@@ -85,6 +85,44 @@ export const docNumberLabel = (key: string, ar: boolean): string | null => {
  * شهرين قد يكون بدأ أمسِ أو قبل سنة، والفرق هو كلُّ الفرق حين يُسأل «منذ متى
  * يقود هذا السائق بتفويض؟». وبقيّةُ المستندات لا بدايةَ لها، فلا تجد خانةً.
  */
+/**
+ * ── الوضع الإداريّ للمستند: هل هو مطلوبٌ أصلًا؟ ──────────────────────────────
+ *
+ * السؤال الذي يُسأل من الإدارة ليس «أيُّ بطاقةٍ تنتهي قريبًا» — ذاك يُجيبه
+ * التاريخ — بل: **«كم مركبةً بلا بطاقة تشغيل، ومَن هي؟»**. وهذا لا يُقرأ من
+ * التاريخ إطلاقًا: مركبةٌ بلا تاريخٍ قد تكون لا تحتاج بطاقةً أصلًا (دراجةٌ
+ * ناريّة) وقد تكون تحتاجها ولم تُستخرج — والفرق هو كلُّ الفرق.
+ *
+ * ولذلك يُسجَّل الوضع يدويًّا في `statusCode`: `required` مطلوبٌ ولم يُستخرج،
+ * و`not_required` غيرُ مطلوب، و`none` لا يوجد. وخلطُهما يجعل الرقم الذي ينظر
+ * إليه صاحبُ الشركة يقول نقصًا لا وجود له.
+ */
+export type DocNeed = 'have' | 'required' | 'not_required' | 'unknown';
+
+const DOC_BLOCK: Record<string, string> = {
+  insurance: 'insurance', operatingCard: 'operatingCard', vehicleLicense: 'vehicleLicense',
+  inspection: 'inspection', gps: 'gps', authorization: 'authorizedPerson',
+};
+
+/** الوضع الإداريّ لهذا المستند على هذه المركبة. */
+export const docNeed = (v: VReg, docKey: string): DocNeed => {
+  const d = DOC_TYPES.find((x) => x.key === docKey);
+  if (d && d.datePath(v)) return 'have';                       // له تاريخ ⇒ موجود
+  const block = DOC_BLOCK[docKey];
+  const code = block ? String(((v as any)[block] || {}).statusCode || '') : '';
+  if (code === 'not_required' || code === 'not_in_use') return 'not_required';
+  if (code === 'required') return 'required';
+  if (code === 'none' || code === '') return 'required';       // بلا تاريخ ولا وضعٍ مسجَّل ⇒ ناقص
+  return 'unknown';                                            // لدى البنك / لدى المؤجّر / غير معروف
+};
+
+export const DOC_NEED_META: Record<DocNeed, { ar: string; en: string; tone: string }> = {
+  have: { ar: 'موجود', en: 'On file', tone: 'green' },
+  required: { ar: 'مطلوب — غير موجود', en: 'Required — missing', tone: 'red' },
+  not_required: { ar: 'غير مطلوب', en: 'Not required', tone: 'slate' },
+  unknown: { ar: 'لدى جهةٍ أخرى / غير معروف', en: 'Held elsewhere / unknown', tone: 'blue' },
+};
+
 export const docStartLabel = (key: string, ar: boolean): string | null => {
   if (key !== 'authorization') return null;
   return ar ? 'تاريخ بداية التفويض' : 'Authorisation start date';
@@ -105,6 +143,31 @@ export const STATUS_META: Record<string, { ar: string; en: string; color: string
 
 export const statusLabel = (s: string, ar: boolean) => (STATUS_META[s] ? (ar ? STATUS_META[s].ar : STATUS_META[s].en) : s);
 export const statusColor = (s: string) => STATUS_META[s]?.color || '#94a3b8';
+
+/**
+ * ── التاريخ الهجريّ يُشتقّ ولا يُخزَّن ──────────────────────────────────────
+ *
+ * كان عمودًا مستقلًّا يُملأ باليد بجانب الميلاديّ — وهو فارغٌ في المركبات كلِّها
+ * لأنّ أحدًا لا يكتب التاريخ مرّتين. وحتى لو كُتب لانفصل: تُجدَّد الرخصة فيُحدَّث
+ * الميلاديّ ويبقى الهجريُّ على موعدٍ مضى، فتُقرأ في الشاشة ورقةٌ لا وجود لها.
+ *
+ * والتحويل تقويميّ لا تقديريّ: `Intl` يحمل تقويم أمّ القرى الذي تعتمده المملكة،
+ * فالمشتَقّ هو المكتوب على الورقة نفسِه. ومتى تغيّر الميلاديّ تغيّر معه في
+ * اللحظة — لا مجال لأن يفترقا.
+ */
+const HIJRI_FMT = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn', {
+  year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC',
+});
+
+export const toHijri = (d?: string | null): string => {
+  if (!d) return '';
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return '';
+  try {
+    // يُنظَّف من علامات الاتجاه كي لا تختلط بالنصّ حول الخانة.
+    return HIJRI_FMT.format(date).replace(/[\u200e\u200f]/g, '');
+  } catch { return ''; }
+};
 
 export const money = (n: unknown) => (Number(n) || 0).toLocaleString('en-US');
 export const fmtDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : '—');

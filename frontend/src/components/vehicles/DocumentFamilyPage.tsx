@@ -23,6 +23,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { syncUrl } from '@/lib/urlSync';
+import { docNeed } from '@/lib/vehicleRegistry';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -251,6 +252,15 @@ function DocumentFamilyPageInner({
     // «بلا تاريخ» ليست حالةً فرعية — هي قائمةُ العمل الأولى: مستندٌ لا يُعرَف
     // متى ينتهي لا يظهر في أي تنبيه، فينتهي ولا يعلم أحد.
     { key: 'missing', label: t('بلا تاريخ مسجَّل', 'No date on file'), tone: 'slate', test: (v: VReg) => stateOf(v, docKey).state === 'missing' },
+    // ── والسؤال الذي يُسأل من الإدارة ───────────────────────────────────────
+    // ليس «أيُّ بطاقةٍ تنتهي قريبًا» — ذاك يُجيبه التاريخ — بل «كم مركبةً بلا
+    // بطاقة تشغيل، ومَن هي؟». وهذا لا يُقرأ من التاريخ: مركبةٌ بلا تاريخٍ قد لا
+    // تحتاج بطاقةً أصلًا (دراجةٌ ناريّة) وقد تحتاجها ولم تُستخرج — والفرق هو
+    // كلُّ الفرق، وخلطُهما يجعل الرقم يقول نقصًا لا وجود له.
+    { key: 'need_required', label: t('مطلوب — غير موجود', 'Required — missing'), tone: 'red', test: (v: VReg) => docNeed(v, docKey) === 'required' },
+    { key: 'need_not_required', label: t('غير مطلوب', 'Not required'), tone: 'slate', test: (v: VReg) => docNeed(v, docKey) === 'not_required' },
+    { key: 'need_have', label: t('موجود', 'On file'), tone: 'green', test: (v: VReg) => docNeed(v, docKey) === 'have' },
+    { key: 'need_unknown', label: t('لدى جهةٍ أخرى', 'Held elsewhere'), tone: 'blue', test: (v: VReg) => docNeed(v, docKey) === 'unknown' },
   ])), [ar, docKey, chips]);
 
   // ── البحث يمرّ مرّتين، فلا بدّ أن يتّفقا ──────────────────────────────────

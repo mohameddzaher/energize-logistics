@@ -13,7 +13,10 @@ const ls2AssetEventSchema = new mongoose.Schema({
   label: { type: String, default: '' },     // serial for tires, trailer number for trailers
   action: {
     type: String,
-    enum: ['registered', 'mounted', 'removed', 'transferred', 'retired', 'updated', 'to_repair', 'from_repair', 'renewed', 'scrapped', 'damaged', 'sold'],
+    // `to_store` رجوعُ الفردة إلى الرفّ بأمرٍ مباشر — كان يُرسَل ولا يوجد في
+    // القائمة، فيُحفظ تغييرُ الحالة ثم يسقط تسجيلُ الحدث ويعود الردّ خطأً:
+    // الفردة تنتقل والشاشة تقول «فشل»، فيُعاد النقل مرّةً بعد مرّة.
+    enum: ['registered', 'mounted', 'removed', 'transferred', 'retired', 'updated', 'to_repair', 'from_repair', 'to_store', 'renewed', 'scrapped', 'damaged', 'sold'],
     required: true,
   },
   fromPlate: { type: String, default: null },

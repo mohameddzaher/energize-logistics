@@ -278,7 +278,10 @@ export default function UsersPage() {
 
   const fetchB2CHeads = async () => {
     try {
-      const data = await api.get<any>('/api/users?role=b2c_head');
+      // كان `b2c_head` — واسمُه تغيّر إلى `b2c_manager` ولم يُبحث عنه هنا،
+      // فتعود القائمة فارغةً دائمًا وتقول الشاشة «لا يوجد» وأنت تنظر إلى
+      // مدير الـB2C في قائمة المستخدمين.
+      const data = await api.get<any>('/api/users?role=b2c_manager');
       setB2cHeads(data.users || []);
     } catch {
       setB2cHeads([]);
@@ -574,8 +577,8 @@ export default function UsersPage() {
     workshop_manager: lang === 'ar' ? 'مدير الورشة' : 'Workshop Manager',
     workshop_employee: lang === 'ar' ? 'موظف الورشة' : 'Workshop Employee',
     purchasing: lang === 'ar' ? 'المشتريات' : 'Purchasing',
-    b2c_head: lang === 'ar' ? 'مدير B2C' : 'B2C Head',
-    b2c_project_manager: lang === 'ar' ? 'مدير مشروع B2C' : 'B2C Project Manager',
+    b2c_manager: lang === 'ar' ? 'مدير B2C' : 'B2C Manager',
+    b2c_project_lead: lang === 'ar' ? 'مدير مشروع B2C' : 'B2C Project Lead',
     remote_employee: lang === 'ar' ? 'موظف عن بُعد' : 'Remote Employee',
     remote_manager: lang === 'ar' ? 'مدير العمل عن بُعد' : 'Remote Manager',
     hr_manager: lang === 'ar' ? 'مدير الموارد البشرية' : 'HR Manager',
@@ -1075,7 +1078,7 @@ export default function UsersPage() {
           {formData.role === 'b2c_project_lead' && (
             <div>
               <label className="block text-slate-700 text-sm font-medium mb-1.5">
-                {lang === 'ar' ? 'المدير المباشر (B2C Head)' : 'Direct Manager (B2C Head)'}
+                {lang === 'ar' ? 'المدير المباشر (مدير B2C)' : 'Direct Manager (B2C Manager)'}
               </label>
               <select
                 aria-label={txx.manager}

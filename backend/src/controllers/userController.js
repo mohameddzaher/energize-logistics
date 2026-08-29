@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { canonicalRole } = require('../config/roles');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const { invalidateUserCache } = require('../middleware/auth');
@@ -27,7 +28,9 @@ exports.getUsers = async (req, res) => {
     const { role, isActive, search, branch, accountType } = req.query;
     const filter = {};
 
-    if (role) filter.role = role;
+    // الاسم القديم يُقرأ باسمه الجديد: شاشةٌ تسأل عن `b2c_head` كانت تعود
+    // فارغةً دائمًا وتقول «لا يوجد» والمدير في القائمة أمامك.
+    if (role) filter.role = canonicalRole(role);
     if (accountType) {
       // Accounts created before accountType existed have no field at all — they
       // are staff by definition, so "employee" must include the absent case.

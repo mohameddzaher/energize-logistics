@@ -650,7 +650,17 @@ exports.setTireStatus = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    const { status } = req.body || {};
+    let { status } = req.body || {};
+    // الشاشة ترسل الخانة كما يراها المستخدم («الجديد»/«المستعمل»)، والخانتان
+    // حالةٌ واحدة (`spare`) ودرجتان. فتُترجَم هنا في نقطةٍ واحدة بدل أن تعرف
+    // كلُّ شاشةٍ هذا التفصيل.
+    const asDest = destOf(status);
+    if (asDest && asDest.status === 'spare') {
+      req.body.condition = asDest.condition;
+      status = 'spare';
+    } else if (asDest) {
+      status = asDest.status;
+    }
     if (!['spare', 'under_renewal', 'at_factory', 'scrap', 'damaged', 'retired', 'sold', 'in_repair'].includes(status)) {
       return res.status(400).json({ message: 'حالة غير صالحة' });
     }

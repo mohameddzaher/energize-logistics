@@ -69,5 +69,19 @@ export const DISMOUNT_DESTINATIONS: { key: string; ar: string; en: string }[] = 
   { key: 'damaged', ar: 'التالف', en: 'Damaged' },
 ];
 
-/** الحالات التي يُنقل إليها يدويًّا من شاشة المخزن (تشمل البيع). */
-export const MANUAL_STATES = [...DISMOUNT_DESTINATIONS, { key: 'sold', ar: 'المباع', en: 'Sold' }];
+/**
+ * الحالات التي يُنقل إليها يدويًّا من شاشة المخزن — وهي وجهاتُ النزول ومعها
+ * «المباع». وكانت هذه النافذة تعرض قائمةً ثالثة مختلفة عن الاثنتين: «في
+ * المخزن» بلا تفريقٍ بين جديدٍ ومستعمل، و«معدومة» التي لا وجود لها في أيّ
+ * شاشةٍ أخرى. ثلاثُ قوائم لشيءٍ واحد تعني أنّ ما يُختار في نافذةٍ لا يُوجد في
+ * غيرها — ومَن أراد نقلَ فردةٍ إلى «المستعمل» لم يجدها.
+ */
+export const MANUAL_STATES: { key: string; ar: string; en: string; sub: string; subEn: string; cls: string }[] = [
+  { key: 'new', ar: 'الجديد', en: 'New', sub: 'على الرفّ، لم تُستعمل بعد', subEn: 'On the shelf, unused', cls: 'border-sky-400 bg-sky-50' },
+  { key: 'used', ar: 'المستعمل', en: 'Used', sub: 'على الرفّ، صالحة للتركيب', subEn: 'On the shelf, fit to mount', cls: 'border-indigo-400 bg-indigo-50' },
+  { key: 'under_renewal', ar: 'تحت التجديد', en: 'Under renewal', sub: 'تقرّر تجديدها وهي عندنا', subEn: 'Marked for retreading, still with us', cls: 'border-amber-400 bg-amber-50' },
+  { key: 'at_factory', ar: 'في المصنع', en: 'At the factory', sub: 'خرجت إلى مصنع التجديد', subEn: 'Out at the retreading factory', cls: 'border-violet-400 bg-violet-50' },
+  { key: 'scrap', ar: 'السكراب', en: 'Scrap', sub: 'غير صالحة — تُخزَّن حتى تُباع', subEn: 'Unusable — kept to sell', cls: 'border-orange-400 bg-orange-50' },
+  { key: 'damaged', ar: 'التالف', en: 'Damaged', sub: 'انفجرت أو تآكلت — لا تُصلَح', subEn: 'Blown or worn — unrepairable', cls: 'border-red-400 bg-red-50' },
+  { key: 'sold', ar: 'المباع', en: 'Sold', sub: 'بيعت وخرجت من العهدة', subEn: 'Sold and out of custody', cls: 'border-zinc-400 bg-zinc-100' },
+];

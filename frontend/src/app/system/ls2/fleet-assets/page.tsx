@@ -27,7 +27,7 @@ import {
 
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ls2Text, isLs2Staff, isLs2Admin, fmtNum, fmtDateTime, type Lang } from '@/lib/ls2';
-import { TIRE_STATES, tireState, tireStateDef, isInStore, DISMOUNT_DESTINATIONS, type TireStateKey } from '@/lib/tireStates';
+import { TIRE_STATES, tireState, tireStateDef, isInStore, DISMOUNT_DESTINATIONS, MANUAL_STATES, type TireStateKey } from '@/lib/tireStates';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import SearchSelect from '@/components/ls2/SearchSelect';
 import VehicleAssetSheet from '@/components/ls2/VehicleAssetSheet';
@@ -1275,14 +1275,11 @@ function TireStatusModal({ tire, ar, busy, onClose, onSubmit }: {
   tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void;
   onSubmit: (body: { status: string; conditionPercent?: number | null; reason?: string }) => void;
 }) {
-  const OPTS: { v: string; ar: string; en: string; sub: string; subEn: string; cls: string }[] = [
-    { v: 'spare', ar: 'في المخزن', en: 'In stock', sub: 'سليمة/احتياطي جاهز للتركيب', subEn: 'Usable spare', cls: 'border-amber-400 bg-amber-50' },
-    { v: 'in_repair', ar: 'في المصنع', en: 'At the factory', sub: 'راحت مصنع التجديد', subEn: 'Sent to the retreading factory', cls: 'border-blue-400 bg-blue-50' },
-    { v: 'scrap', ar: 'سكراب', en: 'Scrap', sub: 'غير صالحة — تُخزَّن حتى تُباع', subEn: 'Unusable — kept to sell', cls: 'border-slate-500 bg-slate-100' },
-    { v: 'damaged', ar: 'تالفة', en: 'Damaged', sub: 'انفجرت/تآكلت — لا يمكن إصلاحها', subEn: 'Blown — unrepairable', cls: 'border-red-400 bg-red-50' },
-    { v: 'retired', ar: 'معدومة', en: 'Retired', sub: 'خارج الخدمة نهائيًا', subEn: 'Out of service', cls: 'border-red-300 bg-red-50' },
-    { v: 'sold', ar: 'مُباعة', en: 'Sold', sub: 'بيعت كخردة', subEn: 'Sold as scrap', cls: 'border-emerald-400 bg-emerald-50' },
-  ];
+  // القائمة من التعريف الواحد (lib/tireStates): كانت هذه النافذة تعرض قائمةً
+  // ثالثة تخالف نافذتَي النزول والإزاحة — «في المخزن» بلا تفريقٍ بين جديدٍ
+  // ومستعمل، و«معدومة» التي لا وجود لها في شاشةٍ أخرى. فمن أراد نقلَ فردةٍ
+  // إلى «المستعمل» لم يجدها أصلًا.
+  const OPTS = MANUAL_STATES;
   const [status, setStatus] = useState('');
   const [pct, setPct] = useState<string>(tire.conditionPercent != null ? String(tire.conditionPercent) : '');
   const [reason, setReason] = useState('');
@@ -1293,8 +1290,8 @@ function TireStatusModal({ tire, ar, busy, onClose, onSubmit }: {
         {mounted && <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{ar ? 'هذه الفردة مركّبة حاليًا — سيتم فكّها تلقائيًا من المركبة عند النقل.' : 'This tire is mounted — it will be auto-unmounted.'}</p>}
         <div className="grid grid-cols-2 gap-2">
           {OPTS.map((o) => (
-            <label key={o.v} className={`flex items-start gap-2 px-3 py-2 rounded-lg cursor-pointer border text-xs ${status === o.v ? o.cls : 'border-slate-200 hover:bg-slate-50'}`}>
-              <input type="radio" name="tstatus" checked={status === o.v} onChange={() => setStatus(o.v)} className="mt-0.5" />
+            <label key={o.key} className={`flex items-start gap-2 px-3 py-2 rounded-lg cursor-pointer border text-xs ${status === o.key ? o.cls : 'border-slate-200 hover:bg-slate-50'}`}>
+              <input type="radio" name="tstatus" checked={status === o.key} onChange={() => setStatus(o.key)} className="mt-0.5" />
               <span>
                 <span className="font-semibold text-slate-800">{ar ? o.ar : o.en}</span>
                 <span className="block text-[10px] text-slate-500">{ar ? o.sub : o.subEn}</span>
@@ -1302,7 +1299,7 @@ function TireStatusModal({ tire, ar, busy, onClose, onSubmit }: {
             </label>
           ))}
         </div>
-        {(status === 'spare' || status === 'in_repair') && (
+        {(status === 'new' || status === 'used') && (
           <div>
             <label className={labelCls}>{ar ? 'نسبة الحالة %' : 'Condition %'}</label>
             <input type="number" min={0} max={100} value={pct} onChange={(e) => setPct(e.target.value)} className={inputCls} placeholder="0–100" />

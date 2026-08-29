@@ -19,6 +19,7 @@ import {
   fmtDT, fmtD, hoursSince, canEditFleet, Lang,
 } from '@/lib/fleet';
 import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
+import VehicleMonthLog from '@/components/fleet/VehicleMonthLog';
 
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
 const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50';
@@ -119,6 +120,16 @@ function FleetShipmentDetailsInner() {
   const st = fleetStatus(shipment.status);
   const hrs = hoursSince(shipment.lastContactAt);
   const followups = events.filter((e) => e.type === 'followup');
+
+  // لوحةُ السيّارة قد تصل كائنًا مُعبّأً أو لقطةً نصّية — والسجلُّ يُطلب بأيّهما.
+  const vehiclePlate: string = (typeof (shipment as any)?.vehicle === 'object' && (shipment as any)?.vehicle?.plate)
+    || (shipment as any)?.vehiclePlate || '';
+  // شهرُ الحمولة لا الشهرُ الجاري: من يفتح بوليصةً من مايو يريد سجلَّ مايو.
+  const shipmentMonth = (() => {
+    const d = new Date((shipment as any)?.loadDate || (shipment as any)?.createdAt || Date.now());
+    if (Number.isNaN(d.getTime())) return undefined;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  })();
 
   const info: [string, React.ReactNode][] = [
     [ar ? 'العميل' : 'Customer', shipment.customerName || '—'],
@@ -244,36 +255,25 @@ function FleetShipmentDetailsInner() {
           )}
         </div>
 
-        {/* السجل الكامل */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
-          <p className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><History className="w-4 h-4 text-[#f37121]" /> {ar ? 'السجل الكامل' : 'Full history'}</p>
-          {events.length === 0 ? (
-            <p className="text-sm text-slate-400 py-6 text-center">{ar ? 'لا توجد أحداث.' : 'No events.'}</p>
-          ) : (
-            <ol className="relative border-s border-slate-200 ms-2 max-h-[32rem] overflow-y-auto">
-              {events.map((e) => {
-                const meta = EVENT_LABEL[e.type] || EVENT_LABEL.updated;
-                let detail = '';
-                if (e.type === 'status') detail = `${fleetStatusLabel(e.data?.from, lang as Lang)} ← ${fleetStatusLabel(e.data?.to, lang as Lang)}`;
-                else if (e.type === 'driver_change') detail = e.data?.text || '';
-                else if (e.type === 'followup') detail = [e.data?.currentLocation, e.data?.note].filter(Boolean).join(' — ');
-                else if (e.type === 'updated') detail = (e.data?.fields || []).join('، ');
-                else if (e.type === 'created') detail = `${ar ? 'بوليصة رقم' : 'waybill'} ${e.data?.waybillNumber || ''}`;
-                return (
-                  <li key={e._id} className="ms-4 pb-4 last:pb-0">
-                    <span className="absolute -start-1.5 mt-1.5 w-3 h-3 rounded-full bg-[#f37121]" />
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${meta.cls}`}>{ar ? meta.ar : meta.en}</span>
-                      <span className="text-xs text-slate-400">{fmtDT(e.createdAt, lang as Lang)}</span>
-                    </div>
-                    {detail && <p className="text-sm text-slate-700 mt-1">{detail}</p>}
-                    <p className="text-[11px] text-slate-400 mt-0.5">{e.byName || '—'}</p>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </div>
+        {/* ── السجلّ الكامل: للسيّارة لا للشحنة ────────────────────────────
+            متابعاتُ هذه الحمولة أعلاه تجيب «أين هي الآن». وهذا يجيب السؤال
+            الآخر: ماذا جرى لهذه السيّارة هذا الشهر — عطلٌ وإطارٌ وسائقٌ تغيّر
+            وستُّ حمولاتٍ بينها، وفيها أحداثُ هذه الشحنة موسومةً برقم بوليصتها.
+            والشهرُ يُقفل مع أوّل الشهر التالي. */}
+        {vehiclePlate ? (
+          <VehicleMonthLog
+            vehicle={vehiclePlate}
+            month={shipmentMonth}
+            canEdit={editor}
+            compact
+            shipmentId={id}
+          />
+        ) : (
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+            <p className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><History className="w-4 h-4 text-[#f37121]" /> {ar ? 'السجل الكامل' : 'Full history'}</p>
+            <p className="text-sm text-slate-400 py-6 text-center">{ar ? 'هذه الحمولة غير مرتبطة بسيّارة — لا سجلّ شهريّ لها.' : 'This shipment has no vehicle, so it has no monthly log.'}</p>
+          </div>
+        )}
       </div>
     </div>
   );

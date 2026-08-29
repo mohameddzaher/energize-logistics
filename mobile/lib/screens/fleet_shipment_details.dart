@@ -7,6 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/vehicle_month_log.dart';
 
 /// تفاصيل الشحنة — the SAME detail view the web opens: full info, the status
 /// control, the follow-up form, and the complete event history (إنشاء /
@@ -184,6 +185,20 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     }
   }
 
+  /// لوحةُ السيّارة قد تصل كائنًا مُعبّأً أو لقطةً نصّية — والسجلُّ يُطلب بأيّهما.
+  String get _vehiclePlate {
+    final v = _shipment?['vehicle'];
+    if (v is Map && (v['plate'] ?? '').toString().isNotEmpty) return v['plate'].toString();
+    return (_shipment?['vehiclePlate'] ?? '').toString();
+  }
+
+  /// شهرُ الحمولة لا الشهرُ الجاري: من يفتح بوليصةً من مايو يريد سجلَّ مايو.
+  String get _shipmentMonth {
+    final d = DateTime.tryParse((_shipment?['loadDate'] ?? _shipment?['createdAt'] ?? '').toString());
+    final x = d ?? DateTime.now();
+    return '${x.year}-${x.month.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = _shipment;
@@ -312,6 +327,22 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
+                      // ── سجلّ السيّارة الشهريّ ────────────────────────────
+                      // أحداثُ هذه الشحنة أدناه تجيب «أين هي». وهذا يجيب
+                      // السؤال الآخر: ماذا جرى لهذه السيّارة هذا الشهر —
+                      // عطلٌ وإطارٌ وستُّ حمولاتٍ بينها. والشهرُ يُقفل مع
+                      // أوّل الشهر التالي.
+                      if (_vehiclePlate.isNotEmpty)
+                        FadeSlideIn(
+                          delayMs: 130,
+                          child: VehicleMonthLog(
+                            vehicle: _vehiclePlate,
+                            month: _shipmentMonth,
+                            canEdit: true,
+                            shipmentId: widget.shipmentId,
+                          ),
+                        ),
+                      if (_vehiclePlate.isNotEmpty) const SizedBox(height: 12),
                       // سجل الأحداث الكامل — نفس هيستوري السيستم.
                       FadeSlideIn(
                         delayMs: 140,

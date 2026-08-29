@@ -67,6 +67,16 @@ router.get('/analytics', fleet.getAnalytics);
 router.get('/driver-kpis', fleet.getDriverKpis); // ?from&to | ?month=YYYY-MM
 
 // Section settings (Friday bonus amount, default monthly target)
+// ── سجلّات السيارات ─────────────────────────────────────────────────────────
+// السجلّ الشهريّ للسيّارة: ما جرى لها في الشهر كلِّه، لا ما جرى لشحنةٍ واحدة.
+// المسار الثابت قبل ذي المعامل، وإلّا ابتلعه `/:id`.
+router.get('/vehicle-logs/summary', fleet.getVehicleLogsSummary);
+router.get('/vehicle-logs', fleet.getVehicleLog);
+router.post('/vehicle-logs', authorize(...EDIT_ROLES), fleet.createVehicleLog);
+router.put('/vehicle-logs/:id', authorize(...EDIT_ROLES), fleet.updateVehicleLog);
+router.delete('/vehicle-logs/:id', authorize(...EDIT_ROLES), fleet.deleteVehicleLog);
+
+
 router.get('/config', fleet.getConfig);
 router.put('/config', authorize(...ADMIN_ROLES), fleet.updateConfig);
 

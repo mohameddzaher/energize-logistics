@@ -2240,3 +2240,342 @@ exports.getLoadsAnalysis = async (req, res) => {
     res.status(500).json({ message: 'Failed to load the loads analysis' });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// سجلّات السيارات — السجلّ الشهريّ الكامل لكلّ سيّارة
+//
+// «تسجيل متابعة» في صفحة الحمولة يجيب: أين هذه الشحنة الآن. وهذا يجيب السؤال
+// الآخر: ماذا جرى لهذه السيّارة هذا الشهر — عطلٌ وإطارٌ وسائقٌ تغيّر وستُّ
+// حمولاتٍ بينها. الأوّل سجلُّ شحنة، وهذا سجلُّ سيّارة، ولا يُقرأ أحدُهما مكان
+// الآخر.
+//
+// والسجلُّ **مركَّب لا مكتوب**: الحمولات وأحداثُها تُشتقّ من الشحنات نفسِها،
+// ويُضاف إليها ما لا مكان له إلّا هنا (عطل، صيانة، مخالفة، ملاحظة). فلو كُتبت
+// الحمولات هنا يدويًّا لتأخّر السجلُّ عن الحقيقة أوّلَ مرّةٍ ينساها أحد.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FleetVehicleLog = require('../models/FleetVehicleLog');
+
+/** يحلّ السيّارة من معرّفٍ أو لوحة. */
+async function resolveVehicle(idOrPlate) {
+  const s = String(idOrPlate || '').trim();
+  if (!s) return null;
+  if (/^[0-9a-f]{24}$/i.test(s)) {
+    const byId = await FleetVehicle.findById(s).lean();
+    if (byId) return byId;
+  }
+  const key = plateKey(s);
+  const all = await FleetVehicle.find({}).select('plate name trailerType supervisor supervisorName monthlyTarget').lean();
+  return all.find((v) => v.plate === s) || all.find((v) => plateKey(v.plate) === key) || null;
+}
+
+/**
+ * المدى الزمنيّ من الاستعلام. يقبل أربع صيغ لأنّ السؤال يُطرح بأربع صيغ:
+ *   ?month=YYYY-MM   شهرٌ كامل (الصيغة الأساسيّة — وهي وحدةُ الإقفال)
+ *   ?date=YYYY-MM-DD يومٌ بعينه
+ *   ?from&to         مدًى حرّ
+ *   بلا شيء          الشهر الجاري
+ */
+function logRange(query) {
+  const { month, date, from, to } = query || {};
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return {
+      from: new Date(`${date}T00:00:00.000Z`),
+      to: new Date(`${date}T23:59:59.999Z`),
+      monthKey: date.slice(0, 7),
+      label: date,
+      scope: 'day',
+    };
+  }
+  if (from || to) {
+    const f = from ? new Date(`${from}T00:00:00.000Z`) : new Date('2000-01-01T00:00:00.000Z');
+    // «إلى» مفتوحًا يعني «حتى الآن» لا «حتى منتصف ليل اليوم» — وإلّا اختفت
+    // قيودُ اليوم نفسِه من نتيجة من طلب «من أوّل الشهر».
+    const tt = to ? new Date(`${to}T23:59:59.999Z`) : new Date();
+    return { from: f, to: tt, monthKey: '', label: `${from || '—'} → ${to || ''}`, scope: 'range' };
+  }
+  const mk = /^\d{4}-\d{2}$/.test(String(month || '')) ? month : FleetVehicleLog.monthKeyOf(new Date());
+  const r = FleetVehicleLog.monthRange(mk);
+  return { ...r, monthKey: mk, label: mk, scope: 'month' };
+}
+
+/**
+ * GET /api/fleet/vehicle-logs?vehicle=<id|plate>&month=YYYY-MM
+ * السجلُّ المركَّب لسيّارةٍ واحدة: قيودٌ يدويّة + حمولاتُ الفترة + أحداثُها،
+ * مرتَّبةً بالزمن، ومعها ملخّصُ الشهر وحالةُ إقفاله.
+ */
+exports.getVehicleLog = async (req, res) => {
+  try {
+    const vehicle = await resolveVehicle(req.query.vehicle || req.params.vehicle);
+    if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
+
+    // المشرف لا يرى إلّا سيّاراته.
+    const scope = await supervisorVehicleIds(req);
+    if (scope && !scope.some((id) => String(id) === String(vehicle._id))) {
+      return res.status(403).json({ message: 'Not your vehicle' });
+    }
+
+    const range = logRange(req.query);
+    const ck = `fleet:vlog:${vehicle._id}:${range.from.toISOString()}:${range.to.toISOString()}`;
+    const payload = await cache.wrap(ck, 20000, async () => {
+      const [entries, shipments] = await Promise.all([
+        FleetVehicleLog.find({ vehicle: vehicle._id, at: { $gte: range.from, $lte: range.to } })
+          .sort({ at: -1 }).limit(1000).lean(),
+        FleetShipment.find({
+          vehicle: vehicle._id,
+          $or: [
+            { loadDate: { $gte: range.from, $lte: range.to } },
+            { loadDate: null, createdAt: { $gte: range.from, $lte: range.to } },
+          ],
+        }).select('waybillNumber loadDate createdAt customerName fromCity toCity price driverExpense driverName status expectedArrival deliveredAt')
+          .sort({ loadDate: -1 }).limit(500).lean(),
+      ]);
+
+      // أحداثُ تلك الحمولات — المتابعاتُ وتغيُّراتُ الحالة تنتمي إلى السيّارة
+      // كما تنتمي إلى الشحنة، والسجلُّ الشهريّ هو موضعُ قراءتها مجتمعة.
+      const ids = shipments.map((s) => s._id);
+      const events = ids.length
+        ? await FleetEvent.find({ shipment: { $in: ids }, createdAt: { $gte: range.from, $lte: range.to } })
+          .sort({ createdAt: -1 }).limit(2000).lean()
+        : [];
+      const wbOf = new Map(shipments.map((s) => [String(s._id), s.waybillNumber]));
+
+      const timeline = [
+        ...entries.map((e) => ({
+          id: String(e._id), source: 'entry', at: e.at, kind: e.kind,
+          text: e.text, location: e.location, cost: e.cost,
+          waybillNumber: e.waybillNumber, shipment: e.shipment ? String(e.shipment) : null,
+          driverName: e.driverName, byName: e.byName, lateEntry: e.lateEntry,
+        })),
+        ...shipments.map((s) => ({
+          id: String(s._id), source: 'shipment', at: s.loadDate || s.createdAt, kind: 'load',
+          text: [s.customerName, [s.fromCity, s.toCity].filter(Boolean).join(' ← ')].filter(Boolean).join(' · '),
+          waybillNumber: s.waybillNumber, shipment: String(s._id),
+          driverName: s.driverName, price: s.price, driverExpense: s.driverExpense, status: s.status,
+        })),
+        ...events.map((e) => ({
+          id: String(e._id), source: 'event', at: e.createdAt, kind: `event:${e.type}`,
+          text: e.type === 'followup'
+            ? [e.data?.currentLocation, e.data?.note].filter(Boolean).join(' — ')
+            : e.type === 'status'
+              ? `${e.data?.from || '—'} → ${e.data?.to || '—'}`
+              : (e.data?.text || ''),
+          waybillNumber: wbOf.get(String(e.shipment)) || null,
+          shipment: String(e.shipment), byName: e.byName,
+        })),
+      ].sort((a, b) => new Date(b.at) - new Date(a.at));
+
+      const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
+      const summary = {
+        loads: shipments.length,
+        income: money(shipments.reduce((a, s) => a + (Number(s.price) || 0), 0)),
+        driverExpense: money(shipments.reduce((a, s) => a + (Number(s.driverExpense) || 0), 0)),
+        logCost: money(entries.reduce((a, e) => a + (Number(e.cost) || 0), 0)),
+        entries: entries.length,
+        followups: events.filter((e) => e.type === 'followup').length,
+        byKind: FleetVehicleLog.LOG_KINDS.reduce((acc, k) => {
+          const n = entries.filter((e) => e.kind === k).length;
+          if (n) acc[k] = n;
+          return acc;
+        }, {}),
+        target: vehicle.monthlyTarget || 0,
+      };
+      summary.net = money(summary.income - summary.driverExpense - summary.logCost);
+
+      return { timeline, summary };
+    });
+
+    res.json({
+      vehicle: { _id: vehicle._id, plate: vehicle.plate, name: vehicle.name, trailerType: vehicle.trailerType, supervisorName: vehicle.supervisorName, monthlyTarget: vehicle.monthlyTarget },
+      period: { from: range.from, to: range.to, monthKey: range.monthKey, label: range.label, scope: range.scope },
+      closed: FleetVehicleLog.isClosed(range.monthKey),
+      kinds: FleetVehicleLog.LOG_KINDS.map((k) => ({ key: k, ...FleetVehicleLog.KIND_LABELS[k] })),
+      ...payload,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to load the vehicle log' });
+  }
+};
+
+/**
+ * GET /api/fleet/vehicle-logs/summary?month=YYYY-MM
+ * صفٌّ لكلّ سيّارة: حمولاتُها ودخلُها وعددُ قيودها وأعطالُها في الفترة —
+ * وهو ما تُبنى عليه صفحة «سجلّات السيارات».
+ */
+exports.getVehicleLogsSummary = async (req, res) => {
+  try {
+    const range = logRange(req.query);
+    const scope = await supervisorVehicleIds(req);
+    const vFilter = { isActive: { $ne: false } };
+    if (scope) vFilter._id = { $in: scope };
+
+    const ck = `fleet:vlogsum:${range.from.toISOString()}:${range.to.toISOString()}:${scope ? String(req.user._id) : 'all'}`;
+    const rows = await cache.wrap(ck, 20000, async () => {
+      const vehicles = await FleetVehicle.find(vFilter).select('plate name trailerType supervisorName monthlyTarget').sort({ plate: 1 }).lean();
+      const ids = vehicles.map((v) => v._id);
+      const [loadAgg, entryAgg] = await Promise.all([
+        FleetShipment.aggregate([
+          { $match: { vehicle: { $in: ids }, loadDate: { $gte: range.from, $lte: range.to } } },
+          { $group: { _id: '$vehicle', loads: { $sum: 1 }, income: { $sum: '$price' }, driverExpense: { $sum: '$driverExpense' } } },
+        ]),
+        FleetVehicleLog.aggregate([
+          { $match: { vehicle: { $in: ids }, at: { $gte: range.from, $lte: range.to } } },
+          { $group: { _id: { v: '$vehicle', k: '$kind' }, n: { $sum: 1 }, cost: { $sum: '$cost' } } },
+        ]),
+      ]);
+      const byV = new Map(loadAgg.map((r) => [String(r._id), r]));
+      const kindsByV = new Map();
+      for (const r of entryAgg) {
+        const k = String(r._id.v);
+        if (!kindsByV.has(k)) kindsByV.set(k, { entries: 0, cost: 0, byKind: {} });
+        const cur = kindsByV.get(k);
+        cur.entries += r.n;
+        cur.cost += r.cost || 0;
+        cur.byKind[r._id.k] = r.n;
+      }
+      const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
+      return vehicles.map((v) => {
+        const l = byV.get(String(v._id)) || {};
+        const e = kindsByV.get(String(v._id)) || { entries: 0, cost: 0, byKind: {} };
+        const income = money(l.income);
+        const driverExpense = money(l.driverExpense);
+        const logCost = money(e.cost);
+        return {
+          _id: v._id, plate: v.plate, name: v.name, trailerType: v.trailerType,
+          supervisorName: v.supervisorName, target: v.monthlyTarget || 0,
+          loads: l.loads || 0, income, driverExpense, logCost,
+          net: money(income - driverExpense - logCost),
+          entries: e.entries, byKind: e.byKind,
+          breakdowns: (e.byKind.breakdown || 0) + (e.byKind.maintenance || 0),
+        };
+      });
+    });
+
+    res.json({
+      period: { from: range.from, to: range.to, monthKey: range.monthKey, label: range.label, scope: range.scope },
+      closed: FleetVehicleLog.isClosed(range.monthKey),
+      kinds: FleetVehicleLog.LOG_KINDS.map((k) => ({ key: k, ...FleetVehicleLog.KIND_LABELS[k] })),
+      rows,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to load vehicle logs' });
+  }
+};
+
+const CLOSED_OVERRIDE = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
+
+/** POST /api/fleet/vehicle-logs — قيدٌ جديد على سيّارة. */
+exports.createVehicleLog = async (req, res) => {
+  try {
+    const vehicle = await resolveVehicle(req.body.vehicle);
+    if (!vehicle) return res.status(400).json({ message: 'اختر السيارة' });
+
+    const scope = await supervisorVehicleIds(req);
+    if (scope && !scope.some((id) => String(id) === String(vehicle._id))) {
+      return res.status(403).json({ message: 'Not your vehicle' });
+    }
+
+    const at = req.body.at ? new Date(req.body.at) : new Date();
+    if (Number.isNaN(at.getTime())) return res.status(400).json({ message: 'تاريخ غير صالح' });
+
+    const monthKey = FleetVehicleLog.monthKeyOf(at);
+    const closed = FleetVehicleLog.isClosed(monthKey);
+    if (closed && !CLOSED_OVERRIDE.includes(req.user.role)) {
+      return res.status(400).json({ message: `سجلّ ${monthKey} مقفل — لا يُضاف إليه إلّا من مدير القسم` });
+    }
+
+    const kind = FleetVehicleLog.LOG_KINDS.includes(req.body.kind) ? req.body.kind : 'note';
+    const text = String(req.body.text || '').trim();
+    if (!text) return res.status(400).json({ message: 'اكتب ما حدث' });
+
+    let shipment = null;
+    let waybillNumber = null;
+    if (req.body.shipment) {
+      shipment = await FleetShipment.findById(req.body.shipment).select('waybillNumber vehicle driverName').lean();
+      if (shipment) {
+        // الحمولة المربوطة يجب أن تكون على هذه السيّارة — وإلّا صار القيدُ
+        // معلَّقًا على شحنةٍ لا علاقة لها بها، وهو أسوأ من ألّا يُربط.
+        if (String(shipment.vehicle) !== String(vehicle._id)) {
+          return res.status(400).json({ message: 'هذه البوليصة ليست على هذه السيارة' });
+        }
+        waybillNumber = shipment.waybillNumber;
+      }
+    }
+
+    const doc = await FleetVehicleLog.create({
+      vehicle: vehicle._id,
+      vehiclePlate: vehicle.plate,
+      at,
+      kind,
+      text,
+      location: String(req.body.location || '').trim(),
+      cost: Number.isFinite(Number(req.body.cost)) ? Number(req.body.cost) : 0,
+      shipment: shipment ? shipment._id : null,
+      waybillNumber,
+      driverName: String(req.body.driverName || shipment?.driverName || '').trim(),
+      lateEntry: closed,
+      by: req.user._id,
+      byName: fullName(req.user),
+    });
+
+    await logAudit({ user: req.user._id, action: 'create_fleet_vehicle_log', entity: 'FleetVehicleLog', entityId: doc._id, changes: { after: { plate: vehicle.plate, kind, at } }, ipAddress: req.ip });
+    emit('fleet:updated', { vehicleLog: String(doc._id) });
+    res.status(201).json({ entry: doc, lateEntry: closed });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to add the log entry' });
+  }
+};
+
+/** PUT /api/fleet/vehicle-logs/:id */
+exports.updateVehicleLog = async (req, res) => {
+  try {
+    const doc = await FleetVehicleLog.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Entry not found' });
+
+    const scope = await supervisorVehicleIds(req);
+    if (scope && !scope.some((id) => String(id) === String(doc.vehicle))) {
+      return res.status(403).json({ message: 'Not your vehicle' });
+    }
+    if (FleetVehicleLog.isClosed(doc.monthKey) && !CLOSED_OVERRIDE.includes(req.user.role)) {
+      return res.status(400).json({ message: `سجلّ ${doc.monthKey} مقفل — لا يُعدَّل` });
+    }
+
+    if (req.body.at !== undefined) {
+      const at = new Date(req.body.at);
+      if (Number.isNaN(at.getTime())) return res.status(400).json({ message: 'تاريخ غير صالح' });
+      const mk = FleetVehicleLog.monthKeyOf(at);
+      if (FleetVehicleLog.isClosed(mk) && !CLOSED_OVERRIDE.includes(req.user.role)) {
+        return res.status(400).json({ message: `لا يُنقل القيد إلى شهرٍ مقفل (${mk})` });
+      }
+      doc.at = at;
+    }
+    if (req.body.kind !== undefined && FleetVehicleLog.LOG_KINDS.includes(req.body.kind)) doc.kind = req.body.kind;
+    if (req.body.text !== undefined) doc.text = String(req.body.text).trim();
+    if (req.body.location !== undefined) doc.location = String(req.body.location).trim();
+    if (req.body.cost !== undefined) doc.cost = Number.isFinite(Number(req.body.cost)) ? Number(req.body.cost) : 0;
+    if (req.body.driverName !== undefined) doc.driverName = String(req.body.driverName).trim();
+
+    await doc.save();
+    emit('fleet:updated', { vehicleLog: String(doc._id) });
+    res.json({ entry: doc });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to update the entry' });
+  }
+};
+
+/** DELETE /api/fleet/vehicle-logs/:id */
+exports.deleteVehicleLog = async (req, res) => {
+  try {
+    const doc = await FleetVehicleLog.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'Entry not found' });
+    if (FleetVehicleLog.isClosed(doc.monthKey) && !CLOSED_OVERRIDE.includes(req.user.role)) {
+      return res.status(400).json({ message: `سجلّ ${doc.monthKey} مقفل — لا يُحذف منه` });
+    }
+    await doc.deleteOne();
+    await logAudit({ user: req.user._id, action: 'delete_fleet_vehicle_log', entity: 'FleetVehicleLog', entityId: doc._id, changes: { before: { plate: doc.vehiclePlate, kind: doc.kind } }, ipAddress: req.ip });
+    emit('fleet:updated', { vehicleLog: String(doc._id) });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to delete the entry' });
+  }
+};

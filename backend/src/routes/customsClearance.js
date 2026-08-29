@@ -17,4 +17,9 @@ router.post('/', authorize(...EDIT_ROLES), ctrl.createClearance);
 router.put('/:id', authorize(...EDIT_ROLES), ctrl.updateClearance);
 router.delete('/:id', authorize('super_admin', 'admin', 'customs_manager'), ctrl.deleteClearance);
 
+// مرفقات المعاملة — ورقُ كلِّ مرحلة يُرفَع مع المعاملة نفسِها.
+router.post('/:id/attachments', authorize(...EDIT_ROLES), ctrl.addAttachments);
+router.put('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.updateAttachment);
+router.delete('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.deleteAttachment);
+
 module.exports = router;

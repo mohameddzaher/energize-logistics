@@ -1,5 +1,5 @@
 const CustomsClearance = require('../models/CustomsClearance');
-const { recomputeTotals } = require('../models/CustomsClearance');
+const { recomputeTotals, COST_KEYS, MARGIN_KEYS } = require('../models/CustomsClearance');
 const cache = require('../utils/ttlCache');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
@@ -15,6 +15,7 @@ const EDITABLE = [
   'legacySerial', 'periodMonth', 'periodYear', 'city',
   'declarationNumber', 'declarationDate', 'papersReceivedDate',
   'unloadingAppointment', 'unloadingLocation', 'doNumber', 'exitPermitNumber',
+  'returnDeadline', 'returnFreeDays',
 ];
 
 // Sub-documents. Sent as whole objects by the frontend but merged field-by-field
@@ -24,8 +25,9 @@ const NESTED = {
   agentPapers: ['blStamped', 'customerAuthorization', 'companyAuthorization'],
   stageDates: ['doInvoiceEmailed', 'doInvoicePaid', 'doLinkEmailed', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'containersReturned', 'returnInvoiceDate'],
   stageDone: ['doInvoiceEmailed', 'doInvoicePaid', 'doLinkEmailed', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'containersReturned', 'returnInvoiceDate'],
-  costs: ['deliveryOrder', 'customsDuty', 'portFees', 'unloadingFees', 'transport', 'transportToYard', 'appointmentBooking', 'yardFees', 'demurrage', 'inspection', 'securityScan', 'extension', 'consolidator', 'commissions', 'storage', 'labour', 'exitPermit'],
-  revenue: ['clearanceFee', 'transportSelling', 'transportNet', 'transportToYardNet', 'yardTransportNet', 'totalInvoiced'],
+  costs: COST_KEYS,
+  // totalInvoiced/profit مشتقّتان — لا تُقبلان من العميل مهما أرسل.
+  revenue: [...MARGIN_KEYS, 'transportSelling', 'yardTransportNet'],
   billing: ['invoiceStatus', 'ourInvoiceNumber', 'invoicedAt'],
 };
 
@@ -94,9 +96,10 @@ exports.getClearances = async (req, res) => {
     // (search is applied in-memory below) collapses concurrent loads; any write
     // clears the cache via the model post-hooks.
     const ck = `customs:list:${branch || ''}:${stage || ''}:${active || ''}:${year || ''}:${month || ''}:${invoiceStatus || ''}`;
-    // نستبعد الحقول الثقيلة (المستندات المرفقة/سجلّات المراحل) من القائمة —
-    // تُحمَّل عند فتح التخليص فقط. يقلّل النقل بشكل كبير على Atlas المُقيَّد.
-    let list = await cache.wrap(ck, 30000, () => CustomsClearance.find(filter).select('-documents').sort({ createdAt: -1 }).lean());
+    // نستبعد الحقول الثقيلة من القائمة — المرفقاتُ وحدَها قد تبلغ أربعين سطرًا
+    // في المعاملة الواحدة، والقائمةُ لا تعرض منها شيئًا. تُحمَّل عند فتح
+    // المعاملة فقط. يقلّل النقل بشكل كبير على Atlas المُقيَّد.
+    let list = await cache.wrap(ck, 30000, () => CustomsClearance.find(filter).select('-documents -attachments -containers').sort({ createdAt: -1 }).lean());
 
     if (search) {
       const s = search.toLowerCase();
@@ -292,5 +295,97 @@ exports.deleteClearance = async (req, res) => {
     res.json({ message: 'Clearance deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete clearance' });
+  }
+};
+
+// ---------------------------------------------------------------- المرفقات
+//
+// ورقُ المعاملة يُرفَع مع المعاملة نفسِها، ويُوسَم بالمرحلة التي أُنتج فيها،
+// فيُقرأ في موضعه من دورة الإجراءات. الرفعُ base64 في نفس الطلب — لا multer،
+// كما في بقيّة النظام.
+
+const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
+const { STAGES } = require('../models/CustomsClearance');
+
+exports.addAttachments = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+
+    const incoming = Array.isArray(req.body.files) ? req.body.files : [req.body];
+    if (!incoming.length) return res.status(400).json({ message: 'No files' });
+    if ((clearance.attachments || []).length + incoming.length > 40) {
+      return res.status(400).json({ message: 'لا يُرفَق أكثر من ٤٠ ملفًّا للمعاملة' });
+    }
+
+    const added = [];
+    for (const f of incoming) {
+      if (!f || !f.dataUrl) continue;
+      let stored;
+      try { stored = saveUploadFile(f.dataUrl, 'customs', f.fileName || ''); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+      const stage = STAGES.includes(String(f.stage || '')) ? String(f.stage) : '';
+      const doc = {
+        ...stored,
+        title: String(f.title || '').trim().slice(0, 200),
+        stage,
+        uploadedBy: req.user._id,
+        uploadedByName: req.user.name || '',
+        uploadedAt: new Date(),
+      };
+      clearance.attachments.push(doc);
+      added.push(doc);
+    }
+    if (!added.length) return res.status(400).json({ message: 'No files' });
+
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+
+    await logAudit({ user: req.user._id, action: 'add_customs_attachment', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { refNumber: clearance.refNumber, files: added.map((a) => a.fileName) } }, ipAddress: req.ip });
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+
+    res.status(201).json({ clearance });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to attach file' });
+  }
+};
+
+exports.updateAttachment = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    const att = clearance.attachments.id(req.params.attId);
+    if (!att) return res.status(404).json({ message: 'Attachment not found' });
+
+    if (req.body.title !== undefined) att.title = String(req.body.title).trim().slice(0, 200);
+    if (req.body.stage !== undefined) att.stage = STAGES.includes(String(req.body.stage)) ? String(req.body.stage) : '';
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+    res.json({ clearance });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to update attachment' });
+  }
+};
+
+exports.deleteAttachment = async (req, res) => {
+  try {
+    const clearance = await CustomsClearance.findById(req.params.id);
+    if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
+    const att = clearance.attachments.id(req.params.attId);
+    if (!att) return res.status(404).json({ message: 'Attachment not found' });
+
+    const url = att.fileUrl;
+    att.deleteOne();
+    clearance.lastModifiedBy = req.user._id;
+    await clearance.save();
+    deleteStoredFile(url);
+
+    await logAudit({ user: req.user._id, action: 'delete_customs_attachment', entity: 'CustomsClearance', entityId: clearance._id, changes: { before: { fileName: att.fileName } }, ipAddress: req.ip });
+    try { emitToAll('customs:updated', { clearance }); } catch (e) {}
+
+    res.json({ clearance });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to delete attachment' });
   }
 };

@@ -28,6 +28,9 @@ const REPORT_ROLES = [
   // قسم لوكيشن سوليوشن: تقريرا المركبة والفردة من صميم عمله، وكان محرومًا
   // منهما لأنّ القائمة كُتبت قبل أن يوجدا.
   'location_manager', 'location_staff',
+  // وقسم المركبات والتفاويض: صفحةُ بروفايل المركبة فيه هي أكثرُ ما يُطبع من
+  // هذه التقارير، وأهلُها كانوا وحدَهم الممنوعين منها.
+  'vehicles_manager', 'vehicles_staff',
 ];
 
 // Some subjects are more sensitive than the section they sit in: an employee

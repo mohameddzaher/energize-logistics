@@ -67,12 +67,11 @@ const skips = { invoiceMoneyAsDate: 0, branchAsNumber: 0, accountingReview: 0, r
 /**
  * يُطبِّع القيمة أو يردّ undefined لترفَض.
  * — «مراجعه التشغيل» خانةُ تأشيرٍ في الواجهة، فـ OK/ok تصير «تم».
- * — «مراجعه الحسابات» تُرفض كلُّها: خلاياها الـ١٣٣٥ أرقامٌ بلا استثناء، ولا
- *   واحدةَ منها بجانبها رقم فاتورة — أي أنّها ليست مراجعةً بل عمودٌ آخر
- *   انزلق. وتأشيرُ «راجعت المحاسبة» على رقمٍ مجهولٍ كذبٌ في تقرير.
+ * — «مراجعه الحسابات» رقمًا تُرفض: تأشيرُ «راجعت المحاسبة» على رقمٍ مجهولٍ
+ *   كذبٌ في تقرير. وعمودُها في هذا الملفّ فارغٌ عمليًّا (خليّةٌ واحدة).
  */
 function normalize(key, v) {
-  if (key === 'accountingReview') { skips.accountingReview++; return undefined; }
+  if (key === 'accountingReview' && /^\d+(\.\d+)?$/.test(v)) { skips.accountingReview++; return undefined; }
 
   if (key === 'operationsReview') {
     if (/^(ok)$/i.test(v)) return 'تم';

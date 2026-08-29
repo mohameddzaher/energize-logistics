@@ -33,6 +33,10 @@ interface Clearance {
   city?: string;
   declarationNumber?: string;
   costs?: { total?: number };
+  returnDeadline?: string;
+  returnFreeDays?: number;
+  stageDone?: Record<string, boolean>;
+  stageDates?: Record<string, string>;
   revenue?: { totalInvoiced?: number; clearanceFee?: number; profit?: number };
   billing?: { invoiceStatus?: string; ourInvoiceNumber?: string };
 }
@@ -81,6 +85,7 @@ export default function CustomsPage() {
   const [fYear, setFYear] = useState('');
   const [fMonth, setFMonth] = useState('');
   const [fInvoice, setFInvoice] = useState('');
+  const [fReturn, setFReturn] = useState('');
   const ar = lang === 'ar';
 
   const fetchList = useCallback(async () => {
@@ -119,6 +124,28 @@ export default function CustomsPage() {
   const years = Array.from(new Set(list.map((c) => c.periodYear).filter(Boolean) as number[])).sort((a, b) => b - a);
   const invoiceStatuses = Array.from(new Set(list.map((c) => (c.billing?.invoiceStatus || '').trim()).filter(Boolean))).sort();
 
+  // ── حالةُ إرجاع الحاويات ────────────────────────────────────────────────
+  // تجاوزُ آخر موعدِ إرجاعٍ ليس تأخيرًا إداريًّا: هو عدّادُ أرضياتٍ يفتح ويأكل
+  // ربحَ المعاملة كلَّه. فيُحسب هنا لا في رأس القارئ، ويُفلتَر عليه.
+  const today = new Date().toISOString().slice(0, 10);
+  const returnState = (c: Clearance): 'returned' | 'overdue' | 'due' | 'open' | 'none' => {
+    if (c.stageDone?.containersReturned) return 'returned';
+    const d = (c.returnDeadline || '').slice(0, 10);
+    if (!d) return 'none';
+    if (d < today) return 'overdue';
+    const soon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    return d <= soon ? 'due' : 'open';
+  };
+  const RETURN_LABEL: Record<string, [string, string]> = {
+    returned: ['أُرجعت', 'Returned'], overdue: ['متأخّرة الإرجاع', 'Overdue'],
+    due: ['يقترب موعدها', 'Due soon'], open: ['في المهلة', 'Within window'], none: ['بلا موعد', 'No deadline'],
+  };
+  const RETURN_BADGE: Record<string, string> = {
+    returned: 'bg-green-500/20 text-green-700', overdue: 'bg-red-500/20 text-red-700',
+    due: 'bg-amber-500/20 text-amber-700', open: 'bg-slate-200 text-slate-600', none: 'bg-slate-100 text-slate-500',
+  };
+  const overdueCount = list.filter((c) => returnState(c) === 'overdue').length;
+
   const filtered = list.filter((c) => {
     const s = search.toLowerCase();
     if (s && ![c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port, c.declarationNumber, c.billing?.ourInvoiceNumber]
@@ -127,10 +154,12 @@ export default function CustomsPage() {
     if (fMonth && String(c.periodMonth || '') !== fMonth) return false;
     if (fInvoice === '__none') { if ((c.billing?.invoiceStatus || '').trim()) return false; }
     else if (fInvoice && (c.billing?.invoiceStatus || '').trim() !== fInvoice) return false;
+    if (fReturn && returnState(c) !== fReturn) return false;
     return true;
   });
 
   const money = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const withReturn = (c: Clearance) => ({ ...c, _returnState: RETURN_LABEL[returnState(c)][ar ? 0 : 1] });
 
   const exportColumns: ExportColumn[] = [
     { header: T.refNumber, key: 'refNumber', width: 18 },
@@ -147,6 +176,9 @@ export default function CustomsPage() {
     { header: ar ? 'أجور التخليص' : 'Clearance fee', key: 'revenue.clearanceFee', width: 16, transform: money },
     { header: ar ? 'إجمالي الفاتورة' : 'Total invoiced', key: 'revenue.totalInvoiced', width: 16, transform: money },
     { header: ar ? 'صافي الربح' : 'Net profit', key: 'revenue.profit', width: 14, transform: money },
+    { header: ar ? 'أيّام السماح للإرجاع' : 'Return free days', key: 'returnFreeDays', width: 16, transform: (v) => v || '—' },
+    { header: ar ? 'آخر موعد إرجاع' : 'Return deadline', key: 'returnDeadline', width: 16, transform: (v) => v || '—' },
+    { header: ar ? 'حالة الإرجاع' : 'Return state', key: '_returnState', width: 16 },
     { header: ar ? 'حالة الفاتورة' : 'Invoice status', key: 'billing.invoiceStatus', width: 16, transform: (v) => v || '—' },
     { header: ar ? 'رقم فاتورتنا' : 'Our invoice no.', key: 'billing.ourInvoiceNumber', width: 16, transform: (v) => v || '—' },
     { header: T.stage, key: 'stage', width: 20, transform: (v, r) => (r.cancelled ? T.cancelled : T.stages[v] || v) },
@@ -155,8 +187,8 @@ export default function CustomsPage() {
   // تعمل في المتصفّح؛ فمن صدّر وهو على فلتر شهرٍ واحد كان يحمل ملفًّا يسمّيه سجلَّ السنة.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
-    { key: 'shown', label: scope.shown, sheets: [{ name: T.title, rows: filtered, columns: exportColumns }] },
-    { key: 'all', label: scope.all, sheets: [{ name: T.title, rows: list, columns: exportColumns }] },
+    { key: 'shown', label: scope.shown, sheets: [{ name: T.title, rows: filtered.map(withReturn), columns: exportColumns }] },
+    { key: 'all', label: scope.all, sheets: [{ name: T.title, rows: list.map(withReturn), columns: exportColumns }] },
   ];
 
   if (loading) {
@@ -214,11 +246,17 @@ export default function CustomsPage() {
           {invoiceStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
           <option value="__none">{ar ? 'غير مفوتر' : 'Not invoiced'}</option>
         </select>
+        <select value={fReturn} onChange={(e) => setFReturn(e.target.value)} className="cc-filter" aria-label={ar ? 'حالة الإرجاع' : 'Return state'}>
+          <option value="">{ar ? 'كل حالات الإرجاع' : 'All return states'}</option>
+          {(['overdue', 'due', 'open', 'returned', 'none'] as const).map((k) => (
+            <option key={k} value={k}>{RETURN_LABEL[k][ar ? 0 : 1]}{k === 'overdue' && overdueCount ? ` (${overdueCount})` : ''}</option>
+          ))}
+        </select>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[1040px]">
+          <table className="w-full text-sm min-w-[1160px]">
             <thead>
               <tr className="bg-slate-900">
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.refNumber}</th>
@@ -228,6 +266,7 @@ export default function CustomsPage() {
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الفترة' : 'Period'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.containerCount}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'إجمالي الفاتورة' : 'Invoiced'}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'الإرجاع' : 'Return'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{ar ? 'حالة الفاتورة' : 'Invoice status'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.stage}</th>
                 {canDelete && <th className="text-end text-slate-300 font-semibold px-4 py-3">{T.actions}</th>}
@@ -235,7 +274,7 @@ export default function CustomsPage() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filtered.length === 0 ? (
-                <tr><td colSpan={canDelete ? 10 : 9} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
+                <tr><td colSpan={canDelete ? 11 : 10} className="text-center text-slate-800 py-12">{T.noClearances}</td></tr>
               ) : filtered.map((c) => (
                 <tr key={c._id} onClick={() => router.push(`/system/customs/${c._id}`)}
                   className="bg-white hover:bg-slate-50 transition-colors cursor-pointer">
@@ -251,6 +290,11 @@ export default function CustomsPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                     {money(c.revenue?.totalInvoiced) ? money(c.revenue?.totalInvoiced).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${RETURN_BADGE[returnState(c)]}`} title={c.returnDeadline || ''}>
+                      {RETURN_LABEL[returnState(c)][ar ? 0 : 1]}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     {(c.billing?.invoiceStatus || '').trim()

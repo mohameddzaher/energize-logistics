@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { getCustomsTranslations, getCustomsIdExtraTranslations } from '@/lib/translations';
+import ClearanceAttachments from '@/components/customs/ClearanceAttachments';
 
 const STAGE_ORDER = [
   'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
@@ -123,38 +124,49 @@ export default function CustomsDetailPage() {
     ['containersReturned', 'الإرجاع', 'Containers returned'],
     ['returnInvoiceDate', 'فاتورة الإرجاع', 'Return invoice'],
   ];
+  // ── التكاليف: مبالغُ تُدفع للغير وتُمرَّر على العميل كما هي ──────────────
+  // مجموعُها هو «اجمالى المصروفات» في الماستر حرفًا بحرف — لا يُزاد عليه بندٌ
+  // من بنود الهامش ولا يُنقص منه، وإلّا اختلف رقمُ الشاشة عن رقم المحاسبة.
   const COST_FIELDS: [string, string, string][] = [
     ['deliveryOrder', 'قيمة إذن التسليم', 'Delivery order'],
     ['customsDuty', 'الرسوم الجمركية', 'Customs duty'],
     ['portFees', 'أجور الموانى', 'Port fees'],
     ['unloadingFees', 'أجور التفريغ', 'Unloading fees'],
+    ['inspection', 'أجور الكشف', 'Inspection'],
     ['transport', 'أجور النقل (بالضريبة)', 'Transport (incl. VAT)'],
     ['transportToYard', 'النقل إلى الساحة', 'Transport to yard'],
     ['appointmentBooking', 'حجز الموعد', 'Appointment booking'],
+    ['storage', 'تخزين', 'Storage'],
     ['yardFees', 'أجور الساحة', 'Yard fees'],
+    ['exitPermit', 'تصريح الخروج', 'Exit permit'],
     ['demurrage', 'أرضيات', 'Demurrage'],
-    ['inspection', 'أجور الكشف', 'Inspection'],
-    ['securityScan', 'فحص أمنى', 'Security scan'],
     ['extension', 'تمديد', 'Extension'],
     ['consolidator', 'الدامج', 'Consolidator'],
     ['commissions', 'عمولات', 'Commissions'],
-    ['storage', 'تخزين', 'Storage'],
-    ['labour', 'عمال', 'Labour'],
-    ['exitPermit', 'تصريح الخروج', 'Exit permit'],
+    ['returnInvoice', 'فاتورة الإرجاع', 'Return invoice'],
   ];
-  const REVENUE_FIELDS: [string, string, string][] = [
+  // ── الهامش: ما يُضاف فوق المصروفات، ومجموعُه هو الربح ────────────────────
+  const MARGIN_FIELDS: [string, string, string][] = [
     ['clearanceFee', 'أجور التخليص', 'Clearance fee'],
-    ['transportSelling', 'سعر بيع النقل', 'Transport selling price'],
     ['transportNet', 'صافي النقل', 'Transport net'],
     ['transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'],
-    ['yardTransportNet', 'صافي نقل الساحة', 'Yard transport net'],
-    ['totalInvoiced', 'إجمالي الفاتورة', 'Total invoiced'],
+    ['yardNet', 'صافي الساحة', 'Yard net'],
+    ['storageNet', 'صافي التخزين', 'Storage net'],
+    ['securityScan', 'فحص أمنى', 'Security scan'],
+    ['labour', 'عمال', 'Labour'],
   ];
+  // بنودٌ تُسجَّل ولا تدخل الجمع: سعرُ بيع النقل إجماليٌّ صافيه محسوبٌ أعلاه،
+  // وصافي نقل الساحة عمودٌ مساعدٌ خارج صيغة الربح في الماستر.
+  const REVENUE_EXTRA: [string, string, string][] = [
+    ['transportSelling', 'سعر بيع النقل', 'Transport selling price'],
+    ['yardTransportNet', 'صافي نقل الساحة', 'Yard transport net'],
+  ];
+  const REVENUE_FIELDS: [string, string, string][] = [...MARGIN_FIELDS, ...REVENUE_EXTRA];
 
   const n = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const costsTotal = Math.round(COST_FIELDS.reduce((a, [k]) => a + n(c.costs?.[k]), 0) * 100) / 100;
-  const invoiced = n(c.revenue?.totalInvoiced);
-  const profit = Math.round((invoiced - costsTotal) * 100) / 100;
+  const profit = Math.round(MARGIN_FIELDS.reduce((a, [k]) => a + n(c.revenue?.[k]), 0) * 100) / 100;
+  const invoiced = Math.round((costsTotal + profit) * 100) / 100;
   const margin = invoiced ? (profit / invoiced) * 100 : 0;
   const sar = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
 
@@ -277,6 +289,7 @@ export default function CustomsDetailPage() {
     columns: amountCols,
     rows: [
       ...REVENUE_FIELDS.map(([key, arLabel, enLabel]) => ({ label: ar ? arLabel : enLabel, amount: n(c.revenue?.[key]) })),
+      { label: ar ? 'إجمالي الفاتورة' : 'Total invoiced', amount: invoiced },
       { label: ar ? 'حالة الفاتورة' : 'Invoice status', amount: c.billing?.invoiceStatus || '—' },
       { label: ar ? 'رقم فاتورتنا' : 'Our invoice no.', amount: c.billing?.ourInvoiceNumber || '—' },
       { label: ar ? 'تاريخ الفوترة' : 'Invoiced at', amount: c.billing?.invoicedAt || '—' },
@@ -296,8 +309,24 @@ export default function CustomsDetailPage() {
     rows: containers,
   };
 
+  const attachmentsSheet: ExportSheet = {
+    name: ar ? 'المرفقات' : 'Attachments',
+    columns: [
+      { header: ar ? 'الاسم' : 'Title', key: 'title', width: 34 },
+      { header: ar ? 'المرحلة' : 'Stage', key: 'stage', width: 26 },
+      { header: ar ? 'رفعه' : 'Uploaded by', key: 'by', width: 22 },
+      { header: ar ? 'التاريخ' : 'Date', key: 'at', width: 16 },
+    ],
+    rows: (c.attachments || []).map((a: any) => ({
+      title: a.title || a.fileName || '—',
+      stage: a.stage ? (T.stages[a.stage] || a.stage) : (ar ? 'عامّ' : 'General'),
+      by: a.uploadedByName || '—',
+      at: a.uploadedAt ? String(a.uploadedAt).slice(0, 10) : '—',
+    })),
+  };
+
   const exportSheets: ExportSheet[] = [
-    infoSheet, pipelineSheet, documentsSheet, agentPapersSheet,
+    infoSheet, pipelineSheet, documentsSheet, agentPapersSheet, attachmentsSheet,
     milestonesSheet, costsSheet, revenueSheet,
     // جدول الحاويات لا يُرسَم أصلًا إن لم تُسجَّل حاوية، فشيتٌ فارغٌ باسمه
     // يوحي بحاوياتٍ ضاعت من الملفّ لا بمعاملةٍ بلا حاويات.
@@ -459,6 +488,8 @@ export default function CustomsDetailPage() {
             <FieldInput label={ar ? 'مكان التفريغ' : 'Unloading location'} value={c.unloadingLocation} onSave={(v) => patch({ unloadingLocation: v })} disabled={!canEdit} />
             <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
             <FieldInput label={ar ? 'رقم تصريح الخروج' : 'Exit permit no.'} value={c.exitPermitNumber} onSave={(v) => patch({ exitPermitNumber: v })} disabled={!canEdit} />
+            <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={c.returnFreeDays ?? 0} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
+            <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
             <FieldInput label={ar ? 'المدينة' : 'City'} value={c.city} onSave={(v) => patch({ city: v })} disabled={!canEdit} />
             <FieldSelect label={ar ? 'الشهر' : 'Month'} value={String(c.periodMonth || '')} disabled={!canEdit}
               options={[['', '—'], ...Array.from({ length: 12 }, (_, i) => [String(i + 1), MONTH_LABELS[i][ar ? 0 : 1]] as [string, string])]}
@@ -514,6 +545,13 @@ export default function CustomsDetailPage() {
             <FieldInput label={ar ? 'رقم فاتورتنا' : 'Our invoice no.'} value={c.billing?.ourInvoiceNumber} onSave={(v) => patch({ billing: { ourInvoiceNumber: v } })} disabled={!canEdit} />
             <FieldInput label={ar ? 'تاريخ الفوترة' : 'Invoiced at'} type="date" value={c.billing?.invoicedAt} onSave={(v) => patch({ billing: { invoicedAt: v } })} disabled={!canEdit} />
           </div>
+          <div className="mt-4 flex items-center justify-between rounded-lg bg-slate-900 px-4 py-3">
+            <span className="text-slate-300 text-sm">{ar ? 'إجمالي الفاتورة' : 'Total invoiced'}</span>
+            <span className="text-white font-bold text-lg">{sar(invoiced)} <span className="text-slate-400 text-xs font-normal">{ar ? 'ر.س' : 'SAR'}</span></span>
+          </div>
+          <p className="mt-2 text-slate-500 text-xs">
+            {ar ? 'الفاتورة محسوبة: إجمالي المصروفات + بنود الهامش. عدّل البنود يتغيّر الرقم.' : 'Invoice is derived: total costs + margin lines. Edit a line and it follows.'}
+          </p>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className="rounded-lg bg-slate-100 px-4 py-3">
               <p className="text-slate-500 text-xs">{ar ? 'صافي الربح' : 'Net profit'}</p>
@@ -526,6 +564,16 @@ export default function CustomsDetailPage() {
           </div>
         </Card>
       </div>
+
+      {/* مرفقات المعاملة — ورقُ كلِّ مرحلةٍ موسومًا بها */}
+      <ClearanceAttachments
+        clearanceId={c._id}
+        items={c.attachments || []}
+        stages={STAGE_ORDER}
+        stageLabel={(sKey) => T.stages[sKey] || sKey}
+        canEdit={canEdit}
+        onChange={setC}
+      />
 
       {/* Containers */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">

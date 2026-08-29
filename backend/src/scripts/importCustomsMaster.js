@@ -45,13 +45,77 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const CustomsClearance = require('../models/CustomsClearance');
-const { STAGES, recomputeTotals } = require('../models/CustomsClearance');
+const { STAGES, recomputeTotals, COST_KEYS, MARGIN_KEYS } = require('../models/CustomsClearance');
+
+const { readSheet, excelDate } = require('./lib/xlsxStream');
 
 const DRY = process.argv.includes('--dry');
 const fileArg = process.argv.find((a) => a.startsWith('--file='));
 const FILE = fileArg
   ? path.resolve(fileArg.slice(7))
-  : path.join(__dirname, '../data/masters/ماستر_التخليص_data.json');
+  : path.join(__dirname, '../seeds/data/customs-master-2026-08.xlsx');
+
+// ---------------------------------------------------------------------------
+// قراءةُ الماستر من xlsx مباشرةً — لا تصديرَ وسيطًا إلى JSON. الوسيطُ خطوةٌ
+// يدويّةٌ تُنسى، فيُستورد ملفُّ الشهر الماضي ويُظنُّ أنّه الجديد.
+//
+// وتحويلُ التواريخ هنا لا في المُطابِق: إكسل يخزّن التاريخَ رقمًا تسلسليًّا،
+// وفي هذا الماستر تختلط الأرقامُ في عمودٍ واحد — «تاريخ استلام الورق» يحمل
+// رقمَ بيانٍ في ١١٤ صفًّا، و«موعد التفريغ» يحمل رقمَ حاويةٍ من اثنَي عشر رقمًا.
+// فلا يُقبل رقمٌ تاريخًا إلّا إن وقع في نطاقٍ معقول (excelDate يرفض ما عداه)،
+// وما رُفض يبقى نصَّه كما هو فيتولّاه dateStr ثمّ يُهمَل.
+// ---------------------------------------------------------------------------
+
+const DATE_COLS = new Set([
+  'تاريخ استلام الورق', 'تاريخ البيان', 'موعد التفريغ', 'اخر موعد ارجاع',
+  'ميل فاتورة اذن التسليم', 'سداد فاتورة اذن التسليم', 'ميل ربط اذن التسليم',
+  'سداد رسوم جمركية', 'سداد الموانى', 'سداد التفريغ', 'الارجاع',
+]);
+
+const SHEET_XML = {
+  'التخليص': 'sheet1.xml',
+  'الحسابات': 'sheet2.xml',
+  'Sheet3': 'sheet4.xml',
+  'Sheet1': 'sheet5.xml',
+  'Sheet2': 'sheet6.xml',
+};
+
+/** ورقةٌ واحدة -> مصفوفةُ كائنات مفاتيحُها عناوينُ الصفّ الأوّل (مُشذَّبة). */
+function sheetToObjects(file, xml) {
+  const rows = readSheet(file, 'xl/worksheets/' + xml);
+  if (!rows.length) return [];
+  const header = {};
+  for (const [col, v] of Object.entries(rows[0].cells)) {
+    const name = String(v).trim();
+    if (name && !(name in header)) header[name] = col; else if (name) header[`${name} (${col})`] = col;
+  }
+  const out = [];
+  for (const r of rows.slice(1)) {
+    const obj = {};
+    let any = false;
+    for (const [name, col] of Object.entries(header)) {
+      let v = r.cells[col];
+      if (v === undefined || v === null || String(v).trim() === '') continue;
+      if (DATE_COLS.has(name) && /^\d+(\.\d+)?$/.test(String(v))) {
+        const d = excelDate(v);
+        v = d ? d.toISOString().slice(0, 10) : String(v);
+      }
+      obj[name] = v;
+      any = true;
+    }
+    if (any) out.push(obj);
+  }
+  return out;
+}
+
+function readBook(file) {
+  if (file.toLowerCase().endsWith('.json')) return JSON.parse(fs.readFileSync(file, 'utf8'));
+  const book = {};
+  for (const [name, xml] of Object.entries(SHEET_XML)) {
+    try { book[name] = sheetToObjects(file, xml); } catch (e) { book[name] = []; }
+  }
+  return book;
+}
 
 // ---------------------------------------------------------------- normalisers
 
@@ -154,23 +218,28 @@ const COST_COLS = {
   'اجور الساحه': 'yardFees',
   'ارضيات': 'demurrage',
   'اجور الكشف': 'inspection',
-  'فحص امنى': 'securityScan',
   'تمديد': 'extension',
   'الدامج': 'consolidator',
   'عمولات': 'commissions',
   'تخزين': 'storage',
-  'عمال': 'labour',
   'تصريح الخروج': 'exitPermit',
+  'فاتورة الارجاع': 'returnInvoice',
 };
 
 // sheet column -> revenue.<key>
+// بنودُ الهامش. `اجمالى الفاتورة` غائبٌ عمدًا: عمودُه في الماستر صيغةٌ
+// (= المصروفات + الهامش)، فيُشتقّ لا يُقرأ.
 const REVENUE_COLS = {
   'اجور التخليص': 'clearanceFee',
   'سعر بيع النقل': 'transportSelling',
   'صافي النقل': 'transportNet',
   'صافى النقل الى الساحة (بالضريبة)': 'transportToYardNet',
+  'صافى النقل الى الساحة': 'transportToYardNet',
   'صافي نقل الساحه': 'yardTransportNet',
-  'اجمالى الفاتورة': 'totalInvoiced',
+  'صافى الساحه': 'yardNet',
+  'صافى التخزين': 'storageNet',
+  'فحص امنى': 'securityScan',
+  'عمال': 'labour',
 };
 
 /**
@@ -221,9 +290,27 @@ function mapMasterRow(row, unparseable) {
 
   if (!isBlank(row['رقم البيان'])) out.declarationNumber = str(row['رقم البيان']);
   if (!isBlank(row['البند الجمركى'])) out.hsCode = str(row['البند الجمركى']);
-  if (!isBlank(row['اذن التسليم'])) out.doNumber = str(row['اذن التسليم']);
+  // رقمُ إذن التسليم عشرةُ أرقامٍ أو ستّة. و«٣٥» في هذه الخانة انزلاقٌ من عمود
+  // أيّام السماح المجاور (٢٣ صفًّا)، و«٠» تعني لا إذنَ بعد — كلاهما ليس رقمًا.
+  if (!isBlank(row['اذن التسليم'])) {
+    const doRaw = str(row['اذن التسليم']);
+    const doNum = num(doRaw);
+    if (doNum === null || doNum >= 1000) out.doNumber = doRaw;
+  }
   if (!isBlank(row['مكان التفريغ'])) out.unloadingLocation = str(row['مكان التفريغ']);
   if (!isBlank(row['ملاحظات'])) out.notes = str(row['ملاحظات']);
+
+  // «اخر موعد ارجاع»: أكثرُ الصفوف تكتب فيه عددَ أيّام السماح (٣٥) لا تاريخًا.
+  // الرقمُ يُخزَّن أيّامًا، والتاريخُ يُخزَّن موعدًا، ولا يُخلط أحدُهما بالآخر.
+  if (!isBlank(row['اخر موعد ارجاع'])) {
+    const raw = row['اخر موعد ارجاع'];
+    const d = dateStr(raw);
+    if (d) out.returnDeadline = d;
+    else {
+      const days = num(raw);
+      if (days !== null && days > 0 && days <= 400) out.returnFreeDays = days;
+    }
+  }
 
   const decl = dateStr(row['تاريخ البيان']);
   if (decl) out.declarationDate = decl;
@@ -241,7 +328,6 @@ function mapMasterRow(row, unparseable) {
     'سداد الموانى': 'portFeesPaid',
     'سداد التفريغ': 'unloadingFeesPaid',
     'الارجاع': 'containersReturned',
-    'فاتورة الارجاع': 'returnInvoiceDate',
   };
   for (const [col, key] of Object.entries(MILESTONES)) {
     if (isBlank(row[col])) continue;
@@ -301,7 +387,7 @@ async function main() {
     console.error(`Source file not found: ${FILE}`);
     process.exit(1);
   }
-  const book = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+  const book = readBook(FILE);
   const master = book['التخليص'] || [];
   const accounts = book['الحسابات'] || [];
   const sheet3 = book['Sheet3'] || [];
@@ -340,21 +426,6 @@ async function main() {
   if (dupBls.length) {
     console.log(`  duplicate BLs in the sheet (kept separately, keyed by مسلسل): ${dupBls.map(([b, n]) => `${b} x${n}`).join(', ')}`);
   }
-
-  // Snapshot the التخليص-only money BEFORE enrichment — these are the numbers
-  // the company's UI_AI_dashboard was built from, so they must match exactly.
-  const baseTotals = (() => {
-    const s = (fn) => Math.round(records.reduce((a, r) => a + (Number(fn(r)) || 0), 0) * 100) / 100;
-    const copies = records.map((r) => recomputeTotals(JSON.parse(JSON.stringify(r))));
-    const sc = (fn) => Math.round(copies.reduce((a, r) => a + (Number(fn(r)) || 0), 0) * 100) / 100;
-    return {
-      containers: s((r) => r.containerCount),
-      revenue: s((r) => r.revenue.totalInvoiced),
-      clearanceFee: s((r) => r.revenue.clearanceFee),
-      costs: sc((r) => r.costs.total),
-      profit: sc((r) => r.revenue.profit),
-    };
-  })();
 
   // index for enrichment joins
   const byBl = new Map();
@@ -414,27 +485,47 @@ async function main() {
   // ---- derived totals
   for (const r of records) recomputeTotals(r);
 
-  // ---- sanity totals (compare with UI_AI_dashboard)
-  const sum = (fn) => Math.round(records.reduce((a, r) => a + (Number(fn(r)) || 0), 0) * 100) / 100;
-  const sheetExpenses = Math.round(master.reduce((a, r) => a + (money(r['اجمالى المصروفات']) || 0), 0) * 100) / 100;
-  console.log('\n--- A. التخليص sheet only — reconciles against UI_AI_dashboard [expected] ---');
-  console.log(`  إجمالي البوالص    ${records.length}   [252]  (the dashboard counts one extra; the sheet has ${records.length} rows with a BL)`);
-  console.log(`  إجمالي الحاويات   ${baseTotals.containers}   [1219]`);
-  console.log(`  عدد العملاء       ${new Set(records.map((r) => r.customerName).filter(Boolean)).size}   [25]`);
-  console.log(`  إجمالي الإيرادات  ${baseTotals.revenue}   [187933.24]`);
-  console.log(`  أجور التخليص      ${baseTotals.clearanceFee}   [15725]`);
-  console.log(`  إجمالي المصاريف   ${baseTotals.costs}   [169258.24]  (sheet's own اجمالى المصروفات column: ${sheetExpenses})`);
-  console.log(`  صافي الربح        ${baseTotals.profit}   [18675]`);
-  console.log('  note: the 750 delta on المصاريف is فحص امنى — the dashboard books it as revenue,');
-  console.log('        this model books it as a cost. Every other figure matches to the halala.');
+  // ---- مطابقةُ الحساب بأعمدة الماستر نفسِها ------------------------------
+  // الماستر يحمل ثلاثةَ أعمدةٍ محسوبةٍ بصِيَغ إكسل: اجمالى المصروفات، اجمالى
+  // الربح، اجمالى الفاتورة. لا تُستورد — تُشتقّ عندنا — لكنّها الحَكَم: لو
+  // خالف اشتقاقُنا صيغتَهم فالخريطةُ غلط لا الشيت.
+  const round2 = (x) => Math.round(x * 100) / 100;
+  const sum = (fn) => round2(records.reduce((a, r) => a + (Number(fn(r)) || 0), 0));
 
-  console.log('\n--- B. after enrichment from الحسابات + Sheet3 (what actually gets stored) ---');
-  console.log(`  إجمالي الإيرادات  ${sum((r) => r.revenue.totalInvoiced)}`);
-  console.log(`  أجور التخليص      ${sum((r) => r.revenue.clearanceFee)}`);
-  console.log(`  إجمالي المصاريف   ${sum((r) => r.costs.total)}`);
-  console.log(`  صافي الربح        ${sum((r) => r.revenue.profit)}`);
-  console.log('  higher by design: the التخليص sheet only carries money on ~20 rows, whereas');
-  console.log('  الحسابات (87 BLs) and Sheet3 (162 BLs) carry the full costing the dashboard never saw.');
+  const recon = (rows, label, costCol, profitCol, invCol) => {
+    let n = 0, okC = 0, okP = 0, okI = 0;
+    const off = [];
+    for (const row of rows) {
+      const bl = str(row['رقم البوليصة']);
+      const targets = byBl.get(bl);
+      if (!bl || !targets || !targets.length) continue;
+      const t = recomputeTotals(JSON.parse(JSON.stringify(targets[0])));
+      n += 1;
+      const sc = money(row[costCol]), sp = money(row[profitCol]), si = money(row[invCol]);
+      const near = (a, b) => a === null || Math.abs(a - b) <= 1;
+      if (near(sc, t.costs.total)) okC += 1;
+      else if (off.length < 6) off.push(`${bl}: مصروفات الشيت ${sc} ≠ المحسوب ${t.costs.total}`);
+      if (near(sp, t.revenue.profit)) okP += 1;
+      if (near(si, t.revenue.totalInvoiced)) okI += 1;
+    }
+    if (!n) return;
+    console.log(`  ${label}: ${n} صفًّا مطابَقًا — مصروفات ${okC}/${n} · ربح ${okP}/${n} · فاتورة ${okI}/${n}`);
+    off.forEach((o) => console.log(`      ${o}`));
+  };
+
+  console.log('\n--- مطابقة الأعمدة المحسوبة في الماستر ---');
+  recon(master, 'التخليص ', 'اجمالى المصروفات', 'اجمالى الربح', 'اجمالى الفاتورة');
+  recon(sheet3, 'Sheet3   ', 'اجمالى المصروفات', 'اجمالى الربح', 'اجمالى الفاتورة');
+  recon(accounts, 'الحسابات ', 'اجمالى المصروفات', 'اجمالى الربح', 'اجمالى الفاتورة');
+
+  console.log('\n--- ما سيُخزَّن (بعد الإثراء من الحسابات و Sheet3) ---');
+  console.log(`  بوالص            ${records.length}`);
+  console.log(`  حاويات           ${sum((r) => r.containerCount)}`);
+  console.log(`  عملاء            ${new Set(records.map((r) => r.customerName).filter(Boolean)).size}`);
+  console.log(`  إجمالي المصاريف  ${sum((r) => r.costs.total)}   (مبالغُ تُمرَّر على العميل)`);
+  console.log(`  إجمالي الربح     ${sum((r) => r.revenue.profit)}`);
+  console.log(`  إجمالي الفاتورة  ${sum((r) => r.revenue.totalInvoiced)}`);
+  console.log(`  أجور التخليص     ${sum((r) => r.revenue.clearanceFee)}`);
 
   if (unparseable.length) {
     console.log(`\n--- unparseable numeric cells (${unparseable.length}) — left empty ---`);
@@ -492,7 +583,18 @@ async function main() {
         if (!doc) { failed += 1; continue; }
         // Blank-guard: mergeInto skips blank strings, and the mapper only ever
         // emits non-blank values, so nothing here can clear existing data.
-        const merged = mergeInto(doc.toObject(), data);
+        // الشيت هو مرجعُ المال. وmergeInto لا يمسح — لو بقيت قيمةٌ قديمة في
+        // خانةٍ أفرغها الشيت لظلّت تُجمَع إلى الأبد. ولأنّ أرقامَ الاستيراد
+        // السابق قُرئت بقارئٍ كان ينزلق عمودًا عند كلّ خليّةٍ فارغة، تُصفَّر
+        // خاناتُ المال كلُّها قبل الدمج ثمّ تُملأ من الشيت.
+        const base = doc.toObject();
+        base.costs = base.costs || {};
+        base.revenue = base.revenue || {};
+        for (const k of COST_KEYS) base.costs[k] = 0;
+        for (const k of MARGIN_KEYS) base.revenue[k] = 0;
+        base.revenue.transportSelling = 0;
+        base.revenue.yardTransportNet = 0;
+        const merged = recomputeTotals(mergeInto(base, data));
         for (const [k, v] of Object.entries(merged)) {
           if (k === '_id' || k === '__v' || k === 'refNumber' || k === 'createdAt' || k === 'updatedAt') continue;
           doc.set(k, v);

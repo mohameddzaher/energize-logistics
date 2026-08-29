@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/file_upload.dart';
 
 /// تفاصيل التخليص الجمركي — مسار الـ١١ مرحلة (تقدّم بلمسة)، مهام الإنجاز
 /// (stageDone) بتواريخها، مستندات البوليصة وأوراق الوكيل، وملخص التكاليف.
@@ -56,15 +59,37 @@ const _agentPaperItems = [
   ('companyAuthorization', 'تفويض الشركة للمندوب', 'Company authorization'),
 ];
 
+/// بنود المصروفات — مبالغُ تُدفع للغير وتُمرَّر على العميل كما هي. الترتيب
+/// والمحتوى مطابقان لـCOST_KEYS في الخادم؛ نقصانُ بندٍ هنا يجعل إجماليَّ
+/// الجوّال أقلَّ من إجمالي الويب في المعاملة نفسها.
 const _costItems = [
-  ('deliveryOrder', 'إذن التسليم', 'Delivery order'),
+  ('deliveryOrder', 'قيمة إذن التسليم', 'Delivery order'),
   ('customsDuty', 'الرسوم الجمركية', 'Customs duty'),
   ('portFees', 'أجور الموانئ', 'Port fees'),
   ('unloadingFees', 'أجور التفريغ', 'Unloading fees'),
-  ('transport', 'النقل', 'Transport'),
+  ('inspection', 'أجور الكشف', 'Inspection'),
+  ('transport', 'أجور النقل', 'Transport'),
+  ('transportToYard', 'النقل إلى الساحة', 'Transport to yard'),
+  ('appointmentBooking', 'حجز الموعد', 'Appointment booking'),
+  ('storage', 'تخزين', 'Storage'),
   ('yardFees', 'أجور الساحة', 'Yard fees'),
+  ('exitPermit', 'تصريح الخروج', 'Exit permit'),
   ('demurrage', 'أرضيات', 'Demurrage'),
-  ('inspection', 'الكشف', 'Inspection'),
+  ('extension', 'تمديد', 'Extension'),
+  ('consolidator', 'الدامج', 'Consolidator'),
+  ('commissions', 'عمولات', 'Commissions'),
+  ('returnInvoice', 'فاتورة الإرجاع', 'Return invoice'),
+];
+
+/// بنود الهامش — مجموعُها هو الربح، والفاتورة = المصروفات + الهامش.
+const _marginItems = [
+  ('clearanceFee', 'أجور التخليص', 'Clearance fee'),
+  ('transportNet', 'صافي النقل', 'Transport net'),
+  ('transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'),
+  ('yardNet', 'صافي الساحة', 'Yard net'),
+  ('storageNet', 'صافي التخزين', 'Storage net'),
+  ('securityScan', 'فحص أمني', 'Security scan'),
+  ('labour', 'عمال', 'Labour'),
 ];
 
 Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : {};
@@ -118,6 +143,11 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     }
   }
 
+  num _nz(Map<String, dynamic> m, String k) {
+    final v = m[k];
+    return v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
   String _money(dynamic v) {
     final n = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
     return n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
@@ -132,7 +162,12 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final costs = _m(c['costs']);
     final documents = _m(c['documents']);
     final agentPapers = _m(c['agentPapers']);
-    final totalCost = _costItems.fold<num>(0, (s, it) => s + ((costs[it.$1] ?? 0) as num));
+    final revenue = _m(c['revenue']);
+    final attachments = List<Map<String, dynamic>>.from(
+        (c['attachments'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+    final totalCost = _costItems.fold<num>(0, (s, it) => s + _nz(costs, it.$1));
+    final profit = _marginItems.fold<num>(0, (s, it) => s + _nz(revenue, it.$1));
+    final invoiced = totalCost + profit;
 
     return AppScaffold(
       title: Text('${tr('تخليص', 'Clearance')} ${widget.ref}'),
@@ -307,10 +342,218 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                         ]),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    // ── الهامش والفاتورة ──
+                    // في التخليص لا تُباع الرسوم بل تُمرَّر: ما دُفع للموانى
+                    // والجمارك يُسترد كما هو، والربحُ هو ما أُضيف فوقه. لذلك
+                    // الفاتورةُ محسوبةٌ لا مكتوبة: مصروفات + هامش.
+                    FadeSlideIn(
+                      delayMs: 140,
+                      child: AppCard(
+                        topAccent: T.navy,
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Text(tr('الهامش والفاتورة', 'Margin & invoice'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            const Spacer(),
+                            IconButton(icon: const Icon(Icons.edit_outlined, size: 18, color: T.navy), onPressed: () => _editMargin(revenue)),
+                          ]),
+                          ..._marginItems.where((it) => _nz(revenue, it.$1) != 0).map((it) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3),
+                            child: Row(children: [
+                              Expanded(child: Text(tr(it.$2, it.$3), style: const TextStyle(fontSize: 12.5))),
+                              Text('${_money(_nz(revenue, it.$1))} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                            ]),
+                          )),
+                          const Divider(height: 18),
+                          Row(children: [
+                            Text(tr('صافي الربح', 'Net profit'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                            const Spacer(),
+                            Text('${_money(profit)} ${tr('ر.س', 'SAR')}',
+                                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: profit >= 0 ? T.success : T.danger)),
+                          ]),
+                          const SizedBox(height: 4),
+                          Row(children: [
+                            Text(tr('إجمالي الفاتورة', 'Total invoiced'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                            const Spacer(),
+                            Text('${_money(invoiced)} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: T.navy)),
+                          ]),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // ── المرفقات ──
+                    // ورقُ كلِّ مرحلةٍ موسومًا بها، يُفتح ويُنزَّل من الجوّال
+                    // كما من الويب: من في الميناء أحوجُ إليه ممّن في المكتب.
+                    FadeSlideIn(
+                      delayMs: 160,
+                      child: AppCard(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Text('${tr('المرفقات', 'Attachments')} (${attachments.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            const Spacer(),
+                            TextButton.icon(onPressed: _saving ? null : _uploadAttachment, icon: const Icon(Icons.attach_file_rounded, size: 16), label: Text(tr('إرفاق', 'Attach'))),
+                          ]),
+                          if (attachments.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(tr('لا مرفقات بعد. اختر المرحلة ثمّ أرفق ورقَها.', 'No attachments yet. Pick a stage, then attach its paperwork.'),
+                                  style: const TextStyle(color: T.inkFaint, fontSize: 12.5)),
+                            ),
+                          ...attachments.map((att) {
+                            final st = (att['stage'] ?? '').toString();
+                            final meta = customsStages.where((x) => x.$1 == st).toList();
+                            final stLabel = meta.isEmpty ? tr('عامّ', 'General') : tr(meta.first.$2, meta.first.$3);
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(children: [
+                                const Icon(Icons.description_outlined, size: 17, color: T.navy),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text((att['title'] ?? att['fileName'] ?? '—').toString(),
+                                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    Text(stLabel, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                                  ]),
+                                ),
+                                IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.download_rounded, size: 18, color: T.navy),
+                                    tooltip: tr('فتح/تنزيل', 'Open / download'), onPressed: () => _openAttachment(att)),
+                                IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
+                                    onPressed: _saving ? null : () => _deleteAttachment(att)),
+                              ]),
+                            );
+                          }),
+                        ]),
+                      ),
+                    ),
                     const SizedBox(height: 20),
                   ]),
                 ),
     );
+  }
+
+  Future<void> _editMargin(Map<String, dynamic> revenue) async {
+    final ctrls = {for (final it in _marginItems) it.$1: TextEditingController(text: _nz(revenue, it.$1) == 0 ? '' : _nz(revenue, it.$1).toString())};
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('تعديل بنود الهامش', 'Edit margin lines'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 4),
+              Text(tr('الفاتورة تُحسب: المصروفات + هذه البنود.', 'The invoice is derived: costs + these lines.'),
+                  style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+              const SizedBox(height: 12),
+              ..._marginItems.map((it) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: TextField(controller: ctrls[it.$1], keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr(it.$2, it.$3))),
+              )),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () {
+                    final body = {'revenue': {for (final it in _marginItems) it.$1: num.tryParse(ctrls[it.$1]!.text) ?? 0}};
+                    Navigator.pop(c);
+                    _patch(body, tr('حُفظ الهامش', 'Margin saved'));
+                  },
+                  child: Text(tr('حفظ', 'Save')),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// إرفاقُ ملفٍّ موسومًا بالمرحلة التي أُنتج فيها — يُقرأ بعدُ في موضعه من
+  /// دورة الإجراءات لا في كومةٍ واحدة.
+  Future<void> _uploadAttachment() async {
+    final picked = await pickFileAsDataUrl();
+    if (picked == null || !mounted) return;
+    final title = TextEditingController(text: picked.fileName.replaceAll(RegExp(r'\.[^.]+$'), ''));
+    String stage = (_c?['stage'] ?? '').toString();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setSt) => AlertDialog(
+          title: Text(tr('إرفاق ملفّ', 'Attach file')),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(picked.fileName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+            const SizedBox(height: 8),
+            TextField(controller: title, autofocus: true, decoration: InputDecoration(labelText: tr('اسم الملفّ', 'Title'))),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: customsStages.any((x) => x.$1 == stage) ? stage : '',
+              isExpanded: true,
+              decoration: InputDecoration(labelText: tr('المرحلة', 'Stage')),
+              items: [
+                DropdownMenuItem(value: '', child: Text(tr('مرفق عامّ', 'General'))),
+                ...customsStages.map((x) => DropdownMenuItem(value: x.$1, child: Text(tr(x.$2, x.$3), overflow: TextOverflow.ellipsis))),
+              ],
+              onChanged: (v) => setSt(() => stage = v ?? ''),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('رفع', 'Upload'))),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _saving = true);
+    try {
+      await Api.instance.post('/api/customs-clearance/${widget.clearanceId}/attachments', {
+        'files': [
+          {'dataUrl': picked.dataUrl, 'fileName': picked.fileName, 'title': title.text.trim(), 'stage': stage},
+        ],
+      });
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أُرفق الملفّ', 'File attached'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// المرفقُ يُقدَّم على `/api/uploads/...` من الخادم نفسِه، فيُفتح بمتصفّح
+  /// الجهاز فينزّله أو يعرضه — لا حاجة لتنزيلٍ داخل التطبيق.
+  Future<void> _openAttachment(Map<String, dynamic> att) async {
+    final u = (att['fileUrl'] ?? '').toString();
+    if (u.isEmpty) return;
+    final uri = Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تعذّر فتح الملفّ', 'Could not open the file'))));
+    }
+  }
+
+  Future<void> _deleteAttachment(Map<String, dynamic> att) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف المرفق', 'Delete attachment')),
+        content: Text('${att['title'] ?? att['fileName'] ?? ''}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _saving = true);
+    try {
+      await Api.instance.delete('/api/customs-clearance/${widget.clearanceId}/attachments/${att['_id']}');
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _editCosts(Map<String, dynamic> costs) async {

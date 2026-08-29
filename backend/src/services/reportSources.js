@@ -62,15 +62,23 @@ const inRange = (v, from, to) => {
 // money they earned, and the workshop/asset registry has the tires and repairs.
 // Nothing links them by id — the join is the plate. So the report joins on the
 // normalised plate digits and says clearly which sources it actually found.
+//
+// ── والمصدر الثالث: سجلّ المركبات ───────────────────────────────────────────
+// وهو الأوسع: ٣٣٥ مركبةً، منها ٢٧٣ لا أثر لها في التتبّع ولا في الأسطول —
+// دراجاتٌ وسيّاراتُ إدارات. وكان التقرير يعرف مصدرين فقط، فيردّ على ثلاثة
+// أرباع السجلّ «لا توجد بيانات» وهي بياناتٌ كاملة أمام عينَي من يطلبها.
 async function vehicleOptions(q) {
   const Ls2Vehicle = require('../models/Ls2Vehicle');
   const { FleetVehicle } = require('../models/FleetModels');
-  const { plateKey } = require('../utils/plateKey');
-  const [ls2, fleet] = await Promise.all([
+  const { VehicleMaster } = require('../models/VehicleMaster');
+  const { plateKey, registryPlateKey } = require('../utils/plateKey');
+  const [ls2, fleet, reg] = await Promise.all([
     Ls2Vehicle.find(q ? { $or: [{ plate: nameRegex(q) }, { name: nameRegex(q) }, { driver: nameRegex(q) }] } : {})
       .select('unitId plate name driver odometerKm status').lean(),
     FleetVehicle.find(q ? { $or: [{ plate: nameRegex(q) }, { name: nameRegex(q) }] } : {})
       .select('plate name trailerType supervisorName isActive').lean(),
+    VehicleMaster.find(q ? { $or: [{ plateNumber: nameRegex(q) }, { brandAr: nameRegex(q) }, { 'authorizedPerson.name': nameRegex(q) }] } : {})
+      .select('plateNumber vehicleTypeAr brandAr departmentAr cityAr serviceStatusAr authorizedPerson.name').lean(),
   ]);
   const byKey = new Map();
   for (const v of ls2) {
@@ -83,6 +91,23 @@ async function vehicleOptions(q) {
     if (cur) { cur.sources.push('fleet'); cur.detail = [cur.detail, v.trailerType].filter(Boolean).join(' · '); }
     else byKey.set(k, { id: k, name: v.plate || v.name, detail: [v.trailerType, v.supervisorName].filter(Boolean).join(' · '), sources: ['fleet'] });
   }
+  // السجلّ يُطابَق بمفتاحه هو (بالحروف): أرقامُ الدرّاجات تتصادم مع أرقام
+  // التريلات، ومفتاحُ الأرقام وحدَه يجعل الدرّاجة والتريلا مركبةً واحدة.
+  const regByDigits = new Map();
+  for (const v of reg) {
+    const digits = plateKey(v.plateNumber);
+    if (digits) regByDigits.set(digits, (regByDigits.get(digits) || 0) + 1);
+  }
+  for (const v of reg) {
+    const digits = plateKey(v.plateNumber);
+    // مركبةُ التتبّع/الأسطول تُعرَف بأرقامها؛ فإن كان الرقمُ فريدًا في السجلّ
+    // فهي هي، وإلّا فمدخلٌ مستقلٌّ بمفتاح السجلّ كي لا تُدمَج مركبتان.
+    const k = (digits && byKey.has(digits) && regByDigits.get(digits) === 1) ? digits : `r${registryPlateKey(v.plateNumber)}`;
+    const detail = [v.vehicleTypeAr, v.brandAr, v.departmentAr || v.cityAr, v.authorizedPerson?.name].filter(Boolean).join(' · ');
+    const cur = byKey.get(k);
+    if (cur) { cur.sources.push('registry'); cur.detail = cur.detail || detail; }
+    else byKey.set(k, { id: k, name: v.plateNumber, detail, sources: ['registry'] });
+  }
   return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ar'));
 }
 
@@ -92,7 +117,8 @@ async function buildVehicleReport(id, query, lang) {
   const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
   const Ls2TireAsset = require('../models/Ls2TireAsset');
   const { FleetVehicle, FleetShipment } = require('../models/FleetModels');
-  const { plateKey } = require('../utils/plateKey');
+  const { VehicleMaster } = require('../models/VehicleMaster');
+  const { plateKey, registryPlateKey } = require('../utils/plateKey');
   const { from, to, fromKey, toKey } = resolvePeriod(query);
   const t = (ar, en) => T(ar, en, lang);
 
@@ -111,9 +137,31 @@ async function buildVehicleReport(id, query, lang) {
     || String(v.plate || '').trim() === String(id).trim();
   const ls2 = allLs2.find((v) => matches(v, 'u', v.unitId)) || null;
   const fleet = allFleet.find((v) => matches(v, 'f', v._id)) || null;
-  if (!ls2 && !fleet) return null;
 
-  const plate = ls2?.plate || fleet?.plate || id;
+  // ── والسجلّ ─────────────────────────────────────────────────────────────
+  // يُطابَق بمفتاحه هو (حروفٌ وأرقام) لا بالأرقام وحدها: «ل أ 1080» درّاجة
+  // و«أ ص ر 1080» تريلا، ومفتاحُ الأرقام وحدَه يجعلهما مركبةً واحدة فتُقيَّد
+  // حادثةُ الدرّاجة على التريلا. ويُقبل `r<key>` من المُنتقي، واللوحةُ الخام
+  // كما يكتبها الإنسان مهما تعدّدت مسافاتها.
+  //
+  // ويُستعلَم عنه بالمفتاح المخزَّن لا بمسح السجلّ كلّه: ٣٣٥ مستندًا كاملًا في
+  // كلّ تقريرٍ ثمنٌ ثقيل على وصلةٍ محدودة، وسطرٌ واحدٌ يكفي.
+  const wantedReg = registryPlateKey(String(id).replace(/^r(?=[^\s])/, '')) || registryPlateKey(id);
+  let reg = wantedReg
+    ? await VehicleMaster.findOne({ $or: [{ plateKey: wantedReg }, { plateNumber: String(id).trim() }] }).lean()
+    : null;
+  // وأخيرًا بالأرقام — لكن فقط إن لم يكن الرقمُ متصادمًا في السجلّ.
+  if (!reg && (ls2 || fleet)) {
+    const digits = plateKey((ls2 || fleet).plate);
+    if (digits) {
+      const hits = await VehicleMaster.find({ plateKey: new RegExp(`${digits}$`) }).limit(2).lean();
+      if (hits.length === 1) [reg] = hits;
+    }
+  }
+
+  if (!ls2 && !fleet && !reg) return null;
+
+  const plate = reg?.plateNumber || ls2?.plate || fleet?.plate || id;
   const blocks = [];
 
   // ── Identity ──────────────────────────────────────────────────────────────
@@ -123,17 +171,176 @@ async function buildVehicleReport(id, query, lang) {
     items: [
       [t('رقم اللوحة', 'Plate'), plate],
       [t('الاسم في النظام', 'Unit name'), ls2?.name || fleet?.name],
-      [t('السائق الحالي', 'Current driver'), ls2?.driver || null],
+      [t('نوع المركبة', 'Vehicle type'), reg?.vehicleTypeAr],
+      [t('القطاع', 'Sector'), reg?.sectorAr],
+      [t('الإدارة', 'Department'), reg?.departmentAr],
+      [t('المدينة', 'City'), reg?.cityAr],
+      [t('السائق الحالي', 'Current driver'), ls2?.driver || reg?.authorizedPerson?.name || null],
       [t('نوع المقطورة', 'Trailer type'), fleet?.trailerType],
-      [t('الماركة', 'Brand'), ls2?.profile?.brand || fleet?.brand],
-      [t('سنة الموديل', 'Model year'), ls2?.profile?.modelYear],
-      [t('رقم الهيكل', 'VIN'), ls2?.profile?.vin],
+      [t('الماركة', 'Brand'), reg?.brandAr || ls2?.profile?.brand || fleet?.brand],
+      [t('الطراز', 'Model'), reg?.modelAr],
+      [t('سنة الموديل', 'Model year'), reg?.modelYear || ls2?.profile?.modelYear],
+      [t('اللون', 'Colour'), reg?.colorAr],
+      [t('رقم الهيكل', 'VIN'), reg?.chassisNumber || ls2?.profile?.vin],
+      [t('الرقم التسلسلي', 'Serial number'), reg?.serialNumber],
+      [t('المالك', 'Owner'), reg?.ownerNameAr],
+      [t('حالة الحيازة', 'Possession'), reg?.possessionStatusAr],
+      [t('حالة التشغيل', 'Service status'), reg?.serviceStatusAr],
       [t('المشرف', 'Supervisor'), fleet?.supervisorName],
       [t('عداد الكيلومترات', 'Odometer'), ls2?.odometerKm != null ? `${num(ls2.odometerKm)} km` : null],
       [t('الحالة الآن', 'Live status'), ls2?.status],
       [t('آخر إشارة', 'Last signal'), ls2?.lastMessageAt ? dtm(ls2.lastMessageAt) : null],
     ],
   });
+
+  // ── مستندات السجلّ ────────────────────────────────────────────────────────
+  // الجدولُ هو التقرير عمليًّا: ما يسأل عنه من يطبع ورقةَ مركبةٍ هو متى تنتهي
+  // أوراقُها. والحالةُ تُحسب لحظةَ الطباعة لا تُقرأ من خانة — «ساري» المخزَّنة
+  // منذ شهرين قد تكون «منتهية» اليوم.
+  if (reg) {
+    const VDOC = require('../config/vehicleDocuments');
+    const at = (obj, path) => String(path || '').split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
+    const alerts = reg.alertSettings || {};
+    const rows = VDOC.DOCUMENTS.map((d) => {
+      const expiry = at(reg, d.path);
+      const status = at(reg, d.statusPath) || '';
+      const { state, days } = VDOC.stateOf(expiry, status, alerts[d.key] || {});
+      const meta = VDOC.STATE_LABELS[state] || {};
+      return [
+        lang === 'en' ? d.en : d.ar,
+        d.numberPath ? (at(reg, d.numberPath) || '—') : '—',
+        expiry ? dt(expiry) : '—',
+        { t: meta[lang === 'en' ? 'en' : 'ar'] || state, color: meta.color },
+        days == null ? '—' : (days < 0
+          ? t(`متأخّر ${Math.abs(days)} يومًا`, `${Math.abs(days)} days overdue`)
+          : t(`${days} يومًا`, `${days} days`)),
+        VDOC.statusLabel(status, lang),
+      ];
+    });
+    blocks.push({ kind: 'section', text: t('مستندات المركبة', 'Vehicle documents') });
+    blocks.push({
+      kind: 'table',
+      columns: [
+        t('المستند', 'Document'), t('الرقم', 'Number'), t('تاريخ الانتهاء', 'Expiry'),
+        t('الحالة', 'State'), t('المتبقّي', 'Remaining'), t('الوضع الإداري', 'Admin status'),
+      ],
+      rows,
+    });
+
+    const expired = rows.filter((r) => r[3].color === '#dc2626').length;
+    const soon = rows.filter((r) => r[3].color === '#f59e0b' || r[3].color === '#ea580c').length;
+    if (expired || soon) {
+      blocks.push({
+        kind: 'note',
+        tone: expired ? 'danger' : 'warn',
+        text: t(
+          `${expired} مستندًا منتهيًا و${soon} يقترب من الانتهاء.`,
+          `${expired} expired document(s), ${soon} approaching expiry.`
+        ),
+      });
+    }
+
+    // التفويض وتفاصيله — من يقود، وبأيّ ورقة، وإلى متى.
+    if (reg.authorizedPerson?.name || reg.authorizedPerson?.authorizationNumber) {
+      blocks.push({ kind: 'section', text: t('التفويض', 'Authorisation') });
+      blocks.push({
+        kind: 'kv',
+        items: [
+          [t('المفوَّض', 'Authorised person'), reg.authorizedPerson.name],
+          [t('رقم الإقامة/الهوية', 'ID number'), reg.authorizedPerson.iqamaNumber],
+          [t('الوظيفة', 'Job title'), reg.authorizedPerson.jobTitleAr],
+          [t('رقم التفويض', 'Authorisation number'), reg.authorizedPerson.authorizationNumber],
+          [t('تاريخ البداية', 'Start date'), reg.authorizedPerson.startDate ? dt(reg.authorizedPerson.startDate) : null],
+          [t('تاريخ الانتهاء', 'Expiry date'), reg.authorizedPerson.expiryDate ? dt(reg.authorizedPerson.expiryDate) : null],
+        ],
+      });
+    }
+
+    // التأمين وشريحة الوقود والتتبّع — تفاصيلُ لا تسعها خانةُ التاريخ وحدها.
+    blocks.push({ kind: 'section', text: t('التأمين والاشتراكات', 'Insurance & subscriptions') });
+    blocks.push({
+      kind: 'kv',
+      items: [
+        [t('شركة التأمين', 'Insurer'), reg.insurance?.companyAr],
+        [t('رقم الوثيقة', 'Policy number'), reg.insurance?.policyNumber],
+        [t('نوع التغطية', 'Coverage'), reg.insurance?.coverageTypeAr],
+        [t('قيمة القسط', 'Premium'), reg.insurance?.premiumSar != null ? money(reg.insurance.premiumSar) : (reg.insurance?.premiumStatusAr || null)],
+        [t('مزوّد التتبّع', 'GPS provider'), reg.gps?.provider],
+        [t('طراز جهاز التتبّع', 'GPS model'), reg.gps?.deviceModel],
+        [t('سريال الجهاز', 'GPS serial'), reg.gps?.serialImei],
+        [t('شريحة الوقود', 'Fuel card'), reg.fuelCard?.cardNumber],
+        [t('مزوّد الوقود', 'Fuel provider'), reg.fuelCard?.provider],
+        [t('سقف الوقود', 'Fuel limit'), reg.fuelCard?.limitSar != null ? money(reg.fuelCard.limitSar) : (reg.fuelCard?.limitStatus === 'open' ? t('بدون سقف', 'No cap') : null)],
+      ],
+    });
+
+    // التجديدات — بما صُرف عليها. «جدّدتها لغاية إمتى وبكام؟»
+    const renewals = (reg.renewals || [])
+      .filter((r) => !from || !r.at || (new Date(r.at) >= from && new Date(r.at) <= to))
+      .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+    if (renewals.length) {
+      blocks.push({ kind: 'section', text: t('سجلّ التجديدات', 'Renewals') });
+      blocks.push({
+        kind: 'table',
+        columns: [t('المستند', 'Document'), t('التاريخ', 'Done at'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('التكلفة', 'Cost'), t('نفّذه', 'By')],
+        rows: renewals.map((r) => {
+          const d = VDOC.getDoc(r.document);
+          return [
+            d ? (lang === 'en' ? d.en : d.ar) : r.document,
+            r.at ? dt(r.at) : '—',
+            r.previousExpiry ? dt(r.previousExpiry) : '—',
+            r.newExpiry ? dt(r.newExpiry) : '—',
+            r.cost != null ? money(r.cost) : '—',
+            r.byName || '—',
+          ];
+        }),
+      });
+    }
+
+    // المطالبات والحوادث المقيَّدة على هذه المركبة.
+    const VehicleClaim = require('../models/VehicleClaim');
+    const claimQ = { $or: [{ vehicle: reg._id }, { vehiclePlateKey: registryPlateKey(reg.plateNumber) }] };
+    if (from) claimQ.accidentDate = { $gte: from, $lte: to };
+    const claims = await VehicleClaim.find(claimQ).sort({ accidentDate: -1 }).limit(200).lean();
+    blocks.push({ kind: 'section', text: t('الحوادث والمطالبات', 'Accidents & claims') });
+    blocks.push({
+      kind: 'table',
+      columns: [t('رقم المطالبة', 'Claim'), t('التاريخ', 'Date'), t('الطرف الآخر', 'Counterparty'), t('نسبة الخطأ', 'Fault %'), t('طريقة الإبلاغ', 'Reported via')],
+      rows: claims.map((c) => [
+        c.claimId || '—',
+        c.accidentDate ? dt(c.accidentDate) : '—',
+        c.counterpartyNameAr || '—',
+        c.faultPercent != null ? `${c.faultPercent}%` : '—',
+        c.reportedViaAr || '—',
+      ]),
+      emptyText: t('لا حوادث مسجّلة على هذه المركبة في هذه الفترة.', 'No accidents recorded for this vehicle in this period.'),
+    });
+
+    // التفاويض التاريخيّة من سجلّ التفاويض (مجموعة Vehicle المنفصلة).
+    const Vehicle = require('../models/Vehicle');
+    const VehicleAuthorization = require('../models/VehicleAuthorization');
+    require('../models/Employee'); // يُسجَّل قبل populate — وإلّا سقط التقرير كلُّه
+    const legacy = await Vehicle.findOne({ plateNumber: reg.plateNumber }).lean();
+    if (legacy) {
+      const auths = await VehicleAuthorization.find({ vehicle: legacy._id })
+        .populate('employee', 'firstName lastName employeeNumber')
+        .sort({ startDate: -1 }).limit(100).lean();
+      if (auths.length) {
+        blocks.push({ kind: 'section', text: t('سجلّ التفاويض', 'Authorisation history') });
+        blocks.push({
+          kind: 'table',
+          columns: [t('الموظّف', 'Employee'), t('من', 'From'), t('إلى', 'To'), t('رقم الوثيقة', 'Document'), t('الحالة', 'Status')],
+          rows: auths.map((a) => [
+            [a.employee?.firstName, a.employee?.lastName].filter(Boolean).join(' ') || '—',
+            a.startDate || '—',
+            a.endDate || t('سارٍ', 'Active'),
+            a.documentNumber || '—',
+            a.status || '—',
+          ]),
+        });
+      }
+    }
+  }
 
   // ── Distance in the period, from the daily odometer mirror ────────────────
   if (ls2) {
@@ -261,13 +468,20 @@ async function buildVehicleReport(id, query, lang) {
     });
   }
 
-  if (!ls2) blocks.push({ kind: 'note', tone: 'warn', text: t('هذه المركبة غير مرتبطة بجهاز تتبّع — بيانات التليمتري والصيانة غير متاحة.', 'This vehicle has no telemetry unit — tracking and maintenance data are unavailable.') });
-  if (!fleet) blocks.push({ kind: 'note', tone: 'warn', text: t('هذه المركبة غير مسجّلة في إدارة الأسطول — بيانات الحمولات والدخل غير متاحة.', 'This vehicle is not registered in Fleet Management — load and income data are unavailable.') });
+  // ملاحظةُ المصدر الغائب تُقال مرّةً واحدة لا مرّتين: أكثرُ مركبات السجلّ
+  // درّاجاتٌ وسيّاراتُ إدارات، ولا يُنتظر لها تتبّعٌ ولا حمولات، فتحذيرُها
+  // على كلّ ورقةٍ ضجيجٌ يُخفي التحذير الذي يعني شيئًا.
+  if (!ls2 && !fleet) {
+    blocks.push({ kind: 'note', text: t('هذه المركبة مسجَّلة في سجلّ المركبات فقط — لا تتبّع ولا حمولات مرتبطة بها.', 'This vehicle exists in the vehicle registry only — no telemetry or load data is linked to it.') });
+  } else {
+    if (!ls2) blocks.push({ kind: 'note', tone: 'warn', text: t('هذه المركبة غير مرتبطة بجهاز تتبّع — بيانات التليمتري والصيانة غير متاحة.', 'This vehicle has no telemetry unit — tracking and maintenance data are unavailable.') });
+    if (!fleet) blocks.push({ kind: 'note', tone: 'warn', text: t('هذه المركبة غير مسجّلة في إدارة الأسطول — بيانات الحمولات والدخل غير متاحة.', 'This vehicle is not registered in Fleet Management — load and income data are unavailable.') });
+  }
 
   return {
     title: t('تقرير مركبة', 'Vehicle Report'),
     subtitle: `${plate} · ${fromKey} → ${toKey}`,
-    meta: { plate, sources: [ls2 && 'ls2', fleet && 'fleet'].filter(Boolean) },
+    meta: { plate, sources: [ls2 && 'ls2', fleet && 'fleet', reg && 'registry'].filter(Boolean) },
     blocks,
   };
 }

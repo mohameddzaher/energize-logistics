@@ -1904,3 +1904,98 @@ exports.documentTypes = async (req, res) => {
     statuses: VDOC.STATUS_LABELS,
   });
 };
+
+// ── ملفّات المركبة ──────────────────────────────────────────────────────────
+//
+// المركبة تحمل تواريخ مستنداتها وأرقامَها؛ وهذه تحمل صورَها. ومن دونها يُسأل
+// «فين صورة الرخصة؟» فيُبحث عنها في واتساب — وهذا هو الفرق بين سجلٍّ ومجلَّد.
+const VehicleDocument = require('../models/VehicleDocument');
+const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
+
+exports.listVehicleDocuments = async (req, res) => {
+  try {
+    const docs = await VehicleDocument.find({ vehicle: req.params.id })
+      .sort({ createdAt: -1 }).limit(500).lean();
+    res.json({ documents: docs });
+  } catch (e) {
+    console.error('vreg listVehicleDocuments', e);
+    res.status(500).json({ message: 'تعذّر تحميل الملفّات' });
+  }
+};
+
+exports.uploadVehicleDocument = async (req, res) => {
+  try {
+    const v = await VehicleMaster.findById(req.params.id).select('plateNumber').lean();
+    if (!v) return res.status(404).json({ message: 'المركبة غير موجودة' });
+
+    const { title, category, expiryDate, notes, dataUrl, fileName } = req.body;
+    // الاسم مطلوبٌ ولا يُشتقّ من اسم الملفّ: «IMG_20260829.jpg» لا يقول شيئًا
+    // لمن يفتح الملفّ بعد سنة، و«صورة الرخصة» تقول كلَّ شيء.
+    if (!String(title || '').trim()) return res.status(400).json({ message: 'اكتب اسمًا للملفّ' });
+    if (!dataUrl) return res.status(400).json({ message: 'اختر ملفًّا' });
+
+    let stored;
+    try { stored = saveUploadFile(dataUrl, 'vehicles', fileName); }
+    catch (e) { return res.status(400).json({ message: e.message }); }
+
+    const doc = await VehicleDocument.create({
+      vehicle: req.params.id, plateNumber: v.plateNumber,
+      title: String(title).trim(), category: category || 'other',
+      expiryDate: expiryDate || undefined, notes: notes || '',
+      uploadedBy: req.user._id,
+      uploadedByName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim(),
+      ...stored,
+    });
+    logAudit({
+      user: req.user, action: 'add_vehicle_document', entity: 'VehicleMaster', entityId: req.params.id,
+      changes: { after: { title: doc.title, category: doc.category } }, ipAddress: req.ip,
+    }).catch(() => {});
+    emit('vreg:updated', {});
+    res.status(201).json({ document: doc.toObject() });
+  } catch (e) {
+    console.error('vreg uploadVehicleDocument', e);
+    res.status(500).json({ message: 'تعذّر رفع الملفّ' });
+  }
+};
+
+exports.updateVehicleDocument = async (req, res) => {
+  try {
+    const doc = await VehicleDocument.findById(req.params.docId);
+    if (!doc) return res.status(404).json({ message: 'الملفّ غير موجود' });
+    // البايتات لا تُستبدَل — الملفّ الخطأ يُحذف ويُرفع غيرُه. وما يُعدَّل هنا
+    // وصفُه: اسمُه وعائلتُه وانتهاؤه وملاحظتُه.
+    for (const f of ['title', 'category', 'expiryDate', 'notes']) {
+      if (req.body[f] !== undefined) doc[f] = req.body[f];
+    }
+    if (!String(doc.title || '').trim()) return res.status(400).json({ message: 'اكتب اسمًا للملفّ' });
+    await doc.save();
+    logAudit({
+      user: req.user, action: 'update_vehicle_document', entity: 'VehicleMaster', entityId: doc.vehicle,
+      changes: { after: { title: doc.title } }, ipAddress: req.ip,
+    }).catch(() => {});
+    emit('vreg:updated', {});
+    res.json({ document: doc.toObject() });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تعديل الملفّ' });
+  }
+};
+
+exports.deleteVehicleDocument = async (req, res) => {
+  try {
+    const doc = await VehicleDocument.findById(req.params.docId);
+    if (!doc) return res.status(404).json({ message: 'الملفّ غير موجود' });
+    // البايتات تُمسح مع الصفّ: ملفٌّ يبقى على القرص بلا صفٍّ يشير إليه لا
+    // يُفتح ولا يُحذف — يتراكم إلى أن يمتلئ القرص ولا يعرف أحدٌ ما هو.
+    deleteStoredFile(doc.fileUrl);
+    const vehicleId = doc.vehicle;
+    await doc.deleteOne();
+    logAudit({
+      user: req.user, action: 'delete_vehicle_document', entity: 'VehicleMaster', entityId: vehicleId,
+      changes: { before: { title: doc.title, fileUrl: doc.fileUrl } }, ipAddress: req.ip,
+    }).catch(() => {});
+    emit('vreg:updated', {});
+    res.json({ message: 'حُذف الملفّ' });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر حذف الملفّ' });
+  }
+};

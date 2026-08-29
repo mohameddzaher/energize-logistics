@@ -28,6 +28,7 @@ import api from '@/lib/api';
 import { Spinner } from '@/components/hr/HRKit';
 import ReportButton from '@/components/system/ReportButton';
 import { RenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
+import VehicleDocuments from '@/components/vehicles/VehicleDocuments';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
   VReg, statusColor, statusLabel, STATUS_META, DOC_TYPES, fmtDate, money, daysText, canEditVehicles,
@@ -400,6 +401,9 @@ export default function VehicleRegistryDetail() {
           </Section>
         )}
       </div>
+
+      {/* ملفّات المركبة — صورُ ما سبق من مستندات */}
+      <VehicleDocuments vehicleId={v._id} canEdit={canEdit} />
 
       {/* سجلّ التجديدات — الأثر يُقرأ إلى الوراء: أي رقمٍ كان قبل أيّ رقم */}
       {!!v.renewals?.length && (

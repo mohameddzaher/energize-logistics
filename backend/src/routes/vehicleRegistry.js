@@ -40,6 +40,12 @@ router.put('/settings', authorize(...ADMIN), c.updateSettings);
 router.get('/', c.list);
 router.post('/', authorize(...EDIT), c.create);
 router.get('/:id', c.getOne);
+
+// ── ملفّات المركبة: صور الرخصة والتأمين والبطاقة ──────────────────────────
+router.get('/:id/documents', c.listVehicleDocuments);
+router.post('/:id/documents', authorize(...EDIT), c.uploadVehicleDocument);
+router.put('/documents/:docId', authorize(...EDIT), c.updateVehicleDocument);
+router.delete('/documents/:docId', authorize(...EDIT), c.deleteVehicleDocument);
 router.put('/:id', authorize(...EDIT), c.update);
 // التجديد: بيحدّث التاريخ وبيقيّد التجديد في سجل المركبة.
 router.post('/:id/renew', authorize(...EDIT), c.renew);

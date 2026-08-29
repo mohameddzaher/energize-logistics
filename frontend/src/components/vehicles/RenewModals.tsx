@@ -85,22 +85,26 @@ export function RenewModal({ row, ar, onClose, onDone }: {
         </p>
 
         <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">{t('تاريخ الانتهاء الجديد', 'New expiry')} *</label>
-            <input type="date" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)} className={inp} autoFocus />
-          </div>
-          {/* ── تاريخ البداية، للمستند الذي له بدايةٌ ونهاية ────────────────
-              التفويض يُستخرج من جديد ببدايةٍ جديدة. وتركُها على قيمتها القديمة
-              يُبقي تاريخَ بدايةٍ لتفويضٍ انقضى وحلّ غيرُه. */}
+          {/* ── البدايةُ أوّلًا ثم النهاية ──────────────────────────────────
+              المدّة تُقرأ من اليسار إلى اليمين: من كذا إلى كذا. ووضعُ النهاية
+              فوق البداية يجعل مَن يملأ الاستمارة يكتب النهاية قبل أن يعرف
+              البداية — وهو ترتيبٌ لا يُكتب به تاريخٌ في أيّ ورقة. */}
           {startLabel && (
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
-                {startLabel}
+                {startLabel} *
                 {row.startDate && <span className="font-normal text-slate-400"> ({t('الحاليّ', 'current')}: {fmtDate(row.startDate)})</span>}
               </label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inp} />
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inp} max={newExpiry || undefined} autoFocus />
             </div>
           )}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">
+              {startLabel ? t('تاريخ النهاية الجديد', 'New end date') : t('تاريخ الانتهاء الجديد', 'New expiry')} *
+            </label>
+            <input type="date" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)} className={inp}
+              min={startLabel && startDate ? startDate : undefined} autoFocus={!startLabel} />
+          </div>
           {/* ── الرقم الجديد، للمستند الذي يخرج من التجديد برقمٍ آخر ────────
               بطاقة التشغيل تُستخرج برقمٍ جديد كل مرة، والتفويض كذلك أحيانًا.
               وتركُ الخانة فارغة يعني «الرقم هو هو» — لا محوَه. */}

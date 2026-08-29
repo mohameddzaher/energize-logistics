@@ -25,6 +25,9 @@ const REPORT_ROLES = [
   'crm_manager', 'crm_team_lead', 'sales_manager', 'contracts_manager',
   'customs_manager', 'workshop_manager', 'procurement_manager',
   'bd_manager', 'marketing_manager', 'administration_staff',
+  // قسم لوكيشن سوليوشن: تقريرا المركبة والفردة من صميم عمله، وكان محرومًا
+  // منهما لأنّ القائمة كُتبت قبل أن يوجدا.
+  'location_manager', 'location_staff',
 ];
 
 // Some subjects are more sensitive than the section they sit in: an employee

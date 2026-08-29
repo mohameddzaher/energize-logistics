@@ -1071,6 +1071,9 @@ exports.getTireProfile = async (req, res) => {
         if (open) { open.to = e.date; open.endReason = 'transferred'; stints.push(open); }
         open = {
           plate: e.toPlate, plateKey: e.toPlateKey, position: e.toPosition || '',
+          // رقم التيدر يُلتقط من نصّ الموضع حين يكون التركيب على تيدر: الفردة
+          // تمشي معه لا مع العربية، ومن دونه لا يُعرف أين كانت فعلًا.
+          trailerNumber: (String(e.toPosition || '').match(/تيدر\s*([\w-]+)/) || [])[1] || null,
           from: e.date, to: null, endReason: null,
           odoStart: e.odometerKm ?? null, odoEnd: null, by: e.performedByName || '',
         };
@@ -1083,12 +1086,22 @@ exports.getTireProfile = async (req, res) => {
     }
     // فترةٌ مفتوحة = الفردة مركَّبة الآن.
     if (open) stints.push(open);
-    // ولو لم يحمل السجلّ ركوبًا وهي مركَّبة (استيرادٌ قديم)، تُفتح فترةٌ من مكانها الحاليّ.
+    // ── الفردة التي رُكّبت قبل النظام ─────────────────────────────────────
+    // سجلُّ الحركة يبدأ يوم بدأ النظام. وفردةٌ كانت على العربية قبله لا حدثَ
+    // لتركيبها، فلو تُركت بلا فترةٍ ظهر ملفُّها فارغًا وهي تعمل منذ سنة.
+    //
+    // فتُفتح لها فترةٌ مُعلَّمة: بدايتُها يوم دخلت النظام لا يوم رُكّبت — ذاك
+    // لا يعرفه أحد — ولا تُحسب لها كيلومترات، لأنّ عدّاد العربية يوم التركيب
+    // غير معروف. وحسابُ فرقٍ من عدّادٍ مجهول يخترع رقمًا لا سند له.
+    //
+    // وكلُّ ما يقع بعد اليوم يُحسب كاملًا: أوّلُ تركيبٍ أو استبدالٍ يفتح فترةً
+    // حقيقيّة بعدّادٍ معروف من طرفيها.
     if (!stints.length && tire.status === 'mounted' && (tire.plate || tire.trailerNumber)) {
       stints.push({
         plate: tire.plate, plateKey: tire.plateKey, position: tire.positionLabel || '',
+        trailerNumber: tire.trailerNumber || null,
         from: tire.createdAt, to: null, endReason: null, odoStart: null, odoEnd: null, by: '',
-        inferred: true,
+        preSystem: true,
       });
     }
 
@@ -1109,17 +1122,30 @@ exports.getTireProfile = async (req, res) => {
       : [];
     const odoAt = new Map(odoRows.map((r) => [`${r.unitId}|${r.date}`, r.odometerKm]));
 
+    // ── التيدر يُجرّ بعربية ──────────────────────────────────────────────
+    // فردةُ التيدر تمشي مع التيدر لا مع العربية، فلوحةُ العربية فارغةٌ عندها.
+    // وقول «مركَّبة على تيدر ٣٩» وحدَه ناقص: مَن يقرأه لا يعرف أين هذا التيدر
+    // ولا أيَّ عربيةٍ تجرّه اليوم. فتُقرأ العربيةُ من سجلّ التيدر وتُذكر معه.
+    const Ls2Trailer = require('../models/Ls2Trailer');
+    const trailerNos = [...new Set([tire.trailerNumber, ...stints.map((x) => x.trailerNumber)].filter(Boolean))];
+    const trailers = trailerNos.length
+      ? await Ls2Trailer.find({ trailerNumber: { $in: trailerNos } }).select('trailerNumber currentPlate currentPlateKey').lean()
+      : [];
+    const trailerBy = new Map(trailers.map((x) => [String(x.trailerNumber), x]));
+    const currentTrailer = tire.trailerNumber ? trailerBy.get(String(tire.trailerNumber)) || null : null;
+
     const now = new Date();
     for (const s of stints) {
       const u = unitByKey.get(s.plateKey);
       const uid = u?.unitId;
-      if (uid != null) {
+      if (uid != null && !s.preSystem) {
         s.odoStart = s.odoStart ?? odoAt.get(`${uid}|${dayKey(s.from)}`) ?? null;
         s.odoEnd = s.to
           ? (s.odoEnd ?? odoAt.get(`${uid}|${dayKey(s.to)}`) ?? null)
           : (u.odometerKm ?? null);
       }
-      s.km = (s.odoStart != null && s.odoEnd != null && s.odoEnd >= s.odoStart) ? Math.round(s.odoEnd - s.odoStart) : null;
+      s.km = (!s.preSystem && s.odoStart != null && s.odoEnd != null && s.odoEnd >= s.odoStart)
+        ? Math.round(s.odoEnd - s.odoStart) : null;
       const end = s.to ? new Date(s.to) : now;
       s.days = s.from ? Math.max(0, Math.round((end - new Date(s.from)) / 86400000)) : null;
       s.driver = u?.driver || '';
@@ -1156,10 +1182,14 @@ exports.getTireProfile = async (req, res) => {
     }
     whileOn.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    const realStints = stints.filter((s) => !s.preSystem);
     const totals = {
+      preSystem: stints.some((s) => s.preSystem),
       stints: stints.length,
       vehicles: new Set(stints.map((s) => s.plateKey).filter(Boolean)).size,
-      km: stints.reduce((a, s) => a + (s.km || 0), 0),
+      // الكيلومترات من الفترات التي يُعرف عدّاداها فقط — لا تُخترع مسافةٌ
+      // لفردةٍ رُكّبت قبل النظام ولا يُعرف عدّاد عربيتها يومها.
+      km: realStints.reduce((a, s) => a + (s.km || 0), 0),
       days: stints.reduce((a, s) => a + (s.days || 0), 0),
       mountedDays: stints.filter((s) => s.current).reduce((a, s) => a + (s.days || 0), 0),
       repairs: whileOn.filter((x) => x.kind === 'repair').length,
@@ -1169,8 +1199,16 @@ exports.getTireProfile = async (req, res) => {
     };
 
     res.json({
-      tire: { ...tire, state: tireState(tire) },
-      stints: stints.slice().reverse(),      // الأحدث أوّلًا
+      tire: {
+        ...tire,
+        state: tireState(tire),
+        // العربية التي تجرّ التيدر الآن — تُذكر مع «أين هي الآن».
+        trailerOnPlate: currentTrailer?.currentPlate || null,
+      },
+      stints: stints.slice().reverse().map((s) => ({
+        ...s,
+        trailerOnPlate: s.trailerNumber ? (trailerBy.get(String(s.trailerNumber))?.currentPlate || null) : null,
+      })),                                    // الأحدث أوّلًا
       events: events.slice().reverse(),
       whileOn: whileOn.slice(0, 300),
       totals,

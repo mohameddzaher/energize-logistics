@@ -159,7 +159,9 @@ export default function VehicleRegistryDetail() {
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* ── الترويسة: اللوحة هي البطل ─────────────────────────────────────── */}
-      <header className="rounded-2xl bg-[#12325c] text-white shadow-lg overflow-hidden">
+      {/* الترويسة بلون الشريط الجانبيّ نفسه (slate-900): لونان متقاربان في
+          شاشةٍ واحدة يُقرآن خطأً مطبعيًّا لا قرارًا. */}
+      <header className="rounded-2xl bg-slate-900 border border-slate-800 text-white shadow-lg overflow-hidden">
         <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <span className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0">

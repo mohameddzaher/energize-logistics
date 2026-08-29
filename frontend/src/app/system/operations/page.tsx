@@ -265,17 +265,6 @@ export default function OperationsWorkflowPage() {
 
   // Fetch full-dataset aggregates (for the summary cards) whenever the server
   // filters change. Reflects all matching rows, not just the loaded page.
-  // ── الإجمالي بلا أيّ فلتر ────────────────────────────────────────────────
-  // البطاقة تعدّ ما طابق الفلتر، وهذا صحيح — لكنّه يربك: تضع فلتر فترةٍ فيتغيّر
-  // الرقم، فيُظنّ أنّ البطاقة تنظر إلى تاريخ الكشف في تعريفها وهي لا تفعل.
-  // فيُعرَض الإجمالي بجانبه صراحةً: «كذا ضمن الفترة، من كذا إجمالًا».
-  const [pendingAll, setPendingAll] = useState<number | null>(null);
-  useEffect(() => {
-    api.get<any>('/api/workflows/stats')
-      .then((d) => setPendingAll(d?.pendingInvoices ?? null))
-      .catch(() => {});
-  }, []);
-
   const fetchStats = useCallback(async () => {
     try {
       const data = await api.get<any>(`/api/workflows/stats?${buildParams().toString()}`);
@@ -565,7 +554,6 @@ export default function OperationsWorkflowPage() {
   // الخمسين صفًّا المعروضة. حسابُها من الصفوف المحمَّلة كان يجعلها تقول «٥٠» مهما
   // كان في القاعدة، أو يُلزمنا بتنزيل الجدول كلّه لتصحّ.
   const pendingCount = stats.pendingInvoices;
-  const hasDateFilter = !!(dateFrom || dateTo);
   const filteredRowsCount = stats.total || total;
   const filteredPurchaseSum = stats.sumPurchaseValue;
 
@@ -752,18 +740,6 @@ export default function OperationsWorkflowPage() {
           <div className="flex flex-col items-start">
             <span className="text-2xl font-bold text-amber-700">{pendingCount.toLocaleString()}</span>
             <span className="text-xs text-amber-700/80">{lang === 'ar' ? 'فواتير لم تصل' : 'Pending Invoices'}</span>
-            {/* ما تعنيه البطاقة مكتوبٌ تحتها، لا يُشرَح شفويًّا: بلا تاريخ سداد،
-                والملغى خارجُها لأنّه لا سداد له بطبيعته — الشحنة لم تحدث. */}
-            <span className="text-[10.5px] text-amber-700/60 mt-0.5">
-              {lang === 'ar' ? 'بلا تاريخ سداد · لا تشمل الملغى' : 'No payment date · excludes cancelled'}
-            </span>
-            {hasDateFilter && pendingAll != null && pendingAll !== pendingCount && (
-              <span className="text-[10.5px] text-amber-700/80 mt-0.5 font-semibold">
-                {lang === 'ar'
-                  ? `ضمن الفترة المختارة — من ${pendingAll.toLocaleString()} إجمالًا`
-                  : `within the selected period — of ${pendingAll.toLocaleString()} in total`}
-              </span>
-            )}
           </div>
           {showPendingOnly && (
             <span className="ms-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">

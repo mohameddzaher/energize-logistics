@@ -21,6 +21,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Spinner } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
+import ReportButton from '@/components/system/ReportButton';
 import { tireStateDef, TIRE_STATES } from '@/lib/tireStates';
 import {
   CircleDot, ArrowRight, Truck, Wrench, Gauge, CalendarDays, User, History,
@@ -29,16 +30,19 @@ import {
 
 interface Stint {
   plate: string | null; plateKey: string | null; position: string;
+  trailerNumber?: string | null; trailerOnPlate?: string | null;
   from: string; to: string | null; endReason: string | null;
   odoStart: number | null; odoEnd: number | null;
-  km: number | null; days: number | null; driver: string; current: boolean; inferred?: boolean;
+  km: number | null; days: number | null; driver: string; current: boolean;
+  /** رُكّبت قبل أن يبدأ النظام: لا حدثَ لتركيبها ولا عدّادَ يومَها. */
+  preSystem?: boolean;
 }
 interface Ev { _id: string; action: string; date: string; fromPlate: string | null; toPlate: string | null; fromPosition: string; toPosition: string; reason: string; notes: string; performedByName: string; odometerKm: number | null }
 interface WhileOn { kind: 'repair' | 'service'; date: string; plate: string; title: string; detail: string; cost?: number | null; by: string }
 interface Profile {
-  tire: { _id: string; serial: string; tireNumber: string; type: string; size: string; sensor: string; status: string; condition: string; conditionPercent: number | null; plate: string | null; positionLabel: string; section: string; trailerNumber: string | null; isSpare: boolean; notes: string; createdAt: string };
+  tire: { _id: string; serial: string; tireNumber: string; type: string; size: string; sensor: string; status: string; condition: string; conditionPercent: number | null; plate: string | null; positionLabel: string; section: string; trailerNumber: string | null; trailerOnPlate: string | null; isSpare: boolean; notes: string; createdAt: string };
   stints: Stint[]; events: Ev[]; whileOn: WhileOn[];
-  totals: { stints: number; vehicles: number; km: number; days: number; mountedDays: number; repairs: number; services: number; ageDays: number };
+  totals: { stints: number; vehicles: number; km: number; days: number; mountedDays: number; repairs: number; services: number; ageDays: number; preSystem: boolean };
 }
 
 const ACTION_AR: Record<string, string> = {
@@ -98,7 +102,9 @@ export default function TireProfilePage() {
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* ── الترويسة ────────────────────────────────────────────────────── */}
-      <header className="rounded-2xl bg-[#12325c] text-white shadow-lg overflow-hidden">
+      {/* الترويسة بلون الشريط الجانبيّ نفسه (slate-900): لونان متقاربان في
+          شاشةٍ واحدة يُقرآن خطأً مطبعيًّا لا قرارًا. */}
+      <header className="rounded-2xl bg-slate-900 border border-slate-800 text-white shadow-lg overflow-hidden">
         <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <span className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
@@ -120,6 +126,8 @@ export default function TireProfilePage() {
               </span>
             )}
             {ti.sensor === 'yes' && <span className="px-2.5 py-1 rounded-lg text-[11.5px] font-bold bg-white/15">{t('بحسّاس', 'Sensor')}</span>}
+            {/* تقريرٌ مطبوعٌ بترويسة الشركة — نفسُ ما في الشاشة، من المصدر نفسه. */}
+            <ReportButton subject="tire" id={ti._id} label={t('تقرير PDF', 'PDF report')} />
             <ExportMenu fileName={`tire-${ti.serial}`} lang={ar ? 'ar' : 'en'}
               options={[{
                 key: 'life', label: t('سجلّ الفردة (Excel)', 'Tire log (Excel)'),
@@ -175,6 +183,19 @@ export default function TireProfilePage() {
             {ti.plate
               ? <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(ti.plate)}`} className="font-mono font-bold text-[#f37121] hover:underline">{ti.plate}</Link>
               : <span className="font-mono font-bold">{ti.trailerNumber ? `${t('تيدر', 'trailer')} ${ti.trailerNumber}` : '—'}</span>}
+            {/* ── والتيدر يُجرّ بعربية ────────────────────────────────────────
+                فردةُ التيدر تمشي معه لا مع العربية، فلوحةُ العربية فارغةٌ
+                عندها. وقول «تيدر ٣٩» وحدَه ناقص: مَن يقرأه لا يعرف أين هذا
+                التيدر اليوم ولا أيَّ عربيةٍ تجرّه. */}
+            {!ti.plate && ti.trailerOnPlate && (
+              <>
+                <span className="text-slate-500"> — {t('والتيدر على العربية', 'and the trailer is on')} </span>
+                <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(ti.trailerOnPlate)}`} className="font-mono font-bold text-[#f37121] hover:underline">{ti.trailerOnPlate}</Link>
+              </>
+            )}
+            {!ti.plate && !ti.trailerOnPlate && ti.trailerNumber && (
+              <span className="text-slate-400"> — {t('والتيدر غير مركَّب على عربية الآن', 'the trailer is not hitched to a vehicle')}</span>
+            )}
             {ti.positionLabel && <span className="text-slate-500"> — {ti.positionLabel}{ti.section ? ` · ${ti.section}` : ''}</span>}
             {ti.isSpare && <span className="ms-2 px-2 py-0.5 rounded bg-amber-100 text-amber-700 text-[11px] font-bold">{t('استبن', 'Spare')}</span>}
           </p>
@@ -207,14 +228,27 @@ export default function TireProfilePage() {
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     {s.plate
                       ? <Link href={`/system/ls2/vehicles?q=${encodeURIComponent(s.plate)}`} className="font-mono font-bold text-slate-900 hover:text-[#f37121]">{s.plate}</Link>
-                      : <span className="text-slate-400">—</span>}
-                    {s.current && <span className="ms-1.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold">{t('الآن', 'now')}</span>}
+                      : s.trailerNumber
+                        ? (
+                          <span className="font-mono font-bold text-slate-900">
+                            {t('تيدر', 'trailer')} {s.trailerNumber}
+                            {s.trailerOnPlate && <span className="text-slate-400 font-sans font-normal"> · {t('على', 'on')} {s.trailerOnPlate}</span>}
+                          </span>
+                        )
+                        : <span className="text-slate-400">—</span>}
+                    {s.current && !s.preSystem && <span className="ms-1.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold">{t('الآن', 'now')}</span>}
+                    {s.preSystem && <span className="ms-1.5 px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 text-[10px] font-bold">{t('قبل النظام', 'pre-system')}</span>}
                   </td>
                   <td className="px-3 py-2.5 text-slate-600 text-[12px]">{s.position || '—'}</td>
-                  <td className="px-3 py-2.5 font-mono text-slate-700 whitespace-nowrap">{day(s.from)}</td>
+                  <td className="px-3 py-2.5 font-mono text-slate-700 whitespace-nowrap">
+                    {day(s.from)}
+                    {s.preSystem && <span className="block text-[10px] text-slate-400 font-sans">{t('تاريخ دخولها النظام', 'entered the system')}</span>}
+                  </td>
                   <td className="px-3 py-2.5 font-mono text-slate-700 whitespace-nowrap">{s.to ? day(s.to) : <span className="text-emerald-700 font-sans font-bold">{t('حتى الآن', 'still on')}</span>}</td>
                   <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-900 whitespace-nowrap">{s.days != null ? `${num(s.days)} ${t('يوم', 'd')}` : '—'}</td>
-                  <td className="px-3 py-2.5 tabular-nums font-extrabold text-[#f37121] whitespace-nowrap">{s.km != null ? num(s.km) : <span className="text-slate-300 font-normal">—</span>}</td>
+                  <td className="px-3 py-2.5 tabular-nums font-extrabold text-[#f37121] whitespace-nowrap">
+                    {s.km != null ? num(s.km) : <span className="text-slate-300 font-normal">—</span>}
+                  </td>
                   <td className="px-3 py-2.5 tabular-nums text-[11.5px] text-slate-500 whitespace-nowrap">
                     {s.odoStart != null || s.odoEnd != null ? `${num(s.odoStart)} → ${num(s.odoEnd)}` : '—'}
                   </td>
@@ -226,11 +260,20 @@ export default function TireProfilePage() {
             </tbody>
           </table>
         </div>
-        {d.stints.some((s) => s.km == null) && (
-          <p className="px-4 py-2.5 text-[11.5px] text-slate-500 border-t border-slate-100 bg-slate-50">
-            {t('الفترات التي لا كيلومترات لها: لا يوجد عدّاد مسجَّل للعربية في يوم التركيب أو النزول.',
-               'Stints without km: no odometer reading recorded for that vehicle on the mount or dismount day.')}
-          </p>
+        {(d.totals.preSystem || d.stints.some((s) => s.km == null && !s.preSystem)) && (
+          <div className="px-4 py-2.5 text-[11.5px] text-slate-500 border-t border-slate-100 bg-slate-50 space-y-1">
+            {d.totals.preSystem && (
+              <p>
+                <b className="text-slate-700">{t('قبل النظام:', 'Pre-system:')}</b>{' '}
+                {t('هذه الفردة كانت مركَّبة قبل أن يبدأ النظام، فلا حدثَ لتركيبها ولا يُعرف عدّاد العربية يومها — ولذلك لا كيلومترات لها. والحسابُ يبدأ من أوّل حركةٍ تُسجَّل عليها من الآن فصاعدًا: تركيبٌ أو نزولٌ أو استبدال.',
+                   'This tire was already mounted before the system started: there is no mount event and no odometer reading for that day, so no km. Counting begins at its first recorded movement from now on — a mount, a dismount or a swap.')}
+              </p>
+            )}
+            {d.stints.some((s) => s.km == null && !s.preSystem) && (
+              <p>{t('الفترات الأخرى بلا كيلومترات: لا يوجد عدّاد مسجَّل للعربية في يوم التركيب أو النزول.',
+                    'Other stints without km: no odometer reading for that vehicle on the mount or dismount day.')}</p>
+            )}
+          </div>
         )}
       </div>
 

@@ -1549,8 +1549,129 @@ async function buildMeetingReport(id, query, lang, user) {
 // ─────────────────────────────────────────────────────────────────────────────
 // The registry every consumer reads
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── فردة كاوتش ───────────────────────────────────────────────────────────────
+//
+// التقرير المطبوع لفردةٍ واحدة: أين هي، وعلى أيّ عربياتٍ كانت، وكم مشت على كلٍّ
+// منها، وما جرى للعربية وهي عليها. وهو نفسُ ما تعرضه شاشةُ الفردة — والمصدرُ
+// واحد (getTireProfile) كي لا يفترق مطبوعٌ عن شاشة.
+async function tireOptions(q) {
+  const Ls2TireAsset = require('../models/Ls2TireAsset');
+  const filter = q
+    ? { $or: [{ serial: nameRegex(q) }, { tireNumber: nameRegex(q) }, { plate: nameRegex(q) }, { type: nameRegex(q) }] }
+    : {};
+  const rows = await Ls2TireAsset.find(filter).select('serial tireNumber type size status plate positionLabel').limit(400).lean();
+  return rows.map((r) => ({
+    id: String(r._id),
+    name: r.serial,
+    detail: [r.tireNumber && `رقم ${r.tireNumber}`, r.type, r.size, r.plate].filter(Boolean).join(' · '),
+  }));
+}
+
+async function buildTireReport(id, query, lang) {
+  const t = (ar, en) => T(ar, en, lang);
+  const { tireState, TIRE_STATES } = require('../config/tireStates');
+  const assets = require('../controllers/ls2AssetsController');
+
+  // يُستدعى المتحكّم نفسُه بردٍّ صوريّ: منطقُ الفترات والكيلومترات مكتوبٌ مرّةً
+  // واحدة، ونسخُه هنا يعني أن يُصحَّح في أحدهما ويبقى الخطأ في الآخر.
+  const data = await new Promise((resolve, reject) => {
+    assets.getTireProfile(
+      { params: { id }, query: {}, body: {}, user: query.__user || {} },
+      { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(d) { this.statusCode >= 400 ? reject(new Error(d.message || 'not found')) : resolve(d); } },
+    ).catch(reject);
+  });
+
+  const { tire, stints, whileOn, totals } = data;
+  const stDef = TIRE_STATES.find((x) => x.key === tireState(tire));
+  const blocks = [];
+
+  blocks.push({ kind: 'section', text: t('بيانات الفردة', 'Tire details') });
+  blocks.push({
+    kind: 'kv',
+    items: [
+      [t('السريال', 'Serial'), tire.serial],
+      [t('رقم الفردة', 'Tire number'), tire.tireNumber || null],
+      [t('النوع', 'Type'), tire.type || null],
+      [t('المقاس', 'Size'), tire.size || null],
+      [t('الحالة', 'Status'), stDef ? (lang === 'en' ? stDef.en : stDef.ar) : tire.status],
+      [t('الدرجة', 'Grade'), tire.condition === 'new' ? t('جديدة', 'New') : t('مستعملة', 'Used')],
+      [t('نسبة الحالة', 'Condition %'), tire.conditionPercent != null ? `${tire.conditionPercent}%` : null],
+      [t('حسّاس الضغط', 'Pressure sensor'), tire.sensor === 'yes' ? t('يوجد', 'Yes') : tire.sensor === 'no' ? t('لا يوجد', 'No') : null],
+      [t('مركَّبة على', 'Mounted on'), tire.status === 'mounted'
+        ? [tire.plate || (tire.trailerNumber ? `${t('تيدر', 'trailer')} ${tire.trailerNumber}` : null),
+          tire.trailerOnPlate && !tire.plate ? `${t('على العربية', 'on vehicle')} ${tire.trailerOnPlate}` : null,
+          tire.positionLabel].filter(Boolean).join(' — ')
+        : null],
+    ],
+  });
+
+  blocks.push({ kind: 'section', text: t('مجمل حياتها', 'Life summary') });
+  blocks.push({
+    kind: 'stats',
+    items: [
+      { label: t('عمرها', 'Age'), value: `${num(totals.ageDays)} ${t('يوم', 'd')}` },
+      { label: t('عربيات ركبت عليها', 'Vehicles'), value: num(totals.vehicles) },
+      { label: t('مرّات التركيب', 'Mounts'), value: num(totals.stints) },
+      { label: t('إجمالي الكيلومترات', 'Total km'), value: num(totals.km) },
+      { label: t('أيام على العربيات', 'Days mounted'), value: num(totals.days) },
+      { label: t('صيانات وهي عليها', 'Services while on'), value: num(totals.services) },
+      { label: t('إصلاحات وهي عليها', 'Repairs while on'), value: num(totals.repairs) },
+    ],
+  });
+
+  if (totals.preSystem) {
+    blocks.push({
+      kind: 'note', tone: 'warn',
+      text: t('هذه الفردة كانت مركَّبة قبل أن يبدأ النظام: لا حدثَ لتركيبها ولا يُعرف عدّاد العربية يومها، فلا كيلومترات لتلك الفترة. والحسابُ يبدأ من أوّل حركةٍ تُسجَّل عليها.',
+              'This tire was mounted before the system started: no mount event and no odometer for that day, so no km for that stint. Counting begins at its first recorded movement.'),
+    });
+  }
+
+  blocks.push({ kind: 'section', text: t('على أيّ عربيات كانت، وكم مشت', 'Which vehicles, and how far') });
+  if (!stints.length) {
+    blocks.push({ kind: 'note', text: t('لم تُركَّب على عربيةٍ بعد.', 'Never mounted yet.') });
+  } else {
+    blocks.push({
+      kind: 'table',
+      head: [t('العربية', 'Vehicle'), t('الموضع', 'Position'), t('من', 'From'), t('إلى', 'To'), t('الأيام', 'Days'), t('الكيلومترات', 'Km'), t('السائق', 'Driver'), t('الخروج', 'End')],
+      rows: stints.map((x) => [
+        x.plate || (x.trailerNumber ? `${t('تيدر', 'trailer')} ${x.trailerNumber}${x.trailerOnPlate ? ` · ${x.trailerOnPlate}` : ''}` : '—'),
+        x.position || '—',
+        dt(x.from),
+        x.to ? dt(x.to) : t('حتى الآن', 'still on'),
+        x.days != null ? num(x.days) : '—',
+        x.km != null ? num(x.km) : (x.preSystem ? t('قبل النظام', 'pre-system') : '—'),
+        x.driver || '—',
+        x.endReason || '—',
+      ]),
+    });
+  }
+
+  if (whileOn.length) {
+    blocks.push({ kind: 'section', text: t('صيانات وإصلاحات جرت والفردة مركَّبة', 'Services & repairs while mounted') });
+    blocks.push({
+      kind: 'table',
+      head: [t('التاريخ', 'Date'), t('النوع', 'Kind'), t('العربية', 'Vehicle'), t('البند', 'Item'), t('التفصيل', 'Detail')],
+      rows: whileOn.slice(0, 120).map((w) => [
+        dt(w.date),
+        w.kind === 'repair' ? t('إصلاح', 'Repair') : t('صيانة', 'Service'),
+        w.plate || '—', w.title || '—', w.detail || '—',
+      ]),
+    });
+  }
+
+  return {
+    title: t('تقرير فردة كاوتش', 'Tire Report'),
+    subtitle: `${tire.serial}${tire.tireNumber ? ` · ${t('رقم', 'no.')} ${tire.tireNumber}` : ''}`,
+    meta: { serial: tire.serial },
+    blocks,
+  };
+}
+
 const SUBJECTS = [
   { key: 'vehicle', ar: 'مركبة', en: 'Vehicle', icon: 'truck', options: vehicleOptions, build: buildVehicleReport, searchable: true },
+  { key: 'tire', ar: 'فردة كاوتش', en: 'Tire', icon: 'circle', options: tireOptions, build: buildTireReport, searchable: true },
   { key: 'driver', ar: 'سائق', en: 'Driver', icon: 'user', options: driverOptions, build: buildDriverReport, searchable: true },
   { key: 'customer', ar: 'عميل', en: 'Customer', icon: 'building', options: customerOptions, build: buildCustomerReport, searchable: true },
   { key: 'vendor', ar: 'مورد', en: 'Vendor', icon: 'store', options: vendorOptions, build: buildVendorReport, searchable: true },

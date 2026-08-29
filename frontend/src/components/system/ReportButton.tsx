@@ -14,7 +14,7 @@ import { openReportPdf, defaultRange } from '@/lib/reports';
 export default function ReportButton({
   subject, id, from, to, label, compact,
 }: {
-  subject: 'vehicle' | 'driver' | 'customer' | 'vendor' | 'employee' | 'section';
+  subject: 'vehicle' | 'tire' | 'driver' | 'customer' | 'vendor' | 'employee' | 'section';
   id: string;
   from?: string;
   to?: string;

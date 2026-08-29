@@ -265,7 +265,11 @@ function buildWorkflowFilter(query, skipField) {
   if (dateFrom || dateTo) {
     const range = {};
     if (dateFrom) range.$gte = new Date(dateFrom + 'T00:00:00.000Z');
-    if (dateTo) range.$lte = new Date(dateTo + 'T23:59:59.999Z');
+    // ── «إلى» الفارغة تعني «حتى الآن» لا «بلا نهاية» ────────────────────────
+    // المدى المفتوح يُدخل كشوفًا مؤرَّخةً في المستقبل — تُكتب بالخطأ أو تأتي
+    // بتاريخٍ مقلوب — فيقرأ المستخدم عددًا أكبر ممّا حدث فعلًا. ومَن يكتب «من»
+    // وحدها يقصد «من هذا اليوم إلى الآن»، لا إلى الأبد.
+    range.$lte = dateTo ? new Date(dateTo + 'T23:59:59.999Z') : new Date();
     // والكشف الذي لا تاريخ له يُقاس بلحظة إدخاله — أفضل ما يُعرف عنه.
     filter.$and = [...(filter.$and || []), { $or: [
       { reportDate: range },

@@ -31,7 +31,9 @@ function ClaimsInner() {
   // null = مقفول · {} = حادث جديد · سجل = تعديل
   const [form, setForm] = useState<any | null>(null);
 
-  const [q, setQ] = useState('');
+  // البحث يُقرأ من العنوان: ملفُّ المركبة يرسل لوحتَها في الرابط، فالضغط على
+  // «الحوادث والمطالبات» يفتح مطالباتِ هذه المركبة لا السجلَّ كلَّه.
+  const [q, setQ] = useState(sp?.get('q') || '');
   const [status, setStatus] = useState(sp?.get('status') || '');
   const [d, setD] = useState<Awaited<ReturnType<typeof getClaims>> | null>(null);
   const [loading, setLoading] = useState(true);

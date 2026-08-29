@@ -39,15 +39,14 @@ export const exportScopeLabels = (ar: boolean) => ({
   matching: ar ? 'كلّ نتائج الفلتر' : 'All rows matching filter',
 });
 
-export default function ExportMenu({ fileName, options, lang = 'en', className = '', variant = 'primary', label }: {
+export default function ExportMenu({ fileName, options, lang = 'en', className = '', label }: {
   fileName: string;
   options: ExportOption[];
   lang?: 'en' | 'ar';
   className?: string;
   /**
-   * الشكل: `primary` هو الأخضر الأصلي لصفحات الأسطول والـLS2، و`subtle` هو
-   * الرمادي الذي كانت تستعمله بقيّة الصفحات قبل توحيدها على هذه القائمة —
-   * بدونه كان تحويلُ تسعين صفحةً إلى القائمة يقلب لونَ زرٍّ في كلّ ترويسة.
+   * مهجور: كان يفرّق بين شكلين، وقد وُحِّدا. يبقى في النوع كي لا تنكسر مئةٌ
+   * وثمانٍ وثلاثون شاشةٌ تمرّره، ولا أثر له.
    */
   variant?: 'primary' | 'subtle';
   /** نصّ الزرّ حين تكون الصفحة مترجِمةً له بنفسها؛ وإلّا فالنصّ الافتراضي. */
@@ -81,10 +80,17 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
     exportMultiSheet((sheets || []).map((s) => ({ name: s.name, data: s.rows, columns: s.columns })), `${fileName}-${date}`);
   };
 
-  const skin = variant === 'subtle'
-    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-    : 'bg-emerald-600 hover:bg-emerald-700 text-white';
-  const btnCls = `inline-flex items-center gap-1.5 px-3 py-2 rounded-lg ${skin} text-sm font-medium transition-colors disabled:opacity-60 ${className}`;
+  // ── شكلٌ واحد لزرّ التصدير في المنصّة كلّها ────────────────────────────────
+  //
+  // كان شكلين: رماديٌّ في سبعٍ وسبعين شاشة وأخضرُ في إحدى وستّين. والقسمةُ
+  // نفسُها هي العلّة — المستخدم ينتقل بين قسمين فيبحث عن التصدير كأنّه في
+  // نظامين، والرماديُّ الباهت يُقرأ نصًّا لا زرًّا فلا تقع عليه العين أصلًا.
+  //
+  // فصار واحدًا: أخضرُ صريح بأيقونة الجدول — لونٌ لا يحمله زرٌّ آخر في الشاشة،
+  // فيُعرَف من موضعه قبل أن يُقرأ. و`variant` باقٍ في الواجهة البرمجيّة كي لا
+  // تُعدَّل مئةٌ وثمانٍ وثلاثون شاشة، لكنّه لم يعد يفرّق شيئًا — والتوحيد الذي
+  // يحتاج تعديلَ كلّ نداءٍ لا يبقى موحَّدًا شهرًا.
+  const btnCls = `inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-[13px] font-bold shadow-sm transition-colors disabled:opacity-60 ${className}`;
   const btnText = label || (ar ? 'تصدير Excel' : 'Export Excel');
 
   if (options.length === 1) {

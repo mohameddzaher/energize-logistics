@@ -9,11 +9,12 @@ import { getOperationsTranslations } from '@/lib/translations';
 import { SHIPMENT_STATUSES, PAYMENT_METHODS } from '@/lib/ops';
 import api from '@/lib/api';
 import ExportMenu from '@/components/ls2/ExportMenu';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
 import { useSocket } from '@/hooks/useSocket';
 import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import {
   ClipboardList, Plus, Search, Filter, FilterX,
-  Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, Calendar, AlertCircle,
+  Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle,
   CheckSquare, Check
 } from 'lucide-react';
 
@@ -705,29 +706,10 @@ export default function OperationsWorkflowPage() {
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Calendar className="w-4 h-4 text-slate-500" />
-            <input
-              type="date"
-              title={T.fromDate}
-              value={dateFrom}
-              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [&::-webkit-calendar-picker-indicator]:invert"
-            />
-            <span className="text-slate-500 text-sm">{T.to}</span>
-            <input
-              type="date"
-              title={T.toDate}
-              value={dateTo}
-              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 [&::-webkit-calendar-picker-indicator]:invert"
-            />
-            {(dateFrom || dateTo) && (
-              <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }} className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-slate-900 hover:border-red-500/50 transition-colors" title={T.clearDates}>
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          {/* المدى الزمنيّ: يُفتح تقويمُه بالضغط، و«إلى» الفارغة تعني «حتى اليوم». */}
+          <DateRangeFilter ar={lang === 'ar'} from={dateFrom} to={dateTo}
+            onFrom={(v) => { setDateFrom(v); setPage(1); }}
+            onTo={(v) => { setDateTo(v); setPage(1); }} />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Filter className="w-4 h-4 text-slate-500" />
@@ -981,7 +963,7 @@ export default function OperationsWorkflowPage() {
                             onClick={gated ? (e) => { e.stopPropagation(); notifyGate(); } : cellClick(field)}
                             title={gated ? gateMsg : undefined}>
                             {isEditing && !gated
-                              ? <input type="date" autoFocus={focusField === field} title={field} className={`${ic} [&::-webkit-calendar-picker-indicator]:invert`} value={(editData as any)[field] ? (editData as any)[field].slice(0, 10) : ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} />
+                              ? <input type="date" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] ? (editData as any)[field].slice(0, 10) : ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} />
                               : <span className={`${spanCls(field, color)}${gated ? ' opacity-60 cursor-not-allowed' : ''}`}>
                                   {formatDate((wf as any)[field]) || (gated ? '—' : '')}
                                 </span>}

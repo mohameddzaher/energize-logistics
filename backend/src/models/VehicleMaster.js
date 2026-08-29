@@ -169,6 +169,10 @@ const vehicleMasterSchema = new mongoose.Schema({
     // مركبةٍ يُنسبان إليها. القيد هنا هو ما يجعل السلسلة تُقرأ إلى الوراء.
     previousNumber: { type: String, default: '' },
     newNumber: { type: String, default: '' },
+    // بدايةُ المستند حين يكون له بداية (التفويض): تُجدَّد معه، والسجلّ يحمل
+    // القديمة والجديدة كما يحمل تاريخَي الانتهاء.
+    previousStart: { type: Date, default: null },
+    newStart: { type: Date, default: null },
     cost: { type: Number, default: null },
     reference: { type: String, default: '' },     // رقم الإيصال/سند الصرف
     note: { type: String, default: '' },

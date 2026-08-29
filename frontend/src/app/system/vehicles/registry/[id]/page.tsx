@@ -27,13 +27,15 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Spinner } from '@/components/hr/HRKit';
 import ReportButton from '@/components/system/ReportButton';
+import { RenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
-  VReg, statusColor, statusLabel, STATUS_META, DOC_TYPES, fmtDate, money, daysText,
+  VReg, statusColor, statusLabel, STATUS_META, DOC_TYPES, fmtDate, money, daysText, canEditVehicles,
 } from '@/lib/vehicleRegistry';
+import { useAuth } from '@/context/AuthContext';
 import {
   Car, ArrowRight, Satellite, IdCard, ShieldCheck, Fuel, FileText, ClipboardCheck,
-  AlertTriangle, History, Building2, ChevronLeft, ExternalLink,
+  AlertTriangle, History, Building2, ChevronLeft, ExternalLink, RefreshCcw,
 } from 'lucide-react';
 
 /** لونُ عائلةٍ حين لا يكون لها مستندٌ بحالة — للهوية والملكية. */
@@ -45,9 +47,15 @@ export default function VehicleRegistryDetail() {
   const t = (a: string, e: string) => (ar ? a : e);
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const canEdit = canEditVehicles(user);
   const id = String(params?.id || '');
   const [v, setV] = useState<VReg | null>(null);
   const [loading, setLoading] = useState(true);
+  // ── التجديد من الملفّ نفسه ────────────────────────────────────────────────
+  // كان المستند يُرى منتهيًا هنا ثم يُخرَج إلى شاشة عائلته ليُجدَّد — والشاشتان
+  // تفتحان النافذة ذاتها. فمن يقف على الملفّ ويرى الأحمر يجدّده من موضعه.
+  const [renewing, setRenewing] = useState<RenewTarget | null>(null);
 
   const load = useCallback(async () => {
     try { const d = await api.get<{ vehicle: VReg }>(`/api/vehicle-registry/${id}`); setV(d.vehicle); }
@@ -151,6 +159,29 @@ export default function VehicleRegistryDetail() {
   const authOn = !!(auth?.name || auth?.authorizationNumber);
   const docAccent = (key: string) => statusColor(v.docStatuses?.[key]?.status || 'none');
 
+  /** صفحةُ عائلة كلّ مستند — البطاقةُ تفتحها مفلترةً على هذه المركبة. */
+  const DOC_PAGE: Record<string, string> = {
+    insurance: 'insurance/vehicles',
+    operatingCard: 'operating-cards',
+    vehicleLicense: 'licenses',
+    inspection: 'inspection',
+    gps: 'gps',
+    authorization: 'authorizations',
+  };
+  const openDocPage = (key: string) =>
+    router.push(`/system/vehicles/registry/${DOC_PAGE[key] || 'expiring'}?q=${encodeURIComponent(v.plateNumber)}`);
+
+  const renewTarget = (key: string): RenewTarget => {
+    const d = DOC_TYPES.find((x) => x.key === key);
+    return {
+      vehicleId: v._id, plateNumber: v.plateNumber, docKey: key,
+      docAr: d?.ar, docEn: d?.en,
+      expiryDate: d?.datePath(v) || null,
+      documentNumber: d?.numberOf(v) || '',
+      startDate: key === 'authorization' ? (v.authorizedPerson?.startDate || null) : null,
+    };
+  };
+
   // أسوأُ حالةِ مستندٍ على المركبة — هي عنوانُ حالتها في الترويسة.
   const worst = v.overallStatus || 'none';
   const worstMeta = STATUS_META[worst] || STATUS_META.none;
@@ -181,8 +212,8 @@ export default function VehicleRegistryDetail() {
             {outOfService && (
               <span className="px-2.5 py-1 rounded-lg text-[11.5px] font-extrabold bg-white/15 text-white">{v.serviceStatusAr}</span>
             )}
-            <ReportButton subject="vehicle" id={v.plateNumber} label={t('تقرير PDF شامل', 'Full PDF report')} />
-            <ExportMenu fileName={`vehicle-${v.plateNumber}`} lang={ar ? 'ar' : 'en'} variant="subtle"
+            <ReportButton onDark subject="vehicle" id={v.plateNumber} label={t('تقرير PDF شامل', 'Full PDF report')} />
+            <ExportMenu fileName={`vehicle-${v.plateNumber}`} lang={ar ? 'ar' : 'en'}
               options={[{
                 key: 'sheet', label: t('ملفّ المركبة (Excel)', 'Vehicle file (Excel)'),
                 sheets: [{
@@ -209,9 +240,12 @@ export default function VehicleRegistryDetail() {
           const meta = STATUS_META[st?.status || 'none'];
           const date = d.datePath(v);
           return (
-            <div key={d.key} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div key={d.key} className="group rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden hover:border-slate-300 hover:shadow transition-all">
               <div className="h-1.5" style={{ background: meta.color }} />
-              <div className="p-3">
+              {/* البطاقةُ مدخلٌ لا لافتة: ضغطةٌ تفتح صفحة عائلتها مفلترةً على هذه
+                  المركبة، وزرُّ التجديد يجدّدها من مكانها بلا مغادرة الملفّ. */}
+              <button type="button" onClick={() => openDocPage(d.key)}
+                className="w-full text-start p-3 cursor-pointer">
                 <p className="text-[11.5px] font-bold text-slate-500 mb-1.5 truncate">{ar ? d.ar : d.en}</p>
                 <p className="text-[15px] font-extrabold leading-none" style={{ color: meta.color }}>
                   {statusLabel(st?.status || 'none', ar)}
@@ -222,7 +256,13 @@ export default function VehicleRegistryDetail() {
                     {daysText(st.days, ar)}
                   </p>
                 )}
-              </div>
+              </button>
+              {canEdit && (
+                <button type="button" onClick={() => setRenewing(renewTarget(d.key))}
+                  className="w-full px-3 py-1.5 text-[11.5px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-t border-emerald-100 flex items-center justify-center gap-1">
+                  <RefreshCcw className="w-3 h-3" /> {t('تجديد', 'Renew')}
+                </button>
+              )}
             </div>
           );
         })}
@@ -393,6 +433,12 @@ export default function VehicleRegistryDetail() {
             </table>
           </div>
         </div>
+      )}
+
+      {renewing && (
+        <RenewModal row={renewing} ar={ar}
+          onClose={() => setRenewing(null)}
+          onDone={() => { setRenewing(null); load(); }} />
       )}
     </div>
   );

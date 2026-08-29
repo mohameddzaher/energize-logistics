@@ -1340,6 +1340,22 @@ const applyRenewal = (v, doc, when, src = {}, byName = '') => {
     else previousNumber = '';
   }
 
+  // ── تاريخ البداية يُجدَّد مع النهاية ───────────────────────────────────
+  // المستند الذي له بداية (التفويض) يُستخرج من جديد ببدايةٍ جديدة. وتركُها
+  // على قيمتها القديمة يُبقي تاريخَ بدايةٍ لتفويضٍ انقضى وحلّ غيرُه — فيُقرأ
+  // أنّ السائق يقود بتفويضٍ منذ سنةٍ وهو استخرجه أمس.
+  let previousStart = '';
+  let newStart = '';
+  if (doc.startPath && src.startDate) {
+    const [stB, stF] = doc.startPath.split('.');
+    const d = new Date(src.startDate);
+    if (!Number.isNaN(d.getTime())) {
+      previousStart = v[stB]?.[stF] || null;
+      v[stB][stF] = d;
+      newStart = d;
+    }
+  }
+
   const [sBlock, sField] = doc.statusPath.split('.');
   if (v[sBlock] && ['none', 'required', 'unknown', ''].includes(v[sBlock][sField])) v[sBlock][sField] = '';
   // المستندات اللي اتحفظت قبل ما الحقل ده يتضاف مش هيكون عندها المصفوفة أصلاً.
@@ -1347,6 +1363,7 @@ const applyRenewal = (v, doc, when, src = {}, byName = '') => {
   const entry = {
     document: doc.key, previousExpiry: previous, newExpiry: when,
     previousNumber, newNumber,
+    ...(newStart ? { previousStart: previousStart || null, newStart } : {}),
     cost: src.cost != null && src.cost !== '' ? Number(src.cost) : null,
     reference: String(src.reference || '').trim(),
     note: String(src.note || '').trim(),

@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react';
 import { X, Check } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
-import { renewDocument, renewBulk, fmtDate, docNumberLabel } from '@/lib/vehicleRegistry';
+import { renewDocument, renewBulk, fmtDate, docNumberLabel, docStartLabel } from '@/lib/vehicleRegistry';
 
 /** أقلّ ما تحتاجه النافذة لتجدّد مستندًا — تكتفي به الصفوف على اختلاف مصادرها.
  *  صفوف «الانتهاءات» تسمّي المستند docKey وصفوف «التنبيهات» تسمّيه docType،
@@ -22,6 +22,8 @@ export type RenewTarget = {
   expiryDate?: string | null;
   /** رقم المستند الجاري به العمل — يُعرَض ليُقارَن بالجديد قبل استبداله. */
   documentNumber?: string;
+  /** تاريخ بداية المستند الجاري (للتفويض) — يُعرَض ليُقارَن بالجديد. */
+  startDate?: string | null;
 };
 
 // ── تجديد ────────────────────────────────────────────────────────────────────
@@ -36,17 +38,22 @@ export function RenewModal({ row, ar, onClose, onDone }: {
   const [cost, setCost] = useState('');
   const [reference, setReference] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
+  const [startDate, setStartDate] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   // اسمُ الرقم يأتي من تعريف المستند لا من هذه النافذة: المستند الذي لا رقم له
   // لا يجد هنا خانةً أصلًا، فلا يكتب أحدٌ رقمًا لا موضع له يُحفَظ فيه.
   const numLabel = docNumberLabel(row.docKey, ar);
+  const startLabel = docStartLabel(row.docKey, ar);
 
   // اقتراح: سنة من تاريخ الانتهاء الحالي لو لسه ساري، وإلا سنة من النهاردة.
   useEffect(() => {
     const base = row.expiryDate && new Date(row.expiryDate) > new Date() ? new Date(row.expiryDate) : new Date();
     const y = new Date(base); y.setFullYear(y.getFullYear() + 1);
     setNewExpiry(y.toISOString().slice(0, 10));
+    // البدايةُ تُقترَح باليوم: المستند الذي يُجدَّد اليوم يبدأ اليوم غالبًا،
+    // ومن كانت بدايتُه غير ذلك يكتبها.
+    setStartDate(new Date().toISOString().slice(0, 10));
   }, [row]);
 
   const save = async () => {
@@ -55,6 +62,7 @@ export function RenewModal({ row, ar, onClose, onDone }: {
     try {
       await renewDocument(row.vehicleId, {
         document: row.docKey, newExpiry,
+        ...(startLabel && startDate ? { startDate } : {}),
         documentNumber: documentNumber.trim(),
         cost: cost === '' ? null : Number(cost),
         reference: reference.trim(), note: note.trim(),
@@ -81,6 +89,18 @@ export function RenewModal({ row, ar, onClose, onDone }: {
             <label className="block text-xs font-semibold text-slate-600 mb-1">{t('تاريخ الانتهاء الجديد', 'New expiry')} *</label>
             <input type="date" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)} className={inp} autoFocus />
           </div>
+          {/* ── تاريخ البداية، للمستند الذي له بدايةٌ ونهاية ────────────────
+              التفويض يُستخرج من جديد ببدايةٍ جديدة. وتركُها على قيمتها القديمة
+              يُبقي تاريخَ بدايةٍ لتفويضٍ انقضى وحلّ غيرُه. */}
+          {startLabel && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                {startLabel}
+                {row.startDate && <span className="font-normal text-slate-400"> ({t('الحاليّ', 'current')}: {fmtDate(row.startDate)})</span>}
+              </label>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inp} />
+            </div>
+          )}
           {/* ── الرقم الجديد، للمستند الذي يخرج من التجديد برقمٍ آخر ────────
               بطاقة التشغيل تُستخرج برقمٍ جديد كل مرة، والتفويض كذلك أحيانًا.
               وتركُ الخانة فارغة يعني «الرقم هو هو» — لا محوَه. */}

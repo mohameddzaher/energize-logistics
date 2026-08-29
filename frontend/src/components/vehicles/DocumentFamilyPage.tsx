@@ -316,6 +316,9 @@ function DocumentFamilyPageInner({
     vehicleId: v._id, plateNumber: v.plateNumber, docKey: docKey || '',
     docAr: doc?.ar, docEn: doc?.en, expiryDate: doc?.datePath(v) || null,
     documentNumber: doc?.numberOf(v) || '',
+    // التفويض له بدايةٌ تُجدَّد مع نهايته — والنافذة وحدها تعرف أيّ مستندٍ له
+    // بداية، فتُمرَّر القيمة الحاليّة لتُقارَن بالجديدة.
+    startDate: docKey === 'authorization' ? (v.authorizedPerson?.startDate || null) : null,
   });
 
   /** ما يُسمّى به المستند في التأكيدات والرسائل — اسمُه إن كان مستندًا، وإلا عنوانُ الصفحة. */

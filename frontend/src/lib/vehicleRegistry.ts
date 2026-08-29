@@ -78,6 +78,18 @@ export const docNumberLabel = (key: string, ar: boolean): string | null => {
   return d ? (ar ? d.numberAr : d.numberEn) : null;
 };
 
+/**
+ * اسمُ تاريخ بداية المستند، أو null لمستندٍ لا بدايةَ له.
+ *
+ * التفويض ورقةٌ لها بدايةٌ ونهاية، ونهايتُه وحدها لا تكفي: تفويضٌ ينتهي بعد
+ * شهرين قد يكون بدأ أمسِ أو قبل سنة، والفرق هو كلُّ الفرق حين يُسأل «منذ متى
+ * يقود هذا السائق بتفويض؟». وبقيّةُ المستندات لا بدايةَ لها، فلا تجد خانةً.
+ */
+export const docStartLabel = (key: string, ar: boolean): string | null => {
+  if (key !== 'authorization') return null;
+  return ar ? 'تاريخ بداية التفويض' : 'Authorisation start date';
+};
+
 export const docLabel = (key: string, ar: boolean) => {
   const d = DOC_TYPES.find((x) => x.key === key);
   return d ? (ar ? d.ar : d.en) : key;

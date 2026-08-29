@@ -89,6 +89,12 @@ const DOCUMENTS = [
     extra: ['authorizedPerson.name', 'authorizedPerson.iqamaNumber',
       'authorizedPerson.authorizationNumber', 'authorizedPerson.startDate'],
     numberPath: 'authorizedPerson.authorizationNumber', numberAr: 'رقم التفويض', numberEn: 'Authorisation number',
+    // ── التفويض ورقةٌ لها بدايةٌ ونهاية ────────────────────────────────────
+    // ونهايتُه وحدها لا تكفي: تفويضٌ ينتهي بعد شهرين قد يكون بدأ أمسِ أو قبل
+    // سنة، والفرق هو كلُّ الفرق حين يُسأل «منذ متى يقود هذا السائق بتفويض؟».
+    // وكان يُسجَّل عند الاستيراد ثم لا يُحدَّث في أيّ تجديد، فيبقى تاريخُ بدايةٍ
+    // لتفويضٍ انقضى وحلّ غيرُه.
+    startPath: 'authorizedPerson.startDate', startAr: 'تاريخ بداية التفويض', startEn: 'Authorisation start date',
     icon: 'authorization',
   },
 ];

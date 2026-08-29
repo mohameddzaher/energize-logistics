@@ -127,7 +127,7 @@ export default function TireProfilePage() {
             )}
             {ti.sensor === 'yes' && <span className="px-2.5 py-1 rounded-lg text-[11.5px] font-bold bg-white/15">{t('بحسّاس', 'Sensor')}</span>}
             {/* تقريرٌ مطبوعٌ بترويسة الشركة — نفسُ ما في الشاشة، من المصدر نفسه. */}
-            <ReportButton subject="tire" id={ti._id} label={t('تقرير PDF', 'PDF report')} />
+            <ReportButton onDark subject="tire" id={ti._id} label={t('تقرير PDF', 'PDF report')} />
             <ExportMenu fileName={`tire-${ti.serial}`} lang={ar ? 'ar' : 'en'}
               options={[{
                 key: 'life', label: t('سجلّ الفردة (Excel)', 'Tire log (Excel)'),

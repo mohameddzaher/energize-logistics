@@ -12,9 +12,15 @@ import { FileBarChart, Loader2, ExternalLink } from 'lucide-react';
 import { openReportPdf, defaultRange } from '@/lib/reports';
 
 export default function ReportButton({
-  subject, id, from, to, label, compact,
+  subject, id, from, to, label, compact, onDark,
 }: {
   subject: 'vehicle' | 'tire' | 'driver' | 'customer' | 'vendor' | 'employee' | 'section';
+  /**
+   * الزرّ موضوعٌ على خلفيةٍ داكنة (ترويسة الملفّ).
+   * بلونه الافتراضيّ — نصٌّ رماديّ داكن على حدٍّ فاتح — يصير داكنًا على داكن
+   * فلا يُقرأ، وهو مكتوبٌ فعلًا لكنّه غير مرئيّ.
+   */
+  onDark?: boolean;
   id: string;
   from?: string;
   to?: string;
@@ -57,12 +63,13 @@ export default function ReportButton({
   }
 
   return (
-    <span className="inline-flex items-center rounded-lg border border-slate-200 overflow-hidden">
+    <span className={`inline-flex items-center rounded-lg overflow-hidden border ${onDark ? 'border-white/20 bg-white/10' : 'border-slate-200'}`}>
       <button
         type="button"
         onClick={open}
         disabled={busy || !id}
-        className="inline-flex items-center gap-1.5 text-slate-700 text-sm px-3 py-1.5 hover:bg-slate-50 disabled:opacity-50"
+        className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 disabled:opacity-50 ${
+          onDark ? 'text-white hover:bg-white/15 font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
       >
         {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileBarChart className="w-4 h-4 text-[#f37121]" />}
         {label || (ar ? 'تقرير PDF' : 'PDF report')}
@@ -71,7 +78,7 @@ export default function ReportButton({
         type="button"
         onClick={goToCentre}
         title={ar ? 'فتح في مركز التقارير (لتغيير الفترة)' : 'Open in the report centre (to change the period)'}
-        className="px-2 py-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-50 border-s border-slate-200"
+        className={`px-2 py-1.5 border-s ${onDark ? 'text-white/60 hover:text-white hover:bg-white/15 border-white/20' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50 border-slate-200'}`}
       >
         <ExternalLink className="w-3.5 h-3.5" />
       </button>

@@ -91,6 +91,7 @@ const getActiveContract = (employeeId) =>
 // shared util for details. Used so any staff login (incl. the demo super admin)
 // can use HR self-service without HR registering them first.
 const ensureSelfEmployeeUtil = require('../utils/ensureSelfEmployee');
+const { saveUploadFile } = require('../utils/fileStore');
 const { grantedBySection } = require('../utils/sectionAccess');
 const ensureSelfEmployee = (req) => ensureSelfEmployeeUtil(req.user);
 
@@ -1091,9 +1092,22 @@ exports.replyRequest = async (req, res) => {
     const owner = String(request.requester) === String(req.user._id);
     if (!staff && !owner) return res.status(403).json({ message: 'No access to this request' });
 
-    const { body, link } = req.body;
-    if ((!body || !body.trim()) && (!link || !link.trim())) return res.status(400).json({ message: 'Message cannot be empty' });
-    request.thread.push({ sender: req.user._id, body: (body || '').trim(), link: (link || '').trim() });
+    const { body, link, files } = req.body;
+    // ── المرفقات تُحفَظ مع الرسالة ──────────────────────────────────────────
+    // تصل كـdata URL في نفس الطلب (لا multer في هذا النظام)، وتُكتب على القرص
+    // تحت uploads/hr — وهو مشمولٌ بالنسخ الاحتياطيّ اليوميّ كبقيّة المرفوعات.
+    const attachments = [];
+    for (const f of Array.isArray(files) ? files.slice(0, 10) : []) {
+      if (!f?.dataUrl) continue;
+      try {
+        const stored = saveUploadFile(f.dataUrl, 'hr', f.fileName || '');
+        attachments.push({ title: String(f.title || f.fileName || '').trim() || stored.fileName, ...stored });
+      } catch (e) { return res.status(400).json({ message: e.message }); }
+    }
+    if (!String(body || '').trim() && !String(link || '').trim() && !attachments.length) {
+      return res.status(400).json({ message: 'اكتب رسالةً أو أرفق ملفًّا' });
+    }
+    request.thread.push({ sender: req.user._id, body: (body || '').trim(), link: (link || '').trim(), attachments });
 
     if (staff) {
       request.readByHR = true;

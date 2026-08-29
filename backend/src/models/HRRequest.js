@@ -7,7 +7,23 @@ const threadMessageSchema = new mongoose.Schema(
   {
     sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     body: { type: String, trim: true },
-    link: { type: String, trim: true }, // HR can attach a link to a document
+    // ── الرابط لا يكفي، والملفّ هو المطلوب ─────────────────────────────────
+    // كانت الموارد البشرية تردّ برابطٍ إلى ملفٍّ على درايف أو واتساب: يعيش خارج
+    // النظام، ويُحذف أو تُسحب صلاحيتُه فيبقى في السجلّ سطرٌ يقول «أُرسلت الشهادة»
+    // ورابطٌ لا يفتح. والمرفق يعيش مع الطلب: يُنسخ معه احتياطيًّا، ويبقى مقروءًا
+    // بعد سنة.
+    //
+    // والرابط يبقى مقبولًا — بعضُ ما يُشارَك رابطٌ بطبعه — لكنّه لم يعد الخيار
+    // الوحيد. وأكثرُ من ملفٍّ في الرسالة الواحدة: الشهادةُ ووجهُ الإقامة ورقةٌ
+    // واحدة في ذهن من يطلبها.
+    link: { type: String, trim: true },
+    attachments: [{
+      title: { type: String, trim: true },
+      fileUrl: { type: String, required: true },
+      fileName: { type: String, trim: true },
+      mimeType: { type: String, trim: true },
+      size: { type: Number, default: 0 },
+    }],
     at: { type: Date, default: Date.now },
   },
   { _id: true }

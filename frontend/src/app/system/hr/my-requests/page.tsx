@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
+import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 import { ClipboardList, Plus, Send, Link2, Check, Pencil, Trash2 } from 'lucide-react';
 import { HRRequest, REQUEST_STATUS, REQUEST_CATEGORIES, categoryLabel, userName, fmtDateTime } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
@@ -44,6 +45,9 @@ export default function MyRequestsPage() {
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState<HRRequest | null>(null);
   const [reply, setReply] = useState('');
+  // المرفقات تعيش مع الطلب لا خارجه: الرابط يُحذف من درايف فيبقى في السجلّ سطرٌ
+  // يقول «أُرسلت الشهادة» ورابطٌ لا يفتح.
+  const [files, setFiles] = useState<PickedFile[]>([]);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -70,7 +74,7 @@ export default function MyRequestsPage() {
   const sendReply = async () => {
     if (!open || !reply.trim()) return;
     setBusy(true);
-    try { const d = await api.post<{ request: HRRequest }>(`/api/hr/requests/${open._id}/reply`, { body: reply }); setOpen(d.request); setReply(''); load(); }
+    try { const d = await api.post<{ request: HRRequest }>(`/api/hr/requests/${open._id}/reply`, { body: reply }); setOpen(d.request); setReply(''); setFiles([]); load(); }
     catch (e: any) { notify(e.message, 'error'); }
     setBusy(false);
   };
@@ -157,15 +161,19 @@ export default function MyRequestsPage() {
                       <p className="text-xs text-slate-500 mb-1">{userName(m.sender)} · {fmtDateTime(m.at)}</p>
                       {m.body && <p className="whitespace-pre-wrap">{m.body}</p>}
                       {m.link && <a href={m.link} target="_blank" rel="noreferrer" className="text-[#f37121] underline flex items-center gap-1 mt-1"><Link2 className="w-3 h-3" /> {tx.openLink}</a>}
+                      <AttachmentList items={(m as any).attachments} />
                     </div>
                   </div>
                 );
               })}
             </div>
             {!['resolved', 'closed'].includes(open.status) && (
-              <div className="border-t border-slate-200 pt-3 flex items-center gap-2">
-                <div className="flex-1"><TextInput placeholder={tx.replyPlaceholder} value={reply} onChange={(e) => setReply(e.target.value)} /></div>
-                <PrimaryButton onClick={sendReply} disabled={busy || !reply.trim()}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}</PrimaryButton>
+              <div className="border-t border-slate-200 pt-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1"><TextInput placeholder={tx.replyPlaceholder} value={reply} onChange={(e) => setReply(e.target.value)} /></div>
+                  <PrimaryButton onClick={sendReply} disabled={busy || (!reply.trim() && !files.length)}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}</PrimaryButton>
+                </div>
+                <FilePicker files={files} onChange={setFiles} />
               </div>
             )}
           </div>

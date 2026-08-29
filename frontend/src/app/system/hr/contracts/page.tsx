@@ -12,7 +12,8 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { getHrContractsTranslations } from '@/lib/translations';
 import ContractsTabs from '@/components/hr/ContractsTabs';
 
-const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '' };
+const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '',
+  iqamaNumber: '', contractProfession: '', sponsorRegistration: '' };
 
 export default function ContractsPage() {
   const { notify, prompt, confirm } = useDialog();
@@ -92,15 +93,27 @@ export default function ContractsPage() {
     if (!search.trim()) return true;
     const n = empName(c.employee).toLowerCase();
     const emp = typeof c.employee === 'object' ? c.employee : null;
-    return n.includes(search.toLowerCase()) || (emp?.iqamaNumber || '').includes(search) || (emp?.employeeNumber || '').includes(search);
+    // البحثُ يشمل ما صار معروضًا: الهويّة كما في العقد والمهنة والسجلّ — وإلّا
+    // بقيت أعمدةٌ تُقرأ ولا تُبحث.
+    return n.includes(search.toLowerCase())
+      || (emp?.iqamaNumber || '').includes(search)
+      || (emp?.employeeNumber || '').includes(search)
+      || (c.iqamaNumber || '').includes(search)
+      || (c.sponsorRegistration || '').includes(search)
+      || (c.employeeNameAr || '').toLowerCase().includes(search.toLowerCase())
+      || (c.contractProfession || '').toLowerCase().includes(search.toLowerCase());
   });
 
   const exportColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'employee', transform: (v: any) => empName(v), width: 22 },
+    { header: ar ? 'الهوية' : 'ID number', key: 'iqamaNumber', width: 16, transform: (v: any) => v || '—' },
+    { header: ar ? 'المهنة في العقد' : 'Contract profession', key: 'contractProfession', width: 22, transform: (v: any) => v || '—' },
     { header: tx.colType, key: 'type', width: 12 },
     { header: tx.colStart, key: 'startDate', width: 14 },
     { header: tx.colEnd, key: 'endDate', width: 14 },
-    { header: tx.colAnnualLeave, key: 'annualLeaveDays', width: 14 },
+    { header: tx.colAnnualLeave, key: 'annualLeaveDays', width: 14, transform: (v: any, r: any) => r?.annualLeaveText || v },
+    { header: ar ? 'فترة التجربة' : 'Probation', key: 'probationText', width: 14, transform: (v: any, r: any) => v || (r?.probationMonths ? `${r.probationMonths}` : '—') },
+    { header: ar ? 'السجل' : 'CR number', key: 'sponsorRegistration', width: 16, transform: (v: any) => v || '—' },
     { header: tx.colBasicSalary, key: 'basicSalary', width: 14 },
     { header: tx.colStatus, key: 'status', width: 12 },
   ];
@@ -143,24 +156,33 @@ export default function ContractsPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="text-start font-semibold px-4 py-3">{tx.colEmployee}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.thStart}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.thEnd}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.thAnnualLeave}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
-            <th className="text-end font-semibold px-4 py-3">{tx.colActions}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colEmployee}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الهوية' : 'ID number'}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'المهنة في العقد' : 'Contract profession'}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colType}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.thStart}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.thEnd}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.thAnnualLeave}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'فترة التجربة' : 'Probation'}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'السجل' : 'CR number'}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colStatus}</th>
+            <th className="text-end font-semibold px-4 py-3 whitespace-nowrap">{tx.colActions}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
+              <tr><td colSpan={11} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
             ) : filtered.map((c) => (
               <tr key={c._id} className="border-b border-slate-200/70 hover:bg-slate-100">
-                <td className="px-4 py-3 text-slate-900 font-medium">{empName(c.employee, lang)}</td>
+                <td className="px-4 py-3 text-slate-900 font-medium">{empName(c.employee, lang) || c.employeeNameAr || '—'}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.iqamaNumber || '—'}</td>
+                <td className="px-4 py-3 text-slate-700">{c.contractProfession || c.jobTitle || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed}</td>
-                <td className="px-4 py-3 text-slate-700">{fmtDate(c.startDate)}</td>
-                <td className="px-4 py-3 text-slate-700">{c.endDate ? fmtDate(c.endDate) : '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{c.annualLeaveDays} {tx.daysShort}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(c.startDate)}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.endDate ? fmtDate(c.endDate) : '—'}</td>
+                {/* «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — تُكتب كما هي. */}
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : '—')}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.sponsorRegistration || '—'}</td>
                 <td className="px-4 py-3"><Badge style={CONTRACT_STATUS[c.status]} lang={lang} /></td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
@@ -209,6 +231,10 @@ export default function ContractsPage() {
           <Field label={tx.fieldJobTitle}><TextInput value={form.jobTitle} onChange={(e) => set('jobTitle', e.target.value)} /></Field>
           <Field label={tx.fieldBasicSalary}><TextInput type="number" value={form.basicSalary} onChange={(e) => set('basicSalary', Number(e.target.value))} /></Field>
           <Field label={tx.fieldAllowances}><TextInput type="number" value={form.allowances} onChange={(e) => set('allowances', Number(e.target.value))} /></Field>
+          {/* بيانات ورقة العقد نفسِها — تُقرأ في الجدول، فتُصحَّح من هنا. */}
+          <Field label={ar ? 'الهوية (كما في العقد)' : 'ID number (as on the contract)'}><TextInput value={form.iqamaNumber || ''} onChange={(e) => set('iqamaNumber', e.target.value)} /></Field>
+          <Field label={ar ? 'المهنة في العقد' : 'Profession on the contract'}><TextInput value={form.contractProfession || ''} onChange={(e) => set('contractProfession', e.target.value)} /></Field>
+          <Field label={ar ? 'السجل التجاري' : 'CR number'}><TextInput value={form.sponsorRegistration || ''} onChange={(e) => set('sponsorRegistration', e.target.value)} /></Field>
           <Field label={tx.fieldNotes} span2><TextArea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
         </div>
         <p className="text-xs text-slate-500">{tx.activeContractNote}</p>

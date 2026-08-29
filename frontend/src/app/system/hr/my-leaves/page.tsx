@@ -10,6 +10,7 @@ import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName,
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Tabs, StatCard, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyLeavesTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 
 export default function MyLeavesPage() {
   const { confirm, notify } = useDialog();
@@ -32,6 +33,11 @@ export default function MyLeavesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ leaveType: '', startDate: '', endDate: '', reason: '' });
   const [saving, setSaving] = useState(false);
+  // ── سندُ الطلب ─────────────────────────────────────────────────────────
+  // الإجازة المرضيّة تُطلب بتقرير. كان يُرسَل على الواتساب فيضيع، ثمّ
+  // يُسأل عنه بعد شهرين. يعيش مع الطلب نفسِه ويُقرأ من ملفّ الموظّف.
+  const [files, setFiles] = useState<PickedFile[]>([]);
+  const [kept, setKept] = useState<string[]>([]);
 
   const [review, setReview] = useState<LeaveRequest | null>(null);
   const [note, setNote] = useState('');
@@ -78,6 +84,8 @@ export default function MyLeavesPage() {
       leaveType: typeof l.leaveType === 'object' ? l.leaveType?._id : l.leaveType,
       startDate: l.startDate, endDate: l.endDate, reason: l.reason || '',
     });
+    setFiles([]);
+    setKept(((l as any).attachments || []).map((a: any) => String(a._id)));
     setShowForm(true);
   };
 
@@ -99,10 +107,18 @@ export default function MyLeavesPage() {
     }
     setSaving(true);
     try {
-      if (editing) await api.put(`/api/hr/me/leaves/${editing._id}`, form);
-      else await api.post('/api/hr/me/leaves', form);
+      const payload: any = { ...form, files: files.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName, title: f.title })) };
+      if (editing) {
+        // ما أُزيل من قائمة المحفوظ يُحذف من القرص أيضًا — لا ملفَّ يتيمًا.
+        const before = ((editing as any).attachments || []).map((a: any) => String(a._id));
+        payload.removeAttachments = before.filter((id: string) => !kept.includes(id));
+        await api.put(`/api/hr/me/leaves/${editing._id}`, payload);
+      } else {
+        await api.post('/api/hr/me/leaves', payload);
+      }
       setShowForm(false); setEditing(null);
       setForm({ leaveType: '', startDate: '', endDate: '', reason: '' });
+      setFiles([]); setKept([]);
       load();
     } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
@@ -308,6 +324,30 @@ export default function MyLeavesPage() {
             </p>
           )}
           <Field label={tx.reasonNotes}><TextArea rows={3} value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} /></Field>
+          <Field label={ar ? 'المرفقات (تقرير طبّي، ورقة تُبرّر الطلب…)' : 'Attachments (medical report, supporting paper…)'}>
+            <FilePicker files={files} onChange={setFiles} max={5} />
+            {/* ما رُفع سابقًا يبقى معروضًا ويُنزَع بالضغط — لا يُطلب من أحدٍ
+                إعادةُ رفع ما رفعه. */}
+            {editing && !!((editing as any).attachments || []).length && (
+              <ul className="mt-2 space-y-1.5">
+                {((editing as any).attachments || []).map((a: any) => {
+                  const on = kept.includes(String(a._id));
+                  return (
+                    <li key={a._id} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${on ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50 opacity-60'}`}>
+                      <a href={a.fileUrl} target="_blank" rel="noopener noreferrer" download={a.fileName || undefined}
+                        className="flex-1 min-w-0 truncate text-[12.5px] font-semibold text-slate-800 hover:text-[#f37121]">
+                        {a.title || a.fileName}
+                      </a>
+                      <button type="button" onClick={() => setKept((k) => (on ? k.filter((x) => x !== String(a._id)) : [...k, String(a._id)]))}
+                        className="text-[11px] font-semibold text-slate-500 hover:text-red-600 shrink-0">
+                        {on ? (ar ? 'إزالة' : 'Remove') : (ar ? 'تراجع' : 'Undo')}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Field>
           {balance && <p className="text-xs text-slate-500">{`${tx.availableBalancePrefix} ${balance.available} ${tx.daysWord}`}</p>}
         </div>
       </Modal>
@@ -325,6 +365,12 @@ export default function MyLeavesPage() {
             <p><span className="text-slate-500">{tx.colPeriod}: </span><span className="text-slate-900">{fmtDate(review.startDate)} → {fmtDate(review.endDate)} ({review.days} {tx.dayShort})</span></p>
             <p><span className="text-slate-500">{tx.accruedBalance}: </span><span className="text-slate-900">{review.balanceSnapshot?.accrued ?? '—'} {tx.dayShort}</span> {typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0 && <span className="text-red-600">({tx.exceedsBalance})</span>}</p>
             {review.reason && <p className="border-t border-slate-200 pt-2"><span className="text-slate-500">{tx.reason}: </span><span className="text-slate-900">{review.reason}</span></p>}
+            {!!((review as any)?.attachments || []).length && (
+              <div className="border-t border-slate-200 pt-2">
+                <p className="text-slate-500 text-xs mb-1">{ar ? 'مرفقات الموظّف' : 'Employee attachments'}</p>
+                <AttachmentList items={(review as any).attachments} />
+              </div>
+            )}
             <div className="border-t border-slate-200 pt-2"><label className="text-slate-500 text-xs mb-1 block">{tx.noteOptional}</label><TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></div>
           </div>
         )}

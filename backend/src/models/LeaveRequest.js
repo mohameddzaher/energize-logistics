@@ -3,6 +3,21 @@ const mongoose = require('mongoose');
 // A leave request follows a two-step approval chain:
 //   pending_manager → pending_hr → approved   (or rejected/cancelled anywhere)
 // If the requester has no direct manager, it starts at pending_hr directly.
+// ── المرفق ───────────────────────────────────────────────────────────────────
+// الإجازة المرضيّة تُطلب بتقرير، والاستثنائيّة بورقةٍ تُبرّرها. وكانت تُرسَل
+// على الواتساب فتضيع، ثمّ يُسأل بعد شهرين «أين تقرير فلان؟» فلا يُوجد. يعيش
+// المرفقُ مع الطلب نفسِه: يُنسخ معه احتياطيًّا، ويبقى يُحمَّل من ملفّ الموظّف.
+const attachmentSchema = new mongoose.Schema({
+  title: { type: String, trim: true, default: '' },
+  fileUrl: { type: String, required: true },
+  fileName: { type: String, trim: true, default: '' },
+  mimeType: { type: String, trim: true, default: '' },
+  size: { type: Number, default: 0 },
+  uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  uploadedByName: { type: String, default: '' },
+  uploadedAt: { type: Date, default: Date.now },
+}, { _id: true });
+
 const decisionSchema = new mongoose.Schema(
   {
     by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -11,6 +26,8 @@ const decisionSchema = new mongoose.Schema(
     note: { type: String, trim: true },
     // Optional signature (base64 PNG) the approver applied when deciding.
     signature: { type: String, default: '' },
+    // ورقةُ المدير أو الموارد البشريّة حين يكون للقرار سند.
+    attachments: [attachmentSchema],
   },
   { _id: false }
 );
@@ -28,6 +45,8 @@ const leaveRequestSchema = new mongoose.Schema(
     endDate: { type: String, required: true }, // YYYY-MM-DD
     days: { type: Number, required: true },
     reason: { type: String, trim: true },
+    // مرفقاتُ مقدّم الطلب: التقرير الطبّيّ، ورقةُ الظرف الطارئ، وما إليها.
+    attachments: [attachmentSchema],
 
     status: {
       type: String,

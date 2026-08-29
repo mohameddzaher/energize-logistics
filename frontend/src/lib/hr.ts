@@ -68,6 +68,16 @@ export interface Contract {
   status: 'active' | 'expired' | 'terminated';
   terminatedAt?: string; terminationReason?: string; custodyReturned?: boolean;
   notes?: string; createdAt?: string;
+  // ما جاء في ملفّ عقود الموظفين — العقدُ ورقةٌ لها بياناتٌ لا تعيش في ملفّ
+  // الموظّف: الهويّةُ كما كُتبت فيه، والمهنةُ **كما في العقد** (تختلف عن المهنة
+  // في الإقامة وعن المسمّى الوظيفيّ)، والسجلُّ التجاريّ الصادر تحته.
+  iqamaNumber?: string;
+  employeeNameAr?: string;
+  contractProfession?: string;
+  sponsorRegistration?: string;
+  // «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — فالنصّ إلى جانب الرقم.
+  annualLeaveText?: string;
+  probationText?: string;
 }
 
 export interface LeaveType {

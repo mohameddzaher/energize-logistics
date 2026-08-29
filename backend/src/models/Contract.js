@@ -28,6 +28,22 @@ const contractSchema = new mongoose.Schema(
     // blocked until then (enforced in the controller).
     custodyReturned: { type: Boolean, default: false },
 
+    // ── ما جاء في ملفّ عقود الموظفين ──────────────────────────────────────
+    // العقد ورقةٌ رسميّة لها بياناتٌ لا تعيش في ملفّ الموظّف: رقمُ الهوية كما
+    // كُتب في العقد، والمهنةُ **كما في العقد** (تختلف عن المهنة في الإقامة
+    // وعن المسمّى الوظيفيّ، وهي التي يُحاسَب عليها عند التفتيش)، والسجلُّ
+    // التجاريّ الذي صدر تحته. وكانت الصفحة تعرض ستّة أعمدةٍ من عشرة.
+    iqamaNumber: { type: String, trim: true, default: '' },        // الهوية
+    employeeNameAr: { type: String, trim: true, default: '' },     // الاسم كما في العقد
+    contractProfession: { type: String, trim: true, default: '' }, // المهنة في العقد
+    sponsorRegistration: { type: String, trim: true, default: '' },// السجل
+
+    // «غير مطلوب» في خانة الإجازة أو فترة التجربة حالةٌ سليمة لا نقصُ بيانات:
+    // العقدُ الموسميّ لا إجازةَ سنويّةً له. ولو حُشرت في الرقم صارت صفرًا،
+    // فبدا العقدُ ناقصًا وهو تامّ — فالنصُّ يبقى إلى جانب الرقم.
+    annualLeaveText: { type: String, trim: true, default: '' },
+    probationText: { type: String, trim: true, default: '' },
+
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

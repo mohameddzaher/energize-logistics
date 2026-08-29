@@ -12,6 +12,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { getHrLeavesTranslations } from '@/lib/translations';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
 import type { Signature } from '@/components/SignatureManager';
+import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 
 export default function HRLeavesPage() {
   const { notify } = useDialog();
@@ -28,6 +29,8 @@ export default function HRLeavesPage() {
   const [review, setReview] = useState<LeaveRequest | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  // ورقةُ القرار: تقريرُ الطبيب المعتمد، أو خطابُ الرفض بسببه.
+  const [files, setFiles] = useState<PickedFile[]>([]);
   const [mySigs, setMySigs] = useState<Signature[]>([]);
   const [signWith, setSignWith] = useState('');
   const [pdfBusy, setPdfBusy] = useState('');
@@ -46,14 +49,17 @@ export default function HRLeavesPage() {
   useEffect(() => { api.get<{ signatures: Signature[] }>('/api/auth/signatures').then((r) => setMySigs(r.signatures || [])).catch(() => {}); }, []);
   useSocket('hr:leave', useCallback(() => load(), [load]));
 
-  const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); };
+  const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); setFiles([]); };
 
   const decide = async (decision: 'approved' | 'rejected') => {
     if (!review) return;
     setBusy(true);
     try {
-      await api.patch(`/api/hr/leaves/${review._id}/decision`, { decision, note, signatureId: signWith || undefined });
-      setReview(null); setNote(''); setSignWith(''); load();
+      await api.patch(`/api/hr/leaves/${review._id}/decision`, {
+        decision, note, signatureId: signWith || undefined,
+        files: files.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName, title: f.title })),
+      });
+      setReview(null); setNote(''); setSignWith(''); setFiles([]); load();
     } catch (e: any) { notify(e.message, 'error'); }
     setBusy(false);
   };
@@ -165,12 +171,24 @@ export default function HRLeavesPage() {
             <Row k={tx.fieldRemainingAfter} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${tx.dayUnit}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />
             <Row k={tx.fieldStatus} v={<Badge style={LEAVE_STATUS[review.status]} lang={lang} />} />
             {review.reason && <div className="border-t border-slate-200 pt-3"><span className="text-slate-500">{tx.fieldReason}: </span><span className="text-slate-900">{review.reason}</span></div>}
+            {/* سندُ الطلب يُقرأ قبل البتّ فيه: تقريرُ الطبيب لا يُطلب على
+                الواتساب ثمّ يُوافَق هنا على غير أساس. */}
+            {!!((review as any).attachments || []).length && (
+              <div className="border-t border-slate-200 pt-3">
+                <p className="text-slate-500 text-xs mb-1">{ar ? 'مرفقات الموظّف' : 'Employee attachments'}</p>
+                <AttachmentList items={(review as any).attachments} />
+              </div>
+            )}
             {review.managerDecision?.decision && <p className="text-xs text-slate-500">{tx.managerDecision}: {review.managerDecision.decision} {review.managerDecision.note ? `— ${review.managerDecision.note}` : ''}</p>}
             {(review.status === 'pending_manager' || review.status === 'pending_hr') && (
               <div className="border-t border-slate-200 pt-3 space-y-3">
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{tx.noteOptional}</label>
                   <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-slate-500 text-xs mb-1 block">{ar ? 'مرفقات القرار (اختياري)' : 'Decision attachments (optional)'}</label>
+                  <FilePicker files={files} onChange={setFiles} max={5} />
                 </div>
                 {/* Optional: sign this approval with one of your signatures */}
                 <div>

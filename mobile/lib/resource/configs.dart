@@ -1064,12 +1064,24 @@ final hrContractsCfg = ResourceConfig(
   arTitle: 'عقود الموظفين', enTitle: 'Employment Contracts', icon: Icons.description_outlined,
   endpoint: '/api/hr/contracts', listKey: 'contracts', liveEvent: 'hr:updated',
   canCreate: false, canEdit: false, canDelete: false,
-  searchFields: const ['jobTitle', 'type', 'status'],
-  titleOf: (r) => (r['employee'] is Map ? (r['employee']['arabicName'] ?? r['employee']['englishName'] ?? r['employee']['name']) : null)?.toString() ?? _s(r, 'jobTitle'),
-  subtitleOf: (r) => [_s(r, 'jobTitle'), _s(r, 'type')].where((x) => x.isNotEmpty).join(' · '),
+  // بياناتُ ورقة العقد نفسِها: الهويّةُ كما كُتبت فيه، والمهنةُ **كما في العقد**
+  // (تختلف عن المهنة في الإقامة وعن المسمّى الوظيفيّ)، والسجلُّ الصادر تحته —
+  // وهي ما يُبحَث به فعلًا، لا حالةُ العقد.
+  searchFields: const ['jobTitle', 'type', 'status', 'iqamaNumber', 'contractProfession', 'sponsorRegistration', 'employeeNameAr'],
+  titleOf: (r) => (r['employee'] is Map ? (r['employee']['arabicName'] ?? r['employee']['englishName'] ?? r['employee']['name']) : null)?.toString()
+      ?? (_s(r, 'employeeNameAr').isNotEmpty ? _s(r, 'employeeNameAr') : _s(r, 'jobTitle')),
+  subtitleOf: (r) => [
+    _s(r, 'contractProfession').isNotEmpty ? _s(r, 'contractProfession') : _s(r, 'jobTitle'),
+    _s(r, 'iqamaNumber'),
+    [_s(r, 'startDate'), _s(r, 'endDate')].where((x) => x.isNotEmpty).join(' → '),
+  ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), r['status'] == 'active' ? T.success : T.inkFaint),
-    if (r['basicSalary'] != null) ('${r['basicSalary']}', T.navy),
+    // «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — تُكتب كما هي.
+    if (_s(r, 'annualLeaveText').isNotEmpty) (_s(r, 'annualLeaveText'), T.warn)
+    else if (r['annualLeaveDays'] != null) ('إجازة ${r['annualLeaveDays']}', T.cyan),
+    if (_s(r, 'sponsorRegistration').isNotEmpty) ('سجل ${_s(r, 'sponsorRegistration')}', T.inkFaint),
+    if (r['basicSalary'] != null && r['basicSalary'] != 0) ('${r['basicSalary']}', T.navy),
   ],
   fields: const [],
 );

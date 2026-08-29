@@ -8,7 +8,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
-  ArrowLeft, ArrowRight, Edit, RefreshCw, UserX, UserCheck, Plus, Trash2, FileText, ExternalLink, Check,
+  ArrowLeft, ArrowRight, Edit, RefreshCw, UserX, UserCheck, Plus, Trash2, FileText, ExternalLink, Check, Paperclip,
 } from 'lucide-react';
 import {
   isHRStaff, Employee, Contract, LeaveRequest, Asset, HRRequest, LeaveBalance,
@@ -400,16 +400,26 @@ export default function EmployeeProfilePage() {
         <DataCard empty={!data.leaves.length} emptyText={tx.noLeaves}>
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <Th>{tx.colType}</Th><Th>{tx.colFrom}</Th><Th>{tx.colTo}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th>{tx.colSubmitted}</Th>
+              <Th>{tx.colType}</Th><Th>{tx.colFrom}</Th><Th>{tx.colTo}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th>{tx.colSubmitted}</Th><Th>{ar ? 'المرفقات' : 'Attachments'}</Th>
             </tr></thead>
-            <tbody>{data.leaves.map((l) => (
-              <Tr key={l._id}>
-                <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
-                <Td>{fmtDate(l.startDate)}</Td><Td>{fmtDate(l.endDate)}</Td><Td>{l.days}</Td>
-                <Td><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></Td>
-                <Td>{fmtDate(l.createdAt)}</Td>
-              </Tr>
-            ))}</tbody>
+            <tbody>{data.leaves.map((l) => {
+              // مرفقاتُ الطلب ومرفقاتُ قراريه معًا: التقريرُ الطبّيّ وورقةُ
+              // الموافقة يُقرآن من سطرٍ واحد.
+              const files = [
+                ...(((l as any).attachments) || []),
+                ...(((l as any).managerDecision?.attachments) || []),
+                ...(((l as any).hrDecision?.attachments) || []),
+              ];
+              return (
+                <Tr key={l._id}>
+                  <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
+                  <Td>{fmtDate(l.startDate)}</Td><Td>{fmtDate(l.endDate)}</Td><Td>{l.days}</Td>
+                  <Td><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></Td>
+                  <Td>{fmtDate(l.createdAt)}</Td>
+                  <Td>{files.length ? <AttachmentLinks items={files} /> : <span className="text-slate-400">—</span>}</Td>
+                </Tr>
+              );
+            })}</tbody>
           </table>
         </DataCard>
       )}
@@ -516,19 +526,27 @@ export default function EmployeeProfilePage() {
         </div>
       )}
 
+      {/* ── سجلّ الطلبات ─────────────────────────────────────────────────────
+          ما أُرفق بالطلب يُقرأ من هنا بعد سنة: الشهادةُ التي أرسلتها الموارد
+          البشريّة، والتقريرُ الذي أرفقه الموظّف. كان يعيش في خيط الرسائل وحده
+          فلا يجده من يفتح الملفّ — وهو أوّلُ ما يُفتح حين يُسأل عن ورقة. */}
       {tab === 'requests' && (
         <DataCard empty={!data.requests.length} emptyText={tx.noRequests}>
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <Th>{tx.colSubject}</Th><Th>{tx.colStatus}</Th><Th>{tx.colDate}</Th>
+              <Th>{tx.colSubject}</Th><Th>{tx.colStatus}</Th><Th>{tx.colDate}</Th><Th>{ar ? 'المرفقات' : 'Attachments'}</Th>
             </tr></thead>
-            <tbody>{data.requests.map((r) => (
-              <Tr key={r._id}>
-                <Td className="text-slate-900">{r.subject}</Td>
-                <Td><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></Td>
-                <Td>{fmtDateTime(r.createdAt)}</Td>
-              </Tr>
-            ))}</tbody>
+            <tbody>{data.requests.map((r) => {
+              const files = ((r as any).thread || []).flatMap((m: any) => (m.attachments || []).map((a: any) => ({ ...a, at: m.at })));
+              return (
+                <Tr key={r._id}>
+                  <Td className="text-slate-900">{r.subject}</Td>
+                  <Td><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></Td>
+                  <Td>{fmtDateTime(r.createdAt)}</Td>
+                  <Td>{files.length ? <AttachmentLinks items={files} /> : <span className="text-slate-400">—</span>}</Td>
+                </Tr>
+              );
+            })}</tbody>
           </table>
         </DataCard>
       )}
@@ -814,6 +832,29 @@ function Overview({ e, lang, tx, vtx }: { e: Employee; lang: 'en' | 'ar'; tx: Re
 const Th = ({ children }: { children: React.ReactNode }) => <th className="text-start font-medium px-4 py-3">{children}</th>;
 const Td = ({ children, className }: { children: React.ReactNode; className?: string }) => <td className={`px-4 py-3 text-slate-700 ${className || ''}`}>{children}</td>;
 const Tr = ({ children }: { children: React.ReactNode }) => <tr className="border-b border-slate-200/70 hover:bg-slate-100">{children}</tr>;
+
+/**
+ * روابطُ المرفقات في صفٍّ من جدول.
+ *
+ * الملفُّ يُقدَّم على `/api/uploads/...` من الخادم نفسِه، فيُفتح في تبويبٍ
+ * جديد ويُنزَّل باسمه الأصليّ. و`download` وحدَه لا يكفي: المتصفّح يتجاهله
+ * أحيانًا للـPDF فيعرضه بدل حفظه — وكلاهما مقبول، المهمّ أن يصل.
+ */
+function AttachmentLinks({ items }: { items: { fileUrl: string; title?: string; fileName?: string; size?: number; mimeType?: string }[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((a, i) => (
+        <a key={a.fileUrl || i} href={a.fileUrl} target="_blank" rel="noopener noreferrer" download={a.fileName || undefined}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 bg-white text-[11.5px] font-semibold text-slate-700 hover:border-[#f37121] hover:text-[#f37121] max-w-[14rem]"
+          title={a.fileName || a.title || ''}>
+          <Paperclip className="w-3 h-3 shrink-0" />
+          <span className="truncate">{a.title || a.fileName || 'ملفّ'}</span>
+          {a.size ? <span className="text-slate-400 font-normal shrink-0">{Math.max(1, Math.round(a.size / 1024))} KB</span> : null}
+        </a>
+      ))}
+    </div>
+  );
+}
 
 function DataCard({ children, empty, emptyText }: { children: React.ReactNode; empty?: boolean; emptyText: string }) {
   if (empty) return <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 shadow-sm">{emptyText}</div>;

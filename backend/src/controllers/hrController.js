@@ -602,7 +602,10 @@ exports.updateContract = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const contract = await Contract.findById(req.params.id);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
-    const fields = ['type', 'startDate', 'endDate', 'durationMonths', 'annualLeaveDays', 'jobTitle', 'basicSalary', 'allowances', 'probationMonths', 'status', 'notes'];
+    const fields = ['type', 'startDate', 'endDate', 'durationMonths', 'annualLeaveDays', 'jobTitle', 'basicSalary', 'allowances', 'probationMonths', 'status', 'notes',
+      // حقول ملفّ العقود — تُعرَض في الجدول، فلا بدّ أن تُعدَّل من الشاشة
+      // أيضًا: ما يُقرأ ولا يُصحَّح يبقى خطأً إلى الأبد.
+      'iqamaNumber', 'employeeNameAr', 'contractProfession', 'sponsorRegistration', 'annualLeaveText', 'probationText'];
     for (const f of fields) if (req.body[f] !== undefined) contract[f] = req.body[f];
     await contract.save();
     try { emitToUser(String(req.user._id), 'hr:contract', { id: String(contract._id) }); } catch (e) {}
@@ -805,6 +808,29 @@ const evaluateAdvanceNotice = (leaveType, startDate) => {
   };
 };
 
+/**
+ * يحفظ ملفّات الطلب على القرص ويردّ بيانات ما يُخزَّن مع السجلّ.
+ *
+ * تصل data URLs في نفس الطلب (لا multer في هذا النظام)، وتُكتب تحت
+ * `uploads/hr` — وهو مشمولٌ بالنسخ الاحتياطيّ اليوميّ كبقيّة المرفوعات. ويُرمى
+ * الخطأ بنصّه كي تصل الرسالةُ إلى الشاشة لا «فشل الحفظ» مبهمًا.
+ */
+function saveLeaveFiles(files, user) {
+  const out = [];
+  for (const f of Array.isArray(files) ? files.slice(0, 10) : []) {
+    if (!f?.dataUrl) continue;
+    const stored = saveUploadFile(f.dataUrl, 'hr', f.fileName || '');
+    out.push({
+      ...stored,
+      title: String(f.title || f.fileName || '').trim() || stored.fileName,
+      uploadedBy: user._id,
+      uploadedByName: fullName(user),
+      uploadedAt: new Date(),
+    });
+  }
+  return out;
+}
+
 exports.createMyLeave = async (req, res) => {
   try {
     const employeeId = await ensureSelfEmployee(req);
@@ -842,7 +868,13 @@ exports.createMyLeave = async (req, res) => {
       else employeeSignature = ((sigs.find((s) => s.isDefault) || sigs[0]) || {}).dataUrl || '';
     } catch (e) { /* no signature is fine */ }
 
+    // تقريرُ الإجازة المرضيّة يُرفَق مع طلبها لا يُرسَل على الواتساب.
+    let attachments = [];
+    try { attachments = saveLeaveFiles(req.body.files, req.user); }
+    catch (e) { return res.status(400).json({ message: e.message }); }
+
     const leave = await LeaveRequest.create({
+      attachments,
       employee: req.user.linkedEmployee,
       requester: req.user._id,
       manager: req.user.manager || undefined,
@@ -905,7 +937,10 @@ exports.decideLeave = async (req, res) => {
         signature = ((me && me.signatures) || []).find((s) => String(s._id) === String(signatureId))?.dataUrl || '';
       } catch (e) { /* ignore */ }
     }
-    const stamp = { by: req.user._id, at: new Date(), decision, note: note || '', signature };
+    let decisionFiles = [];
+    try { decisionFiles = saveLeaveFiles(req.body.files, req.user); }
+    catch (e) { return res.status(400).json({ message: e.message }); }
+    const stamp = { by: req.user._id, at: new Date(), decision, note: note || '', signature, attachments: decisionFiles };
 
     if (staff) {
       // HR decision is final regardless of current stage.
@@ -1003,6 +1038,23 @@ exports.updateMyLeave = async (req, res) => {
     if (endDate) leave.endDate = endDate;
     if (reason !== undefined) leave.reason = reason;
     if (startDate || endDate) leave.days = leaveDays(leave.startDate, leave.endDate);
+
+    // مرفقاتٌ تُضاف أو تُحذف ما دام الطلبُ لم يُمَسّ. ومن نسي التقريرَ الطبّيّ
+    // لا يُطالَب بإلغاء طلبه وكتابة غيره.
+    if (Array.isArray(req.body.files) && req.body.files.length) {
+      try { leave.attachments.push(...saveLeaveFiles(req.body.files, req.user)); }
+      catch (e) { return res.status(400).json({ message: e.message }); }
+    }
+    if (Array.isArray(req.body.removeAttachments)) {
+      const { deleteStoredFile } = require('../utils/fileStore');
+      for (const attId of req.body.removeAttachments) {
+        const att = leave.attachments.id(attId);
+        if (!att) continue;
+        const url = att.fileUrl;
+        att.deleteOne();
+        deleteStoredFile(url);
+      }
+    }
 
     await leave.save();
     if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }

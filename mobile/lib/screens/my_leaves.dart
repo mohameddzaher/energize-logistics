@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../services/live.dart';
+import '../ui/file_upload.dart';
 
 /// إجازاتي — the self-service leave page: balance cards, request history and
 /// a new-request sheet. Same endpoints the web uses (/api/hr/me/leaves).
@@ -141,6 +144,31 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                       padding: const EdgeInsets.only(top: 2),
                                       child: Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                                     ),
+                                  // مرفقاتُ الطلب وقراريه — تُحمَّل في أيّ وقت،
+                                  // فما أُرفق مرّةً لا يُطلب مرّةً أخرى.
+                                  ...[
+                                    ...List<Map<String, dynamic>>.from((l['attachments'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map))),
+                                    ...List<Map<String, dynamic>>.from(((l['managerDecision'] is Map ? l['managerDecision']['attachments'] : null) as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map))),
+                                    ...List<Map<String, dynamic>>.from(((l['hrDecision'] is Map ? l['hrDecision']['attachments'] : null) as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map))),
+                                  ].map((a) => Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Row(children: [
+                                      const Icon(Icons.description_outlined, size: 15, color: T.navy),
+                                      const SizedBox(width: 6),
+                                      Expanded(child: Text('${a['title'] ?? a['fileName'] ?? ''}',
+                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(Icons.download_rounded, size: 16, color: T.navy),
+                                        tooltip: tr('فتح/تنزيل', 'Open / download'),
+                                        onPressed: () {
+                                          final u = (a['fileUrl'] ?? '').toString();
+                                          if (u.isEmpty) return;
+                                          launchUrl(Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u'), mode: LaunchMode.externalApplication);
+                                        },
+                                      ),
+                                    ]),
+                                  )),
                                   if (canCancel)
                                     Align(
                                       alignment: AlignmentDirectional.centerStart,
@@ -206,6 +234,10 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
   DateTime? _end;
   final _reason = TextEditingController();
   bool _busy = false;
+  // ── سندُ الطلب ──────────────────────────────────────────────────────────
+  // الإجازة المرضيّة تُطلب بتقرير. كان يُرسَل على الواتساب فيضيع، ثمّ يُسأل
+  // عنه بعد شهرين. يعيش مع الطلب نفسِه ويُقرأ من ملفّ الموظّف بعدها.
+  final List<PickedFile> _files = [];
 
   /// سياسة الإخطار المسبق — planned leave must be requested a month ahead; the
   /// kinds you cannot plan (مرضية/طارئة) carry requiresAdvanceNotice:false and
@@ -245,6 +277,7 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
         'startDate': _start!.toIso8601String().substring(0, 10),
         'endDate': _end!.toIso8601String().substring(0, 10),
         'reason': _reason.text,
+        'files': _files.map((f) => {'dataUrl': f.dataUrl, 'fileName': f.fileName, 'title': f.fileName}).toList(),
       });
       widget.onDone();
       if (mounted) Navigator.pop(context);
@@ -336,6 +369,33 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
           ]),
           const SizedBox(height: 10),
           TextField(controller: _reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _busy ? null : () async {
+                  if (_files.length >= 5) return;
+                  final f = await pickFileAsDataUrl();
+                  if (f != null) setState(() => _files.add(f));
+                },
+                icon: const Icon(Icons.attach_file_rounded, size: 16),
+                label: Text(tr('إرفاق ملفّ', 'Attach file')),
+              ),
+            ),
+          ]),
+          ..._files.asMap().entries.map((e) => Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(children: [
+              const Icon(Icons.description_outlined, size: 16, color: T.navy),
+              const SizedBox(width: 6),
+              Expanded(child: Text(e.value.fileName, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.close, size: 16, color: T.danger),
+                onPressed: () => setState(() => _files.removeAt(e.key)),
+              ),
+            ]),
+          )),
           const SizedBox(height: 14),
           FilledButton(
             onPressed: _busy || _type.isEmpty || _start == null || _end == null || _noticeViolated ? null : _save,

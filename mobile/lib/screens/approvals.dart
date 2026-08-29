@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../services/live.dart';
+import '../ui/file_upload.dart';
 
 /// موافقات فريقي — leave requests from the manager's direct reports awaiting
 /// their decision. Approve / reject with an optional note, same endpoint the
@@ -51,14 +54,58 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
   Future<void> _decide(Map<String, dynamic> l, String decision) async {
     final note = TextEditingController();
+    // ورقةُ القرار: خطابُ الاعتماد أو سببُ الرفض حين يكون له سند. تعيش مع
+    // الطلب فتُقرأ من ملفّ الموظّف بعد سنة، لا في محادثةٍ ضاعت.
+    final files = <PickedFile>[];
     final ok = await showDialog<bool>(
       context: context,
-      builder: (c) => AlertDialog(
+      builder: (c) => StatefulBuilder(builder: (c, setSt) => AlertDialog(
         title: Text(decision == 'approved' ? tr('اعتماد الطلب', 'Approve request') : tr('رفض الطلب', 'Reject request')),
-        content: TextField(
-          controller: note,
-          decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)')),
-        ),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // سندُ الطلب يُقرأ قبل البتّ فيه.
+          if ((l['attachments'] as List? ?? const []).isNotEmpty) ...[
+            Text(tr('مرفقات الموظّف', 'Employee attachments'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+            ...List<Map<String, dynamic>>.from((l['attachments'] as List).map((e) => Map<String, dynamic>.from(e as Map))).map((a) => Row(children: [
+              const Icon(Icons.description_outlined, size: 15, color: T.navy),
+              const SizedBox(width: 6),
+              Expanded(child: Text('${a['title'] ?? a['fileName'] ?? ''}', style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.download_rounded, size: 16, color: T.navy),
+                onPressed: () {
+                  final u = (a['fileUrl'] ?? '').toString();
+                  if (u.isEmpty) return;
+                  launchUrl(Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u'), mode: LaunchMode.externalApplication);
+                },
+              ),
+            ])),
+            const Divider(height: 16),
+          ],
+          TextField(
+            controller: note,
+            decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)')),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: files.length >= 5 ? null : () async {
+                final f = await pickFileAsDataUrl();
+                if (f != null) setSt(() => files.add(f));
+              },
+              icon: const Icon(Icons.attach_file_rounded, size: 16),
+              label: Text(tr('إرفاق ملفّ', 'Attach file')),
+            ),
+          ),
+          ...files.asMap().entries.map((e) => Row(children: [
+            Expanded(child: Text(e.value.fileName, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.close, size: 15, color: T.danger),
+              onPressed: () => setSt(() => files.removeAt(e.key)),
+            ),
+          ])),
+        ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(
@@ -69,13 +116,14 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
             child: Text(decision == 'approved' ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
           ),
         ],
-      ),
+      )),
     );
     if (ok != true) return;
     try {
       await Api.instance.patch('/api/hr/leaves/${l['_id']}/decision', {
         'decision': decision,
         'note': note.text,
+        'files': files.map((f) => {'dataUrl': f.dataUrl, 'fileName': f.fileName, 'title': f.fileName}).toList(),
       });
       _load();
     } catch (e) {

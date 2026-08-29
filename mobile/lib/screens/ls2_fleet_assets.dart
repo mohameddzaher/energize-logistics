@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
+import '../ui/tire_states.dart';
 import '../ui/widgets.dart';
 import 'ls2_vehicle_assets.dart';
 
@@ -19,23 +20,14 @@ class Ls2FleetAssetsScreen extends StatefulWidget {
 List<Map<String, dynamic>> _l(dynamic v) =>
     v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : const [];
 
-const _tireStatuses = {
-  'mounted': ('مركّبة', 'Mounted', T.success),
-  'spare': ('بالمستودع', 'In store', T.info),
-  'in_repair': ('في المصنع', 'At factory', T.warn),
-  'scrap': ('سكراب', 'Scrap', T.inkFaint),
-  'damaged': ('تالفة', 'Damaged', T.danger),
-  'sold': ('مباعة', 'Sold', T.success),
-  'retired': ('خارج الخدمة', 'Retired', T.inkFaint),
-};
+// الحالات كلُّها في ui/tire_states.dart — تعريفٌ واحد يقرأ منه الخادم والشاشة
+// والجوّال. وما بقي هنا هو الدرجة وحدها.
 
-// درجة الفردة. «مجدد» اندمجت في «مستعمل» — المجدَّدة مستعملة فعلًا، والورشة
-// بتحطّها على نفس الرفّ وفي نفس المواضع، فالفصل كان بيقسم مخزون واحد بس.
-// و«في المصنع» بتتولد من الحالة in_repair، مش اختيار يدوي.
+// الدرجة وصفٌ للفردة لا لمكانها: جديدةٌ أو مستعملة، لا ثالث. وكانت هنا درجةٌ
+// ثالثة «at_factory» تصف **مكانًا**، فاختلط وصفُ المكان بوصف الفردة.
 const _conditions = {
   'new': ('جديد', 'New', T.success),
   'used': ('مستعمل', 'Used', T.info),
-  'at_factory': ('في المصنع', 'At factory', T.violet),
 };
 
 class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
@@ -104,21 +96,16 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
   @override
   Widget build(BuildContext context) {
     final tires = _l(_d?['tires']);
-    final counts = _d?['counts'] is Map ? Map<String, dynamic>.from(_d!['counts']) : {};
     final q = _fold(_q.trim());
     final filtered = tires.where((t) {
       if (_filter.isNotEmpty) {
-        if (_filter == 'new') {
-          if (t['status'] != 'spare' || (t['condition'] ?? 'used') != 'new') return false;
-        } else if (_filter == 'used') {
-          // «المستعمل» بقى خانة واحدة: أي فردة على الرف مش جديدة — بالنفي عشان
-          // الصفوف اللي لسه على القيمة القديمة تفضل بتتعدّ قبل ما تجري الهجرة.
-          if (t['status'] != 'spare' || (t['condition'] ?? 'used') == 'new') return false;
-        } else if (_filter == 'unmounted') {
-          // أي فردة مش على مركبة حاليًا — مخزن أو تجديد أو سكراب أو تالفة أو
-          // مباعة. غير «المستودع» اللي هي المتاحة للتركيب بس.
-          if (t['status'] == 'mounted') return false;
-        } else if (t['status'] != _filter) {
+        // الفلترُ والبطاقةُ من تعريفٍ واحد (ui/tire_states.dart): فلا يقول
+        // العدّاد رقمًا وتفتح البطاقةُ غيره.
+        if (_filter == 'unmounted') {
+          if (tireStateKey(t) == 'mounted') return false;
+        } else if (_filter == 'store') {
+          if (!tireInStore(t)) return false;
+        } else if (tireStateKey(t) != _filter) {
           return false;
         }
       }
@@ -127,17 +114,15 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
           .any((x) => _fold((x ?? '').toString()).contains(q));
     }).toList();
 
-    final filterCards = [
+    final filterCards = <(String, String, int, Color)>[
       ('', tr('الكل', 'All'), tires.length, T.navy),
-      ('mounted', tr('مركّبة', 'Mounted'), counts['mounted'] ?? 0, T.success),
-      ('unmounted', tr('غير مركّبة', 'Unmounted'), tires.where((t) => t['status'] != 'mounted').length, T.warn),
-      ('spare', tr('المستودع', 'Store'), counts['spare'] ?? 0, T.info),
-      ('new', tr('الجديد', 'New'), tires.where((t) => t['status'] == 'spare' && (t['condition'] ?? 'used') == 'new').length, T.success),
-      ('used', tr('المستعمل', 'Used'), tires.where((t) => t['status'] == 'spare' && (t['condition'] ?? 'used') != 'new').length, T.violet),
-      ('in_repair', tr('في المصنع', 'At factory'), counts['inRepair'] ?? 0, T.warn),
-      ('scrap', tr('السكراب', 'Scrap'), tires.where((t) => t['status'] == 'scrap').length, T.inkFaint),
-      ('damaged', tr('التالف', 'Damaged'), tires.where((t) => t['status'] == 'damaged').length, T.danger),
-      ('sold', tr('المباع', 'Sold'), tires.where((t) => t['status'] == 'sold').length, T.success),
+      ('mounted', tr('مركّبة', 'Mounted'), tires.where((t) => tireStateKey(t) == 'mounted').length, T.success),
+      ('unmounted', tr('غير مركّبة', 'Unmounted'), tires.where((t) => tireStateKey(t) != 'mounted').length, T.warn),
+      // «في المخزن» شاملةٌ لِما تحتها: الجديد والمستعمل وتحت التجديد وفي المصنع
+      // والسكراب — كلُّ ما هو عندنا وغيرُ مركَّب.
+      ('store', tr('في المخزن', 'In store'), tires.where(tireInStore).length, T.info),
+      for (final st in tireStates.where((x) => x.key != 'mounted'))
+        (st.key, tr(st.ar, st.en), tires.where((t) => tireStateKey(t) == st.key).length, st.color),
     ];
 
     final flatbeds = _l(_d?['flatbeds']);
@@ -213,7 +198,8 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
                                 final t = filtered[i];
-                                final st = _tireStatuses[t['status']] ?? ('—', '—', T.inkFaint);
+                                final stDef = tireStateOf(t);
+                                final st = (stDef.ar, stDef.en, stDef.color);
                                 final cond = _conditions[t['condition']];
                                 return FadeSlideIn(
                                   delayMs: (i * 12).clamp(0, 120),
@@ -515,7 +501,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
             Text('${t['tireNumber'] ?? ''} ${t['serial'] ?? ''}'.trim(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 4),
             Text(
-              '${_tireStatuses[status] != null ? tr(_tireStatuses[status]!.$1, _tireStatuses[status]!.$2) : status}'
+              '${tr(tireStateOf(t).ar, tireStateOf(t).en)}'
               '${(t['plate'] ?? '').toString().isNotEmpty ? ' · ${t['plate']}' : ''}',
               style: const TextStyle(fontSize: 12.5, color: T.inkSoft),
             ),

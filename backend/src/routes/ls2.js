@@ -60,6 +60,7 @@ router.get('/assets/vehicle/:plate/history', assets.getVehicleHistory);
 router.post('/assets/import', ADMIN, assets.importAssets); // workshop JSON, idempotent
 router.post('/assets/tires', ADMIN, assets.createTire);
 router.patch('/assets/tires/:id', ADMIN, assets.updateTire);
+router.get('/assets/tires/:id/profile', assets.getTireProfile);   // حياة الفردة كاملةً
 router.post('/assets/tires/:id/move', ADMIN, assets.moveTire);
 router.post('/assets/tires/:id/renewal-result', ADMIN, assets.tireRenewalResult); // مجدد أو سكراب
 router.post('/assets/tires/:id/retire', ADMIN, assets.retireTire);

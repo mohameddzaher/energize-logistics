@@ -111,10 +111,13 @@ exports.getOverview = async (req, res) => {
           flatbeds: flatbeds.length,
           trailers: trailers.length,
           tires: tires.length,
-          mounted: tires.filter((t) => t.status === 'mounted').length,
-          spare: tires.filter((t) => t.status === 'spare').length,
-          inRepair: tires.filter((t) => t.status === 'in_repair').length,
-          retired: tires.filter((t) => t.status === 'retired').length,
+          // خانةٌ لكلّ حالة، من التعريف الواحد — فلا تُكتب بطاقةٌ في الشاشة
+          // ولا يجد الخادمُ رقمَها، ولا يُحسب رقمٌ لا بطاقةَ له.
+          ...Object.fromEntries(TIRE_STATES.map((st) => [st.key, tires.filter((t) => tireState(t) === st.key).length])),
+          // «في المخزن» مجموعُ ما هو عندنا وغيرُ مركَّب: الجديد والمستعمل وتحت
+          // التجديد وفي المصنع والسكراب. والتالف والمباع خارجه — خرجا من العهدة.
+          inStore: tires.filter((t) => TIRE_STATES.find((x) => x.key === tireState(t))?.inStore).length,
+          notMounted: tires.filter((t) => tireState(t) !== 'mounted').length,
           withSensor: tires.filter((t) => t.sensor === 'yes').length,
         },
       };
@@ -304,24 +307,26 @@ exports.updateTire = async (req, res) => {
 // `replacementTireId` closes the OTHER half of a swap in the same operation:
 // a spare tire from the store mounts into the slot THIS tire just vacated —
 // whether it went down to the shelf/scrap or transferred to another truck.
-const DEST_STATUS = { repair: 'in_repair', damaged: 'damaged', scrap: 'scrap', store: 'spare' };
-const DEST_ACTION = { in_repair: 'to_repair', damaged: 'damaged', scrap: 'scrapped', spare: 'removed' };
+// الوجهات تُقرأ من تعريفٍ واحد يشترك فيه الخادم والشاشة والجوّال — راجع
+// config/tireStates.js. وكانت أربعًا: «سليمة/مخزن» واحدةً لا يُعرف منها أنزلت
+// الفردة جديدةً أم مستعملة، و«في المصنع» و«تحت التجديد» شيئًا واحدًا.
+const { DISMOUNT_DESTINATIONS, STATUS_ACTION: TIRE_STATUS_ACTION, tireState, TIRE_STATES } = require('../config/tireStates');
+const DEST = Object.fromEntries(DISMOUNT_DESTINATIONS.map((d) => [d.key, d]));
+// أسماءٌ قديمة تصل من نسخٍ لم تُحدَّث بعد — تُقبل ولا تُكسر.
+const DEST_ALIAS = { store: 'used', repair: 'under_renewal' };
+const destOf = (key) => DEST[DEST_ALIAS[key] || key] || null;
 
 /**
- * الدرجة بتتبع الحالة في نقطة واحدة بس: «في المصنع».
+ * الدرجة صارت وصفًا للفردة لا لمكانها، فلا تتبع الحالة.
  *
- * خانة «في المصنع» في المخزن بتتعدّ بالدرجة، والفردة بتروح المصنع وترجع بتغيير
- * حالة. لو الاتنين مش مربوطين، الفردة بترجع الرف وهي لسه متسجّلة عند المصنع،
- * فالخانة تفضل بتعدّ فردات موجودة قدّامك — وده بالظبط النوع من التناقض اللي
- * بيخلي حد يوقف يثق في العدّاد كله.
+ * كانت «في المصنع» درجةً وحالةً معًا: تُعَدّ الخانة بالدرجة وتُغيَّر بالحالة،
+ * فإن افترقتا بقيت الفردة معدودةً عند المصنع وهي على الرفّ. والمكان كلُّه في
+ * `status` الآن، فتبقى الدرجة كما هي إلّا أن تُذكر صراحةً.
  */
-function gradeForStatus(tire, status) {
-  // فردة «جديدة» راحت المصنع تفضل جديدة: خانة «في المصنع» في الشاشة بتتعدّ
-  // بالحالة نفسها (status === 'in_repair') مش بالدرجة، فالكتابة فوق «جديد» هنا
-  // بتضيّع معلومة حقيقية عن الفردة من غير ما تكسب الشاشة حاجة.
-  if (status === 'in_repair') return tire.condition === 'new' ? 'new' : 'at_factory';
-  if (tire.condition === 'at_factory') return 'used'; // خرجت من المصنع ⇐ ترجع درجتها الطبيعية
-  return tire.condition;
+function gradeForStatus(tire, status, explicit) {
+  if (explicit === 'new' || explicit === 'used') return explicit;
+  // الموروثة `at_factory` لم تعد درجةً صالحة — تُقرأ مستعملةً.
+  return tire.condition === 'new' ? 'new' : 'used';
 }
 
 // Mount a spare tire into a specific (now empty) slot. Shared by the move and
@@ -461,7 +466,7 @@ exports.moveTire = async (req, res) => {
           plateKey: toKey, positionNumber, status: 'mounted', _id: { $ne: tire._id },
         });
         if (occupant) {
-          if (!DEST_STATUS[displacedTo]) {
+          if (!destOf(displacedTo)) {
             return res.status(400).json({
               code: 'DISPLACED_FATE_REQUIRED',
               message: `الموقع مشغول بالفردة ${occupant.serial} — حدد مصيرها: في المصنع أو تالفة أو سكراب أو سليمة للمخزن`,
@@ -469,21 +474,22 @@ exports.moveTire = async (req, res) => {
             });
           }
           const occFrom = posLabel(occupant);
-          const occStatus = DEST_STATUS[displacedTo];
+          const occDest = destOf(displacedTo);
+          const occStatus = occDest.status;
           const occPct = occStatus === 'spare' && displacedConditionPercent != null && displacedConditionPercent !== ''
             ? Math.max(0, Math.min(100, Number(displacedConditionPercent))) : null;
           occupant.set({
             status: occStatus, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '', isSpare: false,
             // الدرجة تتبع المصير: القاطن اللي راح المصنع لازم يبان في خانة «في
             // المصنع»، وإلا يفضل متعدّ على الرف وهو أصلاً برّه.
-            condition: gradeForStatus(occupant, occStatus),
+            condition: gradeForStatus(occupant, occStatus, occDest.condition),
             // سليمة للمخزن → نسجّل نسبة حالتها (يقرأها التسكين لاحقًا) تمامًا كالنزول العادي.
             ...(occPct != null ? { conditionPercent: occPct } : {}),
           });
           await occupant.save();
           await logEvent(req, {
             entityType: 'tire', refId: occupant._id, label: occupant.serial,
-            action: DEST_ACTION[occStatus],
+            action: occDest.action,
             fromPlate: toPlate, fromPlateKey: toKey, fromPosition: occFrom, date: when,
             odometerKm: live?.odometerKm ?? null,
             reason: reason || `أُزيلت لتركيب الفردة ${tire.serial} مكانها`,
@@ -506,11 +512,12 @@ exports.moveTire = async (req, res) => {
     } else {
       // Off the truck — but "where to" matters: the renewal shop is not the
       // shelf, سكراب is stored-to-sell, and تالف is gone for good.
-      const wasInRepair = tire.status === 'in_repair';
-      const toStatus = DEST_STATUS[destination] || 'spare';
+      const wasInRepair = ['in_repair', 'under_renewal', 'at_factory'].includes(tire.status);
+      const dest = destOf(destination) || DEST.used;
+      const toStatus = dest.status;
       tire.set({
         status: toStatus,
-        condition: gradeForStatus(tire, toStatus),
+        condition: gradeForStatus(tire, toStatus, dest.condition),
         plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '',
         isSpare: false, // فردة خارج العربية ليست الاستبن
 
@@ -521,7 +528,7 @@ exports.moveTire = async (req, res) => {
       await tire.save();
       await logEvent(req, {
         entityType: 'tire', refId: tire._id, label: tire.serial,
-        action: toStatus === 'spare' && wasInRepair ? 'from_repair' : DEST_ACTION[toStatus],
+        action: toStatus === 'spare' && wasInRepair ? 'from_repair' : dest.action,
         fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
         date: when, reason,
         notes: [notes, toStatus === 'spare' && conditionPercent != null && conditionPercent !== '' ? `الحالة ${conditionPercent}%` : ''].filter(Boolean).join(' — '),
@@ -570,13 +577,15 @@ exports.tireRenewalResult = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    if (tire.status !== 'in_repair') return res.status(400).json({ message: 'الفردة ليست في المصنع' });
+    if (!['in_repair', 'under_renewal', 'at_factory'].includes(tire.status)) {
+      return res.status(400).json({ message: 'الفردة ليست تحت التجديد ولا في المصنع' });
+    }
     const { result, notes = '' } = req.body || {};
     if (!['renewed', 'scrap'].includes(result)) return res.status(400).json({ message: 'result must be renewed | scrap' });
     // في الحالتين الفردة سابت المصنع، فدرجتها ترجع طبيعية: نجح التجديد ⇐ رجعت
     // الرف مستعملة صالحة (تتركّب في أي موضع)، فشل ⇐ سكراب للبيع.
     const st = result === 'renewed' ? 'spare' : 'scrap';
-    tire.set({ status: st, condition: gradeForStatus(tire, st) });
+    tire.set({ status: st, condition: gradeForStatus(tire, st, req.body.condition) });
     await tire.save();
     await logEvent(req, {
       entityType: 'tire', refId: tire._id, label: tire.serial,
@@ -635,22 +644,23 @@ exports.retireTire = async (req, res) => {
 // spare (سليمة/مخزن) / in_repair (تجديد) / scrap / damaged (تالف) / retired / sold.
 // إن كانت مركّبة، تُفَك تلقائيًا من المركبة. body: { status, condition?,
 // conditionPercent?, reason?, notes? }.
-const STATUS_ACTION = { spare: 'to_store', in_repair: 'to_repair', scrap: 'scrapped', damaged: 'damaged', retired: 'retired', sold: 'sold' };
+// من التعريف الواحد — راجع config/tireStates.js.
+const STATUS_ACTION = TIRE_STATUS_ACTION;
 exports.setTireStatus = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
     const { status } = req.body || {};
-    if (!['spare', 'in_repair', 'scrap', 'damaged', 'retired', 'sold'].includes(status)) {
+    if (!['spare', 'under_renewal', 'at_factory', 'scrap', 'damaged', 'retired', 'sold', 'in_repair'].includes(status)) {
       return res.status(400).json({ message: 'حالة غير صالحة' });
     }
     const blocked = blockEmptySlot(tire, req.body?.replacementTireId);
     if (blocked) return res.status(400).json(blocked);
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire), status: tire.status };
-    const set = { status, condition: gradeForStatus(tire, status) };
+    const set = { status, condition: gradeForStatus(tire, status, req.body.condition) };
     // «في المصنع» مش اختيار — بتتولد من الحالة. والدرجة ما تتغيّرش يدويًا والفردة
     // عند المصنع، وإلا خانة المخزن تعدّ فردة برّه على إنها على الرف.
-    if (status !== 'in_repair' && ['new', 'used'].includes(req.body.condition)) set.condition = req.body.condition;
+    if (['new', 'used'].includes(req.body.condition)) set.condition = req.body.condition;
     if (req.body.conditionPercent != null && req.body.conditionPercent !== '') set.conditionPercent = Number(req.body.conditionPercent);
     // مغادرة حالة التركيب → فَكّ من المركبة والموضع.
     if (tire.status === 'mounted') {
@@ -1021,6 +1031,152 @@ exports.importAssets = async (req, res) => {
     }
     res.json({ ok: true, summary });
   } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+// ── GET /assets/tires/:id/profile — حياةُ فردةٍ واحدة كاملةً ──────────────────
+//
+// السؤال الذي تجيب عنه هذه الشاشة ليس «أين الفردة الآن» — ذاك سطرٌ في الجدول —
+// بل: **كم عاشت، وعلى ماذا، وكم مشت.** فردةٌ عمرها سنتان على أربع عربيات ليست
+// كفردةٍ عمرها سنتان على واحدة، والفرق لا يُقرأ إلّا من السجلّ مجموعًا.
+//
+// وتُبنى «فترات التركيب» من سجلّ الحركة نفسه: كلُّ `mounted` تفتح فترة، وأوّلُ
+// خروجٍ بعدها يُغلقها. والمسافة = عدّاد العربية عند النزول ناقص عدّادها عند
+// التركيب — يُقرآن من جدول العدّاد اليوميّ لا من لحظة الحدث، لأنّ الحدث قد
+// يُسجَّل بعد يومٍ من وقوعه فيحمل عدّادًا متأخّرًا.
+//
+// وما جرى للعربية **أثناء** وجود الفردة عليها يُنسب إلى الفردة: صيانةٌ في ذلك
+// اليوم كانت الفردة تحتها، وإصلاحٌ كذلك. وهذا هو الفرق بين سجلّ فردةٍ وسجلّ
+// عربية — ولا يُعرف إلّا بمقاطعة التواريخ مع الفترات.
+exports.getTireProfile = async (req, res) => {
+  try {
+    const tire = await Ls2TireAsset.findById(req.params.id).lean();
+    if (!tire) return res.status(404).json({ message: 'الفردة غير موجودة' });
+
+    const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
+    const Ls2Repair = require('../models/Ls2Repair');
+    const Ls2ServiceLog = require('../models/Ls2ServiceLog');
+
+    const events = await Ls2AssetEvent.find({ entityType: 'tire', refId: tire._id })
+      .sort({ date: 1 }).limit(2000).lean();
+
+    // ── الفترات: من ركوبٍ إلى نزول ──────────────────────────────────────────
+    const MOUNTS = new Set(['mounted', 'transferred']);
+    const stints = [];
+    let open = null;
+    for (const e of events) {
+      const landed = e.toPlate || e.toPlateKey;
+      if (MOUNTS.has(e.action) && landed) {
+        if (open) { open.to = e.date; open.endReason = 'transferred'; stints.push(open); }
+        open = {
+          plate: e.toPlate, plateKey: e.toPlateKey, position: e.toPosition || '',
+          from: e.date, to: null, endReason: null,
+          odoStart: e.odometerKm ?? null, odoEnd: null, by: e.performedByName || '',
+        };
+        continue;
+      }
+      if (open && ['removed', 'to_repair', 'scrapped', 'damaged', 'sold', 'retired'].includes(e.action)) {
+        open.to = e.date; open.endReason = e.action; open.odoEnd = e.odometerKm ?? null;
+        stints.push(open); open = null;
+      }
+    }
+    // فترةٌ مفتوحة = الفردة مركَّبة الآن.
+    if (open) stints.push(open);
+    // ولو لم يحمل السجلّ ركوبًا وهي مركَّبة (استيرادٌ قديم)، تُفتح فترةٌ من مكانها الحاليّ.
+    if (!stints.length && tire.status === 'mounted' && (tire.plate || tire.trailerNumber)) {
+      stints.push({
+        plate: tire.plate, plateKey: tire.plateKey, position: tire.positionLabel || '',
+        from: tire.createdAt, to: null, endReason: null, odoStart: null, odoEnd: null, by: '',
+        inferred: true,
+      });
+    }
+
+    // ── العدّاد: يُقرأ من الجدول اليوميّ لكلّ لوحةٍ في الفترات ────────────────
+    const dayKey = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+    const plates = [...new Set(stints.map((s) => s.plateKey).filter(Boolean))];
+    const units = plates.length
+      ? await Ls2Vehicle.find({ $or: [{ plateKey: { $in: plates } }, {}] }).select('plate plateKey unitId odometerKm driver').lean()
+      : [];
+    const unitByKey = new Map();
+    for (const u of units) { const k = u.plateKey || plateKey(u.plate); if (k) unitByKey.set(k, u); }
+
+    const odoDays = new Set();
+    for (const s of stints) { const a = dayKey(s.from); const b = dayKey(s.to) || dayKey(new Date()); if (a) odoDays.add(a); if (b) odoDays.add(b); }
+    const unitIds = [...new Set(stints.map((s) => unitByKey.get(s.plateKey)?.unitId).filter((x) => x != null))];
+    const odoRows = unitIds.length
+      ? await Ls2OdometerDaily.find({ unitId: { $in: unitIds }, date: { $in: [...odoDays] } }).select('unitId date odometerKm').lean()
+      : [];
+    const odoAt = new Map(odoRows.map((r) => [`${r.unitId}|${r.date}`, r.odometerKm]));
+
+    const now = new Date();
+    for (const s of stints) {
+      const u = unitByKey.get(s.plateKey);
+      const uid = u?.unitId;
+      if (uid != null) {
+        s.odoStart = s.odoStart ?? odoAt.get(`${uid}|${dayKey(s.from)}`) ?? null;
+        s.odoEnd = s.to
+          ? (s.odoEnd ?? odoAt.get(`${uid}|${dayKey(s.to)}`) ?? null)
+          : (u.odometerKm ?? null);
+      }
+      s.km = (s.odoStart != null && s.odoEnd != null && s.odoEnd >= s.odoStart) ? Math.round(s.odoEnd - s.odoStart) : null;
+      const end = s.to ? new Date(s.to) : now;
+      s.days = s.from ? Math.max(0, Math.round((end - new Date(s.from)) / 86400000)) : null;
+      s.driver = u?.driver || '';
+      s.current = !s.to;
+    }
+
+    // ── ما جرى للعربية والفردة عليها ────────────────────────────────────────
+    const inStint = (plate, date) => {
+      if (!plate || !date) return null;
+      const k = plateKey(plate); const t = new Date(date).getTime();
+      return stints.find((s) => s.plateKey === k
+        && t >= new Date(s.from).getTime()
+        && t <= (s.to ? new Date(s.to).getTime() : now.getTime())) || null;
+    };
+    const plateRx = plates.length ? null : null;
+    const [repairs, services] = await Promise.all([
+      Ls2Repair.find({}).sort({ date: -1 }).limit(3000).select('plate title description category status cost date odometerKm performedByName').lean(),
+      Ls2ServiceLog.find({}).sort({ createdAt: -1 }).limit(3000).select('plate items note byName odometerKm createdAt serviceDate intervalName').lean(),
+    ]);
+    const whileOn = [];
+    for (const r of repairs) {
+      const st = inStint(r.plate, r.date || r.createdAt);
+      if (!st) continue;
+      whileOn.push({ kind: 'repair', date: r.date || r.createdAt, plate: r.plate, title: r.title || 'إصلاح',
+        detail: [r.category, r.description].filter(Boolean).join(' · '), cost: r.cost ?? null, by: r.performedByName || '' });
+    }
+    for (const sv of services) {
+      const st = inStint(sv.plate, sv.serviceDate || sv.createdAt);
+      if (!st) continue;
+      whileOn.push({ kind: 'service', date: sv.serviceDate || sv.createdAt, plate: sv.plate,
+        title: sv.intervalName || 'صيانة',
+        detail: (sv.items || []).filter((x) => x.status === 'done').map((x) => x.labelAr || x.label).slice(0, 6).join(' · '),
+        by: sv.byName || '' });
+    }
+    whileOn.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const totals = {
+      stints: stints.length,
+      vehicles: new Set(stints.map((s) => s.plateKey).filter(Boolean)).size,
+      km: stints.reduce((a, s) => a + (s.km || 0), 0),
+      days: stints.reduce((a, s) => a + (s.days || 0), 0),
+      mountedDays: stints.filter((s) => s.current).reduce((a, s) => a + (s.days || 0), 0),
+      repairs: whileOn.filter((x) => x.kind === 'repair').length,
+      services: whileOn.filter((x) => x.kind === 'service').length,
+      // عمرُ الفردة من أوّل أثرٍ لها: التسجيل أو أوّل تركيب.
+      ageDays: Math.max(0, Math.round((now - new Date(events[0]?.date || tire.createdAt)) / 86400000)),
+    };
+
+    res.json({
+      tire: { ...tire, state: tireState(tire) },
+      stints: stints.slice().reverse(),      // الأحدث أوّلًا
+      events: events.slice().reverse(),
+      whileOn: whileOn.slice(0, 300),
+      totals,
+    });
+  } catch (e) {
+    console.error('tire profile', e);
     res.status(500).json({ message: e.message });
   }
 };

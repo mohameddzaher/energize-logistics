@@ -17,32 +17,30 @@ const ls2TireAssetSchema = new mongoose.Schema({
   size: { type: String, default: '' },                // e.g. 315/80 R22.5
   sensor: { type: String, enum: ['yes', 'no', 'unknown'], default: 'unknown' },
   // The tire's LIFECYCLE, exactly as the workshop runs it:
-  //   spare(new)        ← purchases register a fresh tire
-  //   mounted           ← installed; installing where another tire sits FORCES
-  //                       declaring where the displaced one goes (in ⇒ out)
-  //   in_repair         ← في المصنع: نزلت من العربية وراحت مصنع التجديد — مش
-  //                       مخزون متاح؛ عدّها ضمن الرف هو اللي بيخلي المخزن
-  //                       يوعد بفردة مش قادر يسلّمها. الدرجة بتبقى at_factory
-  //                       معاها عشان شاشة المخزن تعرض الخانة من غير ما تقرأ
-  //                       الحالة والدرجة من مصدرين مختلفين
-  //   spare             ← renewal succeeded: عادت من المصنع صالحة، ترجع الرف
-  //                       كأي فردة مستعملة — تُركَّب في أي موضع، رأس أو تيدر
-  //   scrap             ← سكراب: renewal failed; unusable, kept in store to sell
-  //   damaged           ← تالف: blew out / worn beyond existence; terminal
-  //   retired           ← legacy value from before scrap/damaged were separated
-  status: { type: String, enum: ['mounted', 'spare', 'in_repair', 'scrap', 'damaged', 'retired', 'sold'], default: 'mounted', index: true },
-  // درجة الفردة، مستقلة عن مكانها:
-  //   new         جديدة من الشراء
-  //   used        مستعملة — وتشمل المجدَّدة. كانت «مجدد» درجة مستقلة، والورشة
-  //               بتتعامل مع الاتنين نفس المعاملة على الرف: نفس الرفّ ونفس
-  //               مواضع التركيب. فصلهم كان بيقسم مخزون واحد على خانتين، وكان
-  //               بيغذّي قاعدة «المجدد للتيدر بس» اللي الورشة بتخالفها فعليًا
-  //               (بتركّبه في الأربعة اللي ورا الرأس). دمجهم يخلي كل صفّ
-  //               وصفه صحيح: المجدَّدة مستعملة فعلًا، والعكس مش صحيح.
-  //   at_factory  في المصنع — الفردة برّه عند مصنع التجديد دلوقتي، مش على الرف
-  //               ولا على عربية. لازم تكون درجة عشان المخزن يعدّها خانة لوحدها
-  //               من غير ما تتحسب مخزون متاح.
-  condition: { type: String, enum: ['new', 'used', 'at_factory'], default: 'used' },
+  // ── دورة حياة الفردة كما تُدار في الورشة ──────────────────────────────────
+  // المكانُ على محورٍ واحد هنا، والدرجةُ (`condition`) وصفٌ للفردة لا لمكانها.
+  // التعريف الكامل وسببُه في config/tireStates.js.
+  //
+  //   mounted        مركَّبة على عربية أو تيدر
+  //   spare          على الرفّ — تُقرأ «الجديد» أو «المستعمل» بحسب درجتها
+  //   under_renewal  تحت التجديد: نزلت وتقرّر تجديدها، وهي في عهدة الورشة
+  //   at_factory     في المصنع: خرجت من الشركة فعلًا وصارت عند مصنع التجديد
+  //   scrap          سكراب: فشل تجديدها، تُحفظ للبيع
+  //   damaged        تالف: انتهت، لا تُستعمل ولا تُباع
+  //   sold           بيعت
+  //   retired/in_repair — قيمتان موروثتان تُقرآن ولا تُكتبان
+  //
+  // و«تحت التجديد» غير «في المصنع»: الأولى قرارٌ اتُّخذ والفردة عندنا، والثانية
+  // موضعٌ فعليّ خارج الشركة. ودمجُهما كان يجعل الورشة تعِد بفردةٍ ليست عندها.
+  status: { type: String, enum: require('../config/tireStates').STATUS_ENUM, default: 'mounted', index: true },
+  // ── درجة الفردة — وصفُها لا مكانُها ────────────────────────────────────────
+  //   new   جديدة من الشراء
+  //   used  مستعملة — وتشمل المجدَّدة، فالورشة تعاملهما على الرفّ سواءً.
+  //
+  // وكانت هنا درجةٌ ثالثة «at_factory» تصف **مكانًا**، فصارت خانة «في المصنع»
+  // تُعَدّ بالدرجة وخانة «تحت التجديد» بالحالة — وصفان لموضعٍ واحد من مصدرين،
+  // فاختلطا. المكان كلُّه في `status` الآن.
+  condition: { type: String, enum: ['new', 'used'], default: 'used' },
   // كام في المية — recorded when a tire goes back to the shelf so the workshop
   // can pick the right tire for the right slot later (تسكين). Null = never rated.
   conditionPercent: { type: Number, min: 0, max: 100, default: null },

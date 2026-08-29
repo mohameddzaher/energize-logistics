@@ -1812,7 +1812,7 @@ const getWorkshopStore = async (req, res) => {
           total: tires.length,
           mounted: tireStatus.mounted || 0,
           spare: tireStatus.spare || 0,
-          inRepair: tireStatus.in_repair || 0,
+          inRepair: (tireStatus.under_renewal || 0) + (tireStatus.in_repair || 0) + (tireStatus.at_factory || 0),
           retired: tireStatus.retired || 0,
           withSensor: tires.filter((t) => t.sensor === 'yes').length,
         },

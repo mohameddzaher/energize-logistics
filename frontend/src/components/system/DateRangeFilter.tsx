@@ -79,13 +79,15 @@ export default function DateRangeFilter({ from, to, onFrom, onTo, ar, className 
   onFrom: (v: string) => void; onTo: (v: string) => void;
   ar: boolean; className?: string;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
   return (
     <div className={`flex items-center gap-2 flex-wrap ${className}`}>
       <DateField ar={ar} value={from} onChange={onFrom} max={to || undefined}
         label={ar ? 'من تاريخ' : 'From date'} placeholder={ar ? 'من البداية' : 'From the start'} />
       <span className="text-slate-400 text-[13px] font-semibold">{ar ? '←' : '→'}</span>
-      <DateField ar={ar} value={to} onChange={onTo} min={from || undefined} max={today}
+      {/* ولا يُقيَّد «إلى» باليوم: مَن يكتب تاريخًا أبعد يُقصَر عليه صامتًا
+          فيقرأ عددًا غير الذي طلبه ولا يعرف لماذا. الخادمُ يقف عند اللحظة
+          حين تكون الخانة فارغة، وهذا يكفي. */}
+      <DateField ar={ar} value={to} onChange={onTo} min={from || undefined}
         label={ar ? 'إلى تاريخ' : 'To date'} placeholder={ar ? 'حتى اليوم' : 'Until today'} />
       {(from || to) && (
         <button type="button" onClick={() => { onFrom(''); onTo(''); }}

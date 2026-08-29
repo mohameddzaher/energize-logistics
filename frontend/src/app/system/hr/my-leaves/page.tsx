@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2 } from 'lucide-react';
 import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, fmtDate, leaveTypeLabel, today, earliestStartDate, daysUntil } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Tabs, StatCard, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyLeavesTranslations } from '@/lib/translations';
@@ -63,6 +63,32 @@ export default function MyLeavesPage() {
   const noticeDays = chosenType?.requiresAdvanceNotice === false ? 0 : (chosenType?.minAdvanceDays ?? 30);
   const noticeViolated = !!(chosenType && noticeDays > 0 && form.startDate && form.startDate < minStart);
 
+  // ── ما دام معلَّقًا فهو ملكُ صاحبه ─────────────────────────────────────────
+  // الموظّف يخطئ في تاريخٍ أو يبدو له غيرُ ذلك، وكان علاجُه الوحيد إلغاءَه
+  // وكتابةَ غيره — فيرى المديرُ طلبَين ولا يعرف أيَّهما المقصود. ويُقفل الباب
+  // فور اتّخاذ أيّ قرار: الموافقةُ على تاريخٍ ثم تغييرُه بعدها تجعل الموافقة
+  // على شيءٍ والمعتمَد شيئًا آخر.
+  const [editing, setEditing] = useState<LeaveRequest | null>(null);
+  const editable = (l: LeaveRequest) =>
+    ['pending_manager', 'pending_hr'].includes(l.status) && !l.managerDecision?.at && !l.hrDecision?.at;
+
+  const openEdit = (l: LeaveRequest) => {
+    setEditing(l);
+    setForm({
+      leaveType: typeof l.leaveType === 'object' ? l.leaveType?._id : l.leaveType,
+      startDate: l.startDate, endDate: l.endDate, reason: l.reason || '',
+    });
+    setShowForm(true);
+  };
+
+  const removeLeave = async (l: LeaveRequest) => {
+    if (!(await confirm(ar
+      ? 'حذف هذا الطلب نهائيًّا؟ لن يظهر لأحد.'
+      : 'Delete this request permanently? Nobody will see it.'))) return;
+    try { await api.delete(`/api/hr/me/leaves/${l._id}`); load(); }
+    catch (e: any) { notify(e.message, 'error'); }
+  };
+
   const submit = async () => {
     if (!form.leaveType || !form.startDate || !form.endDate) return;
     if (noticeViolated) {
@@ -72,8 +98,13 @@ export default function MyLeavesPage() {
       return;
     }
     setSaving(true);
-    try { await api.post('/api/hr/me/leaves', form); setShowForm(false); setForm({ leaveType: '', startDate: '', endDate: '', reason: '' }); load(); }
-    catch (e: any) { notify(e.message, 'error'); }
+    try {
+      if (editing) await api.put(`/api/hr/me/leaves/${editing._id}`, form);
+      else await api.post('/api/hr/me/leaves', form);
+      setShowForm(false); setEditing(null);
+      setForm({ leaveType: '', startDate: '', endDate: '', reason: '' });
+      load();
+    } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
 
@@ -159,7 +190,19 @@ export default function MyLeavesPage() {
                     <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
                     <Td>{fmtDate(l.startDate)}</Td><Td>{fmtDate(l.endDate)}</Td><Td>{l.days}</Td>
                     <Td><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></Td>
-                    <Td end>{(l.status === 'pending_manager' || l.status === 'pending_hr') && <button type="button" onClick={() => cancel(l)} className="text-slate-500 hover:text-red-600" title={tx.cancel}><XCircle className="w-4 h-4" /></button>}</Td>
+                    <Td end>
+                      <div className="flex items-center justify-end gap-1">
+                        {editable(l) && (
+                          <>
+                            <button type="button" onClick={() => openEdit(l)} className="text-slate-400 hover:text-[#f37121]" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>
+                            <button type="button" onClick={() => removeLeave(l)} className="text-slate-400 hover:text-red-600" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
+                          </>
+                        )}
+                        {(l.status === 'pending_manager' || l.status === 'pending_hr') && (
+                          <button type="button" onClick={() => cancel(l)} className="text-slate-500 hover:text-red-600" title={tx.cancel}><XCircle className="w-4 h-4" /></button>
+                        )}
+                      </div>
+                    </Td>
                   </Tr>
                 ))}
             </tbody>
@@ -196,9 +239,10 @@ export default function MyLeavesPage() {
       )}
 
       {/* Request leave modal */}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title={tx.requestLeave}
+      <Modal open={showForm} onClose={() => { setShowForm(false); setEditing(null); }}
+        title={editing ? (ar ? 'تعديل الطلب' : 'Edit request') : tx.requestLeave}
         footer={<>
-          <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
+          <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
           <PrimaryButton onClick={submit} disabled={saving || !form.leaveType || !form.startDate || !form.endDate || noticeViolated}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.submit}</PrimaryButton>
         </>}>
         <div className="space-y-3">

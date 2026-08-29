@@ -958,6 +958,78 @@ exports.cancelMyLeave = async (req, res) => {
   }
 };
 
+/**
+ * ── ما دام معلَّقًا فهو ملكُ صاحبه ──────────────────────────────────────────
+ *
+ * الموظّف يكتب الطلب فيخطئ في تاريخٍ أو يبدو له غيرُ ذلك. وكان علاجُه الوحيد
+ * إلغاءه وكتابةَ غيره — فيرى المديرُ طلبَين ملغيًّا وجديدًا ولا يعرف أيُّهما
+ * المقصود.
+ *
+ * فيُعدَّل ويُحذف ما دام **لم يمسَّه أحد**. وأوّلُ إجراءٍ من المدير أو الموارد
+ * البشرية يُقفل البابَ: الموافقةُ على تاريخٍ ثم تغييرُه بعدها تجعل الموافقة
+ * على شيءٍ والمعتمَد شيئًا آخر — وهذا أخطر من ألّا يُعدَّل الطلب أصلًا.
+ *
+ * والقفل يُقاس بالقرار لا بالحالة وحدها: طلبٌ حالتُه «بانتظار الموارد البشرية»
+ * قد وافق عليه المدير فعلًا، فتعديلُه بعد موافقته تحايلٌ عليها.
+ */
+// والمقياسُ القرارُ لا المرحلة: مَن لا مدير له يبدأ طلبُه عند الموارد البشرية
+// مباشرةً، فاشتراطُ «بانتظار المدير» كان يقفل الباب على من لم يمسّ طلبَه أحد.
+const leaveIsUntouched = (l) => ['pending_manager', 'pending_hr'].includes(l.status)
+  && !l.managerDecision?.at && !l.hrDecision?.at;
+
+exports.updateMyLeave = async (req, res) => {
+  try {
+    const leave = await LeaveRequest.findById(req.params.id);
+    if (!leave) return res.status(404).json({ message: 'الطلب غير موجود' });
+    if (String(leave.requester) !== String(req.user._id)) return res.status(403).json({ message: 'ليس طلبك' });
+    if (!leaveIsUntouched(leave)) {
+      return res.status(400).json({ message: 'لا يُعدَّل الطلب بعد أن اتُّخذ فيه إجراء — ألغِه واكتب غيره' });
+    }
+
+    const { leaveType, startDate, endDate, reason } = req.body;
+    if (leaveType) {
+      const lt = await LeaveType.findById(leaveType).lean();
+      if (!lt) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
+      // مهلةُ الإشعار تُعاد فحصُها: تعديلُ التاريخ إلى الغد يلتفّ على القاعدة
+      // إن لم يُفحَص، فيدخل الطلبُ بموعدٍ ما كان ليُقبل لو كُتب ابتداءً.
+      const notice = evaluateAdvanceNotice(lt, startDate || leave.startDate);
+      if (!notice.satisfied && !(req.body.policyOverride === true && hrStaffReq(req))) {
+        return res.status(400).json({ message: notice.message, code: 'ADVANCE_NOTICE_REQUIRED' });
+      }
+      leave.leaveType = leaveType;
+    }
+    if (startDate) leave.startDate = startDate;
+    if (endDate) leave.endDate = endDate;
+    if (reason !== undefined) leave.reason = reason;
+    if (startDate || endDate) leave.days = leaveDays(leave.startDate, leave.endDate);
+
+    await leave.save();
+    if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }
+    const populated = await LeaveRequest.findById(leave._id).populate('leaveType', 'nameAr nameEn code').lean();
+    res.json({ leave: populated });
+  } catch (error) {
+    console.error('updateMyLeave error:', error);
+    res.status(500).json({ message: 'تعذّر تعديل الطلب' });
+  }
+};
+
+exports.deleteMyLeave = async (req, res) => {
+  try {
+    const leave = await LeaveRequest.findById(req.params.id);
+    if (!leave) return res.status(404).json({ message: 'الطلب غير موجود' });
+    if (String(leave.requester) !== String(req.user._id)) return res.status(403).json({ message: 'ليس طلبك' });
+    if (!leaveIsUntouched(leave)) {
+      return res.status(400).json({ message: 'لا يُحذف الطلب بعد أن اتُّخذ فيه إجراء — ألغِه بدل ذلك' });
+    }
+    const managerId = leave.manager;
+    await leave.deleteOne();
+    if (managerId) { try { emitToUser(String(managerId), 'hr:leave', {}); } catch (e) {} }
+    res.json({ message: 'حُذف الطلب' });
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر حذف الطلب' });
+  }
+};
+
 // ── HR requests (general) ────────────────────────────────────────────────────
 const populateRequest = (q) => q
   .populate('requester', 'firstName lastName email')
@@ -1512,5 +1584,51 @@ exports.getMyTeam = async (req, res) => {
     res.json({ hasTeam: reports.length > 0, teamCount: reports.length, team: reports });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load team' });
+  }
+};
+
+
+/**
+ * الطلب العامّ يُعدَّل ويُحذف ما دام مفتوحًا ولم يردّ عليه أحد.
+ * وأوّلُ ردٍّ في الخيط أو تغييرٍ لحالته يُثبّته: مَن ردّ ردّ على نصٍّ بعينه،
+ * وتغييرُه بعده يجعل الردّ جوابًا عن سؤالٍ لم يُطرح.
+ */
+const requestIsUntouched = (r) => r.status === 'open'
+  && (r.thread || []).filter((m) => String(m.sender) !== String(r.requester)).length === 0;
+
+exports.updateMyRequest = async (req, res) => {
+  try {
+    const r = await HRRequest.findById(req.params.id);
+    if (!r) return res.status(404).json({ message: 'الطلب غير موجود' });
+    if (String(r.requester) !== String(req.user._id)) return res.status(403).json({ message: 'ليس طلبك' });
+    if (!requestIsUntouched(r)) {
+      return res.status(400).json({ message: 'لا يُعدَّل الطلب بعد أن رُدَّ عليه أو تغيّرت حالته' });
+    }
+    for (const f of ['subject', 'body', 'category', 'priority', 'attachmentUrl', 'attachments']) {
+      if (req.body[f] !== undefined) r[f] = req.body[f];
+    }
+    if (!String(r.subject || '').trim()) return res.status(400).json({ message: 'اكتب موضوع الطلب' });
+    r.readByHR = false;
+    await r.save();
+    const populated = await populateRequest(HRRequest.findById(r._id)).lean();
+    res.json({ request: populated });
+  } catch (error) {
+    console.error('updateMyRequest error:', error);
+    res.status(500).json({ message: 'تعذّر تعديل الطلب' });
+  }
+};
+
+exports.deleteMyRequest = async (req, res) => {
+  try {
+    const r = await HRRequest.findById(req.params.id);
+    if (!r) return res.status(404).json({ message: 'الطلب غير موجود' });
+    if (String(r.requester) !== String(req.user._id)) return res.status(403).json({ message: 'ليس طلبك' });
+    if (!requestIsUntouched(r)) {
+      return res.status(400).json({ message: 'لا يُحذف الطلب بعد أن رُدَّ عليه أو تغيّرت حالته' });
+    }
+    await r.deleteOne();
+    res.json({ message: 'حُذف الطلب' });
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر حذف الطلب' });
   }
 };

@@ -39,8 +39,13 @@ router.get('/me/team', hr.getMyTeam);
 router.get('/me/leaves', hr.listMyLeaves);
 router.post('/me/leaves', hr.createMyLeave);
 router.patch('/me/leaves/:id/cancel', hr.cancelMyLeave);
+// التعديل والحذف ما دام الطلب لم يمسَّه أحد — الحارس في المتحكّم لا هنا.
+router.put('/me/leaves/:id', hr.updateMyLeave);
+router.delete('/me/leaves/:id', hr.deleteMyLeave);
 router.get('/me/requests', hr.listMyRequests);
 router.post('/me/requests', hr.createMyRequest);
+router.put('/me/requests/:id', hr.updateMyRequest);
+router.delete('/me/requests/:id', hr.deleteMyRequest);
 router.get('/team/leaves', hr.listTeamLeaves);
 
 // Leave types: anyone can read the active list (for the request dropdown);

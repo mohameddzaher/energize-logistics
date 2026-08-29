@@ -5,14 +5,14 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { ClipboardList, Plus, Send, Link2, Check } from 'lucide-react';
+import { ClipboardList, Plus, Send, Link2, Check, Pencil, Trash2 } from 'lucide-react';
 import { HRRequest, REQUEST_STATUS, REQUEST_CATEGORIES, categoryLabel, userName, fmtDateTime } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, TextInput, Select, TextArea, Loader2 } from '@/components/hr/HRKit';
 import { getHrMyRequestsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 
 export default function MyRequestsPage() {
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -21,6 +21,25 @@ export default function MyRequestsPage() {
   const [requests, setRequests] = useState<HRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  // ── ما دام مفتوحًا ولم يردّ عليه أحد فهو ملكُ صاحبه ─────────────────────────
+  // وأوّلُ ردٍّ في الخيط أو تغييرٍ لحالته يُثبّته: مَن ردّ ردّ على نصٍّ بعينه،
+  // وتغييرُه بعده يجعل الردّ جوابًا عن سؤالٍ لم يُطرح.
+  const [editing, setEditing] = useState<HRRequest | null>(null);
+  const editable = (r: HRRequest) =>
+    r.status === 'open' && (r.thread || []).filter((m2: any) => String(m2.sender?._id || m2.sender) !== String(r.requester?._id || r.requester)).length === 0;
+
+  const openEdit = (r: HRRequest) => {
+    setEditing(r);
+    setForm({ category: r.category, subject: r.subject, body: (r.thread?.[0]?.body) || '' });
+    setShowForm(true);
+  };
+
+  const removeRequest = async (r: HRRequest) => {
+    if (!(await confirm(ar ? 'حذف هذا الطلب نهائيًّا؟' : 'Delete this request permanently?'))) return;
+    try { await api.delete(`/api/hr/me/requests/${r._id}`); load(); }
+    catch (e: any) { notify(e.message, 'error'); }
+  };
+
   const [form, setForm] = useState({ category: 'salary_certificate', subject: '', body: '' });
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState<HRRequest | null>(null);
@@ -37,7 +56,13 @@ export default function MyRequestsPage() {
   const submit = async () => {
     if (!form.subject.trim()) return;
     setSaving(true);
-    try { await api.post('/api/hr/me/requests', form); setShowForm(false); setForm({ category: 'salary_certificate', subject: '', body: '' }); load(); }
+    try {
+      if (editing) await api.put(`/api/hr/me/requests/${editing._id}`, form);
+      else await api.post('/api/hr/me/requests', form);
+      setShowForm(false); setEditing(null);
+      setForm({ category: 'salary_certificate', subject: '', body: '' });
+      load();
+    }
     catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };
@@ -79,15 +104,24 @@ export default function MyRequestsPage() {
             <th className="text-start font-semibold px-4 py-3">{tx.colSubject}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colUpdated}</th>
+            <th className="text-end font-semibold px-4 py-3 w-24" />
           </tr></thead>
           <tbody>
-            {requests.length === 0 ? <tr><td colSpan={4} className="text-center text-slate-800 py-10">{tx.noRequests}</td></tr> :
+            {requests.length === 0 ? <tr><td colSpan={5} className="text-center text-slate-800 py-10">{tx.noRequests}</td></tr> :
               requests.map((r) => (
                 <tr key={r._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
                   <td className="px-4 py-3 text-slate-700">{categoryLabel(r.category, lang)}</td>
                   <td className="px-4 py-3 text-slate-900 font-medium">{r.subject} {!r.readByRequester && <span className="ms-1 inline-block w-2 h-2 rounded-full bg-[#f37121]" />}</td>
                   <td className="px-4 py-3"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></td>
                   <td className="px-4 py-3 text-slate-800 text-xs">{fmtDateTime(r.updatedAt)}</td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    {editable(r) && (
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" onClick={() => openEdit(r)} className="text-slate-400 hover:text-[#f37121]" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => removeRequest(r)} className="text-slate-400 hover:text-red-600" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
           </tbody>
@@ -95,7 +129,8 @@ export default function MyRequestsPage() {
       </div>
 
       {/* New request */}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title={tx.newHrRequest}
+      <Modal open={showForm} onClose={() => { setShowForm(false); setEditing(null); }}
+        title={editing ? (ar ? 'تعديل الطلب' : 'Edit request') : tx.newHrRequest}
         footer={<>
           <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
           <PrimaryButton onClick={submit} disabled={saving || !form.subject.trim()}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.submit}</PrimaryButton>

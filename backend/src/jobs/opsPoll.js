@@ -43,6 +43,15 @@ async function pollShipments() {
           await upsertShipments(items);
           emitToAll('workflow:bulkImported', { source: 'ops_upl', live: true });
         } catch (e) { /* sync hiccup — the full pass will reconcile */ }
+
+        // ── وتُثبَّت في قسم طلبات الشحنات ───────────────────────────────────
+        // القسمُ ليس مرآةً: هو نظامُنا الذي يُحلِّل ويُفلتِر ويطبع البوليصة.
+        // فما يُنشأ في المنصّة يصير عندنا في الدورة نفسِها، ويبقى لو انقطعت.
+        try {
+          const { upsertPlatformShipments } = require('../services/shipmentOrderSyncService');
+          const r = await upsertPlatformShipments(items);
+          if (r.created || r.updated) emitToAll('shipmentOrders:updated', { source: 'platform', ...r });
+        } catch (e) { /* المزامنةُ الكاملة تُصلح ما فات */ }
       }
     }
   } catch (e) { /* transient network/token hiccup — retry next tick */ }

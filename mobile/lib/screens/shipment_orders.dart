@@ -76,7 +76,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     String s(String k) => (r[k] ?? '').toString();
     await printDocument(
       title: tr('بوليصة شحن', 'Shipment waybill'),
-      number: s('waybillNumber'),
+      number: s('reference').isNotEmpty ? s('reference') : s('waybillNumber'),
       subtitle: '${s('fromCity')} ← ${s('toCity')}',
       rows: [
         (tr('العميل', 'Customer'), s('customerName')),
@@ -103,7 +103,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     final q = _fold(_q.trim());
     final filtered = _rows.where((r) {
       if (q.isEmpty) return true;
-      return [r['waybillNumber'], r['customerName'], r['supplierName'], r['vehiclePlate'], r['fromCity'], r['toCity'], r['driverName']]
+      return [r['reference'], r['waybillNumber'], r['graduationNumber'], r['customerName'], r['supplierName'], r['vehiclePlate'], r['fromCity'], r['toCity'], r['driverName']]
           .any((x) => _fold((x ?? '').toString()).contains(q));
     }).toList();
 
@@ -179,7 +179,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                                         context: context,
                                         builder: (c) => AlertDialog(
                                           title: Text(tr('حذف الطلب', 'Delete order')),
-                                          content: Text(tr('حذف بوليصة ${r['waybillNumber'] ?? ''} نهائيًا؟', 'Delete this order?')),
+                                          content: Text(tr('حذف بوليصة ${r['reference'] ?? r['waybillNumber'] ?? ''} نهائيًا؟', 'Delete this order?')),
                                           actions: [
                                             TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
                                             FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
@@ -194,7 +194,13 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                                     topAccent: st.$3,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
-                                        Text('${tr('بوليصة', 'WB')} ${r['waybillNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                        // المرجعُ لا الرقمُ الخام: المنقولُ من المنصّة لا رقمَ بوليصةٍ
+                                        // له عندنا، فكان العنوانُ يُقرأ «بوليصة » فارغًا.
+                                        Text('${tr('بوليصة', 'WB')} ${r['reference'] ?? r['waybillNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                        if (r['source'] == 'platform') ...[
+                                          const SizedBox(width: 5),
+                                          Text(tr('منصّة', 'platform'), style: const TextStyle(fontSize: 10, color: T.inkFaint)),
+                                        ],
                                         const Spacer(),
                                         InkWell(
                                           onTap: () => _printOrder(r),

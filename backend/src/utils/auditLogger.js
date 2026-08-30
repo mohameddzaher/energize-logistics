@@ -12,7 +12,18 @@ const isObjectId = (v) => !!v && mongoose.Types.ObjectId.isValid(String(v)) && S
  * non-ObjectId hit a cast error and the entry was dropped entirely, which is how
  * every role-permission change went unrecorded.
  */
+// ── سجلُّ المراجعة يُنسَب إلى إنسان ────────────────────────────────────────
+// سكربتُ فحصٍ يستدعي متحكّمًا حقيقيًّا يحتاج `req.user`، فيُؤخذ أوّلُ مدير نظام
+// من القاعدة — ويُقيَّد عملُ السكربت باسمه. وقد حدث: مئتان واثنان من إنشاء
+// حساباتِ اختبارٍ وحذفِها نُسبت إلى موظّفةٍ لم تفتح الشاشةَ أصلًا، فقرأها
+// صاحبُ الشركة في السجلّ وسأل عنها بحقّ.
+//
+// والسجلُّ الذي يتّهم بريئًا أسوأُ من سجلٍّ ناقص. فمتى كان النظامُ خارجَ
+// الإنتاج (`AUDIT_SUPPRESS=1`، وتضعها سكربتاتُ الفحص) لم يُكتب شيء.
+const SUPPRESSED = process.env.AUDIT_SUPPRESS === '1';
+
 const logAudit = async ({ user, action, entity, entityId, entityKey, changes, ipAddress }) => {
+  if (SUPPRESSED) return;
   try {
     const id = isObjectId(entityId) ? entityId : undefined;
     const key = entityKey || (entityId != null && id === undefined ? String(entityId) : '');

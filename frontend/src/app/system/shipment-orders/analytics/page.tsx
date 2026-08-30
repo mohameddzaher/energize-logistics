@@ -54,6 +54,9 @@ function Inner() {
   const [d, setD] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'byCustomer' | 'bySupplier' | 'byRoute' | 'byTruckType' | 'byBranch'>('byCustomer');
+  // شحناتُنا أم شحناتُ المنصّة: خلطُهما يخفي أداءَنا داخل ثلاثةٍ وثلاثين ألفَ
+  // صفٍّ منقول، فيُقرأ متوسّطُهم على أنّه متوسّطُنا.
+  const [source, setSource] = useState<'' | 'system' | 'platform'>(sp?.get('source') === 'system' ? 'system' : sp?.get('source') === 'platform' ? 'platform' : '');
 
   const query = (() => {
     const p = new URLSearchParams();
@@ -61,6 +64,7 @@ function Inner() {
     if (to) p.set('to', to);
     if (status) p.set('status', status);
     if (debouncedQ.trim()) p.set('q', debouncedQ.trim());
+    if (source) p.set('source', source);
     return p;
   })();
 
@@ -77,7 +81,7 @@ function Inner() {
   useEffect(() => { syncUrl('/system/shipment-orders/analytics', query); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.toString()]);
 
-  const reset = () => { setFrom(''); setTo(''); setStatus(''); setQ(''); };
+  const reset = () => { setFrom(''); setTo(''); setStatus(''); setQ(''); setSource(''); };
 
   if (loading && !d) return <Spinner />;
   if (!d) return null;
@@ -136,6 +140,18 @@ function Inner() {
             <option value="">{t('كل الحالات', 'All statuses')}</option>
             {ORDER_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 mb-1">{t('المصدر', 'Source')}</label>
+          <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
+            {([['', 'الإجمالي', 'Total'], ['system', 'الخاصّ بنا', 'Ours'], ['platform', 'المنصّة', 'Platform']] as const).map(([k, arL, enL]) => (
+              <button key={k || 'all'} type="button" onClick={() => setSource(k as any)}
+                className={`px-3 py-2 text-sm font-semibold transition-colors ${source === k
+                  ? 'bg-[#f37121] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                {t(arL, enL)}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex-1 min-w-[14rem]">
           <label className="block text-xs font-semibold text-slate-600 mb-1">{t('بحث', 'Search')}</label>

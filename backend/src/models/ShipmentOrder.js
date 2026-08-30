@@ -15,7 +15,23 @@ const shipmentOrderSchema = new mongoose.Schema(
     // كشف التخريج; the correct commercial name is بوليصة, so that is the name
     // here. Auto-issued from a counter that starts at 500 (matching where the
     // old manual numbering left off) and never reused, even after deletes.
-    waybillNumber: { type: Number, unique: true, index: true },
+    waybillNumber: { type: Number, unique: true, sparse: true, index: true },
+
+    // ── من أين جاءت هذه الشحنة؟ ─────────────────────────────────────────────
+    // شحناتُ المنصّة تحمل «رقم كشف التخريج» وهو رقمُها الرسميّ الذي يُحاسَب
+    // عليه، وشحناتُنا تحمل رقمَ بوليصتنا. ولو اختلطا في خانةٍ واحدة صار الرقمُ
+    // الواحد لشحنتين — إحداهما تجريبيّةٌ عندنا والأخرى حقيقيّةٌ عندهم.
+    //
+    // فالمرجعُ المعروض يحمل حرفًا يسبقه حين يكون من عندنا («E-500»)، ورقمَ
+    // كشف التخريج عاريًا حين يكون منهم («86039»). يُقرأ الفرقُ بالعين قبل
+    // الفلتر، ويُفلتَر عليه بـ`source`.
+    source: { type: String, enum: ['system', 'platform'], default: 'system', index: true },
+    /** رقمُ كشف التخريج كما تعطيه المنصّة — للشحنات المنقولة وحدَها. */
+    graduationNumber: { type: Number, default: null, index: true },
+    /** معرّفُ المنصّة: به تُطابَق إعادةُ المزامنة فلا تُكرِّر. */
+    externalId: { type: String, trim: true, default: '', index: true },
+    /** الرقمُ المعروض: «E-500» لنا، و«86039» لهم. */
+    reference: { type: String, trim: true, default: '', index: true },
 
     // ── الاستلام والتسليم ──────────────────────────────────────────────────
     fromCity: routeStop,
@@ -37,9 +53,20 @@ const shipmentOrderSchema = new mongoose.Schema(
     driverName: { type: String, trim: true, default: '' },
     driverPhone: { type: String, trim: true, default: '' },
     vehicleName: { type: String, trim: true, default: '' }, // snapshot: السيارة / رقم اللوحة
+    vehiclePlate: { type: String, trim: true, default: '', index: true },
+    // رقمُ المرجع عند المنصّة — يُحفظ كما هو ولا يُخلط برقم البوليصة عندنا.
+    externalRef: { type: String, trim: true, default: '' },
     // Refs behind the snapshots — ours when supplier is null, a 3PL's otherwise.
     vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderVehicle', default: null },
     supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderSupplier', default: null, index: true },
+    // ── لقطةُ اسم المورّد ─────────────────────────────────────────────────
+    // كانت الخانةُ غائبةً عن المخطّط، فكلُّ اسمِ مورّدٍ كُتب فيها سقط صامتًا
+    // (mongoose يتجاهل ما لا يعرف): ثلاثةٌ وثلاثون ألفَ شحنةٍ بلا مورّد،
+    // والتحليلاتُ تقول «موردون: صفر» وهي محقّةٌ فيما تقرأ.
+    //
+    // ولقطةٌ لا مرجعٌ وحدَه: البوليصةُ تُقرأ بعد سنة، ومورّدُ المنصّة قد لا
+    // يكون في سجلّنا أصلًا — فالاسمُ يبقى ولو لم يوجد الصفّ.
+    supplierName: { type: String, trim: true, default: '', index: true },
 
     // المندوب — whoever created the order, stamped from their account, never
     // typed by hand.
@@ -98,6 +125,8 @@ const shipmentOrderSchema = new mongoose.Schema(
 );
 
 shipmentOrderSchema.index({ createdAt: -1 });
+shipmentOrderSchema.index({ source: 1, createdAt: -1 });
+
 shipmentOrderSchema.index({ fromCity: 1, toCity: 1 });
 
 // The waybill counter lives in its own tiny collection so the number survives
@@ -106,7 +135,25 @@ const counterSchema = new mongoose.Schema({ _id: String, seq: Number });
 const Counter = mongoose.models.ShipmentOrderCounter
   || mongoose.model('ShipmentOrderCounter', counterSchema);
 
+/**
+ * الحرفُ الذي يسبق أرقامَنا.
+ *
+ * المنصّةُ تُرقّم كشوفَ التخريج بأرقامٍ عارية، ونحن نُنشئ شحناتٍ في نظامنا —
+ * تجريبيّةً اليوم وحقيقيّةً غدًا. وبغير علامةٍ فارقة يصير الرقمُ ٥٠٠ لشحنتين.
+ * فيُسبَق رقمُنا بحرف، ويبقى ترقيمُهم كما هو فيكملون عليه حين ينتقلون.
+ */
+const SYSTEM_PREFIX = process.env.SO_PREFIX || 'E';
+
+shipmentOrderSchema.pre('save', function (next) {
+  // المرجعُ يُشتقّ دائمًا ولا يُدخَل: خانةٌ يكتبها إنسانٌ تفترق عن مصدرها.
+  if (this.source === 'platform') this.reference = this.graduationNumber != null ? String(this.graduationNumber) : '';
+  else if (this.waybillNumber != null) this.reference = `${SYSTEM_PREFIX}-${this.waybillNumber}`;
+  next();
+});
+
 shipmentOrderSchema.pre('save', async function (next) {
+  // شحنةُ المنصّة لها رقمُها منها — لا يُصرف لها رقمٌ من عدّادنا.
+  if (this.source === 'platform') return next();
   if (this.isNew && this.waybillNumber == null) {
     try {
       const c = await Counter.findOneAndUpdate(

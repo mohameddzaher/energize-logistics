@@ -67,7 +67,7 @@ export default function ShipmentOrdersPage() {
 
   const [orders, setOrders] = useState<ShipmentOrder[]>([]);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
-  const [stats, setStats] = useState<{ byStatus: Record<string, number>; sellTotal: number; buyTotal: number } | null>(null);
+  const [stats, setStats] = useState<{ byStatus: Record<string, number>; sellTotal: number; buyTotal: number; bySource?: { system: number; platform: number; total: number } } | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -75,6 +75,11 @@ export default function ShipmentOrdersPage() {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // ── الخاصّ بنا أم المنصّة؟ ────────────────────────────────────────────────
+  // شحناتُ المنصّة تحمل رقمَ كشف تخريجٍ حقيقيًّا يُحاسَب عليه، وشحناتُنا —
+  // تجريبيّةً اليوم — يسبق رقمَها حرف. ومن يقرأ تقريرًا يجب أن يعرف أهو عن
+  // عملٍ جرى أم عن تجربة.
+  const [sourceFilter, setSourceFilter] = useState('');
   const [customerFilter, setCustomerFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -113,6 +118,7 @@ export default function ShipmentOrdersPage() {
       const qs = new URLSearchParams({ page: String(page), limit: '25' });
       if (debounced.trim()) qs.set('q', debounced.trim());
       if (statusFilter) qs.set('status', statusFilter);
+      if (sourceFilter) qs.set('source', sourceFilter);
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
@@ -123,7 +129,7 @@ export default function ShipmentOrdersPage() {
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, customerFilter, fromDate, toDate, page]);
+  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, page]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));
@@ -204,6 +210,7 @@ export default function ShipmentOrdersPage() {
     if (withFilters) {
       if (debounced.trim()) qs.set('q', debounced.trim());
       if (statusFilter) qs.set('status', statusFilter);
+      if (sourceFilter) qs.set('source', sourceFilter);
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
@@ -211,7 +218,7 @@ export default function ShipmentOrdersPage() {
     const d = await api.get<{ orders: ShipmentOrder[]; total: number }>(`/api/shipment-orders/orders?${qs}`);
     return [{ name: 'Orders', rows: d.orders || [], columns: exportColumns }];
   };
-  const hasActiveFilters = !!(debounced.trim() || statusFilter || customerFilter || fromDate || toDate);
+  const hasActiveFilters = !!(debounced.trim() || statusFilter || sourceFilter || customerFilter || fromDate || toDate);
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'page', label: scope.page, sheets: [{ name: 'Orders', rows: orders, columns: exportColumns }] },
@@ -262,7 +269,24 @@ export default function ShipmentOrdersPage() {
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[240px]">
           <SearchInput value={search} onChange={setSearch}
-            placeholder={ar ? 'بحث برقم البوليصة أو العميل أو السائق أو المدينة…' : 'Search waybill, customer, driver, city…'} />
+            placeholder={ar ? 'بحث برقم البوليصة أو كشف التخريج أو العميل أو المورّد أو السائق أو المدينة…' : 'waybill, graduation no., customer, supplier, driver, city…'} />
+        </div>
+        {/* ── مصدرُ الشحنة ─────────────────────────────────────────────────
+            أزرارٌ لا قائمةٌ منسدلة: هذا سؤالٌ يُسأل في كلّ جلسة، وكلُّ زرٍّ
+            يحمل عددَه تحت بقيّة الفلاتر — فيُعرف الحجمُ قبل الضغط. */}
+        <div className="inline-flex rounded-lg bg-slate-100 p-1 gap-1 shrink-0">
+          {([
+            ['', ar ? 'الكل' : 'All', stats?.bySource?.total],
+            ['system', ar ? 'الخاص بنا' : 'Ours', stats?.bySource?.system],
+            ['platform', ar ? 'المنصّة' : 'Platform', stats?.bySource?.platform],
+          ] as [string, string, number | undefined][]).map(([k, label, count]) => (
+            <button key={k || 'all'} type="button" onClick={() => { setSourceFilter(k); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
+                sourceFilter === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+              {label}
+              {count != null && <span className="ms-1 text-slate-400 tabular-nums">{count}</span>}
+            </button>
+          ))}
         </div>
         <div className="w-44 grow sm:grow-0">
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
@@ -326,7 +350,14 @@ export default function ShipmentOrdersPage() {
                       checked={picked.has(o._id)} onChange={() => togglePick(o._id)}
                       aria-label={String(o.waybillNumber)} />
                   </td>
-                  <td className="px-4 py-3 text-slate-900 font-bold font-mono">{o.waybillNumber}</td>
+                  {/* المرجعُ لا الرقمُ الخام: «E-500» لنا و«86039» لهم — يُقرأ
+                      الفرقُ بالعين قبل أن يُفلتَر. */}
+                  <td className="px-4 py-3 text-slate-900 font-bold font-mono whitespace-nowrap">
+                    {(o as any).reference || o.waybillNumber}
+                    {(o as any).source === 'platform' && (
+                      <span className="ms-1.5 text-[10px] font-normal text-slate-400">{ar ? 'منصّة' : 'platform'}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-900 font-medium max-w-[220px] truncate" title={o.customerName}>{o.customerName || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.fromCity || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.toCity || '—'}</td>
@@ -342,8 +373,8 @@ export default function ShipmentOrdersPage() {
                           phone={o.driverPhone}
                           size={15}
                           messageText={ar
-                            ? `السلام عليكم، بخصوص البوليصة رقم ${o.waybillNumber}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`
-                            : `Hello, regarding waybill ${o.waybillNumber}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`}
+                            ? `السلام عليكم، بخصوص البوليصة رقم ${(o as any).reference || o.waybillNumber}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`
+                            : `Hello, regarding waybill ${(o as any).reference || o.waybillNumber}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`}
                         />
                       : <span className="text-slate-300 text-xs">{ar ? 'لا رقم' : 'no phone'}</span>}
                   </td>

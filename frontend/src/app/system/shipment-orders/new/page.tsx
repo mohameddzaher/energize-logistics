@@ -15,6 +15,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import {
   PackagePlus, ArrowRight, Check, Loader2, X, UserPlus, Truck,
   MapPin, Package, Clock3, Wallet, User as UserIcon, Building2,
+  TrendingUp, TrendingDown, AlertCircle,
 } from 'lucide-react';
 import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton } from '@/components/hr/HRKit';
 import { ContactButtons } from '@/components/crm/CrmKit';
@@ -287,18 +288,72 @@ function CreateShipmentInner() {
   };
 
   const groups: FormField['group'][] = ['pickup_delivery', 'shipment', 'pricing_time', 'payment'];
+  // Only groups that actually have fields get a number. Numbering off the full
+  // list skipped digits whenever a group was emptied in form settings — the
+  // form read «1, 2, 4, 6» and looked broken.
+  const activeGroups = groups.filter((g) => fields.some((f) => f.group === g && !FIXED_KEYS.has(f.key)));
+  const missingIn = (g: FormField['group']) =>
+    fields.filter((f) => f.group === g && !FIXED_KEYS.has(f.key) && missingKeys.has(f.key)).length;
 
-  const sectionCard = (icon: any, no: number, title: string, children: React.ReactNode) => {
+  const SEC = {
+    customer: 'sec-customer', truck: 'sec-truck', status: 'sec-status',
+    group: (g: string) => `sec-${g}`,
+  };
+  const steps = [
+    { id: SEC.customer, no: 1, title: ar ? 'العميل' : 'Customer', missing: missingKeys.has('customer') ? 1 : 0 },
+    { id: SEC.truck, no: 2, title: ar ? 'السيارة والسائق' : 'Truck & driver', missing: 0 },
+    ...activeGroups.map((g, i) => ({
+      id: SEC.group(g), no: i + 3,
+      title: ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en,
+      missing: missingIn(g),
+    })),
+    { id: SEC.status, no: activeGroups.length + 3, title: ar ? 'الحالة والملاحظات' : 'Status & notes', missing: 0 },
+  ];
+  const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Naming what is missing beats counting it: a chip per unfilled required
+  // answer, and pressing it scrolls to that card.
+  const missingChips = Array.from(missingKeys).map((k) => {
+    if (k === 'customer') return { key: k, label: ar ? 'العميل' : 'Customer', to: SEC.customer };
+    const f = fields.find((x) => x.key === k);
+    return { key: k, label: f ? fieldLabel(f, lang as Lang) : k, to: f ? SEC.group(f.group) : SEC.customer };
+  });
+
+  // The one number a broker books against. It is derived from two inputs three
+  // cards apart, so it is shown where the eye already is: on the save bar.
+  const sell = Number(form.sellPrice); const buy = Number(form.buyPrice);
+  const hasDeal = Number.isFinite(sell) && sell > 0 && Number.isFinite(buy) && buy > 0;
+  const dealMargin = hasDeal ? sell - buy : null;
+  const money = (n: number) => n.toLocaleString(ar ? 'ar-EG' : 'en-US', { maximumFractionDigits: 2 });
+
+  // A card carries its own state: the number turns into a tick when nothing in
+  // it is still required, and into a red count when something is. The person
+  // filling a six-card form should never have to scroll to find out.
+  const sectionCard = (icon: any, no: number, title: string, children: React.ReactNode,
+    opts?: { id?: string; missing?: number }) => {
     const Icon = icon;
+    const missing = opts?.missing || 0;
+    const done = missing === 0;
     return (
       // NO overflow-hidden here: SearchableSelect renders its panel absolutely
       // inside the card, and clipping it is exactly the "الدروب ليست مستخبية"
       // bug. The header rounds its own top corners instead.
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div id={opts?.id} className={`rounded-2xl border bg-white shadow-sm scroll-mt-24 transition-colors ${
+        showErrors && missing ? 'border-red-300' : 'border-slate-200'}`}>
         <div className="px-4 sm:px-5 py-3.5 bg-slate-50/70 border-b border-slate-100 flex items-center gap-3 rounded-t-2xl">
-          <span className="w-8 h-8 rounded-lg bg-[#f37121]/15 text-[#f37121] flex items-center justify-center font-bold text-sm">{no}</span>
-          <Icon className="w-4 h-4 text-slate-400" />
+          <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm shrink-0 ${
+            done ? 'bg-emerald-100 text-emerald-700'
+              : showErrors ? 'bg-red-100 text-red-700' : 'bg-[#f37121]/15 text-[#f37121]'}`}>
+            {done ? <Check className="w-4 h-4" /> : no}
+          </span>
+          <Icon className="w-4 h-4 text-slate-400 shrink-0" />
           <p className="text-base font-bold text-slate-900">{title}</p>
+          {missing > 0 && (
+            <span className={`ms-auto text-xs font-semibold px-2 py-1 rounded-full ${
+              showErrors ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
+              {ar ? `${missing} مطلوب` : `${missing} required`}
+            </span>
+          )}
         </div>
         <div className="p-4 sm:p-5">{children}</div>
       </div>
@@ -318,6 +373,31 @@ function CreateShipmentInner() {
           <ArrowRight className="w-4 h-4" /> {ar ? 'رجوع للقائمة' : 'Back to list'}
         </button>
       </PageHeader>
+
+      {/* The rail: the whole form at a glance. Green = answered, red = blocking,
+          and a press jumps there instead of a scroll hunt. */}
+      <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-slate-50/90 backdrop-blur border-b border-slate-200/70">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          {steps.map((st) => {
+            const done = st.missing === 0;
+            return (
+              <button key={st.id} type="button" onClick={() => jumpTo(st.id)}
+                className={`shrink-0 flex items-center gap-2 ps-2 pe-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${
+                  done ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    : showErrors ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-[#f37121]/50 hover:text-[#f37121]'}`}>
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                  done ? 'bg-emerald-500 text-white'
+                    : showErrors ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                  {done ? <Check className="w-3 h-3" /> : st.no}
+                </span>
+                {st.title}
+                {st.missing > 0 && <span className="opacity-70">({st.missing})</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
       {/* 1 ── العميل */}
@@ -368,7 +448,7 @@ function CreateShipmentInner() {
             </div>
           )}
         </div>
-      ))}
+      ), { id: SEC.customer, missing: missingKeys.has('customer') ? 1 : 0 })}
 
       {/* 2 ── السيارة والسائق — one row: pick the truck, driver fills itself */}
       {sectionCard(Truck, 2, ar ? 'السيارة والسائق' : 'Truck & driver', (
@@ -455,13 +535,12 @@ function CreateShipmentInner() {
             </div>
           )}
         </div>
-      ))}
+      ), { id: SEC.truck })}
       </div>
 
       {/* 3..6 ── the config-driven groups */}
-      {groups.map((g, i) => {
+      {activeGroups.map((g, i) => {
         const gf = fields.filter((f) => f.group === g && !FIXED_KEYS.has(f.key));
-        if (!gf.length) return null;
         const cols = g === 'pickup_delivery'
           ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4'
           : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4';
@@ -469,12 +548,12 @@ function CreateShipmentInner() {
           <div key={g}>
             {sectionCard(GROUP_ICONS[g], i + 3, ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en, (
               <div className={cols}>{gf.map(renderField)}</div>
-            ))}
+            ), { id: SEC.group(g), missing: missingIn(g) })}
           </div>
         );
       })}
 
-      {sectionCard(Check, groups.length + 3, ar ? 'الحالة والملاحظات' : 'Status & notes', (
+      {sectionCard(Check, activeGroups.length + 3, ar ? 'الحالة والملاحظات' : 'Status & notes', (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className={labelCls}>{ar ? 'الحالة' : 'Status'}</label>
@@ -491,20 +570,52 @@ function CreateShipmentInner() {
             <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} className={inputCls} />
           </div>
         </div>
-      ))}
+      ), { id: SEC.status })}
 
-      {/* Sticky save bar: the button is always in reach, and it says how many
-          required answers are still missing instead of a silent dead click. */}
-      <div className="fixed bottom-0 inset-x-0 lg:ms-64 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-6 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-slate-500">
-            {missingKeys.size > 0
-              ? (showErrors
-                ? <span className="text-red-600 font-semibold">{ar ? `${missingKeys.size} حقول مطلوبة ناقصة — محدَّدة باللون الأحمر` : `${missingKeys.size} required fields missing — marked red`}</span>
-                : (ar ? `${missingKeys.size} حقول مطلوبة متبقية` : `${missingKeys.size} required fields left`))
-              : <span className="text-emerald-600 font-semibold">{ar ? 'اكتملت جميع الحقول المطلوبة ✓' : 'All required complete ✓'}</span>}
-          </p>
+      {/* Sticky save bar: the margin the shipment is booked at, the answers that
+          still block it (named, not counted), and the button — one strip. */}
+      <div className="fixed bottom-0 inset-x-0 lg:ms-64 z-30 bg-white/95 backdrop-blur border-t border-slate-200">
+        {missingChips.length > 0 && showErrors && (
+          <div className="px-4 sm:px-6 pt-2.5 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+            <div className="flex flex-wrap gap-1.5">
+              {missingChips.map((c) => (
+                <button key={c.key} type="button" onClick={() => jumpTo(c.to)}
+                  className="px-2.5 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-semibold hover:bg-red-100">
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-4 min-w-0">
+            {/* The deal, live. Selling below cost is a decision, not a typo —
+                so it is shown in red while it can still be changed. */}
+            {hasDeal ? (
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-slate-500">{ar ? 'بيع' : 'Sell'} <b className="text-slate-900">{money(sell)}</b></span>
+                <span className="text-slate-300">−</span>
+                <span className="text-slate-500">{ar ? 'شراء' : 'Buy'} <b className="text-slate-900">{money(buy)}</b></span>
+                <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold ${
+                  (dealMargin as number) >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                  {(dealMargin as number) >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                  {money(dealMargin as number)}
+                  <span className="opacity-70 font-semibold">({Math.round(((dealMargin as number) / sell) * 100)}%)</span>
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">{ar ? 'أدخل سعر البيع والشراء ليظهر الهامش' : 'Enter sell and buy prices to see the margin'}</p>
+            )}
+          </div>
           <div className="flex items-center gap-3">
+            <p className="text-xs text-slate-500 hidden sm:block">
+              {missingKeys.size > 0
+                ? (showErrors
+                  ? <span className="text-red-600 font-semibold">{ar ? `${missingKeys.size} حقول مطلوبة ناقصة` : `${missingKeys.size} required missing`}</span>
+                  : (ar ? `${missingKeys.size} حقول مطلوبة متبقية` : `${missingKeys.size} required fields left`))
+                : <span className="text-emerald-600 font-semibold">{ar ? 'اكتملت جميع الحقول المطلوبة ✓' : 'All required complete ✓'}</span>}
+            </p>
             <button type="button" onClick={() => router.push('/system/shipment-orders')}
               className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
             <PrimaryButton onClick={save} disabled={saving}>
@@ -514,6 +625,7 @@ function CreateShipmentInner() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

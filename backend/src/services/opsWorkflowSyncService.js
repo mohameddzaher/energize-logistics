@@ -44,7 +44,14 @@ async function fetchAllShipments() {
 
 function mapShipment(s) {
   const set = {
-    reportDate: s.created_at ? new Date(s.created_at) : undefined,
+    // ── تاريخُ الكشف هو `pick_time` لا `created_at` ────────────────────────
+    // `created_at` لحظةُ كتابة الصفّ في المنصّة، و`pick_time` تاريخُ الكشف
+    // نفسِه. وهما يفترقان في ثمانيةِ آلافٍ وسبعِمئةٍ وثمانٍ وعشرين شحنةً من
+    // ثلاثةٍ وثلاثين ألفًا — كشفٌ عُمل في نوفمبر ٢٠٢٥ ثمّ أُدخل في فبراير ٢٠٢٦
+    // كان يُقرأ كشفَ فبراير، فيدخل تقاريرَ شهرٍ لم يحدث فيه ويخرج من شهره.
+    // وشيتُ المتابعة يحمل `pick_time` — فكان الرقمان يختلفان بلا سبب.
+    reportDate: s.pick_time ? new Date(s.pick_time)
+      : (s.created_at ? new Date(s.created_at) : undefined),
     fromLocation: s.address_from || '',
     toLocation: s.address_to || '',
     branch: loc(s.branch),

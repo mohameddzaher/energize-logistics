@@ -18,6 +18,7 @@ const { initializeSocket } = require('./websocket/socketManager');
 const { startWalletAutoCloseJob } = require('./jobs/walletAutoClose');
 const { startSyncScheduler: startB2CSheetSync, migrateLegacySingletonIndex: migrateB2CSheetIndex } = require('./services/b2cGoogleSheetSyncService');
 const { startOpsPoll } = require('./jobs/opsPoll');
+const { startOpsReconcile } = require('./jobs/opsReconcile');
 const { startOpsCustomerSync } = require('./services/opsCustomerSyncService');
 const { startOpsWorkflowSync } = require('./services/opsWorkflowSyncService');
 const { startLs2Poll } = require('./jobs/ls2Poll');
@@ -344,6 +345,9 @@ connectDB().then(async () => {
     startWalletAutoCloseJob();
     startB2CSheetSync();
     startOpsPoll();
+    // والاستطلاعُ يرى ما أُضيف وعُدِّل؛ وما حُذف حذفًا نهائيًّا لا يعود في أيّ
+    // صفحةٍ فلا يراه أحد. فتُطابَق القائمتان مرّةً في اليوم.
+    startOpsReconcile();
     startOpsCustomerSync();
     startOpsWorkflowSync();
     startLs2Poll();

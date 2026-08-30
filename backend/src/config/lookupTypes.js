@@ -190,16 +190,32 @@ const writeRolesFor = (type) => {
 
 const canManage = (type, role) => writeRolesFor(type).includes(role);
 
-// Public metadata (no seed payload) for the management UI, annotated with whether
-// the requesting role may manage each type.
-const typesForRole = (role) =>
-  REGISTRY.map((r) => ({
+/**
+ * قوائمُ هذا الدور — ما يخصُّه وحدَه.
+ *
+ * ── لماذا لا تُعرض كلُّها ──────────────────────────────────────────────────
+ * كانت تُعاد كاملةً موسومةً بـ`canManage`، فيفتح مديرُ الأسطول الصفحةَ فيجد
+ * قوائمَ الموارد البشريّة والمشتريات والمركبات أمامه. لا يعدّلها — الخادمُ
+ * يمنعه — لكنّه يراها ويقرأ فيها ما ليس من شأنه، ويبحث عن قائمته بين ما لا
+ * يعنيه. وليس هذا حجبًا أمنيًّا بقدر ما هو ترتيب: القائمةُ تعيش عند قسمِها.
+ *
+ * فالإدارةُ العليا وتقنيةُ المعلومات يرَون الجميع — هم أصحابُ الصفحة العامّة —
+ * وكلُّ دورٍ آخر يرى ما يملك تعديلَه فقط. و`all` تُبقي الباب مفتوحًا لمن
+ * يحتاج القائمةَ كاملةً عمدًا.
+ */
+const GLOBAL_LOOKUP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+
+const typesForRole = (role, { all = false } = {}) => {
+  const meta = REGISTRY.map((r) => ({
     type: r.type,
     module: r.module,
     nameEn: r.nameEn,
     nameAr: r.nameAr,
     canManage: canManage(r.type, role),
   }));
+  if (all || GLOBAL_LOOKUP_ROLES.includes(role)) return meta;
+  return meta.filter((r) => r.canManage);
+};
 
 // Idempotent seeding: insert any missing default rows. Existing rows (including
 // user edits) are never overwritten.
@@ -225,4 +241,4 @@ const ensureDefaultLookups = async () => {
   }
 };
 
-module.exports = { REGISTRY, byType, writeRolesFor, canManage, typesForRole, ensureDefaultLookups };
+module.exports = { REGISTRY, byType, writeRolesFor, canManage, typesForRole, ensureDefaultLookups, GLOBAL_LOOKUP_ROLES };

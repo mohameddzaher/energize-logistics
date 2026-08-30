@@ -24,6 +24,9 @@ export default function FleetSettingsPage() {
   const [savingCfg, setSavingCfg] = useState(false);
   const [fridayBonusAmount, setFridayBonusAmount] = useState(50);
   const [defaultMonthlyTarget, setDefaultMonthlyTarget] = useState(27000);
+  // «ثلاثون ألفًا شهريًّا» جملةٌ ناقصةٌ ما لم يُقل: دخلًا كما هو، أم بعد مصروف
+  // السائق؟ والفرقُ آلافٌ في السيّارة الواحدة.
+  const [targetBasis, setTargetBasis] = useState<'gross' | 'net'>('gross');
   const [vehicles, setVehicles] = useState<{ _id: string; plate: string; name?: string; monthlyTarget?: number }[]>([]);
   const [targets, setTargets] = useState<Record<string, string>>({});
   const [savingV, setSavingV] = useState<string | null>(null);
@@ -31,11 +34,12 @@ export default function FleetSettingsPage() {
   const load = useCallback(async () => {
     try {
       const [cfg, v] = await Promise.all([
-        api.get<{ config: { fridayBonusAmount: number; defaultMonthlyTarget: number } }>('/api/fleet/config'),
+        api.get<{ config: { fridayBonusAmount: number; defaultMonthlyTarget: number; targetBasis?: 'gross' | 'net' } }>('/api/fleet/config'),
         api.get<{ vehicles: { _id: string; plate: string; name?: string; monthlyTarget?: number }[] }>('/api/fleet/vehicles'),
       ]);
       setFridayBonusAmount(cfg.config.fridayBonusAmount);
       setDefaultMonthlyTarget(cfg.config.defaultMonthlyTarget);
+      setTargetBasis(cfg.config.targetBasis === 'net' ? 'net' : 'gross');
       setVehicles(v.vehicles || []);
       setTargets(Object.fromEntries((v.vehicles || []).map((x) => [x._id, String(x.monthlyTarget ?? cfg.config.defaultMonthlyTarget)])));
     } catch (e: any) { notify(e?.message || 'Failed to load', 'error'); }
@@ -47,7 +51,7 @@ export default function FleetSettingsPage() {
   const saveCfg = async () => {
     setSavingCfg(true);
     try {
-      await api.put('/api/fleet/config', { fridayBonusAmount: Number(fridayBonusAmount) || 0, defaultMonthlyTarget: Number(defaultMonthlyTarget) || 0 });
+      await api.put('/api/fleet/config', { fridayBonusAmount: Number(fridayBonusAmount) || 0, defaultMonthlyTarget: Number(defaultMonthlyTarget) || 0, targetBasis });
       notify(ar ? 'تم حفظ الإعدادات' : 'Settings saved', 'success');
     } catch (e: any) { notify(e.message, 'error'); }
     setSavingCfg(false);
@@ -123,6 +127,27 @@ export default function FleetSettingsPage() {
           <div>
             <label className="block text-sm font-semibold text-slate-800 mb-1.5">{ar ? 'الهدف الشهري الافتراضي للسيارة' : 'Default vehicle monthly target'}</label>
             <input type="number" min={0} value={defaultMonthlyTarget} onChange={(e) => setDefaultMonthlyTarget(Number(e.target.value))} className={inputCls} />
+          </div>
+          <div className="sm:col-span-2">
+            {/* ── يُقاس الهدفُ بماذا؟ ────────────────────────────────────────
+                بغير هذا السطر يبقى الرقمُ مبهمًا، وتظهر السيّارةُ محقِّقةً على
+                مقياسٍ ومقصّرةً على الآخر، فلا يُصدَّق أيُّهما. */}
+            <label className="block text-sm font-semibold text-slate-800 mb-1.5">{ar ? 'الهدف يُقاس بـ' : 'Target is measured against'}</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {([
+                ['gross', ar ? 'الدخل كما هو' : 'Income as-is', ar ? 'شامل مصاريف السائقين — يُقارَن بإجمالي إيجارات الحمولات.' : 'Includes driver expenses — compared to gross rent.'],
+                ['net', ar ? 'الدخل بعد مصروف السائق' : 'Income after driver expense', ar ? 'غير شامل مصاريف السائقين — يُخصَم مصروف السائق أوّلًا ثمّ يُقارَن.' : 'Excludes driver expenses — deducted first, then compared.'],
+              ] as const).map(([k, title, hint]) => (
+                <button key={k} type="button" onClick={() => setTargetBasis(k)}
+                  className={`text-start rounded-xl border p-3 transition-colors ${targetBasis === k ? 'border-[#f37121] bg-[#f37121]/5' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                  <span className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <span className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 ${targetBasis === k ? 'border-[#f37121] bg-[#f37121]' : 'border-slate-300'}`} />
+                    {title}
+                  </span>
+                  <span className="block text-[11.5px] text-slate-500 mt-1">{hint}</span>
+                </button>
+              ))}
+            </div>
             <p className="text-[11px] text-slate-500 mt-1">{ar ? 'يُستخدم للسيارات التي لم يُحدَّد لها هدف خاص.' : 'Used for vehicles without a custom target.'}</p>
           </div>
         </div>

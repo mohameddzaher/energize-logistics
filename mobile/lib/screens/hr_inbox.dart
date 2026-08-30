@@ -156,7 +156,6 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
 
     String? empId;
     String? typeId;
-    bool affects = true;
     DateTime? start;
     DateTime? end;
     final reason = TextEditingController();
@@ -218,16 +217,18 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                     initialValue: typeId,
                     isExpanded: true,
                     decoration: InputDecoration(labelText: tr('نوع الإجازة', 'Leave type')),
-                    items: types.map((t) => DropdownMenuItem(
-                      value: t['_id'] as String,
-                      child: Text(tr('${t['nameAr']}', '${t['nameEn']}'), overflow: TextOverflow.ellipsis),
-                    )).toList(),
-                    onChanged: (v) => setSt(() {
-                      typeId = v;
-                      // النوعُ يقترح الخصمَ، والقرارُ يبقى لمن يقيّد.
-                      final t = types.firstWhere((x) => x['_id'] == v, orElse: () => const {});
-                      affects = t['affectsBalance'] != false;
-                    }),
+                    // الخصمُ صفةُ النوع — يُقال في الاسم كي يُعرف قبل التسجيل.
+                    items: types.map((t) {
+                      final nm = tr('${t['nameAr']}', '${t['nameEn']}');
+                      final hint = t['affectsBalance'] == false
+                          ? tr(' — لا تُخصَم', ' — no deduction')
+                          : tr(' — تُخصَم من الرصيد', ' — deducted');
+                      return DropdownMenuItem(
+                        value: t['_id'] as String,
+                        child: Text('$nm$hint', overflow: TextOverflow.ellipsis),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setSt(() => typeId = v),
                   ),
                   const SizedBox(height: 10),
                   Row(children: [
@@ -258,24 +259,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                     Text('${tr('المدّة', 'Duration')}: ${days()} ${tr('يوم', 'day(s)')}',
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
                   ],
-                  const SizedBox(height: 6),
-                  // أيُخصَم من رصيده؟ النوعُ يقترح ومن يقيّد يقرّر.
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    value: affects,
-                    onChanged: (v) => setSt(() => affects = v ?? true),
-                    title: Text(tr('تُخصَم من رصيد إجازاته', 'Deduct from the leave balance'),
-                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                    subtitle: Text(
-                      affects
-                        ? tr('ستُخصَم ${days()} يوم من رصيده.', '${days()} day(s) will be deducted.')
-                        : tr('لن تُخصَم — تُسجَّل ولا تمسّ الرصيد.', 'Not deducted — recorded, balance untouched.'),
-                      style: const TextStyle(fontSize: 11, color: T.inkFaint),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 10),
                   TextField(controller: reason, maxLines: 2, decoration: InputDecoration(labelText: tr('السبب / ملاحظة', 'Reason / note'))),
                   const SizedBox(height: 12),
                   SizedBox(
@@ -301,7 +285,6 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
         'startDate': iso(start!),
         'endDate': iso(end!),
         'reason': reason.text.trim(),
-        'affectsBalance': affects,
       });
       final bal = (r is Map) ? r['balance'] : null;
       if (mounted) {

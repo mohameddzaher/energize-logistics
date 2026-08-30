@@ -300,19 +300,9 @@ export const SECTION_ROLES: SectionRoles[] = [
     },
     "staff": [
       {
-        "key": "crm_team_lead",
-        "ar": "قائد فريق العلاقات",
-        "en": "CRM Team Lead"
-      },
-      {
         "key": "crm_specialist",
-        "ar": "أخصائي علاقات",
+        "ar": "أخصائي علاقات العملاء",
         "en": "CRM Specialist"
-      },
-      {
-        "key": "crm_agent",
-        "ar": "مندوب علاقات",
-        "en": "CRM Agent"
       }
     ]
   },

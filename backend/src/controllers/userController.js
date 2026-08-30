@@ -59,6 +59,11 @@ exports.getUsers = async (req, res) => {
 
     res.json({ users });
   } catch (error) {
+    // ── الخطأُ يُقال ولا يُبلَع ───────────────────────────────────────────
+    // كانت الشاشةُ تقول «Failed to load users» ولا شيءَ في السجلّ، فيبقى
+    // العطلُ بلا سبب: من يفتح القائمةَ لا يعرف، ومن يقرأ السجلَّ لا يجد.
+    // وسببُه غالبًا نموذجٌ لم يُسجَّل قبل populate — سطرٌ واحدٌ يُصلحه لو عُرف.
+    console.error('getUsers error:', error);
     res.status(500).json({ message: 'Failed to load users' });
   }
 };

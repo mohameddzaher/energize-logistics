@@ -1347,7 +1347,7 @@ exports.assignVehicleSupervisorBulk = async (req, res) => {
 exports.getConfig = async (req, res) => {
   try {
     const cfg = await getFleetConfig();
-    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget } });
+    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget, targetBasis: cfg.targetBasis } });
   } catch (e) {
     res.status(500).json({ message: 'Failed to load fleet settings' });
   }
@@ -1358,10 +1358,12 @@ exports.updateConfig = async (req, res) => {
     const cfg = await getFleetConfig();
     if (req.body.fridayBonusAmount != null) cfg.fridayBonusAmount = Number(req.body.fridayBonusAmount) || 0;
     if (req.body.defaultMonthlyTarget != null) cfg.defaultMonthlyTarget = Number(req.body.defaultMonthlyTarget) || 0;
+    // «ثلاثون ألفًا» جملةٌ ناقصةٌ ما لم يُقل: دخلًا أم بعد مصروف السائق؟
+    if (req.body.targetBasis === 'gross' || req.body.targetBasis === 'net') cfg.targetBasis = req.body.targetBasis;
     cfg.updatedBy = req.user._id;
     await cfg.save();
     emit('fleet:updated', {});
-    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget } });
+    res.json({ config: { fridayBonusAmount: cfg.fridayBonusAmount, defaultMonthlyTarget: cfg.defaultMonthlyTarget, targetBasis: cfg.targetBasis } });
   } catch (e) {
     res.status(500).json({ message: 'Failed to save fleet settings' });
   }
@@ -1440,6 +1442,8 @@ exports.getAnalytics = async (req, res) => {
     // section default so every truck is still measured against a target (this is
     // exactly the "who hit 27,000" analytic the section asked for).
     const defaultTarget = Number(cfg.defaultMonthlyTarget) || 0;
+    // gross = يُقارَن بالدخل كما هو · net = بعد خصم مصروف السائق.
+    const targetBasis = cfg.targetBasis === 'net' ? 'net' : 'gross';
 
     // إيجار السيارة (price) = دخل قسم الأسطول. الفرق بين «الإيجار كامل» وإيجار
     // السيارة (عند وجوده) = حصة قسم الفروع — يُعرض منفصلًا، ولا يدخل دخل القسم.
@@ -1467,8 +1471,19 @@ exports.getAnalytics = async (req, res) => {
     const vehAgg = new Map();
     for (const s of shipments) {
       const id = s.vehicle ? String(s.vehicle) : `plate:${s.vehiclePlate || '—'}`;
-      const cur = vehAgg.get(id) || { trips: 0, income: 0, plate: s.vehiclePlate || (vById.get(id)?.plate) || '—' };
-      cur.trips += 1; cur.income += income(s); vehAgg.set(id, cur);
+      const cur = vehAgg.get(id) || {
+        trips: 0, income: 0, driverExpense: 0, first: null, last: null,
+        plate: s.vehiclePlate || (vById.get(id)?.plate) || '—',
+      };
+      cur.trips += 1;
+      cur.income += income(s);
+      cur.driverExpense += Number(s.driverExpense) || 0;
+      const at = s.loadDate || s.createdAt;
+      if (at) {
+        if (!cur.first || new Date(at) < new Date(cur.first)) cur.first = at;
+        if (!cur.last || new Date(at) > new Date(cur.last)) cur.last = at;
+      }
+      vehAgg.set(id, cur);
     }
     // البحث الحرّ يضيّق الجدول أيضًا: تبقى السيارةُ التي طابق نصُّها لوحتَها،
     // أو التي لها رحلاتٌ فعلًا ضمن النتائج — لا الأسطول كلّه.
@@ -1476,15 +1491,30 @@ exports.getAnalytics = async (req, res) => {
       ? [...vById.entries()].filter(([id, v]) => vehAgg.has(id) || qRx.test(v.plate || '') || qRx.test(v.name || ''))
       : [...vById.entries()];
     const vehiclesOut = vehicleRows.map(([id, v]) => {
-      const a = vehAgg.get(id) || { trips: 0, income: 0 };
+      const a = vehAgg.get(id) || { trips: 0, income: 0, driverExpense: 0, first: null, last: null };
       const monthlyTarget = (Number(v.monthlyTarget) || 0) || defaultTarget;
       const target = monthlyTarget * monthsInRange;
+      // ── المقياسُ يُقال مع الرقم ────────────────────────────────────────
+      // الهدفُ يُقاس بالدخل كما هو، أو بالدخل بعد مصروف السائق — حسب إعداد
+      // القسم. وبغير تصريحٍ بالمقياس يُقرأ الرقمُ على غير وجهه: سيّارةٌ تبدو
+      // محقِّقةً وهي مقصّرةٌ بآلاف.
+      const achievedValue = targetBasis === 'net'
+        ? Math.round((a.income - a.driverExpense) * 100) / 100
+        : a.income;
       return {
         _id: id, plate: v.plate, name: v.name, trailerType: v.trailerType,
         supervisorName: v.supervisorName, trips: a.trips, income: a.income,
+        driverExpense: Math.round((a.driverExpense || 0) * 100) / 100,
+        // «محقّقة كام لحدّ دلوقتي» — بالمقياس المعتمَد لا بالدخل دائمًا.
+        achievedValue,
+        // وكم ينقصها؟ السؤالُ الذي يلي «غير محقّقة» مباشرةً.
+        shortfall: target > 0 ? Math.max(0, Math.round((target - achievedValue) * 100) / 100) : 0,
         monthlyTarget, periodTarget: target, target,
-        achievedPct: target > 0 ? Math.round((a.income / target) * 100) : null,
-        achieved: target > 0 ? a.income >= target : null,
+        achievedPct: target > 0 ? Math.round((achievedValue / target) * 100) : null,
+        achieved: target > 0 ? achievedValue >= target : null,
+        // «شغّالة من إمتى لإمتى» — أوّلُ حمولةٍ وآخرُها في الفترة.
+        firstLoadAt: a.first || null,
+        lastLoadAt: a.last || null,
       };
     }).sort((x, y) => y.income - x.income);
     const vehiclesAchieved = vehiclesOut.filter((v) => v.achieved === true).length;
@@ -1540,7 +1570,7 @@ exports.getAnalytics = async (req, res) => {
       totals: {
         totalIncome, totalFullRent, branchShare, tripCount, totalDriverExpense,
         vehicleCount: vehiclesOut.length, customerCount: customersOut.length,
-        vehiclesAchieved, vehiclesBelow,
+        vehiclesAchieved, vehiclesBelow, targetBasis,
         avgTripIncome: tripCount ? Math.round(totalIncome / tripCount) : 0,
       },
       byTrailerType, byCustomerType,

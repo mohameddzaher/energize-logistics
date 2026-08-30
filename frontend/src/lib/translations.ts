@@ -1,4 +1,5 @@
 import type { Lang } from '@/context/LanguageContext';
+import { GLOBAL_ROLES, SECTION_ROLES } from '@/lib/roles';
 
 // ─── SYSTEM LAYOUT (Sidebar + Header) ────────────────────────
 const layout = {
@@ -7249,6 +7250,28 @@ export const SECTION_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
 };
 
 // User role → layout translation key. Use with getLayoutTranslations(lang)[key].
+// التعريفُ المولَّد من الخادم: مفتاحُ الدور → اسمُه بالعربيّة والإنجليزيّة.
+// يُبنى مرّةً واحدة لا مع كلّ نداء.
+const ROLE_DEFS: Record<string, { ar: string; en: string }> = Object.fromEntries(
+  [...GLOBAL_ROLES, ...SECTION_ROLES.flatMap((s) => [s.manager, ...s.staff])]
+    .map((r) => [r.key, { ar: r.ar, en: r.en }]),
+);
+
+/**
+ * ألقابٌ قديمة ما تزال على حساباتٍ قائمة. تُقرأ باسم الدور الذي حلّ محلّها،
+ * فلا يظهر «crm agent» بالإنجليزيّة في شاشةٍ عربيّة لأنّ الدور أُعيدت تسميته.
+ * مطابقةٌ لـ`RENAMED` في `backend/src/config/roles.js`.
+ */
+const RENAMED_ROLES: Record<string, string> = {
+  operations: 'operations_staff',
+  purchasing: 'procurement_staff',
+  administrator: 'administration_staff',
+  b2c_head: 'b2c_manager',
+  b2c_project_manager: 'b2c_project_lead',
+  crm_team_lead: 'crm_specialist',
+  crm_agent: 'crm_specialist',
+};
+
 export const ROLE_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   super_admin: 'roleSuperAdmin',
   admin: 'roleAdmin',
@@ -7289,11 +7312,33 @@ export const ROLE_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   contracts_manager: 'roleContractsManager',
 };
 
+/**
+ * اسمُ الدور بلغة الواجهة.
+ *
+ * ── لماذا يُقرأ من `roles.ts` أوّلًا ────────────────────────────────────────
+ * كان يُقرأ من `ROLE_LABEL_KEYS` وحدَها — خريطةٌ تُكتب باليد هنا. وأدوارُ
+ * النظام تُعرَّف في مكانٍ آخر (`backend/src/config/roles.js`، ومنه يُولَّد
+ * `lib/roles.ts`)، فكلُّ دورٍ يُضاف هناك ولا يُضاف هنا كان يسقط إلى السطر
+ * الأخير: `role.replace('_', ' ')`.
+ *
+ * وهذا هو سببُ ما بدا هبلًا في الشاشة: الواجهةُ عربيّة، وبعضُ الأدوار عربيّةٌ
+ * وبعضُها «customers finance manager» و«ops platform staff» — ليست ترجمةً
+ * إنجليزيّة، بل **المفتاحُ نفسُه** وقد استُبدلت شرطاتُه فراغات. وفي الإنجليزيّة
+ * لا يظهر الخلل لأنّ المفتاح إنجليزيٌّ أصلًا فيبدو اسمًا سليمًا.
+ *
+ * فصار المصدرُ واحدًا: التعريفُ المولَّد من الخادم، وفيه لكلّ دورٍ اسمٌ عربيٌّ
+ * وإنجليزيّ يفحصهما الخادمُ وقت التحميل ولا يقوم بدونهما. و`ROLE_LABEL_KEYS`
+ * تبقى للأدوار القديمة التي حُذفت من التعريف وما تزال على حساباتٍ قائمة.
+ * فأيُّ دورٍ جديدٍ يُولَد مسمًّى بلغتيه من أوّل يوم، بلا خطوةٍ يدويّةٍ تُنسى.
+ */
 export function getRoleLabel(role: string | undefined | null, lang: Lang): string {
   if (!role) return '';
+  const def = ROLE_DEFS[role] || ROLE_DEFS[RENAMED_ROLES[role] || ''];
+  if (def) return lang === 'ar' ? def.ar : def.en;
   const key = ROLE_LABEL_KEYS[role];
   if (key) return layout[lang][key];
-  // Fallback: humanize unknown roles (e.g. "new_role" → "New Role" / "new role")
+  // آخرُ ملجأ: دورٌ لا يعرفه التعريفُ ولا الخريطة — يُعرض مفتاحُه مقروءًا
+  // بدل خانةٍ فارغة، وهو ما لا يُفترض أن يحدث بعد اليوم.
   return role.replace(/_/g, ' ');
 }
 

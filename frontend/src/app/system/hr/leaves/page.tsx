@@ -36,7 +36,7 @@ export default function HRLeavesPage() {
   // وما لم تُسجَّل بقي الموظّف في الورق مستحقًّا ثلاثين يومًا وقد أخذ
   // اثنَي عشر. تُقيَّد معتمَدةً وتُخصَم كأخواتها، وتُوسَم «قيد رجعيّ».
   const [showBack, setShowBack] = useState(false);
-  const [backForm, setBackForm] = useState<any>({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '', affectsBalance: true });
+  const [backForm, setBackForm] = useState<any>({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '' });
   const [backFiles, setBackFiles] = useState<PickedFile[]>([]);
   const [backSaving, setBackSaving] = useState(false);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -88,7 +88,7 @@ export default function HRLeavesPage() {
         ? `سُجّلت ${days} يوم${b ? ` — الرصيد المتبقّي ${b.available} يوم` : ''}`
         : `Recorded ${days} day(s)${b ? ` — remaining balance ${b.available}` : ''}`, 'success');
       setShowBack(false);
-      setBackForm({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '', affectsBalance: true });
+      setBackForm({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '' });
       setBackFiles([]);
       load();
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّر التسجيل' : 'Could not record'), 'error'); }
@@ -204,14 +204,15 @@ export default function HRLeavesPage() {
               <label className="text-slate-500 text-xs mb-1 block">{ar ? 'نوع الإجازة' : 'Leave type'}</label>
               <SearchableSelect
                 value={backForm.leaveType}
-                onChange={(v) => {
-                  // النوعُ يقترح الخصمَ، والقرارُ يبقى لمن يقيّد.
-                  const t = types.find((x) => x._id === v);
-                  setBackForm((f: any) => ({ ...f, leaveType: v, affectsBalance: t ? t.affectsBalance !== false : true }));
-                }}
+                onChange={(v) => setBackForm((f: any) => ({ ...f, leaveType: v }))}
                 placeholder={ar ? '— اختر نوع الإجازة —' : '— pick the leave type —'}
                 searchPlaceholder={ar ? 'ابحث…' : 'search…'}
-                options={types.map((t) => ({ value: t._id, label: ar ? t.nameAr : t.nameEn }))}
+                // الخصمُ صفةُ النوع لا سؤالٌ يُطرح هنا — فيُقال في الاسم كي
+                // يعرف من يختار ما سيحدث للرصيد قبل أن يسجّل.
+                options={types.map((t) => ({
+                  value: t._id,
+                  label: `${ar ? t.nameAr : t.nameEn}${t.affectsBalance === false ? (ar ? ' — لا تُخصَم من الرصيد' : ' — no balance deduction') : (ar ? ' — تُخصَم من الرصيد' : ' — deducted from balance')}`,
+                }))}
               />
             </div>
             <div>
@@ -231,26 +232,6 @@ export default function HRLeavesPage() {
               {ar ? `المدّة: ${days} يوم` : `Duration: ${days} day(s)`}
             </p>
           )}
-          {/* ── أيُخصَم من رصيده؟ ─────────────────────────────────────────────
-              كان الجوابُ صفةً ثابتةً في نوع الإجازة يقرّرها من عرّف النوعَ
-              مرّةً للأبد. والحالةُ الواحدة تختلف: مرضيّةٌ بتقريرٍ لا تُخصَم
-              ومثلُها بلا تقريرٍ تُخصَم. فالنوعُ يقترح، ومن يقيّد يقرّر —
-              والقرارُ يُحفظ مع القيد فلا تتغيّر أرصدةٌ ماضيةٌ بتعديل تعريفِ نوع. */}
-          <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-pointer">
-            <input type="checkbox" className="mt-0.5 w-4 h-4 accent-[#f37121]"
-              checked={backForm.affectsBalance !== false}
-              onChange={(e) => setBackForm((f: any) => ({ ...f, affectsBalance: e.target.checked }))} />
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold text-slate-900">
-                {ar ? 'تُخصَم من رصيد إجازاته' : 'Deduct from the leave balance'}
-              </span>
-              <span className="block text-[11.5px] text-slate-500 mt-0.5">
-                {backForm.affectsBalance === false
-                  ? (ar ? 'لن تُخصَم — تُسجَّل في السجلّ ولا تمسّ الرصيد.' : 'Not deducted — recorded in the log, balance untouched.')
-                  : (ar ? `ستُخصَم ${days || '…'} يوم من رصيده.` : `${days || '…'} day(s) will be deducted.`)}
-              </span>
-            </span>
-          </label>
           <div>
             <label className="text-slate-500 text-xs mb-1 block">{ar ? 'السبب / ملاحظة' : 'Reason / note'}</label>
             <TextArea rows={2} value={backForm.reason} onChange={(e: any) => setBackForm((f: any) => ({ ...f, reason: e.target.value }))} />

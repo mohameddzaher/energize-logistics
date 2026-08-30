@@ -23,10 +23,10 @@ import { syncUrl } from '@/lib/urlSync';
 type Cust = { _id: string | null; name: string; customerType: string; rating: number; trips: number; income: number };
 type Analytics = {
   period: { from: string; to: string; monthsInRange: number; preset?: string };
-  totals: { totalIncome: number; totalFullRent: number; branchShare: number; tripCount: number; totalDriverExpense: number; vehicleCount: number; customerCount: number; vehiclesAchieved: number; vehiclesBelow: number; avgTripIncome: number };
+  totals: { totalIncome: number; totalFullRent: number; branchShare: number; tripCount: number; totalDriverExpense: number; vehicleCount: number; customerCount: number; vehiclesAchieved: number; vehiclesBelow: number; avgTripIncome: number; targetBasis?: 'gross' | 'net' };
   byTrailerType: Record<string, number>;
   byCustomerType: { heavy: { count: number; income: number }; branch: { count: number; income: number } };
-  vehicles: { _id: string; plate: string; name?: string; trailerType?: string; supervisorName?: string; trips: number; income: number; monthlyTarget: number; periodTarget: number; achievedPct: number | null; achieved: boolean | null }[];
+  vehicles: { _id: string; plate: string; name?: string; trailerType?: string; supervisorName?: string; trips: number; income: number; driverExpense?: number; achievedValue?: number; shortfall?: number; monthlyTarget: number; periodTarget: number; achievedPct: number | null; achieved: boolean | null; firstLoadAt?: string | null; lastLoadAt?: string | null }[];
   topDrivers: { name: string; trips: number; income: number }[];
   supervisors: { name: string; trips: number; income: number }[];
   customers: Cust[];
@@ -38,6 +38,14 @@ type Analytics = {
 const ORANGE = '#f37121';
 const PALETTE = ['#f37121', '#2563eb', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ef4444', '#64748b'];
 const money = (n: number) => (Number(n) || 0).toLocaleString('en-US');
+/** يوم/شهر بأرقامٍ لاتينيّة — الجدولُ يُقارَن رأسيًّا فتلزم محاذاةٌ ثابتة. */
+const dmy = (v?: string | null) => {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '—';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}`;
+};
 
 function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   const { lang, isRTL } = useLanguage();
@@ -60,6 +68,8 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   const [vehicle] = useState<string[]>(() => multi('vehicle'));
   const [q, setQ] = useState(() => sp?.get('q') || '');
   const [vehSort, setVehSort] = useState<'income' | 'trips' | 'achievedPct'>('income');
+  // «وريني اللي مش محقّقة» — السؤالُ الذي يلي البطاقةَ مباشرةً، وكان بلا جواب.
+  const [targetFilter, setTargetFilter] = useState<'all' | 'achieved' | 'below'>('all');
   const [custTab, setCustTab] = useState<'all' | 'heavy' | 'branch'>('all');
 
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) =>
@@ -111,12 +121,15 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
 
   const sortedVehicles = useMemo(() => {
     if (!data) return [];
-    return [...data.vehicles].sort((a, b) => {
+    const rows = targetFilter === 'all'
+      ? data.vehicles
+      : data.vehicles.filter((v) => (targetFilter === 'achieved' ? v.achieved === true : v.achieved === false));
+    return [...rows].sort((a, b) => {
       if (vehSort === 'trips') return b.trips - a.trips;
       if (vehSort === 'achievedPct') return (b.achievedPct ?? -1) - (a.achievedPct ?? -1);
       return b.income - a.income;
     });
-  }, [data, vehSort]);
+  }, [data, vehSort, targetFilter]);
 
   const custRows = useMemo(() => {
     if (!data) return [];
@@ -206,8 +219,17 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             <StatCard label={ar ? 'حصة قسم الفروع' : 'Branches’ share'} value={money(data.totals.branchShare)} accent="text-amber-600" />
             <StatCard label={ar ? 'عدد الرحلات' : 'Trips'} value={data.totals.tripCount} accent="text-[#f37121]" />
             <StatCard label={ar ? 'متوسط دخل الرحلة' : 'Avg / trip'} value={money(data.totals.avgTripIncome)} />
-            <StatCard label={ar ? 'سيارات محقّقة الهدف' : 'On target'} value={`${data.totals.vehiclesAchieved} / ${data.totals.vehicleCount}`} accent="text-emerald-600" />
-            <StatCard label={ar ? 'سيارات دون الهدف' : 'Below target'} value={data.totals.vehiclesBelow} accent="text-red-600" />
+            {/* ── البطاقةُ سؤالٌ، فلتكن جوابًا ────────────────────────────────
+                «سبعُ سيّاراتٍ دون الهدف» رقمٌ يليه سؤالٌ واحد: أيُّها؟ وكانت
+                البطاقةُ تقف عند الرقم. صارت تُضغط فيُصفَّى الجدولُ عليها. */}
+            <button type="button" onClick={() => setTargetFilter((f) => (f === 'achieved' ? 'all' : 'achieved'))}
+              className={`text-start rounded-xl transition-shadow ${targetFilter === 'achieved' ? 'ring-2 ring-emerald-500' : 'hover:shadow-md'}`}>
+              <StatCard label={ar ? 'سيارات محقّقة الهدف' : 'On target'} value={`${data.totals.vehiclesAchieved} / ${data.totals.vehicleCount}`} accent="text-emerald-600" />
+            </button>
+            <button type="button" onClick={() => setTargetFilter((f) => (f === 'below' ? 'all' : 'below'))}
+              className={`text-start rounded-xl transition-shadow ${targetFilter === 'below' ? 'ring-2 ring-red-500' : 'hover:shadow-md'}`}>
+              <StatCard label={ar ? 'سيارات دون الهدف' : 'Below target'} value={data.totals.vehiclesBelow} accent="text-red-600" />
+            </button>
             <StatCard label={ar ? 'مصروف السائقين' : 'Driver expense'} value={money(data.totals.totalDriverExpense || 0)} accent="text-amber-600" />
           </div>
 
@@ -295,8 +317,23 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
 
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <p className="font-bold text-slate-900">{ar ? 'أداء السيارات مقابل الهدف' : 'Vehicles vs target'}</p>
-              <div className="flex gap-1.5 text-xs">
+              <div className="min-w-0">
+                <p className="font-bold text-slate-900">{ar ? 'أداء السيارات مقابل الهدف' : 'Vehicles vs target'}</p>
+                {/* المقياسُ يُقال مع الرقم: بغيره يُقرأ الرقمُ على غير وجهه. */}
+                <p className="text-[11.5px] text-slate-500 mt-0.5">
+                  {data.totals.targetBasis === 'net'
+                    ? (ar ? 'الهدف يُقاس بالدخل بعد مصروف السائق (غير شامل)' : 'Target measured against income after driver expense')
+                    : (ar ? 'الهدف يُقاس بالدخل كما هو (شامل مصاريف السائقين)' : 'Target measured against gross income')}
+                  <Link href="/system/fleet/settings" className="ms-1.5 text-[#f37121] hover:underline">{ar ? 'تغيير' : 'change'}</Link>
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                {(['all', 'achieved', 'below'] as const).map((k) => (
+                  <button key={k} onClick={() => setTargetFilter(k)} className={chip(targetFilter === k)}>
+                    {k === 'all' ? (ar ? 'الكل' : 'All') : k === 'achieved' ? (ar ? 'محقّقة' : 'On target') : (ar ? 'غير محقّقة' : 'Below')}
+                  </button>
+                ))}
+                <span className="w-px bg-slate-200 mx-1" />
                 {(['income', 'trips', 'achievedPct'] as const).map((k) => (
                   <button key={k} onClick={() => setVehSort(k)} className={chip(vehSort === k)}>
                     {k === 'income' ? (ar ? 'الدخل' : 'Income') : k === 'trips' ? (ar ? 'الرحلات' : 'Trips') : (ar ? 'التحقيق' : 'Attainment')}
@@ -307,7 +344,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-slate-500 text-xs">
-                  <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor', ar ? 'الرحلات' : 'Trips', ar ? 'الدخل' : 'Income', ar ? 'الهدف' : 'Target', ar ? 'التحقيق' : 'Attained'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+                  <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor', ar ? 'الحمولات' : 'Loads', ar ? 'شغّالة من' : 'Active from', ar ? 'المحقَّق' : 'Achieved', ar ? 'الهدف' : 'Target', ar ? 'الناقص' : 'Shortfall', ar ? 'التحقيق' : 'Attained'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {sortedVehicles.map((v) => (
@@ -317,9 +354,23 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                       </td>
                       <td className="px-3 py-2 text-slate-600">{v.trailerType || '—'}</td>
                       <td className="px-3 py-2 text-slate-600">{v.supervisorName || '—'}</td>
-                      <td className="px-3 py-2">{v.trips}</td>
-                      <td className="px-3 py-2 font-semibold text-emerald-700">{money(v.income)}</td>
-                      <td className="px-3 py-2 text-slate-500">{money(v.periodTarget)}</td>
+                      <td className="px-3 py-2 tabular-nums">{v.trips}</td>
+                      {/* «شغّالة من إمتى لإمتى» — أوّلُ حمولةٍ وآخرُها في الفترة. */}
+                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap text-xs tabular-nums">
+                        {v.firstLoadAt ? `${dmy(v.firstLoadAt)} → ${dmy(v.lastLoadAt || v.firstLoadAt)}` : <span className="text-slate-400">{ar ? 'لم تعمل' : 'idle'}</span>}
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-emerald-700 tabular-nums whitespace-nowrap">
+                        {money(v.achievedValue ?? v.income)}
+                        {data.totals.targetBasis === 'net' && v.driverExpense ? (
+                          <span className="block text-[10.5px] font-normal text-slate-400">
+                            {ar ? 'دخل' : 'gross'} {money(v.income)} − {money(v.driverExpense)}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 text-slate-500 tabular-nums whitespace-nowrap">{money(v.periodTarget)}</td>
+                      <td className="px-3 py-2 tabular-nums whitespace-nowrap">
+                        {v.achieved === false && v.shortfall ? <span className="text-red-600 font-semibold">{money(v.shortfall)}</span> : <span className="text-slate-300">—</span>}
+                      </td>
                       <td className="px-3 py-2">
                         {v.achievedPct == null ? <span className="text-slate-400">—</span> : (
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${v.achieved ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{v.achievedPct}%</span>
@@ -327,7 +378,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                       </td>
                     </tr>
                   ))}
-                  {sortedVehicles.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد بيانات لهذه الفلاتر' : 'No data'}</td></tr>}
+                  {sortedVehicles.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد بيانات لهذه الفلاتر' : 'No data'}</td></tr>}
                 </tbody>
               </table>
             </div>

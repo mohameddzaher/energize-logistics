@@ -123,6 +123,14 @@ const CONTRACT_PROFESSION_COLS = ['F', 'AD'];
 // السطر أيضًا.
 const EXCLUDED_IQAMAS = new Set(['2677457951']);
 
+// ── هويّاتٌ في الماستر بها غلطةُ رقم ────────────────────────────────────────
+// الماستر يكتب هويّة «محمد اسامه محمد عاشور» ‎2621086423، والصحيحُ ‎2621086426
+// (أكّده صاحبُ الشركة، وهو ما تقوله الشيتاتُ التفصيليّة الثلاثةَ عشرَ كلُّها،
+// وعليه سجلُّه #128). وبغير هذا التصحيح لا يطابق الصفُّ سجلَّه فيُنشأ له سجلٌّ
+// ثانٍ في كلّ استيراد. يُحذف السطرُ متى صُحِّح الرقمُ في الملفّ.
+const IQAMA_FIXES = { 2621086423: '2621086426' };
+const fixIqama = (v) => IQAMA_FIXES[v] || v;
+
 const DATE_FIELDS = new Set(['passportExpiry', 'iqamaIssueDate', 'iqamaExpiry', 'dateOfBirth',
   'contractStartDate', 'contractEndDate', 'hireDate', 'insuranceExpiry', 'healthCertExpiry', 'driverCardExpiry', 'licenseExpiry']);
 
@@ -140,6 +148,8 @@ const asComparable = (v) => {
 
   const allRows = readSheet(FILE, 'xl/worksheets/sheet1.xml').filter((r) => r.r > HEADER_ROW && str(r.cells.B));
   const rows = allRows.filter((r) => !EXCLUDED_IQAMAS.has(str(r.cells.B)));
+  const fixed = rows.filter((r) => IQAMA_FIXES[str(r.cells.B)]).length;
+  if (fixed) console.log(`  هويّاتٌ صُحِّحت عن الملفّ: ${fixed}`);
   console.log(`  صفوفٌ لها رقم هويّة: ${allRows.length}${allRows.length !== rows.length ? ` (استُثني ${allRows.length - rows.length})` : ''}`);
 
   await mongoose.connect(process.env.MONGODB_URI);
@@ -157,7 +167,7 @@ const asComparable = (v) => {
   const professions = new Map();   // iqama -> المهنة في العقد
 
   for (const { cells } of rows) {
-    const iq = str(cells.B);
+    const iq = fixIqama(str(cells.B));
     const emp = byIq.get(iq) || byNum.get(str(cells.A)) || null;
 
     const src = {};

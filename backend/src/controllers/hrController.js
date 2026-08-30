@@ -101,17 +101,16 @@ const computeEmployeeBalance = async (employeeId, asOf = new Date()) => {
   const contract = await getActiveContract(employeeId);
   const approved = await LeaveRequest.find({ employee: employeeId, status: 'approved' })
     .populate('leaveType', 'affectsBalance')
-    .select('days leaveType affectsBalanceOverride')
+    .select('days leaveType')
     .lean();
-  // القرارُ المحفوظ على القيد يسبق صفةَ النوع: نوعُ الإجازة اقتراحٌ، ومن قيّد
-  // الإجازةَ قد يكون قرّر غيرَه. ولولا ذلك لتغيّرت أرصدةٌ ماضيةٌ كلَّما عُدِّل
-  // تعريفُ نوعٍ بعد سنة.
-  const taken = approved.reduce((s, l) => {
-    const affects = typeof l.affectsBalanceOverride === 'boolean'
-      ? l.affectsBalanceOverride
-      : (l.leaveType?.affectsBalance ?? true);
-    return s + (affects ? (l.days || 0) : 0);
-  }, 0);
+  // أيُخصَم هذا من رصيده؟ الجوابُ صفةٌ في **نوع** الإجازة يُقرّرها من يعرّف
+  // النوعَ في «أنواع الإجازات» — لا خيارٌ يُعاد طرحُه عند كلّ تسجيل. فالنوعُ
+  // الواحد يُعامَل معاملةً واحدة في كلّ ملفّ، ولا يُخصَم من موظّفٍ ما لم
+  // يُخصَم من زميله في الحالة نفسِها.
+  const taken = approved.reduce(
+    (s, l) => s + ((l.leaveType?.affectsBalance ?? true) ? (l.days || 0) : 0),
+    0
+  );
   return { contract, balance: computeBalance(contract, taken, asOf) };
 };
 
@@ -954,15 +953,8 @@ exports.createBackdatedLeave = async (req, res) => {
     const days = leaveDays(startDate, endDate);
     if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
 
-    // ── أيُخصَم من رصيده أم لا؟ ───────────────────────────────────────────
-    // كان الجوابُ صفةً ثابتةً في نوع الإجازة، يقرّرها من عرّف النوعَ مرّةً
-    // واحدةً للأبد. والواقعُ أنّ الحالةَ الواحدة تختلف: إجازةٌ مرضيّةٌ بتقرير
-    // لا تُخصَم، ومثلُها بلا تقريرٍ تُخصَم؛ وغيابٌ يُسامَح فيه ومثلُه لا.
-    // فالنوعُ يبقى الاقتراحَ، والقرارُ لمن يقيّد — ويُحفظ مع القيد لا يُستنتَج
-    // بعده، وإلّا تغيّرت أرصدةٌ ماضيةٌ بتعديل تعريفِ نوع.
-    const affects = req.body.affectsBalance === undefined
-      ? (lt.affectsBalance !== false)
-      : req.body.affectsBalance === true;
+    // الخصمُ من صفة النوع — تُعرَّف مرّةً في «أنواع الإجازات» وتنطبق على الجميع.
+    const affects = lt.affectsBalance !== false;
 
     // لا تُقيَّد إجازتان على نفس الأيّام: يومٌ واحدٌ لا يُخصَم مرّتين.
     const clash = await LeaveRequest.findOne({
@@ -998,7 +990,6 @@ exports.createBackdatedLeave = async (req, res) => {
       recordedBy: req.user._id,
       recordedByName: fullName(req.user),
       recordedAt: now,
-      affectsBalanceOverride: affects,
       balanceSnapshot: {
         accrued: balance.accrued,
         requested: days,

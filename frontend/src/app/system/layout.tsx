@@ -485,7 +485,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Admin (configuration & oversight — kept near the bottom)
     { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/expense-categories', label: L.expenseCategories, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
-    { href: '/system/settings/reference-data', label: lang === 'ar' ? 'القوائم المرجعية' : 'Reference Data', icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'sales_manager', 'hr_manager', 'hr_specialist'], section: 'Admin' },
+    // ── القوائمُ المرجعيّة: لكلٍّ قوائمُه ────────────────────────────────────
+    // كانت مقصورةً على قائمةِ أدوارٍ مكتوبةٍ باليد — يُنسى منها مديرُ الأسطول
+    // ومديرُ المركبات وهما يملكان قوائمَ فعلًا — ومن دخلها رأى قوائمَ الأقسام
+    // كلِّها. صار الخادمُ يردّ لكلّ دورٍ ما يملك تعديلَه وحدَه، فتُفتح للجميع
+    // ولا يرى فيها أحدٌ ما ليس له. ومن لا قائمةَ له تقول له الصفحةُ ذلك.
+    { href: '/system/settings/reference-data', label: lang === 'ar' ? 'القوائم المرجعية' : 'Reference Data', icon: <Tags className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Admin' },
     { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/permissions', label: lang === 'ar' ? 'الأدوار والصلاحيات' : 'Roles & Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin'], section: 'Admin' },

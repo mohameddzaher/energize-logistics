@@ -15,6 +15,7 @@ import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ALL_ROLE_DEFS, rolesGroupedBySection } from '@/lib/roles';
 import { getSectionLabel } from '@/lib/translations';
+import { SearchableSelect } from '@/components/hr/HRKit';
 
 interface UserRecord {
   _id: string;
@@ -613,6 +614,16 @@ export default function UsersPage() {
     ...serverRoles.map((r) => [r.key, lang === 'ar' ? r.ar : r.en]),
   ]);
 
+  // خياراتُ الدور: الاسمُ بلغة الواجهة ومعه اسمُ قسمِه — كلاهما يُبحَث فيه.
+  const roleOptions = (serverRoles.length
+    ? serverRoles.filter((r) => r.key !== 'client')
+    : Object.entries(legacyRoleLabels).filter(([v]) => v !== 'client')
+      .map(([key]) => ({ key, ar: legacyRoleLabels[key], en: legacyRoleLabels[key], section: '', isManager: false }))
+  ).map((r) => ({
+    value: r.key,
+    label: `${lang === 'ar' ? r.ar : r.en}${r.section ? ` — ${getSectionLabel(r.section, lang)}` : ''}`,
+  }));
+
   /**
    * المديرُ المباشر يُقترَح من قسم الدور.
    *
@@ -888,10 +899,13 @@ export default function UsersPage() {
       {formData.accountType === 'employee' && (
       <div>
         <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.role}</label>
-        <select
+        {/* ── يُبحَث لا يُتصفَّح ────────────────────────────────────────────────
+            سبعةٌ وأربعون دورًا في قائمةٍ منسدلة تُقرأ بالتمرير. والبحثُ يشمل
+            اسمَ الدور واسمَ قسمِه معًا: من يكتب «أسطول» يجد مديرَه وموظّفَه،
+            ومن يكتب «مدير» يجد المديرين كلَّهم. */}
+        <SearchableSelect
           value={formData.role}
-          onChange={(e) => {
-            const role = e.target.value;
+          onChange={(role) => {
             setFormData({ ...formData, role, linkedCustomer: '', assignedCustomers: [] });
             // Auto-suggest a manager by org chart when creating a new user.
             if (!selectedUser && !['super_admin', 'admin', 'client'].includes(role)) {
@@ -902,17 +916,11 @@ export default function UsersPage() {
               setFormData((prev) => ({ ...prev, manager: '' }));
             }
           }}
-          className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-        >
-          {(serverRoles.length
-            ? serverRoles.filter((r) => r.key !== 'client')
-            : Object.entries(legacyRoleLabels).filter(([v]) => v !== 'client').map(([key]) => ({ key, ar: legacyRoleLabels[key], en: legacyRoleLabels[key], section: '', isManager: false }))
-          ).map((r) => (
-            <option key={r.key} value={r.key}>
-              {(lang === 'ar' ? r.ar : r.en)}{r.section ? ` — ${r.section}` : ''}
-            </option>
-          ))}
-        </select>
+          searchAfter={6}
+          placeholder={lang === 'ar' ? '— اختر الدور —' : '— pick a role —'}
+          searchPlaceholder={lang === 'ar' ? 'ابحث باسم الدور أو القسم…' : 'role or section…'}
+          options={roleOptions}
+        />
       </div>
       )}
 
@@ -925,16 +933,19 @@ export default function UsersPage() {
             {lang === 'ar' ? 'المدير المباشر' : 'Direct Manager'}
             <span className="text-slate-500 text-xs font-normal ms-2">{lang === 'ar' ? '(اختياري — يُقترح تلقائيًا حسب القسم)' : '(optional — auto-suggested by role)'}</span>
           </label>
-          <select
+          {/* البحثُ بالاسم أو بالدور: «مدير الأسطول» تجده بلقبه كما تجده باسمه. */}
+          <SearchableSelect
             value={formData.manager}
-            onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-          >
-            <option value="">{lang === 'ar' ? 'بدون مدير (تروح للموارد البشرية مباشرة)' : 'No manager (goes straight to HR)'}</option>
-            {users.filter((u) => u._id !== selectedUser?._id && u.role !== 'client').map((u) => (
-              <option key={u._id} value={u._id}>{u.firstName} {u.lastName} — {roleLabels[u.role] || u.role}</option>
-            ))}
-          </select>
+            onChange={(v) => setFormData({ ...formData, manager: v })}
+            searchAfter={6}
+            placeholder={lang === 'ar' ? 'بدون مدير (تروح للموارد البشرية مباشرة)' : 'No manager (goes straight to HR)'}
+            searchPlaceholder={lang === 'ar' ? 'ابحث بالاسم أو الدور…' : 'name or role…'}
+            options={[
+              { value: '', label: lang === 'ar' ? 'بدون مدير (تروح للموارد البشرية مباشرة)' : 'No manager (goes straight to HR)' },
+              ...users.filter((u) => u._id !== selectedUser?._id && u.role !== 'client')
+                .map((u) => ({ value: u._id, label: `${u.firstName} ${u.lastName} — ${roleLabels[u.role] || u.role}` })),
+            ]}
+          />
         </div>
       )}
 

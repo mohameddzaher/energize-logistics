@@ -205,6 +205,15 @@ const fleetConfigSchema = new mongoose.Schema({
   key: { type: String, default: 'fleet', unique: true },
   fridayBonusAmount: { type: Number, default: 50 },      // ريال يُضاف لمصروف السائق يوم الجمعة
   defaultMonthlyTarget: { type: Number, default: 27000 }, // الهدف الشهري الافتراضي للسيارة
+
+  // ── الهدفُ يُقاس بماذا؟ ───────────────────────────────────────────────────
+  // «ثلاثون ألفًا شهريًّا» جملةٌ ناقصة ما لم يُقل: ثلاثون ألفَ **دخلٍ** أم
+  // ثلاثون ألفًا **بعد مصروف السائق**؟ والفرقُ بينهما آلافٌ في السيّارة
+  // الواحدة، فتظهر سيّارةٌ محقِّقةً على مقياسٍ ومقصّرةً على الآخر.
+  //   gross → يُقارَن بالدخل كما هو (شامل مصاريف السائقين)
+  //   net   → يُقارَن بالدخل بعد خصم مصروف السائق (غير شامل)
+  // ويُقال المقياسُ في الشاشة مع الرقم، فلا يُقرأ الرقمُ على غير وجهه.
+  targetBasis: { type: String, enum: ['gross', 'net'], default: 'gross' },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 

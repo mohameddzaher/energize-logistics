@@ -103,13 +103,14 @@ const SECTION_ROLES = [
     manager: { key: 'hr_manager', ar: 'مدير الموارد البشرية', en: 'HR Manager' },
     staff: [{ key: 'hr_specialist', ar: 'أخصائي موارد بشرية', en: 'HR Specialist' }] },
 
+  // كان لهذا القسم ثلاثةُ أدوار موظّفين (قائد فريق، أخصائي، مندوب) بينما لكلّ
+  // قسمٍ آخر دورٌ واحد. والفرقُ بينها لم يكن صلاحيّةً بل لقبًا — ثلاثتها ترى
+  // القسمَ نفسَه — فكان الفارقُ حَيرةً عند إنشاء المستخدم لا فائدةً بعده.
+  // صار دورًا واحدًا، والألقابُ الثلاثة تبقى في `RENAMED` فتُقرأ الحساباتُ
+  // القديمة صحيحةً وتُحوَّل.
   { section: 'CRM',
     manager: { key: 'crm_manager', ar: 'مدير إدارة العلاقات', en: 'CRM Manager' },
-    staff: [
-      { key: 'crm_team_lead', ar: 'قائد فريق العلاقات', en: 'CRM Team Lead' },
-      { key: 'crm_specialist', ar: 'أخصائي علاقات', en: 'CRM Specialist' },
-      { key: 'crm_agent', ar: 'مندوب علاقات', en: 'CRM Agent' },
-    ] },
+    staff: [{ key: 'crm_specialist', ar: 'أخصائي علاقات العملاء', en: 'CRM Specialist' }] },
 
   { section: 'Sales',
     manager: { key: 'sales_manager', ar: 'مدير المبيعات', en: 'Sales Manager' },
@@ -164,6 +165,9 @@ const RENAMED = {
   administrator: 'administration_staff',
   b2c_head: 'b2c_manager',
   b2c_project_manager: 'b2c_project_lead',
+  // ألقابُ CRM الثلاثة صارت دورًا واحدًا.
+  crm_team_lead: 'crm_specialist',
+  crm_agent: 'crm_specialist',
 };
 /** يرجّع المفتاح الحالي لأي دور، حتى لو اتبعت بالاسم القديم. */
 const canonicalRole = (role) => RENAMED[role] || role;
@@ -181,6 +185,15 @@ const canonicalRole = (role) => RENAMED[role] || role;
   for (const s of SECTION_ROLES) {
     if (!/_manager$/.test(s.manager.key)) problems.push(`دور المدير «${s.manager.key}» لازم ينتهي بـ _manager`);
     if (!s.staff.length) problems.push(`قسم «${s.section}» مفيهوش دور موظف`);
+    // ── دوران لكلّ قسم: مدير وموظّف. لا ثالث ─────────────────────────────
+    // القاعدةُ ليست ذوقًا: كلُّ دورٍ إضافيٍّ يظهر في قائمة إنشاء المستخدم
+    // وفي صفحة الصلاحيات وفي كلّ حارسِ قسم، فيصير على من يختار أن يعرف
+    // الفرقَ بين «أخصائي» و«مندوب» — وهو فرقٌ لا وجودَ له في الصلاحيّات.
+    // ومن أراد تمييزَ الألقاب فالمسمّى الوظيفيّ في ملفّ الموظّف موضعُه،
+    // لا دورُ النظام. تُفحَص وقت التحميل فلا يمرّ دورٌ ثالثٌ صامتًا.
+    if (s.staff.length > 1) {
+      problems.push(`قسم «${s.section}» فيه ${s.staff.length} أدوار موظّفين (${s.staff.map((x) => x.key).join('، ')}) — القاعدة: دور مدير ودور موظّف فقط`);
+    }
     for (const st of s.staff) {
       if (/_manager$/.test(st.key)) problems.push(`دور الموظف «${st.key}» بينتهي بـ _manager — هيتحسب مدير بالغلط`);
     }

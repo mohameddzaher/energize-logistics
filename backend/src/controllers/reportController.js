@@ -18,38 +18,76 @@ const cache = require('../utils/ttlCache');
 // Reports read across every section, so they are limited to the roles that are
 // already trusted with cross-section visibility. A `client` (partner) login must
 // never reach them — they have the portal, which is scoped to themselves.
-const REPORT_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator',
-  'operations_manager', 'operations_staff', 'fleet_manager', 'fleet_supervisor',
-  'hr_manager', 'hr_specialist', 'finance_manager', 'accountant',
-  'crm_manager', 'crm_team_lead', 'sales_manager', 'contracts_manager',
-  'customs_manager', 'workshop_manager', 'procurement_manager',
-  'bd_manager', 'marketing_manager', 'administration_staff',
-  // قسم لوكيشن سوليوشن: تقريرا المركبة والفردة من صميم عمله، وكان محرومًا
-  // منهما لأنّ القائمة كُتبت قبل أن يوجدا.
-  'location_manager', 'location_staff',
-  // وقسم المركبات والتفاويض: صفحةُ بروفايل المركبة فيه هي أكثرُ ما يُطبع من
-  // هذه التقارير، وأهلُها كانوا وحدَهم الممنوعين منها.
-  'vehicles_manager', 'vehicles_staff',
-];
+/**
+ * من يدخل مركزَ التقارير أصلًا.
+ *
+ * كانت قائمةً تُكتب باليد، فيسقط منها الدورُ الجديد: «مدير قطاع الأفراد» لم
+ * يكن يرى تقريرًا واحدًا — ولا حتى تقريرَ قسمِه. وقد رأينا ما تفعله القوائمُ
+ * اليدويّة في أسماء الأدوار وفي القوائم المرجعيّة وفي الخدمة الذاتيّة.
+ *
+ * فصارت القاعدةُ: كلُّ دورٍ داخليّ يدخل، و**ما يراه** داخلَها محسومٌ بمصفوفة
+ * صلاحيّات الأقسام (SUBJECT_SECTIONS أدناه) — وهي المكانُ الوحيد الذي يُضبط
+ * منه الوصول. والشريكُ الخارجيّ وحدَه يُمنع: له بوابتُه.
+ */
+const EXTERNAL_ROLES = ['client'];
+const canOpenReports = (role) => !!role && !EXTERNAL_ROLES.includes(role);
 
-// Some subjects are more sensitive than the section they sit in: an employee
-// report carries salary, iqama and evaluation data, so it stays with HR and the
-// admin tier even though the reports page itself is broadly available.
-const SUBJECT_ROLES = {
-  employee: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'],
+
+/**
+ * كلُّ تقريرٍ يخصُّ قسمًا — أو أقسامًا.
+ *
+ * ── لماذا لا تكفي قائمةُ أدوار ──────────────────────────────────────────────
+ * كانت الصفحةُ تعرض التقاريرَ كلَّها لكلّ من دخلها: يفتح مديرُ الموارد البشريّة
+ * حسابَه فيطبع تقريرَ فردةِ كاوتش. وليس هذا عبثًا في الشكل فقط — تقريرُ العميل
+ * يحمل أسعارَه، وتقريرُ المورّد يحمل عقودَه.
+ *
+ * ولا تُعالَج بقائمةِ أدوارٍ ثالثة: عندنا قوائمُ تشيخ في كلّ مكان، وقد رأينا
+ * ما تفعله. الصلاحيّةُ محسومةٌ في مكانٍ واحد — مصفوفةُ صلاحيّات الأقسام التي
+ * يضبطها مديرُ النظام — فيُسأل عنها: أتملك قسمَ هذا التقرير؟ فمن مُنح قسمًا
+ * في المصفوفة رأى تقاريرَه في اللحظة نفسِها، ومن سُحب منه اختفت.
+ *
+ * وموضوعٌ يخصُّ أكثرَ من قسم يكفيه واحدٌ منها: المركبةُ تخصّ سجلَّ المركبات
+ * وإدارةَ الأسطول ولوكيشن سوليوشن معًا، وكلُّ واحدٍ منهم يسأل عنها بحقّ.
+ */
+const SUBJECT_SECTIONS = {
+  vehicle: ['Vehicles', 'Fleet Management', 'Location Solutions', 'Workshop'],
+  tire: ['Location Solutions', 'Workshop'],
+  driver: ['Fleet Management', 'Location Solutions'],
+  customer: ['CRM', 'Customers & Finance', 'Sales'],
+  vendor: ['CRM', 'Contracts', 'Procurement'],
+  // تقريرُ الموظّف يحمل الراتبَ والإقامةَ والتقييم — الموارد البشريّة وحدَها.
+  employee: ['HR'],
+  meeting: ['Business Review'],
+  // تقريرُ القسم يُصدره صاحبُ كلِّ قسمٍ عن قسمِه، فلا يُقيَّد بقسمٍ بعينه.
+  section: null,
 };
 
-const canUse = (user, subject) => {
-  if (!REPORT_ROLES.includes(user.role)) return false;
-  const extra = SUBJECT_ROLES[subject];
-  return !extra || extra.includes(user.role);
+const { getOverride } = require('../utils/permissions');
+const { FULL_ACCESS_ROLES } = require('../config/constants');
+const { defaultAccess } = require('../config/sections');
+
+/** أيملك هذا الدورُ أيًّا من أقسام هذا التقرير؟ */
+const canUse = async (user, subject) => {
+  if (!canOpenReports(user.role)) return false;
+  if (FULL_ACCESS_ROLES.includes(user.role)) return true;
+  const sections = SUBJECT_SECTIONS[subject];
+  if (!sections) return true;                       // تقريرُ القسم: للجميع عن قسمهم
+  for (const key of sections) {
+    // eslint-disable-next-line no-await-in-loop
+    const override = await getOverride(user.role, key);
+    const access = override == null ? defaultAccess(user.role, key) : override;
+    if (access === 'view' || access === 'edit') return true;
+  }
+  return false;
 };
 
 const langOf = (req) => (req.query.lang === 'en' ? 'en' : 'ar');
 
 exports.getSubjects = async (req, res) => {
-  const subjects = subjectMeta().filter((s) => canUse(req.user, s.key));
+  // تُصفّى بالتوازي: كلُّ سؤالٍ يقرأ المصفوفةَ من مخزنٍ مؤقّت، والانتظارُ
+  // واحدًا تلو الآخر يجعل فتحَ الصفحة أبطأ بلا سبب.
+  const allowed = await Promise.all(subjectMeta().map((s) => canUse(req.user, s.key)));
+  const subjects = subjectMeta().filter((_, i) => allowed[i]);
   res.json({ subjects, company: COMPANY });
 };
 
@@ -58,7 +96,7 @@ exports.getOptions = async (req, res) => {
   try {
     const subject = getSubject(req.params.subject);
     if (!subject) return res.status(404).json({ message: 'Unknown report subject' });
-    if (!canUse(req.user, subject.key)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!(await canUse(req.user, subject.key))) return res.status(403).json({ message: 'Insufficient permissions' });
 
     const q = (req.query.q || '').trim();
     // A user-scoped subject (meetings — you only list the ones you attended)
@@ -87,7 +125,7 @@ exports.getReport = async (req, res) => {
   try {
     const subject = getSubject(req.params.subject);
     if (!subject) return res.status(404).json({ message: 'Unknown report subject' });
-    if (!canUse(req.user, subject.key)) return res.status(403).json({ message: 'Insufficient permissions' });
+    if (!(await canUse(req.user, subject.key))) return res.status(403).json({ message: 'Insufficient permissions' });
 
     const lang = langOf(req);
     const id = decodeURIComponent(req.params.id || '');
@@ -145,5 +183,5 @@ exports.getReport = async (req, res) => {
   }
 };
 
-module.exports.REPORT_ROLES = REPORT_ROLES;
-module.exports.SUBJECT_ROLES = SUBJECT_ROLES;
+module.exports.canOpenReports = canOpenReports;
+module.exports.SUBJECT_SECTIONS = SUBJECT_SECTIONS;

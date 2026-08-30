@@ -3,7 +3,7 @@
  *
  * Not section-gated: a report deliberately crosses sections (a vehicle report
  * reads telemetry AND loads AND the workshop). Access is decided per subject
- * inside the controller instead — see REPORT_ROLES / SUBJECT_ROLES there.
+ * inside the controller instead — see canOpenReports / SUBJECT_SECTIONS there.
  */
 const express = require('express');
 const router = express.Router();

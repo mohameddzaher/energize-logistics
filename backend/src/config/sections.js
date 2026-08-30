@@ -114,7 +114,10 @@ const SECTIONS = [
   {
     key: 'Workshop',
     apiPrefixes: ['/api/workshop'],
-    defaultRoles: ['workshop_manager', 'workshop_employee', 'procurement_staff'],
+    // مديرُ المشتريات مع موظّفه: كان الموظّفُ وحدَه في القائمة، فيفتح الورشةَ
+    // ومديرُه لا يفتحها. القوائمُ تُكتب قسمًا قسمًا فيُنسى المديرُ حيث ذُكر
+    // الموظّف — ولا يُكتشف إلّا بمقارنةِ الاثنين.
+    defaultRoles: ['workshop_manager', 'workshop_employee', 'procurement_staff', 'procurement_manager'],
   },
   {
     key: 'Remote',

@@ -108,6 +108,39 @@ const REGISTRY = [
       { key: 'unloading', nameEn: 'Unloading', nameAr: 'جارٍ التفريغ' },
     ],
   },
+  // ── قوائمُ الموارد البشريّة ────────────────────────────────────────────────
+  // ما كان يُكتب بالحرّيّة في خانةٍ نصّيّة فيصير في القاعدة عشرَ صيغٍ للشيء
+  // الواحد («سائق»، «سائق شاحنة»، «سايق») — فلا يُفلتَر ولا يُعدّ.
+  {
+    type: 'hr_job_title',
+    module: 'hr',
+    nameEn: 'Job Titles',
+    nameAr: 'المسمّيات الوظيفية',
+    roles: ['hr_manager', 'hr_specialist'],
+    storeLabel: true,
+    seed: [
+      { key: 'driver', nameEn: 'Driver', nameAr: 'سائق' },
+      { key: 'accountant', nameEn: 'Accountant', nameAr: 'محاسب' },
+      { key: 'admin_assistant', nameEn: 'Administrative Assistant', nameAr: 'مساعد إداري' },
+      { key: 'technician', nameEn: 'Technician', nameAr: 'فني' },
+      { key: 'supervisor', nameEn: 'Supervisor', nameAr: 'مشرف' },
+    ],
+  },
+  {
+    type: 'hr_termination_reason',
+    module: 'hr',
+    nameEn: 'Termination Reasons',
+    nameAr: 'أسباب إنهاء الخدمة',
+    roles: ['hr_manager', 'hr_specialist'],
+    storeLabel: true,
+    seed: [
+      { key: 'resigned', nameEn: 'Resignation', nameAr: 'استقالة' },
+      { key: 'contract_end', nameEn: 'Contract ended', nameAr: 'انتهاء العقد' },
+      { key: 'terminated', nameEn: 'Terminated', nameAr: 'إنهاء من الشركة' },
+      { key: 'absconded', nameEn: 'Absconded', nameAr: 'تغيّب' },
+      { key: 'transferred', nameEn: 'Sponsorship transfer', nameAr: 'نقل كفالة' },
+    ],
+  },
   {
     type: 'procurement_category',
     module: 'procurement',

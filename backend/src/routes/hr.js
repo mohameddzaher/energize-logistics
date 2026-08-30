@@ -91,6 +91,10 @@ router.put('/contracts/:id', authorize(...STAFF), hr.updateContract);
 router.post('/contracts/:id/terminate', authorize(...STAFF), hr.terminateContract);
 router.delete('/contracts/:id', authorize(...STAFF), hr.deleteContract);
 
+// إعدادات القسم — عتبات تنبيه انتهاء المستندات.
+router.get('/settings', authorize(...STAFF), hr.getHrSettings);
+router.put('/settings', authorize(...STAFF), hr.updateHrSettings);
+
 router.get('/leaves', authorize(...STAFF), hr.listLeaves);
 // تقييدُ إجازةٍ وقعت فعلًا — قبل المسار ذي المعامل وإلّا ابتلعه `/:id`.
 router.post('/leaves/backdated', authorize(...STAFF), hr.createBackdatedLeave);

@@ -571,6 +571,48 @@ exports.getEmployeeAudit = async (req, res) => {
 };
 
 // ── Contracts ────────────────────────────────────────────────────────────────
+// ── إعدادات القسم ───────────────────────────────────────────────────────────
+
+const HrConfig = require('../models/HrConfig');
+
+const getHrConfig = async () => {
+  let cfg = await HrConfig.findOne({ key: 'hr' });
+  if (!cfg) cfg = await HrConfig.create({ key: 'hr', alerts: HrConfig.DEFAULT_ALERTS });
+  return cfg;
+};
+
+exports.getHrSettings = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const cfg = await getHrConfig();
+    const saved = cfg.alerts instanceof Map ? Object.fromEntries(cfg.alerts) : (cfg.alerts || {});
+    // الافتراضيُّ تحت المحفوظ: مستندٌ أُضيف بعد آخر حفظٍ يأخذ عتبتَه ولا يبقى بلا رقم.
+    res.json({ alerts: { ...HrConfig.DEFAULT_ALERTS, ...saved } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load HR settings' });
+  }
+};
+
+exports.updateHrSettings = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const cfg = await getHrConfig();
+    const incoming = req.body.alerts || {};
+    for (const [k, v] of Object.entries(incoming)) {
+      const n = Number(v);
+      // يومٌ واحدٌ على الأقلّ وسنةٌ على الأكثر: صفرٌ يعني «لا تنبّه أبدًا» وهو
+      // ما لا يُقصد أبدًا، وألفٌ يجعل كلَّ مستندٍ منتهيًا.
+      if (Number.isFinite(n) && n >= 1 && n <= 365) cfg.alerts.set(k, Math.round(n));
+    }
+    cfg.updatedBy = req.user._id;
+    await cfg.save();
+    const saved = Object.fromEntries(cfg.alerts);
+    res.json({ alerts: { ...HrConfig.DEFAULT_ALERTS, ...saved } });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to save HR settings' });
+  }
+};
+
 exports.listContracts = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;

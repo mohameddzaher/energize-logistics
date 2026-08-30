@@ -488,10 +488,17 @@ function readSheet(file) {
   const all = await Employee.find({}).lean();
   const byIqama = new Map();
   for (const e of all) {
-    const k = idKey(e.iqamaNumber);
-    // الأول يفوز: سجلٌّ مكرَّرُ الهوية موجودٌ في القاعدة، والكتابةُ في الثاني
-    // تجعل الشاشةَ تعرض الأول بلا تحديث فيبدو الاستيراد وكأنه لم يعمل.
-    if (k && !byIqama.has(k)) byIqama.set(k, e);
+    // ── الهويّةُ خانتان لا واحدة ────────────────────────────────────────────
+    // المقيمُ رقمُه في `iqamaNumber` والسعوديُّ في `nationalId`، والشيتُ يسمّي
+    // العمودَ «رقم الهوية» للاثنين. والمطابقةُ بخانةٍ واحدة تجعل السعوديَّ
+    // يبدو غيرَ موجودٍ فيُنشأ له سجلٌّ ثانٍ في كلّ استيراد — وهو ما حدث مع
+    // «اسماء جميل عبدالعزيز كتبي» (#1230).
+    for (const raw of [e.iqamaNumber, e.nationalId]) {
+      const k = idKey(raw);
+      // الأول يفوز: سجلٌّ مكرَّرُ الهوية موجودٌ في القاعدة، والكتابةُ في الثاني
+      // تجعل الشاشةَ تعرض الأول بلا تحديث فيبدو الاستيراد وكأنه لم يعمل.
+      if (k && !byIqama.has(k)) byIqama.set(k, e);
+    }
   }
 
   // نوعُ كلّ حقلٍ يُقرأ من المخطَّط نفسه لا من قائمةٍ مكتوبة باليد: بعضُ تواريخ
@@ -783,7 +790,9 @@ function readSheet(file) {
   // ════════════════════════════════════════════════════════════════════════
   const sheetKeys = new Set(plan.keys());
   const dbOnly = all
-    .filter((e) => e.isHrRecord !== false && !sheetKeys.has(idKey(e.iqamaNumber)))
+    .filter((e) => e.isHrRecord !== false
+      && !sheetKeys.has(idKey(e.iqamaNumber))
+      && !sheetKeys.has(idKey(e.nationalId)))
     .map((e) => ({
       id: e.iqamaNumber || '—',
       name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim() || '—',

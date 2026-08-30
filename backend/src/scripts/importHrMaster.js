@@ -131,6 +131,26 @@ const EXCLUDED_IQAMAS = new Set(['2677457951']);
 const IQAMA_FIXES = { 2621086423: '2621086426' };
 const fixIqama = (v) => IQAMA_FIXES[v] || v;
 
+// ── الأسبقيّة: الشيتات الثلاثةَ عشرَ فوق الماستر ─────────────────────────────
+// قرارُ صاحب الشركة: «الداتا في الـ١٤ شيت هي الأصحّ، والماستر يُؤخذ منه ما ليس
+// فيها». وليست هذه أفضليّةً بلا سبب: الشيتُ التفصيليّ عمودٌ واحدٌ يُصدَّر من
+// مصدره (أبشر، التأمينات، الجوازات)، والماسترُ جدولٌ يُجمَّع باليد فيشيخ فيه
+// العمودُ ولا يُلاحَظ. وقد قيس الفرقُ فعلًا: ستُّ خاناتِ أبشرَ مختلفة، وجنسيّةٌ
+// مكتوبةٌ «غير سعودي» بدل «مصر»، وعنوانٌ وطنيٌّ لا يطابق.
+//
+// فهذه الحقولُ يملكها الشيتُ: يملؤها الماسترُ إن كانت فارغةً، ولا يكتب فوقها
+// أبدًا — ولا حتى مع `--overwrite`. وما عداها (الآيبان والبنك والتصنيف ونوع
+// الرخصة…) لا شيتَ له، فالماسترُ مصدرُه الوحيد ويصحّحه.
+const SHEET_OWNED = new Set([
+  'employeeNumber', 'absherNumber', 'nationality', 'email', 'gender', 'address',
+  'employerNumber', 'gosiNumber', 'department', 'passportNumber', 'passportExpiry',
+  'workStatusText', 'iqamaExpiry', 'iqamaProfession', 'arabicName', 'iqamaNumber',
+  // «القسم والمسمى الوظيفي» يحمل خمسةً منها: القسم والفرع والمدير المباشر
+  // والمسمّى ونوع التعاقد.
+  'branchName', 'directManagerName', 'jobTitle', 'classification',
+  'contractStartDate', 'contractEndDate', 'contractStatusText', 'hireDate',
+]);
+
 const DATE_FIELDS = new Set(['passportExpiry', 'iqamaIssueDate', 'iqamaExpiry', 'dateOfBirth',
   'contractStartDate', 'contractEndDate', 'hireDate', 'insuranceExpiry', 'healthCertExpiry', 'driverCardExpiry', 'licenseExpiry']);
 
@@ -143,7 +163,8 @@ const asComparable = (v) => {
 
 (async () => {
   console.log('\n' + '='.repeat(72));
-  console.log(DRY ? '  ماستر الموارد البشريّة — تجربةٌ فقط' : `  ماستر الموارد البشريّة — تنفيذ${OVERWRITE ? ' (يصحّح المخالف)' : ' (يملأ الفارغ)'}`);
+  console.log(DRY ? '  ماستر الموارد البشريّة — تجربةٌ فقط' : `  ماستر الموارد البشريّة — تنفيذ${OVERWRITE ? ' (يصحّح المخالف — عدا ما تملكه الشيتات)' : ' (يملأ الفارغ)'}`);
+  console.log('  الأسبقيّة: الشيتات الثلاثةَ عشرَ فوق الماستر — يملأ ما ليس فيها ولا يكتب فوقه.');
   console.log('='.repeat(72));
 
   const allRows = readSheet(FILE, 'xl/worksheets/sheet1.xml').filter((r) => r.r > HEADER_ROW && str(r.cells.B));
@@ -188,7 +209,9 @@ const asComparable = (v) => {
     for (const [k, v] of Object.entries(src)) {
       const now = emp[k];
       const blank = isBlank(now);
-      if (blank || (OVERWRITE && asComparable(now) !== asComparable(v))) {
+      // الشيتُ يملك حقلَه: يُملأ الفارغُ ولا يُكتب فوق المملوء، مهما طُلب.
+      const mayOverwrite = OVERWRITE && !SHEET_OWNED.has(k);
+      if (blank || (mayOverwrite && asComparable(now) !== asComparable(v))) {
         set[k] = v;
         fieldHits[k] = (fieldHits[k] || 0) + 1;
       }

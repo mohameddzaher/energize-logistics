@@ -322,7 +322,10 @@ function FleetShipmentsInner() {
             {[
               ar ? 'رقم البوليصة' : 'Waybill',
               ar ? 'العميل' : 'Customer',
-              ar ? 'المسار' : 'Route',
+              // «من» و«إلى» عمودان: السهمُ في العربيّة يشير يسارًا والنصُّ يجري
+              // يمينًا فيُقرأ عكسَه، وعمودان يُفرَزان ويُفلتَران ويُصدَّران.
+              ar ? 'من' : 'From',
+              ar ? 'إلى' : 'To',
               ar ? 'اللوحة' : 'Plate',
               ar ? 'السائقون' : 'Drivers',
               ar ? 'إيجار السيارة' : 'Vehicle rent',
@@ -337,7 +340,7 @@ function FleetShipmentsInner() {
           </tr></thead>
           <tbody>
             {shipments.length === 0 ? (
-              <tr><td colSpan={11} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={12} className="text-center text-slate-500 py-14">
                 {ar ? 'لا توجد حمولات بعد — ابدأ من زر «إنشاء حمولة».' : 'No shipments yet.'}
               </td></tr>
             ) : shipments.map((s) => {
@@ -354,7 +357,8 @@ function FleetShipmentsInner() {
                   </td>
                   <td className="px-3 py-3 text-slate-900 font-bold font-mono">{s.waybillNumber}</td>
                   <td className="px-3 py-3 text-slate-900 font-medium max-w-[200px] truncate" title={s.customerName}>{s.customerName || '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{s.fromCity || '—'} ← {s.toCity || '—'}</td>
+                  <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{s.fromCity || '—'}</td>
+                  <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{s.toCity || '—'}</td>
                   <td className="px-3 py-3 font-mono text-xs" onClick={(e) => e.stopPropagation()}>
                     {shipmentVehicleId(s)
                       ? <Link href={`/system/fleet/vehicles/${shipmentVehicleId(s)}`} className="font-semibold text-[#f37121] hover:underline">{s.vehiclePlate || '—'}</Link>

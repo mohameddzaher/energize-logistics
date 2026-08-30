@@ -316,12 +316,12 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
               <table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
                   {[ar ? 'البوليصة' : 'Waybill', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'المشرف' : 'Supervisor',
-                    ar ? 'اللوحة' : 'Plate', ar ? 'السائق' : 'Driver', ar ? 'المسار' : 'Route', ar ? 'نوع الحمولة' : 'Load type',
+                    ar ? 'اللوحة' : 'Plate', ar ? 'السائق' : 'Driver', ar ? 'من' : 'From', ar ? 'إلى' : 'To', ar ? 'نوع الحمولة' : 'Load type',
                     ar ? 'الإيجار' : 'Rent', ar ? 'مصروف السائق' : 'Driver expense', ar ? 'الحالة' : 'Status',
                   ].map((h, i) => <th key={i} className={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
-                  {d.shipments.length === 0 && <tr><td colSpan={11} className="text-center text-slate-500 py-14">{ar ? 'لا توجد حمولات ضمن هذه الفلاتر.' : 'No loads for these filters.'}</td></tr>}
+                  {d.shipments.length === 0 && <tr><td colSpan={12} className="text-center text-slate-500 py-14">{ar ? 'لا توجد حمولات ضمن هذه الفلاتر.' : 'No loads for these filters.'}</td></tr>}
                   {d.shipments.map((s) => {
                     const st = fleetStatus(s.status);
                     const vid = shipmentVehicleId(s);
@@ -338,7 +338,8 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
                           {vid ? <Link href={`/system/fleet/vehicles/${vid}`} className="font-mono font-semibold text-[#f37121] hover:underline">{s.vehiclePlate || '—'}</Link> : <span className="font-mono">{s.vehiclePlate || '—'}</span>}
                         </td>
                         <td className="px-3 py-3 text-xs text-slate-700 max-w-[150px] truncate">{[s.driverName, s.secondDriverName].filter(Boolean).join(' + ') || '—'}</td>
-                        <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.fromCity || '—'} ← {s.toCity || '—'}</td>
+                        <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.fromCity || '—'}</td>
+                        <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.toCity || '—'}</td>
                         <td className="px-3 py-3 text-xs text-slate-600">{lkp('fleet_load_type', s.loadType) || '—'}</td>
                         <td className="px-3 py-3 text-xs font-semibold text-emerald-700 tabular-nums whitespace-nowrap">
                           {money(s.price)}{s.fullRent ? <span className="text-slate-400 font-normal"> / {money(s.fullRent)}</span> : null}

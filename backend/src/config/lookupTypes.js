@@ -15,6 +15,7 @@ const vehicleDefaults = require('./vehicleDefaults');
 const BASE_WRITE_ROLES = ['super_admin', 'admin'];
 
 const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations_staff'];
+const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_staff', 'operations_manager', 'operations_staff'];
 const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_staff', 'hr_manager', 'finance_manager'];
 
 /**
@@ -139,6 +140,49 @@ const REGISTRY = [
       { key: 'terminated', nameEn: 'Terminated', nameAr: 'إنهاء من الشركة' },
       { key: 'absconded', nameEn: 'Absconded', nameAr: 'تغيّب' },
       { key: 'transferred', nameEn: 'Sponsorship transfer', nameAr: 'نقل كفالة' },
+    ],
+  },
+  // ── قوائمُ طلبات الشحنات ──────────────────────────────────────────────────
+  // القسمُ وسيطٌ: يشتري الحمولةَ من مورّدٍ ويبيعها لعميل. وهذه مفرداتُ عمله
+  // اليوميّ — تُزاد وتُحذف من إعدادات القسم لا من نشرةٍ برمجيّة.
+  {
+    type: 'so_branch',
+    module: 'shipment_orders',
+    nameEn: 'Branches (Shipment Orders)',
+    nameAr: 'الفروع (طلبات الشحنات)',
+    roles: SO_ROLES,
+    storeLabel: true,
+    seed: [
+      { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جدة' },
+      { key: 'riyadh', nameEn: 'Riyadh', nameAr: 'الرياض' },
+      { key: 'dammam', nameEn: 'Dammam', nameAr: 'الدمام' },
+    ],
+  },
+  {
+    type: 'so_payment_method',
+    module: 'shipment_orders',
+    nameEn: 'Payment Methods (Shipment Orders)',
+    nameAr: 'طرق الدفع (طلبات الشحنات)',
+    roles: SO_ROLES,
+    storeLabel: true,
+    seed: [
+      { key: 'cash', nameEn: 'Cash', nameAr: 'كاش' },
+      { key: 'transfer', nameEn: 'Bank transfer', nameAr: 'تحويل بنكي' },
+      { key: 'credit', nameEn: 'Credit', nameAr: 'آجل' },
+    ],
+  },
+  {
+    type: 'so_cancel_reason',
+    module: 'shipment_orders',
+    nameEn: 'Cancellation Reasons',
+    nameAr: 'أسباب الإلغاء',
+    roles: SO_ROLES,
+    storeLabel: true,
+    seed: [
+      { key: 'customer', nameEn: 'Cancelled by customer', nameAr: 'إلغاء من العميل' },
+      { key: 'no_truck', nameEn: 'No truck available', nameAr: 'لا تتوفّر شاحنة' },
+      { key: 'price', nameEn: 'Price not agreed', nameAr: 'لم يُتّفق على السعر' },
+      { key: 'duplicate', nameEn: 'Duplicate order', nameAr: 'طلب مكرّر' },
     ],
   },
   {

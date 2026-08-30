@@ -249,12 +249,196 @@ exports.updateOrder = async (req, res) => {
 
 // The one-click lifecycle change from the list — the whole point is not having
 // to open an order to say "it arrived".
+// ── تحليلاتُ القسم ─────────────────────────────────────────────────────────
+//
+// موديلُ العمل هنا وساطة: نشتري الحمولةَ من مورّدٍ بسعرٍ ونبيعها لعميلٍ بسعر،
+// والفرقُ هو ربحُنا. فالسؤالُ الأوّل ليس «كم حملنا» بل **«كم كسبنا وممّن»**:
+// أيُّ عميلٍ يشتري أكثر، وأيُّ مورّدٍ ينفّذ أرخص، وأيُّ مسارٍ هامشُه أعلى.
+//
+// ولذلك لا تصلح تحليلاتُ إدارة الأسطول هنا: هناك السيّارةُ سيّارتُنا فالسؤالُ
+// «هل حقّقت هدفَها»، وهنا لا سيّارةَ لنا — السؤالُ «هل كان الفرقُ يستحقّ».
+
+exports.getAnalytics = async (req, res) => {
+  try {
+    const { from, to, customer, supplier, status, branch, q } = req.query;
+    const filter = {};
+    if (from || to) {
+      filter.pickupTime = {};
+      if (from) filter.pickupTime.$gte = new Date(`${from}T00:00:00.000Z`);
+      // «إلى» مفتوحًا يعني حتى الآن — لا حتى منتصف ليل اليوم، وإلّا اختفت
+      // شحناتُ اليوم من تقرير من طلب «من أوّل الشهر».
+      filter.pickupTime.$lte = to ? new Date(`${to}T23:59:59.999Z`) : new Date();
+    }
+    if (customer) filter.customer = customer;
+    if (supplier) filter.supplier = supplier;
+    if (status) filter.status = status;
+    if (branch) filter.branch = branch;
+
+    let orders = await ShipmentOrder.find(filter)
+      .select('waybillNumber customerName customer supplier supplierName fromCity toCity truckType status sellPrice buyPrice pickupTime branch driverName createdAt')
+      .populate('supplier', 'name')
+      .sort({ pickupTime: -1 })
+      .limit(5000)
+      .lean();
+
+    if (q && String(q).trim()) {
+      const rx = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      orders = orders.filter((o) => [o.customerName, o.fromCity, o.toCity, o.driverName,
+        o.truckType, o.branch, o.supplier && o.supplier.name, String(o.waybillNumber)]
+        .some((v) => v && rx.test(String(v))));
+    }
+
+    const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const CANCELLED = 'cancelled';
+
+    // الملغاةُ لا تُحسب في المال: لم تُنفَّذ ولم تُفوتَر — لكنّها تُعدّ، فنسبةُ
+    // الإلغاء رقمٌ يُدار.
+    const live = orders.filter((o) => o.status !== CANCELLED);
+    const sell = live.reduce((a, o) => a + num(o.sellPrice), 0);
+    const buy = live.reduce((a, o) => a + num(o.buyPrice), 0);
+    const margin = sell - buy;
+
+    const group = (keyFn, nameFn) => {
+      const m = new Map();
+      for (const o of live) {
+        const k = String(keyFn(o) || '').trim() || '—';
+        if (!m.has(k)) m.set(k, { key: k, name: nameFn ? nameFn(o) : k, orders: 0, sell: 0, buy: 0 });
+        const b = m.get(k);
+        b.orders += 1; b.sell += num(o.sellPrice); b.buy += num(o.buyPrice);
+      }
+      return [...m.values()]
+        .map((b) => ({
+          ...b, sell: r2(b.sell), buy: r2(b.buy),
+          margin: r2(b.sell - b.buy),
+          marginPct: b.sell ? r2(((b.sell - b.buy) / b.sell) * 100) : null,
+          avgMargin: b.orders ? r2((b.sell - b.buy) / b.orders) : 0,
+        }))
+        .sort((x, y) => y.margin - x.margin);
+    };
+
+    // الشحنةُ التي بيعُها أقلُّ من شرائها خسارةٌ صريحة — تُعدّ وتُسمّى.
+    const losing = live
+      .filter((o) => num(o.sellPrice) > 0 && num(o.buyPrice) > num(o.sellPrice))
+      .map((o) => ({
+        _id: o._id, waybillNumber: o.waybillNumber, customerName: o.customerName,
+        supplierName: (o.supplier && o.supplier.name) || o.supplierName || '',
+        fromCity: o.fromCity, toCity: o.toCity, status: o.status,
+        sellPrice: num(o.sellPrice), buyPrice: num(o.buyPrice),
+        margin: r2(num(o.sellPrice) - num(o.buyPrice)),
+        pickupTime: o.pickupTime,
+      }))
+      .sort((a, b) => a.margin - b.margin);
+
+    // بلا سعرٍ لا يُحسب هامش: تُقال صراحةً كي لا يُقرأ الربحُ ناقصًا ويُظنّ تامًّا.
+    const missingPrice = live.filter((o) => !num(o.sellPrice) || !num(o.buyPrice)).length;
+
+    const byMonth = (() => {
+      const m = new Map();
+      for (const o of live) {
+        const d = o.pickupTime || o.createdAt;
+        if (!d) continue;
+        const k = new Date(d).toISOString().slice(0, 7);
+        if (!m.has(k)) m.set(k, { key: k, orders: 0, sell: 0, buy: 0 });
+        const b = m.get(k);
+        b.orders += 1; b.sell += num(o.sellPrice); b.buy += num(o.buyPrice);
+      }
+      return [...m.values()]
+        .map((b) => ({ ...b, sell: r2(b.sell), buy: r2(b.buy), margin: r2(b.sell - b.buy) }))
+        .sort((a, b) => a.key.localeCompare(b.key));
+    })();
+
+    const byStatus = {};
+    for (const o of orders) byStatus[o.status] = (byStatus[o.status] || 0) + 1;
+
+    res.json({
+      totals: {
+        orders: orders.length,
+        live: live.length,
+        cancelled: orders.length - live.length,
+        cancelRate: orders.length ? r2(((orders.length - live.length) / orders.length) * 100) : 0,
+        sell: r2(sell),
+        buy: r2(buy),
+        margin: r2(margin),
+        marginPct: sell ? r2((margin / sell) * 100) : 0,
+        avgMargin: live.length ? r2(margin / live.length) : 0,
+        avgSell: live.length ? r2(sell / live.length) : 0,
+        customers: new Set(live.map((o) => (o.customerName || '').trim()).filter(Boolean)).size,
+        suppliers: new Set(live.map((o) => ((o.supplier && o.supplier.name) || o.supplierName || '').trim()).filter(Boolean)).size,
+        routes: new Set(live.map((o) => `${o.fromCity}→${o.toCity}`)).size,
+        losing: losing.length,
+        missingPrice,
+      },
+      byCustomer: group((o) => o.customerName),
+      bySupplier: group((o) => (o.supplier && o.supplier.name) || o.supplierName),
+      byRoute: group((o) => `${o.fromCity || '—'} → ${o.toCity || '—'}`),
+      byTruckType: group((o) => o.truckType),
+      byBranch: group((o) => o.branch),
+      byMonth,
+      byStatus,
+      losing: losing.slice(0, 50),
+    });
+  } catch (error) {
+    console.error('shipmentOrders analytics error:', error);
+    res.status(500).json({ message: error.message || 'Failed to load analytics' });
+  }
+};
+
+// ── عدّادُ البوالص ──────────────────────────────────────────────────────────
+// رقمُ البوليصة يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه. فلا يُعاد رقمٌ صُرف
+// ولو حُذفت شحنتُه: بوليصتان بالرقم نفسِه في يدين خطأٌ لا يُصلَح لاحقًا. ولذلك
+// العدّادُ يُقدَّم ولا يُرجَع.
+
+const Counter = require('mongoose').models.ShipmentOrderCounter
+  || require('mongoose').model('ShipmentOrderCounter');
+
+exports.getCounter = async (req, res) => {
+  try {
+    const c = await Counter.findById('waybill').lean();
+    const seq = c ? c.seq : 499;
+    const next = Math.max(seq + 1, 500);
+    res.json({ next, start: next });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to read the waybill counter' });
+  }
+};
+
+exports.updateCounter = async (req, res) => {
+  try {
+    const start = Number(req.body.start);
+    if (!Number.isFinite(start)) return res.status(400).json({ message: 'رقم غير صالح' });
+    const c = await Counter.findById('waybill').lean();
+    const seq = c ? c.seq : 499;
+    const next = Math.max(seq + 1, 500);
+    if (start < next) {
+      return res.status(400).json({ message: `لا يقلّ عن ${next} — الأرقام التي صُرفت لا تُعاد` });
+    }
+    await Counter.findOneAndUpdate({ _id: 'waybill' }, { $set: { seq: start - 1 } }, { upsert: true });
+    await logAudit({
+      user: req.user._id, action: 'set_waybill_counter', entity: 'ShipmentOrder',
+      changes: { before: { next }, after: { next: start } }, ipAddress: req.ip,
+    });
+    res.json({ next: start, start });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to set the waybill counter' });
+  }
+};
+
 exports.patchStatus = async (req, res) => {
   try {
     const { status } = req.body;
     const order = await ShipmentOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
+    const from = order.status;
+    const note = String(req.body.note || '').trim().slice(0, 500);
+    // نقلةٌ بلا تغييرٍ ولا ملاحظةٍ لا تُقيَّد: السجلُّ يمتلئ بأسطرٍ لا تقول شيئًا.
+    if (from === status && !note) return res.json({ order });
     order.status = status;
+    order.statusLog.push({
+      from, to: status, note, at: new Date(),
+      by: req.user._id,
+      byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+    });
     await order.save(); // save() so the enum validates the value
     emit('shipmentOrders:updated', { id: String(order._id) });
     // Tell whoever created the order its status moved — unless they moved it.
@@ -264,7 +448,7 @@ exports.patchStatus = async (req, res) => {
           recipient: order.createdBy,
           type: 'status_changed',
           title: 'تغيّرت حالة الطلب',
-          message: `بوليصة ${order.waybillNumber} — ${order.status}`,
+          message: `بوليصة ${order.waybillNumber} — ${order.status}${note ? ` · ${note}` : ''}`,
           relatedEntity: 'ShipmentOrder',
           relatedEntityId: order._id,
         });
@@ -294,13 +478,26 @@ exports.deleteOrder = async (req, res) => {
 
 // ── Customers ───────────────────────────────────────────────────────────────
 
+// ── البحثُ يجد بأيّ شيء ─────────────────────────────────────────────────────
+// السجلّاتُ صارت آلافًا بعد نقلها من المنصّة: ٣٣٦٩ مورّدًا و١٣١٠٢ مركبة. وحدٌّ
+// أعمى بخمسمئة يقطع القائمة، وبحثٌ بالاسم وحدَه يعجز عمّن يُذكر برقمه أو
+// بسجلّه أو بلوحته. فالبحثُ يمرّ على كلّ ما يُعرَف به السجلّ، والحدُّ يُطلَب.
+const askedLimit = (v, def, max) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(Math.max(n, 1), max) : def;
+};
+const anyOf = (q, fields) => ({ $or: fields.map((f) => ({ [f]: rx(q) })) });
+
 exports.listCustomers = async (req, res) => {
   try {
     const { q } = req.query;
     const filter = { isActive: { $ne: false } };
-    if (q && q.trim()) filter.$or = [{ name: rx(q) }, { phone: rx(q) }];
-    const customers = await ShipmentOrderCustomer.find(filter).sort({ name: 1 }).limit(500).lean();
-    res.json({ customers });
+    if (q && q.trim()) Object.assign(filter, anyOf(q, ['name', 'phone', 'email', 'city', 'address', 'externalId']));
+    const customers = await ShipmentOrderCustomer.find(filter)
+      .sort({ name: 1 })
+      .limit(askedLimit(req.query.limit, 500, 5000))
+      .lean();
+    res.json({ customers, total: await ShipmentOrderCustomer.countDocuments(filter) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load customers' });
   }
@@ -358,7 +555,16 @@ const VEHICLE_EDITABLE = ['plate', 'name', 'truckType', 'supplier', 'defaultDriv
 
 exports.listSuppliers = async (req, res) => {
   try {
-    const suppliers = await ShipmentOrderSupplier.find({ isActive: { $ne: false } }).sort({ name: 1 }).limit(500).lean();
+    const { q } = req.query;
+    const filter = { isActive: { $ne: false } };
+    if (q && q.trim()) {
+      Object.assign(filter, anyOf(q, ['name', 'phone', 'email', 'ownerName', 'ownerPhone',
+        'managerName', 'managerPhone', 'accountantName', 'commercialRegister', 'iban', 'externalId']));
+    }
+    const suppliers = await ShipmentOrderSupplier.find(filter)
+      .sort({ name: 1 })
+      .limit(askedLimit(req.query.limit, 500, 5000))
+      .lean();
     // How many trucks each one runs — the number the team actually asks for.
     const counts = await ShipmentOrderVehicle.aggregate([
       { $match: { isActive: { $ne: false }, supplier: { $ne: null } } },
@@ -366,7 +572,10 @@ exports.listSuppliers = async (req, res) => {
     ]);
     const byId = {};
     counts.forEach((c) => { byId[String(c._id)] = c.n; });
-    res.json({ suppliers: suppliers.map((s) => ({ ...s, vehicleCount: byId[String(s._id)] || 0 })) });
+    res.json({
+      suppliers: suppliers.map((s) => ({ ...s, vehicleCount: byId[String(s._id)] || 0 })),
+      total: await ShipmentOrderSupplier.countDocuments(filter),
+    });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load suppliers' });
   }
@@ -407,12 +616,19 @@ exports.deleteSupplier = async (req, res) => {
 
 exports.listVehicles = async (req, res) => {
   try {
-    const vehicles = await ShipmentOrderVehicle.find({ isActive: { $ne: false } })
+    const { q } = req.query;
+    const filter = { isActive: { $ne: false } };
+    if (q && q.trim()) {
+      Object.assign(filter, anyOf(q, ['plate', 'name', 'truckType', 'defaultDriverName',
+        'defaultDriverPhone', 'operationCardNumber', 'recordNumber', 'modelYear', 'externalId']));
+    }
+    if (req.query.supplier) filter.supplier = req.query.supplier;
+    const vehicles = await ShipmentOrderVehicle.find(filter)
       .populate('supplier', 'name type')
       .sort({ plate: 1 })
-      .limit(1000)
+      .limit(askedLimit(req.query.limit, 1000, 5000))
       .lean();
-    res.json({ vehicles });
+    res.json({ vehicles, total: await ShipmentOrderVehicle.countDocuments(filter) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load vehicles' });
   }

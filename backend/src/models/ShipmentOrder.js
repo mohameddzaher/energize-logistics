@@ -71,6 +71,23 @@ const shipmentOrderSchema = new mongoose.Schema(
     },
     notes: { type: String, trim: true, default: '' },
 
+    // ── المتابعةُ هنا تغييرُ حالةٍ لا مكالمة ────────────────────────────────
+    // في إدارة الأسطول السيّارةُ سيّارتُنا، فالمتابعةُ مكالمةٌ مع سائقنا: أين
+    // أنت الآن. وهنا الشاحنةُ شاحنةُ مورّد، والذي يُتابَع هو **موضعُ الطلب من
+    // دورته**: طُلب، حُمِّل، في الطريق، وصل، أُرسل السند. فالمتابعةُ نقلةُ
+    // حالةٍ ومعها سببُها إن كان له سبب.
+    //
+    // ويُقيَّد كلُّ انتقال: «متى صارت في الطريق؟» و«من أخّرها؟» سؤالان يُسألان
+    // بعد أسبوع، ولا جوابَ لهما إن حُفظت الحالةُ الأخيرةُ وحدَها.
+    statusLog: [{
+      from: { type: String, default: '' },
+      to: { type: String, default: '' },
+      note: { type: String, trim: true, default: '' },
+      at: { type: Date, default: Date.now },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      byName: { type: String, default: '' },
+    }],
+
     // Values of user-added inputs from the form-settings page, keyed by the
     // field's key. Mixed on purpose: those fields are the user's to invent.
     customFields: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },

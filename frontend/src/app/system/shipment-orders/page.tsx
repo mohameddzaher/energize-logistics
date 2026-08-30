@@ -10,7 +10,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { PackageSearch, Plus, Pencil, Trash2, FileDown, Loader2 } from 'lucide-react';
+import { PackageSearch, Plus, Pencil, Trash2, FileDown, Loader2, RefreshCw, X, Check } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
@@ -81,6 +81,22 @@ export default function ShipmentOrdersPage() {
   const [page, setPage] = useState(1);
 
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // نافذةُ المتابعة: الحالةُ الجديدة وملاحظةٌ اختياريّة.
+
+  const [fu, setFu] = useState<{ order: any; status: string; note: string } | null>(null);
+
+  const openFollowUp = (o: any) => setFu({ order: o, status: o.status, note: '' });
+
+  const submitFollowUp = async () => {
+
+    if (!fu) return;
+
+    await changeStatus(fu.order, fu.status, fu.note.trim());
+
+    setFu(null);
+
+  };
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   // Tick rows → one ZIP of their بوليصات, named number-customer-date.
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -117,10 +133,10 @@ export default function ShipmentOrdersPage() {
   }, []);
 
   // The inline change — the reason nobody has to open an order to say "وصلت".
-  const changeStatus = async (o: ShipmentOrder, status: string) => {
+  const changeStatus = async (o: ShipmentOrder, status: string, note = '') => {
     setBusyId(o._id);
     try {
-      await api.patch(`/api/shipment-orders/orders/${o._id}/status`, { status });
+      await api.patch(`/api/shipment-orders/orders/${o._id}/status`, { status, note });
       load();
     } catch (e: any) { notify(e.message, 'error'); }
     setBusyId(null);
@@ -281,8 +297,14 @@ export default function ShipmentOrdersPage() {
             {[
               ar ? 'رقم البوليصة' : 'Waybill',
               ar ? 'العميل' : 'Customer',
-              ar ? 'المسار' : 'Route',
+              // ── «من» و«إلى» عمودان لا سهمٌ في عمود ─────────────────────────
+              // «جدة ← الرياض» في خليّةٍ واحدة يُقرأ بالعينين لا بالعين، ويُخطئ
+              // في العربيّة خاصّةً: السهمُ يشير إلى اليسار والنصُّ يجري إلى
+              // اليمين، فيُقرأ عكسَه. وعمودان يُفرَزان ويُفلتَران ويُصدَّران.
+              ar ? 'من' : 'From',
+              ar ? 'إلى' : 'To',
               ar ? 'السائق' : 'Driver',
+              ar ? 'تواصل' : 'Contact',
               ar ? 'الشاحنة' : 'Truck',
               ar ? 'وقت الاستلام' : 'Pickup',
               ar ? 'بيع / شراء' : 'Sell / buy',
@@ -292,7 +314,7 @@ export default function ShipmentOrdersPage() {
           </tr></thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={10} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={12} className="text-center text-slate-500 py-14">
                 {ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.'}
               </td></tr>
             ) : orders.map((o) => {
@@ -306,27 +328,42 @@ export default function ShipmentOrdersPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-900 font-bold font-mono">{o.waybillNumber}</td>
                   <td className="px-4 py-3 text-slate-900 font-medium max-w-[220px] truncate" title={o.customerName}>{o.customerName || '—'}</td>
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.fromCity || '—'} ← {o.toCity || '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate">{o.driverName || '—'}</span>
-                      {(o.driverPhone || '').trim() && <ContactButtons phone={o.driverPhone} size={14} />}
-                    </div>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.fromCity || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.toCity || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700 max-w-[170px] truncate" title={o.driverName || ''}>{o.driverName || '—'}</td>
+                  {/* ── عمودُ التواصل ────────────────────────────────────────
+                      فريقُ التشغيل يتّصل بالسائق عشرَ مرّاتٍ في اليوم: كان
+                      يفتح الحمولةَ لينسخ الرقمَ ثمّ يفتح واتساب ويلصقه. ضغطةٌ
+                      واحدة تفتح المحادثةَ على رقمه، وأخرى تتّصل به — ورسالةٌ
+                      جاهزةٌ تحمل رقمَ البوليصة فلا يُسأل «أيّ حمولة؟». */}
+                  <td className="px-4 py-3">
+                    {(o.driverPhone || '').trim()
+                      ? <ContactButtons
+                          phone={o.driverPhone}
+                          size={15}
+                          messageText={ar
+                            ? `السلام عليكم، بخصوص البوليصة رقم ${o.waybillNumber}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`
+                            : `Hello, regarding waybill ${o.waybillNumber}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`}
+                        />
+                      : <span className="text-slate-300 text-xs">{ar ? 'لا رقم' : 'no phone'}</span>}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{o.truckType || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtDT(o.pickupTime, lang as Lang)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{money(o.sellPrice)} / {money(o.buyPrice)}</td>
                   <td className="px-4 py-3">
-                    {/* Inline lifecycle: coloured like the badge, editable like a select. */}
+                    {/* ── المتابعةُ نقلةُ حالةٍ ومعها سببُها ──────────────────
+                        القائمةُ المنسدلة تنقل الحالةَ بلا أن تسأل «لماذا»، ثمّ
+                        يُسأل بعد أسبوع «مين أخّرها؟» فلا جواب. صارت تفتح نافذةً
+                        تُختار فيها الحالةُ وتُكتب ملاحظةٌ **اختياريّة**، ويُقرأ
+                        فيها سجلُّ الانتقالات السابقة. */}
                     {editor ? (
-                      <select
-                        value={o.status}
-                        disabled={busyId === o._id}
-                        onChange={(e) => changeStatus(o, e.target.value)}
-                        className={`text-xs font-medium rounded-full px-2.5 py-1.5 border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#f37121]/40 ${st?.bg || 'bg-slate-100'} ${st?.text || 'text-slate-700'}`}
-                      >
-                        {ORDER_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
-                      </select>
+                      <button type="button" onClick={() => openFollowUp(o)} disabled={busyId === o._id}
+                        className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1.5 transition-opacity hover:opacity-80 ${st?.bg || 'bg-slate-100'} ${st?.text || 'text-slate-700'}`}
+                        title={ar ? 'تسجيل متابعة' : 'Record a follow-up'}>
+                        {busyId === o._id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3 opacity-60" />}
+                        {statusLabel(o.status, lang as Lang)}
+                        {(o.statusLog || []).length ? <span className="opacity-60">· {(o.statusLog || []).length}</span> : null}
+                      </button>
                     ) : (
                       <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${st?.bg} ${st?.text}`}>{statusLabel(o.status, lang as Lang)}</span>
                     )}
@@ -366,6 +403,93 @@ export default function ShipmentOrdersPage() {
           <span className="text-slate-500">{page} / {Math.ceil(total / 25)}</span>
           <button type="button" onClick={() => setPage((p) => Math.min(Math.ceil(total / 25), p + 1))} disabled={page >= Math.ceil(total / 25)}
             className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 disabled:opacity-50">{ar ? 'التالي' : 'Next'}</button>
+        </div>
+      )}
+
+      {/* ── نافذةُ المتابعة ───────────────────────────────────────────────────
+          الحالةُ تُنقَل، والملاحظةُ اختياريّة — تُكتب حين يكون للنقلة سبب
+          («العميل أجّل التحميل»، «الشاحنة تعطّلت في الطريق») وتُترك حين لا
+          يكون. والسجلُّ تحتها يقول من نقلها ومتى وبأيّ سبب. */}
+      {fu && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setFu(null)}>
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="min-w-0">
+                <p className="font-bold text-slate-900">{ar ? 'تسجيل متابعة' : 'Record a follow-up'}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {ar ? 'بوليصة' : 'Waybill'} <span className="font-mono font-bold">{fu.order.waybillNumber}</span>
+                  {fu.order.customerName ? ` · ${fu.order.customerName}` : ''}
+                  {fu.order.fromCity ? ` · ${fu.order.fromCity} → ${fu.order.toCity || ''}` : ''}
+                </p>
+              </div>
+              <button type="button" onClick={() => setFu(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-800 mb-2">{ar ? 'الحالة' : 'Status'}</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {ORDER_STATUSES.map((s2) => {
+                    const on = fu.status === s2.key;
+                    return (
+                      <button key={s2.key} type="button" onClick={() => setFu({ ...fu, status: s2.key })}
+                        className={`text-xs font-semibold rounded-lg px-2.5 py-2 border transition-colors ${
+                          on ? `${s2.bg} ${s2.text} border-transparent ring-2 ring-[#f37121]` : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                        {ar ? s2.ar : s2.en}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-800 mb-1.5">
+                  {ar ? 'ملاحظة' : 'Note'}
+                  <span className="text-slate-400 text-xs font-normal ms-1.5">{ar ? '(اختياري)' : '(optional)'}</span>
+                </label>
+                <textarea rows={2} value={fu.note} onChange={(e) => setFu({ ...fu, note: e.target.value })}
+                  placeholder={ar ? 'سببُ النقلة إن كان لها سبب…' : 'Why it moved, if there is a reason…'}
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+              </div>
+
+              {!!(fu.order.statusLog || []).length && (
+                <div className="border-t border-slate-200 pt-3">
+                  <p className="text-xs font-semibold text-slate-500 mb-2">
+                    {ar ? 'السجل' : 'History'} <span className="text-slate-400 font-normal">{fu.order.statusLog.length}</span>
+                  </p>
+                  <ul className="space-y-1.5 max-h-52 overflow-y-auto pe-1">
+                    {[...fu.order.statusLog].reverse().map((h: any, i: number) => (
+                      <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]">
+                          {h.from ? <span className="text-slate-500">{statusLabel(h.from, lang as Lang)}</span> : null}
+                          {h.from ? <span className="text-slate-400">→</span> : null}
+                          <span className="font-semibold text-slate-900">{statusLabel(h.to, lang as Lang)}</span>
+                          <span className="ms-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white text-slate-700 font-semibold tabular-nums">
+                            {fmtDT(h.at, lang as Lang)}
+                          </span>
+                        </div>
+                        {h.note ? <p className="text-[12.5px] text-slate-700 mt-1">{h.note}</p> : null}
+                        {h.byName ? <p className="text-[11px] text-slate-400 mt-0.5">{h.byName}</p> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button type="button" onClick={() => setFu(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">
+                {ar ? 'إلغاء' : 'Cancel'}
+              </button>
+              <button type="button" onClick={submitFollowUp} disabled={busyId === fu.order._id}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] disabled:opacity-60">
+                {busyId === fu.order._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {ar ? 'حفظ المتابعة' : 'Save follow-up'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

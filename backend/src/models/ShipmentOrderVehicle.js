@@ -15,6 +15,17 @@ const shipmentOrderVehicleSchema = new mongoose.Schema(
     defaultDriverName: { type: String, trim: true, default: '' },
     defaultDriverPhone: { type: String, trim: true, default: '' },
     notes: { type: String, trim: true, default: '' },
+
+    // بياناتُ المركبة كما تحملها منصّةُ الأوبريشن.
+    externalId: { type: String, trim: true, default: '', index: true },
+    modelYear: { type: String, trim: true, default: '' },
+    recordNumber: { type: String, trim: true, default: '' },
+    // بطاقةُ التشغيل وانتهاؤها: مركبةٌ بطاقتُها منتهيةٌ لا تُحمَّل — يُوقفها
+    // الطريقُ لا نحن، فمعرفةُ التاريخ قبل الإسناد توفّر حمولةً متعطّلة.
+    operationCardNumber: { type: String, trim: true, default: '' },
+    operationCardExpiry: { type: String, trim: true, default: '' },
+    insuranceDetails: { type: String, trim: true, default: '' },
+
     isActive: { type: Boolean, default: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

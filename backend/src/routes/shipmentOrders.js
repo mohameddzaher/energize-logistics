@@ -20,6 +20,13 @@ router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); //
 router.delete('/orders/:id', authorize(...ADMIN_ROLES), so.deleteOrder);
 
 // Customers (their price-per-route lists feed the create form)
+// تحليلاتُ القسم — قبل `/orders/:id` كي لا يبتلعها المسارُ ذو المعامل.
+router.get('/analytics', so.getAnalytics);
+
+// عدّادُ البوالص — يُقرأ للجميع ويُقدَّم لمن يملك القسم.
+router.get('/counter', so.getCounter);
+router.put('/counter', authorize(...ADMIN_ROLES), so.updateCounter);
+
 router.get('/customers', so.listCustomers);
 router.post('/customers', authorize(...EDIT_ROLES), so.createCustomer);
 router.put('/customers/:id', authorize(...EDIT_ROLES), so.updateCustomer);

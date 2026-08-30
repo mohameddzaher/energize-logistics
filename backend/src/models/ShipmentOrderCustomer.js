@@ -15,6 +15,13 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
     email: { type: String, trim: true, default: '' },
     notes: { type: String, trim: true, default: '' },
 
+    // بياناتُ العميل كما تحملها منصّةُ الأوبريشن.
+    externalId: { type: String, trim: true, default: '', index: true },
+    // فردٌ أم شركة: الفاتورةُ تختلف، والسعرُ يختلف.
+    customerType: { type: String, trim: true, default: '' },
+    address: { type: String, trim: true, default: '' },
+    city: { type: String, trim: true, default: '' },
+
     // The agreed price list: "من جدة للرياض بكذا". Picking this customer plus a
     // from/to on the create form pulls the matching price automatically; a NEW
     // route priced on the form is appended here, so the profile learns as the

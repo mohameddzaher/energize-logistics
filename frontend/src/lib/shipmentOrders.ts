@@ -53,6 +53,10 @@ export interface ShipmentOrder {
   customFields?: Record<string, unknown>;
   createdBy?: { firstName?: string; lastName?: string } | string | null;
   createdAt?: string;
+  // سجلُّ انتقالات الحالة: من أين إلى أين، ومتى، وبأيّ سبب، وبيد من.
+  // «متى صارت في الطريق؟» و«من أخّرها؟» سؤالان يُسألان بعد أسبوع، ولا جوابَ
+  // لهما إن حُفظت الحالةُ الأخيرةُ وحدَها.
+  statusLog?: { from?: string; to?: string; note?: string; at?: string; byName?: string }[];
 }
 
 // Same keys and colours as the ops mirror so a status reads identically on

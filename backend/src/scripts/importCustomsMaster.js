@@ -5,8 +5,9 @@
  *   node src/scripts/importCustomsMaster.js --dry     # preview, writes nothing
  *   node src/scripts/importCustomsMaster.js           # apply
  *
- * Source: src/data/masters/ماستر_التخليص_data.json  (gitignored, commercial data)
- * Override with:  --file=<path>
+ * المصدر: src/seeds/data/customs-master-2026-08.xlsx — «ماستر التخليص الجديد».
+ * ويُبدَّل بـ --file=<path>. ولم يعد يقرأ من data/masters: ذلك المجلّد حُذف،
+ * وكان يحقن في النظام بياناتٍ لا أصلَ لها في أيّ شيتٍ رسميّ.
  *
  * Sheets
  *   التخليص  (358 rows, 251 with a BL) — the operational master; base records.

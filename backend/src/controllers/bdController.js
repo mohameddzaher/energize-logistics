@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 const BdOpportunity = require('../models/BdOpportunity');
 const BdPartner = require('../models/BdPartner');
 const BdTender = require('../models/BdTender');
@@ -136,8 +137,8 @@ exports.getDashboard = async (req, res) => {
     if (hit !== undefined) return res.json(hit);
 
     // Activity window: defaults to the last 30 days.
-    const periodStart = from ? new Date(`${String(from).slice(0, 10)}T00:00:00.000Z`) : new Date(Date.now() - 30 * 86400000);
-    const periodEnd = to ? new Date(`${String(to).slice(0, 10)}T23:59:59.999Z`) : new Date();
+    const periodStart = from ? startOfDay(from) : new Date(Date.now() - 30 * 86400000);
+    const periodEnd = to ? endOfDay(to) : new Date();
     const soonCutoff = addDaysStr(30);
     const today = todayStr();
 
@@ -535,8 +536,8 @@ exports.listActivities = async (req, res) => {
     if (type) filter.type = type;
     if (from || to) {
       filter.date = {};
-      if (from) filter.date.$gte = new Date(`${String(from).slice(0, 10)}T00:00:00.000Z`);
-      if (to) filter.date.$lte = new Date(`${String(to).slice(0, 10)}T23:59:59.999Z`);
+      if (from) filter.date.$gte = startOfDay(from);
+      if (to) filter.date.$lte = endOfDay(to);
     }
     const activities = await popActivity(BdActivity.find(filter).sort({ date: -1 }).limit(500)).lean();
     res.json({ activities });

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 const User = require('../models/User');
 const RemoteAttendance = require('../models/RemoteAttendance');
 const RemoteLeaveRequest = require('../models/RemoteLeaveRequest');
@@ -60,8 +61,8 @@ const buildScopedFilter = async (req, dateField = 'date') => {
     // String-vs-Date comparisons don't match in Mongo, so coerce accordingly.
     const isDateType = dateField === 'createdAt' || dateField === 'updatedAt';
     filter[dateField] = {};
-    if (from) filter[dateField].$gte = isDateType ? new Date(from + 'T00:00:00.000Z') : from;
-    if (to) filter[dateField].$lte = isDateType ? new Date(to + 'T23:59:59.999Z') : to;
+    if (from) filter[dateField].$gte = isDateType ? startOfDay(from) : from;
+    if (to) filter[dateField].$lte = isDateType ? endOfDay(to) : to;
   }
   return filter;
 };

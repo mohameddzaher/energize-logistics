@@ -837,7 +837,11 @@ exports.listTeamLeaves = async (req, res) => {
 //
 // Today is taken as a plain YYYY-MM-DD so a request filed at 23:00 counts the
 // same as one filed at 08:00 the same day.
-const todayKey = () => new Date().toISOString().slice(0, 10);
+//
+// و«اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
+// الليل والثالثة فجرًا، فيكسب مقدّمُ الطلب في تلك الساعات يومًا كاملًا من مهلة
+// الإشعار المسبق — وهذه المهلةُ هي التي يُقبل الطلبُ أو يُرفض بها.
+const { todayKey } = require('../utils/companyDay');
 const DAY_MS = 86400000;
 const daysUntil = (dateStr) =>
   Math.round((Date.parse(`${String(dateStr).slice(0, 10)}T00:00:00Z`) - Date.parse(`${todayKey()}T00:00:00Z`)) / DAY_MS);

@@ -15,6 +15,7 @@
  * come from six collections and the page reloads on every CRM socket event.
  */
 const CrmCompany = require('../models/CrmCompany');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 const CrmVendor = require('../models/CrmVendor');
 const CrmDeal = require('../models/CrmDeal');
 const CrmActivity = require('../models/CrmActivity');
@@ -55,10 +56,13 @@ const bandOf = (bands, score) => bands.find((b) => score >= b.min) || bands[band
 // Resolve the reporting window. Default = last 12 months, which is the span a
 // customer relationship is actually judged over.
 function resolvePeriod(query) {
-  const to = query.to ? new Date(`${query.to}T23:59:59`) : new Date();
-  const from = query.from
-    ? new Date(`${query.from}T00:00:00`)
-    : new Date(new Date(to).setFullYear(to.getFullYear() - 1));
+  // ── الحدُّ بتوقيت الرياض لا بتوقيت الخادم ──────────────────────────────────
+  // `new Date('2026-01-01T00:00:00')` بلا منطقةٍ تُقرأ بتوقيت الجهاز الذي
+  // يشغّل الخادم: نتيجةٌ على حاسوب المطوّر وأخرى على الخادم، وكلتاهما ليست
+  // منتصفَ ليل الرياض. فيُبنى الحدُّ من تقويم الشركة صراحةً.
+  const to = (query.to && endOfDay(query.to)) || new Date();
+  const from = (query.from && startOfDay(query.from))
+    || new Date(new Date(to).setFullYear(to.getFullYear() - 1));
   const months = Math.max(1, Math.round((to - from) / (30 * DAY)));
   return { from, to, months };
 }

@@ -18,6 +18,7 @@
  * BrAssignment, a collection that physically contains no meeting content.
  */
 const { BrMeeting, BrAction, BrAssignment } = require('../models/BusinessReview');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 const User = require('../models/User');
 // Referenced by populate('linkedEmployee') below. Requiring it here means this
 // controller never depends on some other module having registered it first —
@@ -128,8 +129,10 @@ exports.listMeetings = async (req, res) => {
     }
     if (req.query.from || req.query.to) {
       filter.scheduledAt = {};
-      if (req.query.from) filter.scheduledAt.$gte = new Date(`${req.query.from}T00:00:00`);
-      if (req.query.to) filter.scheduledAt.$lte = new Date(`${req.query.to}T23:59:59`);
+      // اجتماعاتٌ مجدولةٌ في المستقبل: «إلى» فارغةً تعني بلا حدٍّ أعلى هنا،
+      // لا «حتى الآن» — وإلّا اختفى كلُّ اجتماعٍ قادم من القائمة.
+      if (req.query.from) filter.scheduledAt.$gte = startOfDay(req.query.from);
+      if (req.query.to) filter.scheduledAt.$lte = endOfDay(req.query.to);
     }
 
     const meetings = await BrMeeting.find(filter)

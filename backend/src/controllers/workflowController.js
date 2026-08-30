@@ -1,4 +1,5 @@
 const OperationsWorkflow = require('../models/OperationsWorkflow');
+const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/companyDay');
 const Customer = require('../models/Customer');
 const Invoice = require('../models/Invoice');
 const logAudit = require('../utils/auditLogger');
@@ -110,7 +111,8 @@ const DATE_COLUMNS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'deliv
  * المكتوب في الخانة نفسها.
  */
 const TZ = 'Asia/Riyadh';
-const TZ_OFFSET = '+03:00';
+// (كانت هنا `TZ_OFFSET = '+03:00'` مكتوبةً يدًا — صارت في `utils/companyDay`
+//  حيث تُسأل المنطقةُ عن إزاحتها بدل أن تُفترض، ويقرأها النظامُ كلُّه.)
 const DAY_MS = 24 * 60 * 60 * 1000;
 const isDayString = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
 
@@ -161,9 +163,9 @@ function columnFilters(query, skipField) {
       if (wantsBlank) clauses.push({ [field]: { $in: ['', null] } });
       for (const v of rest) {
         if (isDayString(v)) {
-          const start = new Date(`${v}T00:00:00${TZ_OFFSET}`);
-          if (isNaN(start.getTime())) continue;
-          clauses.push({ [field]: { $gte: start, $lt: new Date(start.getTime() + DAY_MS) } });
+          const start = startOfDay(v);
+          if (!start) continue;
+          clauses.push({ [field]: { $gte: start, $lt: new Date(start.getTime() + COMPANY_DAY_MS) } });
         } else {
           const exact = new Date(v);
           if (!isNaN(exact.getTime())) clauses.push({ [field]: exact });
@@ -264,12 +266,17 @@ function buildWorkflowFilter(query, skipField) {
   // كاملًا في الطرفين كي لا يسقط كشفُ الساعة الحادية عشرة ليلًا من يومه.
   if (dateFrom || dateTo) {
     const range = {};
-    if (dateFrom) range.$gte = new Date(dateFrom + 'T00:00:00.000Z');
+    // ── الحدُّ بتوقيت الرياض لا غرينتش ────────────────────────────────────
+    // كان هذا السطرُ يبني منتصفَ ليلٍ بغرينتش = الثالثةَ فجرًا عندنا. فمَن
+    // اختار «من ١ يناير» كان يفقد كشوفَ الساعات الثلاث الأولى من ذلك اليوم —
+    // ٢١٢١ كشفًا من ٣٣٩١٧ تقع فيها. والملفُّ كان يناقض نفسَه: فلترُ العمود
+    // أدناه يحسب اليومَ بالرياض، فيختلف «١ يناير» عن «من ١ إلى ١ يناير».
+    if (dateFrom) range.$gte = startOfDay(dateFrom);
     // ── «إلى» الفارغة تعني «حتى الآن» لا «بلا نهاية» ────────────────────────
     // المدى المفتوح يُدخل كشوفًا مؤرَّخةً في المستقبل — تُكتب بالخطأ أو تأتي
     // بتاريخٍ مقلوب — فيقرأ المستخدم عددًا أكبر ممّا حدث فعلًا. ومَن يكتب «من»
     // وحدها يقصد «من هذا اليوم إلى الآن»، لا إلى الأبد.
-    range.$lte = dateTo ? new Date(dateTo + 'T23:59:59.999Z') : new Date();
+    range.$lte = dateTo ? endOfDay(dateTo) : new Date();
     // والكشف الذي لا تاريخ له يُقاس بلحظة إدخاله — أفضل ما يُعرف عنه.
     filter.$and = [...(filter.$and || []), { $or: [
       { reportDate: range },

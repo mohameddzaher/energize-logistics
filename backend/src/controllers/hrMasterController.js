@@ -9,6 +9,7 @@
  * «ناقص إقامة»، وحطّه في قايمة الشغل بيخلّيها كذب وبيضيّع وقت الناس.
  */
 const Employee = require('../models/Employee');
+const { startOfDay, endOfDay, daysUntil } = require('../utils/companyDay');
 const H = require('../config/hrFields');
 const cache = require('../utils/ttlCache');
 const logAudit = require('../utils/auditLogger');
@@ -143,7 +144,6 @@ const YEAR_SPAN_FIELDS = { dateOfBirth: 'age', hireDate: 'tenure' };
 // وهي بالتعريف تواريخُ انتهاء المستندات، فتُقرأ منها لا تُكتب بجانبها.
 const DAYS_LEFT_FIELDS = H.DOCUMENT_GROUPS.map((g) => g.expiryField).filter(Boolean);
 
-const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 /** فرقُ السنوات الكاملة بين تاريخٍ واليوم — سنٌّ أو أقدميّة. */
 const yearsSince = (d) => {
   const now = new Date();
@@ -152,8 +152,9 @@ const yearsSince = (d) => {
   if (m < 0 || (m === 0 && now.getDate() < d.getDate())) y -= 1;
   return y;
 };
-/** الأيام حتى تاريخٍ — سالبةٌ لما مضى. */
-const daysUntil = (d) => Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
+// (كانت هنا `daysUntil` تقيس بمنتصف ليل **الخادم** — وهو غرينتش على خادمنا —
+//  فتنقص يومًا كاملًا في الساعات الثلاث الأولى من يوم الرياض. صارت من
+//  `utils/companyDay` تُقارن أيّامَ التقويم لا اللحظات.)
 
 function dateRangePred(q) {
   const tests = [];
@@ -204,8 +205,8 @@ function dateRangePred(q) {
     }
     const from = q[`${key}From`]; const to = q[`${key}To`];
     if (!from && !to) continue;
-    const lo = from ? new Date(`${from}T00:00:00.000Z`) : null;
-    const hi = to ? new Date(`${to}T23:59:59.999Z`) : null;
+    const lo = from ? startOfDay(from) : null;
+    const hi = to ? endOfDay(to) : null;
     tests.push((e) => {
       const d = asDate(e[key]);
       if (!d) return false;

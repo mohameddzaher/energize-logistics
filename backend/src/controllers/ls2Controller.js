@@ -5,6 +5,7 @@
  * write actions (acknowledge an alert, mark a vehicle serviced, edit thresholds).
  */
 const Ls2Vehicle = require('../models/Ls2Vehicle');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 const Ls2Alert = require('../models/Ls2Alert');
 const Ls2Settings = require('../models/Ls2Settings');
 const Ls2ServiceLog = require('../models/Ls2ServiceLog');
@@ -942,8 +943,8 @@ async function driverStats(from, to) {
     // One day before `from` too, so the first day's delta has a baseline.
     Ls2OdometerDaily.find({ date: { $gte: addDays(from, -1), $lte: to } }).sort({ unitId: 1, date: 1 }).lean(),
     Ls2DriverAssignment.find({
-      $or: [{ to: null }, { to: { $gte: new Date(from + 'T00:00:00Z') } }],
-      from: { $lte: new Date(to + 'T23:59:59Z') },
+      $or: [{ to: null }, { to: { $gte: startOfDay(from) } }],
+      from: { $lte: endOfDay(to) },
     }).lean(),
   ]);
 

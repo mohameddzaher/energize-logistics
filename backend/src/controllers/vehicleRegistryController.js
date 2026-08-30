@@ -1,4 +1,5 @@
 const { VehicleMaster, VehicleRegistryConfig, CorporatePolicy, VehicleInsurancePolicy } = require('../models/VehicleMaster');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 const VehicleClaim = require('../models/VehicleClaim');
 const VDOC = require('../config/vehicleDocuments');
 const logAudit = require('../utils/auditLogger');
@@ -531,10 +532,10 @@ function buildFilter(q) {
   if (q.expiryDoc && (q.expiryFrom || q.expiryTo)) {
     const dt = DOC_TYPES.find((x) => x.key === q.expiryDoc);
     if (dt) {
-      const rng = {}; if (q.expiryFrom) rng.$gte = new Date(`${q.expiryFrom}T00:00:00.000Z`);
+      const rng = {}; if (q.expiryFrom) rng.$gte = startOfDay(q.expiryFrom);
       // نهاية اليوم المطلوب، لا اليوم التالي — كانت الإضافة يومًا كاملًا تُدخل
       // ما ينتهي في أول اليوم التالي في هذه الشريحة وفي التي تليها معًا.
-      if (q.expiryTo) rng.$lte = new Date(`${q.expiryTo}T23:59:59.999Z`);
+      if (q.expiryTo) rng.$lte = endOfDay(q.expiryTo);
       and.push({ [dt.path]: rng });
     }
   }

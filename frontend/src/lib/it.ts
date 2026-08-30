@@ -376,10 +376,12 @@ export const optionsOf = (map: Record<string, Style>, only?: string[]) =>
 
 // ── Formatters ──────────────────────────────────────────────────────────────
 
-export const today = () => new Date().toISOString().slice(0, 10);
+// «اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
+// الليل والثالثة فجرًا. المرجعُ واحدٌ الآن في `lib/companyDay`.
+export { today } from './companyDay';
+import { dayOffset } from './companyDay';
 
-export const daysAgo = (n: number) =>
-  new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+export const daysAgo = (n: number) => dayOffset(-n);
 
 export const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 

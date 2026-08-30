@@ -17,6 +17,7 @@
  * screen are all driven by this list.
  */
 const { money, num, dt, dtm, pct } = require('./reportBuilder');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 // Status keys are identifiers; a printed Arabic page must not show "loading".
 const {
   SHIPMENT_STATUS_AR, EMPLOYMENT_STATUS_AR, statusLabel,
@@ -29,10 +30,13 @@ const T = (ar, en, lang) => (lang === 'en' ? en : ar);
 // A period every builder shares. Defaults to the last 12 months, which is the
 // span most of these questions are actually asked over.
 function resolvePeriod(query = {}) {
-  const to = query.to ? new Date(`${query.to}T23:59:59`) : new Date();
-  const from = query.from
-    ? new Date(`${query.from}T00:00:00`)
-    : new Date(new Date(to).setFullYear(to.getFullYear() - 1));
+  // ── الحدُّ بتوقيت الرياض لا بتوقيت الخادم ──────────────────────────────────
+  // `new Date('2026-01-01T00:00:00')` بلا منطقةٍ تُقرأ بتوقيت الجهاز الذي
+  // يشغّل الخادم: نتيجةٌ على حاسوب المطوّر وأخرى على الخادم، وكلتاهما ليست
+  // منتصفَ ليل الرياض. فيُبنى الحدُّ من تقويم الشركة صراحةً.
+  const to = (query.to && endOfDay(query.to)) || new Date();
+  const from = (query.from && startOfDay(query.from))
+    || new Date(new Date(to).setFullYear(to.getFullYear() - 1));
   // The printed period must echo the dates the user ASKED for. Deriving them
   // from the Date objects via toISOString() shifts them by the UTC offset — a
   // report requested for 2026-01-01 printed "2025-12-31" in Riyadh, which makes

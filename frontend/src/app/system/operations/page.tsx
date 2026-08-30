@@ -737,9 +737,17 @@ export default function OperationsWorkflowPage() {
           <div className={`p-2 rounded-lg ${showPendingOnly ? 'bg-amber-500/30' : 'bg-amber-500/20'}`}>
             <AlertCircle className="w-5 h-5 text-amber-700" />
           </div>
+          {/* ── الرقمُ يقول قاعدتَه ──────────────────────────────────────────
+              «فواتير لم تصل» وحدَها لا تكفي لمطابقة الرقم بشيتٍ خارجيّ: هل
+              الملغاةُ داخلةٌ فيه؟ أربعةُ آلافٍ ومئةٌ وخمسةٌ وسبعون كشفًا ملغًى
+              بلا تاريخ سداد، ولو دخلت لصار الرقمُ خمسةَ آلافٍ وستَّمئة. تُكتب
+              القاعدةُ تحت الرقم فيُراجَع بلا سؤال. */}
           <div className="flex flex-col items-start">
             <span className="text-2xl font-bold text-amber-700">{pendingCount.toLocaleString()}</span>
             <span className="text-xs text-amber-700/80">{lang === 'ar' ? 'فواتير لم تصل' : 'Pending Invoices'}</span>
+            <span className="text-[10px] text-amber-700/60 leading-tight">
+              {lang === 'ar' ? 'بلا تاريخ سداد · عدا الملغاة' : 'no payment date · excludes cancelled'}
+            </span>
           </div>
           {showPendingOnly && (
             <span className="ms-2 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/30 text-amber-700">

@@ -1,4 +1,5 @@
 const { FleetVehicle, FleetDriver, FleetCustomer, FleetShipment, FleetEvent, FleetConfig } = require('../models/FleetModels');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const User = require('../models/User');
@@ -187,7 +188,9 @@ const resolveAssignments = async (req, data, existing = null) => {
 // والحدود محلّية لا UTC عمدًا: «حمولات يوم السبت» تعني السبت بتوقيت الرياض.
 // و`new Date('2026-08-25')` تُفسَّر في جافاسكربت على أنها منتصف ليل UTC، فتزيح
 // اليوم ثلاث ساعات: تُسقِط أوّل حمولات اليوم وتُدخِل حمولات اليوم التالي.
-const _dayStart = (s) => new Date(`${String(s).slice(0, 10)}T00:00:00`);
+// وبلا منطقةٍ تُقرأ بتوقيت **الخادم** — وهو غرينتش عندنا، فيعود العطلُ الذي
+// يشرحه التعليقُ أعلاه من الباب الآخر. يُبنى الحدُّ من تقويم الشركة صراحةً.
+const _dayStart = (s) => startOfDay(s);
 const _addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const _monthStart = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
 
@@ -2310,18 +2313,18 @@ function logRange(query) {
   const { month, date, from, to } = query || {};
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return {
-      from: new Date(`${date}T00:00:00.000Z`),
-      to: new Date(`${date}T23:59:59.999Z`),
+      from: startOfDay(date),
+      to: endOfDay(date),
       monthKey: date.slice(0, 7),
       label: date,
       scope: 'day',
     };
   }
   if (from || to) {
-    const f = from ? new Date(`${from}T00:00:00.000Z`) : new Date('2000-01-01T00:00:00.000Z');
+    const f = from ? startOfDay(from) : new Date('2000-01-01T00:00:00.000Z');
     // «إلى» مفتوحًا يعني «حتى الآن» لا «حتى منتصف ليل اليوم» — وإلّا اختفت
     // قيودُ اليوم نفسِه من نتيجة من طلب «من أوّل الشهر».
-    const tt = to ? new Date(`${to}T23:59:59.999Z`) : new Date();
+    const tt = to ? endOfDay(to) : new Date();
     return { from: f, to: tt, monthKey: '', label: `${from || '—'} → ${to || ''}`, scope: 'range' };
   }
   const mk = /^\d{4}-\d{2}$/.test(String(month || '')) ? month : FleetVehicleLog.monthKeyOf(new Date());

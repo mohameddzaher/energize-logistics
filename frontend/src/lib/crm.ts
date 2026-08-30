@@ -154,8 +154,12 @@ export const mailLink = (email?: string | null, subject?: string) => {
 };
 
 // ── Date / money helpers ─────────────────────────────────────────────────────
-export const today = () => new Date().toISOString().slice(0, 10);
-export const toDateInput = (v?: string | null) => (v ? new Date(v).toISOString().slice(0, 10) : '');
+// «اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
+// الليل والثالثة فجرًا. المرجعُ واحدٌ الآن في `lib/companyDay`.
+export { today } from './companyDay';
+// كانت تُخرج اليومَ السابق لأيّ وقتٍ مخزَّنٍ بعد التاسعة مساءً بتوقيت الرياض،
+// فيُعرض في النموذج ناقصًا يومًا ثمّ يُحفظ كما عُرض.
+export { toDateInput } from './companyDay';
 export const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 export const fmtDateTime = (v?: string | null) =>
   v ? new Date(v).toLocaleString('en-GB', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';

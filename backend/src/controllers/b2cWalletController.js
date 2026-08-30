@@ -8,6 +8,7 @@
  *     audit every wallet + full history.
  */
 const mongoose = require('mongoose');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 const B2CWalletEntry = require('../models/B2CWalletEntry');
 const User = require('../models/User');
 const { emitToUser } = require('../websocket/socketManager');
@@ -28,7 +29,9 @@ async function balanceOf(pmId) {
 const popEntry = (q) => q.populate('createdBy', 'firstName lastName role').populate('projectManager', 'firstName lastName');
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const endOfDay = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? `${d}T23:59:59.999` : d);
+// (كانت هنا `endOfDay` تركّب نصًّا بلا منطقة، فيُقرأ بتوقيت الخادم — بينما
+//  `new Date('2026-01-01')` للطرف الآخر تُقرأ بغرينتش. طرفانِ بتوقيتين في
+//  مِصفاةٍ واحدة. صارا من تقويم الشركة.)
 
 // GET /managers — every project manager + their balance (managers only).
 exports.managers = async (req, res) => {
@@ -49,8 +52,8 @@ async function entriesFor(req, pmId, res) {
   const filter = { projectManager: pmId };
   if (date_from || date_to) {
     filter.createdAt = {};
-    if (date_from) filter.createdAt.$gte = new Date(date_from);
-    if (date_to) filter.createdAt.$lte = new Date(endOfDay(date_to));
+    if (date_from) filter.createdAt.$gte = startOfDay(date_from);
+    if (date_to) filter.createdAt.$lte = endOfDay(date_to);
   }
   if (search && String(search).trim()) filter.reason = new RegExp(escapeRegex(String(search).trim()), 'i');
 

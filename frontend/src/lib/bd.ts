@@ -227,7 +227,9 @@ export const companyName = (c: any, lang: Lang = 'en') => {
   return c.name || '—';
 };
 
-export const today = () => new Date().toISOString().slice(0, 10);
+// «اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
+// الليل والثالثة فجرًا. المرجعُ واحدٌ الآن في `lib/companyDay`.
+export { today } from './companyDay';
 export const toDateInput = (v?: string | null) => (v ? String(v).slice(0, 10) : '');
 export const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 export const fmtDateTime = (v?: string | null) =>

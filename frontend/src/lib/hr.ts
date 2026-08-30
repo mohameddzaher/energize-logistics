@@ -293,7 +293,10 @@ export const empName = (e: any, lang: Lang = 'en') => {
 export const userName = (u: any) => (!u ? '—' : typeof u === 'string' ? u : `${u.firstName || ''} ${u.lastName || ''}`.trim() || '—');
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
-export const today = () => new Date().toISOString().slice(0, 10);
+// «اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
+// الليل والثالثة فجرًا. المرجعُ واحدٌ الآن في `lib/companyDay`.
+export { today } from './companyDay';
+import { today } from './companyDay';
 export const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 export const fmtDateTime = (v?: string | null) =>
   v ? new Date(v).toLocaleString('en-GB', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';

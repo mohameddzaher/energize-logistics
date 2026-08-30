@@ -1,4 +1,5 @@
 const ShipmentOrder = require('../models/ShipmentOrder');
+const { startOfDay, endOfDay } = require('../utils/companyDay');
 const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
 const ShipmentOrderField = require('../models/ShipmentOrderField');
 const ShipmentOrderSupplier = require('../models/ShipmentOrderSupplier');
@@ -106,8 +107,8 @@ exports.listOrders = async (req, res) => {
     if (source === 'system' || source === 'platform') filter.source = source;
     if (from || to) {
       filter.createdAt = {};
-      if (from) filter.createdAt.$gte = new Date(`${from}T00:00:00`);
-      if (to) filter.createdAt.$lte = new Date(`${to}T23:59:59`);
+      if (from) filter.createdAt.$gte = startOfDay(from);
+      if (to) filter.createdAt.$lte = endOfDay(to);
     }
     if (q && q.trim()) {
       const r = rx(q);
@@ -286,10 +287,10 @@ exports.getAnalytics = async (req, res) => {
     const match = {};
     if (from || to) {
       match.pickupTime = {};
-      if (from) match.pickupTime.$gte = new Date(`${from}T00:00:00.000Z`);
+      if (from) match.pickupTime.$gte = startOfDay(from);
       // «إلى» مفتوحًا يعني حتى الآن — لا حتى منتصف ليل اليوم، وإلّا اختفت
       // شحناتُ اليوم من تقرير من طلب «من أوّل الشهر».
-      match.pickupTime.$lte = to ? new Date(`${to}T23:59:59.999Z`) : new Date();
+      match.pickupTime.$lte = to ? endOfDay(to) : new Date();
     }
     if (customer) match.customer = new mongoose.Types.ObjectId(String(customer));
     if (supplier) match.supplier = new mongoose.Types.ObjectId(String(supplier));

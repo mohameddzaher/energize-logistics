@@ -1,8 +1,0 @@
-User-agent: *
-Allow: /
-Disallow: /system/
-Disallow: /login/
-Disallow: /api/
-Disallow: /_next/
-
-Sitemap: https://energize-global.com/sitemap.xml

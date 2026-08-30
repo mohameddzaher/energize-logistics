@@ -35,9 +35,16 @@ const EmployeeRenewal = require('../models/EmployeeRenewal');
 
 const APPLY = process.argv.includes('--yes');
 
+// ── ما يُعلَّق على الموظّف ─────────────────────────────────────────────────
+// القائمةُ ناقصةٌ = حذفٌ صامتٌ لما لا يُفحَص. حُذف سبعةُ موظّفين لأنّ التفاويضَ
+// لم تكن فيها، وكلٌّ منهم يحمل تفويضَ قيادةٍ ساريًا على مركبةِ شركة — فبقيت
+// المركبةُ مفوَّضةً لمن لا وجودَ له. يمسكها `auditDataIntegrity` إن تكرّرت.
+const VehicleAuthorization = require('../models/VehicleAuthorization');
+const VehicleAccident = require('../models/VehicleAccident');
 const OWNED = [
   ['إجازات', LeaveRequest], ['طلبات', HRRequest], ['عقود', Contract],
   ['عهد', Asset], ['مستندات', EmployeeDocument], ['تجديدات', EmployeeRenewal],
+  ['تفاويض', VehicleAuthorization], ['حوادث', VehicleAccident],
 ];
 
 const fold = (s) => String(s || '')

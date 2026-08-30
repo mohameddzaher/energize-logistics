@@ -28,8 +28,14 @@ const { readSheet } = require('./lib/xlsxStream');
 const APPLY = process.argv.includes('--yes');
 const WITH_DATA = process.argv.includes('--with-data');
 const DIR = path.join(__dirname, '../seeds/data/hr-2026-08');
+// ── ما يُعلَّق على الموظّف ─────────────────────────────────────────────────
+// القائمةُ ناقصةٌ = حذفٌ صامتٌ لما لا يُفحَص. حُذف سبعةُ موظّفين لأنّ التفاويضَ
+// لم تكن فيها، وكلٌّ منهم يحمل **تفويضَ قيادةٍ ساريًا** على مركبةِ شركة —
+// فبقيت المركبةُ مفوَّضةً لمن لا وجودَ له. القائمةُ تُراجَع مع كلّ نموذجٍ جديد
+// يشير إلى Employee، ويمسكها `auditDataIntegrity`.
 const OWNED = [['إجازات', 'LeaveRequest'], ['طلبات', 'HRRequest'], ['عقود', 'Contract'],
-  ['عهد', 'Asset'], ['مستندات', 'EmployeeDocument'], ['تجديدات', 'EmployeeRenewal']];
+  ['عهد', 'Asset'], ['مستندات', 'EmployeeDocument'], ['تجديدات', 'EmployeeRenewal'],
+  ['تفاويض', 'VehicleAuthorization'], ['حوادث', 'VehicleAccident']];
 
 /**
  * كلُّ رقم هويّةٍ في الماستر أو في أيّ شيتٍ تفصيليّ.

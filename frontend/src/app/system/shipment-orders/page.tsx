@@ -36,7 +36,7 @@ const toSheetRow = (o: ShipmentOrder): DispatchSheetRow => ({
   carBrand: '',
   carColor: '',
   carType: o.truckType || '',
-  plateNumber: o.vehicleName || '',
+  plateNumber: (o as any).vehiclePlate || o.vehicleName || '',
   driverAdvance: '',
   driverPhone: o.driverPhone || '',
   driverIqama: '',
@@ -47,14 +47,18 @@ const toSheetRow = (o: ShipmentOrder): DispatchSheetRow => ({
   toLocation: o.toCity || '',
   fromLocation: o.fromCity || '',
   date: fmtDate(o.pickupTime || o.createdAt),
-  dispatchNumber: String(o.waybillNumber || ''),
+  // رقمُ البوليصة على الورقة: المنقولُ من المنصّة لا رقمَ بوليصةٍ له عندنا —
+  // يحمل رقمَ كشف تخريجهم، وهو الرقمُ الذي يُسأل عنه. الورقةُ كانت تُطبع بخانةٍ
+  // فارغةٍ في ثلاثةٍ وثلاثين ألفَ شحنة.
+  dispatchNumber: String((o as any).reference || o.waybillNumber || ''),
   missingRequired: [],
 });
 
 // بوليصة-501-اسم العميل-22-7-2026
 const waybillFileName = (o: ShipmentOrder) => {
   const d = new Date(o.pickupTime || o.createdAt || Date.now());
-  return `بوليصة-${o.waybillNumber}-${o.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
+  const ref = (o as any).reference || o.waybillNumber || '';
+  return `بوليصة-${ref}-${o.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
 };
 
 export default function ShipmentOrdersPage() {
@@ -150,8 +154,8 @@ export default function ShipmentOrdersPage() {
 
   const remove = async (o: ShipmentOrder) => {
     if (!(await confirm(ar
-      ? `حذف الشحنة بوليصة رقم ${o.waybillNumber} (${o.customerName || '—'})؟`
-      : `Delete shipment, waybill ${o.waybillNumber} (${o.customerName || '—'})?`))) return;
+      ? `حذف الشحنة بوليصة رقم ${(o as any).reference || o.waybillNumber} (${o.customerName || '—'})؟`
+      : `Delete shipment, waybill ${(o as any).reference || o.waybillNumber} (${o.customerName || '—'})?`))) return;
     try { await api.delete(`/api/shipment-orders/orders/${o._id}`); load(); }
     catch (e: any) { notify(e.message, 'error'); }
   };
@@ -174,7 +178,7 @@ export default function ShipmentOrdersPage() {
     setBulkBusy(true);
     try {
       const gen = await import('@/lib/dispatchSheetGenerator');
-      const nameOf = new Map(rows.map((o) => [String(o.waybillNumber), waybillFileName(o)]));
+      const nameOf = new Map(rows.map((o) => [String((o as any).reference || o.waybillNumber), waybillFileName(o)]));
       const { blob, fileName } = await gen.generateDispatchSheetsZip({
         rows: rows.map(toSheetRow),
         fileNameOf: (r) => nameOf.get(r.dispatchNumber) || `بوليصة-${r.dispatchNumber}`,
@@ -190,16 +194,24 @@ export default function ShipmentOrdersPage() {
   const togglePick = (id: string) =>
     setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // التصديرُ يحمل ما يحمله الجدول: المرجعَ لا الرقمَ الخام، والمصدرَ والمورّدَ
+  // والفرعَ — الملفُّ يُفتح خارج النظام ويُقرأ وحدَه.
   const exportColumns: ExportColumn[] = [
-    { header: 'Waybill', key: 'waybillNumber', width: 10 },
+    { header: 'Reference', key: 'reference', width: 12, transform: (v: any, r: any) => v || r?.waybillNumber || '' },
+    { header: 'Source', key: 'source', width: 10, transform: (v: any) => (v === 'platform' ? 'platform' : 'ours') },
     { header: 'Customer', key: 'customerName', width: 26 },
+    { header: 'Supplier', key: 'supplierName', width: 26 },
     { header: 'From', key: 'fromCity', width: 14 },
     { header: 'To', key: 'toCity', width: 14 },
     { header: 'Truck', key: 'truckType', width: 12 },
+    { header: 'Plate', key: 'vehiclePlate', width: 12 },
     { header: 'Driver', key: 'driverName', width: 18 },
+    { header: 'Driver phone', key: 'driverPhone', width: 14 },
+    { header: 'Branch', key: 'branch', width: 12 },
     { header: 'Pickup', key: 'pickupTime', transform: (v: any) => fmtDate(v), width: 14 },
     { header: 'Sell', key: 'sellPrice', width: 10 },
     { header: 'Buy', key: 'buyPrice', width: 10 },
+    { header: 'Margin', key: 'margin', width: 10, transform: (_v: any, r: any) => ((Number(r?.sellPrice) || 0) - (Number(r?.buyPrice) || 0)) },
     { header: 'Status', key: 'status', transform: (v: any) => statusLabel(v, 'en'), width: 14 },
     { header: 'Agent', key: 'agentName', width: 16 },
   ];

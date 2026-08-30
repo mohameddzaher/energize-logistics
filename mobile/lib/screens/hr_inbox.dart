@@ -126,6 +126,14 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     return d == null ? '—' : '${d.day}/${d.month}/${d.year}';
   }
 
+  /// يطوي همزاتِ العربيّة وتاءَها المربوطة كي لا يفشل البحثُ بفارق همزة.
+  static String _fold(String v) => v
+      .toLowerCase()
+      .replaceAll(RegExp('[أإآٱ]'), 'ا')
+      .replaceAll('ة', 'ه')
+      .replaceAll('ى', 'ي')
+      .replaceAll(RegExp('[ًٌٍَُِّْ]'), '');
+
   /// تقييدُ إجازةٍ وقعت فعلًا.
   ///
   /// كثيرٌ من الإجازات تُؤخذ قبل النظام أو تُتّفق شفاهةً ثمّ تُقيَّد. وما لم
@@ -135,7 +143,8 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     List<Map<String, dynamic>> emps = [];
     List<Map<String, dynamic>> types = [];
     try {
-      final a = await Api.instance.get('/api/hr/employees');
+      // القائمةُ الخفيفة لا المستندُ الكامل — سبعةُ حقولٍ تصل في لحظة.
+      final a = await Api.instance.get('/api/hr/employees/search?limit=2000');
       emps = List<Map<String, dynamic>>.from(((a as Map)['employees'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
       final b = await Api.instance.get('/api/hr/leave-types');
       types = List<Map<String, dynamic>>.from(((b as Map)['leaveTypes'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
@@ -147,6 +156,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
 
     String? empId;
     String? typeId;
+    bool affects = true;
     DateTime? start;
     DateTime? end;
     final reason = TextEditingController();
@@ -165,8 +175,10 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
           final q = search.text.trim().toLowerCase();
           final shown = q.isEmpty
               ? emps.take(60).toList()
-              : emps.where((e) => [e['arabicName'], e['firstName'], e['lastName'], e['employeeNumber']]
-                  .any((v) => (v ?? '').toString().toLowerCase().contains(q))).take(60).toList();
+              // يُبحَث بالاسم والإقامة والرقم الوظيفي معًا، وتُطوى همزاتُ
+              // العربيّة فـ«احمد» تجد «أحمد».
+              : emps.where((e) => [e['arabicName'], e['firstName'], e['lastName'], e['employeeNumber'], e['iqamaNumber'], e['nationalId']]
+                  .any((v) => _fold((v ?? '').toString()).contains(_fold(q)))).take(60).toList();
           return SafeArea(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
@@ -210,7 +222,12 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                       value: t['_id'] as String,
                       child: Text(tr('${t['nameAr']}', '${t['nameEn']}'), overflow: TextOverflow.ellipsis),
                     )).toList(),
-                    onChanged: (v) => setSt(() => typeId = v),
+                    onChanged: (v) => setSt(() {
+                      typeId = v;
+                      // النوعُ يقترح الخصمَ، والقرارُ يبقى لمن يقيّد.
+                      final t = types.firstWhere((x) => x['_id'] == v, orElse: () => const {});
+                      affects = t['affectsBalance'] != false;
+                    }),
                   ),
                   const SizedBox(height: 10),
                   Row(children: [
@@ -241,7 +258,24 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                     Text('${tr('المدّة', 'Duration')}: ${days()} ${tr('يوم', 'day(s)')}',
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
                   ],
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
+                  // أيُخصَم من رصيده؟ النوعُ يقترح ومن يقيّد يقرّر.
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: affects,
+                    onChanged: (v) => setSt(() => affects = v ?? true),
+                    title: Text(tr('تُخصَم من رصيد إجازاته', 'Deduct from the leave balance'),
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    subtitle: Text(
+                      affects
+                        ? tr('ستُخصَم ${days()} يوم من رصيده.', '${days()} day(s) will be deducted.')
+                        : tr('لن تُخصَم — تُسجَّل ولا تمسّ الرصيد.', 'Not deducted — recorded, balance untouched.'),
+                      style: const TextStyle(fontSize: 11, color: T.inkFaint),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
                   TextField(controller: reason, maxLines: 2, decoration: InputDecoration(labelText: tr('السبب / ملاحظة', 'Reason / note'))),
                   const SizedBox(height: 12),
                   SizedBox(
@@ -267,6 +301,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
         'startDate': iso(start!),
         'endDate': iso(end!),
         'reason': reason.text.trim(),
+        'affectsBalance': affects,
       });
       final bal = (r is Map) ? r['balance'] : null;
       if (mounted) {

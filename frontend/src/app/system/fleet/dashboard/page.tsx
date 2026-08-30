@@ -39,7 +39,7 @@ const ORANGE = '#f37121';
 const PALETTE = ['#f37121', '#2563eb', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ef4444', '#64748b'];
 const money = (n: number) => (Number(n) || 0).toLocaleString('en-US');
 
-function FleetAnalyticsInner() {
+function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { user } = useAuth();
@@ -81,7 +81,13 @@ function FleetAnalyticsInner() {
     setLoading(false);
   }, [query]);
 
-  useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
+  // لا يُجلَب شيءٌ والتبويبُ مخفيّ: التبويبان يبقيان مركَّبَين كي تُحفظ فلاترُ
+  // كلٍّ منهما، لكنّ المخفيّ لا يُناديـ الخادمَ عند كلّ تغيير.
+  useEffect(() => {
+    if (!active) return undefined;
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+  }, [load, active]);
   useEffect(() => {
     (async () => {
       try {
@@ -91,7 +97,15 @@ function FleetAnalyticsInner() {
     })();
   }, []);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
-  useEffect(() => { router.replace(`/system/fleet/dashboard${query ? `?${query}` : ''}`, { scroll: false }); }, [query, router]);
+  // الرابطُ يُكتب ولا يُنتقَل إليه: `router.replace` تنقّلٌ كامل يعيد تركيب
+  // الشجرة مع كلّ ضغطةِ فلتر — بطيءٌ وحدَه، وحلقةٌ لا تنتهي حين تصير الشاشةُ
+  // تبويبًا. و`history.replaceState` تكتب الرابطَ ولا تفعل شيئًا سواه.
+  useEffect(() => {
+    if (!active) return;
+    const q = new URLSearchParams(query);
+    q.set('tab', 'overview');
+    syncUrl('/system/fleet/dashboard', q);
+  }, [query, active]);
 
   const reset = () => { setPeriod(EMPTY_PERIOD); setCustomerType([]); setTrailerType([]); setStatus([]); setSupervisor([]); setQ(''); };
 
@@ -393,32 +407,61 @@ function FleetAnalyticsInner() {
  */
 function FleetAnalyticsTabs() {
   const sp = useSearchParams();
-  const { lang } = useLanguage();
+  const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const [tab, setTab] = useState<'overview' | 'loads'>(sp?.get('tab') === 'loads' ? 'loads' : 'overview');
+  // التبويبُ الثاني لا يُركَّب قبل أن يُطلَب: نداؤه يمسح آلافَ الحمولات، وتحميلُه
+  // مع فتح الصفحة يُبطئ ما لم يُطلَب بعد. ومتى رُكِّب بقي مركَّبًا.
+  const [mountedLoads, setMountedLoads] = useState(sp?.get('tab') === 'loads');
 
   const pick = (t: 'overview' | 'loads') => {
+    if (t === tab) return;
+    if (t === 'loads') setMountedLoads(true);
     setTab(t);
+    // الرابطُ يُكتب فقط. أمّا `router.replace` فتنقّلٌ كامل، وكانت هي التي
+    // أوقعت الصفحةَ في حلقةٍ لا تنتهي حين صارت الشاشتان تبويبين.
     const q = new URLSearchParams(Array.from(sp?.entries() || []));
     q.set('tab', t);
     syncUrl('/system/fleet/dashboard', q);
   };
 
+  const TABS = [
+    { key: 'overview' as const, icon: BarChart3, ar: 'نظرة عامة', en: 'Overview', hintAr: 'الدخل والأهداف والترتيبات', hintEn: 'Income, targets, rankings' },
+    { key: 'loads' as const, icon: PackageSearch, ar: 'الحمولات ومصروف السائقين', en: 'Loads & driver expense', hintAr: 'كل حمولة بمصروفها ومشرفها وعميلها', hintEn: 'Every load with its expense, supervisor and customer' },
+  ];
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {([
-          ['overview', ar ? 'نظرة عامة' : 'Overview', BarChart3],
-          ['loads', ar ? 'الحمولات ومصروف السائقين' : 'Loads & driver expense', PackageSearch],
-        ] as const).map(([k, label, Icon]) => (
-          <button key={k} type="button" onClick={() => pick(k)}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              tab === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-            <Icon className="w-4 h-4" /> {label}
-          </button>
-        ))}
+    <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* ── التبويبان ────────────────────────────────────────────────────────
+          زرّان متجاوران يفصل بينهما شريطٌ برتقاليٌّ تحت المختار — لا حدودَ
+          مزدوجةٌ ولا ظلال. ولكلٍّ سطرُ وصفٍ تحته: الاسمان متقاربان («تحليلات»
+          و«حمولات») ومن غير وصفٍ يبقى الاختيارُ تخمينًا كما كان حين كانتا
+          صفحتين. ويختفي الوصفُ على الجوّال حيث لا يتّسع. */}
+      <div className="bg-white border border-slate-200 rounded-xl p-1.5 shadow-sm inline-flex flex-wrap gap-1 w-full sm:w-auto">
+        {TABS.map((tb) => {
+          const on = tab === tb.key;
+          const Icon = tb.icon;
+          return (
+            <button key={tb.key} type="button" onClick={() => pick(tb.key)}
+              aria-pressed={on}
+              className={`flex-1 sm:flex-none text-start px-3.5 py-2 rounded-lg transition-colors ${
+                on ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                <Icon className={`w-4 h-4 ${on ? 'text-[#f37121]' : 'text-slate-400'}`} />
+                {ar ? tb.ar : tb.en}
+              </span>
+              <span className={`hidden sm:block text-[11px] mt-0.5 ${on ? 'text-slate-300' : 'text-slate-400'}`}>
+                {ar ? tb.hintAr : tb.hintEn}
+              </span>
+            </button>
+          );
+        })}
       </div>
-      {tab === 'overview' ? <FleetAnalyticsInner /> : <LoadsAnalysis />}
+
+      {/* كلا التبويبين يبقى مركَّبًا لكنّ غيرَ المعروض يُخفى: العودةُ إليه لا
+          تُعيد الجلبَ من الخادم، والفلاترُ التي ضُبطت فيه تبقى كما تُركت. */}
+      <div className={tab === 'overview' ? '' : 'hidden'}><FleetAnalyticsInner active={tab === 'overview'} /></div>
+      {mountedLoads && <div className={tab === 'loads' ? '' : 'hidden'}><LoadsAnalysis active={tab === 'loads'} /></div>}
     </div>
   );
 }

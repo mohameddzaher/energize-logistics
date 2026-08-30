@@ -25,10 +25,11 @@ import {
   fmtD, canViewFleet, money, shipmentVehicleId, shipmentCustomerId, type Lang,
 } from '@/lib/fleet';
 import { Wallet, Coins, PackageSearch } from 'lucide-react';
+import { syncUrl } from '@/lib/urlSync';
 
 const ORANGE = '#f37121';
 
-export default function LoadsAnalysis() {
+export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -51,7 +52,10 @@ export default function LoadsAnalysis() {
   const [debouncedQ, setDebouncedQ] = useState(q);
   useEffect(() => { const t = setTimeout(() => setDebouncedQ(q), 300); return () => clearTimeout(t); }, [q]);
   // السيارة تأتي من رابطٍ خارجي (صفّ في تحليل السيارة، أو بطاقة في التحليلات).
-  const vehicle = sp?.get('vehicle') || '';
+  // حالةٌ لا قراءةٌ من الرابط: الرابطُ صار يُكتب بـ`replaceState` (بلا تنقّل)،
+  // و`useSearchParams` لا تسمع ذلك — فتبقى القيمةُ مجمّدةً على ما كانت عند
+  // الفتح، ولا يزول الفلترُ ولو ضُغطت «إزالة».
+  const [vehicle, setVehicle] = useState(() => sp?.get('vehicle') || '');
 
   const params = useMemo(() => {
     const p: Record<string, string> = { ...periodParams(period) };
@@ -64,6 +68,11 @@ export default function LoadsAnalysis() {
     return p;
   }, [period, supervisor, customer, status, customerType, vehicle, debouncedQ]);
 
+  /** إزالةُ الفلاتر: تصفيرُ الحالة، لا تنقّلٌ إلى مسارٍ عارٍ. */
+  const clearFilters = useCallback(() => {
+    setSupervisor(''); setCustomer(''); setStatus(''); setCustomerType(''); setQ(''); setVehicle('');
+  }, []);
+
   const load = useCallback(async () => {
     try {
       setD(await api.get<FleetLoadsAnalysis>(`/api/fleet/loads-analysis?${new URLSearchParams(params)}`));
@@ -72,18 +81,30 @@ export default function LoadsAnalysis() {
     setLoading(false);
   }, [params]);
 
-  useEffect(() => { load(); }, [load]);
-  useSocket('fleet:updated', useCallback(() => load(), [load]));
+  // لا جلبَ والتبويبُ مخفيّ — ونداءُ هذه الشاشة يمسح آلافَ الحمولات.
+  useEffect(() => { if (active) load(); }, [load, active]);
+  useSocket('fleet:updated', useCallback(() => { if (active) load(); }, [load, active]));
   useEffect(() => {
     api.get<{ customers: FleetCustomer[] }>('/api/fleet/customers').then((r) => setCustomers(r.customers || [])).catch(() => {});
     api.get<{ users: { _id: string; firstName: string; lastName: string }[] }>('/api/fleet/supervisors')
       .then((r) => setSupers((r.users || []).map((u) => ({ _id: u._id, name: `${u.firstName || ''} ${u.lastName || ''}`.trim() })))).catch(() => {});
   }, []);
 
+  // ── الرابطُ يُكتب ولا يُنتقَل إليه ────────────────────────────────────────
+  // كان هذا السطرُ `router.replace('/system/fleet/loads-analysis?…')`. وحين
+  // صارت الشاشةُ تبويبًا داخل صفحة التحليلات انقلب إلى حلقةٍ لا تنتهي:
+  // يستبدل الرابطَ بالمسار القديم، والمسارُ القديم يحوّل إلى التبويب، فيُركَّب
+  // المكوّنُ من جديد فيستبدل الرابطَ… حتى يقف المتصفّح.
+  //
+  // وحتى قبل الدمج كان خطأً: `router.replace` تنقّلٌ كامل يعيد تركيب الشجرة
+  // مع **كلّ ضغطةِ فلتر**. والمقصودُ أن يعكس الرابطُ ما على الشاشة فحسب —
+  // وذلك `history.replaceState`: لا تنقّل، ولا إعادةَ تركيب، ولا حلقة.
   useEffect(() => {
-    const qs = new URLSearchParams(params).toString();
-    router.replace(`/system/fleet/loads-analysis${qs ? `?${qs}` : ''}`, { scroll: false });
-  }, [params, router]);
+    if (!active) return;
+    const q = new URLSearchParams(params);
+    q.set('tab', 'loads');
+    syncUrl('/system/fleet/dashboard', q);
+  }, [params, active]);
 
   const loadCols = [
     { header: 'Waybill', key: 'waybillNumber', width: 10 },
@@ -210,7 +231,7 @@ export default function LoadsAnalysis() {
               {ar ? 'محصور بسيارة واحدة' : 'Filtered to one vehicle'}
             </span>
             <Link href={`/system/fleet/vehicles/${vehicle}`} className="text-[#f37121] hover:underline">{ar ? 'افتح تحليل السيارة' : 'Open vehicle analysis'}</Link>
-            <button type="button" onClick={() => router.replace('/system/fleet/loads-analysis')} className="text-slate-500 hover:text-slate-900">{ar ? 'إزالة' : 'Remove'}</button>
+            <button type="button" onClick={clearFilters} className="text-slate-500 hover:text-slate-900">{ar ? 'إزالة' : 'Remove'}</button>
           </div>
         )}
       </div>

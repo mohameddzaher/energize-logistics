@@ -57,6 +57,15 @@ const leaveRequestSchema = new mongoose.Schema(
     // لا يُوافَق عليه — لكنّها تُوسَم `backdated` ويُسجَّل من قيّدها ومتى.
     // فمن يقرأ السجلَّ بعدها يعرف أنّ هذه لم تُطلب بل قُيّدت.
     backdated: { type: Boolean, default: false, index: true },
+
+    // ── أيُخصَم هذا من رصيده؟ ─────────────────────────────────────────────
+    // نوعُ الإجازة يحمل صفةً عامّة (`affectsBalance`)، لكنّ الحالةَ الواحدة
+    // تختلف: مرضيّةٌ بتقريرٍ لا تُخصَم ومثلُها بلا تقريرٍ تُخصَم. فهذه خانةُ
+    // القرار: `null` تعني «كما يقول النوع»، و`true/false` قرارُ من قيّد.
+    //
+    // ويُحفظ مع القيد لا يُستنتَج عند كلّ حساب: لولا ذلك لتغيّرت أرصدةٌ
+    // ماضيةٌ كلَّما عُدِّل تعريفُ نوعٍ بعد سنة.
+    affectsBalanceOverride: { type: Boolean, default: null },
     recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     recordedByName: { type: String, default: '' },
     recordedAt: { type: Date },

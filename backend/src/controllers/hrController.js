@@ -101,12 +101,17 @@ const computeEmployeeBalance = async (employeeId, asOf = new Date()) => {
   const contract = await getActiveContract(employeeId);
   const approved = await LeaveRequest.find({ employee: employeeId, status: 'approved' })
     .populate('leaveType', 'affectsBalance')
-    .select('days leaveType')
+    .select('days leaveType affectsBalanceOverride')
     .lean();
-  const taken = approved.reduce(
-    (s, l) => s + ((l.leaveType?.affectsBalance ?? true) ? (l.days || 0) : 0),
-    0
-  );
+  // القرارُ المحفوظ على القيد يسبق صفةَ النوع: نوعُ الإجازة اقتراحٌ، ومن قيّد
+  // الإجازةَ قد يكون قرّر غيرَه. ولولا ذلك لتغيّرت أرصدةٌ ماضيةٌ كلَّما عُدِّل
+  // تعريفُ نوعٍ بعد سنة.
+  const taken = approved.reduce((s, l) => {
+    const affects = typeof l.affectsBalanceOverride === 'boolean'
+      ? l.affectsBalanceOverride
+      : (l.leaveType?.affectsBalance ?? true);
+    return s + (affects ? (l.days || 0) : 0);
+  }, 0);
   return { contract, balance: computeBalance(contract, taken, asOf) };
 };
 
@@ -176,10 +181,17 @@ exports.searchEmployees = async (req, res) => {
         { iqamaNumber: rx }, { nationalId: rx }, { employeeNumber: rx },
       ];
     }
+    // ── الحدُّ يُطلَب ولا يُفرَض ────────────────────────────────────────────
+    // خمسةٌ وعشرون تكفي إكمالَ كتابةٍ في خانة، ولا تكفي قائمةً منسدلةً تبحث
+    // في متصفّح المستخدم — تلك تحتاج الأسماءَ كلَّها. والمشروعُ هنا أنّ
+    // الحقولَ سبعةٌ لا خمسون: أربعُ مئةِ سطرٍ بهذا الحجم أخفُّ من عشرين سطرًا
+    // بالمستند الكامل، وهو ما كان يُجلَب فتتجمّد القائمةُ عند فتحها.
+    const asked = Number(req.query.limit);
+    const limit = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), 2000) : 25;
     const employees = await Employee.find(filter)
-      .select('firstName lastName arabicName iqamaNumber employeeNumber jobTitle user')
+      .select('firstName lastName arabicName iqamaNumber nationalId employeeNumber jobTitle department user employmentStatus')
       .sort({ firstName: 1 })
-      .limit(25)
+      .limit(limit)
       .lean();
     res.json({ employees });
   } catch (error) {
@@ -942,6 +954,16 @@ exports.createBackdatedLeave = async (req, res) => {
     const days = leaveDays(startDate, endDate);
     if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
 
+    // ── أيُخصَم من رصيده أم لا؟ ───────────────────────────────────────────
+    // كان الجوابُ صفةً ثابتةً في نوع الإجازة، يقرّرها من عرّف النوعَ مرّةً
+    // واحدةً للأبد. والواقعُ أنّ الحالةَ الواحدة تختلف: إجازةٌ مرضيّةٌ بتقرير
+    // لا تُخصَم، ومثلُها بلا تقريرٍ تُخصَم؛ وغيابٌ يُسامَح فيه ومثلُه لا.
+    // فالنوعُ يبقى الاقتراحَ، والقرارُ لمن يقيّد — ويُحفظ مع القيد لا يُستنتَج
+    // بعده، وإلّا تغيّرت أرصدةٌ ماضيةٌ بتعديل تعريفِ نوع.
+    const affects = req.body.affectsBalance === undefined
+      ? (lt.affectsBalance !== false)
+      : req.body.affectsBalance === true;
+
     // لا تُقيَّد إجازتان على نفس الأيّام: يومٌ واحدٌ لا يُخصَم مرّتين.
     const clash = await LeaveRequest.findOne({
       employee, status: { $in: ['approved', 'pending_manager', 'pending_hr'] },
@@ -976,10 +998,11 @@ exports.createBackdatedLeave = async (req, res) => {
       recordedBy: req.user._id,
       recordedByName: fullName(req.user),
       recordedAt: now,
+      affectsBalanceOverride: affects,
       balanceSnapshot: {
         accrued: balance.accrued,
         requested: days,
-        remainingAfter: lt.affectsBalance ? Math.round((balance.available - days) * 100) / 100 : balance.available,
+        remainingAfter: affects ? Math.round((balance.available - days) * 100) / 100 : balance.available,
       },
       // المهلةُ المسبقة لا تنطبق على ما وقع.
       advanceNotice: { required: false, requiredDays: 0, daysAhead: 0, satisfied: true, overridden: false },

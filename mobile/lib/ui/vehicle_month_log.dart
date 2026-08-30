@@ -109,7 +109,8 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
     final d = DateTime.tryParse(v?.toString() ?? '')?.toLocal();
     if (d == null) return '—';
     String p(int n) => n.toString().padLeft(2, '0');
-    return '${p(d.day)}/${p(d.month)} ${p(d.hour)}:${p(d.minute)}';
+    // السنةُ تُكتب: السجلُّ يُفتح على شهرٍ ماضٍ، و«١٤/٠٣» بلا سنةٍ التباس.
+    return '${p(d.day)}/${p(d.month)}/${d.year} · ${p(d.hour)}:${p(d.minute)}';
   }
 
   Future<void> _add() async {
@@ -319,7 +320,12 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
                         const Icon(Icons.schedule, size: 12, color: T.inkFaint),
                       ],
                       const Spacer(),
-                      Text(_dt(r['at']), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                      // متى وقع هذا؟ أوّلُ ما يُسأل عنه في سجلّ، وكان أبهتَ ما فيه.
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: const Color(0xFFEFF3F8), borderRadius: BorderRadius.circular(6)),
+                        child: Text(_dt(r['at']), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
+                      ),
                     ]),
                     if ((r['text'] ?? '').toString().isNotEmpty)
                       Text('${r['text']}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
@@ -346,12 +352,24 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
     );
   }
 
-  Widget _stat(String label, String value) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(10)),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-      Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
-      Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-    ]),
+  /// بطاقةُ رقم.
+  ///
+  /// الرقمُ الطويل («١٢٤٬٥٠٠») كان يخرج من حدود بطاقته على الشاشات الضيّقة.
+  /// فالبطاقةُ لها حدٌّ أدنى وأقصى للعرض، والعنوانُ يُقصّ إن ضاق، والرقمُ لا
+  /// يُقصّ: `FittedBox` تصغّره حتى يسع — نصفُ رقمٍ أسوأُ من رقمٍ صغير.
+  Widget _stat(String label, String value) => ConstrainedBox(
+    constraints: const BoxConstraints(minWidth: 92, maxWidth: 150),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: const Color(0xFFF4F7FB), borderRadius: BorderRadius.circular(10)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+        ),
+      ]),
+    ),
   );
 }

@@ -60,14 +60,35 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
   bool _printing = false;
   late final void Function() _onLive;
 
-  static const _quickNotes = [
-    'في الطريق إلى موقع التنزيل', 'حمّل وتحرّك', 'نايم — استراحة', 'فاضي',
-    'واقف — مشكلة على الطريق', 'وصل موقع التنزيل', 'جاري التفريغ',
+  /// الملاحظاتُ الجاهزة — تُقرأ من قوائم القسم لا من الشيفرة.
+  ///
+  /// كانت سبعةَ سطورٍ مكتوبةً هنا وثمانيةً في الويب، **ومختلفةً بينهما**:
+  /// «نايم — استراحة» في الجوّال و«متوقف — استراحة» في الموقع، فتخرج تقاريرُ
+  /// بصيغتين لنفس الحالة. صارت قائمةً واحدة تُدار من إعدادات الأسطول، وهذه
+  /// نسخةٌ احتياطيّة تُستعمل ما دام الجلبُ لم يصل فقط.
+  static const _fallbackNotes = [
+    'في الطريق إلى موقع التنزيل', 'في الطريق إلى موقع التحميل', 'حمَّل وتحرّك',
+    'متوقف — استراحة', 'فارغ', 'متوقف — عُطل على الطريق', 'وصل موقع التنزيل', 'جارٍ التفريغ',
   ];
+  List<String> _quickNotes = List<String>.from(_fallbackNotes);
+
+  Future<void> _loadQuickNotes() async {
+    try {
+      final d = await Api.instance.get('/api/lookups?type=fleet_followup_note');
+      final items = List<Map<String, dynamic>>.from(
+          ((d as Map)['items'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+      final names = items
+          .map((i) => (i['nameAr'] ?? i['nameEn'] ?? '').toString().trim())
+          .where((x) => x.isNotEmpty)
+          .toList();
+      if (names.isNotEmpty && mounted) setState(() => _quickNotes = names);
+    } catch (_) { /* تبقى النسخةُ الاحتياطيّة */ }
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadQuickNotes();
     _load();
     _onLive = () => _load();
     Live.instance.on('fleet:updated', _onLive);

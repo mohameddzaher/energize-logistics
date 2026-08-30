@@ -85,6 +85,29 @@ const REGISTRY = [
       { key: 'liquids', nameEn: 'Liquids', nameAr: 'سوائل' },
     ],
   },
+  // ── ملاحظاتُ المتابعة الجاهزة ─────────────────────────────────────────────
+  // ثمانيةُ سطورٍ كانت مكتوبةً في الشيفرة: يضغط المشرفُ عليها فتُملأ خانةُ
+  // الملاحظة بلمسة. وهي أكثرُ ما يُكتب في اليوم، فلمّا نقص سطرٌ يحتاجه الفريق
+  // («في الجمرك»، «تعطّل ونُقلت الحمولة») لم يكن له سبيلٌ إلّا نشرةُ برمجيّة.
+  // صارت قائمةً كسائر القوائم: تُزاد وتُحذف وتُرتَّب من إعدادات القسم.
+  {
+    type: 'fleet_followup_note',
+    module: 'fleet',
+    nameEn: 'Follow-up Quick Notes',
+    nameAr: 'ملاحظات المتابعة الجاهزة',
+    roles: FLEET_ROLES,
+    storeLabel: true,   // النصُّ نفسُه هو ما يُكتب في الملاحظة، لا مفتاحٌ يرمز إليه
+    seed: [
+      { key: 'to_unload', nameEn: 'On the way to the unloading site', nameAr: 'في الطريق إلى موقع التنزيل' },
+      { key: 'to_load', nameEn: 'On the way to the loading site', nameAr: 'في الطريق إلى موقع التحميل' },
+      { key: 'loaded_moving', nameEn: 'Loaded and moving', nameAr: 'حمَّل وتحرّك' },
+      { key: 'rest_stop', nameEn: 'Stopped — rest', nameAr: 'متوقف — استراحة' },
+      { key: 'empty', nameEn: 'Empty', nameAr: 'فارغ' },
+      { key: 'breakdown', nameEn: 'Stopped — breakdown on the road', nameAr: 'متوقف — عُطل على الطريق' },
+      { key: 'arrived', nameEn: 'Arrived at the unloading site', nameAr: 'وصل موقع التنزيل' },
+      { key: 'unloading', nameEn: 'Unloading', nameAr: 'جارٍ التفريغ' },
+    ],
+  },
   {
     type: 'procurement_category',
     module: 'procurement',

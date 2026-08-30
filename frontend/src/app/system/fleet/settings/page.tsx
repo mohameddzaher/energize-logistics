@@ -11,6 +11,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { canAdminFleet } from '@/lib/fleet';
 import { Settings, Save, Target, CalendarClock, ListChecks, Truck } from 'lucide-react';
+import ReferenceDataManager from '@/components/system/ReferenceDataManager';
 
 export default function FleetSettingsPage() {
   const { lang, isRTL } = useLanguage();
@@ -142,6 +143,11 @@ export default function FleetSettingsPage() {
           ))}
         </div>
       </div>
+
+      {/* ── قوائم القسم المنسدلة ────────────────────────────────────────────
+          نوعُ الإيجار والدفع والحمولة، وملاحظاتُ المتابعة الجاهزة. كانت
+          الأخيرةُ ثمانيةَ سطورٍ في الشيفرة، فمن أراد سطرًا تاسعًا انتظر نشرة. */}
+      <ReferenceDataManager module="fleet" embedded />
 
       {/* أهداف السيارات */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">

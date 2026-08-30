@@ -61,6 +61,18 @@ const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manage
 // Self service (my profile / my leaves / my requests) belongs to EVERY employee,
 // managers included — they file leave like anyone else. The only login that is
 // not an employee is `client`, an external customer-portal account.
+// ── الخدمةُ الذاتيّة ليست قسمًا من الأقسام ────────────────────────────────
+// كلُّ من يدخل النظام موظّفٌ له راتبٌ ورصيدُ إجازاتٍ وكلمةُ مرورٍ وتوقيع. وكان
+// السطرُ أدناه قائمةَ أدوارٍ تُكتب باليد، فمتى وُلد دورٌ جديد (مدير المركبات،
+// موظّف لوكيشن سوليوشن، مسؤول التخليص…) نُسي فيها — فلا يرى صاحبُه رصيدَ
+// إجازاته ولا يجد أين يصنع توقيعَه، ثمّ يقف أمام «أوقّع على الموافقة» وهي
+// معطّلةٌ ولا سبيل له إلى تفعيلها.
+//
+// فصارت القاعدةُ عكسَ ذلك: الخدمةُ الذاتيّة والإعداداتُ لكلّ **دورٍ داخليّ**،
+// ويُستثنى الشريكُ الخارجيّ وحده (بوابةُ العميل/المورّد لها صفحاتُها).
+const EXTERNAL_ROLES = ['partner', 'customer_portal', 'vendor_portal'];
+const isInternal = (role?: string | null) => !!role && !EXTERNAL_ROLES.includes(role);
+
 const SELF_SERVICE_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'moderator',
   'operations_manager', 'operations_staff', 'workshop_manager', 'workshop_employee', 'procurement_staff',
@@ -224,8 +236,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet/board', label: lang === 'ar' ? 'اللوحة الرئيسية' : 'Fleet Board', icon: <LayoutGrid className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet', label: lang === 'ar' ? 'الحمولات' : 'Shipments', icon: <Truck className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/arrivals', label: lang === 'ar' ? 'المتوقع للوصول' : 'Expected Arrivals', icon: <CalendarClock className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
-    { href: '/system/fleet/loads-analysis', label: lang === 'ar' ? 'تحليل الحمولات' : 'Loads Analysis', icon: <PackageSearch className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
-    { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'لوحة التحليلات' : 'Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
+    // صفحةٌ واحدة بتبويبين: النظرةُ العامّة، والحمولاتُ ومصروفُ السائقين.
+    // كانتا بابين لبيتٍ واحد باسمين متشابهين لا يُفرَّق بينهما.
+    { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <UserSquare className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/driver-kpis', label: lang === 'ar' ? 'تقييم السائقين' : 'Driver KPIs', icon: <Target className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/vehicles', label: lang === 'ar' ? 'سياراتنا' : 'Our Vehicles', icon: <Car className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
@@ -401,9 +414,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/hr/licenses', label: lang === 'ar' ? 'التراخيص والاشتراكات' : 'Licenses & Subscriptions', icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/leave-types', label: L.hrLeaveTypes, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     // Self Service (HR pages every employee sees)
-    { href: '/system/hr/me', label: L.hrMyProfile, icon: <Briefcase className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, section: 'Self Service' },
-    { href: '/system/hr/my-leaves', label: L.hrMyLeaves, icon: <CalendarDays className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, section: 'Self Service' },
-    { href: '/system/hr/my-requests', label: L.hrMyRequests, icon: <ClipboardList className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, section: 'Self Service' },
+    { href: '/system/hr/me', label: L.hrMyProfile, icon: <Briefcase className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
+    { href: '/system/hr/my-leaves', label: L.hrMyLeaves, icon: <CalendarDays className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
+    { href: '/system/hr/my-requests', label: L.hrMyRequests, icon: <ClipboardList className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
+    // الإعداداتُ الشخصيّة: كلمةُ المرور والتوقيع واللغة. كانت في «الأدوات»
+    // ومقصورةً على ثمانية أدوار، فلم يجدها من يحتاجها.
+    { href: '/system/settings', label: L.settings, icon: <Settings className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
     // CRM
     { href: '/system/crm/dashboard', label: L.crmDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'], section: 'CRM' },
     { href: '/system/crm/companies', label: L.crmCompanies, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'], section: 'CRM' },
@@ -465,7 +481,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/kpis', label: L.kpis, icon: <Gauge className="w-5 h-5" />, roles: ['super_admin', 'admin', 'moderator'], section: 'Tools' },
     { href: '/system/reports', label: lang === 'ar' ? 'مركز التقارير' : 'Reports', icon: <FileBarChart className="w-5 h-5" />, roles: REPORT_ROLES, section: 'Tools' },
     { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Tools' },
-    { href: '/system/settings', label: L.settings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Tools' },
+
     // Admin (configuration & oversight — kept near the bottom)
     { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/expense-categories', label: L.expenseCategories, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
@@ -526,7 +542,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       return true;
     }
     // Legacy role-gated sections (Main, Tools, Admin, Self Service, Portal).
-    if (!item.roles.includes(user.role)) return false;
+    //
+    // و`visible` تسبق القائمة حيث وُجدت: قائمةُ الأدوار تُكتب باليد فتشيخ مع
+    // كلّ دورٍ جديد، والقاعدةُ لا تشيخ. وهذا ما يجعل الخدمةَ الذاتيّة تظهر
+    // لمدير المركبات ولموظّف التخليص دون أن يُضافا إلى ثلاثين سطرًا.
+    if (item.visible) { if (!item.visible(user)) return false; }
+    else if (!item.roles.includes(user.role)) return false;
     // Portal links are further narrowed to the services this partner has. While
     // the lookup is still in flight (null) we show nothing extra rather than
     // flashing tabs that then disappear.

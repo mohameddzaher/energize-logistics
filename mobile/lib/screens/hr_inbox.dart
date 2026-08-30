@@ -126,10 +126,173 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     return d == null ? '—' : '${d.day}/${d.month}/${d.year}';
   }
 
+  /// تقييدُ إجازةٍ وقعت فعلًا.
+  ///
+  /// كثيرٌ من الإجازات تُؤخذ قبل النظام أو تُتّفق شفاهةً ثمّ تُقيَّد. وما لم
+  /// تُسجَّل بقي الموظّف في الورق مستحقًّا ثلاثين يومًا وقد أخذ اثنَي عشر.
+  /// تُقيَّد معتمَدةً وتُخصَم كأخواتها، وتُوسَم «قيد رجعيّ» باسم من قيّدها.
+  Future<void> _recordBackdated() async {
+    List<Map<String, dynamic>> emps = [];
+    List<Map<String, dynamic>> types = [];
+    try {
+      final a = await Api.instance.get('/api/hr/employees');
+      emps = List<Map<String, dynamic>>.from(((a as Map)['employees'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+      final b = await Api.instance.get('/api/hr/leave-types');
+      types = List<Map<String, dynamic>>.from(((b as Map)['leaveTypes'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      return;
+    }
+    if (!mounted) return;
+
+    String? empId;
+    String? typeId;
+    DateTime? start;
+    DateTime? end;
+    final reason = TextEditingController();
+    final search = TextEditingController();
+
+    int days() => (start == null || end == null || end!.isBefore(start!))
+        ? 0
+        : end!.difference(start!).inDays + 1;
+    String fmt(DateTime? d) => d == null ? '—' : '${d.day}/${d.month}/${d.year}';
+
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setSt) {
+          final q = search.text.trim().toLowerCase();
+          final shown = q.isEmpty
+              ? emps.take(60).toList()
+              : emps.where((e) => [e['arabicName'], e['firstName'], e['lastName'], e['employeeNumber']]
+                  .any((v) => (v ?? '').toString().toLowerCase().contains(q))).take(60).toList();
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(tr('تسجيل إجازة وقعت فعلًا', 'Record a leave that already happened'),
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  const SizedBox(height: 4),
+                  Text(
+                    tr('تُسجَّل معتمَدةً وتُخصَم من الرصيد — لا تمرّ بمديرٍ ولا بمهلة إخطار.',
+                       'Recorded as approved and deducted — no manager step, no notice rule.'),
+                    style: const TextStyle(fontSize: 11.5, color: T.inkFaint),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: search,
+                    onChanged: (_) => setSt(() {}),
+                    decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), labelText: tr('ابحث عن الموظّف', 'Search employee')),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: shown.any((e) => e['_id'] == empId) ? empId : null,
+                    isExpanded: true,
+                    decoration: InputDecoration(labelText: tr('الموظّف', 'Employee')),
+                    items: shown.map((e) {
+                      final nm = (e['arabicName'] ?? '${e['firstName'] ?? ''} ${e['lastName'] ?? ''}').toString().trim();
+                      final num = (e['employeeNumber'] ?? '').toString();
+                      return DropdownMenuItem(
+                        value: e['_id'] as String,
+                        child: Text(num.isEmpty ? nm : '$nm · #$num', overflow: TextOverflow.ellipsis),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setSt(() => empId = v),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: typeId,
+                    isExpanded: true,
+                    decoration: InputDecoration(labelText: tr('نوع الإجازة', 'Leave type')),
+                    items: types.map((t) => DropdownMenuItem(
+                      value: t['_id'] as String,
+                      child: Text(tr('${t['nameAr']}', '${t['nameEn']}'), overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (v) => setSt(() => typeId = v),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          final d = await showDatePicker(context: c, initialDate: start ?? DateTime.now(),
+                              firstDate: DateTime(DateTime.now().year - 5), lastDate: DateTime.now());
+                          if (d != null) setSt(() => start = d);
+                        },
+                        child: Text('${tr('من', 'From')}: ${fmt(start)}'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: start == null ? null : () async {
+                          final d = await showDatePicker(context: c, initialDate: end ?? start!,
+                              firstDate: start!, lastDate: DateTime.now().add(const Duration(days: 365)));
+                          if (d != null) setSt(() => end = d);
+                        },
+                        child: Text('${tr('إلى', 'To')}: ${fmt(end)}'),
+                      ),
+                    ),
+                  ]),
+                  if (days() > 0) ...[
+                    const SizedBox(height: 8),
+                    Text('${tr('المدّة', 'Duration')}: ${days()} ${tr('يوم', 'day(s)')}',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                  ],
+                  const SizedBox(height: 10),
+                  TextField(controller: reason, maxLines: 2, decoration: InputDecoration(labelText: tr('السبب / ملاحظة', 'Reason / note'))),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: (empId == null || typeId == null || days() == 0) ? null : () => Navigator.pop(c, true),
+                      child: Text(tr('تسجيل', 'Record')),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (ok != true) return;
+    String iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    try {
+      final r = await Api.instance.post('/api/hr/leaves/backdated', {
+        'employee': empId,
+        'leaveType': typeId,
+        'startDate': iso(start!),
+        'endDate': iso(end!),
+        'reason': reason.text.trim(),
+      });
+      final bal = (r is Map) ? r['balance'] : null;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          bal is Map
+            ? tr('سُجّلت — الرصيد المتبقّي ${bal['available']} يوم', 'Recorded — remaining balance ${bal['available']}')
+            : tr('سُجّلت', 'Recorded'),
+        )));
+      }
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
       title: Text(tr('طلبات الإجازات', 'Leave Requests')),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.event_repeat_outlined),
+          tooltip: tr('تسجيل إجازة قديمة', 'Record a past leave'),
+          onPressed: _recordBackdated,
+        ),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 44), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null

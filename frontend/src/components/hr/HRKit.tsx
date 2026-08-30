@@ -309,11 +309,24 @@ export function Tabs({ tabs, active, onChange }: { tabs: { key: string; label: s
   );
 }
 
+/**
+ * بطاقةُ رقم.
+ *
+ * ── ولماذا `min-w-0` و`break-words` ─────────────────────────────────────────
+ * البطاقةُ تعيش داخل grid، وخليّةُ الـgrid عرضُها الأدنى `auto` — أي عرضُ
+ * محتواها. فرقمٌ طويل («١٬٢٤٥٬٣٠٠ ر.س») يدفع الخليّةَ فتتجاوز البطاقةَ ويخرج
+ * الرقمُ من حدودها على الشاشات الضيّقة. و`min-w-0` تسمح للخليّة أن تضيق،
+ * و`break-words` تجعل الرقمَ يُلَفّ داخلها بدل أن يفيض.
+ *
+ * والعنوانُ يُقصّ إن ضاق (`truncate` مع `title`)، والرقمُ لا يُقصّ أبدًا:
+ * نصفُ رقمٍ أسوأُ من رقمٍ ملفوف. وخطُّه يصغر قليلًا على الجوّال ويكبر على
+ * الشاشة، و`tabular-nums` تجعل الأرقامَ متساويةَ العرض فتصطفّ البطاقاتُ رأسيًّا.
+ */
 export function StatCard({ label, value, accent }: { label: string; value: ReactNode; accent?: string }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-      <p className="text-slate-500 text-xs">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${accent || 'text-slate-900'}`}>{value}</p>
+    <div className="min-w-0 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <p className="text-slate-500 text-xs truncate" title={typeof label === 'string' ? label : undefined}>{label}</p>
+      <p className={`text-xl sm:text-2xl font-bold mt-1 leading-tight tabular-nums break-words ${accent || 'text-slate-900'}`}>{value}</p>
     </div>
   );
 }

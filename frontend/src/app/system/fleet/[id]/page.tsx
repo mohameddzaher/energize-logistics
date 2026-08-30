@@ -19,6 +19,7 @@ import {
   fmtDT, fmtD, hoursSince, canEditFleet, Lang,
 } from '@/lib/fleet';
 import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
+import { useFleetLookups } from '@/hooks/useFleetLookups';
 import VehicleMonthLog from '@/components/fleet/VehicleMonthLog';
 
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -47,6 +48,11 @@ function FleetShipmentDetailsInner() {
   const id = (params as any)?.id as string;
   const { notify } = useDialog();
   const editor = canEditFleet(user);
+  // الملاحظاتُ الجاهزة من قوائم القسم، وتسقط إلى الثابتة ما دام الجلبُ لم يصل
+  // — فلا تختفي الأزرارُ لحظةَ فتحِ الصفحة.
+  const lookups = useFleetLookups(lang === 'ar');
+  const lookupNotes = lookups.options('fleet_followup_note').map((o) => o.label).filter(Boolean);
+  const quickNotes = lookupNotes.length ? lookupNotes : FOLLOWUP_NOTES_AR;
 
   const [shipment, setShipment] = useState<FleetShipment | null>(null);
   const [events, setEvents] = useState<FleetEvent[]>([]);
@@ -210,14 +216,25 @@ function FleetShipmentDetailsInner() {
               <div>
                 <label className={labelCls}>{ar ? 'الملاحظة' : 'Note'}</label>
                 {/* The usual outcomes as one-tap chips — typing is the exception. */}
+                {/* ── الملاحظاتُ الجاهزة صارت قائمةً تُدار ────────────────────
+                    كانت ثمانيةَ سطورٍ مكتوبةً في الشيفرة، فمن أراد سطرًا
+                    تاسعًا («في الجمرك») انتظر نشرةً برمجيّة. صارت في قوائم
+                    القسم: تُزاد وتُحذف وتُرتَّب من إعدادات الأسطول، وتصل
+                    التعديلاتُ حيّةً بلا إعادة تحميل. */}
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {FOLLOWUP_NOTES_AR.map((n) => (
-                    <button key={n} type="button" onClick={() => setFu((f) => ({ ...f, note: n }))}
+                  {quickNotes.map((n) => (
+                    <button key={n} type="button" onClick={() => setFu((f) => ({ ...f, note: f.note === n ? '' : n }))}
                       className={`px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${fu.note === n
                         ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white text-slate-600 hover:border-[#f37121]/50'}`}>
                       {n}
                     </button>
                   ))}
+                  {editor && (
+                    <a href="/system/fleet/settings" target="_blank" rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded-full border border-dashed border-slate-300 text-xs font-medium text-slate-500 hover:border-[#f37121] hover:text-[#f37121]">
+                      + {ar ? 'تعديل القائمة' : 'Edit list'}
+                    </a>
+                  )}
                 </div>
                 <input value={fu.note} onChange={(e) => setFu((f) => ({ ...f, note: e.target.value }))}
                   placeholder={ar ? 'أو اكتب ملاحظة أخرى…' : 'Or type another note…'} className={inputCls} />

@@ -17,6 +17,8 @@ import ExportMenu from '@/components/ls2/ExportMenu';
 import PeriodFilter, { PeriodBanner, periodParams, periodFromParams, EMPTY_PERIOD, type Period } from '@/components/fleet/PeriodFilter';
 import { canViewFleet, FLEET_STATUSES, TRAILER_TYPES } from '@/lib/fleet';
 import { BarChart3, TrendingUp, RotateCcw, Search, Star, CalendarClock, PackageSearch } from 'lucide-react';
+import LoadsAnalysis from '@/components/fleet/LoadsAnalysis';
+import { syncUrl } from '@/lib/urlSync';
 
 type Cust = { _id: string | null; name: string; customerType: string; rating: number; trips: number; income: number };
 type Analytics = {
@@ -379,6 +381,48 @@ function FleetAnalyticsInner() {
   );
 }
 
+/**
+ * صفحةُ تحليلات الأسطول — تبويبان لا صفحتان.
+ *
+ * كانتا شاشتين منفصلتين تجيبان سؤالين متجاورين: «كم دخلَ الأسطول ومن حقّق
+ * هدفه؟» و«ماذا حملت كلُّ سيّارة وكم يُصرف لسائقها؟». والفصلُ بينهما جعل
+ * المستخدمَ يقف أمام اسمين متشابهين لا يدري أيَّهما يفتح، ويقفز بينهما
+ * ليقارن رقمًا برقم.
+ *
+ * فصارتا تبويبين تحت فلترِ فترةٍ واحد، والتبويبُ في الرابط فيُرسَل ويُحفظ.
+ */
+function FleetAnalyticsTabs() {
+  const sp = useSearchParams();
+  const { lang } = useLanguage();
+  const ar = lang === 'ar';
+  const [tab, setTab] = useState<'overview' | 'loads'>(sp?.get('tab') === 'loads' ? 'loads' : 'overview');
+
+  const pick = (t: 'overview' | 'loads') => {
+    setTab(t);
+    const q = new URLSearchParams(Array.from(sp?.entries() || []));
+    q.set('tab', t);
+    syncUrl('/system/fleet/dashboard', q);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {([
+          ['overview', ar ? 'نظرة عامة' : 'Overview', BarChart3],
+          ['loads', ar ? 'الحمولات ومصروف السائقين' : 'Loads & driver expense', PackageSearch],
+        ] as const).map(([k, label, Icon]) => (
+          <button key={k} type="button" onClick={() => pick(k)}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              tab === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            <Icon className="w-4 h-4" /> {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'overview' ? <FleetAnalyticsInner /> : <LoadsAnalysis />}
+    </div>
+  );
+}
+
 export default function FleetAnalyticsPage() {
-  return <Suspense fallback={<Spinner />}><FleetAnalyticsInner /></Suspense>;
+  return <Suspense fallback={<Spinner />}><FleetAnalyticsTabs /></Suspense>;
 }

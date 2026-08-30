@@ -57,7 +57,6 @@ function VehicleLogsInner() {
   const [from, setFrom] = useState(sp?.get('from') || '');
   const [to, setTo] = useState(sp?.get('to') || '');
   const [day, setDay] = useState(sp?.get('date') || '');
-  const [plate, setPlate] = useState(sp?.get('vehicle') || '');
   const [search, setSearch] = useState('');
 
   const [data, setData] = useState<Resp | null>(null);
@@ -86,10 +85,9 @@ function VehicleLogsInner() {
   useEffect(() => {
     const q = params();
     q.set('mode', mode);
-    if (plate) q.set('vehicle', plate);
     syncUrl('/system/fleet/vehicle-logs', q);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, month, from, to, day, plate]);
+  }, [mode, month, from, to, day]);
 
   const rows = (data?.rows || []).filter((r) => {
     const s = search.trim().toLowerCase();
@@ -115,8 +113,6 @@ function VehicleLogsInner() {
     { header: t('أعطال وصيانة', 'Breakdowns'), key: 'breakdowns', width: 14 },
     { header: t('الهدف الشهري', 'Monthly target'), key: 'target', width: 14 },
   ];
-
-  const selected = rows.find((r) => r.plate === plate) || null;
 
   return (
     <div className="space-y-6">
@@ -207,8 +203,10 @@ function VehicleLogsInner() {
                 {rows.length === 0 ? (
                   <tr><td colSpan={10} className="text-center text-slate-500 py-12">{t('لا سيارات في هذه الفترة.', 'No vehicles in this period.')}</td></tr>
                 ) : rows.map((r) => (
-                  <tr key={r._id} onClick={() => setPlate(plate === r.plate ? '' : r.plate)}
-                    className={`cursor-pointer transition-colors ${plate === r.plate ? 'bg-orange-50' : 'bg-white hover:bg-slate-50'}`}>
+                  // صفحةٌ تُفتح، لا قسمٌ ينفتح أسفلَ جدولٍ من ثمانٍ وخمسين صفًّا
+                  // فلا يراه أحد.
+                  <tr key={r._id} onClick={() => router.push(`/system/fleet/vehicle-logs/${encodeURIComponent(r.plate)}?${params().toString()}&mode=${mode}`)}
+                    className="cursor-pointer transition-colors bg-white hover:bg-orange-50">
                     <td className="px-4 py-3 font-bold text-slate-900 whitespace-nowrap">{r.plate}</td>
                     <td className="px-4 py-3 text-slate-700">{r.trailerType || '—'}</td>
                     <td className="px-4 py-3 text-slate-700">{r.supervisorName || '—'}</td>
@@ -245,19 +243,10 @@ function VehicleLogsInner() {
         </div>
       )}
 
-      {plate && (
-        <VehicleMonthLog
-          vehicle={plate}
-          month={mode === 'month' ? month : undefined}
-          from={mode === 'range' ? from : undefined}
-          to={mode === 'range' ? to : undefined}
-          date={mode === 'day' ? day : undefined}
-          canEdit={canEdit}
-        />
+      {!loading && rows.length > 0 && (
+        <p className="text-center text-sm text-slate-500">{t('اضغط على صفّ سيّارة ليُفتح سجلّها الكامل.', 'Click a vehicle row to open its full log.')}</p>
       )}
-      {!plate && !loading && rows.length > 0 && (
-        <p className="text-center text-sm text-slate-500">{t('اضغط على صفّ سيّارة لفتح سجلّها الكامل.', 'Click a vehicle row to open its full log.')}</p>
-      )}
+
     </div>
   );
 }

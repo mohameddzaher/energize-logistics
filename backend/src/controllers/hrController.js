@@ -915,6 +915,98 @@ exports.createMyLeave = async (req, res) => {
 };
 
 // Manager advances to HR; HR is the final authority. A rejection at any stage ends it.
+/**
+ * POST /api/hr/leaves/backdated — تقييدُ إجازةٍ وقعت فعلًا (الموارد البشريّة).
+ *
+ * ── لماذا لا تمرّ بدورة الموافقة ────────────────────────────────────────────
+ * دورةُ الموافقة تسأل: أنوافق على هذا الغياب؟ والغيابُ هنا وقع وانقضى؛ لا
+ * معنى لأن يوافق عليه مديرٌ بعد شهر، ولا لأن تُطبَّق عليه مهلةُ الإخطار
+ * المسبق. فتُقيَّد معتمَدةً وتُخصَم من الرصيد كأخواتها.
+ *
+ * وتُوسَم `backdated` باسم من قيّدها: الفرقُ بين «طلبَ فوافقتُ» و«أخبرني
+ * فقيّدتُ» فرقٌ يجب أن يبقى مقروءًا في السجلّ.
+ */
+exports.createBackdatedLeave = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const { employee, leaveType, startDate, endDate, reason } = req.body;
+    if (!employee || !mongoose.isValidObjectId(employee)) return res.status(400).json({ message: 'اختر الموظّف' });
+    if (!leaveType || !startDate || !endDate) return res.status(400).json({ message: 'نوع الإجازة وتاريخا البداية والنهاية مطلوبة' });
+    if (String(endDate) < String(startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
+
+    const emp = await Employee.findById(employee).select('firstName lastName arabicName user').lean();
+    if (!emp) return res.status(404).json({ message: 'الموظّف غير موجود' });
+    const lt = await LeaveType.findById(leaveType).lean();
+    if (!lt) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
+
+    const days = leaveDays(startDate, endDate);
+    if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
+
+    // لا تُقيَّد إجازتان على نفس الأيّام: يومٌ واحدٌ لا يُخصَم مرّتين.
+    const clash = await LeaveRequest.findOne({
+      employee, status: { $in: ['approved', 'pending_manager', 'pending_hr'] },
+      startDate: { $lte: endDate }, endDate: { $gte: startDate },
+    }).select('startDate endDate').lean();
+    if (clash) {
+      return res.status(400).json({ message: `تتداخل مع إجازةٍ مسجّلة (${clash.startDate} → ${clash.endDate})` });
+    }
+
+    let attachments = [];
+    try { attachments = saveLeaveFiles(req.body.files, req.user); }
+    catch (e) { return res.status(400).json({ message: e.message }); }
+
+    // الرصيدُ يُلتقط **قبل** الخصم، كما في الطلب العاديّ، فيقرأ المراجعُ ما
+    // كان عليه الحال حين وقعت الإجازة لا بعدها.
+    const { balance } = await computeEmployeeBalance(employee);
+    const now = new Date();
+    const stamp = { by: req.user._id, at: now, decision: 'approved', note: String(req.body.note || 'قيدٌ بأثر رجعيّ').slice(0, 300), signature: '' };
+
+    const leave = await LeaveRequest.create({
+      employee,
+      requester: emp.user || req.user._id,
+      leaveType,
+      leaveTypeCode: lt.code,
+      startDate, endDate, days,
+      reason: String(reason || '').trim(),
+      attachments,
+      status: 'approved',
+      currentStage: 'done',
+      hrDecision: stamp,
+      backdated: true,
+      recordedBy: req.user._id,
+      recordedByName: fullName(req.user),
+      recordedAt: now,
+      balanceSnapshot: {
+        accrued: balance.accrued,
+        requested: days,
+        remainingAfter: lt.affectsBalance ? Math.round((balance.available - days) * 100) / 100 : balance.available,
+      },
+      // المهلةُ المسبقة لا تنطبق على ما وقع.
+      advanceNotice: { required: false, requiredDays: 0, daysAhead: 0, satisfied: true, overridden: false },
+    });
+
+    await logAudit({
+      user: req.user._id, action: 'record_backdated_leave', entity: 'LeaveRequest', entityId: leave._id,
+      changes: { after: { employee: emp.arabicName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim(), startDate, endDate, days } },
+      ipAddress: req.ip,
+    });
+    if (emp.user) {
+      await notifyUser(emp.user, {
+        title: 'إجازة مسجَّلة على ملفّك',
+        message: `سجّلت الموارد البشريّة إجازة ${days} يوم (${startDate} → ${endDate}).`,
+        relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
+      });
+    }
+
+    const populated = await populateLeave(LeaveRequest.findById(leave._id)).lean();
+    const after = await computeEmployeeBalance(employee);
+    res.status(201).json({ leave: populated, balance: after.balance });
+  } catch (error) {
+    console.error('createBackdatedLeave error:', error);
+    res.status(500).json({ message: error.message || 'تعذّر تسجيل الإجازة' });
+  }
+};
+
 exports.decideLeave = async (req, res) => {
   try {
     const { decision, note, signatureId } = req.body;

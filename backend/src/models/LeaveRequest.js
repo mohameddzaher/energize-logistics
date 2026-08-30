@@ -48,6 +48,19 @@ const leaveRequestSchema = new mongoose.Schema(
     // مرفقاتُ مقدّم الطلب: التقرير الطبّيّ، ورقةُ الظرف الطارئ، وما إليها.
     attachments: [attachmentSchema],
 
+    // ── إجازةٌ وقعت ثمّ سُجّلت ────────────────────────────────────────────
+    // كثيرٌ من الإجازات تُؤخذ قبل أن يوجد النظام، أو تُتّفق شفاهةً ثمّ تُقيَّد.
+    // ولا سبيلَ إلى رصيدٍ صحيحٍ إن لم تُسجَّل: يبقى الموظّف في الورق مستحقًّا
+    // ثلاثين يومًا وقد أخذ اثنَي عشر.
+    //
+    // فتُسجَّل معتمَدةً من أوّلها — لا تمرّ بمديرٍ ولا بمهلة إخطارٍ، فالماضي
+    // لا يُوافَق عليه — لكنّها تُوسَم `backdated` ويُسجَّل من قيّدها ومتى.
+    // فمن يقرأ السجلَّ بعدها يعرف أنّ هذه لم تُطلب بل قُيّدت.
+    backdated: { type: Boolean, default: false, index: true },
+    recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    recordedByName: { type: String, default: '' },
+    recordedAt: { type: Date },
+
     status: {
       type: String,
       enum: ['pending_manager', 'pending_hr', 'approved', 'rejected', 'cancelled'],

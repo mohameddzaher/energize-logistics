@@ -113,6 +113,13 @@ export interface LeaveRequest {
   hrDecision?: { by?: any; at?: string; decision?: string; note?: string };
   balanceSnapshot?: { accrued?: number; requested?: number; remainingAfter?: number };
   createdAt?: string;
+  // مرفقاتُ الطلب وقراريه — يقرأها المراجعُ قبل أن يبتّ، وتبقى في ملفّ الموظّف.
+  attachments?: { _id?: string; title?: string; fileUrl: string; fileName?: string; size?: number; mimeType?: string }[];
+  // إجازةٌ وقعت ثمّ قُيِّدت: لا تمرّ بمديرٍ ولا بمهلة إخطار، لكنّ السجلّ يحفظ
+  // أنّها قيدٌ رجعيّ وباسم من قيّدها.
+  backdated?: boolean;
+  recordedByName?: string;
+  recordedAt?: string;
 }
 
 export interface HRRequest {

@@ -16,7 +16,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import {
   History, Plus, Loader2, Lock, Trash2, Truck, Wrench, CircleDot, Fuel,
-  AlertTriangle, FileWarning, UserSquare, PauseCircle, StickyNote, PhoneCall, ArrowLeftRight,
+  AlertTriangle, FileWarning, UserSquare, PauseCircle, StickyNote, PhoneCall, ArrowLeftRight, Clock3,
 } from 'lucide-react';
 
 export interface LogPeriod { from: string; to: string; monthKey: string; label: string; scope: string }
@@ -144,7 +144,14 @@ export default function VehicleMonthLog({
     const m = data.kinds.find((x) => x.key === k);
     return m ? (ar ? m.ar : m.en) : k;
   };
-  const dtm = (s: string) => new Date(s).toLocaleString(ar ? 'ar-EG' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' });
+  // بأرقامٍ لاتينيّة دائمًا: الجدولُ يُقرأ ويُقارَن، والأرقامُ الهنديّة تختلف
+  // عرضًا فتتكسّر المحاذاة، ونصفُ من يقرأ الشاشة يكتب اللوحات بالإنجليزيّة.
+  const dtm = (s: string) => {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return '—';
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} · ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
   const s = data.summary;
 
   return (
@@ -179,19 +186,23 @@ export default function VehicleMonthLog({
         </div>
       </div>
 
-      {/* ملخّص الشهر */}
+      {/* ── ملخّص الشهر ──────────────────────────────────────────────────────
+          البطاقةُ تتّسع لرقمها: «١٢٤٬٥٠٠» أعرضُ من «٦»، وبعرضٍ ثابتٍ يخرج
+          الرقمُ من حدود بطاقته. فالعنوانُ يُقصّ إن ضاق (`truncate`) والرقمُ
+          لا يُقصّ أبدًا — يُلَفّ ويصغر خطُّه على الشاشات الضيّقة، لأنّ نصفَ
+          الرقم أسوأُ من رقمٍ صغير. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
         {([
-          [t('حمولات', 'Loads'), String(s.loads)],
-          [t('الدخل', 'Income'), money(s.income)],
-          [t('مصروف السائق', 'Driver expense'), money(s.driverExpense)],
-          [t('تكلفة السجلّ', 'Log cost'), money(s.logCost)],
-          [t('الصافي', 'Net'), money(s.net)],
-          [t('قيود', 'Entries'), String(s.entries)],
-        ] as [string, string][]).map(([l, v]) => (
-          <div key={l} className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
-            <p className="text-[11px] text-slate-500">{l}</p>
-            <p className="text-sm font-bold text-slate-900">{v}</p>
+          [t('حمولات', 'Loads'), String(s.loads), ''],
+          [t('الدخل', 'Income'), money(s.income), ''],
+          [t('مصروف السائق', 'Driver expense'), money(s.driverExpense), ''],
+          [t('تكلفة السجلّ', 'Log cost'), money(s.logCost), ''],
+          [t('الصافي', 'Net'), money(s.net), s.net >= 0 ? 'text-green-700' : 'text-red-600'],
+          [t('قيود', 'Entries'), String(s.entries), ''],
+        ] as [string, string, string][]).map(([l, v, tone]) => (
+          <div key={l} className="min-w-0 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+            <p className="text-[11px] text-slate-500 truncate" title={l}>{l}</p>
+            <p className={`text-[13px] sm:text-sm font-bold tabular-nums break-words leading-tight ${tone || 'text-slate-900'}`} title={v}>{v}</p>
           </div>
         ))}
       </div>
@@ -270,7 +281,15 @@ export default function VehicleMonthLog({
                     {r.lateEntry && (
                       <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600">{t('قيد متأخّر', 'Late entry')}</span>
                     )}
-                    <span className="text-[11px] text-slate-400">{dtm(r.at)}</span>
+                    {/* ── متى وقع هذا؟ ────────────────────────────────────────
+                        هو أوّلُ ما يُسأل عنه في سجلّ، وكان أصغرَ ما في السطر
+                        وأبهتَه — رماديًّا فاتحًا بحجم أحدَ عشر. صار داكنًا
+                        بخانةٍ خاصّته وأرقامٍ متساوية العرض، فتُقرأ الأعمدةُ
+                        رأسيًّا. */}
+                    <span className="ms-auto inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[12px] font-semibold tabular-nums">
+                      <Clock3 className="w-3 h-3 text-slate-500" />
+                      {dtm(r.at)}
+                    </span>
                   </div>
                   {r.text ? <p className="text-[13px] text-slate-700 mt-1 break-words">{r.text}</p> : null}
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-slate-500">

@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 
 type Opt = { ar: string; en: string };
-const TYPES = ['fleet_rent_type', 'fleet_payment_type', 'fleet_load_type'];
+const TYPES = ['fleet_rent_type', 'fleet_payment_type', 'fleet_load_type', 'fleet_followup_note'];
 
 export function useFleetLookups(ar: boolean) {
   const [map, setMap] = useState<Record<string, Record<string, Opt>>>({});
@@ -33,5 +33,17 @@ export function useFleetLookups(ar: boolean) {
     return it ? (ar ? it.ar || it.en : it.en || it.ar) : key;
   }, [map, ar]);
 
-  return label;
+  /**
+   * كلُّ خيارات قائمةٍ بترتيبها، لا مجرّدَ ترجمةِ مفتاح.
+   *
+   * ملاحظاتُ المتابعة تُعرض أزرارًا سريعة لا قائمةً منسدلة، فتحتاج القائمةَ
+   * كاملةً. وترجع فارغةً ما دام الجلبُ لم يصل، فلا تُعرض أزرارٌ ثمّ تُستبدل.
+   */
+  const options = useCallback((type: string): { key: string; label: string }[] => {
+    const m = map[type];
+    if (!m) return [];
+    return Object.entries(m).map(([key, v]) => ({ key, label: ar ? v.ar || v.en : v.en || v.ar }));
+  }, [map, ar]);
+
+  return Object.assign(label, { options });
 }

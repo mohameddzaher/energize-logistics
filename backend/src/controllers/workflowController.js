@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/companyDay');
 const Customer = require('../models/Customer');
@@ -35,26 +36,49 @@ const FIELD_GROUPS = {
 };
 
 // Which roles can edit which field groups
+// ── مَن يكتب ماذا ───────────────────────────────────────────────────────────
+//
+// كانت هذه الخريطةُ مكتوبةً بأسماءِ أدوارٍ قديمة، ثمّ أُعيد بناءُ الأدوار إلى
+// مديرٍ وموظّفٍ لكلّ قسم — فصار `operations_staff` يصل إلى نقطة التعديل ولا
+// يجد لنفسه سطرًا هنا. ومَن لا سطرَ له يأخذ مصفوفةً فارغة: تُحذَف حقولُه كلُّها
+// ويُحفظ المستند بلا تغيير، ويرجع ٢٠٠. فالموظّف يكتب تاريخَ السداد ورقمَ السند
+// ويضغط «صح» فلا يتغيّر شيءٌ ولا يُقال له لماذا.
+//
+// وقسمُ العمليات هو صاحبُ هذا العمل: تسجيلُ السداد والسند والإرسال والتسليم
+// عملُه اليوميّ لا استثناء. فيأخذه مديرُه وموظّفُه، ويأخذ المحاسبةُ أعمدةَ
+// المال، والباقي يبقى كما كان.
+const OPS_FIELDS = [
+  ...FIELD_GROUPS.application, ...FIELD_GROUPS.operations,
+  ...FIELD_GROUPS.manual_moderator, ...FIELD_GROUPS.collections,
+];
+const MONEY_FIELDS = [...FIELD_GROUPS.collections, 'accountingReview'];
+
 const ROLE_FIELD_ACCESS = {
-  super_admin: [...FIELD_GROUPS.application, ...FIELD_GROUPS.operations, ...FIELD_GROUPS.manual_moderator, ...FIELD_GROUPS.collections],
+  super_admin: OPS_FIELDS,
   moderator: [...FIELD_GROUPS.application, ...FIELD_GROUPS.manual_moderator],
-  operations_manager: FIELD_GROUPS.operations,
-  admin: [...FIELD_GROUPS.collections, 'accountingReview'],
+  operations_manager: OPS_FIELDS,
+  operations_staff: OPS_FIELDS,
+  admin: MONEY_FIELDS,
   employee: FIELD_GROUPS.collections,
-  // Finance/collections staff edit the money columns and tick accounting review.
-  finance_manager: [...FIELD_GROUPS.collections, 'accountingReview'],
-  accountant: [...FIELD_GROUPS.collections, 'accountingReview'],
+  finance_manager: MONEY_FIELDS,
+  accountant: MONEY_FIELDS,
+  customers_finance_manager: MONEY_FIELDS,
+  customers_finance_staff: MONEY_FIELDS,
 };
 
 // Filter update body to only include fields the role can edit
+// ── والحذفُ لا يكون صامتًا ──────────────────────────────────────────────────
+// إسقاطُ حقلٍ لا يملكه الطالبُ صحيح؛ أمّا أن يُسقَط ثمّ يُقال «حُفِظ» فليس منعًا
+// بل كذب. تُعاد المرفوضةُ بأسمائها ليقرّر المستدعي: يردُّ ٤٠٣ يسمّيها، أو يمضي.
 const filterFieldsByRole = (body, role) => {
   const allowedFields = ROLE_FIELD_ACCESS[role] || [];
-  const filtered = {};
+  const filtered = {}; const rejected = [];
   for (const key of Object.keys(body)) {
-    if (allowedFields.includes(key)) {
-      filtered[key] = body[key];
-    }
+    if (allowedFields.includes(key)) filtered[key] = body[key];
+    // الحقولُ التي يضيفها الخادمُ لنفسه ليست إدخالًا من المستخدم فلا تُحسب رفضًا.
+    else if (!['lastModifiedBy', 'createdBy', 'stage', '_id', '__v'].includes(key)) rejected.push(key);
   }
+  Object.defineProperty(filtered, '__rejected', { value: rejected, enumerable: false });
   return filtered;
 };
 
@@ -539,6 +563,16 @@ exports.updateWorkflow = async (req, res) => {
 
     const filteredBody = filterFieldsByRole(req.body, req.user.role);
 
+    // ما لا يملكه الطالبُ يُقال له، لا يُبتلع. وإلّا ظنّ أنّه حفظ.
+    const rejected = filteredBody.__rejected || [];
+    if (rejected.length && !Object.keys(filteredBody).length) {
+      return res.status(403).json({
+        code: 'FIELDS_NOT_ALLOWED',
+        fields: rejected,
+        message: `صلاحيّتك لا تسمح بتعديل: ${rejected.join('، ')} — لم يُحفظ شيء.`,
+      });
+    }
+
     // ── تاريخ السداد لا يُسجَّل قبل استلام السند ──────────────────────────────
     // السداد إقرارٌ بوصول المال، ولا يصل قبل استلام سند التسليم. تسجيله قبله
     // يجعل التقارير المالية تَعُدُّ مبلغًا لم يُقبَض.
@@ -637,6 +671,14 @@ exports.updateWorkflow = async (req, res) => {
     bustFilterCache();
     try { emitToAll('workflow:updated', populated); } catch (e) { console.error('WebSocket emit error:', e); }
 
+    // ما رُفض يُقال حتّى حين نجح غيرُه: الحفظُ الجزئيُّ الصامتُ يترك الموظّف
+    // يظنّ أنّ الستّةَ حُفظت وقد حُفظ واحد.
+    if (rejected.length) {
+      return res.json(Object.assign(populated.toObject ? populated.toObject() : populated, {
+        refusedFields: rejected,
+        refusedMessage: `لم تُحفظ (خارج صلاحيّتك): ${rejected.join('، ')}`,
+      }));
+    }
     res.json(populated);
   } catch (error) {
     console.error('Update workflow error:', error);
@@ -827,6 +869,82 @@ exports.deleteWorkflow = async (req, res) => {
 };
 
 // POST /api/workflows/bulk-delete
+/**
+ * تحديثٌ جماعيّ — حقلٌ واحدٌ على كشوفٍ كثيرة.
+ *
+ * فريقُ التحصيل يستلم دفعةَ سنداتٍ في اليوم الواحد بتاريخِ سدادٍ واحدٍ وفرعٍ
+ * واحد، فكان يفتح مئةَ صفٍّ ويكتب التاريخَ نفسَه مئةَ مرّة. والكتابةُ المكرّرة
+ * ليست بطئًا فحسب: كلُّ صفٍّ فرصةُ خطأٍ جديدة.
+ *
+ * وليس حلقةَ نداءاتٍ من الشاشة: مئةُ صفٍّ = مئةُ طلبٍ متوازٍ على عنقودٍ مقيَّد.
+ * الطلبُ واحدٌ هنا، والقواعدُ هي هي — صلاحيّةُ الحقل، وشرطُ «لا سدادَ قبل
+ * السند» — ويعود لكلّ صفٍّ سببُه إن رُفض، فلا يُقال «تمّ» ونصفُها لم يتمّ.
+ */
+exports.bulkUpdate = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
+    if (!ids.length) return res.status(400).json({ message: 'لم تُحدَّد أيُّ كشوف.' });
+    const CAP = 1000;
+    if (ids.length > CAP) return res.status(400).json({ message: `الحدُّ الأقصى ${CAP} كشفًا في المرّة.` });
+
+    const patch = filterFieldsByRole(req.body.fields || {}, req.user.role);
+    const refused = patch.__rejected || [];
+    const keys = Object.keys(patch);
+    if (!keys.length) {
+      return res.status(403).json({
+        code: 'FIELDS_NOT_ALLOWED', fields: refused,
+        message: `صلاحيّتك لا تسمح بتعديل: ${refused.join('، ')} — لم يُحفظ شيء.`,
+      });
+    }
+
+    const wantsPayment = keys.includes('paymentDate') && patch.paymentDate && String(patch.paymentDate).trim();
+    const rows = await OperationsWorkflow.find({ _id: { $in: ids } })
+      .select('reportNumber applicationStatus lockedBy lockedByName lockedAt').lean();
+
+    const skipped = []; const targets = [];
+    for (const r of rows) {
+      // الصفُّ الذي يحرّره غيرُك لا يُكتب فوقه في دفعةٍ لا يراها.
+      if (isLocked(r, req.user._id)) {
+        skipped.push({ reportNumber: r.reportNumber, reason: `قيد التعديل لدى ${r.lockedByName || 'مستخدم آخر'}` });
+        continue;
+      }
+      if (wantsPayment && String(r.applicationStatus || '').trim() !== 'bond_received') {
+        skipped.push({ reportNumber: r.reportNumber, reason: 'لم يُستلم السند بعد' });
+        continue;
+      }
+      targets.push(r._id);
+    }
+
+    let updated = 0;
+    if (targets.length) {
+      const r = await OperationsWorkflow.updateMany(
+        { _id: { $in: targets } },
+        { $set: { ...patch, lastModifiedBy: req.user._id } },
+      );
+      updated = r.modifiedCount || 0;
+      cache.clear('wf:');
+      try { emitToAll('workflow:bulkImported', { bulkUpdate: true, updated }); } catch (e) {}
+      logAudit({
+        user: req.user, action: 'bulk_update', entity: 'OperationsWorkflow',
+        details: `${updated} كشفًا · ${keys.join('، ')}`, ip: req.ip,
+      });
+    }
+
+    res.json({
+      updated,
+      requested: ids.length,
+      skipped,
+      refusedFields: refused.length ? refused : undefined,
+      message: skipped.length
+        ? `حُفظ ${updated} من ${ids.length} — و${skipped.length} لم يُحفظ.`
+        : `حُفظ ${updated} كشفًا.`,
+    });
+  } catch (e) {
+    console.error('bulkUpdate error:', e);
+    res.status(500).json({ message: e.message || 'تعذّر التحديث الجماعي' });
+  }
+};
+
 exports.bulkDelete = async (req, res) => {
   try {
     const { ids } = req.body;

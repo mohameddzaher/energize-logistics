@@ -255,6 +255,32 @@ const REGISTRY = [
     roles: ['it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'],
     seed: assetDefaults.CONDITION_SEED,
   },
+  // ── الفرعُ المسدِّد ─────────────────────────────────────────────────────────
+  // كان حقلًا حرًّا يُكتب بالبد، فدخلت فيه «جد» و«جدهخ» بجانب «جده» — وهي أخطاءُ
+  // كتابةٍ تُفرِّق صفوفًا هي فرعٌ واحد، فيقول التقريرُ تسعةَ فروعٍ ولدينا سبعة.
+  // وصار قائمةً تُدار من الإعدادات: تُختار ولا تُكتب.
+  //
+  // ويُخزَّن الاسمُ العربيُّ لا المفتاح (`storeLabel`) لأنّ عشرين ألفَ صفٍّ تحمله
+  // نصًّا منذ أوّل استيراد، وتقرؤه الفلاتر والتصديرات كما هو.
+  {
+    type: 'workflow_paying_branch',
+    module: 'operations',
+    nameEn: 'Paying Branches',
+    nameAr: 'الفروع المسدِّدة',
+    roles: ['operations_manager', 'operations_staff', 'moderator', 'finance_manager', 'accountant'],
+    storeLabel: true,
+    seed: [
+      { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جده' },
+      { key: 'riyadh', nameEn: 'Riyadh', nameAr: 'الرياض' },
+      { key: 'dammam', nameEn: 'Dammam', nameAr: 'الدمام' },
+      { key: 'yanbu', nameEn: 'Yanbu', nameAr: 'ينبع' },
+      { key: 'sudair', nameEn: 'Sudair', nameAr: 'سدير' },
+      { key: 'rabigh', nameEn: 'Rabigh', nameAr: 'رابغ' },
+      { key: 'jazan', nameEn: 'Jazan', nameAr: 'جازان' },
+      { key: 'makkah', nameEn: 'Makkah', nameAr: 'مكة' },
+      { key: 'heavy_trucks', nameEn: 'Heavy Trucks', nameAr: 'النقل الثقيل' },
+    ],
+  },
 ];
 
 const byType = (type) => REGISTRY.find((r) => r.type === type) || null;

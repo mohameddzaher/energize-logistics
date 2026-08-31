@@ -38,6 +38,9 @@ export function DateField({ value, onChange, label, max, min, ar, placeholder }:
       <input
         ref={ref}
         type="date"
+        // القاعدةُ العامّة في globals.css تغطّي كلّ خانات التاريخ؛ وتُكتب هنا
+        // صراحةً أيضًا كي لا يكسرها تنسيقٌ محلّيٌّ في شاشةٍ ما.
+        dir="ltr"
         title={label}
         aria-label={label}
         value={value}

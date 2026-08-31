@@ -9,7 +9,8 @@ import { getOperationsTranslations } from '@/lib/translations';
 import { SHIPMENT_STATUSES, PAYMENT_METHODS } from '@/lib/ops';
 import api from '@/lib/api';
 import ExportMenu from '@/components/ls2/ExportMenu';
-import DateRangeFilter from '@/components/system/DateRangeFilter';
+import DateRangeFilter, { DateField } from '@/components/system/DateRangeFilter';
+import ManagedSelect from '@/components/system/ManagedSelect';
 import { useSocket } from '@/hooks/useSocket';
 import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
 import {
@@ -187,6 +188,13 @@ export default function OperationsWorkflowPage() {
   ]);
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showBulkReview, setShowBulkReview] = useState(false);
+  // ── تسجيلُ سدادٍ لدفعةٍ واحدة ─────────────────────────────────────────────
+  // السنداتُ تصل دفعةً بتاريخٍ واحدٍ وفرعٍ واحد، وكان يُفتح كلُّ صفٍّ ليُكتب
+  // فيه التاريخُ نفسُه — مئةُ فرصةِ خطأٍ لعملٍ واحد.
+  const [showBulkPay, setShowBulkPay] = useState(false);
+  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', documentNumber: '', sendingDate: '', deliveryDate: '' });
+  const [bulkPaying, setBulkPaying] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ message: string; skipped: { reportNumber: string; reason: string }[] } | null>(null);
   const [bulkReviewText, setBulkReviewText] = useState('تم');
   // فلاتر الأعمدة على طريقة إكسل: اسم العمود ← مجموعة القيم الخام المسموح بها.
   // تُرسَل إلى الخادم فيفلتر بها الجدولَ كلَّه، ولا تُطبَّق في المتصفح.
@@ -477,6 +485,25 @@ export default function OperationsWorkflowPage() {
     } catch (err: any) { setError(err.message); }
   };
 
+  const handleBulkPay = async () => {
+    // ما لم يُملأ لا يُرسَل: حقلٌ فارغٌ في الدفعة يعني «لا تلمس هذا العمود»،
+    // لا «امسح ما فيه» — ومسحُ مئةِ صفٍّ بالخطأ أسوأ من عدم كتابتها.
+    const fields = Object.fromEntries(Object.entries(bulkPay).filter(([, v]) => String(v || '').trim()));
+    if (!Object.keys(fields).length) return;
+    setBulkPaying(true); setBulkResult(null);
+    try {
+      const r = await api.post<{ message: string; skipped?: { reportNumber: string; reason: string }[] }>(
+        '/api/workflows/bulk-update', { ids: Array.from(selectedIds), fields });
+      setBulkResult({ message: r.message, skipped: r.skipped || [] });
+      if (!(r.skipped || []).length) {
+        setShowBulkPay(false); setSelectedIds(new Set());
+        setBulkPay({ paymentDate: '', payingBranch: '', documentNumber: '', sendingDate: '', deliveryDate: '' });
+      }
+      fetchWorkflows(true);
+    } catch (err: any) { setBulkResult({ message: err.message, skipped: [] }); }
+    setBulkPaying(false);
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -615,6 +642,78 @@ export default function OperationsWorkflowPage() {
             <button type="button" onClick={handleBulkDelete} disabled={bulkDeleting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors disabled:opacity-50">
               {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} {T.deleteCount} ({selectedIds.size})
             </button>
+          )}
+          {/* ── تسجيلُ سدادٍ لدفعةٍ واحدة ────────────────────────────────────
+              يظهر حين يكون هناك ما هو محدَّد، ولا يُرسل إلّا ما مُلئ: الخانةُ
+              الفارغة تعني «لا تلمس هذا العمود» لا «امسحه». والخادمُ يفحص كلَّ
+              صفٍّ على حدة — ما لم يُستلم سندُه لا يُسجَّل سدادُه، ويُقال باسمه. */}
+          {selectedIds.size > 0 && (
+            <div className="relative">
+              <button type="button" onClick={() => { setShowBulkPay((p) => !p); setBulkResult(null); }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors">
+                <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'تسجيل سداد' : 'Record payment'} ({selectedIds.size})
+              </button>
+              {showBulkPay && (
+                <div className="absolute top-full mt-2 end-0 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-4 w-[320px]" onClick={(e) => e.stopPropagation()}>
+                  <p className="text-sm font-bold text-slate-900 mb-1">
+                    {lang === 'ar' ? `تطبيق على ${selectedIds.size} كشفًا` : `Apply to ${selectedIds.size} rows`}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mb-3">
+                    {lang === 'ar' ? 'ما تتركه فارغًا لا يُغيَّر.' : 'Blank fields are left unchanged.'}
+                  </p>
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'تاريخ السداد' : 'Payment date'}</label>
+                      <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ السداد' : 'Payment date'}
+                        value={bulkPay.paymentDate} onChange={(v) => setBulkPay((p) => ({ ...p, paymentDate: v }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'الفرع المسدِّد' : 'Paying branch'}</label>
+                      <ManagedSelect type="workflow_paying_branch" storeLabel value={bulkPay.payingBranch}
+                        onChange={(v) => setBulkPay((p) => ({ ...p, payingBranch: v }))}
+                        placeholder={lang === 'ar' ? 'اختر الفرع' : 'Pick branch'} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'رقم السند' : 'Voucher no.'}</label>
+                      <input value={bulkPay.documentNumber} onChange={(e) => setBulkPay((p) => ({ ...p, documentNumber: e.target.value }))}
+                        placeholder={lang === 'ar' ? 'اختياري' : 'Optional'}
+                        className="w-full px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'الإرسال' : 'Sent'}</label>
+                        <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ الإرسال' : 'Sending date'}
+                          value={bulkPay.sendingDate} onChange={(v) => setBulkPay((p) => ({ ...p, sendingDate: v }))} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'التسليم' : 'Delivered'}</label>
+                        <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ التسليم' : 'Delivery date'}
+                          value={bulkPay.deliveryDate} onChange={(v) => setBulkPay((p) => ({ ...p, deliveryDate: v }))} />
+                      </div>
+                    </div>
+                  </div>
+                  {bulkResult && (
+                    <div className="mt-3 p-2 rounded-lg bg-slate-50 border border-slate-200 max-h-40 overflow-auto">
+                      <p className="text-xs font-semibold text-slate-800">{bulkResult.message}</p>
+                      {bulkResult.skipped.map((sk) => (
+                        <p key={sk.reportNumber} className="text-[11px] text-amber-700 mt-0.5">{sk.reportNumber} — {sk.reason}</p>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-3">
+                    <button type="button" onClick={handleBulkPay} disabled={bulkPaying}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-colors disabled:opacity-50">
+                      {bulkPaying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      {lang === 'ar' ? 'حفظ' : 'Save'}
+                    </button>
+                    <button type="button" onClick={() => { setShowBulkPay(false); setBulkResult(null); }}
+                      className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs transition-colors">
+                      {lang === 'ar' ? 'إغلاق' : 'Close'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {(role === 'operations_manager' || role === 'super_admin') && selectedIds.size > 0 && (
             <div className="relative">
@@ -950,6 +1049,21 @@ export default function OperationsWorkflowPage() {
                           </td>
                         );
                       };
+                      // ── الفرعُ المسدِّد يُختار ولا يُكتب ───────────────────
+                      // كان حقلًا حرًّا، فدخلت فيه «جد» و«جدهخ» بجانب «جده»:
+                      // فرعٌ واحدٌ في ثلاثة صفوفٍ في كلّ تقرير. والقائمةُ تُدار
+                      // من القوائم المرجعيّة، فتُضاف قيمةٌ جديدةٌ حين تلزم بلا
+                      // أن يُفتح فيها بابُ الكتابة الحرّة ثانيةً.
+                      const lookupCell = (field: keyof Workflow, type: string, color = 'text-slate-700') => (
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[140px]" onClick={cellClick(field)}>
+                          {isEditing ? (
+                            <ManagedSelect type={type} storeLabel
+                              value={(editData as any)[field] || ''}
+                              onChange={(v) => setEditData((prev) => ({ ...prev, [field]: v }))}
+                              placeholder={lang === 'ar' ? 'اختر الفرع' : 'Pick branch'} />
+                          ) : <span className={spanCls(field, color)}>{(wf as any)[field] || '-'}</span>}
+                        </td>
+                      );
                       const numCell = (field: keyof Workflow, color = 'text-slate-700') => {
                         const isSystemPulled = systemPulledFields.has(field as string) && wf.reportNumber;
                         return (
@@ -1032,7 +1146,7 @@ export default function OperationsWorkflowPage() {
                         {operationsReviewCell()}
                         {/* Manual Moderator */}
                         {dateCell('paymentDate', 'text-purple-700')}
-                        {textCell('payingBranch', 'text-purple-700')}
+                        {lookupCell('payingBranch', 'workflow_paying_branch', 'text-purple-700')}
                         {textCell('documentNumber', 'text-purple-700')}
                         {dateCell('sendingDate', 'text-purple-700')}
                         {dateCell('deliveryDate', 'text-purple-700')}

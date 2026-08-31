@@ -272,12 +272,25 @@ exports.updateClearance = async (req, res) => {
  */
 exports.getAnalytics = async (req, res) => {
   try {
-    const { year, from, to } = req.query;
+    const q = req.query || {};
+    const { year, from, to } = q;
     const filter = { cancelled: { $ne: true } };
     if (year) filter.periodYear = Number(year);
+    // ── التحليلاتُ تقبل ما تقبله القائمة ────────────────────────────────────
+    // كانت تقبل السنةَ والمدى وحدَها، فمن أراد «ربحُنا مع هذا العميل في هذا
+    // الميناء» صدّر وحسب بنفسه. والأسئلةُ التي تُطرح على الجدول هي التي تُطرح
+    // على التحليل — فالفلاترُ واحدة.
+    const eq = {
+      branch: 'branch', stage: 'stage', port: 'port', currency: 'currency',
+      invoiceType: 'invoiceType', city: 'city', countryOfOrigin: 'countryOfOrigin',
+      customerParty: 'customerParty', agentParty: 'agentParty',
+      invoiceStatus: 'billing.invoiceStatus',
+    };
+    for (const [k, path] of Object.entries(eq)) if (q[k]) filter[path] = q[k];
+    if (q.month) filter.periodMonth = Number(q.month);
 
     let list = await CustomsClearance.find(filter)
-      .select('blNumber customerName shippingAgent city branch containerCount periodMonth periodYear costs revenue billing')
+      .select('blNumber refNumber customerName shippingAgent port stage city branch containerCount totalWeight periodMonth periodYear costs revenue billing createdAt')
       .lean();
 
     // from/to are month keys (YYYY-MM); filter in JS so rows with no period survive
@@ -364,7 +377,26 @@ exports.getAnalytics = async (req, res) => {
       byCustomer: finish(group(list, (r) => r.customerName), totalContainers),
       byAgent: finish(group(list, (r) => r.shippingAgent), totalContainers),
       byCity: finish(group(list, (r) => r.city || (r.branch === 'dammam' ? 'الدمام' : 'جدة')), totalContainers),
+      // أبعادٌ أخرى تُسأل ولم تكن تُجمَع: أين نعمل (الميناء)، وأين تتعثّر
+      // المعاملاتُ (المرحلة)، وأيُّ فرعٍ يحمل أكثر.
+      byPort: finish(group(list, (r) => r.port), totalContainers),
+      byStage: finish(group(list, (r) => r.stage), totalContainers),
+      byBranch: finish(group(list, (r) => (r.branch === 'dammam' ? 'الدمام' : 'جدة')), totalContainers),
       byMonth,
+      // أعلى المعاملات ربحًا وأدناها — الرقمُ المجمَّع لا يقول أيَّ صفقةٍ صنعته.
+      topDeals: list.map((r) => ({
+        refNumber: r.refNumber, blNumber: r.blNumber, customerName: r.customerName,
+        shippingAgent: r.shippingAgent, port: r.port, containers: num(r.containerCount),
+        revenue: round(num(r.revenue && r.revenue.totalInvoiced)),
+        costs: round(num(r.costs && r.costs.total)),
+        profit: round(num(r.revenue && r.revenue.totalInvoiced) - num(r.costs && r.costs.total)),
+      })).sort((a, b) => b.profit - a.profit).slice(0, 20),
+      losingDeals: list.map((r) => ({
+        refNumber: r.refNumber, blNumber: r.blNumber, customerName: r.customerName,
+        revenue: round(num(r.revenue && r.revenue.totalInvoiced)),
+        costs: round(num(r.costs && r.costs.total)),
+        profit: round(num(r.revenue && r.revenue.totalInvoiced) - num(r.costs && r.costs.total)),
+      })).filter((d) => d.profit < 0).sort((a, b) => a.profit - b.profit).slice(0, 20),
     });
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to load customs analytics' });

@@ -15,6 +15,7 @@ import { getCustomsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { SearchableSelect } from '@/components/hr/HRKit';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
 
 interface Clearance {
   _id: string;
@@ -97,6 +98,21 @@ export default function CustomsPage() {
   const [fMonth, setFMonth] = useState('');
   const [fInvoice, setFInvoice] = useState('');
   const [fReturn, setFReturn] = useState('');
+  // ── فلاترُ الأعمدة التي كانت تُقرأ ولا يُفلتَر بها ──────────────────────────
+  // العميلُ والوكيلُ والميناءُ والفرعُ والمرحلة: أعمدةٌ في الجدول أمام العين،
+  // ومَن أراد قصْرَ القائمة عليها كان يصدّر الكلَّ ويفلتر في إكسل.
+  const [fCustomer, setFCustomer] = useState('');
+  const [fAgent, setFAgent] = useState('');
+  const [fPort, setFPort] = useState('');
+  const [fBranch, setFBranch] = useState('');
+  const [fStage, setFStage] = useState('');
+  const [fFrom, setFFrom] = useState('');
+  const [fTo, setFTo] = useState('');
+  const resetFilters = () => {
+    setFYear(''); setFMonth(''); setFInvoice(''); setFReturn('');
+    setFCustomer(''); setFAgent(''); setFPort(''); setFBranch(''); setFStage(''); setFFrom(''); setFTo('');
+  };
+  const activeFilters = [fYear, fMonth, fInvoice, fReturn, fCustomer, fAgent, fPort, fBranch, fStage, fFrom, fTo].filter(Boolean).length;
   const ar = lang === 'ar';
 
   const fetchList = useCallback(async () => {
@@ -166,6 +182,18 @@ export default function CustomsPage() {
     if (fInvoice === '__none') { if ((c.billing?.invoiceStatus || '').trim()) return false; }
     else if (fInvoice && (c.billing?.invoiceStatus || '').trim() !== fInvoice) return false;
     if (fReturn && returnState(c) !== fReturn) return false;
+    if (fCustomer && String((c as any).customerParty || '') !== fCustomer) return false;
+    if (fAgent && String((c as any).agentParty || '') !== fAgent) return false;
+    if (fPort && (c.port || '') !== fPort) return false;
+    if (fBranch && (c.branch || '') !== fBranch) return false;
+    if (fStage && (c.stage || '') !== fStage) return false;
+    // المدى بتاريخ الإنشاء — ويُقاس بيوم الرياض كما في الخادم.
+    if (fFrom || fTo) {
+      const d = c.createdAt ? String(c.createdAt).slice(0, 10) : '';
+      if (!d) return false;
+      if (fFrom && d < fFrom) return false;
+      if (fTo && d > fTo) return false;
+    }
     return true;
   });
 
@@ -263,6 +291,40 @@ export default function CustomsPage() {
             <option key={k} value={k}>{RETURN_LABEL[k][ar ? 0 : 1]}{k === 'overdue' && overdueCount ? ` (${overdueCount})` : ''}</option>
           ))}
         </select>
+      </div>
+
+      {/* الصفُّ الثاني من الفلاتر — أعمدةُ الجدول التي لم يكن يُفلتَر بها. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <select value={fCustomer} onChange={(e) => setFCustomer(e.target.value)} className="cc-filter" aria-label={ar ? 'العميل' : 'Customer'}>
+          <option value="">{ar ? 'كل العملاء' : 'All customers'}</option>
+          {parties.customers.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
+        </select>
+        <select value={fAgent} onChange={(e) => setFAgent(e.target.value)} className="cc-filter" aria-label={ar ? 'وكيل الشحن' : 'Agent'}>
+          <option value="">{ar ? 'كل الوكلاء' : 'All agents'}</option>
+          {parties.agents.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
+        </select>
+        <select value={fPort} onChange={(e) => setFPort(e.target.value)} className="cc-filter" aria-label={ar ? 'الميناء' : 'Port'}>
+          <option value="">{ar ? 'كل الموانئ' : 'All ports'}</option>
+          {[...new Set(list.map((c) => c.port).filter(Boolean) as string[])].map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className="cc-filter" aria-label={ar ? 'الفرع' : 'Branch'}>
+          <option value="">{ar ? 'كل الفروع' : 'All branches'}</option>
+          <option value="jeddah">{T.jeddah}</option>
+          <option value="dammam">{T.dammam}</option>
+        </select>
+        <select value={fStage} onChange={(e) => setFStage(e.target.value)} className="cc-filter" aria-label={ar ? 'المرحلة' : 'Stage'}>
+          <option value="">{ar ? 'كل المراحل' : 'All stages'}</option>
+          {[...new Set(list.map((c) => c.stage).filter(Boolean) as string[])].map((v) => (
+            <option key={v} value={v}>{(T.stages as any)?.[v] || v}</option>
+          ))}
+        </select>
+        <DateRangeFilter ar={ar} from={fFrom} to={fTo} onFrom={setFFrom} onTo={setFTo} />
+        {activeFilters > 0 && (
+          <button type="button" onClick={resetFilters}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-semibold hover:bg-[#f37121]/20">
+            <X className="w-3.5 h-3.5" /> {ar ? `مسح الفلاتر (${activeFilters})` : `Clear filters (${activeFilters})`}
+          </button>
+        )}
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">

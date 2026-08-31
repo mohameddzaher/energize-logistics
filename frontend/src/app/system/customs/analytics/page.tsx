@@ -1,243 +1,255 @@
 'use client';
-
-import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
-import { BarChart, Bar, Line, ComposedChart, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { ArrowLeft, ArrowRight, BarChart3 } from 'lucide-react';
-import api from '@/lib/api';
+// لوحةُ تحليلات التخليص الجمركيّ — صفحةٌ قائمةٌ بذاتها.
+//
+// كانت تُفتح من زرٍّ في صفحة المعاملات فتُقرأ ملحقًا بها. وهي سؤالٌ آخر: الجدولُ
+// يقول «ما حال هذه المعاملة»، واللوحةُ تقول «كيف يسير العمل». ولها فلاترُها
+// كاملةً — نفسُ ما يُفلتَر به الجدول، فالسؤالُ الذي يُطرح هناك يُطرح هنا.
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
-import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
-import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { useDialog } from '@/components/system/DialogProvider';
+import api from '@/lib/api';
+import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import {
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
+} from 'recharts';
+import { BarChart3, RotateCcw, TrendingUp, TrendingDown } from 'lucide-react';
 
-const ORANGE = '#f37121';
-const SLATE = '#334155';
-const GREEN = '#16a34a';
+const money = (n?: number) => Math.round(Number(n) || 0).toLocaleString('en-US');
+const pct = (n?: number) => `${Math.round((Number(n) || 0) * 1000) / 10}%`;
 
-const MONTH_LABELS: [string, string][] = [
-  ['يناير', 'Jan'], ['فبراير', 'Feb'], ['مارس', 'Mar'], ['أبريل', 'Apr'],
-  ['مايو', 'May'], ['يونيو', 'Jun'], ['يوليو', 'Jul'], ['أغسطس', 'Aug'],
-  ['سبتمبر', 'Sep'], ['أكتوبر', 'Oct'], ['نوفمبر', 'Nov'], ['ديسمبر', 'Dec'],
-];
-
-interface Bucket {
-  key: string;
-  count: number;
-  containers: number;
-  revenue: number;
-  costs: number;
-  profit: number;
-  clearanceFee: number;
-  jeddah: number;
-  dammam: number;
-  avgContainers: number;
-  containerShare: number;
-  rank: number;
-}
-
-interface MonthBucket extends Bucket { year: number; month: number }
-
-interface Analytics {
-  totals: {
-    clearances: number; containers: number; customers: number; agents: number;
-    invoiced: number; notInvoiced: number; avgContainersPerBl: number;
-    totalRevenue: number; clearanceFees: number; totalCosts: number;
-    netProfit: number; margin: number; jeddah: number; dammam: number;
-    avgInvoice: number; monthsCovered: number; avgPerMonth: number;
-  };
-  byCustomer: Bucket[];
-  byAgent: Bucket[];
-  byCity: Bucket[];
-  byMonth: MonthBucket[];
-}
+type Bucket = { key: string; count: number; containers: number; revenue: number; costs: number; profit: number };
 
 export default function CustomsAnalyticsPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  const Back = isRTL ? ArrowRight : ArrowLeft;
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { notify } = useDialog();
 
-  const [data, setData] = useState<Analytics | null>(null);
+  const [d, setD] = useState<any>(null);
+  const [opts, setOpts] = useState<any>({});
   const [loading, setLoading] = useState(true);
-  const [year, setYear] = useState('');
+  const [f, setF] = useState<Record<string, string>>({});
+  const [tab, setTab] = useState<'byCustomer' | 'byAgent' | 'byPort' | 'byStage' | 'byCity' | 'byBranch'>('byCustomer');
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get<Analytics>(`/api/customs-clearance/analytics${year ? `?year=${year}` : ''}`);
-      setData(res);
-    } catch { setData(null); }
+  const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const qs = useMemo(() => {
+    const p = new URLSearchParams();
+    Object.entries(f).forEach(([k, v]) => { if (v) p.set(k, v); });
+    return p.toString();
+  }, [f]);
+
+  const load = useCallback(async () => {
+    try { setD(await api.get<any>(`/api/customs-clearance/analytics?${qs}`)); }
+    catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
-  }, [year]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qs]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { api.get<any>('/api/customs-clearance/filters').then((r) => setOpts(r.options || {})).catch(() => {}); }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  if (loading && !d) return <Spinner />;
+  if (!d) return null;
+  const T = d.totals;
+  const active = Object.values(f).filter(Boolean).length;
 
-  const nf = (v: number, d = 0) => (Number(v) || 0).toLocaleString('en-US', { maximumFractionDigits: d });
-  const pct = (v: number) => `${((Number(v) || 0) * 100).toFixed(1)}%`;
-  const monthName = (m: number) => MONTH_LABELS[(m || 1) - 1][ar ? 0 : 1];
+  const Stat = ({ label, value, accent, hint }: { label: string; value: any; accent?: string; hint?: string }) => (
+    <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
+      <p className="text-[11px] text-slate-500">{label}</p>
+      <p className={`text-xl font-bold tabular-nums ${accent || 'text-slate-900'}`}>{value}</p>
+      {hint && <p className="text-[10px] text-slate-400 mt-0.5">{hint}</p>}
+    </div>
+  );
 
-  if (loading) return <Spinner />;
-  if (!data) {
-    return (
-      <div className="text-center text-slate-500 py-20">{ar ? 'تعذر تحميل لوحة المعلومات' : 'Failed to load the dashboard'}</div>
-    );
-  }
+  const Sel = ({ k, label, list }: { k: string; label: string; list: { value: string; label?: string; count?: number }[] }) => (
+    <select value={f[k] || ''} onChange={(e) => set(k, e.target.value)} aria-label={label}
+      className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40">
+      <option value="">{label}</option>
+      {(list || []).map((o) => (
+        <option key={o.value} value={o.value}>{o.label || o.value}{o.count != null ? ` (${o.count})` : ''}</option>
+      ))}
+    </select>
+  );
 
-  const t = data.totals;
-  const years = Array.from(new Set(data.byMonth.map((m) => m.year))).sort((a, b) => b - a);
-
-  const chartData = data.byMonth.map((m) => ({
-    name: `${monthName(m.month)} ${String(m.year).slice(2)}`,
-    [ar ? 'البوالص' : 'BLs']: m.count,
-    [ar ? 'الحاويات' : 'Containers']: m.containers,
-    [ar ? 'الإيرادات' : 'Revenue']: m.revenue,
-  }));
-
-  const exportColumns: ExportColumn[] = [
-    { header: ar ? 'العميل' : 'Customer', key: 'key', width: 26 },
-    { header: ar ? 'عدد البوالص' : 'BLs', key: 'count', width: 12 },
-    { header: ar ? 'عدد الحاويات' : 'Containers', key: 'containers', width: 14 },
-    { header: ar ? 'متوسط حاويات' : 'Avg containers', key: 'avgContainers', width: 15 },
-    { header: ar ? 'حصة الحاويات' : 'Container share', key: 'containerShare', width: 15, transform: (v) => pct(v) },
-    { header: ar ? 'إجمالي الفواتير' : 'Total invoiced', key: 'revenue', width: 16 },
-    { header: ar ? 'إجمالي المصاريف' : 'Total costs', key: 'costs', width: 16 },
-    { header: ar ? 'صافي الربح' : 'Net profit', key: 'profit', width: 14 },
-    { header: ar ? 'ترتيب' : 'Rank', key: 'rank', width: 10 },
+  const TABS: [typeof tab, string, string][] = [
+    ['byCustomer', 'حسب العميل', 'By customer'],
+    ['byAgent', 'حسب وكيل الشحن', 'By agent'],
+    ['byPort', 'حسب الميناء', 'By port'],
+    ['byStage', 'حسب المرحلة', 'By stage'],
+    ['byCity', 'حسب المدينة', 'By city'],
+    ['byBranch', 'حسب الفرع', 'By branch'],
   ];
-  const exportSheetName = ar ? 'تحليل العملاء' : 'Customers';
-  // فلتر السنة يُطبَّق على الخادم لا في المتصفّح، فالجدول المعروض هو سنةٌ واحدة
-  // بينما اسم الملفّ يوحي بالسجلّ كلّه؛ «الكلّ» يعيد النداء من غير السنة ليصدق الاسم.
-  const fetchAllForExport = async () => {
-    const res = await api.get<Analytics>('/api/customs-clearance/analytics');
-    return [{ name: exportSheetName, rows: res.byCustomer || [], columns: exportColumns }];
-  };
-  const scope = exportScopeLabels(ar);
-  const shownSheets = [{ name: exportSheetName, rows: data.byCustomer, columns: exportColumns }];
-  const exportOptions = year
-    ? [
-      { key: 'shown', label: scope.shown, sheets: shownSheets },
-      { key: 'all', label: scope.all, resolve: fetchAllForExport },
-    ]
-    : [{ key: 'all', label: scope.all, sheets: shownSheets }];
+  const rows: Bucket[] = (d[tab] || []).slice().sort((a: Bucket, b: Bucket) => b.profit - a.profit);
+
+  const cols: ExportColumn[] = [
+    { header: t('البند', 'Item'), key: 'key', width: 28 },
+    { header: t('معاملات', 'Deals'), key: 'count', width: 10 },
+    { header: t('حاويات', 'Containers'), key: 'containers', width: 10 },
+    { header: t('الإيراد', 'Revenue'), key: 'revenue', width: 14 },
+    { header: t('التكلفة', 'Cost'), key: 'costs', width: 14 },
+    { header: t('الربح', 'Profit'), key: 'profit', width: 14 },
+  ];
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        icon={<BarChart3 className="w-5 h-5 text-[#f37121]" />}
-        title={ar ? 'لوحة معلومات التخليص الجمركي' : 'Customs clearance dashboard'}
-        subtitle={ar ? 'تحليل شامل للبوالص والعملاء والمصروفات والإيرادات' : 'Bills of lading, customers, costs and revenue at a glance'}
-      >
-        <Link href="/system/customs" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-          <Back className="w-4 h-4" /> {ar ? 'المعاملات' : 'Transactions'}
-        </Link>
-        <select value={year} onChange={(e) => setYear(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-          aria-label={ar ? 'السنة' : 'Year'}>
-          <option value="">{ar ? 'كل السنوات' : 'All years'}</option>
-          {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
-        </select>
-        <ExportMenu fileName="customs-analytics-customers" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
+    <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
+      <PageHeader icon={<BarChart3 className="w-6 h-6 text-[#f37121]" />}
+        title={t('تحليلات التخليص الجمركي', 'Customs analytics')}
+        subtitle={t('كيف يسير العمل — لا ما حالُ معاملةٍ بعينها', 'How the work is going — not the state of one transaction')}>
+        <ExportMenu fileName="customs-analytics" lang={ar ? 'ar' : 'en'}
+          options={[
+            { key: 'view', label: t('الجدول المعروض', 'Shown table'), sheets: [{ name: t('تحليل', 'Analysis'), rows, columns: cols }] },
+            { key: 'all', label: t('كل التجميعات', 'All groupings'), sheets: TABS.map(([k, arL, enL]) => ({ name: ar ? arL : enL, rows: d[k] || [], columns: cols })) },
+          ]} />
       </PageHeader>
 
-      {/* Totals */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label={ar ? 'إجمالي البوالص' : 'Total BLs'} value={nf(t.clearances)} />
-        <StatCard label={ar ? 'إجمالي الحاويات' : 'Total containers'} value={nf(t.containers)} />
-        <StatCard label={ar ? 'عدد العملاء' : 'Customers'} value={nf(t.customers)} />
-        <StatCard label={ar ? 'متوسط حاويات / بوليصة' : 'Avg containers / BL'} value={nf(t.avgContainersPerBl, 2)} />
-        <StatCard label={ar ? 'البوالص المفوترة' : 'Invoiced BLs'} value={nf(t.invoiced)} accent="text-green-600" />
-        <StatCard label={ar ? 'البوالص غير المفوترة' : 'Not invoiced'} value={nf(t.notInvoiced)} accent="text-amber-600" />
-        <StatCard label={ar ? 'وكلاء الشحن' : 'Shipping agents'} value={nf(t.agents)} />
-        <StatCard label={ar ? 'متوسط الفاتورة' : 'Avg invoice'} value={nf(t.avgInvoice, 2)} />
-        <StatCard label={ar ? 'إجمالي الإيرادات' : 'Total revenue'} value={nf(t.totalRevenue, 2)} accent="text-[#f37121]" />
-        <StatCard label={ar ? 'أجور التخليص' : 'Clearance fees'} value={nf(t.clearanceFees, 2)} />
-        <StatCard label={ar ? 'إجمالي المصاريف' : 'Total costs'} value={nf(t.totalCosts, 2)} />
-        <StatCard label={`${ar ? 'صافي الربح' : 'Net profit'} · ${ar ? 'هامش' : 'margin'} ${pct(t.margin)}`}
-          value={nf(t.netProfit, 2)} accent={t.netProfit >= 0 ? 'text-green-600' : 'text-red-600'} />
-        <StatCard label={ar ? 'معاملات جدة' : 'Jeddah transactions'} value={nf(t.jeddah)} />
-        <StatCard label={ar ? 'معاملات الدمام' : 'Dammam transactions'} value={nf(t.dammam)} />
-        <StatCard label={ar ? 'عدد الأشهر' : 'Months covered'} value={nf(t.monthsCovered)} />
-        <StatCard label={ar ? 'متوسط بوالص / شهر' : 'Avg BLs / month'} value={nf(t.avgPerMonth, 1)} />
-      </div>
-
-      {/* Monthly performance */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{ar ? 'الأداء الشهري' : 'Monthly performance'}</h3>
-        {chartData.length === 0 ? (
-          <p className="text-slate-500 text-sm py-10 text-center">{ar ? 'لا توجد بيانات شهرية' : 'No monthly data'}</p>
-        ) : (
-          <div className="h-80 w-full" dir="ltr">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
-                <YAxis yAxisId="left" tick={{ fill: '#64748b', fontSize: 12 }} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fill: '#64748b', fontSize: 12 }} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar yAxisId="left" dataKey={ar ? 'الحاويات' : 'Containers'} fill={ORANGE} radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="left" dataKey={ar ? 'البوالص' : 'BLs'} fill={SLATE} radius={[4, 4, 0, 0]} />
-                <Line yAxisId="right" type="monotone" dataKey={ar ? 'الإيرادات' : 'Revenue'} stroke={GREEN} strokeWidth={2} dot={{ r: 3 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
+      {/* ── الفلاتر ────────────────────────────────────────────────────────── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-3">
+        <Sel k="customerParty" label={t('كل العملاء', 'All customers')} list={opts.customers} />
+        <Sel k="agentParty" label={t('كل الوكلاء', 'All agents')} list={opts.agents} />
+        <Sel k="port" label={t('كل الموانئ', 'All ports')} list={opts.port} />
+        <Sel k="stage" label={t('كل المراحل', 'All stages')} list={opts.stage} />
+        <Sel k="branch" label={t('كل الفروع', 'All branches')} list={opts.branch} />
+        <Sel k="city" label={t('كل المدن', 'All cities')} list={opts.city} />
+        <Sel k="currency" label={t('كل العملات', 'All currencies')} list={opts.currency} />
+        <Sel k="invoiceType" label={t('كل أنواع الفواتير', 'All invoice types')} list={opts.invoiceType} />
+        <Sel k="countryOfOrigin" label={t('كل بلدان المنشأ', 'All origins')} list={opts.countryOfOrigin} />
+        <Sel k="invoiceStatus" label={t('كل حالات الفوترة', 'All invoice statuses')} list={opts.invoiceStatus} />
+        <Sel k="year" label={t('كل السنوات', 'All years')} list={opts.years} />
+        <Sel k="month" label={t('كل الأشهر', 'All months')}
+          list={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))} />
+        {/* المدى بمفتاح الشهر (YYYY-MM) كما يقرؤه الخادم. */}
+        <DateRangeFilter ar={ar} from={f.from || ''} to={f.to || ''} onFrom={(v) => set('from', v)} onTo={(v) => set('to', v)} />
+        {active > 0 && (
+          <button type="button" onClick={() => setF({})}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold hover:bg-[#f37121]/20">
+            <RotateCcw className="w-4 h-4" /> {t(`مسح (${active})`, `Clear (${active})`)}
+          </button>
         )}
       </div>
 
-      {/* City split */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{ar ? 'الأداء حسب المدينة' : 'Performance by city'}</h3>
-        <Table
-          head={[ar ? 'المدينة' : 'City', ar ? 'البوالص' : 'BLs', ar ? 'الحاويات' : 'Containers', ar ? '% الحاويات' : '% containers', ar ? 'إجمالي الفواتير' : 'Total invoiced', ar ? 'أجور التخليص' : 'Clearance fees']}
-          rows={data.byCity.map((b) => [b.key, nf(b.count), nf(b.containers), pct(b.containerShare), nf(b.revenue, 2), nf(b.clearanceFee, 2)])}
-          empty={ar ? 'لا توجد بيانات' : 'No data'}
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <Stat label={t('معاملات', 'Deals')} value={money(T.clearances)} hint={t(`${T.monthsCovered} شهرًا`, `${T.monthsCovered} months`)} />
+        <Stat label={t('حاويات', 'Containers')} value={money(T.containers)} hint={t(`${T.avgContainersPerBl} لكل بوليصة`, `${T.avgContainersPerBl} per BL`)} />
+        <Stat label={t('الإيراد', 'Revenue')} value={money(T.totalRevenue)} accent="text-emerald-600" />
+        <Stat label={t('التكلفة', 'Cost')} value={money(T.totalCosts)} accent="text-slate-700" />
+        <Stat label={t('صافي الربح', 'Net profit')} value={money(T.netProfit)} accent={T.netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+        <Stat label={t('الهامش', 'Margin')} value={pct(T.margin)} accent={T.margin >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+        <Stat label={t('لم تُفوتَر', 'Uninvoiced')} value={money(T.notInvoiced)} accent={T.notInvoiced ? 'text-amber-600' : undefined} />
       </div>
 
-      {/* Customers */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{ar ? 'تحليل العملاء' : 'Customer analysis'}</h3>
-        <Table
-          head={[ar ? 'العميل' : 'Customer', ar ? 'البوالص' : 'BLs', ar ? 'الحاويات' : 'Containers', ar ? 'متوسط حاويات' : 'Avg containers', ar ? 'حصة الحاويات' : 'Container share', ar ? 'إجمالي الفواتير' : 'Total invoiced', ar ? 'ترتيب' : 'Rank']}
-          rows={data.byCustomer.map((b) => [b.key, nf(b.count), nf(b.containers), nf(b.avgContainers, 2), pct(b.containerShare), nf(b.revenue, 2), `#${b.rank}`])}
-          empty={ar ? 'لا يوجد عملاء' : 'No customers'}
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Stat label={t('عملاء', 'Customers')} value={money(T.customers)} />
+        <Stat label={t('وكلاء شحن', 'Agents')} value={money(T.agents)} />
+        <Stat label={t('متوسط الفاتورة', 'Avg invoice')} value={money(T.avgInvoice)} />
+        <Stat label={t('متوسط المعاملات شهريًّا', 'Avg deals / month')} value={money(T.avgPerMonth)} />
       </div>
 
-      {/* Agents */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4">{ar ? 'توزيع وكلاء الشحن' : 'Shipping agents'}</h3>
-        <Table
-          head={[ar ? 'وكيل الشحن' : 'Agent', ar ? 'البوالص' : 'BLs', ar ? 'الحاويات' : 'Containers', ar ? 'متوسط حاويات' : 'Avg containers', ar ? 'حصة الحاويات' : 'Container share', ar ? 'جدة' : 'Jeddah', ar ? 'الدمام' : 'Dammam']}
-          rows={data.byAgent.map((b) => [b.key, nf(b.count), nf(b.containers), nf(b.avgContainers, 2), pct(b.containerShare), nf(b.jeddah), nf(b.dammam)])}
-          empty={ar ? 'لا يوجد وكلاء' : 'No agents'}
-        />
-      </div>
-    </div>
-  );
-}
+      {d.byMonth?.length > 1 && (
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <p className="text-sm font-bold text-slate-800 mb-3">{t('بالشهر', 'By month')}</p>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={d.byMonth}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="key" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: any) => money(v as number)} />
+                <Legend />
+                <Line type="monotone" dataKey="revenue" name={t('الإيراد', 'Revenue')} stroke="#10b981" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="costs" name={t('التكلفة', 'Cost')} stroke="#64748b" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="profit" name={t('الربح', 'Profit')} stroke="#f37121" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
-function Table({ head, rows, empty }: { head: string[]; rows: (string | number)[][]; empty: string }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm min-w-[720px]">
-        <thead>
-          <tr className="bg-slate-900">
-            {head.map((h, i) => (
-              <th key={i} className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-200">
-          {rows.length === 0 ? (
-            <tr><td colSpan={head.length} className="text-center text-slate-500 py-10">{empty}</td></tr>
-          ) : rows.map((r, i) => (
-            <tr key={i} className="bg-white hover:bg-slate-50 transition-colors">
-              {r.map((cell, j) => (
-                <td key={j} className={`px-4 py-3 whitespace-nowrap ${j === 0 ? 'text-slate-900 font-medium' : 'text-slate-700'}`}>{cell}</td>
-              ))}
-            </tr>
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+        <div className="px-4 pt-4 flex items-center gap-2 flex-wrap">
+          {TABS.map(([k, arL, enL]) => (
+            <button key={k} type="button" onClick={() => setTab(k)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                tab === k ? 'bg-[#f37121] text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
+              {t(arL, enL)}
+            </button>
           ))}
-        </tbody>
-      </table>
+        </div>
+        {rows.length > 1 && (
+          <div className="h-64 px-2 pt-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={rows.slice(0, 12)}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="key" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={60} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: any) => money(v as number)} />
+                <Legend />
+                <Bar dataKey="revenue" name={t('الإيراد', 'Revenue')} fill="#10b981" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="profit" name={t('الربح', 'Profit')} fill="#f37121" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-500 text-xs">
+              <tr>{[t('البند', 'Item'), t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'),
+                t('التكلفة', 'Cost'), t('الربح', 'Profit'), t('الهامش', 'Margin')].map((h, i) => (
+                <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>))}</tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">{t('لا بيانات', 'No data')}</td></tr>
+              ) : rows.map((b) => (
+                <tr key={b.key} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="px-3 py-2.5 font-semibold text-slate-800 max-w-[240px] truncate" title={b.key}>{b.key}</td>
+                  <td className="px-3 py-2.5 tabular-nums">{money(b.count)}</td>
+                  <td className="px-3 py-2.5 tabular-nums">{money(b.containers)}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-emerald-700">{money(b.revenue)}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-slate-600">{money(b.costs)}</td>
+                  <td className={`px-3 py-2.5 tabular-nums font-semibold ${b.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{money(b.profit)}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-slate-600">{b.revenue ? pct(b.profit / b.revenue) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── الصفقاتُ بأسمائها ────────────────────────────────────────────────
+          الرقمُ المجمَّع لا يقول أيَّ صفقةٍ صنعته: أعلاها ربحًا تُدرَس ليُكرَّر،
+          وما خسر يُسأل عنه بعينه. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {[
+          { rows: d.topDeals || [], ar: 'أعلى المعاملات ربحًا', en: 'Most profitable', Icon: TrendingUp, tone: 'text-emerald-600' },
+          { rows: d.losingDeals || [], ar: 'معاملات خاسرة', en: 'Losing deals', Icon: TrendingDown, tone: 'text-red-600' },
+        ].map((sec) => (
+          <div key={sec.en} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+              <sec.Icon className={`w-4 h-4 ${sec.tone}`} />
+              <p className="text-sm font-bold text-slate-800">{t(sec.ar, sec.en)}</p>
+              <span className="ms-auto text-xs text-slate-400">{sec.rows.length}</span>
+            </div>
+            {sec.rows.length === 0 ? (
+              <p className="px-4 py-8 text-center text-slate-400 text-sm">{t('لا شيء', 'None')}</p>
+            ) : (
+              <div className="overflow-x-auto max-h-72">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {sec.rows.map((r: any, i: number) => (
+                      <tr key={i} className="border-b border-slate-100">
+                        <td className="px-3 py-2 font-mono text-xs text-slate-700 whitespace-nowrap">{r.refNumber || r.blNumber || '—'}</td>
+                        <td className="px-3 py-2 text-slate-600 max-w-[160px] truncate" title={r.customerName}>{r.customerName || '—'}</td>
+                        <td className={`px-3 py-2 tabular-nums font-semibold text-end ${r.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{money(r.profit)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

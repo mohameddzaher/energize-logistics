@@ -667,7 +667,24 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
   const [reason, setReason] = useState('');
   const [date, setDate] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (open) { setReason(''); setDate(''); } }, [open]);
+  // ── ما يحمله قبل أن يُكتب سببٌ وتاريخ ────────────────────────────────────
+  // كان المستخدم يملأ النافذة ثمّ يُصدُّ برسالةٍ واحدة، فيعيد الكرّة ليعرف ما
+  // ينقص. فيُسأل الخادمُ عند الفتح: ما الذي يحمله هذا الموظّف، وأيُّ قسمٍ
+  // يصفّيه، وما يُفعل به.
+  const [clearance, setClearance] = useState<{
+    clear: boolean;
+    blockers: { ar: string; section: string; items: string[]; actionAr?: string }[];
+    warnings: { ar: string; section: string; items: string[]; actionAr?: string }[];
+  } | null>(null);
+  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setReason(''); setDate(''); setClearance(null); setChecking(true);
+    api.get<any>(`/api/hr/employees/${employeeId}/clearance`)
+      .then(setClearance).catch(() => setClearance(null))
+      .finally(() => setChecking(false));
+  }, [open, employeeId]);
+  const blocked = !!clearance && !clearance.clear;
   const save = async () => {
     setSaving(true);
     try { await api.post(`/api/hr/employees/${employeeId}/terminate`, { reason, date: date || undefined }); onDone(); onClose(); }
@@ -678,9 +695,40 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone }: { open: boole
     <Modal open={open} onClose={onClose} title={ar ? 'إنهاء الخدمة' : 'End Service'}
       footer={<>
         <button type="button" onClick={onClose} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-        <button type="button" onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}{ar ? 'تأكيد الإنهاء' : 'Confirm'}</button>
+        <button type="button" onClick={save} disabled={saving || blocked || checking}
+          title={blocked ? (ar ? 'تُسوَّى البنود المعلّقة أولًا' : 'Settle the pending items first') : undefined}
+          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}{ar ? 'تأكيد الإنهاء' : 'Confirm'}</button>
       </>}>
-      <p className="text-slate-500 text-sm">{ar ? 'سيتم تحديث الحالة إلى "منتهي" وإنهاء العقد الساري. يجب إرجاع العهدة أولاً.' : 'Status becomes “terminated” and the active contract is ended. Custody must be returned first.'}</p>
+      {checking && <p className="text-slate-400 text-sm">{ar ? 'جارٍ فحص إخلاء الطرف…' : 'Checking clearance…'}</p>}
+      {/* ── إخلاءُ الطرف ────────────────────────────────────────────────────
+          المنعُ بلا عنوانٍ يوقف العمل؛ والمنعُ مع العنوان يوجّهه. فمع كلّ بندٍ
+          القسمُ الذي يصفّيه وما يُفعل به. */}
+      {clearance && !clearance.clear && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-2.5">
+          <p className="text-sm font-bold text-red-800">
+            {ar ? 'لا يمكن إنهاء الخدمة قبل تسوية:' : 'Cannot end service until settled:'}
+          </p>
+          {clearance.blockers.map((b, i) => (
+            <div key={i} className="text-[13px]">
+              <p className="font-semibold text-red-800">{b.ar} <span className="font-normal text-red-600">— {b.section}</span></p>
+              <p className="text-red-700 mt-0.5">{b.items.join(' · ')}</p>
+              {b.actionAr && <p className="text-[11px] text-red-500 mt-0.5">{b.actionAr}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+      {clearance && !!clearance.warnings.length && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-1.5">
+          <p className="text-xs font-bold text-amber-800">{ar ? 'يُغلَق بعد الإنهاء:' : 'To close afterwards:'}</p>
+          {clearance.warnings.map((w, i) => (
+            <p key={i} className="text-[12px] text-amber-700">{w.ar} — {w.items.join(' · ')}</p>
+          ))}
+        </div>
+      )}
+      {clearance && clearance.clear && (
+        <p className="text-emerald-700 text-sm font-semibold">{ar ? 'مُخلًى طرفه — لا عهدة ولا تفويض معلّق ✓' : 'Cleared — no custody or authorisation outstanding ✓'}</p>
+      )}
+      <p className="text-slate-500 text-sm">{ar ? 'سيتم تحديث الحالة إلى "منتهي" وإنهاء العقد الساري.' : 'Status becomes “terminated” and the active contract is ended.'}</p>
       <Field label={ar ? 'تاريخ الإنهاء' : 'Date'}><TextInput type="date" value={date} onChange={(ev) => setDate(ev.target.value)} /></Field>
       <Field label={ar ? 'السبب' : 'Reason'}><TextArea rows={2} value={reason} onChange={(ev) => setReason(ev.target.value)} /></Field>
     </Modal>

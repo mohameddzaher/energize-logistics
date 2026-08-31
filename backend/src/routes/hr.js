@@ -75,6 +75,8 @@ router.delete('/employees/:id', authorize(...STAFF), hr.deleteEmployee);
 
 // Profile actions (staff): renew a document, end of service, reactivate, history.
 router.post('/employees/:id/renew', authorize(...STAFF), hr.renewDocument);
+// يُسأل قبل فتح نافذة الإنهاء: ماذا يحمل هذا الموظّف وأيُّ قسمٍ يصفّيه؟
+router.get('/employees/:id/clearance', authorize(...STAFF), hr.employeeClearance);
 router.post('/employees/:id/terminate', authorize(...STAFF), hr.terminateEmployee);
 router.post('/employees/:id/reactivate', authorize(...STAFF), hr.reactivateEmployee);
 router.get('/employees/:id/audit', authorize(...STAFF), hr.getEmployeeAudit);

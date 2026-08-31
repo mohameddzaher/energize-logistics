@@ -12,6 +12,7 @@ import {
 import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getWorkshopTranslations } from '@/lib/translations';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
 
 interface Part {
   name: string;
@@ -391,18 +392,9 @@ export default function WorkshopPage() {
           <option value="in_progress">{tx.statusInProgress}</option>
           <option value="completed">{tx.statusCompleted}</option>
         </select>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-          className="w-full sm:w-auto shrink-0 bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={e => { setDateTo(e.target.value); setPage(1); }}
-          className="w-full sm:w-auto shrink-0 bg-white border border-slate-200 rounded-lg text-slate-900 text-sm px-3 py-2.5 focus:outline-none focus:border-[#f37121]"
-        />
+        <DateRangeFilter ar={isAr} from={dateFrom} to={dateTo}
+          onFrom={(v) => { setDateFrom(v); setPage(1); }}
+          onTo={(v) => { setDateTo(v); setPage(1); }} />
       </div>
 
       {/* Table */}

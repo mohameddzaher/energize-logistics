@@ -19,6 +19,7 @@ import {
   daysUntil, renewalTone, bucketLabel, custodyTypeLabel, conditionLabel,
 } from '@/lib/it';
 import { CustodyCards, CustodyStateButtons } from '@/components/it/CustodyOverview';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
 
 const PIE_COLORS = ['#f37121', '#3b82f6', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6'];
 
@@ -142,9 +143,7 @@ export default function ItDashboardPage() {
         subtitle={ar ? 'نظرة عامة على الدعم الفني والأنظمة والعهد' : 'Support, systems and custody at a glance'}
       >
         <div className="flex items-center gap-2">
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
-          <span className="text-slate-400 text-sm">→</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
+          <DateRangeFilter ar={ar} from={from} to={to} onFrom={setFrom} onTo={setTo} />
           <ExportButton label={ar ? 'تصدير Excel' : 'Export Excel'} onClick={exportDashboard} />
         </div>
       </PageHeader>

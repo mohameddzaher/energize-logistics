@@ -187,7 +187,40 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   }
 
   // إنهاء الخدمة: سبب + تاريخ → POST terminate.
+  //
+  // ── ويُسأل إخلاءُ الطرف أوّلًا ────────────────────────────────────────────
+  // الموظّفُ قد يحمل عهدةً أو تفويضَ مركبة. وإنهاءُ خدمته قبل تسويتها يترك
+  // المركبةَ باسم مَن لم يعد موظّفًا. فيُعرض ما يحمله قبل أن يُكتب سبب.
   Future<void> _terminate() async {
+    Map<String, dynamic>? clearance;
+    try {
+      clearance = await Api.instance.get('/api/hr/employees/${widget.employeeId}/clearance') as Map<String, dynamic>;
+    } catch (_) { clearance = null; }
+    final blockers = ((clearance?['blockers'] as List?) ?? []).cast<Map<String, dynamic>>();
+    if (blockers.isNotEmpty) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text(tr('لا يمكن إنهاء الخدمة', 'Cannot end service')),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('تُسوَّى هذه البنود أوّلًا:', 'Settle these first:'),
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            ...blockers.map((b) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${b['ar']} — ${b['section']}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(((b['items'] as List?) ?? []).join(' · '), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+              ]),
+            )),
+          ]),
+          actions: [TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('حسنًا', 'OK')))],
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
     final reason = TextEditingController();
     DateTime when = DateTime.now();
     final ok = await showDialog<bool>(

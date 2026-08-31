@@ -7,6 +7,7 @@ import { TrendingUp } from 'lucide-react';
 import { isFinanceStaff, accountName, money } from '@/lib/finance';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import { getAccountingProfitLossTranslations } from '@/lib/translations';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
 
 export default function ProfitLossPage() {
   const { user } = useAuth();
@@ -32,8 +33,7 @@ export default function ProfitLossPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<TrendingUp className="w-5 h-5" />} title={tx.pageTitle}>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" aria-label={tx.fromDate} />
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm" aria-label={tx.toDate} />
+        <DateRangeFilter ar={lang === 'ar'} from={from} to={to} onFrom={setFrom} onTo={setTo} />
       </PageHeader>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

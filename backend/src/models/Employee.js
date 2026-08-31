@@ -141,6 +141,11 @@ const employeeSchema = new mongoose.Schema(
     iqamaExpiryHijri: { type: String, trim: true, default: '' },
     contractOccupation: { type: String, trim: true, default: '' },
     insuranceClass: { type: String, trim: true, default: '' },
+    // ── التأمينُ الطبّيّ ─────────────────────────────────────────────────────
+    // رقمُ الوثيقة عند شركة التأمين والسجلُّ المسجَّل تحته. يُسألان عند كلّ
+    // مراجعةٍ أو تجديد، وكانا خارجَ الملفّ فيُبحث عنهما في شيتٍ منفصل.
+    medicalInsuranceNumber: { type: String, trim: true, default: '' },
+    medicalInsuranceRegister: { type: String, trim: true, default: '' },
     healthCertNumber: { type: String, trim: true, default: '' },
     healthCertExpiry: { type: Date, default: null, index: true },
 

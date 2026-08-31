@@ -17,6 +17,7 @@ import {
   categoryLabel, priorityLabel, ticketStatusLabel, optionsOf, empName, fmtDate,
   fmtDuration, today, idOf, listItDepartments, listItAssignees, userName,
 } from '@/lib/it';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
 
 // لا `requesterName` ولا `device`: مقدّم البلاغ هو الموظف المختار نفسه، والجهاز
 // يعرّفه تصنيف البلاغ أعلاه — والحقلان الحرّان كانا يكرّران ما هو معروف أصلاً.
@@ -188,8 +189,7 @@ export default function ItTicketsPage() {
             options={[{ value: '', label: ar ? 'كل الأولويات' : 'All priorities' }, ...optionsOf(TICKET_PRIORITIES).map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))]}
           />
         </div>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
+        <DateRangeFilter ar={ar} from={from} to={to} onFrom={setFrom} onTo={setTo} />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">

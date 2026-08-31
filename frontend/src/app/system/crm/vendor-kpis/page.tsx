@@ -20,6 +20,7 @@ import {
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ScoreBadge, ScoreBar, ScoreBreakdown, BandLegend, KpiTile, FlagPill, type ScoreBand, type ScoreBreakdownItem } from '@/components/system/Scorecard';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
 
 interface Flag { key: string; ar: string; en: string }
 interface VendorKpi {
@@ -128,9 +129,7 @@ export default function CrmVendorKpisPage() {
         )}
       >
         <div className="flex flex-wrap items-center gap-2">
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
-          <span className="text-slate-400 text-xs">→</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+          <DateRangeFilter ar={ar} from={from} to={to} onFrom={setFrom} onTo={setTo} />
           <button type="button" onClick={load} className="inline-flex items-center gap-1.5 text-slate-600 text-sm border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             {tx('Refresh', 'تحديث')}

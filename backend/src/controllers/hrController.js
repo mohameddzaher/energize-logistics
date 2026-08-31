@@ -422,15 +422,46 @@ exports.renewDocument = async (req, res) => {
 
 // End of service. Blocked while the employee still holds custody (same gate as
 // terminating a contract). Also terminates any active contract.
+/**
+ * GET /employees/:id/clearance — ماذا يحمل هذا الموظّف قبل إنهاء خدمته؟
+ *
+ * تُسأل قبل فتح نافذة الإنهاء، فيرى المستخدم ما عليه تسويتُه قبل أن يكتب سببًا
+ * وتاريخًا ثمّ يُصدَّ. والمنعُ نفسُه مُطبَّقٌ في `terminateEmployee` أيضًا — الشاشة
+ * تمنع الخطأ، والخادم يمنع الالتفاف.
+ */
+exports.employeeClearance = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const { checkClearance } = require('../services/employeeClearance');
+    res.json(await checkClearance(req.params.id));
+  } catch (e) {
+    console.error('employeeClearance error:', e);
+    res.status(500).json({ message: 'تعذّر فحص إخلاء الطرف' });
+  }
+};
+
 exports.terminateEmployee = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     const employee = await Employee.findById(req.params.id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
-    const outstanding = await Asset.countDocuments({ employee: employee._id, status: 'assigned' });
-    if (outstanding > 0) {
-      return res.status(400).json({ message: `Cannot terminate: ${outstanding} custody item(s) not returned`, code: 'CUSTODY_OUTSTANDING', outstanding });
+    // ── إخلاءُ طرفٍ لا فحصُ عهدةٍ وحدَها ──────────────────────────────────
+    // كان الشرطُ عهدةَ الأصول فقط، فأُنهيت خدمةُ موظّفٍ وهو مفوَّضٌ على مركبة —
+    // فبقيت المركبةُ باسم مَن لم يعد موظّفًا، لا مَن يُسأل عنها إن خُولفت ولا
+    // مَن يُطالَب بها إن فُقدت، وقسمُ المركبات لم يعلم أنّ الرجل غادر أصلًا.
+    //
+    // والقائمةُ تُعيد **ما يحمله** ومع كلّ بندٍ القسمُ الذي يصفّيه وما يُفعل به:
+    // المنعُ بلا عنوانٍ يوقف العمل، والمنعُ مع العنوان يوجّهه.
+    const { checkClearance } = require('../services/employeeClearance');
+    const clearance = await checkClearance(employee._id);
+    if (!clearance.clear) {
+      return res.status(400).json({
+        code: 'CLEARANCE_PENDING',
+        message: `لا يمكن إنهاء الخدمة قبل تسوية: ${clearance.blockers.map((b) => b.ar).join('، ')}`,
+        blockers: clearance.blockers,
+        warnings: clearance.warnings,
+      });
     }
 
     const reason = req.body.reason || '';

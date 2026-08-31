@@ -14,7 +14,7 @@ import {
   Store, Truck, Tags, Languages, Wrench, Hammer, ShoppingCart, MessageSquare, Package,
   Target, Award, CalendarDays, Clock, Megaphone, CalendarCheck,
   Calculator, Scale, BookOpen, Gauge, Ship, ScrollText,
-  Activity, Car, UserSquare, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck, PackageSearch, SlidersHorizontal,
+  Activity, Car, UserSquare, IdCard, MapPin, Globe, Boxes, Ruler, Palette, ShieldCheck, PackageSearch, SlidersHorizontal,
   Thermometer, Satellite, Crown, Container, FileBarChart,
   Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail,
   CalendarClock, TriangleAlert,
@@ -288,6 +288,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vehicles/registry/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'hr_manager'], section: 'Vehicles', restrict: true },
     { href: '/system/vehicles/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
+    { href: '/system/vehicles/driver-cards', label: lang === 'ar' ? 'بطاقات السائقين' : 'Driver Cards', icon: <IdCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist'], section: 'Vehicles' },
     { href: '/system/vehicles/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'vehicles_manager'], section: 'Vehicles', restrict: true },
     { href: '/system/vehicles/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant']), section: 'Vehicles', restrict: true },
     // Location Solutions (لوكيشن سوليوشن) — live Wialon GPS/telemetry mirror

@@ -415,7 +415,8 @@ const ensureDefaultLookups = async () => {
   for (const entry of REGISTRY) {
     for (let i = 0; i < (entry.seed || []).length; i++) {
       const row = entry.seed[i];
-      const exists = await Lookup.findOne({ type: entry.type, key: row.key }).select('_id').lean();
+      // يشمل المحذوفَ بشاهدة: وجودُ الشاهدة يعني «أُزيلت قصدًا» فلا تُعاد.
+      const exists = await Lookup.findOne({ type: entry.type, key: row.key }).select('_id deleted').lean();
       if (!exists) {
         await Lookup.create({
           type: entry.type,

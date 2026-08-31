@@ -34,6 +34,12 @@ router.post('/renew-bulk', authorize(...EDIT), c.renewBulk);
 router.get('/corporate-policies', c.listCorporatePolicies);
 router.post('/corporate-policies/:id/renew', authorize(...EDIT), c.renewCorporatePolicy);
 router.get('/alerts', c.alerts);
+// ── بطاقاتُ السائقين ───────────────────────────────────────────────────────
+router.get('/driver-cards', c.listDriverCards);
+router.post('/driver-cards', authorize(...ADMIN), c.createDriverCard);
+router.put('/driver-cards/:id', authorize(...ADMIN), c.updateDriverCard);
+router.delete('/driver-cards/:id', authorize(...ADMIN), c.deleteDriverCard);
+
 router.get('/settings', c.getSettings);
 router.put('/settings', authorize(...ADMIN), c.updateSettings);
 

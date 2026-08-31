@@ -54,11 +54,16 @@ export default function CustomsAnalyticsPage() {
   const T = d.totals;
   const active = Object.values(f).filter(Boolean).length;
 
+  // ── والرقمُ يبقى داخلَ بطاقته ────────────────────────────────────────────
+  // «٣٬٢٣٣٬٤٠٦» في بطاقةٍ عرضُها سُبعُ الشاشة يخرج من حدّها حين تضيق: البطاقةُ
+  // لا تنكمش تحت محتواها، والنصُّ لا يُلَفّ لأنّه رقمٌ بلا فراغات. فيُمنَع
+  // الفيضُ صراحةً (`min-w-0` على البطاقة و`truncate` على الرقم) ويُقاس الخطُّ
+  // بالشاشة، ويبقى الرقمُ كاملًا في `title` لمن يريده.
   const Stat = ({ label, value, accent, hint }: { label: string; value: any; accent?: string; hint?: string }) => (
-    <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
-      <p className="text-[11px] text-slate-500">{label}</p>
-      <p className={`text-xl font-bold tabular-nums ${accent || 'text-slate-900'}`}>{value}</p>
-      {hint && <p className="text-[10px] text-slate-400 mt-0.5">{hint}</p>}
+    <div className="min-w-0 bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-3 shadow-sm overflow-hidden">
+      <p className="text-[11px] text-slate-500 truncate" title={label}>{label}</p>
+      <p className={`text-base sm:text-lg lg:text-xl font-bold tabular-nums truncate ${accent || 'text-slate-900'}`} title={String(value)}>{value}</p>
+      {hint && <p className="text-[10px] text-slate-400 mt-0.5 truncate" title={hint}>{hint}</p>}
     </div>
   );
 

@@ -868,17 +868,46 @@ exports.getAllBranchesDashboard = async (req, res) => {
     const Branch = require('../models/Branch');
     const branches = await Branch.find({ isActive: true }).sort({ name: 1 });
 
-    const allWallets = await DailyWallet.find({
-      branch: { $in: branches.map(b => b._id) },
-      date: dateFilter
-    });
+    const branchIds = branches.map((b) => b._id);
 
-    // Group by branch
+    // ── ولماذا لا تُقرأ يوميّاتُ اليوم وحدَها ─────────────────────────────────
+    // كانت اللوحةُ تسأل عن يوميّةٍ **بتاريخ اليوم**، ويوميّةُ اليوم لا تُنشأ
+    // إلّا حين يفتح صاحبُها صفحتَه. فالفرعُ يظهر صفرًا حتّى يفتح أحدُهم محفظتَه،
+    // ثمّ يظهر فجأةً — وقد قرأ المديرُ الصفرَ قبلها ولم يكن صفرًا.
+    //
+    // والنقدُ في يد الموظّف لا يختفي لأنّه لم يفتح شاشة: رصيدُه هو ختاميُّ آخرِ
+    // يوميّةٍ له **حتّى** ذلك التاريخ. فالحركاتُ تُقرأ من يوميّات المدى، والرصيدُ
+    // من آخر يوميّةٍ قبله أو فيه — فتُقرأ الصورةُ كاملةً بلا انتظار أحد.
+    const hi = typeof dateFilter === 'string' ? dateFilter : dateFilter.$lte;
+    const [movementWallets, carried] = await Promise.all([
+      DailyWallet.find({ branch: { $in: branchIds }, date: dateFilter }).lean(),
+      DailyWallet.aggregate([
+        { $match: { branch: { $in: branchIds }, date: { $lte: hi } } },
+        { $sort: { date: 1 } },
+        // آخرُ يوميّةٍ لكلّ مستخدمٍ حتّى التاريخ — هي التي تحمل رصيدَه الجاري.
+        { $group: {
+          _id: '$user',
+          branch: { $last: '$branch' },
+          date: { $last: '$date' },
+          closingBalance: { $last: '$closingBalance' },
+          isClosed: { $last: '$isClosed' },
+          actualCash: { $last: '$actualCash' },
+          cashDifference: { $last: '$cashDifference' },
+        } },
+      ]),
+    ]);
+
     const walletsByBranch = {};
-    for (const w of allWallets) {
-      const bId = w.branch.toString();
+    for (const w of movementWallets) {
+      const bId = String(w.branch);
       if (!walletsByBranch[bId]) walletsByBranch[bId] = [];
       walletsByBranch[bId].push(w);
+    }
+    const carriedByBranch = {};
+    for (const c of carried) {
+      const bId = String(c.branch);
+      if (!carriedByBranch[bId]) carriedByBranch[bId] = [];
+      carriedByBranch[bId].push(c);
     }
 
     const branchData = [];
@@ -894,16 +923,21 @@ exports.getAllBranchesDashboard = async (req, res) => {
       let totalDifference = 0;
       let closedWallets = 0;
 
+      // الحركاتُ من يوميّات المدى وحدَها: ما جرى في الفترة المطلوبة.
       for (const w of wallets) {
-        totalCollections += w.totalCollections;
-        totalExpenses += w.totalExpenses;
-        totalPurchases += w.totalPurchases;
-        totalClosingBalance += w.closingBalance;
-        if (w.isClosed) {
+        totalCollections += w.totalCollections || 0;
+        totalExpenses += w.totalExpenses || 0;
+        totalPurchases += w.totalPurchases || 0;
+      }
+      // والرصيدُ من آخر يوميّةٍ لكلّ موظّفٍ حتّى التاريخ — سواءٌ فتح شاشتَه أم لا.
+      const carriedRows = carriedByBranch[branch._id.toString()] || [];
+      for (const c of carriedRows) {
+        totalClosingBalance += c.closingBalance || 0;
+        if (c.isClosed) {
           closedWallets++;
-          totalExpectedCash += w.closingBalance;
-          totalActualCash += w.actualCash != null ? w.actualCash : w.closingBalance;
-          totalDifference += w.cashDifference || 0;
+          totalExpectedCash += c.closingBalance || 0;
+          totalActualCash += c.actualCash != null ? c.actualCash : (c.closingBalance || 0);
+          totalDifference += c.cashDifference || 0;
         }
       }
 
@@ -914,7 +948,9 @@ exports.getAllBranchesDashboard = async (req, res) => {
         totalPurchases,
         netMovement: totalCollections - totalExpenses - totalPurchases,
         closingBalance: totalClosingBalance,
-        activeWallets: wallets.length,
+        // «حاملو النقد» لا «مَن فتح شاشتَه اليوم».
+        activeWallets: carriedRows.length,
+        movedToday: wallets.length,
         closedWallets,
         totalExpectedCash,
         totalActualCash,

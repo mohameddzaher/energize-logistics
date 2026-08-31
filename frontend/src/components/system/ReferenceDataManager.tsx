@@ -96,8 +96,12 @@ export default function ReferenceDataManager({ module: onlyModule, embedded }: {
   };
 
   const remove = async (it: LookupItem) => {
-    if (it.isSystem) { notify(tx.cannotDeleteDefault); return; }
-    if (!(await confirm(tx.confirmDelete))) return;
+    // القيمةُ المبذورةُ تُحذَف أيضًا — يعلَّم عليها في الخادم بشاهدةٍ فلا يعيدها
+    // البذرُ عند الإقلاع. وكان الحذفُ ممنوعًا عنها فتمتلئ القائمةُ بقيمٍ لا
+    // تُستعمل ولا تُزال. والتأكيدُ يذكر أنّها من الافتراضيّات.
+    if (!(await confirm(it.isSystem
+      ? `${tx.confirmDelete}\n${ar ? '(قيمة افتراضية — لن تعود بعد الحذف)' : '(a default value — it will not come back)'}`
+      : tx.confirmDelete))) return;
     try { await api.delete(`/api/lookups/${it._id}`); loadItems(activeType); } catch (e: any) { notify(e.message, 'error'); }
   };
 
@@ -194,7 +198,7 @@ export default function ReferenceDataManager({ module: onlyModule, embedded }: {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         {canManage && <button type="button" onClick={() => openEdit(it)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100"><Edit className="w-4 h-4" /></button>}
-                        {canManage && !it.isSystem && <button type="button" onClick={() => remove(it)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100"><Trash2 className="w-4 h-4" /></button>}
+                        {canManage && <button type="button" onClick={() => remove(it)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>}
                       </div>
                     </td>
                   </tr>

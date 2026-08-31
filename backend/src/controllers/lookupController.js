@@ -40,7 +40,8 @@ exports.getLookups = async (req, res) => {
   try {
     const { type, active } = req.query;
     if (!type || !byType(type)) return res.status(400).json({ message: 'Unknown lookup type' });
-    const filter = { type };
+    // المحذوفةُ لا تظهر في أيّ قائمة — ولا حتّى في شاشة الإدارة.
+    const filter = { type, deleted: { $ne: true } };
     if (active === 'true') filter.isActive = true;
     const items = await Lookup.find(filter).sort({ order: 1, nameEn: 1 }).lean();
     res.json({ items });
@@ -105,14 +106,26 @@ exports.updateLookup = async (req, res) => {
   }
 };
 
-// DELETE /api/lookups/:id — remove a custom row. Seeded defaults (isSystem) are
-// protected: deactivate them instead of deleting, so workflow keys never vanish.
+// DELETE /api/lookups/:id — تُحذَف القيمة.
+//
+// المضافةُ يدويًّا تُمحى. والمبذورةُ تُعلَّم محذوفةً بدل أن تُمحى: البذرُ عند
+// الإقلاع ينشئ ما لا يجده، فمحوُها يعيدها في أوّل إعادة تشغيل. وكان الحلُّ
+// السابقُ إخفاءَ زرّ الحذف عنها — فتمتلئ القائمةُ بقيمٍ لا تُستعمل ولا تُزال.
 exports.deleteLookup = async (req, res) => {
   try {
     const item = await Lookup.findById(req.params.id);
     if (!item) return res.status(404).json({ message: 'Lookup not found' });
     if (!canManage(item.type, req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
-    if (item.isSystem) return res.status(400).json({ message: 'Default items cannot be deleted — deactivate them instead' });
+    if (item.isSystem) {
+      // لا تُمحى من القاعدة بل تُعلَّم محذوفةً: المحوُ يعيدها البذرُ في أوّل
+      // إقلاع، والشاهدةُ تُخبره ألّا يفعل.
+      item.deleted = true;
+      item.isActive = false;
+      await item.save();
+      await logAudit({ user: req.user._id, action: 'delete_lookup', entity: 'Lookup', entityId: item._id, changes: { before: { type: item.type, key: item.key } }, ipAddress: req.ip }).catch(() => {});
+      emit('lookup:changed', { type: item.type });
+      return res.json({ message: 'Lookup deleted', tombstoned: true });
+    }
 
     await item.deleteOne();
     await logAudit({ user: req.user._id, action: 'delete_lookup', entity: 'Lookup', entityId: item._id, changes: { before: { type: item.type, key: item.key } }, ipAddress: req.ip }).catch(() => {});
@@ -127,7 +140,7 @@ exports.deleteLookup = async (req, res) => {
 // Falls back to [] (callers can default to their config list) on error.
 exports.activeByType = async (type) => {
   try {
-    return await Lookup.find({ type, isActive: true }).sort({ order: 1, nameEn: 1 }).select('key nameEn nameAr color -_id').lean();
+    return await Lookup.find({ type, isActive: true, deleted: { $ne: true } }).sort({ order: 1, nameEn: 1 }).select('key nameEn nameAr color -_id').lean();
   } catch (e) {
     return [];
   }

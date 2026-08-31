@@ -16,6 +16,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { SearchableSelect } from '@/components/hr/HRKit';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
+import { SlidersHorizontal } from 'lucide-react';
 
 interface Clearance {
   _id: string;
@@ -98,6 +99,7 @@ export default function CustomsPage() {
   const [fMonth, setFMonth] = useState('');
   const [fInvoice, setFInvoice] = useState('');
   const [fReturn, setFReturn] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
   // ── فلاترُ الأعمدة التي كانت تُقرأ ولا يُفلتَر بها ──────────────────────────
   // العميلُ والوكيلُ والميناءُ والفرعُ والمرحلة: أعمدةٌ في الجدول أمام العين،
   // ومَن أراد قصْرَ القائمة عليها كان يصدّر الكلَّ ويفلتر في إكسل.
@@ -251,12 +253,9 @@ export default function CustomsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/system/customs/analytics" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-            <BarChart3 className="w-4 h-4" /> {ar ? 'لوحة المعلومات' : 'Dashboard'}
-          </Link>
-          <Link href="/system/customs/guide" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
-            <ScrollText className="w-4 h-4" /> {T.openGuide}
-          </Link>
+          {/* زرّا «لوحة المعلومات» و«الدليل» أُزيلا: التحليلاتُ صارت صفحةً في
+              التنقّل، والدليلُ أُخفي من القسم. وزرٌّ في الرأس يقود إلى صفحةٍ
+              موجودةٍ في القائمة الجانبيّة تكرارٌ يزاحم ما يخصّ هذه الشاشة. */}
           <ExportMenu fileName="customs-clearances" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
           {canEdit && (
             <button type="button" onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors">
@@ -266,66 +265,81 @@ export default function CustomsPage() {
         </div>
       </div>
 
+      {/* ── البحثُ ظاهرٌ والفلاترُ خلف زرّ ────────────────────────────────────
+          أحدَ عشرَ فلترًا مبسوطةً في صفَّين تزاحم الجدولَ الذي جاء المستخدمُ
+          لأجله، وأكثرُها لا يُلمَس في الجلسة الواحدة. فيبقى البحثُ ظاهرًا —
+          وهو ما يُستعمل كلَّ مرّة — وتُطوى البقيّةُ خلف زرٍّ يحمل عددَ ما هو
+          مُفعَّلٌ منها، فلا تختفي عمّن يستعملها ولا تزاحم من لا يستعملها. */}
       <div className="flex flex-col lg:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input type="text" placeholder={T.searchClearance} value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full ps-10 pe-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
         </div>
+        <button type="button" onClick={() => setShowFilters((v) => !v)}
+          className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
+            activeFilters > 0 ? 'bg-[#f37121] text-white' : 'bg-white border border-slate-200 text-slate-700 hover:border-[#f37121]/50'}`}>
+          <SlidersHorizontal className="w-4 h-4" />
+          {ar ? 'فلتر' : 'Filter'}{activeFilters > 0 ? ` (${activeFilters})` : ''}
+        </button>
+        {activeFilters > 0 && (
+          <button type="button" onClick={resetFilters}
+            className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm">
+            <X className="w-4 h-4" /> {ar ? 'مسح' : 'Clear'}
+          </button>
+        )}
+      </div>
+
+      {showFilters && (
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <select value={fYear} onChange={(e) => setFYear(e.target.value)} className="cc-filter" aria-label={ar ? 'السنة' : 'Year'}>
-          <option value="">{ar ? 'كل السنوات' : 'All years'}</option>
+          <option value="">{ar ? 'جميع السنوات' : 'All years'}</option>
           {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
         </select>
         <select value={fMonth} onChange={(e) => setFMonth(e.target.value)} className="cc-filter" aria-label={ar ? 'الشهر' : 'Month'}>
-          <option value="">{ar ? 'كل الأشهر' : 'All months'}</option>
+          <option value="">{ar ? 'جميع الأشهر' : 'All months'}</option>
           {MONTH_LABELS.map((m, i) => <option key={i} value={String(i + 1)}>{m[ar ? 0 : 1]}</option>)}
         </select>
         <select value={fInvoice} onChange={(e) => setFInvoice(e.target.value)} className="cc-filter" aria-label={ar ? 'حالة الفاتورة' : 'Invoice status'}>
-          <option value="">{ar ? 'كل حالات الفاتورة' : 'All invoice statuses'}</option>
+          <option value="">{ar ? 'جميع حالات الفاتورة' : 'All invoice statuses'}</option>
           {invoiceStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
           <option value="__none">{ar ? 'غير مفوتر' : 'Not invoiced'}</option>
         </select>
         <select value={fReturn} onChange={(e) => setFReturn(e.target.value)} className="cc-filter" aria-label={ar ? 'حالة الإرجاع' : 'Return state'}>
-          <option value="">{ar ? 'كل حالات الإرجاع' : 'All return states'}</option>
+          <option value="">{ar ? 'جميع حالات الإرجاع' : 'All return states'}</option>
           {(['overdue', 'due', 'open', 'returned', 'none'] as const).map((k) => (
             <option key={k} value={k}>{RETURN_LABEL[k][ar ? 0 : 1]}{k === 'overdue' && overdueCount ? ` (${overdueCount})` : ''}</option>
           ))}
         </select>
-      </div>
-
-      {/* الصفُّ الثاني من الفلاتر — أعمدةُ الجدول التي لم يكن يُفلتَر بها. */}
-      <div className="flex flex-wrap items-center gap-3">
+        {/* الصفُّ الثاني — أعمدةُ الجدول التي لم يكن يُفلتَر بها. */}
         <select value={fCustomer} onChange={(e) => setFCustomer(e.target.value)} className="cc-filter" aria-label={ar ? 'العميل' : 'Customer'}>
-          <option value="">{ar ? 'كل العملاء' : 'All customers'}</option>
+          <option value="">{ar ? 'جميع العملاء' : 'All customers'}</option>
           {parties.customers.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
         </select>
         <select value={fAgent} onChange={(e) => setFAgent(e.target.value)} className="cc-filter" aria-label={ar ? 'وكيل الشحن' : 'Agent'}>
-          <option value="">{ar ? 'كل الوكلاء' : 'All agents'}</option>
+          <option value="">{ar ? 'جميع الوكلاء' : 'All agents'}</option>
           {parties.agents.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
         </select>
         <select value={fPort} onChange={(e) => setFPort(e.target.value)} className="cc-filter" aria-label={ar ? 'الميناء' : 'Port'}>
-          <option value="">{ar ? 'كل الموانئ' : 'All ports'}</option>
+          <option value="">{ar ? 'جميع الموانئ' : 'All ports'}</option>
           {[...new Set(list.map((c) => c.port).filter(Boolean) as string[])].map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
         <select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className="cc-filter" aria-label={ar ? 'الفرع' : 'Branch'}>
-          <option value="">{ar ? 'كل الفروع' : 'All branches'}</option>
+          <option value="">{ar ? 'جميع الفروع' : 'All branches'}</option>
           <option value="jeddah">{T.jeddah}</option>
           <option value="dammam">{T.dammam}</option>
         </select>
         <select value={fStage} onChange={(e) => setFStage(e.target.value)} className="cc-filter" aria-label={ar ? 'المرحلة' : 'Stage'}>
-          <option value="">{ar ? 'كل المراحل' : 'All stages'}</option>
+          <option value="">{ar ? 'جميع المراحل' : 'All stages'}</option>
           {[...new Set(list.map((c) => c.stage).filter(Boolean) as string[])].map((v) => (
             <option key={v} value={v}>{(T.stages as any)?.[v] || v}</option>
           ))}
         </select>
-        <DateRangeFilter ar={ar} from={fFrom} to={fTo} onFrom={setFFrom} onTo={setFTo} />
-        {activeFilters > 0 && (
-          <button type="button" onClick={resetFilters}
-            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-semibold hover:bg-[#f37121]/20">
-            <X className="w-3.5 h-3.5" /> {ar ? `مسح الفلاتر (${activeFilters})` : `Clear filters (${activeFilters})`}
-          </button>
-        )}
+        <div className="sm:col-span-2 lg:col-span-4 flex items-center gap-2">
+          <DateRangeFilter ar={ar} from={fFrom} to={fTo} onFrom={setFFrom} onTo={setFTo} />
+        </div>
       </div>
+      )}
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">

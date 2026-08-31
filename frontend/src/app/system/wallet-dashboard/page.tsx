@@ -66,6 +66,11 @@ export default function WalletDashboardPage() {
   useSocket('wallet:transaction', handleEvent);
   useSocket('wallet:dayClosed', handleEvent);
   useSocket('wallet:dayReopened', handleEvent);
+  // ── وحذفُ حركةٍ يغيّر الرصيدَ كما تغيّره إضافتُها ──────────────────────────
+  // كانت اللوحةُ تسمع الإضافةَ والإقفالَ ولا تسمع الحذفَ ولا التصفير، فتبقى
+  // تعرض مالًا أُزيل حتّى يُحدَّث المتصفّح بيدٍ.
+  useSocket('wallet:transactionDeleted', handleEvent);
+  useSocket('wallet:reset', handleEvent);
 
   const dateLabel = dateMode === 'range' ? `${dateFrom}_to_${dateTo}` : selectedDate;
 

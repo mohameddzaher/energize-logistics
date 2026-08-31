@@ -725,6 +725,27 @@ exports.remove = async (req, res) => {
 };
 
 // ── لوحة التحليلات ─────────────────────────────────────────────────────────────
+/** ملخّصُ بطاقات السائقين للوحة القسم — عددٌ لكلّ شريحةِ انتهاء. */
+async function driverCardSummary() {
+  try {
+    const DriverCardModel = require('../models/DriverCard');
+    const { startOfDay, todayKey } = require('../utils/companyDay');
+    const today = startOfDay(todayKey());
+    const rows = await DriverCardModel.find({ isActive: { $ne: false } }).select('expiryDate').lean();
+    const left = (d) => (d ? Math.round((startOfDay(d) - today) / 86400000) : null);
+    const out = { total: rows.length, expired: 0, critical: 0, warning: 0, valid: 0, unknown: 0 };
+    for (const r of rows) {
+      const n = left(r.expiryDate);
+      if (n === null) out.unknown += 1;
+      else if (n < 0) out.expired += 1;
+      else if (n <= 30) out.critical += 1;
+      else if (n <= 60) out.warning += 1;
+      else out.valid += 1;
+    }
+    return out;
+  } catch (e) { return null; }
+}
+
 exports.dashboard = async (req, res) => {
   try {
     const cacheKey = `vreg:dash:${JSON.stringify(req.query || {})}`;
@@ -804,6 +825,10 @@ exports.dashboard = async (req, res) => {
       byFuelCardStatus: toArr(byFuelCardStatus), byInspectionStatus: toArr(byInspectionStatus),
       byColor: toArr(byColor), byTamStatus: toArr(byTamStatus), byModelYear: toArr(byModelYear),
       docBuckets,
+      // ── بطاقاتُ السائقين في اللوحة ────────────────────────────────────────
+      // البطاقةُ مستندٌ ينتهي كسائر مستندات القسم، فمكانُها حيث تُقرأ حالةُ
+      // المستندات لا صفحةً وحدَها لا يفتحها إلّا من يذكرها.
+      driverCards: await driverCardSummary(),
     };
     cache.set(cacheKey, body, 30000);
     res.json(body);
@@ -2140,4 +2165,130 @@ exports.deleteVehicleDocument = async (req, res) => {
   } catch (e) {
     res.status(500).json({ message: 'تعذّر حذف الملفّ' });
   }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  بطاقاتُ السائقين — سجلٌّ في قسم المركبات
+// ═══════════════════════════════════════════════════════════════════════════
+const DriverCard = require('../models/DriverCard');
+
+/** الأيّامُ حتى تاريخٍ بتقويم الشركة — تُحسب ولا تُخزَّن. */
+const cardDaysLeft = (ymd) => {
+  if (!ymd) return null;
+  const { startOfDay, todayKey } = require('../utils/companyDay');
+  const a = startOfDay(todayKey()); const b = startOfDay(ymd);
+  return a && b ? Math.round((b - a) / 86400000) : null;
+};
+
+/** شريحةُ الانتهاء — نفسُ لغة بقيّة مستندات القسم. */
+const cardState = (days) => {
+  if (days === null) return 'unknown';
+  if (days < 0) return 'expired';
+  if (days <= 30) return 'critical';
+  if (days <= 60) return 'warning';
+  if (days <= 90) return 'upcoming';
+  return 'valid';
+};
+
+exports.listDriverCards = async (req, res) => {
+  try {
+    const q = req.query || {};
+    const filter = {};
+    if (q.logisticRegister) filter.logisticRegister = q.logisticRegister;
+    if (q.cardType) filter.cardType = q.cardType;
+    if (q.active !== 'all') filter.isActive = { $ne: false };
+    if (q.q && String(q.q).trim()) {
+      // «أيُّ اسمٍ أو أيُّ رقم» — كما في بقيّة القسم، بلا مبالاةٍ بالمسافات
+      // ولا بفروق الرسم.
+      const rx = flexSpaceRegex(q.q);
+      filter.$or = [{ name: rx }, { idNumber: rx }, { cardNumber: rx },
+        { absherPhone: rx }, { logisticRegister: rx }, { cardType: rx }, { notes: rx }];
+    }
+    let cards = await DriverCard.find(filter)
+      .populate('employee', 'firstName lastName arabicName employeeNumber employmentStatus')
+      .sort({ expiryDate: 1 }).lean();
+
+    cards = cards.map((c) => {
+      const days = cardDaysLeft(c.expiryDate);
+      return { ...c, daysLeft: days, state: cardState(days) };
+    });
+    // الشريحةُ تُفلتَر بعد الحساب: هي مشتقّةٌ من التاريخ لا حقلٌ في القاعدة.
+    if (q.state) cards = cards.filter((c) => c.state === q.state);
+
+    const count = (s) => cards.filter((c) => c.state === s).length;
+    res.json({
+      cards,
+      totals: {
+        total: cards.length,
+        expired: count('expired'),
+        critical: count('critical'),
+        warning: count('warning'),
+        valid: count('valid') + count('upcoming'),
+        unlinked: cards.filter((c) => !c.employee).length,
+      },
+      // قيمُ الفلاتر تُبنى من السجلّ لا تُكتب يدًا.
+      options: {
+        logisticRegister: [...new Set(cards.map((c) => c.logisticRegister).filter(Boolean))],
+        cardType: [...new Set(cards.map((c) => c.cardType).filter(Boolean))],
+      },
+    });
+  } catch (e) {
+    console.error('listDriverCards error:', e);
+    res.status(500).json({ message: 'تعذّر تحميل بطاقات السائقين' });
+  }
+};
+
+const CARD_FIELDS = ['idNumber', 'employee', 'name', 'dateOfBirth', 'absherPhone',
+  'logisticRegister', 'cardNumber', 'cardType', 'expiryDate', 'notes', 'isActive'];
+
+const pickCard = (body) => {
+  const out = {};
+  for (const k of CARD_FIELDS) if (body[k] !== undefined) out[k] = body[k];
+  if (out.employee === '' || out.employee === null) delete out.employee;
+  return out;
+};
+
+exports.createDriverCard = async (req, res) => {
+  try {
+    const data = pickCard(req.body);
+    if (!String(data.idNumber || '').trim()) return res.status(400).json({ message: 'رقم الهوية مطلوب' });
+    const dup = await DriverCard.findOne({ idNumber: String(data.idNumber).trim() }).lean();
+    if (dup) return res.status(409).json({ message: 'توجد بطاقةٌ بهذا الرقم' });
+    data.createdBy = req.user._id;
+    const card = await DriverCard.create(data);
+    emit('vreg:updated', {});
+    res.status(201).json({ card });
+  } catch (e) { res.status(500).json({ message: e.message || 'تعذّر الحفظ' }); }
+};
+
+exports.updateDriverCard = async (req, res) => {
+  try {
+    const data = pickCard(req.body);
+    data.lastModifiedBy = req.user._id;
+    const card = await DriverCard.findByIdAndUpdate(req.params.id, { $set: data }, { new: true, runValidators: true });
+    if (!card) return res.status(404).json({ message: 'غير موجودة' });
+    // ولقطةُ البطاقة على ملفّ الموظّف تُحدَّث معها: تقرؤها شاشاتُ الموارد
+    // البشريّة، وتركُها يجعل الرقمين مختلفين لشيءٍ واحد.
+    if (card.employee) {
+      const Employee = require('../models/Employee');
+      await Employee.updateOne({ _id: card.employee }, {
+        $set: {
+          driverCardNumber: card.cardNumber || '',
+          driverCardType: card.cardType || '',
+          driverCardExpiry: card.expiryDate || '',
+        },
+      });
+    }
+    emit('vreg:updated', {});
+    res.json({ card });
+  } catch (e) { res.status(500).json({ message: e.message || 'تعذّر الحفظ' }); }
+};
+
+exports.deleteDriverCard = async (req, res) => {
+  try {
+    const card = await DriverCard.findByIdAndDelete(req.params.id);
+    if (!card) return res.status(404).json({ message: 'غير موجودة' });
+    emit('vreg:updated', {});
+    res.json({ deleted: true });
+  } catch (e) { res.status(500).json({ message: e.message || 'تعذّر الحذف' }); }
 };

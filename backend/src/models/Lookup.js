@@ -14,7 +14,13 @@ const lookupSchema = new mongoose.Schema(
     color: { type: String, trim: true },
     order: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
-    isSystem: { type: Boolean, default: false }, // seeded default — protected from deletion
+    isSystem: { type: Boolean, default: false }, // seeded default
+    // ── شاهدةُ قبر ───────────────────────────────────────────────────────────
+    // البذرُ عند الإقلاع ينشئ ما لا يجده، فالقيمةُ المبذورةُ التي تُحذَف حذفًا
+    // نهائيًّا تعود في أوّل إعادة تشغيل. ولذلك كان زرُّ الحذف مخفيًّا عنها —
+    // وهو حلٌّ للعَرَض: القائمةُ تمتلئ بقيمٍ لا تُستعمل ولا تُزال.
+    // فتُعلَّم محذوفةً: تختفي من كلّ قائمةٍ ولا يعيدها البذرُ لأنّه يجدها.
+    deleted: { type: Boolean, default: false, index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

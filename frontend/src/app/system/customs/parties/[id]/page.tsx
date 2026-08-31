@@ -42,10 +42,11 @@ export default function CustomsPartyProfile() {
   const isAgent = p.kind === 'agent';
 
   const Stat = ({ label, value, accent, hint }: { label: string; value: any; accent?: string; hint?: string }) => (
-    <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
-      <p className="text-[11px] text-slate-500">{label}</p>
-      <p className={`text-xl font-bold tabular-nums ${accent || 'text-slate-900'}`}>{value}</p>
-      {hint && <p className="text-[10px] text-slate-400 mt-0.5">{hint}</p>}
+    // البطاقةُ لا تنكمش تحت محتواها والرقمُ لا يُلَفّ — فيُمنَع الفيضُ صراحةً.
+    <div className="min-w-0 bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-3 shadow-sm overflow-hidden">
+      <p className="text-[11px] text-slate-500 truncate" title={label}>{label}</p>
+      <p className={`text-base sm:text-lg lg:text-xl font-bold tabular-nums truncate ${accent || 'text-slate-900'}`} title={String(value)}>{value}</p>
+      {hint && <p className="text-[10px] text-slate-400 mt-0.5 truncate" title={hint}>{hint}</p>}
     </div>
   );
 

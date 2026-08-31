@@ -173,6 +173,8 @@ export default function OperationsWorkflowPage() {
   const [showPendingOnly, setShowPendingOnly] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
+  // الصفُّ كما كان قبل التعديل — يُقارَن به عند الحفظ فلا يُرسَل إلّا ما تغيّر.
+  const [editBase, setEditBase] = useState<Partial<Workflow>>({});
   // Which field's input to auto-focus after a click-to-edit (so a single click
   // on a cell drops you straight into typing).
   const [focusField, setFocusField] = useState<string | null>(null);
@@ -423,10 +425,24 @@ export default function OperationsWorkflowPage() {
 
   const handleInlineSave = async () => {
     if (!editingId) return;
+    // ── يُرسَل ما تغيّر لا الصفُّ كلُّه ──────────────────────────────────────
+    // كانت الشاشة تبعث المستندَ بأكمله — بمعرّفه ومُنشئه وأقفاله وتواريخ
+    // نظامه — فيُعاد كتابةُ ثلاثين حقلًا بقيمها نفسِها لتغيير حقلٍ واحد، ويُقرأ
+    // نصفُها «خارج صلاحيّتك» بلا داعٍ. والمقارنةُ بالنسخة قبل التعديل تجعل
+    // الطلبَ يحمل ما قصده المستخدم فقط.
+    const patch: Record<string, any> = {};
+    for (const k of Object.keys(editData)) {
+      const a = (editData as any)[k]; const b = (editBase as any)[k];
+      if (a !== b && typeof a !== 'object') patch[k] = a;
+    }
+    if (!Object.keys(patch).length) { handleInlineCancel(); return; }
     try {
-      await api.put(`/api/workflows/${editingId}`, editData);
+      const r = await api.put<{ refusedMessage?: string }>(`/api/workflows/${editingId}`, patch);
+      // ما رفضه الخادمُ يُقال، ولا يُترك المستخدم يظنّ أنّه حُفظ.
+      if (r && r.refusedMessage) setError(r.refusedMessage);
       setEditingId(null);
       setEditData({});
+      setEditBase({});
       setFocusField(null);
       fetchWorkflows(true);
       fetchStats();
@@ -436,6 +452,7 @@ export default function OperationsWorkflowPage() {
   const handleInlineCancel = () => {
     setEditingId(null);
     setEditData({});
+    setEditBase({});
     setFocusField(null);
   };
 
@@ -445,6 +462,7 @@ export default function OperationsWorkflowPage() {
     if (isLockedByOther(wf)) return;
     setEditingId(wf._id);
     setEditData({ ...wf });
+    setEditBase({ ...wf });
     setFocusField(field);
   };
 
@@ -669,7 +687,7 @@ export default function OperationsWorkflowPage() {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'الفرع المسدِّد' : 'Paying branch'}</label>
-                      <ManagedSelect type="workflow_paying_branch" storeLabel value={bulkPay.payingBranch}
+                      <ManagedSelect type="workflow_paying_branch" storeLabel noAdd value={bulkPay.payingBranch}
                         onChange={(v) => setBulkPay((p) => ({ ...p, payingBranch: v }))}
                         placeholder={lang === 'ar' ? 'اختر الفرع' : 'Pick branch'} />
                     </div>
@@ -1057,7 +1075,7 @@ export default function OperationsWorkflowPage() {
                       const lookupCell = (field: keyof Workflow, type: string, color = 'text-slate-700') => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[140px]" onClick={cellClick(field)}>
                           {isEditing ? (
-                            <ManagedSelect type={type} storeLabel
+                            <ManagedSelect type={type} storeLabel noAdd
                               value={(editData as any)[field] || ''}
                               onChange={(v) => setEditData((prev) => ({ ...prev, [field]: v }))}
                               placeholder={lang === 'ar' ? 'اختر الفرع' : 'Pick branch'} />

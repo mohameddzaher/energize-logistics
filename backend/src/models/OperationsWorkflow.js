@@ -97,7 +97,17 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // ══════════════════════════════════════════════════════════
     // TRACKING
     // ══════════════════════════════════════════════════════════
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // ── المُنشئُ اختياريّ ────────────────────────────────────────────────────
+    // الكشفُ المنقولُ من منصّة التشغيل لا مُنشئَ له عندنا — أحدٌ ما أنشأه هناك.
+    // وكان الحقلُ مطلوبًا، فكانت المزامنةُ تضع فيه أوّلَ سوبر أدمنَ تجده لتمرّ
+    // من التحقّق، فقرأ أربعةٌ وثلاثون ألفَ كشفٍ «أنشأتها فلانة» وهي لم تفتح
+    // واحدًا منها.
+    //
+    // فحين أُزيل الختمُ الكاذب صار كلُّ حفظٍ على تلك الصفوف يفشل: «createdBy
+    // مطلوب». والشرطُ نفسُه هو الذي وَلَّد الكذبةَ ثمّ منعَ تصحيحَها — فسقط.
+    // ومَن أنشأ الكشفَ عندنا يبقى مسجَّلًا كما كان؛ ومَن لم يُنشئه أحدٌ عندنا
+    // يُقرأ من `externalSource`.
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
     // Provenance for rows auto-synced from the external UPL operations platform.

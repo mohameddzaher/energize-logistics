@@ -45,6 +45,7 @@ export default function ManagedSelect({
   required,
   disabled,
   storeLabel,
+  noAdd,
 }: {
   type: string;
   value: string;
@@ -52,6 +53,14 @@ export default function ManagedSelect({
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
+  /**
+   * يُخفي «إضافة عنصر جديد» داخل الخانة.
+   *
+   * القوائمُ المغلقة — فروعُنا مثلًا — تُدار من صفحة الإعدادات لا من داخل صفٍّ
+   * في جدول. فزرُّ الإضافة على بُعد ضغطةٍ من خانةٍ يُكتب فيها بسرعةٍ يفتح البابَ
+   * نفسَه الذي فُتحت القائمةُ لإغلاقه: كُتب فيها «ج» بالخطأ فصارت فرعًا.
+   */
+  noAdd?: boolean;
   /**
    * يُخزّن **الاسم العربيّ** بدل المفتاح.
    *
@@ -131,7 +140,7 @@ export default function ManagedSelect({
         ))}
       </select>
 
-      {canManage && !disabled && (
+      {canManage && !disabled && !noAdd && (
         <div className="mt-1.5">
           {!adding ? (
             <button

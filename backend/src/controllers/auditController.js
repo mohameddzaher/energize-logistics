@@ -31,7 +31,18 @@ exports.getAuditLogs = async (req, res) => {
       AuditLog.countDocuments(filter),
     ]);
 
-    res.json({ logs, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+    // ── الفاعلُ يُقرأ من اللقطة حين يُحذَف حسابُه ──────────────────────────
+    // `populate` تعود فارغةً لمستخدمٍ محذوف، فتقرأ الشاشةُ الفعلَ منسوبًا إلى
+    // «النظام». فيُكمَّل من اللقطة المحفوظة ساعةَ الفعل، ويُعلَّم أنّ حسابَه
+    // أُزيل — فلا يُنسَب فعلُ إنسانٍ إلى آلة.
+    const shaped = logs.map((l) => {
+      const o = l.toObject ? l.toObject() : l;
+      if (!o.user && (o.userName || o.userEmail)) {
+        o.user = { _id: String(l.user || ''), firstName: o.userName || o.userEmail, lastName: '', email: o.userEmail || '', deleted: true };
+      }
+      return o;
+    });
+    res.json({ logs: shaped, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load audit logs' });
   }

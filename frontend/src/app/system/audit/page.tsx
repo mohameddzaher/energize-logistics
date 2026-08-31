@@ -16,7 +16,7 @@ import { SearchableSelect } from '@/components/hr/HRKit';
 
 interface AuditLog {
   _id: string;
-  user: { _id: string; firstName: string; lastName: string; email: string } | null;
+  user: { _id: string; firstName: string; lastName: string; email: string; deleted?: boolean } | null;
   action: string;
   entity: string;
   entityId?: string;
@@ -522,6 +522,11 @@ export default function AuditPage() {
                             >
                               {log.user.firstName} {log.user.lastName}
                             </button>
+                            {/* حسابٌ أُزيل: الفعلُ فعلُ إنسانٍ وإن ذهب حسابُه —
+                                وتركُه بلا علامةٍ يجعل الاسمَ يبدو حسابًا قائمًا. */}
+                            {log.user.deleted && (
+                              <span className="ms-1 text-[10px] text-amber-600">{ar ? '(حساب محذوف)' : '(deleted account)'}</span>
+                            )}
                             <span className="text-slate-700 text-xs block">{log.user.email}</span>
                           </div>
                         ) : (

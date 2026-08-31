@@ -29,6 +29,10 @@ const logAudit = async ({ user, action, entity, entityId, entityKey, changes, ip
     const key = entityKey || (entityId != null && id === undefined ? String(entityId) : '');
     await AuditLog.create({
       user: user?._id || user,
+      // يُلتقط الاسمُ الآن لا يُقرأ لاحقًا — راجع models/AuditLog.
+      userName: user && (user.firstName || user.lastName)
+        ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '',
+      userEmail: (user && user.email) || '',
       action,
       entity,
       entityId: id,

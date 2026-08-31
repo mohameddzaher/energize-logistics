@@ -6,6 +6,13 @@ const auditLogSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  // ── ولقطةُ اسمِ الفاعل ────────────────────────────────────────────────────
+  // المرجعُ وحدَه لا يكفي: حين يُحذَف الحسابُ تعود `populate` فارغةً، فتقرأ
+  // الشاشةُ الفعلَ منسوبًا إلى «النظام» — وهو كذبٌ في أخطر مكانٍ يُقال فيه.
+  // السجلُّ تاريخٌ، والتاريخُ لا يعتمد على صفٍّ يمكن حذفُه. فيُلتقط الاسمُ
+  // والبريدُ ساعةَ الفعل ويبقيان.
+  userName: { type: String, trim: true, default: '' },
+  userEmail: { type: String, trim: true, default: '' },
   action: { type: String, required: true },
   entity: { type: String, required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId },

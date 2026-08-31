@@ -262,6 +262,16 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
 
   const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
   const L = ({ children }: { children: React.ReactNode }) => <label className="block text-xs font-semibold text-slate-600 mb-1">{children}</label>;
+  // بطاقةُ قسم: عنوانٌ واضحٌ وإطارٌ يحدّ ما يخصّه — بدل خطٍّ رفيعٍ يفصل ستّةً
+  // وثلاثين خانةً مسكوبةً في شبكةٍ واحدة.
+  const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <section className="rounded-xl border border-slate-200 bg-slate-50/40">
+      <header className="px-4 py-2.5 border-b border-slate-200 bg-white rounded-t-xl">
+        <p className="text-[13px] font-bold text-slate-800">{title}</p>
+      </header>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">{children}</div>
+    </section>
+  );
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
@@ -275,7 +285,12 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
             ثلاثةُ صفوف لشيءٍ واحد، فيصير في الفلتر ثلاثةَ خيارات وفي التحليل
             ثلاثَ ماركات. والقائمة تُدار من إعدادات القسم، ومَن ينقصه خيارٌ
             يضيفه من داخلها فيراه كلُّ من بعده. */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* ── الأقسامُ بطاقاتٌ لا خطوطٌ باهتة ──────────────────────────────────
+            كانت ستّةُ أقسامٍ تُرسَم شبكةً واحدةً متّصلة يفصلها خطٌّ رفيعٌ وعنوانٌ
+            رماديّ، فتبدو ستّةً وثلاثين خانةً مسكوبةً على بعضها ولا يُعرف أين
+            ينتهي التأمينُ ويبدأ المستند. فصار لكلّ قسمٍ بطاقتُه بعنوانها. */}
+        <div className="space-y-4">
+        <Card title={ar ? 'بيانات المركبة' : 'Vehicle'}>
           <div><L>{ar ? 'رقم اللوحة *' : 'Plate *'}</L><input className={inp} value={f.plateNumber} onChange={(e) => set('plateNumber', e.target.value)} /></div>
           <div><L>{ar ? 'رقم الهيكل' : 'Chassis'}</L><input className={inp} value={f.chassisNumber || ''} onChange={(e) => set('chassisNumber', e.target.value)} /></div>
           <div><L>{ar ? 'الرقم التسلسلي' : 'Serial'}</L><input className={inp} value={f.serialNumber || ''} onChange={(e) => set('serialNumber', e.target.value)} /></div>
@@ -287,9 +302,16 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'اللون' : 'Colour'}</L><ManagedSelect storeLabel type="vehicle_color" value={f.colorAr || ''} onChange={(v) => set('colorAr', v)} /></div>
           <div><L>{ar ? 'حالة التشغيل' : 'Service status'}</L><ManagedSelect storeLabel type="vehicle_service_status" value={f.serviceStatusAr || ''} onChange={(v) => set('serviceStatusAr', v)} /></div>
           <div><L>{ar ? 'حالة الحيازة' : 'Possession'}</L><ManagedSelect storeLabel type="vehicle_possession_status" value={f.possessionStatusAr || ''} onChange={(v) => set('possessionStatusAr', v)} /></div>
-          <div className="md:col-span-2"><L>{ar ? 'المالك' : 'Owner'}</L><input className={inp} value={f.ownerNameAr || ''} onChange={(e) => set('ownerNameAr', e.target.value)} /></div>
+          <div><L>{ar ? 'الإدارة' : 'Department'}</L><ManagedSelect storeLabel type="vehicle_department" value={f.departmentAr || ''} onChange={(v) => set('departmentAr', v)} /></div>
+          <div><L>{ar ? 'المدينة' : 'City'}</L><ManagedSelect storeLabel type="vehicle_city" value={f.cityAr || ''} onChange={(v) => set('cityAr', v)} /></div>
+          <div><L>{ar ? 'المالك' : 'Owner'}</L><input className={inp} value={f.ownerNameAr || ''} onChange={(e) => set('ownerNameAr', e.target.value)} /></div>
+          {/* ── السجلُّ التجاريّ ────────────────────────────────────────────
+              رقمٌ تُجمَّع به المركباتُ في صفحة السجلّات وتُفلتَر به القوائم،
+              ولم تكن له خانةٌ هنا — فيُقرأ في مكانٍ ولا يُصحَّح في أيّ مكان. */}
+          <div><L>{ar ? 'السجل التجاري' : 'Commercial register'}</L><input className={inp} value={f.commercialRegistration || ''} onChange={(e) => set('commercialRegistration', e.target.value)} /></div>
+        </Card>
 
-          <div className="md:col-span-2 pt-2 border-t border-slate-100"><p className="text-[12px] font-bold text-slate-500">{ar ? 'التأمين' : 'Insurance'}</p></div>
+        <Card title={ar ? 'التأمين' : 'Insurance'}>
           <div><L>{ar ? 'شركة التأمين' : 'Insurer'}</L><ManagedSelect storeLabel type="vehicle_insurance_company" value={f.insurance?.companyAr || ''} onChange={(v) => setSub('insurance', 'companyAr', v)} /></div>
           <div><L>{ar ? 'نوع التغطية' : 'Coverage type'}</L><ManagedSelect storeLabel type="vehicle_coverage_type" value={f.insurance?.coverageTypeAr || ''} onChange={(v) => setSub('insurance', 'coverageTypeAr', v)} /></div>
           <div><L>{ar ? 'رقم الوثيقة' : 'Policy no.'}</L><input className={inp} value={f.insurance?.policyNumber || ''} onChange={(e) => setSub('insurance', 'policyNumber', e.target.value)} /></div>
@@ -297,14 +319,18 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'قسط التأمين' : 'Premium'}</L><input type="number" className={inp} value={f.insurance?.premiumSar || ''} onChange={(e) => setSub('insurance', 'premiumSar', e.target.value ? Number(e.target.value) : null)} /></div>
           <div><L>{ar ? 'حالة القسط' : 'Premium status'}</L><ManagedSelect storeLabel type="vehicle_premium_status" value={f.insurance?.premiumStatusAr || ''} onChange={(v) => setSub('insurance', 'premiumStatusAr', v)} /></div>
 
-          <div className="md:col-span-2 pt-2 border-t border-slate-100"><p className="text-[12px] font-bold text-slate-500">{ar ? 'المستندات' : 'Documents'}</p></div>
+        </Card>
+
+        <Card title={ar ? 'المستندات' : 'Documents'}>
           <div><L>{ar ? 'رقم بطاقة التشغيل' : 'Operating card no.'}</L><input className={inp} value={f.operatingCard?.cardNumber || ''} onChange={(e) => setSub('operatingCard', 'cardNumber', e.target.value)} /></div>
           <div><L>{ar ? 'انتهاء بطاقة التشغيل' : 'Operating card expiry'}</L><input type="date" className={inp} value={(f.operatingCard?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('operatingCard', 'expiryDate', e.target.value || null)} /></div>
           <div><L>{ar ? 'انتهاء رخصة السير' : 'Licence expiry'}</L><input type="date" className={inp} value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('vehicleLicense', 'expiryDate', e.target.value || null)} /></div>
           <div><L>{ar ? 'حالة الفحص' : 'Inspection status'}</L><ManagedSelect storeLabel type="vehicle_inspection_status" value={f.inspection?.statusAr || ''} onChange={(v) => setSub('inspection', 'statusAr', v)} /></div>
           <div><L>{ar ? 'انتهاء الفحص' : 'Inspection expiry'}</L><input type="date" className={inp} value={(f.inspection?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('inspection', 'expiryDate', e.target.value || null)} /></div>
 
-          <div className="md:col-span-2 pt-2 border-t border-slate-100"><p className="text-[12px] font-bold text-slate-500">{ar ? 'الوقود والتتبّع' : 'Fuel & tracking'}</p></div>
+        </Card>
+
+        <Card title={ar ? 'الوقود والتتبّع' : 'Fuel & tracking'}>
           <div><L>{ar ? 'مزوّد شريحة الوقود' : 'Fuel provider'}</L><ManagedSelect storeLabel type="vehicle_fuel_provider" value={f.fuelCard?.provider || ''} onChange={(v) => setSub('fuelCard', 'provider', v)} /></div>
           <div><L>{ar ? 'رقم شريحة الوقود' : 'Fuel card no.'}</L><input className={inp} value={f.fuelCard?.cardNumber || ''} onChange={(e) => setSub('fuelCard', 'cardNumber', e.target.value)} /></div>
           <div><L>{ar ? 'حالة الشريحة' : 'Card status'}</L><ManagedSelect storeLabel type="vehicle_fuel_card_status" value={f.fuelCard?.statusAr || ''} onChange={(v) => setSub('fuelCard', 'statusAr', v)} /></div>
@@ -315,7 +341,9 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'حالة جهاز GPS' : 'GPS device status'}</L><ManagedSelect storeLabel type="vehicle_gps_device_status" value={f.gps?.deviceStatusAr || ''} onChange={(v) => setSub('gps', 'deviceStatusAr', v)} /></div>
           <div><L>{ar ? 'انتهاء اشتراك GPS' : 'GPS expiry'}</L><input type="date" className={inp} value={(f.gps?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('gps', 'expiryDate', e.target.value || null)} /></div>
 
-          <div className="md:col-span-2 pt-2 border-t border-slate-100"><p className="text-[12px] font-bold text-slate-500">{ar ? 'التفويض بالقيادة' : 'Driving authorisation'}</p></div>
+        </Card>
+
+        <Card title={ar ? 'التفويض بالقيادة' : 'Driving authorisation'}>
           <div><L>{ar ? 'اسم المفوَّض' : 'Authorised person'}</L><input className={inp} value={f.authorizedPerson?.name || ''} onChange={(e) => setSub('authorizedPerson', 'name', e.target.value)} /></div>
           <div><L>{ar ? 'الوظيفة' : 'Job title'}</L><ManagedSelect storeLabel type="vehicle_job_title" value={f.authorizedPerson?.jobTitleAr || ''} onChange={(v) => setSub('authorizedPerson', 'jobTitleAr', v)} /></div>
           <div><L>{ar ? 'رقم الإقامة' : 'Iqama number'}</L><input className={inp} value={f.authorizedPerson?.iqamaNumber || ''} onChange={(e) => setSub('authorizedPerson', 'iqamaNumber', e.target.value)} /></div>
@@ -323,7 +351,11 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'بداية التفويض' : 'Auth. start'}</L><input type="date" className={inp} value={(f.authorizedPerson?.startDate || '').slice(0, 10)} onChange={(e) => setSub('authorizedPerson', 'startDate', e.target.value || null)} /></div>
           <div><L>{ar ? 'نهاية التفويض' : 'Auth. expiry'}</L><input type="date" className={inp} value={(f.authorizedPerson?.expiryDate || '').slice(0, 10)} onChange={(e) => setSub('authorizedPerson', 'expiryDate', e.target.value || null)} /></div>
 
-          <div className="md:col-span-2"><L>{ar ? 'ملاحظات' : 'Notes'}</L><textarea className={inp} rows={2} value={f.notesAr || ''} onChange={(e) => set('notesAr', e.target.value)} /></div>
+        </Card>
+
+        <Card title={ar ? 'ملاحظات' : 'Notes'}>
+          <div className="md:col-span-2"><textarea className={inp} rows={2} value={f.notesAr || ''} onChange={(e) => set('notesAr', e.target.value)} /></div>
+        </Card>
         </div>
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>

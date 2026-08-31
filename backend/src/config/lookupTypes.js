@@ -325,6 +325,50 @@ const REGISTRY = [
       { key: 'sudair', nameEn: 'Sudair', nameAr: 'سدير' },
     ],
   },
+  // ── قوائمُ التخليص الجمركيّ ────────────────────────────────────────────────
+  // الميناءُ والعملةُ ونوعُ الفاتورة وبلدُ المنشأ كانت حقولًا حرّةً تُكتب في كلّ
+  // معاملة. والقيمُ فيها قليلةٌ ومعروفة، فالكتابةُ الحرّةُ لا تضيف خيارًا بل
+  // تضيف صيغةَ كتابةٍ أخرى للشيء نفسِه.
+  ...[
+    ['customs_port', 'الموانئ', 'Ports', [
+      { key: 'jeddah', nameAr: 'جدة', nameEn: 'Jeddah' },
+      { key: 'dammam', nameAr: 'الدمام', nameEn: 'Dammam' },
+      { key: 'jubail', nameAr: 'الجبيل', nameEn: 'Jubail' },
+      { key: 'yanbu', nameAr: 'ينبع', nameEn: 'Yanbu' },
+      { key: 'riyadh_dry', nameAr: 'الميناء الجاف - الرياض', nameEn: 'Riyadh Dry Port' },
+    ]],
+    ['customs_currency', 'العملات', 'Currencies', [
+      { key: 'usd', nameAr: 'USD', nameEn: 'USD' },
+      { key: 'sar', nameAr: 'SAR', nameEn: 'SAR' },
+      { key: 'eur', nameAr: 'EUR', nameEn: 'EUR' },
+      { key: 'cny', nameAr: 'CNY', nameEn: 'CNY' },
+      { key: 'aed', nameAr: 'AED', nameEn: 'AED' },
+    ]],
+    ['customs_invoice_type', 'أنواع الفواتير', 'Invoice Types', [
+      { key: 'fob', nameAr: 'FOB', nameEn: 'FOB' },
+      { key: 'cif', nameAr: 'CIF', nameEn: 'CIF' },
+      { key: 'cfr', nameAr: 'CFR', nameEn: 'CFR' },
+      { key: 'exw', nameAr: 'EXW', nameEn: 'EXW' },
+      { key: 'ddp', nameAr: 'DDP', nameEn: 'DDP' },
+    ]],
+    ['customs_origin_country', 'بلدان المنشأ', 'Countries of Origin', [
+      { key: 'china', nameAr: 'الصين', nameEn: 'China' },
+      { key: 'india', nameAr: 'الهند', nameEn: 'India' },
+      { key: 'turkey', nameAr: 'تركيا', nameEn: 'Turkey' },
+      { key: 'uae', nameAr: 'الإمارات', nameEn: 'UAE' },
+      { key: 'egypt', nameAr: 'مصر', nameEn: 'Egypt' },
+      { key: 'germany', nameAr: 'ألمانيا', nameEn: 'Germany' },
+    ]],
+    ['customs_city', 'مدن التخليص', 'Customs Cities', [
+      { key: 'jeddah', nameAr: 'جدة', nameEn: 'Jeddah' },
+      { key: 'dammam', nameAr: 'الدمام', nameEn: 'Dammam' },
+      { key: 'riyadh', nameAr: 'الرياض', nameEn: 'Riyadh' },
+    ]],
+  ].map(([type, nameAr, nameEn, seed]) => ({
+    type, module: 'customs', nameAr, nameEn,
+    roles: ['customs_manager', 'customs_officer', 'operations_manager'],
+    storeLabel: true, seed,
+  })),
 ];
 
 const byType = (type) => REGISTRY.find((r) => r.type === type) || null;

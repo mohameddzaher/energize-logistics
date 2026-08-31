@@ -255,7 +255,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
 
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
-    { href: '/system/customs/guide', label: L.customsGuide, icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+    // ── صفحاتُ التخليص ────────────────────────────────────────────────────
+    // «دليل التخليص» أُخفي من التنقّل وبقي في الكود: الصفحةُ مكتوبةٌ وتعمل، ولو
+    // طُلبت عادت بسطرٍ واحد. حذفُها كان سيُفقد ما كُتب لأجل إخفائه.
+    { href: '/system/customs/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+    { href: '/system/customs/agents', label: lang === 'ar' ? 'وكلاء الشحن' : 'Shipping Agents', icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
+    { href: '/system/customs/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'customs_manager'], section: 'Customs', restrict: true },
     // Vehicles & Authorizations (المركبات والتفاويض) — super admin + HR + Accounting
     { href: '/system/vehicles/registry/overview', label: lang === 'ar' ? 'نظرة شاملة' : 'Overview', icon: <LayoutGrid className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry', label: lang === 'ar' ? 'سجل المركبات' : 'Vehicle Registry', icon: <Car className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'], section: 'Vehicles' },

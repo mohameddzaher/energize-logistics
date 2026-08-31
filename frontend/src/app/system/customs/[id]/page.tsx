@@ -378,11 +378,24 @@ export default function CustomsDetailPage() {
           )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {/* ── كلُّ مرحلةٍ تُعلَّم وحدَها ────────────────────────────────────
+              كان المُنجَزُ يُشتقّ من موضع الحاليّة (`i < currentIdx`): مَن اختار
+              الثامنةَ عُدَّت السبعُ قبلها منجزةً وإن لم تجرِ واحدةٌ منها. والدورةُ
+              لا تسير دائمًا على ترتيبها — قد يُدفَع رسمٌ قبل وصول الأوراق، وقد
+              تُتخطّى مرحلةٌ أصلًا. فالضغطُ يُعلِّم المرحلةَ نفسَها لا ما قبلها،
+              والضغطُ ثانيةً يُلغيها. */}
           {STAGE_ORDER.map((s, i) => {
-            const done = i < currentIdx;
-            const cur = i === currentIdx && !c.cancelled;
+            const done = ((c as any).stagesDone || []).includes(s);
+            const cur = c.stage === s && !c.cancelled;
+            const toggle = () => {
+              const set = new Set<string>(((c as any).stagesDone || []) as string[]);
+              if (set.has(s)) set.delete(s); else set.add(s);
+              // الإنجازُ وجعلُها الحاليّةَ فعلٌ واحدٌ في ذهن المستخدم؛ فصلُهما
+              // يعني ضغطتين لكلّ خطوة.
+              patch({ stagesDone: [...set], stage: s } as any);
+            };
             return (
-              <button key={s} type="button" disabled={!canEdit} onClick={() => patch({ stage: s })}
+              <button key={s} type="button" disabled={!canEdit} onClick={toggle}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-start transition-colors ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${
                   cur ? 'bg-[#f37121] text-white' : done ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
                 }`}>
@@ -575,53 +588,10 @@ export default function CustomsDetailPage() {
         onChange={setC}
       />
 
-      {/* Containers */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold">{ar ? 'الحاويات' : 'Containers'}</h3>
-          {canEdit && (
-            <button type="button" onClick={() => setContainers([...containers, { containerNumber: '', exitPermit: 0, declaration: '', notes: '' }])}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors">
-              <Plus className="w-4 h-4" /> {ar ? 'إضافة حاوية' : 'Add container'}
-            </button>
-          )}
-        </div>
-        {containers.length === 0 ? (
-          <p className="text-slate-500 text-sm py-6 text-center">{ar ? 'لا توجد حاويات مسجلة' : 'No containers recorded'}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[620px]">
-              <thead>
-                <tr className="bg-slate-900">
-                  <th className="text-start text-slate-300 font-semibold px-3 py-2">{ar ? 'رقم الحاوية' : 'Container no.'}</th>
-                  <th className="text-start text-slate-300 font-semibold px-3 py-2">{ar ? 'تصريح الخروج' : 'Exit permit'}</th>
-                  <th className="text-start text-slate-300 font-semibold px-3 py-2">{ar ? 'البيان' : 'Declaration'}</th>
-                  <th className="text-start text-slate-300 font-semibold px-3 py-2">{ar ? 'ملاحظات' : 'Notes'}</th>
-                  {canEdit && <th className="px-3 py-2" />}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {containers.map((r, i) => (
-                  <tr key={i} className="bg-white">
-                    <td className="px-3 py-2"><CellInput value={r.containerNumber} disabled={!canEdit} onSave={(v) => updateContainer(i, 'containerNumber', v)} /></td>
-                    <td className="px-3 py-2"><CellInput value={r.exitPermit} type="number" disabled={!canEdit} onSave={(v) => updateContainer(i, 'exitPermit', Number(v) || 0)} /></td>
-                    <td className="px-3 py-2"><CellInput value={r.declaration} disabled={!canEdit} onSave={(v) => updateContainer(i, 'declaration', v)} /></td>
-                    <td className="px-3 py-2"><CellInput value={r.notes} disabled={!canEdit} onSave={(v) => updateContainer(i, 'notes', v)} /></td>
-                    {canEdit && (
-                      <td className="px-3 py-2 text-end">
-                        <button type="button" onClick={() => setContainers(containers.filter((_, idx) => idx !== i))}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100 transition-colors" title={ar ? 'حذف' : 'Remove'}>
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* ── بلوكُ الحاويات أُزيل ──────────────────────────────────────────
+          المعاملةُ تُنشأ ومعها عددُ حاوياتها، وجدولُ تسجيلِ كلّ حاويةٍ برقمها
+          لم يكن يُملأ. وحقلُ «عدد الحاويات» يبقى — وهو ما يُسأل عنه ويُجمَع
+          في التقارير. الكودُ محفوظٌ في تاريخ المستودع إن عاد الطلبُ عليه. */}
     </div>
   );
 }

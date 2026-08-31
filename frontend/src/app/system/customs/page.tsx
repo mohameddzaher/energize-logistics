@@ -13,6 +13,8 @@ import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { getCustomsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { SearchableSelect } from '@/components/hr/HRKit';
+import ManagedSelect from '@/components/system/ManagedSelect';
 
 interface Clearance {
   _id: string;
@@ -63,8 +65,9 @@ function stageBadge(stage: string, cancelled: boolean) {
 }
 
 const EMPTY = {
-  branch: 'jeddah', blNumber: '', customerName: '', shippingAgent: '', shippingAgentEmail: '',
-  invoiceNumber: '', port: '', invoiceType: '', containerCount: 0, currency: 'USD', assignedTo: '',
+  branch: 'jeddah', blNumber: '', customerName: '', customerParty: '',
+  shippingAgent: '', agentParty: '', shippingAgentEmail: '',
+  invoiceNumber: '', port: '', invoiceType: '', containerCount: 0, currency: 'USD',
 };
 
 export default function CustomsPage() {
@@ -80,6 +83,14 @@ export default function CustomsPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<any>({ ...EMPTY });
+  // ملفّاتُ الأطراف تُحمَّل مرّةً: القوائمُ تُختار منها ولا تُكتب.
+  const [parties, setParties] = useState<{ customers: any[]; agents: any[] }>({ customers: [], agents: [] });
+  useEffect(() => {
+    Promise.all([
+      api.get<{ parties: any[] }>('/api/customs-clearance/parties?kind=customer'),
+      api.get<{ parties: any[] }>('/api/customs-clearance/parties?kind=agent'),
+    ]).then(([c, a]) => setParties({ customers: c.parties || [], agents: a.parties || [] })).catch(() => {});
+  }, []);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [fYear, setFYear] = useState('');
@@ -338,20 +349,44 @@ export default function CustomsPage() {
                     <option value="dammam">{T.dammam}</option>
                   </select>
                 </Field>
-                <Field label={T.assignedTo}><input className="cc-input" value={form.assignedTo} onChange={(e) => setForm((f: any) => ({ ...f, assignedTo: e.target.value }))} /></Field>
+                {/* ── حقلُ «المخلّص» أُزيل ────────────────────────────────────
+                    مَن أنشأ المعاملةَ مسجَّلٌ في سجلّ المراجعة وفي `createdBy`،
+                    فسؤالُه في النموذج يطلب ما هو معروفٌ ويفتح بابَ كتابته خطأً. */}
                 <Field label={T.blNumber}><input className="cc-input" value={form.blNumber} onChange={(e) => setForm((f: any) => ({ ...f, blNumber: e.target.value }))} /></Field>
-                <Field label={T.customerName}><input className="cc-input" value={form.customerName} onChange={(e) => setForm((f: any) => ({ ...f, customerName: e.target.value }))} /></Field>
-                <Field label={T.shippingAgent}><input className="cc-input" value={form.shippingAgent} onChange={(e) => setForm((f: any) => ({ ...f, shippingAgent: e.target.value }))} /></Field>
-                <Field label={T.shippingAgentEmail}><input className="cc-input" value={form.shippingAgentEmail} onChange={(e) => setForm((f: any) => ({ ...f, shippingAgentEmail: e.target.value }))} /></Field>
-                <Field label={T.invoiceNumber}><input className="cc-input" value={form.invoiceNumber} onChange={(e) => setForm((f: any) => ({ ...f, invoiceNumber: e.target.value }))} /></Field>
-                <Field label={T.port}><input className="cc-input" value={form.port} onChange={(e) => setForm((f: any) => ({ ...f, port: e.target.value }))} /></Field>
-                <Field label={T.invoiceType}>
-                  <select value={form.invoiceType} onChange={(e) => setForm((f: any) => ({ ...f, invoiceType: e.target.value }))} className="cc-input">
-                    <option value="">—</option><option value="C&F">C&F</option><option value="CIF">CIF</option><option value="FOB">FOB</option>
-                  </select>
+                {/* ── العميلُ والوكيلُ يُختاران من ملفَّيهما ───────────────────
+                    كانا نصًّا حرًّا: الاسمُ الواحد يُكتب بصيغتين فيصير طرفين في
+                    التحليل، ولا يُعرف كم عاملنا هذا العميل. والبريدُ يأتي مع
+                    الوكيل من ملفّه فلا يُكتب من الذاكرة. */}
+                <Field label={T.customerName}>
+                  <SearchableSelect value={form.customerParty || ''} searchAfter={0}
+                    onChange={(v) => setForm((f: any) => ({ ...f, customerParty: v, customerName: (parties.customers.find((p) => p._id === v) || {}).name || '' }))}
+                    placeholder={ar ? 'اختر العميل — اكتب للبحث…' : 'Pick customer — type to search…'}
+                    searchPlaceholder={ar ? 'اكتب اسم العميل…' : 'Type customer name…'}
+                    emptyLabel={ar ? 'لا نتائج — أضِفه من صفحة العملاء' : 'No match — add from customers page'}
+                    options={parties.customers.map((p) => ({ value: p._id, label: p.name }))} />
                 </Field>
+                <Field label={T.shippingAgent}>
+                  <SearchableSelect value={form.agentParty || ''} searchAfter={0}
+                    onChange={(v) => {
+                      const a = parties.agents.find((p) => p._id === v);
+                      setForm((f: any) => ({ ...f, agentParty: v, shippingAgent: a?.name || '', shippingAgentEmail: a?.email || f.shippingAgentEmail }));
+                    }}
+                    placeholder={ar ? 'اختر الوكيل — اكتب للبحث…' : 'Pick agent — type to search…'}
+                    searchPlaceholder={ar ? 'اكتب اسم الوكيل…' : 'Type agent name…'}
+                    emptyLabel={ar ? 'لا نتائج — أضِفه من صفحة الوكلاء' : 'No match — add from agents page'}
+                    options={parties.agents.map((p) => ({ value: p._id, label: p.name, hint: p.email || '' }))} />
+                </Field>
+                <Field label={T.shippingAgentEmail}>
+                  <input className="cc-input" value={form.shippingAgentEmail}
+                    placeholder={ar ? 'يُملأ تلقائيًّا من ملفّ الوكيل' : 'Autofills from the agent profile'}
+                    onChange={(e) => setForm((f: any) => ({ ...f, shippingAgentEmail: e.target.value }))} />
+                </Field>
+                <Field label={T.invoiceNumber}><input className="cc-input" value={form.invoiceNumber} onChange={(e) => setForm((f: any) => ({ ...f, invoiceNumber: e.target.value }))} /></Field>
+                {/* الموانئُ والعملاتُ وأنواعُ الفواتير قوائمُ تُدار من إعدادات القسم. */}
+                <Field label={T.port}><ManagedSelect storeLabel type="customs_port" value={form.port} onChange={(v) => setForm((f: any) => ({ ...f, port: v }))} /></Field>
+                <Field label={T.invoiceType}><ManagedSelect storeLabel type="customs_invoice_type" value={form.invoiceType} onChange={(v) => setForm((f: any) => ({ ...f, invoiceType: v }))} /></Field>
                 <Field label={T.containerCount}><input type="number" className="cc-input" value={form.containerCount} onChange={(e) => setForm((f: any) => ({ ...f, containerCount: Number(e.target.value) }))} /></Field>
-                <Field label={T.currency}><input className="cc-input" value={form.currency} onChange={(e) => setForm((f: any) => ({ ...f, currency: e.target.value }))} /></Field>
+                <Field label={T.currency}><ManagedSelect storeLabel type="customs_currency" value={form.currency} onChange={(v) => setForm((f: any) => ({ ...f, currency: v }))} /></Field>
               </div>
               <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{T.cancel}</button>

@@ -22,12 +22,24 @@ const customsClearanceSchema = new mongoose.Schema(
 
     branch: { type: String, enum: ['jeddah', 'dammam'], default: 'jeddah', index: true },
     stage: { type: String, enum: STAGES, default: 'papers_received', index: true },
+    // ── وكلُّ مرحلةٍ تُعلَّم وحدَها ─────────────────────────────────────────
+    // كانت المراحلُ المنجزةُ تُشتقّ من موضع الحاليّة: مَن اختار الثامنةَ عُدَّت
+    // السبعُ قبلها منجزةً وإن لم تجرِ واحدةٌ منها. والدورةُ لا تسير دائمًا على
+    // ترتيبها — قد يُدفَع الرسمُ قبل وصول الأوراق، وقد تُتخطّى مرحلةٌ أصلًا.
+    // فما أُنجز يُسجَّل صراحةً، و`stage` تبقى «أين هي الآن» للتقارير والفلاتر.
+    stagesDone: { type: [String], default: [], index: true },
     cancelled: { type: Boolean, default: false },
 
     // People
     assignedTo: { type: String, trim: true },       // مخلص / معقب (free text — reps aren't always users)
     customerName: { type: String, trim: true },
-    customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' }, // optional link
+    customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
+    // ── الطرفان بمعرّفَيهما لا بنصَّيهما ───────────────────────────────────
+    // الاسمُ يبقى مخزَّنًا كما كُتب (`customerName`, `shippingAgent`) لأنّ
+    // التصديراتِ والتقاريرَ تقرؤه، ويُضاف إليه معرّفُ الملفّ: به تُجمَّع
+    // المعاملاتُ ويُفتح البروفايل، فلا يُفرِّق صيغتا كتابةٍ طرفًا واحدًا.
+    customerParty: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsParty', index: true },
+    agentParty: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsParty', index: true }, // optional link
     shippingAgent: { type: String, trim: true },
     shippingAgentEmail: { type: String, trim: true, lowercase: true },
 

@@ -277,8 +277,27 @@ const REGISTRY = [
       { key: 'sudair', nameEn: 'Sudair', nameAr: 'سدير' },
       { key: 'rabigh', nameEn: 'Rabigh', nameAr: 'رابغ' },
       { key: 'jazan', nameEn: 'Jazan', nameAr: 'جازان' },
-      { key: 'makkah', nameEn: 'Makkah', nameAr: 'مكة' },
-      { key: 'heavy_trucks', nameEn: 'Heavy Trucks', nameAr: 'النقل الثقيل' },
+    ],
+  },
+  // ── وجهةُ الكشف النهائيّة ────────────────────────────────────────────────
+  // الفرعُ الذي يستقرّ عنده الكشفُ في آخره. وهو من الفروع نفسِها، لكنّه سؤالٌ
+  // آخر غيرُ «مَن سدّد»: قد يُسدَّد في فرعٍ ويستقرّ ملفُّه في غيره. فقائمتان
+  // بالقيم نفسِها لا قائمةٌ واحدةٌ لعمودين، كي يُدار كلٌّ على حدة إن افترقا.
+  {
+    type: 'workflow_final_destination',
+    module: 'operations',
+    nameEn: 'Final Report Destinations',
+    nameAr: 'وجهات الكشف النهائية',
+    roles: ['operations_manager', 'operations_staff', 'moderator', 'finance_manager', 'accountant'],
+    storeLabel: true,
+    seed: [
+      { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جده' },
+      { key: 'dammam', nameEn: 'Dammam', nameAr: 'الدمام' },
+      { key: 'riyadh', nameEn: 'Riyadh', nameAr: 'الرياض' },
+      { key: 'jazan', nameEn: 'Jazan', nameAr: 'جازان' },
+      { key: 'yanbu', nameEn: 'Yanbu', nameAr: 'ينبع' },
+      { key: 'rabigh', nameEn: 'Rabigh', nameAr: 'رابغ' },
+      { key: 'sudair', nameEn: 'Sudair', nameAr: 'سدير' },
     ],
   },
 ];

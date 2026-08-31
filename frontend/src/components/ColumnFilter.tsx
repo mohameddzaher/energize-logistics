@@ -1,5 +1,6 @@
 'use client';
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Filter, Loader2 } from 'lucide-react';
 
 export type ColumnFilterOption = { value: string; count?: number };
@@ -36,7 +37,14 @@ export function ColumnFilter({ rows, field, selected, onChange, onOpen, lang, fo
 
   useEffect(() => {
     if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    // اللوحةُ صارت في `body` فليست ابنةً للزرّ: الضغطُ داخلها كان يُقرأ «خارجًا»
+    // فتُغلق قبل أن يُؤشَّر شيء. فيُستثنى ما بداخلها صراحةً.
+    const h = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (ref.current && ref.current.contains(t)) return;
+      if (panelRef.current && panelRef.current.contains(t)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
@@ -97,18 +105,40 @@ export function ColumnFilter({ rows, field, selected, onChange, onOpen, lang, fo
     onChange(n);
   };
 
-  return (
-    <span className="relative inline-flex items-center" ref={ref}>
-      <button
-        type="button"
-        onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }}
-        className={`ms-1 p-0.5 rounded transition-colors ${active ? 'text-[#f37121]' : 'text-slate-400 hover:text-white'}`}
-        title={ar ? 'فلتر' : 'Filter'}
-      >
-        <Filter className="w-3 h-3" fill={active ? 'currentColor' : 'none'} />
-      </button>
-      {open && (
-        <div className="absolute top-full mt-1 z-50 w-60 bg-white border border-slate-200 rounded-lg shadow-xl p-2 text-slate-900 font-normal normal-case start-0" dir={ar ? 'rtl' : 'ltr'}>
+  // ── ولماذا تُرسَم اللوحةُ خارجَ الجدول ──────────────────────────────────────
+  //
+  // كانت `absolute` داخلَ رأس العمود، ورأسُ العمود داخلَ حاويةٍ تُمرَّر أفقيًّا
+  // (`overflow-x-auto`) وأخرى `overflow-hidden`. والحاويةُ التي تقصّ محتواها
+  // تقصّ أبناءها المطلقين أيضًا — ولا ينفع `z-index`: هو يرتّب الطبقات ولا
+  // يُخرج شيئًا من مقصّ. فحين تُظهر النتيجةُ صفًّا واحدًا يكون ارتفاعُ الجدول
+  // أقصرَ من اللوحة، فتُقصّ ويختفي أكثرُها.
+  //
+  // فتُرسَم في `body` بإحداثيّاتٍ من موضع الزرّ: لا أبَ لها يقصّها. وتُصحَّح
+  // إحداثيّاتُها مع التمرير وتغيير المقاس كي تبقى ملتصقةً بزرّها.
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open) { setPos(null); return; }
+    const place = () => {
+      const el = ref.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const W = 240; const M = 8;
+      // لا تخرج عن الشاشة يمينًا ولا يسارًا.
+      let left = ar ? r.right - W : r.left;
+      left = Math.max(M, Math.min(left, window.innerWidth - W - M));
+      setPos({ top: r.bottom + 4, left });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); };
+  }, [open, ar]);
+
+  const panel = (
+        <div ref={panelRef} className="fixed z-[100] w-60 bg-white border border-slate-200 rounded-lg shadow-2xl p-2 text-slate-900 font-normal normal-case"
+          style={{ top: pos ? pos.top : -9999, left: pos ? pos.left : -9999 }}
+          dir={ar ? 'rtl' : 'ltr'}>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -147,7 +177,19 @@ export function ColumnFilter({ rows, field, selected, onChange, onOpen, lang, fo
             </p>
           )}
         </div>
-      )}
+  );
+
+  return (
+    <span className="relative inline-flex items-center" ref={ref}>
+      <button
+        type="button"
+        onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }}
+        className={`ms-1 p-0.5 rounded transition-colors ${active ? 'text-[#f37121]' : 'text-slate-400 hover:text-white'}`}
+        title={ar ? 'فلتر' : 'Filter'}
+      >
+        <Filter className="w-3 h-3" fill={active ? 'currentColor' : 'none'} />
+      </button>
+      {open && typeof document !== 'undefined' && createPortal(panel, document.body)}
     </span>
   );
 }

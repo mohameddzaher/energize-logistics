@@ -116,6 +116,7 @@ const EXPORT_COLUMNS = [
   { header: 'مراجعة العمليات', key: 'operationsReview', width: 14 },
   { header: 'تاريخ السداد', key: 'paymentDate', width: 12 },
   { header: 'فرع السداد', key: 'payingBranch', width: 14 },
+  { header: 'وجهة الكشف النهائية', key: 'finalReportDestination', width: 18 },
   { header: 'رقم المستند', key: 'documentNumber', width: 14 },
   { header: 'تاريخ الإرسال', key: 'sendingDate', width: 12 },
   { header: 'تاريخ التسليم', key: 'deliveryDate', width: 12 },
@@ -828,15 +829,12 @@ export default function OperationsWorkflowPage() {
             onFrom={(v) => { setDateFrom(v); setPage(1); }}
             onTo={(v) => { setDateTo(v); setPage(1); }} />
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Filter className="w-4 h-4 text-slate-500" />
-          {[{ value: '', label: T.all }, ...Object.entries(STAGE_CONFIG).map(([k]) => ({ value: k, label: stageLabels[k] || k }))].map((opt) => (
-            <button key={opt.value} type="button" onClick={() => { setStageFilter(opt.value); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${stageFilter === opt.value ? 'bg-[#f37121] text-white' : 'bg-white text-slate-500 hover:text-slate-900 border border-slate-200'}`}>
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        {/* ── مِصفاةُ المراحل أُزيلت ────────────────────────────────────────
+            «مسودة / مرسل للتشغيل / التشغيل مكتمل / للتحصيلات / مكتمل» مراحلُ
+            صُمّمت حين كانت الكشوفُ تُنشأ عندنا وتتنقّل بين أقسامنا. وهي تصل
+            الآن من منصّة التشغيل وقد جرت هناك، فيبقى الجميعُ في «مسودة» أبدًا:
+            خمسةُ أزرارٍ أربعةٌ منها فارغةٌ دائمًا. والحالةُ الحقيقيّةُ عمودٌ في
+            الجدول له مِصفاتُه. */}
       </div>
 
       {/* Summary cards */}
@@ -955,6 +953,9 @@ export default function OperationsWorkflowPage() {
                 {/* Manual Moderator */}
                 {ColHead('paymentDate', T.thPaymentDate, 'text-purple-300')}
                 {ColHead('payingBranch', T.thPayingBranch, 'text-purple-300')}
+                {/* وجهةُ الكشف النهائيّة — الفرعُ الذي يستقرّ عنده الملفّ في
+                    آخره. سؤالٌ غيرُ «مَن سدّد»: قد يُسدَّد في فرعٍ ويستقرّ في غيره. */}
+                {ColHead('finalReportDestination', lang === 'ar' ? 'وجهة الكشف النهائية' : 'Final destination', 'text-purple-300')}
                 {ColHead('documentNumber', T.thDocNumber, 'text-purple-300')}
                 {ColHead('sendingDate', T.thSendingDate, 'text-purple-300')}
                 {ColHead('deliveryDate', T.thDeliveryDate, 'text-purple-300')}
@@ -973,7 +974,7 @@ export default function OperationsWorkflowPage() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {workflows.length === 0 ? (
-                <tr><td colSpan={41} className="px-4 py-12 text-center text-slate-800 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : (hasColFilters ? (lang === 'ar' ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : T.noWorkflows)}</td></tr>
+                <tr><td colSpan={42} className="px-4 py-12 text-center text-slate-800 text-sm">{showPendingOnly ? (lang === 'ar' ? 'لا توجد فواتير معلقة' : 'No pending invoices') : (hasColFilters ? (lang === 'ar' ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : T.noWorkflows)}</td></tr>
               ) : workflows.map((wf) => {
                 const locked = isLockedByOther(wf);
                 const transitions = getTransitions(wf);
@@ -1013,21 +1014,9 @@ export default function OperationsWorkflowPage() {
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {transitions.length > 0 && (
-                              <div className="relative group">
-                                <button type="button" className="p-1 text-slate-700 hover:text-blue-600 rounded" title={T.stageTransition}>
-                                  {transitioningId === wf._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
-                                </button>
-                                <div className="absolute start-0 top-full mt-1 bg-slate-50 border border-slate-200 rounded-lg shadow-xl z-50 hidden group-hover:block min-w-[160px]">
-                                  {transitions.map((t) => (
-                                    <button key={t.stage} type="button" onClick={() => handleTransition(wf._id, t.stage)}
-                                      className="block w-full text-start px-3 py-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors">
-                                      {t.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
+                            {/* سهمُ نقل المرحلة أُزيل مع مراحل العمل: الكشوفُ
+                                تصل من منصّة التشغيل جاريةً، فلا تُنقَل بيننا
+                                بين مراحلَ نصنعها نحن. */}
                           </>
                         )}
                       </div>
@@ -1165,6 +1154,7 @@ export default function OperationsWorkflowPage() {
                         {/* Manual Moderator */}
                         {dateCell('paymentDate', 'text-purple-700')}
                         {lookupCell('payingBranch', 'workflow_paying_branch', 'text-purple-700')}
+                        {lookupCell('finalReportDestination', 'workflow_final_destination', 'text-purple-700')}
                         {textCell('documentNumber', 'text-purple-700')}
                         {dateCell('sendingDate', 'text-purple-700')}
                         {dateCell('deliveryDate', 'text-purple-700')}
@@ -1210,13 +1200,8 @@ export default function OperationsWorkflowPage() {
         )}
       </div>
 
-      {/* Stage counts */}
+      {/* عدّادُ المراحل أُزيل معها — أربعةٌ من خمسةٍ صفرٌ دائمًا. والإجماليُّ يبقى. */}
       <div className="flex flex-wrap gap-3 items-center">
-        {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
-          <div key={key} className={`px-3 py-2 rounded-lg ${cfg.bg} ${cfg.color} text-xs font-medium`}>
-            {stageLabels[key] || cfg.label}: {(stats.byStage?.[key] || 0).toLocaleString()}
-          </div>
-        ))}
         <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">{T.total}: {(stats.total || total).toLocaleString()}</div>
         {hasColFilters && (
           <button type="button" onClick={clearColFilters} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-medium hover:bg-[#f37121]/20 transition-colors">

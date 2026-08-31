@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { flexSpaceRegex, flexIncludes } = require('../utils/plateKey');
 const Vehicle = require('../models/Vehicle');
 const VehicleAuthorization = require('../models/VehicleAuthorization');
 const VehicleAccident = require('../models/VehicleAccident');
@@ -48,7 +49,8 @@ exports.searchEmployees = async (req, res) => {
     const { q } = req.query;
     const filter = { isHrRecord: { $ne: false } };   // من غير سجلات الأرشيف
     if (q && q.trim()) {
-      const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      // «أحمد» و«احمد» اسمٌ واحد، واللوحةُ تُنسخ بمسافتين. راجع flexSpaceRegex.
+      const rx = flexSpaceRegex(q);
       filter.$or = [
         { firstName: rx }, { lastName: rx }, { arabicName: rx },
         { iqamaNumber: rx }, { employeeNumber: rx }, { vehiclePlate: rx },
@@ -77,13 +79,13 @@ exports.listVehicles = async (req, res) => {
     let vehicles = await cache.wrap(ck, 20000, () =>
       populateVehicle(Vehicle.find(filter)).sort({ plateNumber: 1 }).limit(5000).lean());
     if (q && q.trim()) {
-      const s = q.trim().toLowerCase();
-      vehicles = vehicles.filter((v) =>
-        (v.plateNumber || '').toLowerCase().includes(s) ||
-        (v.make || '').toLowerCase().includes(s) ||
-        (v.model || '').toLowerCase().includes(s) ||
-        (v.currentEmployee && `${v.currentEmployee.firstName || ''} ${v.currentEmployee.lastName || ''} ${v.currentEmployee.arabicName || ''}`.toLowerCase().includes(s))
-      );
+      // المطابقةُ في الذاكرة كانت `includes` حرفيّةً: مسافةٌ زائدةٌ في اللوحة أو
+      // همزةٌ ناقصةٌ في الاسم تُخرج الصفَّ من النتيجة وهو أمام عين الباحث.
+      vehicles = vehicles.filter((v) => flexIncludes(q,
+        v.plateNumber, v.make, v.model, v.type, v.branch, v.project, v.chassisNumber,
+        v.currentEmployee && `${v.currentEmployee.firstName || ''} ${v.currentEmployee.lastName || ''} ${v.currentEmployee.arabicName || ''}`,
+        v.currentEmployee && v.currentEmployee.employeeNumber,
+        v.currentEmployee && v.currentEmployee.iqamaNumber));
     }
     res.json({ vehicles });
   } catch (error) {
@@ -344,13 +346,11 @@ exports.listAccidents = async (req, res) => {
       .populate('employee', EMP_FIELDS)
       .sort({ date: -1, createdAt: -1 }).limit(5000).lean();
     if (q && q.trim()) {
-      const s = q.trim().toLowerCase();
-      accidents = accidents.filter((a) =>
-        (a.vehicle?.plateNumber || '').toLowerCase().includes(s) ||
-        (a.description || '').toLowerCase().includes(s) ||
-        (a.location || '').toLowerCase().includes(s) ||
-        (a.employee && `${a.employee.firstName || ''} ${a.employee.lastName || ''} ${a.employee.arabicName || ''}`.toLowerCase().includes(s))
-      );
+      accidents = accidents.filter((a) => flexIncludes(q,
+        a.vehicle && a.vehicle.plateNumber, a.vehicle && a.vehicle.make, a.vehicle && a.vehicle.model,
+        a.description, a.location, a.status, a.reportNumber,
+        a.employee && `${a.employee.firstName || ''} ${a.employee.lastName || ''} ${a.employee.arabicName || ''}`,
+        a.employee && a.employee.employeeNumber, a.employee && a.employee.iqamaNumber));
     }
     res.json({ accidents });
   } catch (error) {

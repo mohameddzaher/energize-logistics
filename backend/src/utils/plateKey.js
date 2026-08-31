@@ -62,10 +62,48 @@ const flexSpaceRegex = (s, flags = 'i') => {
   // الفراغ يُنزع من نصّ البحث كلّه ثم يُسمَح به بين كلّ حرفين. فلا يهمّ أكتبها
   // «ح أ 3505» أم «ح أ  3505» أم «حأ3505» — الثلاثة تصل إلى الصفّ نفسه. والقيد
   // في الاتجاه الآخر أيضًا: مَن يكتب بلا فراغٍ يجد ما خُزّن بفراغ.
+  //
+  // ومع الفراغ تُطوى فروقُ الرسم العربيّ: الهمزةُ تُكتب «أحمد» و«احمد»، والتاءُ
+  // المربوطة تُنسخ من أبشر «ة» وتُكتب في الشيت «ه». ومَن يبحث لا يعرف بأيّهما
+  // خُزّن الصفّ — فيبحث مرّتين أو يستسلم. فكلُّ حرفٍ يصير صنفًا يقبل أشباهه.
   const bare = String(s || '').replace(/\s+/g, '');
   if (!bare) return new RegExp('(?:)', flags);
-  const parts = [...bare].map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return new RegExp(parts.join('\\s*'), flags);
+  const parts = [...bare].map((ch) => {
+    const cls = FOLD_CLASSES[ch];
+    if (cls) return cls;
+    return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  });
+  return new RegExp(parts.join('[\\s\u064B-\u0652\u0640]*'), flags);
+};
+
+// أصنافُ الحروف المتشابهة رسمًا. تُبنى مرّةً لا عند كلّ بحث.
+const FOLD_GROUPS = [
+  'اأإآٱ', 'هة', 'يىئ', 'وؤ', '٠0', '١1', '٢2', '٣3', '٤4', '٥5', '٦6', '٧7', '٨8', '٩9',
+];
+const FOLD_CLASSES = {};
+for (const g of FOLD_GROUPS) for (const ch of g) FOLD_CLASSES[ch] = `[${g}]`;
+
+/**
+ * نظيرُ `flexSpaceRegex` للمطابقة في الذاكرة.
+ *
+ * بعضُ قوائم القسم تُجلب كاملةً من الكاش ثمّ تُفلتر في العقدة بـ`includes` —
+ * وهي مطابقةٌ حرفيّةٌ لا تتسامح مع مسافةٍ زائدةٍ ولا همزةٍ ناقصة، فيبحث الموظّف
+ * عن اللوحة نفسِها التي يراها أمامه فلا يجدها. فتُطبَّق القاعدةُ نفسُها هنا.
+ */
+const flexNormalize = (v) => String(v == null ? '' : v)
+  .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+  .replace(/[أإآٱ]/g, 'ا').replace(/[ةه]/g, 'ه').replace(/[ىئي]/g, 'ي').replace(/[ؤو]/g, 'و')
+  .replace(/[\u064B-\u0652\u0640]/g, '')
+  .replace(/\s+/g, '')
+  .toLowerCase();
+
+/** هل يحوي أيٌّ من الحقول نصَّ البحث، بعد طيّ المسافات وفروق الرسم؟ */
+const flexIncludes = (needle, ...fields) => {
+  const n = flexNormalize(needle);
+  if (!n) return true;
+  return fields.some((f) => flexNormalize(f).includes(n));
 };
 
 module.exports.flexSpaceRegex = flexSpaceRegex;
+module.exports.flexNormalize = flexNormalize;
+module.exports.flexIncludes = flexIncludes;

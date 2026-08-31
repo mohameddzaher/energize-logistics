@@ -348,6 +348,11 @@ connectDB().then(async () => {
     // والاستطلاعُ يرى ما أُضيف وعُدِّل؛ وما حُذف حذفًا نهائيًّا لا يعود في أيّ
     // صفحةٍ فلا يراه أحد. فتُطابَق القائمتان مرّةً في اليوم.
     startOpsReconcile();
+    // لوحةُ فلاتر المركبات تُحسب مرّةً بعد الإقلاع، فلا يدفع أوّلُ من يضغط
+    // «فلتر» ثمنَ الاتّصال البارد وقراءةِ الصفوف معًا.
+    setTimeout(() => {
+      try { require('./controllers/vehicleRegistryController').warmFilters(); } catch (e) {}
+    }, 45 * 1000);
     startOpsCustomerSync();
     startOpsWorkflowSync();
     startLs2Poll();

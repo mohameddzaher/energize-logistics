@@ -965,6 +965,15 @@ const FILTER_SELECT = [...new Set([
   ...DERIVED_DEFS.flatMap((d) => d.select || []),
 ])].join(' ');
 
+// ── ولماذا مجموعتان لا واحدة ────────────────────────────────────────────────
+// الفلاتر المباشرة عدُّ قيمٍ، والعدُّ يجري في القاعدة: يعود سطرٌ لكلّ قيمة بدل
+// أن تعبر ثلاثُمئةِ مركبةٍ الشبكةَ لتُعَدَّ هنا. أمّا المشتقّاتُ فشروطُها دوالُّ
+// جافاسكربت (كم بقي على انتهاء الوثيقة، ما الناقص) لا تُترجَم إلى تجميع — فهي
+// وحدَها تسحب صفوفًا، وبحقولها هي فقط: أربعةَ عشرَ حقلًا لا ستّةً وأربعين.
+//
+// وكانت اللوحةُ تسحب الاتّحادَ كلَّه لكلّ فلترٍ نشط، فتسعُ ثوانٍ في كلّ فتحة.
+const DERIVED_SELECT = [...new Set(DERIVED_DEFS.flatMap((d) => d.select || []))].join(' ');
+
 const _get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 
 exports.filterOptions = async (req, res) => {
@@ -1008,23 +1017,55 @@ exports.filterOptions = async (req, res) => {
     const isOn = (k) => req.query[k] != null && req.query[k] !== '';
     const active = ALL_DEFS.filter((d) => isOn(d.key));
     const passive = ALL_DEFS.filter((d) => !isOn(d.key));
-    const shared = passive.length
-      ? await VehicleMaster.find(buildFilter(req.query)).select(FILTER_SELECT).lean()
-      : [];
-    const perActive = new Map(await Promise.all(active.map(async (d) => {
+    // عدُّ القيم لكلّ حقلٍ مباشرٍ في مرورٍ واحدٍ على القاعدة.
+    const plainTally = async (filter) => {
+      const facet = {};
+      FILTER_DEFS.forEach((d, i) => {
+        facet[`f${i}`] = [
+          { $group: { _id: { $ifNull: [`$${d.field}`, '—'] }, count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+        ];
+      });
+      const [r] = await VehicleMaster.aggregate([{ $match: filter }, { $facet: facet }]);
+      const out = new Map();
+      FILTER_DEFS.forEach((d, i) => {
+        out.set(d.key, ((r && r[`f${i}`]) || []).map((b) => ({
+          value: b._id === null || b._id === '' ? '—' : String(b._id),
+          count: b.count,
+        })));
+      });
+      return out;
+    };
+
+    const needRows = passive.some((d) => !d.field) || active.some((d) => !d.field);
+    const [sharedPlain, shared] = await Promise.all([
+      passive.length ? plainTally(buildFilter(req.query)) : new Map(),
+      needRows && passive.length
+        ? VehicleMaster.find(buildFilter(req.query)).select(DERIVED_SELECT).lean()
+        : [],
+    ]);
+    const perActive = new Map(); const perActivePlain = new Map();
+    await Promise.all(active.map(async (d) => {
       const others = { ...req.query };
       delete others[d.key];
-      return [d.key, await VehicleMaster.find(buildFilter(others)).select(FILTER_SELECT).lean()];
-    })));
+      const f = buildFilter(others);
+      if (d.field) perActivePlain.set(d.key, (await plainTally(f)).get(d.key) || []);
+      else perActive.set(d.key, await VehicleMaster.find(f).select(DERIVED_SELECT).lean());
+    }));
 
     const filters = ALL_DEFS.map((d) => ({
       key: d.key, ar: d.ar, en: d.en, groupAr: d.groupAr, groupEn: d.groupEn,
       values: d.field
-        ? tally(perActive.get(d.key) || shared, d.field)
+        ? (perActivePlain.get(d.key) || sharedPlain.get(d.key) || [])
         : tallyDerived(perActive.get(d.key) || shared, d),
     })).filter((f) => f.values.length);
     const body = { filters };
-    cache.set(key, body, 20000);
+    // ── عشرون ثانيةً كانت تعني «بارد» في كلّ مرّة ────────────────────────────
+    // اللوحةُ تُفتح مرّةً كلّ بضع دقائق، فينتهي الكاشُ قبل الفتحة التالية دائمًا
+    // ولا يستفيد منه أحد. وكلُّ كتابةٍ على السجلّ تمسح `vreg:` كاملًا (راجع
+    // `emit` أعلى الملفّ)، فطولُ المدّة لا يُبقي رقمًا قديمًا: يُبقي رقمًا صحيحًا
+    // جاهزًا. خمسُ دقائقَ تجعل الفتحةَ الثانيةَ فوريّةً لكلّ من يفتحها.
+    cache.set(key, body, 5 * 60 * 1000);
     res.json(body);
   } catch (e) {
     console.error('vreg filterOptions', e);
@@ -1096,6 +1137,22 @@ const buildVehicleAnalytics = (vehicles) => {
   });
   out.push({ key: 'age', ar: 'أعمار المركبات', en: 'Vehicle age', kind: 'bar', items: AGE });
   return out;
+};
+
+/**
+ * تسخينُ لوحة الفلاتر.
+ *
+ * أوّلُ ضغطةٍ على «فلتر» كانت تدفع ثمنَ الاتّصال البارد وقراءةَ صفوف المشتقّات
+ * معًا — والمستخدم واقفٌ ينتظر. والحالةُ الشائعة (بلا فلترٍ نشط) واحدةٌ لا
+ * تتغيّر إلّا بكتابة، فتُحسب مرّةً بعد الإقلاع وتبقى جاهزة.
+ */
+exports.warmFilters = async () => {
+  try {
+    const fake = { query: {}, user: null };
+    await new Promise((resolve) => {
+      exports.filterOptions(fake, { json: resolve, status: () => ({ json: resolve }) });
+    });
+  } catch (e) { /* التسخينُ رفاهيةٌ لا شرط */ }
 };
 
 exports.overview = async (req, res) => {
@@ -1907,7 +1964,9 @@ exports.listClaims = async (req, res) => {
     if (req.query.insurer) f['claim.insurerAr'] = req.query.insurer;
     if (req.query.vehicleId) f.vehicle = req.query.vehicleId;
     if (req.query.q && req.query.q.trim()) {
-      const rx = new RegExp(req.query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      // نفسُ قاعدةِ البحث في سجلّ المركبات: المسافاتُ وفروقُ الرسم لا تمنع
+      // مطابقةً — كانت اللوحةُ هنا تُطلب بحرفها فلا تُوجد.
+      const rx = flexSpaceRegex(req.query.q);
       f.$or = [{ vehiclePlate: rx }, { accidentNumber: rx }, { counterpartyNameAr: rx }, { 'claim.insurerAr': rx }, { incidentSubjectAr: rx }];
     }
     const rows = await VehicleClaim.find(f).sort({ accidentDate: -1 }).limit(500).lean();

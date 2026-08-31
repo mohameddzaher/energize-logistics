@@ -304,7 +304,10 @@ export default function WorkflowDetailPage() {
   const getTransitions = () => {
     if (!workflow) return [];
     const map: Record<string, { stage: string; label: string; roles: string[] }[]> = {
-      draft: [{ stage: 'submitted_to_ops', label: T.submitToOperations, roles: ['moderator', 'super_admin'] }],
+      // ── «إرسال للتشغيل» أُزيل ──────────────────────────────────────────
+      // الكشوفُ تصل من منصّة التشغيل وهي جاريةٌ هناك أصلًا، فلا معنى لإرسالها
+      // إليها من عندنا. والزرُّ بقي من زمنٍ كانت تُنشأ فيه الكشوفُ هنا يدويًّا.
+      draft: [],
       submitted_to_ops: [
         { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin'] },
         { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin'] },
@@ -496,7 +499,18 @@ export default function WorkflowDetailPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-slate-500 text-xs">{T.createdBy}</p>
-            <p className="text-slate-700 mt-0.5">{workflow.createdBy ? `${workflow.createdBy.firstName} ${workflow.createdBy.lastName}` : '-'}</p>
+            {/* ── ولا يُنسَب المنقولُ إلى إنسان ──────────────────────────────
+                كانت المزامنةُ تختم كلَّ كشفٍ تنشئه باسم أوّلِ سوبر أدمنَ تجده
+                في القاعدة، فقرأ أربعةٌ وثلاثون ألفَ كشفٍ «أنشأتها فتون» وهي
+                لم تفتح واحدًا منها. والمنقولُ لا مُنشئَ له عندنا — ومصدرُه
+                يُقال بدل أن تُترك الخانةُ فارغةً بلا تفسير. */}
+            <p className="text-slate-700 mt-0.5">
+              {workflow.createdBy
+                ? `${workflow.createdBy.firstName} ${workflow.createdBy.lastName}`
+                : ((workflow as any).externalSource
+                  ? (lang === 'ar' ? 'منصّة التشغيل (تلقائيًّا)' : 'Operations platform (automatic)')
+                  : '-')}
+            </p>
           </div>
           <div>
             <p className="text-slate-500 text-xs">{T.createdAt}</p>

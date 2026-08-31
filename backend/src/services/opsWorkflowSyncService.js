@@ -10,7 +10,6 @@
  */
 const upl = require('./uplClient');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
-const User = require('../models/User');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
 
@@ -95,20 +94,20 @@ function mapShipment(s) {
   return { set, setOnInsert };
 }
 
-let cachedSysId = null;
-async function getSysUserId() {
-  if (cachedSysId) return cachedSysId;
-  const sys = await User.findOne({ role: 'super_admin', isActive: true }).select('_id').lean();
-  cachedSysId = sys ? sys._id : null;
-  return cachedSysId;
-}
+// ── ولا يُختَم المنقولُ باسمِ إنسان ─────────────────────────────────────────
+// كانت هنا `getSysUserId` تأخذ أوّلَ `super_admin` تجده في القاعدة وتضعه
+// `createdBy` على كلّ صفٍّ تنشئه المزامنة. فظهر أربعةٌ وثلاثون ألفَ كشفٍ
+// «أنشأتها فتون» — وهي لم تفتح واحدًا منها. والمنقولُ من المنصّة لا مُنشئَ له
+// عندنا، وقولُ «لا أحد» أصدقُ من تسمية من لم يفعل.
+//
+// وشاشةُ التفاصيل تقرأ `externalSource` فتقول «منصّة التشغيل (تلقائي)» — فلا
+// تبقى الخانةُ فارغةً بلا تفسير.
 
 // Upsert a batch of shipments into OperationsWorkflow (used by both the full sync
 // and the live poll). Soft-deleted shipments (deleted_at set) are removed instead.
 // Refreshes only the UPL-derived columns; manual columns are $setOnInsert-only.
 async function upsertShipments(ships) {
-  const sysId = await getSysUserId();
-  if (!sysId || !ships || !ships.length) return { created: 0, updated: 0, removed: 0 };
+  if (!ships || !ships.length) return { created: 0, updated: 0, removed: 0 };
   const live = ships.filter((s) => s && s.id && !s.deleted_at);
   const deletedIds = ships.filter((s) => s && s.id && s.deleted_at).map((s) => String(s.id));
 
@@ -117,7 +116,7 @@ async function upsertShipments(ships) {
     return {
       updateOne: {
         filter: { externalSource: SOURCE, externalId: String(s.id) },
-        update: { $set: set, $setOnInsert: { ...setOnInsert, createdBy: sysId } },
+        update: { $set: set, $setOnInsert: setOnInsert },
         upsert: true,
       },
     };

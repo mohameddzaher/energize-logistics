@@ -61,14 +61,10 @@ export function DateField({ value, onChange, label, max, min, ar, placeholder }:
       >
         <CalendarDays className="w-4 h-4" />
       </button>
-      {!value && placeholder && (
-        <span
-          onClick={() => openPicker(ref.current)}
-          className="absolute inset-y-0 start-9 flex items-center text-[13px] text-slate-400 pointer-events-none"
-        >
-          {placeholder}
-        </span>
-      )}
+      {/* ── ولا نصَّ عربيًّا فوق تنسيق التاريخ ────────────────────────────────
+          كان يُكتب «من البداية» فوق `mm/dd/yyyy` الذي يرسمه المتصفّح، فيتراكب
+          نصّان في خانةٍ واحدةٍ ويختلف ارتفاعُها عن جاراتها في الصفّ. والاسمُ
+          صار خارجَ الخانة (انظر أدناه)، فبقيت الخانةُ لتنسيقها وحدَه. */}
     </div>
   );
 }
@@ -84,14 +80,19 @@ export default function DateRangeFilter({ from, to, onFrom, onTo, ar, className 
 }) {
   return (
     <div className={`flex items-center gap-2 flex-wrap ${className}`}>
+      {/* «من» و«إلى» خارجَ الخانة لا داخلها: داخلَها يزاحمان التنسيقَ الذي
+          يرسمه المتصفّح فيتراكب نصّان، ويختلف ارتفاعُ الخانة عن جاراتها. */}
+      <span className="text-[12px] font-bold text-slate-600 shrink-0">{ar ? 'من' : 'From'}</span>
       <DateField ar={ar} value={from} onChange={onFrom} max={to || undefined}
-        label={ar ? 'من تاريخ' : 'From date'} placeholder={ar ? 'من البداية' : 'From the start'} />
-      <span className="text-slate-400 text-[13px] font-semibold">{ar ? '←' : '→'}</span>
+        label={ar ? 'من تاريخ' : 'From date'} />
+      <span className="text-[12px] font-bold text-slate-600 shrink-0">{ar ? 'إلى' : 'To'}</span>
       {/* ولا يُقيَّد «إلى» باليوم: مَن يكتب تاريخًا أبعد يُقصَر عليه صامتًا
           فيقرأ عددًا غير الذي طلبه ولا يعرف لماذا. الخادمُ يقف عند اللحظة
           حين تكون الخانة فارغة، وهذا يكفي. */}
       <DateField ar={ar} value={to} onChange={onTo} min={from || undefined}
-        label={ar ? 'إلى تاريخ' : 'To date'} placeholder={ar ? 'حتى اليوم' : 'Until today'} />
+        label={ar ? 'إلى تاريخ' : 'To date'} />
+      {/* «إلى» الفارغة تعني «حتى اليوم» — تُقال مرّةً بجانب الخانة لا فوقها. */}
+      {!to && <span className="text-[11px] text-slate-400 shrink-0">{ar ? '(حتى اليوم)' : '(until today)'}</span>}
       {(from || to) && (
         <button type="button" onClick={() => { onFrom(''); onTo(''); }}
           title={ar ? 'مسح المدى' : 'Clear range'}

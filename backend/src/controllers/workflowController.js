@@ -27,7 +27,14 @@ const FIELD_GROUPS = {
   ],
   manual_moderator: [
     'paymentDate', 'payingBranch', 'finalReportDestination',
-    'documentNumber', 'sendingDate', 'deliveryDate', 'accountingReview',
+    'documentNumber', 'sendingDate', 'deliveryDate',
+  ],
+  // ── ومراجعةُ الحسابات مجموعةٌ بذاتها ────────────────────────────────────
+  // كانت داخل `manual_moderator` فورثها كلُّ من يسجّل سدادًا. وهي إقرارُ
+  // المحاسبة بأنّ الصفَّ رُوجع — لا خطوةً في تسجيل السداد. وبقاؤها هناك يجعل
+  // مَن يكتب رقمَ السند يوقّع على مراجعة نفسِه.
+  accounting: [
+    'accountingReview',
   ],
   collections: [
     'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
@@ -45,19 +52,30 @@ const FIELD_GROUPS = {
 // ويضغط «صح» فلا يتغيّر شيءٌ ولا يُقال له لماذا.
 //
 // وقسمُ العمليات هو صاحبُ هذا العمل: تسجيلُ السداد والسند والإرسال والتسليم
-// عملُه اليوميّ لا استثناء. فيأخذه مديرُه وموظّفُه، ويأخذ المحاسبةُ أعمدةَ
-// المال، والباقي يبقى كما كان.
+// عملُه اليوميّ لا استثناء. فيأخذه مديرُه وموظّفُه.
+//
+// ── وأعمدةُ الفاتورة ليست له ──────────────────────────────────────────────
+// أُعطيت العملياتِ ضمنَ «أعطِه كلَّ شيء» حين عولج عطلُ «صح كانت تحفظ لا شيء»،
+// لا بقرارٍ في مَن يملكها. وهي مالُ الشركة: رقمُ الفاتورة وصافيها وضريبتُها
+// وإجماليها وتاريخُ تحصيلها — يملكها مَن يحاسِب ومَن يحصّل. فرُدَّت إليهم.
+//
+// ولا تُخفى عن الشاشة وتبقى مكتوبةً على الخادم: مَن يقرأ الخريطةَ يظنّها
+// محروسة، والحجبُ في مكانٍ واحدٍ حجبٌ في نصف الطريق.
 const OPS_FIELDS = [
   ...FIELD_GROUPS.application, ...FIELD_GROUPS.operations,
-  ...FIELD_GROUPS.manual_moderator, ...FIELD_GROUPS.collections,
+  ...FIELD_GROUPS.manual_moderator,
 ];
-const MONEY_FIELDS = [...FIELD_GROUPS.collections, 'accountingReview'];
+// أعمدةُ المال: الفاتورةُ والتحصيلُ ومراجعةُ الحسابات.
+const MONEY_FIELDS = [...FIELD_GROUPS.collections, ...FIELD_GROUPS.accounting];
+// الكشفُ كلُّه — لمن لا حاجزَ عليه.
+const ALL_FIELDS = [...OPS_FIELDS, ...MONEY_FIELDS];
 
 const ROLE_FIELD_ACCESS = {
-  super_admin: OPS_FIELDS,
+  super_admin: ALL_FIELDS,
   moderator: [...FIELD_GROUPS.application, ...FIELD_GROUPS.manual_moderator],
   operations_manager: OPS_FIELDS,
   operations_staff: OPS_FIELDS,
+  // الإدارةُ العليا فوق المحاسبة لا دونَها.
   admin: MONEY_FIELDS,
   employee: FIELD_GROUPS.collections,
   finance_manager: MONEY_FIELDS,
@@ -69,11 +87,38 @@ const ROLE_FIELD_ACCESS = {
   // ورقمَ السند والفرعَ المسدِّد ووجهةَ الكشف النهائيّة — وكلُّها خارجَ
   // `MONEY_FIELDS`. فيصير كلَّ يومٍ يطلب من قسم العمليات تصحيحَ خانةٍ يراها
   // أمامه، أو يُقال له «حُفِظ» ولم يُحفَظ شيء.
-  collections_manager: OPS_FIELDS,
-  collections_staff: OPS_FIELDS,
+  collections_manager: ALL_FIELDS,
+  collections_staff: ALL_FIELDS,
   // تقنيةُ المعلومات في `FULL_ACCESS_ROLES` — بلا حاجزٍ في كلّ قسمٍ آخر.
-  it_manager: OPS_FIELDS,
-  it_specialist: OPS_FIELDS,
+  it_manager: ALL_FIELDS,
+  it_specialist: ALL_FIELDS,
+};
+
+/**
+ * ── والحجبُ يكون على الطرفين ────────────────────────────────────────────────
+ *
+ * إخفاءُ عمودٍ من الجدول لا يحجبه: النقطةُ ترجّع المستندَ كاملًا، فيُقرأ في
+ * أدوات المتصفّح ويخرج في ملفّ الإكسل. والحجبُ في مكانٍ واحدٍ حجبٌ في نصف
+ * الطريق، ويُقرأ أسوأَ من غيابه — لأنّ مَن رآه مخفيًّا يحسبه محجوبًا.
+ *
+ * فمن لا يملك أعمدةَ المال لا تصله أصلًا: لا في القائمة، ولا في التفاصيل، ولا
+ * في التصدير. والقاعدةُ هي هي التي يفلتر بها الحفظُ — خريطةٌ واحدة.
+ */
+const canSeeMoney = (role) => {
+  const f = ROLE_FIELD_ACCESS[role] || [];
+  return MONEY_FIELDS.some((x) => f.includes(x));
+};
+
+/** يُزيل أعمدةَ المال من مستندٍ (أو مصفوفةٍ منها) لمن لا يملكها. */
+const stripMoney = (doc) => {
+  if (!doc) return doc;
+  const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  for (const f of MONEY_FIELDS) delete plain[f];
+  return plain;
+};
+const stripMoneyFor = (role, docs) => {
+  if (canSeeMoney(role)) return docs;
+  return Array.isArray(docs) ? docs.map(stripMoney) : stripMoney(docs);
 };
 
 // Filter update body to only include fields the role can edit
@@ -175,12 +220,15 @@ const decodeColumnValue = (field, v) => {
  * وإلا لما ظهرت في القائمة إلا القيم التي اختارها المستخدم بالفعل فتعذّر توسيع
  * الاختيار.
  */
-function columnFilters(query, skipField) {
+function columnFilters(query, skipField, allowMoney = true) {
   const conds = [];
   for (const key of Object.keys(query || {})) {
     if (!key.startsWith('cf_')) continue;
     const field = key.slice(3);
     if (!FILTERABLE_COLUMNS.has(field) || field === skipField) continue;
+    // والفلترةُ على عمودٍ محجوب تكشفه بالاستنتاج: «أرِني ما إجمالي فاتورته
+    // كذا» جوابٌ عن قيمةٍ لا تُعرض. تُسقَط لمن لا يملكها.
+    if (MONEY_FIELDS.includes(field) && !allowMoney) continue;
     const raw = Array.isArray(query[key]) ? query[key] : [query[key]];
     const vals = raw.map((v) => String(v == null ? '' : v));
     if (!vals.length) continue;
@@ -231,7 +279,7 @@ exports.getWorkflows = async (req, res) => {
     const { page = 1, limit = 50 } = req.query;
     // شرطُ البحث يُبنى في مكانٍ واحد يقرأه الجدول والإحصاءات والتصدير معًا، فلا
     // يعرض عدّاد الصفوف رقمًا ويعرض الجدول تحته صفوف شرطٍ آخر.
-    const filter = buildWorkflowFilter(req.query);
+    const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role));
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [workflows, total] = await Promise.all([
@@ -245,7 +293,10 @@ exports.getWorkflows = async (req, res) => {
       OperationsWorkflow.countDocuments(filter),
     ]);
 
-    res.json({ workflows, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
+    res.json({
+      workflows: stripMoneyFor(req.user.role, workflows),
+      total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)),
+    });
   } catch (error) {
     console.error('Get workflows error:', error);
     res.status(500).json({ message: 'Failed to load workflows' });
@@ -276,7 +327,7 @@ const PENDING_PAYMENT = {
   ],
 };
 
-function buildWorkflowFilter(query, skipField) {
+function buildWorkflowFilter(query, skipField, allowMoney = true) {
   const { stage, search, dateFrom, dateTo, pendingOnly } = query || {};
   const filter = {};
   // ── «فواتير لم تصل» = بلا تاريخ سداد، لا شيء غيره ──────────────────────────
@@ -323,7 +374,9 @@ function buildWorkflowFilter(query, skipField) {
       { carOwner: { $regex: search, $options: 'i' } },
       { carNumber: { $regex: search, $options: 'i' } },
       { branch: { $regex: search, $options: 'i' } },
-      { invoiceNumber: { $regex: search, $options: 'i' } },
+      // والبحثُ برقم الفاتورة لمن يراها: مطابقتُه لمن لا يراها تؤكّد وجودَ
+      // فاتورةٍ على صفٍّ بعينه — وهي القيمةُ المحجوبة نفسُها بصورةٍ أخرى.
+      ...(allowMoney ? [{ invoiceNumber: { $regex: search, $options: 'i' } }] : []),
     ];
   }
   // فلاتر الأعمدة تُطبَّق هنا لا في المتصفح: كانت الصفحة تنزّل الجدول كلّه لتفلتره
@@ -331,7 +384,7 @@ function buildWorkflowFilter(query, skipField) {
   //
   // وتُضاف داخل `$and` لا على الجذر، لأن فلتر اليوم يحتاج `$or` (مدى اليوم أو
   // خانة فارغة) وعلى الجذر `$or` واحدة يشغلها البحث فيمحو أحدهما الآخر بصمت.
-  const conds = columnFilters(query, skipField);
+  const conds = columnFilters(query, skipField, allowMoney);
   if (conds.length) filter.$and = [...(filter.$and || []), ...conds];
   return filter;
 }
@@ -341,7 +394,7 @@ function buildWorkflowFilter(query, skipField) {
 // Powers the operations-page summary cards so they reflect all ~27k records.
 exports.getWorkflowStats = async (req, res) => {
   try {
-    const filter = buildWorkflowFilter(req.query);
+    const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role));
     // نفس الشرط الذي يفلتر به الزرّ — من تعريفٍ واحد، فلا يقول العدّاد رقمًا
     // ويفتح الزرّ غيره.
     const pendingMatch = { ...filter, $and: [...(filter.$and || []), PENDING_PAYMENT] };
@@ -388,11 +441,21 @@ exports.filterOptions = async (req, res) => {
     if (!FILTERABLE_COLUMNS.has(field)) {
       return res.status(400).json({ message: 'Unknown filter column' });
     }
-    const key = `wf:filters:${JSON.stringify(req.query || {})}`;
+    // وقائمةُ قيمِ عمودٍ محجوبٍ تعرضه قيمةً قيمة: «اجمالى الفاتوره» تُقرأ من
+    // قائمتها كما تُقرأ من الجدول. فتُمنع لمن لا يملكه.
+    if (MONEY_FIELDS.includes(field) && !canSeeMoney(req.user.role)) {
+      return res.status(403).json({ message: 'Insufficient permissions' });
+    }
+    // ── والمفتاحُ يحمل الصلاحيّة ────────────────────────────────────────
+    // الشرطُ صار يختلف باختلاف الدور (فلاترُ أعمدة المال تُسقَط لمن لا يملكها)،
+    // فمفتاحٌ لا يحمله يخدم دورًا بنتيجةٍ حُسبت لدورٍ آخر — وهي أوّلُ ثانيةٍ
+    // بعد أن يفتح محاسبٌ القائمةَ نفسَها.
+    const money = canSeeMoney(req.user.role);
+    const key = `wf:filters:${money ? 'm' : 'x'}:${JSON.stringify(req.query || {})}`;
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
-    const match = buildWorkflowFilter(req.query, field);
+    const match = buildWorkflowFilter(req.query, field, money);
     // البحث داخل القائمة يُنفَّذ هنا لا في المتصفح، لأن المتصفح لا يملك إلا القيم
     // التي بلغت السقف: البحث عن رقم كشفٍ ليس ضمن الخمسمئة الأكثر تكرارًا كان
     // يُرجع «لا توجد قيم» والقيمة موجودة في القاعدة.
@@ -466,7 +529,7 @@ exports.getWorkflow = async (req, res) => {
       return res.status(404).json({ message: 'Workflow not found' });
     }
 
-    res.json(workflow);
+    res.json(stripMoneyFor(req.user.role, workflow));
   } catch (error) {
     console.error('Get workflow error:', error);
     res.status(500).json({ message: 'Failed to load workflow details' });
@@ -998,7 +1061,7 @@ exports.exportWorkflows = async (req, res) => {
     // التصدير يقرأ الشرط نفسه الذي يقرأه الجدول — بما فيه فلاتر الأعمدة والبحث.
     // كان يتجاهلها فيُنزّل الجدول كلّه بينما الشاشة تعرض المُفلتَر، فيظنّ المستخدم
     // أن الملف نسخةٌ ممّا يراه.
-    const filter = buildWorkflowFilter(req.query);
+    const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role));
 
     // Use lean() + select only needed fields for speed — no populate needed
     const workflows = await OperationsWorkflow.find(filter)
@@ -1009,38 +1072,68 @@ exports.exportWorkflows = async (req, res) => {
     const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US') : '';
     const stageLabels = { draft: 'مسودة', submitted_to_ops: 'مرسل للتشغيل', ops_completed: 'تم التشغيل', submitted_to_collections: 'مرسل للتحصيل', completed: 'مكتمل' };
 
-    // Build AOA (array of arrays) directly — much faster than JSON objects
-    const headers = [
-      'رقم الكشف', 'تاريخ الكشف', 'من', 'الي', 'الفرع', 'مالك السياره', 'رقم السياره',
-      'نوع المالك', 'حاله التنفيذ', 'حاله الابلكيشن', 'طريقه الدفع', 'اسم المستخدم',
-      'هاتف المستخدم', 'ض / غ ض', 'قيمه الشراء', 'قيمه البيع', 'وقت التحميل',
-      'نوع تأجير السائق', 'رقم المرجع', 'اسم السائق', 'هاتف السائق', 'اسم السيارة',
-      'رقم اللوحة', 'نوع الشاحنة', 'حجم الشاحنة', 'نوع الحمولة', 'الكمية',
-      'قيمة البضائع', 'اسم المندوب', 'اسم الدولة', 'مراجعه التشغيل',
-      'تاريخ السداد', 'الفرع المسدد', 'وجهه الكشف النهائي', 'رقم السند',
-      'تاريخ الارسال', 'تاريخ التسليم', 'مراجعه الحسابات',
-      'رقم الفاتوره', 'صافي الفاتوره', 'ضريبه', 'اجمالى الفاتوره',
-      'تاريخ الفاتوره', 'ملاحظات الفاتوره', 'تاريخ التحصيل',
-      'المرحلة', 'تاريخ الإنشاء',
+    // ── عمودٌ واحدٌ في سطرٍ واحد ─────────────────────────────────────────
+    // كانت العناوينُ مصفوفةً والقيمُ مصفوفةً أخرى تُقرأ بالترتيب. فحذفُ عمودٍ
+    // يعني عدَّ المواضع في القائمتين، وأيُّ خطأٍ في العدّ يضع قيمةَ عمودٍ
+    // تحت عنوان جاره صامتًا. ولمّا صار الملفُّ يختلف باختلاف الدور لم يعد
+    // ذلك يُحتمل.
+    const COLUMNS = [
+      ['رقم الكشف', (w) => w.reportNumber || ''],
+      ['تاريخ الكشف', (w) => formatDate(w.reportDate)],
+      ['من', (w) => w.fromLocation || ''],
+      ['الي', (w) => w.toLocation || ''],
+      ['الفرع', (w) => w.branch || ''],
+      ['مالك السياره', (w) => w.carOwner || ''],
+      ['رقم السياره', (w) => w.carNumber || ''],
+      ['نوع المالك', (w) => w.ownerType || ''],
+      ['حاله التنفيذ', (w) => w.executionStatus || ''],
+      ['حاله الابلكيشن', (w) => w.applicationStatus || ''],
+      ['طريقه الدفع', (w) => w.paymentMethod || ''],
+      ['اسم المستخدم', (w) => w.username || ''],
+      ['هاتف المستخدم', (w) => w.userPhone || ''],
+      ['ض / غ ض', (w) => w.taxIndicator || ''],
+      ['قيمه الشراء', (w) => w.purchaseValue || 0],
+      ['قيمه البيع', (w) => w.sellingValue || 0],
+      ['وقت التحميل', (w) => w.loadingTime || ''],
+      ['نوع تأجير السائق', (w) => w.driverRentalType || ''],
+      ['رقم المرجع', (w) => w.reference || ''],
+      ['اسم السائق', (w) => w.driverName || ''],
+      ['هاتف السائق', (w) => w.driverPhone || ''],
+      ['اسم السيارة', (w) => w.carName || ''],
+      ['رقم اللوحة', (w) => w.plateNumber || ''],
+      ['نوع الشاحنة', (w) => w.truckType || ''],
+      ['حجم الشاحنة', (w) => w.truckSize || ''],
+      ['نوع الحمولة', (w) => w.loadType || ''],
+      ['الكمية', (w) => w.quantity || ''],
+      ['قيمة البضائع', (w) => w.goodsValue || 0],
+      ['اسم المندوب', (w) => w.representativeName || ''],
+      ['اسم الدولة', (w) => w.country || ''],
+      ['مراجعه التشغيل', (w) => w.operationsReview || ''],
+      ['تاريخ السداد', (w) => formatDate(w.paymentDate)],
+      ['الفرع المسدد', (w) => w.payingBranch || ''],
+      ['وجهه الكشف النهائي', (w) => w.finalReportDestination || ''],
+      ['رقم السند', (w) => w.documentNumber || ''],
+      ['تاريخ الارسال', (w) => formatDate(w.sendingDate)],
+      ['تاريخ التسليم', (w) => formatDate(w.deliveryDate)],
+      ['مراجعه الحسابات', (w) => w.accountingReview || '', 'accountingReview'],
+      ['رقم الفاتوره', (w) => w.invoiceNumber || '', 'invoiceNumber'],
+      ['صافي الفاتوره', (w) => w.netInvoice || 0, 'netInvoice'],
+      ['ضريبه', (w) => w.tax || 0, 'tax'],
+      ['اجمالى الفاتوره', (w) => w.totalInvoice || 0, 'totalInvoice'],
+      ['تاريخ الفاتوره', (w) => formatDate(w.invoiceDate), 'invoiceDate'],
+      ['ملاحظات الفاتوره', (w) => w.invoiceNotes || '', 'invoiceNotes'],
+      ['تاريخ التحصيل', (w) => formatDate(w.collectionDate), 'collectionDate'],
+      ['المرحلة', (w) => stageLabels[w.stage] || w.stage],
+      ['تاريخ الإنشاء', (w) => new Date(w.createdAt).toLocaleDateString('en-US')],
     ];
 
-    const rows = workflows.map((w) => [
-      w.reportNumber || '', formatDate(w.reportDate), w.fromLocation || '', w.toLocation || '',
-      w.branch || '', w.carOwner || '', w.carNumber || '', w.ownerType || '',
-      w.executionStatus || '', w.applicationStatus || '', w.paymentMethod || '',
-      w.username || '', w.userPhone || '', w.taxIndicator || '',
-      w.purchaseValue || 0, w.sellingValue || 0, w.loadingTime || '',
-      w.driverRentalType || '', w.reference || '', w.driverName || '', w.driverPhone || '',
-      w.carName || '', w.plateNumber || '', w.truckType || '', w.truckSize || '',
-      w.loadType || '', w.quantity || '', w.goodsValue || 0,
-      w.representativeName || '', w.country || '', w.operationsReview || '',
-      formatDate(w.paymentDate), w.payingBranch || '', w.finalReportDestination || '',
-      w.documentNumber || '', formatDate(w.sendingDate), formatDate(w.deliveryDate),
-      w.accountingReview || '', w.invoiceNumber || '', w.netInvoice || 0,
-      w.tax || 0, w.totalInvoice || 0, formatDate(w.invoiceDate),
-      w.invoiceNotes || '', formatDate(w.collectionDate),
-      stageLabels[w.stage] || w.stage, new Date(w.createdAt).toLocaleDateString('en-US'),
-    ]);
+    // الملفُّ يُفتح خارج النظام حيث لا حارس، فما لا يُعرض على الشاشة لا يخرج
+    // فيه — وإلّا كان الحجبُ زينةً يلتفّ عليها زرُّ تصدير.
+    const money = canSeeMoney(req.user.role);
+    const cols = COLUMNS.filter(([, , field]) => money || !field);
+
+    const headers = cols.map(([h]) => h);
+    const rows = workflows.map((w) => cols.map(([, get]) => get(w)));
 
     const aoa = [headers, ...rows];
     const ws = XLSX.utils.aoa_to_sheet(aoa);

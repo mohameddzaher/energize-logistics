@@ -267,6 +267,58 @@ async function call(method, path, ck, body) {
     (await call('GET', '/api/collections-dept/parties/not-an-id', mgr.ck)).status === 400);
   if (outsider) console.log(`  ~  (دورٌ خارج القسم للمقارنة: ${outsider.email})`);
 
+  // ── ١٠ · الأعمدةُ الماليّة محجوبةٌ عن العمليات ─────────────────────────
+  // لا على الشاشة وحدَها: النقطةُ لا تُرجعها، والتصديرُ لا يخرج بها، وقائمةُ
+  // قيمِ العمود تُمنع. والحجبُ في مكانٍ واحدٍ حجبٌ في نصف الطريق.
+  head('الأعمدة المالية محجوبة عن العمليات');
+  const MONEY = ['invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectionDate', 'accountingReview'];
+  await User.deleteMany({ email: { $regex: '^zz-money' } });
+  const probes = {};
+  for (const role of ['operations_staff', 'operations_manager']) {
+    const u = await User.create({ email: `zz-money-${role}@example.invalid`, password: PASSWORD, firstName: 'ت', lastName: 'ت', role });
+    probes[role] = await login(u.email);
+  }
+  try {
+    for (const role of Object.keys(probes)) {
+      const ck = probes[role].ck;
+      const pf = await call('GET', '/api/workflows/permissions', ck);
+      const own = pf.json?.roleAccess?.[role] || [];
+      ok(`${role} لا يملك كتابةَ أعمدة المال`, MONEY.every((f) => !own.includes(f)),
+        MONEY.filter((f) => own.includes(f)).join(', ') || `${own.length} حقلًا بلا مال`);
+      ok(`${role} يملك السداد والسند`, ['paymentDate', 'documentNumber', 'payingBranch'].every((f) => own.includes(f)));
+
+      const lst = await call('GET', '/api/workflows?limit=1', ck);
+      const w0 = (lst.json?.workflows || [])[0] || {};
+      ok(`${role} لا تصله في القائمة`, MONEY.every((f) => !(f in w0)),
+        MONEY.filter((f) => f in w0).join(', ') || 'نظيفة');
+
+      if (w0._id) {
+        const one = await call('GET', `/api/workflows/${w0._id}`, ck);
+        ok(`${role} لا تصله في التفاصيل`, MONEY.every((f) => !(f in (one.json || {}))),
+          MONEY.filter((f) => f in (one.json || {})).join(', ') || 'نظيفة');
+      }
+
+      const fo = await call('GET', '/api/workflows/filters?field=totalInvoice', ck);
+      ok(`${role} لا يفتح قائمة قيمها`, fo.status === 403, `${fo.status}`);
+
+      // ويُرفض ما يكتبه فيها صراحةً — لا يُبتلع ويُقال «حُفِظ».
+      if (row) {
+        const w = await call('PUT', `/api/workflows/${row._id}`, ck, { invoiceNumber: 'zz-should-not-save' });
+        const after = await OperationsWorkflow.findById(row._id).select('invoiceNumber').lean();
+        ok(`${role} لا يكتب فيها`, after.invoiceNumber !== 'zz-should-not-save',
+          `HTTP ${w.status} · مرفوض: ${(w.json?.refusedFields || []).join(', ') || '—'}`);
+      }
+    }
+
+    // ومَن يملكها يراها — وإلّا كان الحجبُ عامًّا لا مقصودًا.
+    const mine = await call('GET', '/api/workflows?limit=1', mgr.ck);
+    const m0 = (mine.json?.workflows || [])[0] || {};
+    ok('التحصيل تصله أعمدة المال', MONEY.some((f) => f in m0), Object.keys(m0).filter((k) => MONEY.includes(k)).join(', '));
+    ok('والتحصيل يفتح قائمة قيمها', (await call('GET', '/api/workflows/filters?field=totalInvoice', mgr.ck)).status === 200);
+  } finally {
+    await User.deleteMany({ email: { $regex: '^zz-money' } });
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   await mongoose.disconnect();
   process.exit(fail ? 1 : 0);

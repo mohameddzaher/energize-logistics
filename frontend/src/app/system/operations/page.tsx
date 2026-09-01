@@ -91,9 +91,15 @@ const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'delive
 const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
 
 // ── أعمدة التصدير ────────────────────────────────────────────────────────────
-// مكتوبةٌ هنا لا مشتقّةٌ من الجدول: الجدول يُخفي الأعمدة المالية عمّن لا يراها،
-// والملفّ يخرج بما طلبه صاحبه — فاشتقاقُه من الشاشة كان سيُسقط أعمدةً بحسب مَن
-// ضغط الزرّ لا بحسب ما في البيانات.
+// مكتوبةٌ هنا لا مشتقّةٌ من ترتيب الجدول، ليبقى الملفُّ ثابتَ الشكل.
+//
+// وأعمدةُ المال تُحذف منه لمن لا يملكها: الخادمُ لم يعد يرسلها أصلًا، فتركُها
+// في القائمة يُخرج ثمانيةَ أعمدةٍ فارغةٍ بعناوينها — وعمودٌ فارغٌ بعنوانٍ
+// يُقرأ «لا فاتورة لهذا الكشف»، وهو غيرُ «لا تُعرض لك».
+const MONEY_EXPORT_KEYS = new Set([
+  'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
+  'invoiceDate', 'invoiceNotes', 'collectionDate',
+]);
 const EXPORT_COLUMNS = [
   { header: 'رقم الطلب', key: 'reportNumber', width: 14 },
   { header: 'تاريخ الطلب', key: 'reportDate', width: 12 },
@@ -666,7 +672,7 @@ export default function OperationsWorkflowPage() {
     return [{
       name: lang === 'ar' ? 'الطلبات' : 'Workflows',
       rows: data.map(exportRow) as unknown as Record<string, any>[],
-      columns: EXPORT_COLUMNS,
+      columns: canViewFinancials ? EXPORT_COLUMNS : EXPORT_COLUMNS.filter((c) => !MONEY_EXPORT_KEYS.has(c.key)),
     }];
   };
 
@@ -1060,7 +1066,9 @@ export default function OperationsWorkflowPage() {
                 {ColHead('documentNumber', T.thDocNumber, 'text-purple-300')}
                 {ColHead('sendingDate', T.thSendingDate, 'text-purple-300')}
                 {ColHead('deliveryDate', T.thDeliveryDate, 'text-purple-300')}
-                {ColHead('accountingReview', T.thAccountingReview, 'text-purple-300')}
+                {/* مراجعةُ الحسابات إقرارُ المحاسبة، فمكانُها مع أعمدة المال لا مع
+                    تسجيل السداد — ومَن لا يراها لا تصله من الخادم أصلًا. */}
+                {canViewFinancials && ColHead('accountingReview', T.thAccountingReview, 'text-purple-300')}
                 {/* Collections — financial columns, finance/owner roles only */}
                 {canViewFinancials && ColHead('invoiceNumber', T.thInvoiceNumber, 'text-green-400')}
                 {canViewFinancials && ColHead('netInvoice', T.thNetInvoice, 'text-green-400')}
@@ -1259,7 +1267,7 @@ export default function OperationsWorkflowPage() {
                         {textCell('documentNumber', 'text-purple-700')}
                         {dateCell('sendingDate', 'text-purple-700')}
                         {dateCell('deliveryDate', 'text-purple-700')}
-                        {accountingReviewCell()}
+                        {canViewFinancials && accountingReviewCell()}
                         {/* Collections — financial, finance/owner roles only */}
                         {canViewFinancials && textCell('invoiceNumber', 'text-green-700')}
                         {canViewFinancials && numCell('netInvoice', 'text-green-700')}

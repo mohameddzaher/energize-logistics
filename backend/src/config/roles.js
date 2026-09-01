@@ -41,6 +41,14 @@ const SECTION_ROLES = [
     manager: { key: 'operations_manager', ar: 'مدير العمليات', en: 'Operations Manager' },
     staff: [{ key: 'operations_staff', ar: 'موظف العمليات', en: 'Operations Team' }] },
 
+  // ── قسمُ التحصيل ────────────────────────────────────────────────────────
+  // كان التحصيلُ عملًا موزَّعًا: صفحةُ «متابعات التحصيل» تحت العملاء والمالية،
+  // وأعمدةُ الفاتورة والتحصيل داخل سير عمل التشغيل، ولا قسمَ يملكهما. فصار له
+  // قسمُه وأدوارُه: العملاءُ الذين نحصّل منهم، والموردون الذين نسدّد لهم.
+  { section: 'Collections',
+    manager: { key: 'collections_manager', ar: 'مدير التحصيل', en: 'Collections Manager' },
+    staff: [{ key: 'collections_staff', ar: 'موظف التحصيل', en: 'Collections Officer' }] },
+
   { section: 'Operations Platform',
     manager: { key: 'ops_platform_manager', ar: 'مدير منصة الأوبريشن', en: 'Operations Platform Manager' },
     staff: [{ key: 'ops_platform_staff', ar: 'موظف منصة الأوبريشن', en: 'Operations Platform Team' }] },

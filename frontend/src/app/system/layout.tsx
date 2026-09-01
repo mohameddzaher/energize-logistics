@@ -30,6 +30,7 @@ import { FLEET_EDIT_ROLES as FLEET_ROLES, FLEET_ADMIN_ROLES } from '@/lib/fleet'
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
 
 import { isManagedSection, canAccessSection } from '@/lib/sections';
+import { ALL_ROLES } from '@/lib/roles';
 import { PERF_STAFF_ROLES } from '@/lib/performance';
 
 // Section-KPI pages render TeamBoard, which admits PERF_STAFF_ROLES only — a
@@ -70,20 +71,33 @@ const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manage
 //
 // فصارت القاعدةُ عكسَ ذلك: الخدمةُ الذاتيّة والإعداداتُ لكلّ **دورٍ داخليّ**،
 // ويُستثنى الشريكُ الخارجيّ وحده (بوابةُ العميل/المورّد لها صفحاتُها).
-const EXTERNAL_ROLES = ['partner', 'customer_portal', 'vendor_portal'];
+// ── والشريكُ الخارجيّ مفتاحُه `client` ────────────────────────────────────
+// كانت القائمةُ ثلاثةَ مفاتيحَ لا وجودَ لأيٍّ منها في `config/roles.js`، فكان
+// `isInternal` يصدق على الشريك الخارجيّ نفسِه — ولم يظهر العطلُ إلّا لأنّ
+// قائمةَ الأدوار بجانبه كانت تحجبه. القاعدةُ التي تحرس وحدَها لا يجوز أن تكون
+// خاطئة.
+const EXTERNAL_ROLES = ['client', 'partner', 'customer_portal', 'vendor_portal'];
 const isInternal = (role?: string | null) => !!role && !EXTERNAL_ROLES.includes(role);
 
-const SELF_SERVICE_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'moderator',
-  'operations_manager', 'operations_staff', 'workshop_manager', 'workshop_employee', 'procurement_staff',
-  'b2c_manager', 'b2c_project_lead', 'remote_employee', 'remote_manager',
-  'hr_manager', 'hr_specialist',
-  'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
-  'finance_manager', 'accountant', 'sales_manager', 'sales_rep',
-  'procurement_manager', 'customs_manager', 'customs_officer',
-  'marketing_manager', 'marketing_specialist', 'bd_manager', 'bd_specialist',
-  'fleet_manager', 'fleet_supervisor', 'administration_staff', 'contracts_manager',
+// قسمُ التحصيل. القسمُ مُدارٌ بمصفوفة الصلاحيّات، فهذه القائمةُ توثيقٌ لمن
+// يملكه افتراضيًّا — والمصفوفةُ هي التي تفتحه وتغلقه.
+const COLLECTIONS_NAV_ROLES = [
+  'super_admin', 'admin', 'it_manager', 'it_specialist',
+  'collections_manager', 'collections_staff',
+  'operations_manager', 'finance_manager', 'accountant',
 ];
+
+// ── الخدمةُ الذاتيّة تُشتقّ ولا تُكتب ────────────────────────────────────
+// التعليقُ فوق يقول إنّ القاعدة صارت «كلُّ دورٍ داخليّ»، والسطرُ تحته بقي
+// قائمةً تُكتب باليد — فسقط منها عشرةُ أدوارٍ وُلدت بعدها: مديرُ المركبات
+// وموظّفُه، ولوكيشن سوليوشن، ومنصّةُ الأوبريشن، وطلباتُ الشحنات، ومديرُ
+// الشؤون الإدارية، وموظّفُ العقود. فصاحبُ أيٍّ منها لا يرى رصيدَ إجازاته ولا
+// يجد أين يصنع توقيعَه.
+//
+// المصدرُ الآن `lib/roles.ts` المولَّدُ من `config/roles.js`: كلُّ دورٍ ليس
+// شريكًا خارجيًّا. ودورٌ جديدٌ يأخذ خدمتَه الذاتيّة من أوّل يومٍ بلا سطرٍ
+// يُضاف هنا.
+const SELF_SERVICE_ROLES = ALL_ROLES.filter((r) => !EXTERNAL_ROLES.includes(r));
 
 interface NavItem {
   href: string;
@@ -189,7 +203,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/overdue', label: L.overdue, icon: <AlertTriangle className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'moderator'], section: 'Main' },
     { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'employee', 'moderator'], section: 'Main' },
     // Operations
-    { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
+    { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
     { href: '/system/operations/dispatch-sheets', label: L.dispatchSheets, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'procurement_manager', 'procurement_staff'], section: 'Operations' },
     { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
@@ -202,6 +216,21 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/operations/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/operations/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/operations/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator']), section: 'Operations', restrict: true },
+    // ── قسمُ التحصيل ──────────────────────────────────────────────────────
+    // أربعُ صفحاتٍ لا أكثر: لوحةٌ، وسجلّا العملاء والموردين، وإعداداتُ القسم.
+    // ومعها الصفحتان الثابتتان في كلّ قسم (مهامي والشكاوى).
+    { href: '/system/collections-dept/dashboard', label: lang === 'ar' ? 'لوحة التحصيل' : 'Collections Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    { href: '/system/collections-dept/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    { href: '/system/collections-dept/suppliers', label: lang === 'ar' ? 'الموردين' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    // ── وصفحةُ التشغيل من داخل قسمهم ──────────────────────────────────────
+    // الكشفُ ورقةُ عملِ التحصيل: منه يُقرأ ما لنا وما علينا، وفيه تُكتب
+    // الفاتورةُ وتاريخُ التحصيل. ووضعُ الرابط هنا يوفّر عليهم البحثَ عنه في
+    // قسمٍ لا يملكونه.
+    { href: '/system/operations', label: lang === 'ar' ? 'سير عمل التشغيل' : 'Operations Workflow', icon: <ClipboardList className="w-5 h-5" />, roles: ['collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
+    { href: '/system/collections-dept/my-tasks', label: lang === 'ar' ? 'مهامي' : 'My Tasks', icon: <ListTodo className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    { href: '/system/collections-dept/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    { href: '/system/collections-dept/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(COLLECTIONS_NAV_ROLES), section: 'Collections', restrict: true },
+    { href: '/system/collections-dept/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'collections_manager'], section: 'Collections', restrict: true },
     // Customs Clearance
     // Operations Platform (قسم الأوبريشن) — live mirror of the external UPL field-ops system (B2B: Fleet + 3PL)
     { href: '/system/ops', label: lang === 'ar' ? 'لوحة الأوبريشن' : 'Ops Dashboard', icon: <Activity className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },

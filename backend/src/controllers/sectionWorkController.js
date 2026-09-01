@@ -40,6 +40,7 @@ const SECTIONS = [
   'crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'workshop', 'customs',
   'marketing', 'bd', 'it', 'fleet', 'contracts', 'vehicles',
   'finance', 'operations', 'shipment-orders', 'ls2', 'administration', 'b2c', 'remote',
+  'collections',
 ];
 
 const isSuper = (u) => u && u.role === 'super_admin';

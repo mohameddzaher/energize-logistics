@@ -40,6 +40,7 @@ const auditRoutes = require('./routes/audit');
 const analyticsRoutes = require('./routes/analytics');
 const assistantRoutes = require('./routes/assistant');
 const workflowRoutes = require('./routes/workflows');
+const collectionsDeptRoutes = require('./routes/collectionsDept');
 const taskRoutes = require('./routes/tasks');
 const branchRoutes = require('./routes/branches');
 const vendorRoutes = require('./routes/vendors');
@@ -212,6 +213,10 @@ app.use('/api/vendors', vendorRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/expense-categories', expenseCategoryRoutes);
 app.use('/api/wallet', authenticate, sectionGate('Operations'), walletRoutes);
+// قسمُ التحصيل. البادئةُ `-dept` تميّزها عن `/api/collections` (متابعاتُ
+// التحصيل تحت العملاء والمالية) — ومطابقةُ express تقف عند حدّ المقطع فلا
+// تلتقط إحداهما الأخرى.
+app.use('/api/collections-dept', authenticate, sectionGate('Collections'), collectionsDeptRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/workshop', authenticate, sectionGate('Workshop'), workshopRoutes);
 app.use('/api/complaints', complaintRoutes);

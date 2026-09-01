@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
@@ -59,6 +60,13 @@ class ResourceConfig {
   /// تُعيد قائمة إجراءات لكل صف؛ كل إجراء ينفّذ طلبًا ثم تُحدَّث القائمة.
   final List<ResourceAction> Function(Map<String, dynamic>)? rowActions;
 
+  /// يُرسل نصُّ البحث إلى الخادم (`q=`) بدل تصفيته في التطبيق.
+  ///
+  /// البحثُ في المحمَّل وحدَه يصحّ ما دامت القائمةُ تُحمَّل كاملة. أمّا سجلٌّ
+  /// فيه ثلاثةُ آلافِ صفٍّ فلا يُنزَّل إلى هاتفٍ على شبكةٍ مقيَّدة، فيبحث
+  /// المستخدمُ في أوّل مئتين ويُقال له «لا نتائج» — وهو قصٌّ صامت.
+  final bool serverSearch;
+
   const ResourceConfig({
     required this.arTitle, required this.enTitle, required this.icon,
     required this.endpoint, required this.listKey,
@@ -67,6 +75,7 @@ class ResourceConfig {
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
     this.onOpen, this.filterField, this.sortFields = const [], this.rowActions,
+    this.serverSearch = false,
   });
 
   String get title => tr(arTitle, enTitle);
@@ -137,13 +146,26 @@ class _ResourceScreenState extends State<ResourceScreen> {
 
   @override
   void dispose() {
+    _searchTimer?.cancel();
     Live.instance.off(cfg.liveEvent, _onLive);
     super.dispose();
   }
 
+  // نداءُ الخادم عند كلّ حرفٍ إسرافٌ على شبكةٍ مقيَّدة — والمؤقّتُ السابقُ
+  // يُلغى فلا تصل نتيجةُ حرفٍ قديمٍ بعد نتيجة ما كُتب أخيرًا.
+  Timer? _searchTimer;
+  void _searchDebounced() {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 350), () { if (mounted) _load(); });
+  }
+
   Future<void> _load() async {
     try {
-      final qs = [if (cfg.listQuery.isNotEmpty) cfg.listQuery, 'limit=$_limit'].join('&');
+      final qs = [
+        if (cfg.listQuery.isNotEmpty) cfg.listQuery,
+        'limit=$_limit',
+        if (cfg.serverSearch && _q.trim().isNotEmpty) 'q=${Uri.encodeQueryComponent(_q.trim())}',
+      ].join('&');
       final d = await Api.instance.get('${cfg.endpoint}?$qs');
       if (!mounted) return;
       // نتحمّل أي شكل استجابة: {listKey:[...]} أو مصفوفة مباشرة — بلا كراش.
@@ -336,6 +358,9 @@ class _ResourceScreenState extends State<ResourceScreen> {
     final filtered = _applySort(_rows.where((r) {
       if (_filter.isNotEmpty && (r[cfg.filterField] ?? '').toString() != _filter) return false;
       if (q.isEmpty) return true;
+      // الخادمُ بحث بالفعل — وإعادةُ التصفية هنا تُسقط ما طابقه في حقلٍ
+      // لا يعرفه `searchFields`.
+      if (cfg.serverSearch) return true;
       return cfg.searchFields.any((f) => _fold((r[f] ?? '').toString()).contains(q));
     }).toList());
     // عدّاد كل خيار تصفية محسوبًا من كامل الصفوف المحمّلة.
@@ -397,7 +422,10 @@ class _ResourceScreenState extends State<ResourceScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
                     child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
+                      onChanged: (v) {
+                        setState(() => _q = v);
+                        if (cfg.serverSearch) _searchDebounced();
+                      },
                       decoration: InputDecoration(
                         hintText: tr('ابحث…', 'Search…'),
                         prefixIcon: const Icon(Icons.search),

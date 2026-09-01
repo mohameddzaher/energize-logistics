@@ -31,6 +31,16 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff'],
   },
   {
+    // قسمُ التحصيل — العملاءُ الذين نحصّل منهم والموردون الذين نسدّد لهم.
+    //
+    // البادئةُ `/api/collections-dept` وليست `/api/collections`: تلك مأخوذةٌ
+    // لمتابعات التحصيل تحت «العملاء والمالية»، ومطابقةُ express تقف عند حدّ
+    // المقطع فلا تتداخلان — لكن التسميةَ الصريحة تمنع الالتباس عند القراءة.
+    key: 'Collections',
+    apiPrefixes: ['/api/collections-dept'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'finance_manager'],
+  },
+  {
     key: 'Operations Platform',
     apiPrefixes: ['/api/ops'],
     defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations_staff', 'moderator', 'employee'],
@@ -166,6 +176,7 @@ const SECTION_KEYS = SECTIONS.map((s) => s.key);
 const SECTION_LABELS_AR = {
   'Customers & Finance': 'العملاء والمالية',
   'Operations': 'العمليات',
+  'Collections': 'التحصيل',
   'Operations Platform': 'منصة الأوبريشن',
   'Shipment Orders': 'طلبات الشحنات',
   'Fleet Management': 'إدارة الأسطول',

@@ -11,7 +11,24 @@ router.use(authenticate);
 // All workflow-related roles. Finance/collections staff (finance_manager,
 // accountant) are included so they can open the operations page, see the
 // financial columns, and tick the accounting-review checkbox.
-const allWorkflowRoles = ['super_admin', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'finance_manager', 'accountant'];
+//
+// ── وقسمُ التحصيل معهم ────────────────────────────────────────────────────
+// الكشفُ هو ورقةُ عملِ التحصيل: منه يُقرأ ما لنا وما علينا، وفيه تُكتب الفاتورةُ
+// وتاريخُ التحصيل. ومنعُه من الصفحة كان يعني أن يُملي أرقامَه على قسمٍ آخر
+// ليكتبها له. وصلاحيّةُ الحقل تُفحص داخل المتحكّم، فدخولُ الصفحة لا يمنح شيئًا
+// بذاته — والأدوارُ هنا هي مَن يصل إلى النقطة أصلًا.
+//
+// ── وتقنيةُ المعلومات كانت خارجَها ────────────────────────────────────────
+// الشريطُ الجانبيّ يعرض صفحةَ التشغيل لمدير تقنية المعلومات ولأخصائيّه، وكلُّ
+// نداءٍ فيها يردّ ٤٠٣ — رابطٌ ميّتٌ منذ كُتب. والدوران في `FULL_ACCESS_ROLES`
+// أي بلا حاجزٍ في كلّ قسمٍ آخر؛ وهذا المسارُ بلا `sectionGate` فلا يشملهما
+// المنحُ الديناميّ الذي يفتحه لهما في غيره.
+const allWorkflowRoles = [
+  'super_admin', 'admin', 'it_manager', 'it_specialist',
+  'employee', 'operations_manager', 'operations_staff',
+  'moderator', 'finance_manager', 'accountant',
+  'collections_manager', 'collections_staff',
+];
 
 // List & export
 router.get('/export', authorize(...allWorkflowRoles), workflowController.exportWorkflows);

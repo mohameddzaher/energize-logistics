@@ -369,6 +369,53 @@ const REGISTRY = [
     roles: ['customs_manager', 'customs_officer', 'operations_manager'],
     storeLabel: true, seed,
   })),
+  // ── قوائمُ قسم التحصيل ─────────────────────────────────────────────────────
+  // كلُّ قائمةٍ منسدلةٍ في القسم تُدار من إعداداته. القيمُ قليلةٌ ومعروفة،
+  // والكتابةُ الحرّة فيها لا تضيف خيارًا بل صيغةَ كتابةٍ أخرى للشيء نفسِه —
+  // فيصير «متأخر» و«متاخر» حالتين في التقرير الواحد.
+  ...[
+    ['collections_party_type', 'تصنيف الطرف', 'Party Types', [
+      { key: 'company', nameAr: 'شركة', nameEn: 'Company' },
+      { key: 'establishment', nameAr: 'مؤسسة', nameEn: 'Establishment' },
+      { key: 'individual', nameAr: 'فرد', nameEn: 'Individual' },
+      { key: 'government', nameAr: 'جهة حكومية', nameEn: 'Government' },
+    ]],
+    ['collections_payment_terms', 'شروط السداد', 'Payment Terms', [
+      { key: 'cash', nameAr: 'نقدي', nameEn: 'Cash' },
+      { key: 'net_15', nameAr: '١٥ يوم', nameEn: 'Net 15' },
+      { key: 'net_30', nameAr: '٣٠ يوم', nameEn: 'Net 30' },
+      { key: 'net_45', nameAr: '٤٥ يوم', nameEn: 'Net 45' },
+      { key: 'net_60', nameAr: '٦٠ يوم', nameEn: 'Net 60' },
+      { key: 'net_90', nameAr: '٩٠ يوم', nameEn: 'Net 90' },
+    ]],
+    ['collections_status', 'حالة التحصيل', 'Collection Statuses', [
+      { key: 'regular', nameAr: 'منتظم', nameEn: 'Regular' },
+      { key: 'late', nameAr: 'متأخر', nameEn: 'Late' },
+      { key: 'defaulting', nameAr: 'متعثر', nameEn: 'Defaulting' },
+      { key: 'on_hold', nameAr: 'متوقف', nameEn: 'On hold' },
+      { key: 'under_review', nameAr: 'تحت المراجعة', nameEn: 'Under review' },
+      { key: 'legal', nameAr: 'إجراء قضائي', nameEn: 'Legal action' },
+    ]],
+    ['collections_channel', 'وسيلة المتابعة', 'Follow-up Channels', [
+      { key: 'call', nameAr: 'اتصال', nameEn: 'Call' },
+      { key: 'whatsapp', nameAr: 'واتساب', nameEn: 'WhatsApp' },
+      { key: 'email', nameAr: 'بريد إلكتروني', nameEn: 'Email' },
+      { key: 'visit', nameAr: 'زيارة', nameEn: 'Visit' },
+    ]],
+    ['collections_city', 'مدن التحصيل', 'Collections Cities', [
+      { key: 'riyadh', nameAr: 'الرياض', nameEn: 'Riyadh' },
+      { key: 'jeddah', nameAr: 'جدة', nameEn: 'Jeddah' },
+      { key: 'dammam', nameAr: 'الدمام', nameEn: 'Dammam' },
+      { key: 'jazan', nameAr: 'جازان', nameEn: 'Jazan' },
+      { key: 'yanbu', nameAr: 'ينبع', nameEn: 'Yanbu' },
+      { key: 'rabigh', nameAr: 'رابغ', nameEn: 'Rabigh' },
+      { key: 'sudair', nameAr: 'سدير', nameEn: 'Sudair' },
+    ]],
+  ].map(([type, nameAr, nameEn, seed]) => ({
+    type, module: 'collections', nameAr, nameEn,
+    roles: ['collections_manager', 'collections_staff', 'finance_manager'],
+    storeLabel: true, seed,
+  })),
 ];
 
 const byType = (type) => REGISTRY.find((r) => r.type === type) || null;

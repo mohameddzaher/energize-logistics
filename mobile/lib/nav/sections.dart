@@ -122,6 +122,23 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('لوحة المحفظة', 'Wallet Dashboard', Icons.pie_chart_outline, (c) => const WalletDashboardScreen()),
       ],
     ),
+    // ── قسمُ التحصيل ────────────────────────────────────────────────────
+    // أربعُ صفحاتٍ لا أكثر، ومعها الثابتتان في كلّ قسم. وصفحةُ التشغيل من
+    // داخل قسمهم: الكشفُ ورقةُ عملهم اليوميّة، وبحثُها في قسمٍ لا يملكونه
+    // عملٌ يومي زائد.
+    AppSection(
+      key: 'Collections', arTitle: 'التحصيل', enTitle: 'Collections', icon: Icons.request_quote_outlined,
+      roles: const [..._admins, 'collections_manager', 'collections_staff', 'operations_manager', 'finance_manager', 'accountant'],
+      pages: [
+        AppPage('لوحة التحصيل', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: collectionsDashSpec)),
+        AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: collectionsCustomersCfg)),
+        AppPage('الموردون', 'Suppliers', Icons.local_shipping_outlined, (c) => ResourceScreen(config: collectionsSuppliersCfg)),
+        AppPage('سير عمل التشغيل', 'Operations Workflow', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen()),
+        AppPage('القوائم المرجعية', 'Reference Data', Icons.tune_rounded, (c) => const ReferenceDataScreen()),
+        AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'collections')),
+        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'collections', complaints: true)),
+      ],
+    ),
     // العملاء والمالية — منقول لأسفل (غير مستخدم حاليًا) قبل الشؤون الإدارية.
     AppSection(
       key: 'Customers & Finance', arTitle: 'العملاء والمالية', enTitle: 'Customers & Finance', icon: Icons.payments_outlined,

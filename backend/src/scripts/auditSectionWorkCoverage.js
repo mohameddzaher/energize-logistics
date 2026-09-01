@@ -30,6 +30,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
 const MAP = {
   'Customers & Finance': ['finance', 'finance'],
   Operations: ['operations', 'operations'],
+  Collections: ['collections', 'collections-dept'],
   'Operations Platform': ['ops', 'ops'],
   'Shipment Orders': ['shipment-orders', 'shipment-orders'],
   'Fleet Management': ['fleet', 'fleet'],

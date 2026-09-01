@@ -15,6 +15,18 @@ import 'resource.dart';
 
 String _s(Map<String, dynamic> r, String k) => (r[k] ?? '').toString();
 
+/// رقمٌ مقروءٌ بفواصل الآلاف — الرقمُ الطويل بلا فواصلَ لا يُقرأ على شاشة هاتف.
+String _n(dynamic v) {
+  final n = v is num ? v : num.tryParse((v ?? '').toString()) ?? 0;
+  final whole = n.round().abs().toString();
+  final buf = StringBuffer(n < 0 ? '-' : '');
+  for (var i = 0; i < whole.length; i++) {
+    if (i > 0 && (whole.length - i) % 3 == 0) buf.write(',');
+    buf.write(whole[i]);
+  }
+  return buf.toString();
+}
+
 // حقل علاقة الشركة لسجلات الـ CRM (صفقة/جهة اتصال/مهمة/نشاط) — يربطها بشركة
 // بدل ما تتحفظ يتيمة. يعرض الاسم العربي إن وُجد وإلا الإنجليزي.
 FieldSpec _crmCompanyLookup() => FieldSpec('company', 'الشركة', 'Company',
@@ -969,6 +981,69 @@ final shipmentOrdersVehiclesCfg = ResourceConfig(
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
+
+// ── أطرافُ التحصيل ─────────────────────────────────────────────────────────
+// سجلٌّ واحدٌ بشكلين: العميلُ يدفع لنا والموردُ ندفع له. الأرقامُ (المستحقّ
+// والمحصَّل) مشتقّةٌ في الخادم من كشوف التشغيل، فلا يقول التطبيقُ رقمًا يخالف
+// الموقع.
+ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
+      arTitle: customer ? 'عملاء التحصيل' : 'موردو التحصيل',
+      enTitle: customer ? 'Collections Customers' : 'Collections Suppliers',
+      icon: customer ? Icons.people_outline : Icons.local_shipping_outlined,
+      endpoint: '/api/collections-dept/parties',
+      listKey: 'parties',
+      listQuery: 'kind=${customer ? 'customer' : 'supplier'}',
+      updateMethod: 'PUT',
+      liveEvent: 'collections:party',
+      // ثلاثةُ آلافِ موردٍ لا تُنزَّل إلى هاتف — فالبحثُ على الخادم لا في
+      // المحمَّل، وإلّا بحث المستخدمُ في أوّل مئتين وقيل له «لا نتائج».
+      serverSearch: true,
+      searchFields: const ['name', 'phone', 'contactPerson', 'commercialRegister', 'taxNumber', 'iban', 'city'],
+      titleOf: (r) => _s(r, 'name'),
+      subtitleOf: (r) => [_s(r, 'city'), _s(r, 'phone'), _s(r, 'contactPerson')]
+          .where((x) => x.isNotEmpty)
+          .join(' · '),
+      chipsOf: (r) {
+        final due = (r['outstanding'] as num?)?.toDouble() ?? 0;
+        return [
+          if (due > 0) ('${_n(due)} ${customer ? 'لنا' : 'علينا'}', T.danger),
+          if (r['reports'] != null) ('${_n(r['reports'])} كشف', T.navy),
+          if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), T.info),
+          if (r['isActive'] == false) ('معطَّل', T.inkFaint),
+        ];
+      },
+      fields: [
+        const FieldSpec('name', 'الاسم', 'Name', required: true),
+        // النوعُ مثبَّتٌ على الصفحة التي فُتحت منها: صفحةُ العملاء لا تُنشئ موردًا.
+        FieldSpec('kind', 'النوع', 'Kind', type: FieldType.select, required: true, options: [
+          customer ? ('customer', 'عميل', 'Customer') : ('supplier', 'مورد', 'Supplier'),
+        ]),
+        const FieldSpec('phone', 'الجوال', 'Phone', type: FieldType.phone),
+        const FieldSpec('email', 'البريد', 'Email', type: FieldType.email),
+        const FieldSpec('contactPerson', 'مسؤول التواصل', 'Contact person'),
+        const FieldSpec('contactPhone', 'جوال المسؤول', 'Contact phone', type: FieldType.phone),
+        const FieldSpec('accountantName', 'محاسب الطرف', 'Their accountant'),
+        const FieldSpec('accountantPhone', 'جوال المحاسب', 'Accountant phone', type: FieldType.phone),
+        const FieldSpec('commercialRegister', 'السجل التجاري', 'Commercial register'),
+        const FieldSpec('taxNumber', 'الرقم الضريبي', 'Tax number'),
+        const FieldSpec('iban', 'الآيبان', 'IBAN'),
+        const FieldSpec('bankName', 'البنك', 'Bank'),
+        const FieldSpec('city', 'المدينة', 'City'),
+        const FieldSpec('address', 'العنوان', 'Address'),
+        const FieldSpec('paymentTerms', 'شروط السداد', 'Payment terms'),
+        const FieldSpec('status', 'حالة التحصيل', 'Collection status'),
+        const FieldSpec('creditLimit', 'حد الائتمان', 'Credit limit', type: FieldType.number),
+        const FieldSpec('nextFollowUpAt', 'المتابعة القادمة', 'Next follow-up', type: FieldType.date),
+        const FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+      ],
+      sortFields: const [
+        ('outstanding', 'المستحق', 'Outstanding'),
+        ('reports', 'عدد الكشوف', 'Reports'),
+      ],
+    );
+
+final collectionsCustomersCfg = _collectionsPartyCfg(customer: true);
+final collectionsSuppliersCfg = _collectionsPartyCfg(customer: false);
 
 final vendorsCfg = ResourceConfig(
   arTitle: 'الموردون', enTitle: 'Vendors', icon: Icons.store_outlined,

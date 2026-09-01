@@ -64,6 +64,16 @@ const ROLE_FIELD_ACCESS = {
   accountant: MONEY_FIELDS,
   customers_finance_manager: MONEY_FIELDS,
   customers_finance_staff: MONEY_FIELDS,
+  // ── وقسمُ التحصيل يكتب الكشفَ كلَّه ───────────────────────────────────────
+  // أعمدةُ المال وحدَها لا تكفيه: مَن يلاحق فاتورةً يصحّح معها اسمَ العميل
+  // ورقمَ السند والفرعَ المسدِّد ووجهةَ الكشف النهائيّة — وكلُّها خارجَ
+  // `MONEY_FIELDS`. فيصير كلَّ يومٍ يطلب من قسم العمليات تصحيحَ خانةٍ يراها
+  // أمامه، أو يُقال له «حُفِظ» ولم يُحفَظ شيء.
+  collections_manager: OPS_FIELDS,
+  collections_staff: OPS_FIELDS,
+  // تقنيةُ المعلومات في `FULL_ACCESS_ROLES` — بلا حاجزٍ في كلّ قسمٍ آخر.
+  it_manager: OPS_FIELDS,
+  it_specialist: OPS_FIELDS,
 };
 
 // Filter update body to only include fields the role can edit

@@ -47,6 +47,8 @@ const roleLabels = {
   'fleet_supervisor': ('مشرف أسطول', 'Fleet Supervisor'),
   'administration_staff': ('شؤون إدارية', 'Administrator'),
   'contracts_manager': ('مدير العقود', 'Contracts Manager'),
+  'collections_manager': ('مدير التحصيل', 'Collections Manager'),
+  'collections_staff': ('موظف التحصيل', 'Collections Officer'),
 };
 
 String roleLabel(dynamic r) {

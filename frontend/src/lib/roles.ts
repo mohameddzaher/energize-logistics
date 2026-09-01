@@ -67,6 +67,21 @@ export const SECTION_ROLES: SectionRoles[] = [
     ]
   },
   {
+    "section": "Collections",
+    "manager": {
+      "key": "collections_manager",
+      "ar": "مدير التحصيل",
+      "en": "Collections Manager"
+    },
+    "staff": [
+      {
+        "key": "collections_staff",
+        "ar": "موظف التحصيل",
+        "en": "Collections Officer"
+      }
+    ]
+  },
+  {
     "section": "Operations Platform",
     "manager": {
       "key": "ops_platform_manager",

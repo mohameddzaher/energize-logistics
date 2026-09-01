@@ -249,13 +249,36 @@ export default function OperationsWorkflowPage() {
   const role = user?.role || '';
   const canCreate = role === 'super_admin' || role === 'moderator';
   const canDelete = role === 'super_admin';
-  // Financial columns (invoice #, net, tax, total, invoice/collection dates,
-  // stage) are only visible to owners + accounting. Everyone else never sees them.
-  const canViewFinancials = ['super_admin', 'admin', 'finance_manager', 'accountant'].includes(role);
-  // Who may tick the accounting-review checkbox (matches backend write access).
-  const canEditAccountingReview = ['super_admin', 'admin', 'finance_manager', 'accountant'].includes(role);
-  // Who may tick the operations-review checkbox (matches backend `operations` group).
-  const canEditOperationsReview = ['super_admin', 'operations_manager'].includes(role);
+
+  // ── مَن يرى ماذا: يُسأل الخادمُ ولا يُخمَّن ───────────────────────────────
+  //
+  // كانت هذه الأسطرُ ثلاثَ قوائمِ أدوارٍ مكتوبةً بالإيد بجانب خريطةٍ رابعةٍ في
+  // `workflowController.ROLE_FIELD_ACCESS`. وأربعُ قوائمَ لشيءٍ واحدٍ تفترق
+  // حتمًا: قسمُ العمليات يملك الكتابةَ في أعمدة الفاتورة على الخادم منذ
+  // إصلاحِ «صح كانت تحفظ لا شيء»، ولا يراها في الجدول أصلًا — يكتب في عمودٍ
+  // لا يظهر له.
+  //
+  // فصارت تُقرأ من `/api/workflows/permissions`، وهي الخريطةُ نفسُها التي
+  // يفلتر بها الخادمُ ما يُحفظ. فلا يظهر عمودٌ لا يملكه أحد، ولا يُخفى عمودٌ
+  // يكتب فيه — وأيُّ دورٍ جديدٍ يأخذ حقولَه من أوّل يومٍ بلا سطرٍ يُضاف هنا.
+  const [myFields, setMyFields] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!role) return;
+    let alive = true;
+    api.get<{ roleAccess: Record<string, string[]> }>('/api/workflows/permissions')
+      .then((d) => { if (alive) setMyFields(new Set(d?.roleAccess?.[role] || [])); })
+      // تعذّرُ القراءة لا يفتح شيئًا: مجموعةٌ فارغةٌ تعني «لا حقول» فتبقى
+      // الأعمدةُ الماليّةُ مخفيّةً حتى يُعرف الجواب.
+      .catch(() => { if (alive) setMyFields(new Set()); });
+    return () => { alive = false; };
+  }, [role]);
+  const has = (f: string) => !!myFields?.has(f);
+
+  // الأعمدةُ الماليّة (رقمُ الفاتورة وصافيها وضريبتها وإجماليها وتواريخُها):
+  // تُعرض لمن يملك الكتابةَ فيها. و`super_admin` يرى كلَّ شيءٍ دائمًا.
+  const canViewFinancials = role === 'super_admin' || has('invoiceNumber') || has('totalInvoice');
+  const canEditAccountingReview = role === 'super_admin' || has('accountingReview');
+  const canEditOperationsReview = role === 'super_admin' || has('operationsReview');
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{ total: number; pendingInvoices: number; sumPurchaseValue: number; byStage: Record<string, number> }>({ total: 0, pendingInvoices: 0, sumPurchaseValue: 0, byStage: {} });
@@ -788,7 +811,9 @@ export default function OperationsWorkflowPage() {
               )}
             </div>
           )}
-          {(role === 'operations_manager' || role === 'super_admin') && selectedIds.size > 0 && (
+          {/* مراجعةُ التشغيل جماعيًّا — لمن يملك الكتابةَ في عمودها، وهو
+              الشرطُ نفسُه المطبَّقُ على الخانة في الصفّ الواحد. */}
+          {canEditOperationsReview && selectedIds.size > 0 && (
             <div className="relative">
               <button type="button" onClick={() => setShowBulkReview(prev => !prev)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium transition-colors">
                 <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'مراجعة' : 'Review'} ({selectedIds.size})

@@ -296,6 +296,28 @@ final customsDashSpec = DashSpec(
   ],
 );
 
+// ── لوحةُ التحصيل ───────────────────────────────────────────────────────────
+// ما لنا وما علينا. الأرقامُ كلُّها مشتقّةٌ من كشوف التشغيل، فلا يقول التطبيقُ
+// رقمًا ويقول الموقعُ غيرَه.
+final collectionsDashSpec = DashSpec(
+  arTitle: 'لوحة التحصيل', enTitle: 'Collections Dashboard',
+  endpoint: '/api/collections-dept/dashboard', liveEvent: 'collections:party',
+  stats: const [
+    DashStat('المستحق لنا', 'Receivable', 'customers.outstanding', Icons.call_received_rounded, T.danger, money: true),
+    DashStat('المستحق علينا', 'Payable', 'suppliers.outstanding', Icons.call_made_rounded, T.orange, money: true),
+    DashStat('المحصَّل', 'Collected', 'customers.settled', Icons.task_alt_rounded, T.success, money: true),
+    DashStat('إجمالي المبيعات', 'Total billed', 'customers.total', Icons.receipt_long_outlined, T.navy, money: true),
+    DashStat('كشوف لم تُحصَّل', 'Uncollected', 'customers.openReports', Icons.pending_actions_outlined, T.warn),
+    DashStat('كشوف لم تُسدَّد', 'Unpaid', 'suppliers.openReports', Icons.schedule_outlined, T.info),
+  ],
+  lists: [
+    DashList('أكبر المتأخّرين — عملاء', 'Largest due — customers', 'customers.top', (r) => _s(r, 'name'),
+        subtitle: (r) => '${_n(r['outstanding'])} ${tr('ر.س', 'SAR')} · ${_n(r['reports'])} ${tr('كشف', 'reports')}'),
+    DashList('أكبر المستحقّ — موردون', 'Largest owed — suppliers', 'suppliers.top', (r) => _s(r, 'name'),
+        subtitle: (r) => '${_n(r['outstanding'])} ${tr('ر.س', 'SAR')} · ${_n(r['reports'])} ${tr('كشف', 'reports')}'),
+  ],
+);
+
 const vehiclesDashSpec = DashSpec(
   arTitle: 'لوحة المركبات', enTitle: 'Vehicles Dashboard',
   endpoint: '/api/vehicles/dashboard', liveEvent: 'vehicle:updated',

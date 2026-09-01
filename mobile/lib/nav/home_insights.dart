@@ -28,6 +28,14 @@ const _finance = HomeInsight('نظرة مالية', 'Finance snapshot', '/api/an
   HomeKpi('نسبة التحصيل %', 'Collection %', 'collectionRate', Icons.percent_rounded, T.violet),
 ]);
 
+// ما لنا وما علينا — أوّلُ ما يُسأل عنه في التحصيل.
+const _collections = HomeInsight('نظرة التحصيل', 'Collections snapshot', '/api/collections-dept/dashboard', 'collections:party', [
+  HomeKpi('المستحق لنا', 'Receivable', 'customers.outstanding', Icons.call_received_rounded, T.danger, money: true),
+  HomeKpi('المستحق علينا', 'Payable', 'suppliers.outstanding', Icons.call_made_rounded, T.orange, money: true),
+  HomeKpi('المحصَّل', 'Collected', 'customers.settled', Icons.task_alt_rounded, T.success, money: true),
+  HomeKpi('كشوف لم تُحصَّل', 'Uncollected', 'customers.openReports', Icons.pending_actions_outlined, T.info),
+]);
+
 const _fleet = HomeInsight('نظرة الأسطول', 'Fleet snapshot', '/api/fleet/dashboard', 'fleet:updated', [
   HomeKpi('حمولات اليوم', 'Today', 'shipmentsToday', Icons.today_outlined, T.navy),
   HomeKpi('متابعات اليوم', 'Follow-ups', 'followupsToday', Icons.phone_in_talk_outlined, T.orange),
@@ -134,11 +142,14 @@ const _roleInsight = <String, HomeInsight>{
   'bd_specialist': _bd,
   'customs_manager': _customs,
   'customs_officer': _customs,
+  'collections_manager': _collections,
+  'collections_staff': _collections,
 };
 
 // صلاحية القسم (للأدوار المُدارة) → نظرة القسم.
 const _sectionInsight = <String, HomeInsight>{
   'Customers & Finance': _finance,
+  'Collections': _collections,
   'Fleet Management': _fleet,
   'Workshop': _workshop,
   'CRM': _crm,

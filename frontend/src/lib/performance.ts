@@ -11,15 +11,24 @@
 // click so the gauge, the radar and the bonus move instantly, without a round
 // trip. The server recomputes on save and its answer is authoritative.
 
+import { MANAGER_ROLES } from './roles';
+
 export type Lang = 'en' | 'ar';
 
+// ── مَن يفتح لوحةَ التقييم: يُشتقّ ولا يُكتب ──────────────────────────────
+// الخادمُ يقرّرها بقاعدةٍ واحدة (`/(_manager|_head|_lead|moderator)/` في
+// `performanceController`)، وكانت هنا قائمةً تُكتب باليد — فسقط منها ستّةُ
+// مديرين وُلدوا بعدها (المركبات، لوكيشن سوليوشن، منصّة الأوبريشن، طلبات
+// الشحنات، الشؤون الإدارية، التحصيل). فكلٌّ منهم يفتح الصفحةَ برابطٍ مباشر
+// ولا يجد لها مدخلًا في شريطه.
+//
+// و«_manager» ليست تسميةً جميلة: `config/roles.js` يوقف الخادمَ عند التحميل
+// إن خالفها دورٌ واحد — فالاشتقاقُ عليها آمنٌ كاشتقاق الخادم.
 export const PERF_STAFF_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator',
-  'operations_manager', 'hr_manager', 'hr_specialist',
-  'crm_manager', 'crm_team_lead', 'sales_manager', 'finance_manager', 'fleet_manager',
-  'procurement_manager', 'workshop_manager', 'customs_manager',
-  'b2c_manager', 'b2c_project_lead', 'remote_manager',
-  'marketing_manager', 'bd_manager', 'contracts_manager',
+  ...MANAGER_ROLES,
+  // موظّفون يشاركون في التقييم بحكم عملهم لا بحكم إدارتهم.
+  'hr_specialist', 'crm_team_lead', 'b2c_project_lead',
 ];
 // Full visibility across every department.
 export const PERF_FULL_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];

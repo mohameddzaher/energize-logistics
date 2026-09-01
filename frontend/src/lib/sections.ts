@@ -6,7 +6,7 @@
 export type Access = 'none' | 'view' | 'edit';
 
 export const MANAGED_SECTIONS: string[] = [
-  'Customers & Finance', 'Operations', 'Operations Platform', 'Customs', 'Vehicles',
+  'Customers & Finance', 'Operations', 'Collections', 'Operations Platform', 'Customs', 'Vehicles',
   'Location Solutions', 'B2C', 'Workshop', 'Remote', 'HR', 'CRM', 'Sales',
   'Accounting', 'Procurement',
   'Marketing', 'Business Development', 'Software & IT',

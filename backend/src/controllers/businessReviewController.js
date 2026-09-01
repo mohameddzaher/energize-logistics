@@ -18,6 +18,7 @@
  * BrAssignment, a collection that physically contains no meeting content.
  */
 const { BrMeeting, BrAction, BrAssignment } = require('../models/BusinessReview');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
 const User = require('../models/User');
 // Referenced by populate('linkedEmployee') below. Requiring it here means this
@@ -295,7 +296,7 @@ exports.createMeeting = async (req, res) => {
     res.status(201).json({ meeting });
   } catch (error) {
     console.error('br create meeting error:', error);
-    res.status(500).json({ message: 'تعذّر إنشاء الاجتماع' });
+    return sendMongooseError(res, error, 'تعذّر إنشاء الاجتماع');
   }
 };
 
@@ -327,7 +328,7 @@ exports.updateMeeting = async (req, res) => {
     res.json({ meeting });
   } catch (error) {
     console.error('br update meeting error:', error);
-    res.status(500).json({ message: 'تعذّر تحديث الاجتماع' });
+    return sendMongooseError(res, error, 'تعذّر تحديث الاجتماع');
   }
 };
 
@@ -432,7 +433,7 @@ exports.saveMinutes = async (req, res) => {
     res.json({ meeting });
   } catch (error) {
     console.error('br save minutes error:', error);
-    res.status(500).json({ message: 'تعذّر حفظ المحضر' });
+    return sendMongooseError(res, error, 'تعذّر حفظ المحضر');
   }
 };
 
@@ -499,7 +500,7 @@ exports.createAction = async (req, res) => {
     res.status(201).json({ action });
   } catch (error) {
     console.error('br create action error:', error);
-    res.status(500).json({ message: 'تعذّر إنشاء البند' });
+    return sendMongooseError(res, error, 'تعذّر إنشاء البند');
   }
 };
 
@@ -572,7 +573,7 @@ exports.updateAction = async (req, res) => {
     res.json({ action });
   } catch (error) {
     console.error('br update action error:', error);
-    res.status(500).json({ message: 'تعذّر تحديث البند' });
+    return sendMongooseError(res, error, 'تعذّر تحديث البند');
   }
 };
 
@@ -817,7 +818,7 @@ exports.updateAssignment = async (req, res) => {
     res.json({ assignment: a });
   } catch (error) {
     console.error('br update assignment error:', error);
-    res.status(500).json({ message: 'تعذّر تحديث المهمة' });
+    return sendMongooseError(res, error, 'تعذّر تحديث المهمة');
   }
 };
 

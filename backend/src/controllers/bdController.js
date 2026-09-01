@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
 const BdOpportunity = require('../models/BdOpportunity');
 const BdPartner = require('../models/BdPartner');
@@ -271,7 +272,7 @@ exports.createOpportunity = async (req, res) => {
     emit('bd:updated', { entity: 'opportunity', action: 'created', id: opportunity._id });
     res.status(201).json({ opportunity });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to create opportunity' });
+    return sendMongooseError(res, error, error.message || 'Failed to create opportunity');
   }
 };
 
@@ -302,7 +303,7 @@ exports.updateOpportunity = async (req, res) => {
     emit('bd:updated', { entity: 'opportunity', action: 'updated', id: opportunity._id });
     res.json({ opportunity: populated });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to update opportunity' });
+    return sendMongooseError(res, error, error.message || 'Failed to update opportunity');
   }
 };
 
@@ -375,7 +376,7 @@ exports.createPartner = async (req, res) => {
     emit('bd:updated', { entity: 'partner', action: 'created', id: partner._id });
     res.status(201).json({ partner });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to create partner' });
+    return sendMongooseError(res, error, error.message || 'Failed to create partner');
   }
 };
 
@@ -403,7 +404,7 @@ exports.updatePartner = async (req, res) => {
     emit('bd:updated', { entity: 'partner', action: 'updated', id: partner._id });
     res.json({ partner });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to update partner' });
+    return sendMongooseError(res, error, error.message || 'Failed to update partner');
   }
 };
 
@@ -478,7 +479,7 @@ exports.createTender = async (req, res) => {
     emit('bd:updated', { entity: 'tender', action: 'created', id: tender._id });
     res.status(201).json({ tender });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to create tender' });
+    return sendMongooseError(res, error, error.message || 'Failed to create tender');
   }
 };
 
@@ -506,7 +507,7 @@ exports.updateTender = async (req, res) => {
     emit('bd:updated', { entity: 'tender', action: 'updated', id: tender._id });
     res.json({ tender: { ...tender, daysLeft: daysUntil(tender.submissionDeadline) } });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to update tender' });
+    return sendMongooseError(res, error, error.message || 'Failed to update tender');
   }
 };
 
@@ -570,7 +571,7 @@ exports.createActivity = async (req, res) => {
     emit('bd:updated', { entity: 'activity', action: 'created', id: activity._id });
     res.status(201).json({ activity });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to create activity' });
+    return sendMongooseError(res, error, error.message || 'Failed to create activity');
   }
 };
 
@@ -584,7 +585,7 @@ exports.updateActivity = async (req, res) => {
     emit('bd:updated', { entity: 'activity', action: 'updated', id: activity._id });
     res.json({ activity });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to update activity' });
+    return sendMongooseError(res, error, error.message || 'Failed to update activity');
   }
 };
 

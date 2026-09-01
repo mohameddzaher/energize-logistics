@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const User = require('../models/User');
 const Customer = require('../models/Customer');
 const CrmCompany = require('../models/CrmCompany');
@@ -298,7 +299,7 @@ exports.createCompany = async (req, res) => {
     res.status(201).json({ company: full });
   } catch (error) {
     console.error('createCompany error:', error);
-    res.status(500).json({ message: 'Failed to create company' });
+    return sendMongooseError(res, error, 'Failed to create company');
   }
 };
 
@@ -316,7 +317,7 @@ exports.updateCompany = async (req, res) => {
     res.json({ company: full });
   } catch (error) {
     console.error('updateCompany error:', error);
-    res.status(500).json({ message: 'Failed to update company' });
+    return sendMongooseError(res, error, 'Failed to update company');
   }
 };
 
@@ -419,7 +420,7 @@ exports.createContact = async (req, res) => {
     res.status(201).json({ contact: full });
   } catch (error) {
     console.error('createContact error:', error);
-    res.status(500).json({ message: 'Failed to create contact' });
+    return sendMongooseError(res, error, 'Failed to create contact');
   }
 };
 
@@ -440,7 +441,7 @@ exports.updateContact = async (req, res) => {
     res.json({ contact: full });
   } catch (error) {
     console.error('updateContact error:', error);
-    res.status(500).json({ message: 'Failed to update contact' });
+    return sendMongooseError(res, error, 'Failed to update contact');
   }
 };
 
@@ -500,7 +501,7 @@ exports.createActivity = async (req, res) => {
     res.status(201).json({ activity: full });
   } catch (error) {
     console.error('createActivity error:', error);
-    res.status(500).json({ message: 'Failed to create activity' });
+    return sendMongooseError(res, error, 'Failed to create activity');
   }
 };
 
@@ -518,7 +519,7 @@ exports.updateActivity = async (req, res) => {
     res.json({ activity: full });
   } catch (error) {
     console.error('updateActivity error:', error);
-    res.status(500).json({ message: 'Failed to update activity' });
+    return sendMongooseError(res, error, 'Failed to update activity');
   }
 };
 
@@ -591,7 +592,7 @@ exports.createTask = async (req, res) => {
     res.status(201).json({ task: full });
   } catch (error) {
     console.error('createTask error:', error);
-    res.status(500).json({ message: 'Failed to create task' });
+    return sendMongooseError(res, error, 'Failed to create task');
   }
 };
 
@@ -623,7 +624,7 @@ exports.updateTask = async (req, res) => {
     res.json({ task: full });
   } catch (error) {
     console.error('updateTask error:', error);
-    res.status(500).json({ message: 'Failed to update task' });
+    return sendMongooseError(res, error, 'Failed to update task');
   }
 };
 
@@ -679,7 +680,7 @@ exports.createDeal = async (req, res) => {
     res.status(201).json({ deal: full });
   } catch (error) {
     console.error('createDeal error:', error);
-    res.status(500).json({ message: 'Failed to create deal' });
+    return sendMongooseError(res, error, 'Failed to create deal');
   }
 };
 
@@ -697,7 +698,7 @@ exports.updateDeal = async (req, res) => {
     res.json({ deal: full });
   } catch (error) {
     console.error('updateDeal error:', error);
-    res.status(500).json({ message: 'Failed to update deal' });
+    return sendMongooseError(res, error, 'Failed to update deal');
   }
 };
 

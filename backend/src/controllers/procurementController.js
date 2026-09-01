@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const PurchaseRequest = require('../models/PurchaseRequest');
@@ -176,7 +177,7 @@ exports.createPR = async (req, res) => {
     res.status(201).json({ request: await popPR(PurchaseRequest.findById(pr._id)).lean() });
   } catch (error) {
     console.error('createPR error:', error);
-    res.status(500).json({ message: 'Failed to create request' });
+    return sendMongooseError(res, error, 'Failed to create request');
   }
 };
 
@@ -194,7 +195,7 @@ exports.updatePR = async (req, res) => {
     res.json({ request: await popPR(PurchaseRequest.findById(id)).lean() });
   } catch (error) {
     console.error('updatePR error:', error);
-    res.status(500).json({ message: 'Failed to update request' });
+    return sendMongooseError(res, error, 'Failed to update request');
   }
 };
 
@@ -321,7 +322,7 @@ exports.createPO = async (req, res) => {
     res.status(201).json({ order: await popPO(PurchaseOrder.findById(po._id)).lean() });
   } catch (error) {
     console.error('createPO error:', error);
-    res.status(500).json({ message: 'Failed to create order' });
+    return sendMongooseError(res, error, 'Failed to create order');
   }
 };
 
@@ -341,7 +342,7 @@ exports.updatePO = async (req, res) => {
     res.json({ order: await popPO(PurchaseOrder.findById(id)).lean() });
   } catch (error) {
     console.error('updatePO error:', error);
-    res.status(500).json({ message: 'Failed to update order' });
+    return sendMongooseError(res, error, 'Failed to update order');
   }
 };
 
@@ -438,7 +439,7 @@ exports.createBill = async (req, res) => {
     res.status(201).json({ bill: await popBill(VendorBill.findById(bill._id)).lean() });
   } catch (error) {
     console.error('createBill error:', error);
-    res.status(500).json({ message: 'Failed to create bill' });
+    return sendMongooseError(res, error, 'Failed to create bill');
   }
 };
 
@@ -485,7 +486,7 @@ exports.updateBill = async (req, res) => {
     res.json({ bill: await popBill(VendorBill.findById(id)).lean() });
   } catch (error) {
     console.error('updateBill error:', error);
-    res.status(500).json({ message: 'Failed to update bill' });
+    return sendMongooseError(res, error, 'Failed to update bill');
   }
 };
 

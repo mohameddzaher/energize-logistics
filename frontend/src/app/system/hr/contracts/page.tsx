@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { FileText, Plus, Edit, Ban, Check, Trash2 } from 'lucide-react';
+import { FileText, Plus, Edit, Ban, Check, Trash2, RefreshCw } from 'lucide-react';
 import { isHRStaff, Contract, Employee, CONTRACT_STATUS, empName, fmtDate, today } from '@/lib/hr';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Modal, Field, TextInput, Select, SearchableSelect, TextArea, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -63,6 +63,37 @@ export default function ContractsPage() {
       setShowModal(false); load();
     } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
+  };
+
+  // ── نافذةُ التجديد ────────────────────────────────────────────────────────
+  const [renewing, setRenewing] = useState<Contract | null>(null);
+  const [renewForm, setRenewForm] = useState({ startDate: '', endDate: '', annualLeaveDays: '', carryOver: true });
+  const [renewSaving, setRenewSaving] = useState(false);
+  useEffect(() => {
+    if (!renewing) return;
+    // يبدأ الجديدُ من اليوم التالي لنهاية القائم — وهو ما يُكتب يدويًّا كلَّ مرّة.
+    const next = renewing.endDate
+      ? new Date(new Date(renewing.endDate).getTime() + 86400000).toISOString().slice(0, 10)
+      : '';
+    const after = next ? new Date(new Date(next).getTime() + 364 * 86400000).toISOString().slice(0, 10) : '';
+    setRenewForm({ startDate: next, endDate: after, annualLeaveDays: String(renewing.annualLeaveDays ?? ''), carryOver: true });
+  }, [renewing]);
+
+  const doRenew = async () => {
+    if (!renewing) return;
+    setRenewSaving(true);
+    try {
+      const r = await api.post<{ message?: string }>(`/api/hr/contracts/${renewing._id}/renew`, {
+        startDate: renewForm.startDate,
+        endDate: renewForm.endDate,
+        annualLeaveDays: renewForm.annualLeaveDays ? Number(renewForm.annualLeaveDays) : undefined,
+        carryOver: renewForm.carryOver,
+      });
+      notify(r?.message || (ar ? 'جُدِّد العقد' : 'Contract renewed'), 'success');
+      setRenewing(null);
+      load();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setRenewSaving(false);
   };
 
   const terminate = async (c: Contract) => {
@@ -187,6 +218,13 @@ export default function ContractsPage() {
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
                     <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.editTooltip}><Edit className="w-4 h-4" /></button>
+                    {/* ── التجديدُ فعلٌ مستقلٌّ عن التعديل ────────────────────
+                        كان العقدُ يُجدَّد بتعديل تاريخِ نهايته يدويًّا: لا أثرَ
+                        يقول متى جُدِّد ولا مَن جدّده ولا من أيّ تاريخ، ورصيدُ
+                        الإجازات يُقرأ على عقدٍ ممتدٍّ بلا سنةٍ جديدةٍ تُستحقّ. */}
+                    {c.status === 'active' && (
+                      <button type="button" onClick={() => setRenewing(c)} className="p-1.5 rounded-lg text-slate-700 hover:text-emerald-600 hover:bg-slate-100" title={ar ? 'تجديد العقد' : 'Renew contract'}><RefreshCw className="w-4 h-4" /></button>
+                    )}
                     {c.status === 'active' && (
                       <button type="button" onClick={() => terminate(c)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={tx.terminateTooltip}><Ban className="w-4 h-4" /></button>
                     )}
@@ -238,6 +276,52 @@ export default function ContractsPage() {
           <Field label={tx.fieldNotes} span2><TextArea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
         </div>
         <p className="text-xs text-slate-500">{tx.activeContractNote}</p>
+      </Modal>
+
+      {/* ── نافذةُ التجديد ────────────────────────────────────────────────────
+          تُقترح تواريخُها من العقد القائم: يبدأ الجديدُ في اليوم التالي لنهايته
+          وينتهي بعد سنة. وهي التواريخُ التي تُكتب يدويًّا كلَّ مرّة. */}
+      <Modal open={!!renewing} onClose={() => setRenewing(null)}
+        title={ar ? 'تجديد العقد' : 'Renew contract'}
+        footer={<>
+          <button type="button" onClick={() => setRenewing(null)} className="px-4 py-2 text-slate-500 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+          <PrimaryButton onClick={doRenew} disabled={renewSaving || !renewForm.startDate}>
+            {renewSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {ar ? 'تجديد' : 'Renew'}
+          </PrimaryButton>
+        </>}>
+        <div className="space-y-3">
+          <p className="text-[13px] text-slate-500">
+            {ar
+              ? 'يُقفَل العقد الحالي بحالة «مجدَّد» ولا يُحذف، ويُنشأ عقدٌ يليه ويُقيَّد التجديد في سجلّ الموظف.'
+              : 'The current contract is closed as “renewed” (not deleted), a successor is created, and the renewal is recorded in the employee’s history.'}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label={ar ? 'بداية العقد الجديد *' : 'New start date *'}>
+              <TextInput type="date" value={renewForm.startDate} onChange={(e) => setRenewForm((f) => ({ ...f, startDate: e.target.value }))} /></Field>
+            <Field label={ar ? 'نهاية العقد الجديد' : 'New end date'}>
+              <TextInput type="date" value={renewForm.endDate} onChange={(e) => setRenewForm((f) => ({ ...f, endDate: e.target.value }))} /></Field>
+            <Field label={ar ? 'أيام الإجازة السنوية' : 'Annual leave days'}>
+              <TextInput type="number" value={renewForm.annualLeaveDays} onChange={(e) => setRenewForm((f) => ({ ...f, annualLeaveDays: e.target.value }))} /></Field>
+          </div>
+          {/* ── ورصيدُ الإجازات غيرُ المستهلَك ──────────────────────────────
+              يتراكم من بداية العقد النشط، فعقدٌ جديدٌ يعني تراكمًا من الصفر —
+              وأيّامُ الموظّف الباقيةُ حقٌّ له لا تسقط بالتجديد. تُحسب لحظةَ
+              التجديد وتُثبَّت في العقد الجديد فيبدأ بها. */}
+          <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 cursor-pointer">
+            <input type="checkbox" checked={renewForm.carryOver}
+              onChange={(e) => setRenewForm((f) => ({ ...f, carryOver: e.target.checked }))}
+              className="w-4 h-4 accent-[#f37121] mt-0.5" />
+            <span className="text-[13px] text-slate-700">
+              <b>{ar ? 'ترحيل رصيد الإجازات غير المستهلك' : 'Carry unused leave balance forward'}</b>
+              <span className="block text-[11px] text-slate-500 mt-0.5">
+                {ar
+                  ? 'مَن أخذ ١٥ يومًا من ٣٠ يبدأ عامَه التالي بـ١٥ محفوظة، ويتراكم استحقاق السنة الجديدة فوقها.'
+                  : 'Someone who used 15 of 30 starts the next year with 15 in hand, and the new year accrues on top.'}
+              </span>
+            </span>
+          </label>
+        </div>
       </Modal>
     </div>
   );

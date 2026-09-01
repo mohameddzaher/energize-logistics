@@ -20,6 +20,7 @@ import {
   fmtDT, money, canEditOrders, canAdminOrders, Lang,
 } from '@/lib/shipmentOrders';
 import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 
 const fmtDate = (v?: string | null) => {
   if (!v) return '';
@@ -117,7 +118,10 @@ export default function ShipmentOrdersPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // لا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث — راجع hooks/useLatestRequest.
+  const guard = useLatestRequest();
   const load = useCallback(async () => {
+    const mine = guard.begin();
     try {
       const qs = new URLSearchParams({ page: String(page), limit: '25' });
       if (debounced.trim()) qs.set('q', debounced.trim());
@@ -127,13 +131,14 @@ export default function ShipmentOrdersPage() {
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
       const d = await api.get<{ orders: ShipmentOrder[]; total: number; stats: any }>(`/api/shipment-orders/orders?${qs}`);
+      if (!guard.isCurrent(mine)) return;
       setOrders(d.orders || []);
       setTotal(d.total || 0);
       setStats(d.stats || null);
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, page]);
+  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, page, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));

@@ -1,4 +1,5 @@
 const ShipmentOrder = require('../models/ShipmentOrder');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
 const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
 const ShipmentOrderField = require('../models/ShipmentOrderField');
@@ -217,7 +218,7 @@ exports.createOrder = async (req, res) => {
     res.status(201).json({ order });
   } catch (error) {
     console.error('Error creating shipment order:', error);
-    res.status(500).json({ message: 'Failed to create the shipment order' });
+    return sendMongooseError(res, error, 'Failed to create the shipment order');
   }
 };
 
@@ -266,7 +267,7 @@ exports.updateOrder = async (req, res) => {
     emit('shipmentOrders:updated', { id: String(order._id) });
     res.json({ order });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update the shipment order' });
+    return sendMongooseError(res, error, 'Failed to update the shipment order');
   }
 };
 
@@ -507,7 +508,7 @@ exports.updateCounter = async (req, res) => {
     });
     res.json({ next: start, start });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to set the waybill counter' });
+    return sendMongooseError(res, error, 'Failed to set the waybill counter');
   }
 };
 
@@ -601,7 +602,7 @@ exports.createCustomer = async (req, res) => {
     emit('shipmentOrders:customers', {});
     res.status(201).json({ customer });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create the customer' });
+    return sendMongooseError(res, error, 'Failed to create the customer');
   }
 };
 
@@ -616,7 +617,7 @@ exports.updateCustomer = async (req, res) => {
     emit('shipmentOrders:customers', {});
     res.json({ customer });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update the customer' });
+    return sendMongooseError(res, error, 'Failed to update the customer');
   }
 };
 
@@ -675,7 +676,7 @@ exports.createSupplier = async (req, res) => {
     emit('shipmentOrders:fleet', {});
     res.status(201).json({ supplier });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create the supplier' });
+    return sendMongooseError(res, error, 'Failed to create the supplier');
   }
 };
 
@@ -686,7 +687,7 @@ exports.updateSupplier = async (req, res) => {
     emit('shipmentOrders:fleet', {});
     res.json({ supplier });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update the supplier' });
+    return sendMongooseError(res, error, 'Failed to update the supplier');
   }
 };
 
@@ -728,7 +729,7 @@ exports.createVehicle = async (req, res) => {
     emit('shipmentOrders:fleet', {});
     res.status(201).json({ vehicle });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create the vehicle' });
+    return sendMongooseError(res, error, 'Failed to create the vehicle');
   }
 };
 
@@ -739,7 +740,7 @@ exports.updateVehicle = async (req, res) => {
     emit('shipmentOrders:fleet', {});
     res.json({ vehicle });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update the vehicle' });
+    return sendMongooseError(res, error, 'Failed to update the vehicle');
   }
 };
 
@@ -797,7 +798,7 @@ exports.createField = async (req, res) => {
     emit('shipmentOrders:fields', {});
     res.status(201).json({ field });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create the field' });
+    return sendMongooseError(res, error, 'Failed to create the field');
   }
 };
 
@@ -813,7 +814,7 @@ exports.updateField = async (req, res) => {
     emit('shipmentOrders:fields', {});
     res.json({ field });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update the field' });
+    return sendMongooseError(res, error, 'Failed to update the field');
   }
 };
 

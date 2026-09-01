@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const User = require('../models/User');
 const Employee = require('../models/Employee');
 const Contract = require('../models/Contract');
@@ -99,7 +100,12 @@ const ensureSelfEmployee = (req) => ensureSelfEmployeeUtil(req.user);
 // balance-affecting leave → progressive accrual maths.
 const computeEmployeeBalance = async (employeeId, asOf = new Date()) => {
   const contract = await getActiveContract(employeeId);
-  const approved = await LeaveRequest.find({ employee: employeeId, status: 'approved' })
+  // ── والمأخوذُ يُحسب من بداية العقد النشط لا من أوّل الزمان ────────────────
+  // ما استُهلك في عقدٍ سابقٍ حُسب هناك، وما بقي منه رُحِّل صراحةً في
+  // `carriedOverDays`. فعدُّه ثانيةً هنا خصمٌ مرّتين لإجازةٍ واحدة.
+  const takenFilter = { employee: employeeId, status: 'approved' };
+  if (contract && contract.startDate) takenFilter.startDate = { $gte: contract.startDate };
+  const approved = await LeaveRequest.find(takenFilter)
     .populate('leaveType', 'affectsBalance')
     .select('days leaveType')
     .lean();
@@ -248,7 +254,11 @@ exports.getEmployee = async (req, res) => {
 exports.createEmployee = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
-    const body = { ...req.body, createdBy: req.user._id };
+    // ── الخانةُ الفارغةُ غيابٌ لا قيمة ────────────────────────────────────
+    // الشاشةُ ترسل كلَّ حقولها وأكثرُها فارغ، و`''` ليست معرّفًا ولا تاريخًا ولا
+    // خيارًا في قائمة. فكانت الاستمارةُ تُرفض لأنّ المستخدم **لم** يملأ حقلًا
+    // اختياريًّا — ويُقال له «Failed to create employee» بلا سبب.
+    const body = { ...stripEmpty(req.body, Employee.schema), createdBy: req.user._id };
     delete body.user; // linking is done from the Users screen, not here
     const employee = await Employee.create(body);
     bustEmployeeCaches();
@@ -257,8 +267,8 @@ exports.createEmployee = async (req, res) => {
     await notifyHR({ title: 'New employee added', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.status(201).json({ employee });
   } catch (error) {
-    console.error('createEmployee error:', error);
-    res.status(500).json({ message: 'Failed to create employee' });
+    // ما فشل ولماذا — لا «تعذّر الحفظ». راجع utils/mongooseError.
+    return sendMongooseError(res, error, 'تعذّر إنشاء الموظف');
   }
 };
 
@@ -321,7 +331,7 @@ exports.updateEmployee = async (req, res) => {
     res.json({ employee });
   } catch (error) {
     console.error('updateEmployee error:', error);
-    res.status(500).json({ message: 'Failed to update employee' });
+    return sendMongooseError(res, error, 'Failed to update employee');
   }
 };
 
@@ -416,7 +426,7 @@ exports.renewDocument = async (req, res) => {
     res.status(201).json({ employee, renewal });
   } catch (error) {
     console.error('renewDocument error:', error);
-    res.status(500).json({ message: 'Failed to renew document' });
+    return sendMongooseError(res, error, 'Failed to renew document');
   }
 };
 
@@ -437,6 +447,85 @@ exports.employeeClearance = async (req, res) => {
   } catch (e) {
     console.error('employeeClearance error:', e);
     res.status(500).json({ message: 'تعذّر فحص إخلاء الطرف' });
+  }
+};
+
+/**
+ * POST /contracts/:id/renew — تجديدُ عقدٍ كما تُجدَّد الإقامة.
+ *
+ * ── ماذا يجري ───────────────────────────────────────────────────────────────
+ * العقدُ القائم يُقفَل بـ«مجدَّد» ولا يُحذَف — تسلسلُ عقود الموظّف هو تاريخُ
+ * عمله. ويُنشأ عقدٌ يليه بتواريخه الجديدة، ويُقيَّد التجديدُ في سجلّ تجديدات
+ * الموظّف (`EmployeeRenewal`) فيُقرأ في ملفّه بجانب تجديد الإقامة والرخصة.
+ *
+ * ── ورصيدُ الإجازات ─────────────────────────────────────────────────────────
+ * يتراكم من بداية العقد النشط. فعقدٌ جديدٌ يعني تراكمًا من الصفر — ولو بقي
+ * المأخوذُ محسوبًا لصار رصيدُ الموظّف سالبًا يومَ جُدِّد عقدُه، وهو أسوأُ ما
+ * يمكن أن يراه مَن جُدِّد له.
+ *
+ * وأيّامُه غيرُ المستهلَكة حقٌّ له لا تسقط بالتجديد: يُحسب رصيدُه لحظةَ التجديد
+ * ويُثبَّت `carriedOverDays` في العقد الجديد، فيبدأ به ويتراكم فوقه استحقاقُ
+ * السنة الجديدة. ومَن أخذ خمسةَ عشرَ من ثلاثين يبدأ عامَه التالي بخمسةَ عشرَ
+ * محفوظةً لا بصفر.
+ */
+exports.renewContract = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const old = await Contract.findById(req.params.id);
+    if (!old) return res.status(404).json({ message: 'العقد غير موجود' });
+
+    const { startDate, endDate, annualLeaveDays, salary, contractType, notes, carryOver = true } = req.body;
+    if (!startDate) return res.status(400).json({ message: 'تاريخ بداية العقد الجديد مطلوب.' });
+
+    // الرصيدُ لحظةَ التجديد — يُقاس على العقد المنتهي لا على الجديد.
+    const { balance } = await computeEmployeeBalance(old.employee, new Date());
+    const carried = carryOver ? Math.max(0, Number(balance.available) || 0) : 0;
+
+    old.status = 'renewed';
+    old.endDate = old.endDate || startDate;
+    await old.save();
+
+    const fresh = await Contract.create({
+      employee: old.employee,
+      startDate,
+      endDate: endDate || '',
+      annualLeaveDays: annualLeaveDays != null ? Number(annualLeaveDays) : old.annualLeaveDays,
+      salary: salary != null ? Number(salary) : old.salary,
+      contractType: contractType || old.contractType,
+      status: 'active',
+      carriedOverDays: carried,
+      renewedFrom: old._id,
+      notes: notes || '',
+      createdBy: req.user._id,
+    });
+
+    await EmployeeRenewal.create({
+      employee: old.employee,
+      docType: 'contract',
+      previousExpiry: old.endDate || '',
+      newExpiry: endDate || '',
+      notes: carried
+        ? `رُحِّل ${carried} يومًا من رصيد الإجازات${notes ? ` — ${notes}` : ''}`
+        : (notes || ''),
+      renewedBy: req.user._id,
+    });
+
+    bustEmployeeCaches();
+    await logAudit({
+      user: req.user._id, action: 'renew_contract', entity: 'Contract', entityId: fresh._id,
+      changes: { after: { from: old.endDate, to: endDate, carriedOverDays: carried } }, ipAddress: req.ip,
+    });
+    try { emitToAll('hr:contract', { employee: String(old.employee) }); } catch (e) {}
+
+    res.status(201).json({
+      contract: fresh,
+      carriedOverDays: carried,
+      message: carried
+        ? `جُدِّد العقد ورُحِّل ${carried} يومًا من رصيد الإجازات.`
+        : 'جُدِّد العقد.',
+    });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر تجديد العقد');
   }
 };
 
@@ -563,7 +652,7 @@ exports.updateDocument = async (req, res) => {
     const populated = await EmployeeDocument.findById(doc._id).populate('uploadedBy', 'firstName lastName').lean();
     res.json({ document: populated });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update document' });
+    return sendMongooseError(res, error, 'Failed to update document');
   }
 };
 
@@ -640,7 +729,7 @@ exports.updateHrSettings = async (req, res) => {
     const saved = Object.fromEntries(cfg.alerts);
     res.json({ alerts: { ...HrConfig.DEFAULT_ALERTS, ...saved } });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to save HR settings' });
+    return sendMongooseError(res, error, 'Failed to save HR settings');
   }
 };
 
@@ -677,7 +766,7 @@ exports.createContract = async (req, res) => {
     res.status(201).json({ contract });
   } catch (error) {
     console.error('createContract error:', error);
-    res.status(500).json({ message: 'Failed to create contract' });
+    return sendMongooseError(res, error, 'Failed to create contract');
   }
 };
 
@@ -695,7 +784,7 @@ exports.updateContract = async (req, res) => {
     try { emitToUser(String(req.user._id), 'hr:contract', { id: String(contract._id) }); } catch (e) {}
     res.json({ contract });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update contract' });
+    return sendMongooseError(res, error, 'Failed to update contract');
   }
 };
 
@@ -767,7 +856,7 @@ exports.createLeaveType = async (req, res) => {
     const leaveType = await LeaveType.create({ ...req.body, createdBy: req.user._id });
     res.status(201).json({ leaveType });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create leave type' });
+    return sendMongooseError(res, error, 'Failed to create leave type');
   }
 };
 
@@ -782,7 +871,7 @@ exports.updateLeaveType = async (req, res) => {
     await lt.save();
     res.json({ leaveType: lt });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update leave type' });
+    return sendMongooseError(res, error, 'Failed to update leave type');
   }
 };
 
@@ -998,7 +1087,7 @@ exports.createMyLeave = async (req, res) => {
     res.status(201).json({ leave: populated });
   } catch (error) {
     console.error('createMyLeave error:', error);
-    res.status(500).json({ message: 'Failed to create leave request' });
+    return sendMongooseError(res, error, 'Failed to create leave request');
   }
 };
 
@@ -1094,7 +1183,7 @@ exports.createBackdatedLeave = async (req, res) => {
     res.status(201).json({ leave: populated, balance: after.balance });
   } catch (error) {
     console.error('createBackdatedLeave error:', error);
-    res.status(500).json({ message: error.message || 'تعذّر تسجيل الإجازة' });
+    return sendMongooseError(res, error, error.message || 'تعذّر تسجيل الإجازة');
   }
 };
 
@@ -1245,7 +1334,7 @@ exports.updateMyLeave = async (req, res) => {
     res.json({ leave: populated });
   } catch (error) {
     console.error('updateMyLeave error:', error);
-    res.status(500).json({ message: 'تعذّر تعديل الطلب' });
+    return sendMongooseError(res, error, 'تعذّر تعديل الطلب');
   }
 };
 
@@ -1315,7 +1404,7 @@ exports.createMyRequest = async (req, res) => {
     res.status(201).json({ request: populated });
   } catch (error) {
     console.error('createMyRequest error:', error);
-    res.status(500).json({ message: 'Failed to create request' });
+    return sendMongooseError(res, error, 'Failed to create request');
   }
 };
 
@@ -1376,7 +1465,7 @@ exports.updateRequestStatus = async (req, res) => {
     await notifyUser(request.requester, { title: 'Request status updated', message: `Your request is now: ${status}.`, relatedEntity: 'HRRequest', relatedEntityId: request._id, event: 'hr:request' });
     res.json({ request });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update request' });
+    return sendMongooseError(res, error, 'Failed to update request');
   }
 };
 
@@ -1429,7 +1518,7 @@ exports.createAsset = async (req, res) => {
     if (emp?.user) await notifyUser(emp.user, { title: 'New custody item', message: `${asset.name} was assigned to you.`, relatedEntity: 'Asset', relatedEntityId: asset._id, event: 'hr:asset' });
     res.status(201).json({ asset });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create asset' });
+    return sendMongooseError(res, error, 'Failed to create asset');
   }
 };
 
@@ -1449,7 +1538,7 @@ exports.updateAsset = async (req, res) => {
     try { emitToUser(String(req.user._id), 'hr:asset', { id: String(asset._id) }); } catch (e) {}
     res.json({ asset });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update asset' });
+    return sendMongooseError(res, error, 'Failed to update asset');
   }
 };
 
@@ -1553,7 +1642,7 @@ exports.createStock = async (req, res) => {
     const item = await Asset.create(data);
     res.status(201).json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create stock item' });
+    return sendMongooseError(res, error, 'Failed to create stock item');
   }
 };
 
@@ -1567,7 +1656,7 @@ exports.updateStock = async (req, res) => {
     await item.save();
     res.json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update stock item' });
+    return sendMongooseError(res, error, 'Failed to update stock item');
   }
 };
 
@@ -1613,7 +1702,7 @@ exports.assignFromStock = async (req, res) => {
     if (employee.user) await notifyUser(employee.user, { title: 'New custody item', message: `${item.name} was assigned to you.`, relatedEntity: 'Asset', relatedEntityId: item._id, event: 'hr:asset' });
     res.json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to assign stock item' });
+    return sendMongooseError(res, error, 'Failed to assign stock item');
   }
 };
 
@@ -1646,7 +1735,7 @@ exports.createLicense = async (req, res) => {
     res.status(201).json({ license });
   } catch (error) {
     console.error('createLicense error:', error);
-    res.status(500).json({ message: 'Failed to create license' });
+    return sendMongooseError(res, error, 'Failed to create license');
   }
 };
 
@@ -1662,7 +1751,7 @@ exports.updateLicense = async (req, res) => {
     try { emitToUser(String(req.user._id), 'hr:license', { id: String(license._id) }); } catch (e) {}
     res.json({ license });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update license' });
+    return sendMongooseError(res, error, 'Failed to update license');
   }
 };
 
@@ -1863,7 +1952,7 @@ exports.updateMyRequest = async (req, res) => {
     res.json({ request: populated });
   } catch (error) {
     console.error('updateMyRequest error:', error);
-    res.status(500).json({ message: 'تعذّر تعديل الطلب' });
+    return sendMongooseError(res, error, 'تعذّر تعديل الطلب');
   }
 };
 

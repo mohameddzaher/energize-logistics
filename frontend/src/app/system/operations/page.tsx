@@ -13,6 +13,7 @@ import DateRangeFilter, { DateField } from '@/components/system/DateRangeFilter'
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { useSocket } from '@/hooks/useSocket';
 import OpsLiveSummary from '@/components/ops/OpsLiveSummary';
+import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
   ClipboardList, Plus, Search, Filter, FilterX,
   Lock, Unlock, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle,
@@ -250,7 +251,22 @@ export default function OperationsWorkflowPage() {
     return params;
   }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, colFilters]);
 
+  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ────────────────────────────────────
+  //
+  // البحثُ يغيّر `search` ويعيد `page` إلى الأولى، فينطلق طلبان: أحدهما بالبحث
+  // الجديد ورقمِ الصفحة القديم — ويعود فارغًا لأنّ نتيجةً واحدةً لا صفحةَ ثالثةَ
+  // لها. ومَن يصل أخيرًا هو الذي يُعرض. فيبحث المستخدم عن كشفٍ فلا يجده، ثمّ
+  // يخرج من الصفحة ويعود (فتصير الصفحةُ الأولى) فيجده.
+  //
+  // ويزيد الأمرَ أنّ استطلاع منصّة التشغيل يعمل كلَّ ستّ ثوانٍ، فيطلق طلبَ
+  // تحديثٍ ثالثًا يسابق الاثنين — وقد يحمل حالةً سابقةً للبحث فتُعرض القائمةُ
+  // كلُّها فوق نتيجةٍ مفلترة.
+  //
+  // فيُرقَّم كلُّ طلب، ولا يُعرض إلّا ردُّ آخرِ رقمٍ أُطلق. وهو شرطٌ لا يستغني
+  // عنه أيُّ جدولٍ يُفلتَر ويُحدَّث لحظيًّا في آن.
+  const guard = useLatestRequest();
   const fetchWorkflows = useCallback(async (isBackground = false) => {
+    const mySeq = guard.begin();
     try {
       if (!isBackground) {
         if (!initialLoadDone.current) setLoading(true);
@@ -260,16 +276,19 @@ export default function OperationsWorkflowPage() {
       params.append('page', String(page));
       params.append('limit', '50');
       const data = await api.get<any>(`/api/workflows?${params.toString()}`);
+      if (!guard.isCurrent(mySeq)) return;   // سبقَه أحدثُ منه — يُهمَل
       setWorkflows(data.workflows || []);
       setTotal(data.total || 0);
     } catch (err: any) {
       console.error(err);
     } finally {
-      setLoading(false);
-      setSearching(false);
+      if (guard.isCurrent(mySeq)) {
+        setLoading(false);
+        setSearching(false);
+      }
       initialLoadDone.current = true;
     }
-  }, [buildParams, page]);
+  }, [buildParams, page, guard]);
 
   // Initial load
   useEffect(() => { fetchWorkflows(); }, [fetchWorkflows]);
@@ -337,7 +356,15 @@ export default function OperationsWorkflowPage() {
   const clearColFilters = () => { setColFilters({}); setPage(1); };
 
   // WebSocket real-time
-  const handleCreated = useCallback((wf: Workflow) => { setWorkflows((p) => [wf, ...p]); setTotal((t) => t + 1); }, []);
+  // الصفُّ الجديد يُقحَم في أعلى القائمة — وهو صحيحٌ في العرض الكامل وحدَه.
+  // في نتيجةٍ مفلترةٍ أو في صفحةٍ غير الأولى يكون كذبًا: صفٌّ لا يطابق الشرطَ
+  // يظهر بين ما يطابقه. فيُترك للتحديث أن يأتي به إن كان يخصّ العرض.
+  const handleCreated = useCallback((wf: Workflow) => {
+    const filtered = !!search || !!dateFrom || !!dateTo || showPendingOnly || Object.keys(colFilters).length > 0;
+    setTotal((t) => t + 1);
+    if (filtered || page !== 1) return;
+    setWorkflows((p) => [wf, ...p]);
+  }, [search, dateFrom, dateTo, showPendingOnly, colFilters, page]);
   const handleUpdated = useCallback((wf: Workflow) => { setWorkflows((p) => p.map((w) => w._id === wf._id ? wf : w)); }, []);
   const handleDeleted = useCallback((d: { _id: string }) => {
     setWorkflows((p) => p.filter((w) => w._id !== d._id));

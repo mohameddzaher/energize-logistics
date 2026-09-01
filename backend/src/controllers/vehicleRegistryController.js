@@ -1,4 +1,5 @@
 const { VehicleMaster, VehicleRegistryConfig, CorporatePolicy, VehicleInsurancePolicy } = require('../models/VehicleMaster');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
 const VehicleClaim = require('../models/VehicleClaim');
 const VDOC = require('../config/vehicleDocuments');
@@ -669,7 +670,7 @@ exports.create = async (req, res) => {
     res.status(201).json({ vehicle: v });
   } catch (e) {
     if (badInput(e, res)) return;
-    res.status(500).json({ message: 'Failed to create vehicle' });
+    return sendMongooseError(res, error, 'Failed to create vehicle');
   }
 };
 
@@ -712,7 +713,7 @@ exports.update = async (req, res) => {
     res.json({ vehicle: v });
   } catch (e) {
     if (badInput(e, res)) return;
-    res.status(500).json({ message: 'Failed to update vehicle' });
+    return sendMongooseError(res, error, 'Failed to update vehicle');
   }
 };
 
@@ -1576,7 +1577,7 @@ exports.renew = async (req, res) => {
     res.json({ vehicle: decorate(v.toObject(), cfg) });
   } catch (e) {
     console.error('vreg renew', e);
-    res.status(500).json({ message: 'تعذّر تسجيل التجديد' });
+    return sendMongooseError(res, error, 'تعذّر تسجيل التجديد');
   }
 };
 
@@ -1658,7 +1659,7 @@ exports.renewBulk = async (req, res) => {
     });
   } catch (e) {
     console.error('vreg renewBulk', e);
-    res.status(500).json({ message: 'تعذّر تسجيل التجديد' });
+    return sendMongooseError(res, error, 'تعذّر تسجيل التجديد');
   }
 };
 
@@ -1785,7 +1786,7 @@ exports.registers = async (req, res) => {
     });
   } catch (e) {
     console.error('vreg registers', e);
-    res.status(500).json({ message: 'تعذّر تحميل سجلّات القسم' });
+    return sendMongooseError(res, error, 'تعذّر تحميل سجلّات القسم');
   }
 };
 
@@ -1888,7 +1889,7 @@ exports.renewInsurancePolicy = async (req, res) => {
     res.json({ policy: pol, vehiclesUpdated: vehicles.length });
   } catch (e) {
     console.error('vreg renewInsurancePolicy', e);
-    res.status(500).json({ message: 'تعذّر تجديد الوثيقة' });
+    return sendMongooseError(res, error, 'تعذّر تجديد الوثيقة');
   }
 };
 
@@ -1938,7 +1939,7 @@ exports.createClaim = async (req, res) => {
     res.status(201).json({ claim: doc });
   } catch (e) {
     console.error('vreg createClaim', e);
-    res.status(500).json({ message: 'تعذّر تسجيل الحادث' });
+    return sendMongooseError(res, error, 'تعذّر تسجيل الحادث');
   }
 };
 
@@ -1955,7 +1956,7 @@ exports.updateClaim = async (req, res) => {
     res.json({ claim: doc });
   } catch (e) {
     console.error('vreg updateClaim', e);
-    res.status(500).json({ message: 'تعذّر تعديل الحادث' });
+    return sendMongooseError(res, error, 'تعذّر تعديل الحادث');
   }
 };
 
@@ -2143,7 +2144,7 @@ exports.updateVehicleDocument = async (req, res) => {
     emit('vreg:updated', {});
     res.json({ document: doc.toObject() });
   } catch (e) {
-    res.status(500).json({ message: 'تعذّر تعديل الملفّ' });
+    return sendMongooseError(res, error, 'تعذّر تعديل الملفّ');
   }
 };
 

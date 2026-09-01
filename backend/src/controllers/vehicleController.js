@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { flexSpaceRegex, flexIncludes } = require('../utils/plateKey');
 const Vehicle = require('../models/Vehicle');
 const VehicleAuthorization = require('../models/VehicleAuthorization');
@@ -138,7 +139,7 @@ exports.createVehicle = async (req, res) => {
     res.status(201).json({ vehicle: populated });
   } catch (error) {
     console.error('createVehicle error:', error);
-    res.status(500).json({ message: 'Failed to create vehicle' });
+    return sendMongooseError(res, error, 'Failed to create vehicle');
   }
 };
 
@@ -156,7 +157,7 @@ exports.updateVehicle = async (req, res) => {
     res.json({ vehicle: populated });
   } catch (error) {
     console.error('updateVehicle error:', error);
-    res.status(500).json({ message: 'Failed to update vehicle' });
+    return sendMongooseError(res, error, 'Failed to update vehicle');
   }
 };
 
@@ -224,7 +225,7 @@ exports.authorizeVehicle = async (req, res) => {
     res.status(201).json({ authorization: auth });
   } catch (error) {
     console.error('authorizeVehicle error:', error);
-    res.status(500).json({ message: 'Failed to authorize vehicle' });
+    return sendMongooseError(res, error, 'Failed to authorize vehicle');
   }
 };
 
@@ -270,7 +271,7 @@ exports.transferVehicle = async (req, res) => {
     res.status(201).json({ authorization: auth });
   } catch (error) {
     console.error('transferVehicle error:', error);
-    res.status(500).json({ message: 'Failed to transfer authorization' });
+    return sendMongooseError(res, error, 'Failed to transfer authorization');
   }
 };
 
@@ -297,7 +298,7 @@ exports.revokeVehicle = async (req, res) => {
     res.json({ authorization: active });
   } catch (error) {
     console.error('revokeVehicle error:', error);
-    res.status(500).json({ message: 'Failed to revoke authorization' });
+    return sendMongooseError(res, error, 'Failed to revoke authorization');
   }
 };
 
@@ -313,7 +314,7 @@ exports.updateAuthorization = async (req, res) => {
     res.json({ authorization: auth });
   } catch (error) {
     console.error('updateAuthorization error:', error);
-    res.status(500).json({ message: 'Failed to update authorization' });
+    return sendMongooseError(res, error, 'Failed to update authorization');
   }
 };
 
@@ -382,7 +383,7 @@ exports.createAccident = async (req, res) => {
     res.status(201).json({ accident });
   } catch (error) {
     console.error('createAccident error:', error);
-    res.status(500).json({ message: 'Failed to report accident' });
+    return sendMongooseError(res, error, 'Failed to report accident');
   }
 };
 
@@ -399,7 +400,7 @@ exports.updateAccident = async (req, res) => {
     res.json({ accident });
   } catch (error) {
     console.error('updateAccident error:', error);
-    res.status(500).json({ message: 'Failed to update accident' });
+    return sendMongooseError(res, error, 'Failed to update accident');
   }
 };
 

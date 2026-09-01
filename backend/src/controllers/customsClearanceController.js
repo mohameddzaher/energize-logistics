@@ -1,4 +1,5 @@
 const CustomsClearance = require('../models/CustomsClearance');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { recomputeTotals, COST_KEYS, MARGIN_KEYS } = require('../models/CustomsClearance');
 const cache = require('../utils/ttlCache');
 const logAudit = require('../utils/auditLogger');
@@ -203,7 +204,7 @@ exports.createClearance = async (req, res) => {
 
     res.status(201).json({ clearance });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to create clearance' });
+    return sendMongooseError(res, error, error.message || 'Failed to create clearance');
   }
 };
 
@@ -259,7 +260,7 @@ exports.updateClearance = async (req, res) => {
 
     res.json({ clearance });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to update clearance' });
+    return sendMongooseError(res, error, error.message || 'Failed to update clearance');
   }
 };
 
@@ -465,7 +466,7 @@ exports.addAttachments = async (req, res) => {
 
     res.status(201).json({ clearance });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to attach file' });
+    return sendMongooseError(res, error, error.message || 'Failed to attach file');
   }
 };
 
@@ -483,7 +484,7 @@ exports.updateAttachment = async (req, res) => {
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.json({ clearance });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to update attachment' });
+    return sendMongooseError(res, error, error.message || 'Failed to update attachment');
   }
 };
 
@@ -576,7 +577,7 @@ exports.createParty = async (req, res) => {
     cache.clear('customs:');
     res.status(201).json({ party });
   } catch (e) {
-    res.status(500).json({ message: e.message || 'تعذّر الحفظ' });
+    return sendMongooseError(res, error, e.message || 'تعذّر الحفظ');
   }
 };
 
@@ -593,7 +594,7 @@ exports.updateParty = async (req, res) => {
     cache.clear('customs:');
     res.json({ party });
   } catch (e) {
-    res.status(500).json({ message: e.message || 'تعذّر الحفظ' });
+    return sendMongooseError(res, error, e.message || 'تعذّر الحفظ');
   }
 };
 

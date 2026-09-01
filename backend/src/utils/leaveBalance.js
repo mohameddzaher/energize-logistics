@@ -44,18 +44,25 @@ function contractDaysElapsed(contract, asOf = new Date()) {
 // (sum of approved leave whose type affects the balance).
 function computeBalance(contract, daysTaken = 0, asOf = new Date()) {
   const annual = Number(contract?.annualLeaveDays) || 0;
+  // ما رُحِّل من العقد السابق يُضاف إلى المتاح: أيّامٌ لم تُستهلَك، ولا تسقط
+  // بتجديد العقد. راجع `models/Contract.carriedOverDays`.
+  const carried = round2(Number(contract?.carriedOverDays) || 0);
   if (!contract || !annual) {
-    return { entitlement: annual, accrued: 0, taken: round2(daysTaken), available: round2(-daysTaken), daysElapsed: 0 };
+    return {
+      entitlement: annual, carried, accrued: 0,
+      taken: round2(daysTaken), available: round2(carried - daysTaken), daysElapsed: 0,
+    };
   }
   const daysElapsed = contractDaysElapsed(contract, asOf);
   const accrued = round2(annual * (daysElapsed / 365));
   const taken = round2(daysTaken);
   return {
     entitlement: annual,
+    carried,
     daysElapsed,
     accrued,
     taken,
-    available: round2(accrued - taken),
+    available: round2(carried + accrued - taken),
   };
 }
 

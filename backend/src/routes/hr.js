@@ -90,6 +90,8 @@ router.delete('/documents/:docId', authorize(...STAFF), hr.deleteDocument);
 router.get('/contracts', authorize(...STAFF), hr.listContracts);
 router.post('/contracts', authorize(...STAFF), hr.createContract);
 router.put('/contracts/:id', authorize(...STAFF), hr.updateContract);
+// التجديدُ يُقفل العقدَ القائم وينشئ خلفَه، ويُرحّل رصيدَ الإجازات غيرَ المستهلَك.
+router.post('/contracts/:id/renew', authorize(...STAFF), hr.renewContract);
 router.post('/contracts/:id/terminate', authorize(...STAFF), hr.terminateContract);
 router.delete('/contracts/:id', authorize(...STAFF), hr.deleteContract);
 

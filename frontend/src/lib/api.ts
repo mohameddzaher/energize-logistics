@@ -144,7 +144,18 @@ class ApiClient {
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: 'Request failed' }));
-      throw new Error(error.message || 'Request failed');
+      // ── وما زاد على الرسالة يبقى معها ──────────────────────────────────
+      // الخادمُ يعيد مع الرسالة أسماءَ الحقول التي ردَّها ورمزَ السبب، وكان
+      // يُبنى منه `Error` بالرسالة وحدَها فيضيع الباقي. فتبحث الشاشةُ في أربعين
+      // خانةً عن الخطأ بدل أن تلوّن خانتَه.
+      const err = new Error(error.message || 'Request failed') as Error & {
+        status?: number; fields?: string[]; code?: string; data?: any;
+      };
+      err.status = res.status;
+      if (Array.isArray(error.fields)) err.fields = error.fields;
+      if (error.code) err.code = error.code;
+      err.data = error;
+      throw err;
     }
 
     return res.json();

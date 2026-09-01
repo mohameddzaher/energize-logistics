@@ -98,14 +98,18 @@ export function Field({ label, children, span2 }: { label: string; children: Rea
 
 const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50';
 
-export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={inputCls} />;
+// ── و`className` المُمرَّرة تُضاف لا تُلغى ──────────────────────────────────
+// كانت تُكتب فوق الصنف الأساسيّ فتضيع: مَن أراد تلوينَ خانةٍ ردَّها الخادمُ
+// حمراءَ مرّر الصنفَ فلم يظهر شيء — ولا رسالةَ تقول لماذا. فالأساسُ أوّلًا
+// وما يُمرَّر بعده، فيغلب الأخصُّ ويبقى الشكلُ واحدًا.
+export function TextInput({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={`${inputCls} ${className || ''}`} />;
 }
-export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={inputCls} />;
+export function TextArea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...props} className={`${inputCls} ${className || ''}`} />;
 }
-export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={inputCls} />;
+export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...props} className={`${inputCls} ${className || ''}`} />;
 }
 
 

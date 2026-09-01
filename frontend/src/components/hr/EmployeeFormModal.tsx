@@ -78,7 +78,10 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
+  // أسماءُ الحقول التي ردَّها الخادمُ في آخر محاولة.
+  const [badFields, setBadFields] = useState<string[]>([]);
   const save = useCallback(async () => {
+    setBadFields([]);
     if (!form.firstName.trim() || !form.lastName.trim()) return;
     setSaving(true);
     try {
@@ -87,7 +90,12 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       else saved = await api.post('/api/hr/employees', form);
       onSaved(saved?.employee);
       onClose();
-    } catch (e: any) { notify(e.message, 'error'); }
+    } catch (e: any) {
+      // الخادمُ يعيد أسماءَ الحقول التي ردَّها — تُلوَّن بعينها بدل أن يبحث
+      // المستخدم في أربعين خانةً عن الخطأ.
+      setBadFields(Array.isArray(e?.fields) ? e.fields : []);
+      notify(e.message, 'error');
+    }
     setSaving(false);
   }, [form, employee, onSaved, onClose]);
 
@@ -99,8 +107,16 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <PrimaryButton onClick={save} disabled={saving || !form.firstName.trim() || !form.lastName.trim()}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.save}</PrimaryButton>
       </>}>
       <Section title={tx.sectionPersonal}>
-        <Field label={tx.firstName}><TextInput value={form.firstName} onChange={(e) => set('firstName', e.target.value)} /></Field>
-        <Field label={tx.lastName}><TextInput value={form.lastName} onChange={(e) => set('lastName', e.target.value)} /></Field>
+        {/* ── المطلوبُ يُعلَّم قبل الحفظ لا بعده ────────────────────────────
+            كان النموذجُ لا يميّز مطلوبًا من اختياريّ، فيُملأ ويُرسَل ويُردّ.
+            النجمةُ تقول قبل الإرسال ما لا يمكن تركُه، والخانةُ الحمراءُ تقول
+            بعده أيَّ خانةٍ بالضبط ردّها الخادم. */}
+        <Field label={`${tx.firstName} *`}>
+          <TextInput value={form.firstName} onChange={(e) => set('firstName', e.target.value)}
+            className={badFields.includes('firstName') ? 'border-red-400 bg-red-50' : undefined} /></Field>
+        <Field label={`${tx.lastName} *`}>
+          <TextInput value={form.lastName} onChange={(e) => set('lastName', e.target.value)}
+            className={badFields.includes('lastName') ? 'border-red-400 bg-red-50' : undefined} /></Field>
         <Field label={tx.arabicName}><TextInput value={form.arabicName} onChange={(e) => set('arabicName', e.target.value)} /></Field>
         <Field label={tx.employeeNumber}><TextInput value={form.employeeNumber} onChange={(e) => set('employeeNumber', e.target.value)} /></Field>
         <Field label={tx.gender}><Select value={form.gender} onChange={(e) => set('gender', e.target.value)}><option value="">—</option><option value="male">{tx.male}</option><option value="female">{tx.female}</option></Select></Field>

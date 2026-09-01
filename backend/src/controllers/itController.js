@@ -1,4 +1,5 @@
 const ItTicket = require('../models/ItTicket');
+const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const ItSystem = require('../models/ItSystem');
 // Custody deliberately reuses the HR Asset collection — an IT-issued laptop must
 // appear on the employee's HR profile automatically, so there is exactly ONE
@@ -366,7 +367,7 @@ exports.createTicket = async (req, res) => {
     emit('it:updated', { type: 'ticket', id: String(ticket._id) });
     res.status(201).json({ ticket });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create ticket' });
+    return sendMongooseError(res, error, 'Failed to create ticket');
   }
 };
 
@@ -401,7 +402,7 @@ exports.updateTicket = async (req, res) => {
     emit('it:updated', { type: 'ticket', id: String(ticket._id) });
     res.json({ ticket });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update ticket' });
+    return sendMongooseError(res, error, 'Failed to update ticket');
   }
 };
 
@@ -660,7 +661,7 @@ exports.createCustody = async (req, res) => {
     emitCustody({ type: 'custody', id: String(item._id) });
     res.status(201).json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create custody item' });
+    return sendMongooseError(res, error, 'Failed to create custody item');
   }
 };
 
@@ -677,7 +678,7 @@ exports.updateCustody = async (req, res) => {
     emitCustody({ type: 'custody', id: String(item._id) });
     res.json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update custody item' });
+    return sendMongooseError(res, error, 'Failed to update custody item');
   }
 };
 
@@ -767,7 +768,7 @@ exports.transferCustody = async (req, res) => {
     emit('hr:employee', { id: String(receiver._id) });
     res.json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to transfer custody item' });
+    return sendMongooseError(res, error, 'Failed to transfer custody item');
   }
 };
 
@@ -981,7 +982,7 @@ exports.createStock = async (req, res) => {
     emitCustody({ type: 'stock', id: String(item._id) });
     res.status(201).json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create stock item' });
+    return sendMongooseError(res, error, 'Failed to create stock item');
   }
 };
 
@@ -999,7 +1000,7 @@ exports.updateStock = async (req, res) => {
     emitCustody({ type: 'stock', id: String(item._id) });
     res.json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update stock item' });
+    return sendMongooseError(res, error, 'Failed to update stock item');
   }
 };
 
@@ -1059,7 +1060,7 @@ exports.assignFromStock = async (req, res) => {
     emit('hr:employee', { id: String(item.employee) });
     res.json({ item });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to assign stock item' });
+    return sendMongooseError(res, error, 'Failed to assign stock item');
   }
 };
 
@@ -1159,7 +1160,7 @@ exports.createSystem = async (req, res) => {
     emit('it:updated', { type: 'system', id: String(system._id) });
     res.status(201).json({ system });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to create system' });
+    return sendMongooseError(res, error, 'Failed to create system');
   }
 };
 
@@ -1172,7 +1173,7 @@ exports.updateSystem = async (req, res) => {
     emit('it:updated', { type: 'system', id: String(system._id) });
     res.json({ system });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update system' });
+    return sendMongooseError(res, error, 'Failed to update system');
   }
 };
 

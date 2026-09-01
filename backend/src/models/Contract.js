@@ -15,13 +15,24 @@ const contractSchema = new mongoose.Schema(
     // Annual leave days granted by this contract (e.g. 30 or 21). This is the
     // entitlement the balance accrues toward.
     annualLeaveDays: { type: Number, required: true, default: 21 },
+    // ── ما رُحِّل من العقد السابق ───────────────────────────────────────────
+    // الرصيدُ يتراكم من بداية العقد النشط. فلو أُنشئ عقدٌ جديدٌ عند التجديد
+    // عاد التراكمُ إلى الصفر، والمأخوذُ يبقى محسوبًا — فيصير رصيدُ الموظّف
+    // سالبًا يومَ جُدِّد عقدُه. وأيّامُه غيرُ المستهلَكة حقٌّ له لا تسقط بالتجديد.
+    // فتُحسب عند التجديد وتُثبَّت هنا، ويُضاف إليها تراكمُ السنة الجديدة.
+    carriedOverDays: { type: Number, default: 0 },
+    // العقدُ الذي جُدِّد عنه — يُقرأ به تسلسلُ عقود الموظّف.
+    renewedFrom: { type: mongoose.Schema.Types.ObjectId, ref: 'Contract' },
 
     jobTitle: { type: String, trim: true },
     basicSalary: { type: Number, default: 0 },
     allowances: { type: Number, default: 0 },
     probationMonths: { type: Number, default: 3 },
 
-    status: { type: String, enum: ['active', 'expired', 'terminated'], default: 'active' },
+    // «مجدَّد» غيرُ «منتهٍ» وغيرُ «منهًى»: العقدُ لم يُترك ينتهي ولم تُقطَع
+    // الخدمةُ به — خلَفه آخر. وخلطُه بـ«منتهٍ» يجعل تقاريرَ العقود المنتهية
+    // تعدّ عقودًا جُدِّدت في يومها.
+    status: { type: String, enum: ['active', 'expired', 'terminated', 'renewed'], default: 'active' },
     terminatedAt: { type: Date },
     terminationReason: { type: String, trim: true },
     // Set true only once all custody/assets are returned — termination is

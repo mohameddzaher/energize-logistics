@@ -2,9 +2,17 @@ const mongoose = require('mongoose');
 
 const dailyWalletSchema = new mongoose.Schema(
   {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // ── المحفظةُ للفرع لا للموظّف ─────────────────────────────────────────────
+    // كانت لكلّ موظّفٍ محفظتُه: يُختار الفرعُ ثمّ يُختار الموظّف. والنقدُ في
+    // الواقع نقدُ الفرع — يعمل عليه أكثرُ من موظّفٍ في اليوم الواحد، ويُسلَّم
+    // بينهم، ويُسأل عنه الفرعُ لا الشخص. فكان الرصيدُ الواحدُ مقسومًا على مَن
+    // فتح شاشتَه، ولا يُقرأ إلّا بجمعه يدويًّا.
+    //
+    // فصار المفتاحُ الفرعَ واليوم. و`user` باقٍ للتاريخ وحدَه: يوميّاتٌ قديمةٌ
+    // كُتبت باسم أصحابها قبل الدمج، ولا يُكتب بعد اليوم.
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', required: true },
     date: { type: String, required: true }, // YYYY-MM-DD format for easy querying
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     openingBalance: { type: Number, default: 0 },
     closingBalance: { type: Number, default: 0 },
     totalCollections: { type: Number, default: 0 },
@@ -24,9 +32,9 @@ const dailyWalletSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// One wallet per user per day
-dailyWalletSchema.index({ user: 1, date: 1 }, { unique: true });
-dailyWalletSchema.index({ branch: 1, date: 1 });
+// محفظةٌ واحدةٌ لكلّ فرعٍ في اليوم — لا لكلّ موظّف.
+dailyWalletSchema.index({ branch: 1, date: 1 }, { unique: true });
+dailyWalletSchema.index({ user: 1, date: 1 });
 dailyWalletSchema.index({ date: -1 });
 dailyWalletSchema.index({ isClosed: 1 });
 

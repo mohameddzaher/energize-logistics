@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const walletTransactionSchema = new mongoose.Schema(
   {
     wallet: { type: mongoose.Schema.Types.ObjectId, ref: 'DailyWallet', required: true },
+    // مَن سجّل الحركة. المحفظةُ للفرع، والحركةُ تبقى منسوبةً إلى صاحبها —
+    // «نعرف مين الموظّف» يبقى، والرصيدُ يصير واحدًا للفرع.
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', required: true },
     date: { type: String, required: true }, // YYYY-MM-DD

@@ -108,7 +108,6 @@ export default function WalletPage() {
   const [allBranches, setAllBranches] = useState<{ _id: string; name: string }[]>([]);
   const [selectedBranch, setSelectedBranch] = useState('');
   const [branchUsers, setBranchUsers] = useState<{ _id: string; firstName: string; lastName: string }[]>([]);
-  const [selectedUser, setSelectedUser] = useState('');
 
   // قائمة الفروع — تُقرأ **مرّة واحدة** وتخدم الغرضين: قائمة فرع نافذة الشراء،
   // ومحدِّد الفرع لمن يملك اختياره. كانت تُطلب مرّتين من الخادم في كل فتحة،
@@ -197,15 +196,19 @@ export default function WalletPage() {
     setTransactions([]);
     setBranchUsers([]);
     api.get<any>(`/api/users?branch=${selectedBranch}`).then((data) => {
+      // يُقرأ موظّفو الفرع للعرض وحدَه — «مَن يعمل على هذه المحفظة» — لا
+      // لاختيار محفظةٍ منهم.
       const users = (data.users || data || []).filter((u: any) => ['operations_staff', 'operations_manager'].includes(u.role));
       setBranchUsers(users);
-      setSelectedUser(users[0]?._id ?? '');
     }).catch((err: any) => { setActionError(err?.message || 'Failed to load users'); setLoading(false); });
   }, [canSelectBranch, selectedBranch]);
 
   // ─── FETCH WALLET ──────────────────────────────────────────
   const fetchWallet = useCallback(async (showSpinner = true) => {
-    if (canSelectBranch && (!selectedBranch || !selectedUser)) {
+    // ── يُختار الفرعُ وحدَه ─────────────────────────────────────────────────
+    // كان يُختار الفرعُ ثمّ الموظّف، فلا تُقرأ محفظةٌ حتّى يُختار شخصٌ بعينه —
+    // والنقدُ نقدُ الفرع يعمل عليه أكثرُ من موظّف. فالفرعُ يكفي.
+    if (canSelectBranch && !selectedBranch) {
       setLoading(false);
       setWallet(null);
       setTransactions([]);
@@ -214,7 +217,7 @@ export default function WalletPage() {
     if (showSpinner) setLoading(true);
     try {
       let url = `/api/wallet/daily?date=${selectedDate}`;
-      if (canSelectBranch && selectedUser) url += `&userId=${selectedUser}`;
+      if (canSelectBranch && selectedBranch) url += `&branchId=${selectedBranch}`;
       const data = await api.get<any>(url);
       setWallet(data.wallet);
       setTransactions(data.transactions || []);
@@ -230,7 +233,7 @@ export default function WalletPage() {
       }
     }
     setLoading(false);
-  }, [selectedDate, canSelectBranch, selectedBranch, selectedUser, lang]);
+  }, [selectedDate, canSelectBranch, selectedBranch, lang]);
 
   // Wait for auth before fetching
   useEffect(() => {
@@ -506,9 +509,9 @@ export default function WalletPage() {
     setExporting(true);
     setExportError('');
     try {
-      const targetUserId = canSelectBranch && selectedUser ? selectedUser : (user?._id || '');
+      const targetBranchId = canSelectBranch && selectedBranch ? selectedBranch : ((user as any)?.branch || '');
       const params = new URLSearchParams({ dateFrom: exportFrom, dateTo: exportTo });
-      if (targetUserId) params.set('userId', targetUserId);
+      if (targetBranchId) params.set('branchId', String(targetBranchId));
       const data = await api.get<any>(`/api/wallet/range?${params.toString()}`);
       const wallets = data.wallets || [];
       const txns = data.transactions || [];
@@ -591,7 +594,12 @@ export default function WalletPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">{L.dailyWallet}</h1>
-            <p className="text-slate-500 text-sm">{wallet?.branch?.name || L.selectBranch} — {wallet?.user?.firstName || ''} {wallet?.user?.lastName || ''}</p>
+            <p className="text-slate-500 text-sm">
+              {wallet?.branch?.name || L.selectBranch}
+              {branchUsers.length > 0 && (
+                <span className="text-slate-400"> — {lang === 'ar' ? `${branchUsers.length} موظفًا على هذه المحفظة` : `${branchUsers.length} staff on this wallet`}</span>
+              )}
+            </p>
           </div>
         </div>
 
@@ -602,11 +610,8 @@ export default function WalletPage() {
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                 {allBranches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
               </select>
-              <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} title={txx.selectUser}
-                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
-                {branchUsers.length === 0 && <option value="">{L.noUsers}</option>}
-                {branchUsers.map((u) => <option key={u._id} value={u._id}>{u.firstName} {u.lastName}</option>)}
-              </select>
+              {/* منتقي الموظّف أُزيل: المحفظةُ للفرع. ومَن سجّل كلَّ حركةٍ
+                  يظهر في سطرها — «نعرف مين الموظّف» تبقى، والرصيدُ يصير واحدًا. */}
             </>
           )}
           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
@@ -737,12 +742,16 @@ export default function WalletPage() {
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.reportDate}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.notes}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.time}</th>
+                {/* ── ومَن سجّلها ────────────────────────────────────────────
+                    المحفظةُ صارت للفرع يعمل عليها أكثرُ من موظّف، فالسطرُ هو
+                    ما يقول مَن فعل. وبدونه يصير النقدُ المشتركُ بلا مسؤول. */}
+                <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{lang === 'ar' ? 'سجّلها' : 'Recorded by'}</th>
                 <th className="text-end text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.actions}</th>
               </tr>
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={15} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
+                <tr><td colSpan={16} className="text-center text-slate-800 py-12">{L.noTransactions}</td></tr>
               ) : transactions.map((tx) => {
                 const cfg = TYPE_CONFIG[tx.type];
                 const Icon = cfg.icon;
@@ -787,6 +796,12 @@ export default function WalletPage() {
                     <td className="px-4 py-3 text-slate-800 text-xs max-w-[150px] truncate">{tx.notes || '—'}</td>
                     <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap">
                       {new Date(tx.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    {/* مَن سجّل الحركة — المحفظةُ للفرع والمسؤوليّةُ للشخص. */}
+                    <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap">
+                      {(tx as any).user
+                        ? `${(tx as any).user.firstName || ''} ${(tx as any).user.lastName || ''}`.trim() || '—'
+                        : '—'}
                     </td>
                     <td className="px-4 py-3 text-end">
                       {!isReadOnly && (!wallet.isClosed || isManager) && (

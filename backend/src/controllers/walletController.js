@@ -81,23 +81,30 @@ const enrichTransactionsWithOpsData = async (transactions) => {
 };
 
 // ─── GET OR CREATE DAILY WALLET ──────────────────────────────
-const getOrCreateWallet = async (userId, branchId, date) => {
-  let wallet = await DailyWallet.findOne({ user: userId, date });
+/**
+ * محفظةُ الفرع في يومٍ ما — تُنشأ إن لم تكن.
+ *
+ * كانت لكلّ موظّفٍ محفظتُه، فنقدُ الفرع الواحد موزَّعٌ على محافظَ لا تُقرأ إلّا
+ * بجمعها. والنقدُ في الواقع نقدُ الفرع: يعمل عليه أكثرُ من موظّفٍ في اليوم،
+ * ويُسلَّم بينهم، ويُسأل عنه الفرعُ لا الشخص. فصار المفتاحُ الفرعَ واليوم،
+ * وبقيت كلُّ حركةٍ منسوبةً إلى مَن سجّلها.
+ *
+ * والافتتاحيُّ ختاميُّ آخر يومٍ للفرع — لا لآخر يومٍ لهذا الموظّف.
+ */
+const getOrCreateWallet = async (branchId, date) => {
+  let wallet = await DailyWallet.findOne({ branch: branchId, date });
+  if (wallet) return wallet;
 
-  if (!wallet) {
-    // Find previous day's wallet for opening balance
-    const prevWallet = await DailyWallet.findOne({ user: userId, date: { $lt: date } }).sort({ date: -1 });
-    const openingBalance = prevWallet ? prevWallet.closingBalance : 0;
-
-    wallet = await DailyWallet.create({
-      user: userId,
-      branch: branchId,
-      date,
-      openingBalance,
-      closingBalance: openingBalance,
-    });
+  const prevWallet = await DailyWallet.findOne({ branch: branchId, date: { $lt: date } }).sort({ date: -1 });
+  const openingBalance = prevWallet ? prevWallet.closingBalance : 0;
+  try {
+    wallet = await DailyWallet.create({ branch: branchId, date, openingBalance, closingBalance: openingBalance });
+  } catch (e) {
+    // موظّفان يفتحان الشاشةَ في اللحظة نفسِها: الفهرسُ الفريد يمنع الثانية،
+    // فتُقرأ التي سبقت بدل أن يُردّ على أحدهما بخطأ.
+    if (e && e.code === 11000) wallet = await DailyWallet.findOne({ branch: branchId, date });
+    else throw e;
   }
-
   return wallet;
 };
 
@@ -122,15 +129,17 @@ const recalcWallet = async (walletId) => {
   await wallet.save();
 
   // Cascade: update opening balance of all future days for this user
-  await cascadeBalances(wallet.user, wallet.date, wallet.closingBalance);
+  await cascadeBalances(wallet.branch, wallet.date, wallet.closingBalance);
 
   return wallet;
 };
 
 // ─── CASCADE BALANCES TO FUTURE DAYS ─────────────────────────
-const cascadeBalances = async (userId, fromDate, newClosingBalance) => {
+// السلسلةُ تتبع الفرعَ لا الموظّف: الرصيدُ رصيدُ الفرع، فالانتقالُ من يومٍ إلى
+// ما بعده انتقالُ نقدِه هو.
+const cascadeBalances = async (branchId, fromDate, newClosingBalance) => {
   const futureDays = await DailyWallet.find({
-    user: userId,
+    branch: branchId,
     date: { $gt: fromDate },
   }).sort({ date: 1 });
 
@@ -149,32 +158,39 @@ const cascadeBalances = async (userId, fromDate, newClosingBalance) => {
 exports.getDailyWallet = async (req, res) => {
   try {
     const date = req.query.date || toDateStr();
-    const userId = req.query.userId || req.user._id;
 
-    // Operations users can only see their own wallet
-    if (req.user.role === 'operations_staff' && userId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Cannot view other wallets' });
-    }
-
-    // Super admin and operations_manager can view any user's wallet by looking up their branch
-    let branchId = req.user.branch;
-    if (['super_admin', 'operations_manager'].includes(req.user.role) && userId.toString() !== req.user._id.toString()) {
+    // ── يُختار الفرعُ لا الموظّف ────────────────────────────────────────────
+    // المحفظةُ للفرع، فالسؤالُ «أيُّ فرع» لا «أيُّ موظّف». و`userId` يبقى
+    // مقبولًا في الطلب — روابطُ محفوظةٌ ونسخُ التطبيق القديمة ترسله — فيُترجَم
+    // إلى فرع صاحبه بدل أن يُردّ الطلب.
+    let branchId = req.query.branchId || req.query.branch;
+    if (!branchId && req.query.userId) {
       const User = require('../models/User');
-      const targetUser = await User.findById(userId);
-      if (targetUser?.branch) branchId = targetUser.branch;
+      const targetUser = await User.findById(req.query.userId).select('branch').lean();
+      branchId = targetUser && targetUser.branch;
+    }
+    if (!branchId) branchId = req.user.branch;
+
+    // موظّفُ التشغيل يرى فرعَه وحدَه.
+    if (req.user.role === 'operations_staff' && String(branchId) !== String(req.user.branch)) {
+      return res.status(403).json({ message: 'لا تملك صلاحية عرض محفظة فرعٍ آخر.' });
     }
 
     if (!branchId) {
-      return res.status(400).json({ message: 'No branch assigned to this user. Please assign a branch in user settings.' });
+      return res.status(400).json({ message: 'لا يوجد فرع محدَّد. اختر الفرع، أو اطلب من الإدارة ربط حسابك بفرع.' });
     }
 
-    const wallet = await getOrCreateWallet(userId, branchId, date);
+    const wallet = await getOrCreateWallet(branchId, date);
     const populated = await DailyWallet.findById(wallet._id)
       .populate('user', 'firstName lastName')
       .populate('branch', 'name')
       .populate('closedBy', 'firstName lastName');
 
     const rawTransactions = await WalletTransaction.find({ wallet: wallet._id })
+      // ── ومَن سجّل كلَّ حركة ────────────────────────────────────────────────
+      // المحفظةُ صارت للفرع، فالسطرُ هو ما يقول مَن فعل. وبدونه يصير النقدُ
+      // المشتركُ بلا مسؤولٍ عن أيّ حركةٍ فيه — وهو عكسُ المقصود.
+      .populate('user', 'firstName lastName')
       .populate('customer', 'companyName customerNumber')
       .populate('invoice', 'invoiceNumber amount balance')
       .populate('vendor', 'name')
@@ -212,12 +228,18 @@ exports.addTransaction = async (req, res) => {
 
     const txDate = date || toDateStr();
 
-    if (!req.user.branch) {
-      return res.status(400).json({ message: 'No branch assigned' });
+    // الحركةُ تُقيَّد على محفظة فرعٍ بعينه. والفرعُ من الطلب إن أُرسل — المدير
+    // يسجّل عن فرعٍ يديره — وإلّا فرعُ صاحب الحساب.
+    const txBranch = req.body.branchId || req.body.branch || req.user.branch;
+    if (!txBranch) {
+      return res.status(400).json({ message: 'لا يوجد فرع محدَّد لهذه الحركة.' });
+    }
+    if (req.user.role === 'operations_staff' && String(txBranch) !== String(req.user.branch)) {
+      return res.status(403).json({ message: 'لا تملك صلاحية التسجيل على فرعٍ آخر.' });
     }
 
     // Check if day is closed (only managers can add to closed days)
-    const wallet = await getOrCreateWallet(req.user._id, req.user.branch, txDate);
+    const wallet = await getOrCreateWallet(txBranch, txDate);
     const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(req.user.role);
 
     if (wallet.isClosed && !isManager) {
@@ -685,8 +707,14 @@ exports.closeDay = async (req, res) => {
     const { date, actualCash, differenceReason, differenceNotes } = req.body;
     const txDate = date || toDateStr();
 
-    const wallet = await DailyWallet.findOne({ user: req.user._id, date: txDate });
-    if (!wallet) return res.status(404).json({ message: 'No wallet found for this date' });
+    // يُقفَل يومُ الفرع لا يومُ الشخص: النقدُ نقدُ الفرع، وإقفالُه إقرارٌ عنه.
+    const closeBranch = req.body.branchId || req.body.branch || req.user.branch;
+    if (!closeBranch) return res.status(400).json({ message: 'لا يوجد فرع محدَّد.' });
+    if (req.user.role === 'operations_staff' && String(closeBranch) !== String(req.user.branch)) {
+      return res.status(403).json({ message: 'لا تملك صلاحية إقفال يوم فرعٍ آخر.' });
+    }
+    const wallet = await DailyWallet.findOne({ branch: closeBranch, date: txDate });
+    if (!wallet) return res.status(404).json({ message: 'لا توجد يوميّة لهذا الفرع في هذا التاريخ.' });
     if (wallet.isClosed) return res.status(400).json({ message: 'Day is already closed' });
 
     wallet.isClosed = true;
@@ -716,10 +744,9 @@ exports.closeDay = async (req, res) => {
     const nextDate = new Date(txDate + 'T00:00:00');
     nextDate.setDate(nextDate.getDate() + 1);
     const nextDateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
-    const existingNext = await DailyWallet.findOne({ user: req.user._id, date: nextDateStr });
+    const existingNext = await DailyWallet.findOne({ branch: wallet.branch, date: nextDateStr });
     if (!existingNext) {
       await DailyWallet.create({
-        user: req.user._id,
         branch: wallet.branch,
         date: nextDateStr,
         openingBalance: wallet.closingBalance,
@@ -727,7 +754,7 @@ exports.closeDay = async (req, res) => {
       });
     } else if (existingNext.openingBalance !== wallet.closingBalance) {
       // Update existing next day and cascade forward
-      await cascadeBalances(req.user._id, txDate, wallet.closingBalance);
+      await cascadeBalances(wallet.branch, txDate, wallet.closingBalance);
     }
 
     const populated = await DailyWallet.findById(wallet._id)
@@ -884,9 +911,12 @@ exports.getAllBranchesDashboard = async (req, res) => {
       DailyWallet.aggregate([
         { $match: { branch: { $in: branchIds }, date: { $lte: hi } } },
         { $sort: { date: 1 } },
-        // آخرُ يوميّةٍ لكلّ مستخدمٍ حتّى التاريخ — هي التي تحمل رصيدَه الجاري.
+        // ── آخرُ يوميّةٍ لكلّ **فرع** حتّى التاريخ ──────────────────────────
+        // كانت تُجمَّع بالمستخدم حين كانت المحفظةُ له. وقد صارت للفرع ولا
+        // مستخدمَ لها، فكان الجمعُ بالمستخدم يضع الفروعَ كلَّها في مجموعةٍ
+        // واحدةٍ مفتاحُها `null` — فيظهر فرعٌ واحدٌ والباقي أصفار.
         { $group: {
-          _id: '$user',
+          _id: '$branch',
           branch: { $last: '$branch' },
           date: { $last: '$date' },
           closingBalance: { $last: '$closingBalance' },
@@ -948,7 +978,7 @@ exports.getAllBranchesDashboard = async (req, res) => {
         totalPurchases,
         netMovement: totalCollections - totalExpenses - totalPurchases,
         closingBalance: totalClosingBalance,
-        // «حاملو النقد» لا «مَن فتح شاشتَه اليوم».
+        // محفظةُ الفرع واحدة؛ والعددُ الذي يُقرأ هو عددُ من يعمل عليها.
         activeWallets: carriedRows.length,
         movedToday: wallets.length,
         closedWallets,
@@ -1065,11 +1095,15 @@ exports.getWalletHistory = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
 
-    if (req.user.role === 'operations_staff' && userId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Cannot view other wallets' });
+    // السجلُّ بالفرع: يُقرأ تاريخُ نقدِ الفرع لا تاريخُ شخصٍ فيه.
+    const histBranch = req.query.branchId || req.query.branch
+      || (userId ? (await require('../models/User').findById(userId).select('branch').lean() || {}).branch : null)
+      || req.user.branch;
+    if (req.user.role === 'operations_staff' && String(histBranch) !== String(req.user.branch)) {
+      return res.status(403).json({ message: 'لا تملك صلاحية عرض محفظة فرعٍ آخر.' });
     }
 
-    const filter = { user: userId };
+    const filter = { branch: histBranch };
     if (dateFrom || dateTo) {
       filter.date = {};
       if (dateFrom) filter.date.$gte = dateFrom;
@@ -1105,11 +1139,14 @@ exports.getUserWalletRange = async (req, res) => {
     if (!dateFrom || !dateTo) {
       return res.status(400).json({ message: 'dateFrom and dateTo are required' });
     }
-    if (req.user.role === 'operations_staff' && userId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Cannot view other wallets' });
+    const repBranch = req.query.branchId || req.query.branch
+      || (userId ? (await require('../models/User').findById(userId).select('branch').lean() || {}).branch : null)
+      || req.user.branch;
+    if (req.user.role === 'operations_staff' && String(repBranch) !== String(req.user.branch)) {
+      return res.status(403).json({ message: 'لا تملك صلاحية عرض محفظة فرعٍ آخر.' });
     }
 
-    const filter = { user: userId, date: { $gte: dateFrom, $lte: dateTo } };
+    const filter = { branch: repBranch, date: { $gte: dateFrom, $lte: dateTo } };
     const wallets = await DailyWallet.find(filter)
       .populate('user', 'firstName lastName')
       .populate('branch', 'name')

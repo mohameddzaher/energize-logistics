@@ -14,6 +14,7 @@ import {
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
 import { getWalletTranslations, getWalletExtraTranslations } from '@/lib/translations';
+import ExportMenu, { exportScopeLabels } from '@/components/ls2/ExportMenu';
 
 interface DailyWallet {
   _id: string;
@@ -156,12 +157,6 @@ export default function WalletPage() {
   const [closing, setClosing] = useState(false);
 
   // Export modal
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [exportMode, setExportMode] = useState<'single' | 'range'>('single');
-  const [exportFrom, setExportFrom] = useState(getTodayStr());
-  const [exportTo, setExportTo] = useState(getTodayStr());
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState('');
 
   // Confirm modal (replaces browser (await confirm()))
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -432,7 +427,7 @@ export default function WalletPage() {
       setPurchaseInvoiceAmount(data.sellingValue || null);
       setExpectedPurchaseValue(data.purchaseValue != null ? Number(data.purchaseValue) : null);
       setPurchaseReportFound(true);
-      setPurchaseReportMsg(`${txx.purchasePrice}: ${(data.purchaseValue || 0).toLocaleString()} SAR`);
+      setPurchaseReportMsg(`${txx.purchasePrice}: ${(data.purchaseValue || 0).toLocaleString()}`);
     } catch (err: any) {
       setPurchaseReportFound(false);
       setPurchaseReportMsg(err.message || txx.reportNotFound);
@@ -452,7 +447,7 @@ export default function WalletPage() {
       setTxForm((f) => ({ ...f, deliveryStatementNumber: data.reportNumber }));
       setExpectedSellingValue(data.sellingValue != null ? Number(data.sellingValue) : null);
       setCollectionReportFound(true);
-      setCollectionReportMsg(`${txx.foundSellingPrice}: ${(data.sellingValue || 0).toLocaleString()} SAR`);
+      setCollectionReportMsg(`${txx.foundSellingPrice}: ${(data.sellingValue || 0).toLocaleString()}`);
     } catch (err: any) {
       setCollectionReportFound(false);
       setCollectionReportMsg(err.message || txx.reportNotFound);
@@ -461,8 +456,9 @@ export default function WalletPage() {
 
   // Column definitions shared between single-day and range exports.
   const walletSummaryColumns = [
+    // المحفظةُ صارت للفرع: «المستخدم» لم يعد وصفًا ليوميّةٍ بل لحركة. راجع
+    // models/DailyWallet.
     { header: 'Branch', key: 'branch.name', width: 20 },
-    { header: 'User', key: 'user', transform: (v: any) => v ? `${v.firstName} ${v.lastName}` : '', width: 20 },
     { header: 'Date', key: 'date', width: 12 },
     { header: 'Opening Balance (SAR)', key: 'openingBalance', transform: fmt.money, width: 20 },
     { header: 'Collections (SAR)', key: 'totalCollections', transform: fmt.money, width: 18 },
@@ -478,6 +474,9 @@ export default function WalletPage() {
     { header: 'Time', key: 'createdAt', transform: (v: any) => v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '', width: 8 },
     { header: 'Type', key: 'type', transform: (v: any) => v ? v.charAt(0).toUpperCase() + v.slice(1) : '', width: 12 },
     { header: 'Amount (SAR)', key: 'amount', transform: fmt.money, width: 15 },
+    // مَن سجّلها: المحفظةُ للفرع يعمل عليها أكثرُ من موظّف، فالملفُّ بلا اسمِ
+    // الفاعل يقول ماذا جرى ولا يقول من فعل.
+    { header: 'Recorded by', key: 'user', transform: (v: any) => (v ? `${v.firstName || ''} ${v.lastName || ''}`.trim() : ''), width: 20 },
     { header: 'Customer', key: 'customer', transform: (v: any) => v ? `${v.companyName} (${v.customerNumber})` : '', width: 25 },
     { header: 'Invoice #', key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
     { header: 'Invoice Amount (SAR)', key: 'invoice', transform: (v: any) => v?.amount != null ? fmt.money(v.amount) : '', width: 18 },
@@ -495,59 +494,43 @@ export default function WalletPage() {
   ];
 
   // Single-day export — uses already-loaded wallet + transactions.
-  const exportSingleDay = () => {
-    if (!wallet) return;
-    const branchName = wallet?.branch?.name || 'wallet';
-    exportMultiSheet([
-      { name: 'Wallet Summary', data: [wallet], columns: walletSummaryColumns },
-      { name: 'Transaction Log', data: transactions, columns: txColumns },
-    ], `Wallet_${branchName}_${selectedDate}`);
-  };
 
   // Range export — fetches every wallet + transaction in the range, then exports.
-  const exportRange = async () => {
-    setExporting(true);
-    setExportError('');
-    try {
-      const targetBranchId = canSelectBranch && selectedBranch ? selectedBranch : ((user as any)?.branch || '');
-      const params = new URLSearchParams({ dateFrom: exportFrom, dateTo: exportTo });
-      if (targetBranchId) params.set('branchId', String(targetBranchId));
-      const data = await api.get<any>(`/api/wallet/range?${params.toString()}`);
-      const wallets = data.wallets || [];
-      const txns = data.transactions || [];
-      if (wallets.length === 0 && txns.length === 0) {
-        setExportError(L.noDataInRange);
-        setExporting(false);
-        return;
-      }
-      const branchName = wallets[0]?.branch?.name || wallet?.branch?.name || 'wallet';
-      exportMultiSheet([
-        { name: 'Wallet Summary', data: wallets, columns: walletSummaryColumns },
-        { name: 'Transaction Log', data: txns, columns: txColumns },
-      ], `Wallet_${branchName}_${exportFrom}_to_${exportTo}`);
-      setShowExportModal(false);
-    } catch (err: any) {
-      setExportError(err?.message || 'Failed to export');
-    }
-    setExporting(false);
-  };
 
-  const openExportModal = () => {
-    setExportMode('single');
-    setExportFrom(selectedDate);
-    setExportTo(selectedDate);
-    setExportError('');
-    setShowExportModal(true);
+  // ── التصديرُ بالزرّ الموحَّد ونطاقين ──────────────────────────────────────
+  // كانت لهذه الشاشة نافذتُها الخاصّة: شكلٌ آخرُ لزرٍّ يحمل في تسعين شاشةً شكلًا
+  // واحدًا، وخطوةٌ زائدةٌ قبل كلّ تصدير. والنطاقان هما ما يُطلب فعلًا: يومُ
+  // الشاشة، أو الدفترُ كلُّه.
+  const scope = exportScopeLabels(lang === 'ar');
+  const branchNameForFile = wallet?.branch?.name || 'wallet';
+  const rangeSheets = async (from: string, to: string) => {
+    const targetBranchId = canSelectBranch && selectedBranch ? selectedBranch : ((user as any)?.branch || '');
+    const params = new URLSearchParams({ dateFrom: from, dateTo: to });
+    if (targetBranchId) params.set('branchId', String(targetBranchId));
+    const d = await api.get<any>(`/api/wallet/range?${params.toString()}`);
+    return [
+      { name: 'Wallet Summary', rows: (d.wallets || []) as Record<string, any>[], columns: walletSummaryColumns },
+      { name: 'Transaction Log', rows: (d.transactions || []) as Record<string, any>[], columns: txColumns },
+    ];
   };
+  const exportOptions = [
+    {
+      key: 'day',
+      label: `${scope.shown} — ${selectedDate}`,
+      sheets: [
+        { name: 'Wallet Summary', rows: (wallet ? [wallet] : []) as Record<string, any>[], columns: walletSummaryColumns },
+        { name: 'Transaction Log', rows: transactions as unknown as Record<string, any>[], columns: txColumns },
+      ],
+    },
+    {
+      key: 'all',
+      label: scope.all,
+      // يُجلب عند الضغط لا قبله — لا يُحمَّل الدفترُ كلُّه لمن لن يصدّر.
+      resolve: () => rangeSheets('2000-01-01', '2100-12-31'),
+    },
+  ];
 
-  const handleExportClick = () => {
-    if (exportMode === 'single') {
-      exportSingleDay();
-      setShowExportModal(false);
-    } else {
-      exportRange();
-    }
-  };
+
 
   const openTxModal = (type: 'collection' | 'expense' | 'purchase') => {
     setTxType(type);
@@ -618,10 +601,8 @@ export default function WalletPage() {
             className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.selectDate} />
           <button type="button" onClick={() => setSelectedDate(getTodayStr())}
             className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{L.today}</button>
-          <button type="button" onClick={openExportModal} disabled={!wallet}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50" title={L.export}>
-            <Download className="w-4 h-4" /> {L.export}
-          </button>
+          <ExportMenu fileName={`Wallet_${branchNameForFile}_${selectedDate}`}
+            lang={lang === 'ar' ? 'ar' : 'en'} options={exportOptions} />
         </div>
       </div>
 
@@ -672,10 +653,10 @@ export default function WalletPage() {
           <AlertTriangle className={`w-5 h-5 ${wallet.cashDifference > 0 ? 'text-red-600' : 'text-green-600'}`} />
           <div>
             <p className={`text-sm font-medium ${wallet.cashDifference > 0 ? 'text-red-600' : 'text-green-600'}`}>
-              {wallet.cashDifference > 0 ? L.deficit : L.surplus}: {Math.abs(wallet.cashDifference).toLocaleString()} SAR
+              {wallet.cashDifference > 0 ? L.deficit : L.surplus}: {Math.abs(wallet.cashDifference).toLocaleString()}
             </p>
             <p className="text-slate-500 text-xs">
-              {L.expected}: {wallet.closingBalance.toLocaleString()} SAR | {L.actual}: {(wallet.actualCash ?? 0).toLocaleString()} SAR
+              {L.expected}: {wallet.closingBalance.toLocaleString()} | {L.actual}: {(wallet.actualCash ?? 0).toLocaleString()}
               {wallet.differenceReason && ` | ${L.reason}: ${wallet.differenceReason}`}
             </p>
           </div>
@@ -766,7 +747,7 @@ export default function WalletPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`font-bold ${tx.type === 'collection' ? 'text-green-600' : 'text-red-600'}`}>
-                        {tx.type === 'collection' ? '+' : '-'}{tx.amount.toLocaleString()} SAR
+                        {tx.type === 'collection' ? '+' : '-'}{tx.amount.toLocaleString()}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-700 text-xs">
@@ -870,11 +851,11 @@ export default function WalletPage() {
                     const isPurchase = txType === 'purchase';
                     const differs = Math.abs(Number(txForm.amount) - expected) > 0.009;
                     if (!differs) {
-                      return <p className="text-xs text-green-600 mt-1">✓ {isPurchase ? txx.amountMatchesPurchase : txx.amountMatchesSelling} ({expected.toLocaleString()} SAR)</p>;
+                      return <p className="text-xs text-green-600 mt-1">✓ {isPurchase ? txx.amountMatchesPurchase : txx.amountMatchesSelling} ({expected.toLocaleString()})</p>;
                     }
                     return (
                       <div className="mt-2 rounded-lg border border-amber-400/60 bg-amber-50 p-3 space-y-2">
-                        <p className="text-xs text-amber-700 font-medium">⚠ {isPurchase ? txx.amountDiffersPurchase : txx.amountDiffersSelling} ({expected.toLocaleString()} SAR)</p>
+                        <p className="text-xs text-amber-700 font-medium">⚠ {isPurchase ? txx.amountDiffersPurchase : txx.amountDiffersSelling} ({expected.toLocaleString()})</p>
                         <div>
                           <label className="text-slate-500 text-xs mb-1 block">{txx.mismatchReasonLabel} *</label>
                           <select value={txForm.mismatchReason} title={txx.mismatchReasonLabel}
@@ -977,7 +958,7 @@ export default function WalletPage() {
                     {/* Show invoice selling price if found */}
                     {purchaseInvoiceAmount != null && (
                       <div className="bg-slate-50 border border-blue-500/30 rounded-lg p-3">
-                        <p className="text-blue-600 text-sm font-medium">{L.sellingPrice}: {purchaseInvoiceAmount.toLocaleString()} SAR</p>
+                        <p className="text-blue-600 text-sm font-medium">{L.sellingPrice}: {purchaseInvoiceAmount.toLocaleString()}</p>
                       </div>
                     )}
 
@@ -1210,7 +1191,7 @@ export default function WalletPage() {
                 {isManager && (
                   <div className="bg-white border border-slate-200 rounded-lg p-4">
                     <p className="text-slate-500 text-xs mb-1">{L.expectedCashBalance}</p>
-                    <p className="text-2xl font-bold text-[#f37121]">{wallet.closingBalance.toLocaleString()} SAR</p>
+                    <p className="text-2xl font-bold text-[#f37121]">{wallet.closingBalance.toLocaleString()}</p>
                   </div>
                 )}
 
@@ -1227,7 +1208,7 @@ export default function WalletPage() {
                   return (
                     <div className={`p-3 rounded-lg border ${isDeficit ? 'bg-red-500/10 border-red-500/30' : 'bg-green-500/10 border-green-500/30'}`}>
                       <p className={`text-sm font-medium ${isDeficit ? 'text-red-600' : 'text-green-600'}`}>
-                        {isDeficit ? L.deficit : L.surplus}: {Math.abs(diff).toLocaleString()} SAR
+                        {isDeficit ? L.deficit : L.surplus}: {Math.abs(diff).toLocaleString()}
                       </p>
                     </div>
                   );
@@ -1257,75 +1238,9 @@ export default function WalletPage() {
 
       {/* ─── EXPORT MODAL ────────────────────────────────────── */}
       <AnimatePresence>
-        {showExportModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => !exporting && setShowExportModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-              <div className="px-6 py-4 bg-slate-900 flex items-center justify-between">
-                <h2 className="text-white font-bold text-lg flex items-center gap-2">
-                  <Download className="w-5 h-5 text-[#f37121]" /> {L.exportToExcel}
-                </h2>
-                <button type="button" onClick={() => !exporting && setShowExportModal(false)} className="text-slate-300 hover:text-white" aria-label={txx.close} disabled={exporting}><X className="w-5 h-5" /></button>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setExportMode('single')}
-                    className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${exportMode === 'single' ? 'bg-[#f37121]/20 text-[#f37121] border-[#f37121]/50' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                    {L.singleDay}
-                  </button>
-                  <button type="button" onClick={() => setExportMode('range')}
-                    className={`p-3 rounded-xl border text-sm font-medium transition-all text-center ${exportMode === 'range' ? 'bg-[#f37121]/20 text-[#f37121] border-[#f37121]/50' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                    {L.dateRange}
-                  </button>
-                </div>
-
-                {exportMode === 'single' ? (
-                  <div className="bg-white border border-slate-200 rounded-lg p-4">
-                    <p className="text-slate-500 text-xs mb-1">{L.fromDate}</p>
-                    <p className="text-slate-900 font-medium">{selectedDate}</p>
-                    <p className="text-slate-500 text-xs mt-2">
-                      {wallet?.branch?.name || ''} — {wallet?.user?.firstName || ''} {wallet?.user?.lastName || ''}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-slate-500 text-xs mb-1 block">{L.fromDate}</label>
-                      <input type="date" value={exportFrom} onChange={(e) => setExportFrom(e.target.value)}
-                        aria-label={L.fromDate}
-                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
-                    </div>
-                    <div>
-                      <label className="text-slate-500 text-xs mb-1 block">{L.toDate}</label>
-                      <input type="date" value={exportTo} onChange={(e) => setExportTo(e.target.value)}
-                        aria-label={L.toDate}
-                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
-                    </div>
-                  </div>
-                )}
-
-                {exportError && (
-                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 text-sm">
-                    {exportError}
-                  </div>
-                )}
-              </div>
-
-              <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowExportModal(false)} disabled={exporting}
-                  className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm disabled:opacity-50">{L.cancel}</button>
-                <button type="button" onClick={handleExportClick}
-                  disabled={exporting || (exportMode === 'range' && exportFrom > exportTo)}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50">
-                  {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  {exporting ? L.exportLoading : L.download}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
+        {/* نافذةُ التصدير الخاصّة أُزيلت: صار الزرُّ الموحَّد الذي تحمله
+            تسعون شاشةً، وبنطاقين — يومُ الشاشة أو الدفترُ كلُّه. راجع
+            `exportOptions` أعلاه. */}
       </AnimatePresence>
 
       {/* Confirm Modal (replaces browser (await confirm())) */}

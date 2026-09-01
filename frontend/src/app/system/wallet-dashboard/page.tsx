@@ -93,19 +93,46 @@ export default function WalletDashboardPage() {
   const exportColumns: ExportColumn[] = [
     { header: txx.colBranch, key: 'branch.name', width: 20 },
     { header: txx.colBranchCode, key: 'branch.code', width: 12 },
+    // الافتتاحيُّ أوّلًا كما يُقرأ على الشاشة: الملفُّ يُفتح خارج النظام حيث
+    // لا شيءَ يشرحه، فترتيبُ أعمدته هو ترتيبُ الحساب.
+    { header: lang === 'ar' ? 'الرصيد الافتتاحي' : 'Opening balance', key: 'openingBalance', transform: fmt.money, width: 20 },
     { header: txx.colCollections, key: 'totalCollections', transform: fmt.money, width: 18 },
     { header: txx.colExpenses, key: 'totalExpenses', transform: fmt.money, width: 18 },
     { header: txx.colPurchases, key: 'totalPurchases', transform: fmt.money, width: 18 },
     { header: txx.colNetMovement, key: 'netMovement', transform: fmt.money, width: 18 },
+    { header: lang === 'ar' ? 'تسوية جرد' : 'Stock-take adj.', key: 'adjustment', transform: fmt.money, width: 16 },
     { header: txx.colClosingBalance, key: 'closingBalance', transform: fmt.money, width: 20 },
+    { header: lang === 'ar' ? 'أيام بها حركة' : 'Days with movement', key: 'movedToday', width: 16 },
     { header: txx.colActiveWallets, key: 'activeWallets', width: 14 },
+    { header: lang === 'ar' ? 'أيام مقفلة' : 'Closed days', key: 'closedWallets', width: 14 },
+    { header: lang === 'ar' ? 'النقد الفعلي' : 'Actual cash', key: 'totalActualCash', transform: fmt.money, width: 18 },
+    { header: lang === 'ar' ? 'فرق الجرد' : 'Cash difference', key: 'totalDifference', transform: fmt.money, width: 18 },
   ];
-  // اليومُ أو المدى ليس فلترًا على صفوفٍ نملكها، بل هو التقرير نفسه: الخادم
-  // يحسب الأرقام لتلك الفترة وحدها ويعيد كلَّ الفروع. فلا معنى لنطاقٍ ثانٍ —
-  // اسمُ الملفّ يحمل الفترةَ حتّى لا يختلط ملفُّ يومٍ بملفِّ آخر.
+
+  // ── نطاقان لا واحد ────────────────────────────────────────────────────────
+  // «المعروض» هو الفترةُ التي على الشاشة الآن — وهو ما يُصدَّر في الغالب.
+  // و«الكلّ» كلُّ ما في الدفتر منذ أوّل يوم: يُطلب عند التسليم والمراجعة، وكان
+  // يتطلّب تغييرَ الفلتر إلى مدًى واسعٍ ثمّ إعادتَه.
   const scope = exportScopeLabels(lang === 'ar');
+  const periodLabel = dateMode === 'range'
+    ? `${dateFrom} → ${dateTo}`
+    : (dateMode === 'month' ? month : selectedDate);
   const exportOptions = [
-    { key: 'all', label: scope.all, sheets: [{ name: 'Branches', rows: branches as unknown as Record<string, any>[], columns: exportColumns }] },
+    {
+      key: 'shown',
+      label: `${scope.shown} — ${periodLabel}`,
+      sheets: [{ name: 'Branches', rows: branches as unknown as Record<string, any>[], columns: exportColumns }],
+    },
+    {
+      key: 'all',
+      label: scope.all,
+      // يُجلب من الخادم عند الضغط لا قبله: لا يُحمَّل تاريخُ الدفتر كلِّه لمن
+      // فتح الصفحة ولن يصدّر.
+      resolve: async () => {
+        const d = await api.get<any>('/api/wallet/dashboard?dateFrom=2000-01-01&dateTo=2100-12-31');
+        return [{ name: 'Branches', rows: (d.branches || []) as Record<string, any>[], columns: exportColumns }];
+      },
+    },
   ];
 
   const totals = branches.reduce((acc, b) => ({
@@ -220,26 +247,26 @@ export default function WalletDashboardPage() {
           <div className="flex items-center gap-2 mb-2"><Wallet className="w-4 h-4 text-slate-500" />
             <p className="text-slate-500 text-xs truncate">{lang === 'ar' ? 'الرصيد الافتتاحي' : 'Opening balance'}</p></div>
           <p className={`text-lg xl:text-xl font-bold tabular-nums truncate ${totals.opening >= 0 ? 'text-slate-900' : 'text-red-600'}`}
-            title={`${money(totals.opening).toLocaleString()} SAR`}>{money(totals.opening).toLocaleString()} SAR</p>
+            title={`${money(totals.opening).toLocaleString()}`}>{money(totals.opening).toLocaleString()}</p>
           <p className="text-[10px] text-slate-400 mt-0.5">
             {lang === 'ar' ? 'قبل بداية الفترة' : 'before the period starts'}
           </p>
         </div>
         <div className="min-w-0 bg-white border border-slate-200 rounded-xl p-4 shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 mb-2"><ArrowUpCircle className="w-4 h-4 text-green-600" /><p className="text-slate-500 text-xs truncate">{T.totalCollections}</p></div>
-          <p className="text-xl font-bold text-green-600">{totals.collections.toLocaleString()} SAR</p>
+          <p className="text-xl font-bold text-green-600">{totals.collections.toLocaleString()}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2"><ArrowDownCircle className="w-4 h-4 text-red-600" /><p className="text-slate-500 text-xs">{T.totalExpenses}</p></div>
-          <p className="text-xl font-bold text-red-600">{totals.expenses.toLocaleString()} SAR</p>
+          <p className="text-xl font-bold text-red-600">{totals.expenses.toLocaleString()}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2"><ShoppingCart className="w-4 h-4 text-blue-600" /><p className="text-slate-500 text-xs">{T.totalPurchases}</p></div>
-          <p className="text-xl font-bold text-blue-600">{totals.purchases.toLocaleString()} SAR</p>
+          <p className="text-xl font-bold text-blue-600">{totals.purchases.toLocaleString()}</p>
         </div>
         <div className="bg-white border border-[#f37121]/30 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2"><TrendingUp className="w-4 h-4 text-[#f37121]" /><p className="text-slate-500 text-xs">{T.netMovement}</p></div>
-          <p className={`text-xl font-bold ${totals.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>{totals.net.toLocaleString()} SAR</p>
+          <p className={`text-xl font-bold ${totals.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>{totals.net.toLocaleString()}</p>
         </div>
         {/* تسويةُ الجرد: تظهر حين تكون، وتُخفى حين لا تكون — الصفرُ لا يُعرض
             لئلّا يُقرأ بندًا قائمًا في كلّ فترة. */}
@@ -247,7 +274,7 @@ export default function WalletDashboardPage() {
           <div className="min-w-0 bg-white border border-amber-400/40 rounded-xl p-4 shadow-sm overflow-hidden">
             <div className="flex items-center gap-2 mb-2"><AlertTriangle className="w-4 h-4 text-amber-600" />
               <p className="text-slate-500 text-xs truncate">{lang === 'ar' ? 'تسوية جرد' : 'Stock-take adj.'}</p></div>
-            <p className="text-lg xl:text-xl font-bold tabular-nums text-amber-700 truncate">{money(totals.adjustment).toLocaleString()} SAR</p>
+            <p className="text-lg xl:text-xl font-bold tabular-nums text-amber-700 truncate">{money(totals.adjustment).toLocaleString()}</p>
             <p className="text-[10px] text-slate-400 mt-0.5">
               {lang === 'ar' ? 'رصيدٌ ثُبِّت يدويًّا داخل الفترة' : 'balance set manually in the period'}
             </p>
@@ -256,7 +283,7 @@ export default function WalletDashboardPage() {
         <div className="min-w-0 bg-white border border-yellow-500/30 rounded-xl p-4 overflow-hidden">
           <div className="flex items-center gap-2 mb-2"><Wallet className="w-4 h-4 text-yellow-700" /><p className="text-slate-500 text-xs truncate">{T.closingBalance}</p></div>
           <p className="text-lg xl:text-xl font-bold tabular-nums text-yellow-700 truncate"
-            title={`${money(totals.closing).toLocaleString()} SAR`}>{money(totals.closing).toLocaleString()} SAR</p>
+            title={`${money(totals.closing).toLocaleString()}`}>{money(totals.closing).toLocaleString()}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2"><Users className="w-4 h-4 text-slate-500" /><p className="text-slate-500 text-xs">{T.activeWallets}</p></div>
@@ -304,7 +331,7 @@ export default function WalletDashboardPage() {
               </div>
               <div className="flex justify-between pt-2 border-t border-slate-200">
                 <span className="text-slate-700 font-medium">{T.net}</span>
-                <span className={`font-bold ${b.netMovement >= 0 ? 'text-green-600' : 'text-red-600'}`}>{b.netMovement.toLocaleString()} SAR</span>
+                <span className={`font-bold ${b.netMovement >= 0 ? 'text-green-600' : 'text-red-600'}`}>{b.netMovement.toLocaleString()}</span>
               </div>
               {!!b.adjustment && Math.abs(b.adjustment) > 0.01 && (
                 <div className="flex justify-between">
@@ -316,7 +343,7 @@ export default function WalletDashboardPage() {
               )}
               <div className="flex justify-between">
                 <span className="text-yellow-700 font-medium">{T.closingBalance}</span>
-                <span className="font-bold tabular-nums text-yellow-700">{money(b.closingBalance || 0).toLocaleString()} SAR</span>
+                <span className="font-bold tabular-nums text-yellow-700">{money(b.closingBalance || 0).toLocaleString()}</span>
               </div>
               {b.closedWallets > 0 && b.totalDifference !== 0 && (
                 <div className="flex justify-between pt-2 border-t border-slate-200">
@@ -324,7 +351,7 @@ export default function WalletDashboardPage() {
                     {b.totalDifference > 0 ? T.deficit : T.surplus}
                   </span>
                   <span className={`font-bold ${b.totalDifference > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {b.totalDifference > 0 ? '-' : '+'}{Math.abs(b.totalDifference).toLocaleString()} SAR
+                    {b.totalDifference > 0 ? '-' : '+'}{Math.abs(b.totalDifference).toLocaleString()}
                   </span>
                 </div>
               )}

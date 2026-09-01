@@ -296,7 +296,7 @@ export default function BranchWalletDashboardPage() {
           </div>
           <div className="bg-white border border-yellow-500/30 rounded-xl p-4">
             <p className="text-slate-500 text-xs mb-1">{T.closingBalance}</p>
-            <p className="text-xl font-bold text-yellow-700">{(summary.closingBalance || 0).toLocaleString()} SAR</p>
+            <p className="text-xl font-bold text-yellow-700">{(summary.closingBalance || 0).toLocaleString()}</p>
           </div>
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
             <p className="text-slate-500 text-xs mb-1">{T.activeWallets}</p>
@@ -351,7 +351,7 @@ export default function BranchWalletDashboardPage() {
                       {w.cashDifference != null && w.cashDifference !== 0 ? (
                         <div>
                           <span className={`text-xs font-medium ${w.cashDifference > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            {w.cashDifference > 0 ? `${T.deficit} -` : `${T.surplus} +`}{Math.abs(w.cashDifference).toLocaleString()} SAR
+                            {w.cashDifference > 0 ? `${T.deficit} -` : `${T.surplus} +`}{Math.abs(w.cashDifference).toLocaleString()}
                           </span>
                         </div>
                       ) : w.isClosed ? <span className="text-green-600 text-xs">{T.matched}</span> : <span className="text-slate-700">—</span>}
@@ -433,7 +433,7 @@ export default function BranchWalletDashboardPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`font-bold text-xs ${tx.type === 'collection' ? 'text-green-600' : 'text-red-600'}`}>
-                        {tx.type === 'collection' ? '+' : '-'}{tx.amount.toLocaleString()} SAR
+                        {tx.type === 'collection' ? '+' : '-'}{tx.amount.toLocaleString()}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-800 text-xs">{tx.reference || '—'}</td>

@@ -165,6 +165,33 @@ export default function OperationsWorkflowPage() {
   const [searchInput, setSearchInput] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  // ── ثلاثةُ أوضاعٍ للفترة ────────────────────────────────────────────────────
+  // «كشوفُ هذا الشهر» و«كشوفُ يومِ كذا» سؤالان يُطرحان أكثرَ من المدى الحرّ،
+  // وكتابةُ كلٍّ منهما مدًى من طرفين عملٌ يتكرّر: آخرُ الشهر يُحسب باليد فيُخطأ
+  // في الثلاثين والواحد والثلاثين وشباط، واليومُ الواحد يُكتب مرّتين.
+  // فيُختار الوضعُ ويُشتقّ المدى منه — والمدى الحرُّ باقٍ لمن يريده.
+  type DateMode = 'range' | 'month' | 'day';
+  const [dateMode, setDateMode] = useState<DateMode>('range');
+  const [monthKey, setMonthKey] = useState('');
+  const [dayKey, setDayKey] = useState('');
+  const applyMonth = (mk: string) => {
+    setMonthKey(mk);
+    if (!mk) { setDateFrom(''); setDateTo(''); setPage(1); return; }
+    const [y, mo] = mk.split('-').map(Number);
+    const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    setDateFrom(`${mk}-01`);
+    setDateTo(`${mk}-${String(last).padStart(2, '0')}`);
+    setPage(1);
+  };
+  const applyDay = (d: string) => {
+    setDayKey(d);
+    setDateFrom(d); setDateTo(d); setPage(1);
+  };
+  const switchMode = (m: DateMode) => {
+    setDateMode(m);
+    // تبديلُ الوضع يمسح ما اختاره الوضعُ السابق: بقاؤه يعني فلترًا لا يراه أحد.
+    setDateFrom(''); setDateTo(''); setMonthKey(''); setDayKey(''); setPage(1);
+  };
   const [error, setError] = useState('');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -852,9 +879,31 @@ export default function OperationsWorkflowPage() {
             )}
           </div>
           {/* المدى الزمنيّ: يُفتح تقويمُه بالضغط، و«إلى» الفارغة تعني «حتى اليوم». */}
-          <DateRangeFilter ar={lang === 'ar'} from={dateFrom} to={dateTo}
-            onFrom={(v) => { setDateFrom(v); setPage(1); }}
-            onTo={(v) => { setDateTo(v); setPage(1); }} />
+          {/* الوضعُ ثمّ منتقيه — والمُختارُ يُترجَم إلى مدًى يفهمه الخادم. */}
+          <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden shrink-0">
+            {([['day', 'يوم', 'Day'], ['month', 'شهر', 'Month'], ['range', 'مدى', 'Range']] as const).map(([k, arL, enL]) => (
+              <button key={k} type="button" onClick={() => switchMode(k)}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  dateMode === k ? 'bg-[#f37121] text-white' : 'bg-white text-slate-500 hover:text-slate-900'}`}>
+                {lang === 'ar' ? arL : enL}
+              </button>
+            ))}
+          </div>
+          {dateMode === 'day' && (
+            <input type="date" value={dayKey} onChange={(e) => applyDay(e.target.value)}
+              aria-label={lang === 'ar' ? 'اختر اليوم' : 'Pick day'}
+              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+          )}
+          {dateMode === 'month' && (
+            <input type="month" value={monthKey} onChange={(e) => applyMonth(e.target.value)}
+              aria-label={lang === 'ar' ? 'اختر الشهر' : 'Pick month'}
+              className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+          )}
+          {dateMode === 'range' && (
+            <DateRangeFilter ar={lang === 'ar'} from={dateFrom} to={dateTo}
+              onFrom={(v) => { setDateFrom(v); setPage(1); }}
+              onTo={(v) => { setDateTo(v); setPage(1); }} />
+          )}
         </div>
         {/* ── مِصفاةُ المراحل أُزيلت ────────────────────────────────────────
             «مسودة / مرسل للتشغيل / التشغيل مكتمل / للتحصيلات / مكتمل» مراحلُ

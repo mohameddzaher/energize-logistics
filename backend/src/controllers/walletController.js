@@ -1195,6 +1195,9 @@ exports.getUserWalletRange = async (req, res) => {
       .sort({ date: 1 });
 
     const rawTransactions = await WalletTransaction.find(filter)
+      // مَن سجّل الحركة — المحفظةُ للفرع، فالملفُّ المصدَّرُ بلا اسمِ الفاعل
+      // يقول ماذا جرى ولا يقول من فعل.
+      .populate('user', 'firstName lastName')
       .populate('customer', 'companyName customerNumber')
       .populate('invoice', 'invoiceNumber amount balance')
       .populate('vendor', 'name')

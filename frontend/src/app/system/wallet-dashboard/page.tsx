@@ -15,6 +15,11 @@ import { getWalletDashboardTranslations, getWalletDashboardExtraTranslations } f
 
 interface BranchData {
   branch: { _id: string; name: string; code: string };
+  // رصيدُ الفرع قبل بداية الفترة — به تُقرأ الحركاتُ على ما جرت عليه.
+  openingBalance: number;
+  // فرقُ الجرد داخل الفترة: يظهر حين يُثبَّت رصيدٌ يدويًّا فلا يقفل الميزانُ
+  // بالحركات وحدَها. صفرٌ في الأحوال العاديّة.
+  adjustment?: number;
   totalCollections: number;
   totalExpenses: number;
   totalPurchases: number;
@@ -32,7 +37,7 @@ const getTodayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-type DateMode = 'single' | 'range';
+type DateMode = 'single' | 'month' | 'range';
 
 export default function WalletDashboardPage() {
   const router = useRouter();
@@ -45,12 +50,23 @@ export default function WalletDashboardPage() {
   const [selectedDate, setSelectedDate] = useState(getTodayStr());
   const [dateFrom, setDateFrom] = useState(getTodayStr());
   const [dateTo, setDateTo] = useState(getTodayStr());
+  // الشهرُ سؤالٌ يُطرح أكثرَ من المدى الحرّ: «كم حصّل الفرعُ هذا الشهر».
+  // وكتابتُه مدًى من أوّله إلى آخره في كلّ مرّة عملٌ يتكرّر بلا داعٍ.
+  const [month, setMonth] = useState(getTodayStr().slice(0, 7));
+  const monthRange = (mk: string) => {
+    const [y, mo] = mk.split('-').map(Number);
+    const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    return { from: `${mk}-01`, to: `${mk}-${String(last).padStart(2, '0')}` };
+  };
 
   const fetchDashboard = useCallback(async () => {
     try {
       let url: string;
       if (dateMode === 'range') {
         url = `/api/wallet/dashboard?dateFrom=${dateFrom}&dateTo=${dateTo}`;
+      } else if (dateMode === 'month') {
+        const r = monthRange(month);
+        url = `/api/wallet/dashboard?dateFrom=${r.from}&dateTo=${r.to}`;
       } else {
         url = `/api/wallet/dashboard?date=${selectedDate}`;
       }
@@ -58,7 +74,7 @@ export default function WalletDashboardPage() {
       setBranches(data.branches || []);
     } catch {}
     setLoading(false);
-  }, [dateMode, selectedDate, dateFrom, dateTo]);
+  }, [dateMode, selectedDate, dateFrom, dateTo, month]);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
@@ -72,7 +88,7 @@ export default function WalletDashboardPage() {
   useSocket('wallet:transactionDeleted', handleEvent);
   useSocket('wallet:reset', handleEvent);
 
-  const dateLabel = dateMode === 'range' ? `${dateFrom}_to_${dateTo}` : selectedDate;
+  const dateLabel = dateMode === 'range' ? `${dateFrom}_to_${dateTo}` : (dateMode === 'month' ? month : selectedDate);
 
   const exportColumns: ExportColumn[] = [
     { header: txx.colBranch, key: 'branch.name', width: 20 },
@@ -93,13 +109,16 @@ export default function WalletDashboardPage() {
   ];
 
   const totals = branches.reduce((acc, b) => ({
+    opening: acc.opening + (b.openingBalance || 0),
     collections: acc.collections + b.totalCollections,
     expenses: acc.expenses + b.totalExpenses,
     purchases: acc.purchases + b.totalPurchases,
     net: acc.net + b.netMovement,
+    adjustment: acc.adjustment + (b.adjustment || 0),
     closing: acc.closing + (b.closingBalance || 0),
     wallets: acc.wallets + b.activeWallets,
-  }), { collections: 0, expenses: 0, purchases: 0, net: 0, closing: 0, wallets: 0 });
+  }), { opening: 0, collections: 0, expenses: 0, purchases: 0, net: 0, adjustment: 0, closing: 0, wallets: 0 });
+  const money = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
   const buildBranchLink = (branchId: string) => {
     if (dateMode === 'range') {
@@ -137,6 +156,10 @@ export default function WalletDashboardPage() {
               className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors ${dateMode === 'single' ? 'bg-[#f37121] text-white' : 'bg-white text-slate-500 hover:text-slate-900'}`}>
               <Calendar className="w-3.5 h-3.5" /> {T.day}
             </button>
+            <button type="button" onClick={() => setDateMode('month')}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors ${dateMode === 'month' ? 'bg-[#f37121] text-white' : 'bg-white text-slate-500 hover:text-slate-900'}`}>
+              <CalendarRange className="w-3.5 h-3.5" /> {lang === 'ar' ? 'شهر' : 'Month'}
+            </button>
             <button type="button" onClick={() => setDateMode('range')}
               className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors ${dateMode === 'range' ? 'bg-[#f37121] text-white' : 'bg-white text-slate-500 hover:text-slate-900'}`}>
               <CalendarRange className="w-3.5 h-3.5" /> {T.range}
@@ -150,12 +173,24 @@ export default function WalletDashboardPage() {
               <button type="button" onClick={() => setSelectedDate(getTodayStr())}
                 className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">{T.today}</button>
             </>
+          ) : dateMode === 'month' ? (
+            <>
+              <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                aria-label={lang === 'ar' ? 'اختر الشهر' : 'Pick month'} />
+              <button type="button" onClick={() => setMonth(getTodayStr().slice(0, 7))}
+                className="px-3 py-2 rounded-lg bg-slate-100 text-[#f37121] text-sm font-medium hover:bg-slate-200 transition-colors">
+                {lang === 'ar' ? 'هذا الشهر' : 'This month'}
+              </button>
+            </>
           ) : (
             <>
               <div className="flex items-center gap-1.5">
+                {/* «من» و«إلى» خارجَ الخانة — راجع DateRangeFilter. */}
+                <span className="text-[12px] font-bold text-slate-600">{lang === 'ar' ? 'من' : 'From'}</span>
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
                   className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.fromDate} />
-                <span className="text-slate-500 text-sm">{T.to}</span>
+                <span className="text-[12px] font-bold text-slate-600">{lang === 'ar' ? 'إلى' : 'To'}</span>
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
                   className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.toDate} />
               </div>
@@ -176,10 +211,22 @@ export default function WalletDashboardPage() {
         </div>
       )}
 
-      {/* Total Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-2"><ArrowUpCircle className="w-4 h-4 text-green-600" /><p className="text-slate-500 text-xs">{T.totalCollections}</p></div>
+      {/* ── الميزانُ يُقرأ من اليسار إلى اليمين ──────────────────────────────
+          افتتاحيٌّ + تحصيلاتٌ − مصروفاتٌ − مشترياتٌ = ختاميّ. وبلا الافتتاحيّ
+          تُقرأ الحركاتُ بلا ما جرت عليه: «حصّلنا كذا» بلا «من كم بدأنا».
+          والبطاقاتُ مرتّبةٌ على هذا الترتيب فتُقرأ كسطرِ حساب. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-7 gap-4">
+        <div className="min-w-0 bg-white border border-slate-300 rounded-xl p-4 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 mb-2"><Wallet className="w-4 h-4 text-slate-500" />
+            <p className="text-slate-500 text-xs truncate">{lang === 'ar' ? 'الرصيد الافتتاحي' : 'Opening balance'}</p></div>
+          <p className={`text-lg xl:text-xl font-bold tabular-nums truncate ${totals.opening >= 0 ? 'text-slate-900' : 'text-red-600'}`}
+            title={`${money(totals.opening).toLocaleString()} SAR`}>{money(totals.opening).toLocaleString()} SAR</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            {lang === 'ar' ? 'قبل بداية الفترة' : 'before the period starts'}
+          </p>
+        </div>
+        <div className="min-w-0 bg-white border border-slate-200 rounded-xl p-4 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 mb-2"><ArrowUpCircle className="w-4 h-4 text-green-600" /><p className="text-slate-500 text-xs truncate">{T.totalCollections}</p></div>
           <p className="text-xl font-bold text-green-600">{totals.collections.toLocaleString()} SAR</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
@@ -194,9 +241,22 @@ export default function WalletDashboardPage() {
           <div className="flex items-center gap-2 mb-2"><TrendingUp className="w-4 h-4 text-[#f37121]" /><p className="text-slate-500 text-xs">{T.netMovement}</p></div>
           <p className={`text-xl font-bold ${totals.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>{totals.net.toLocaleString()} SAR</p>
         </div>
-        <div className="bg-white border border-yellow-500/30 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2"><Wallet className="w-4 h-4 text-yellow-700" /><p className="text-slate-500 text-xs">{T.closingBalance}</p></div>
-          <p className="text-xl font-bold text-yellow-700">{totals.closing.toLocaleString()} SAR</p>
+        {/* تسويةُ الجرد: تظهر حين تكون، وتُخفى حين لا تكون — الصفرُ لا يُعرض
+            لئلّا يُقرأ بندًا قائمًا في كلّ فترة. */}
+        {Math.abs(totals.adjustment) > 0.01 && (
+          <div className="min-w-0 bg-white border border-amber-400/40 rounded-xl p-4 shadow-sm overflow-hidden">
+            <div className="flex items-center gap-2 mb-2"><AlertTriangle className="w-4 h-4 text-amber-600" />
+              <p className="text-slate-500 text-xs truncate">{lang === 'ar' ? 'تسوية جرد' : 'Stock-take adj.'}</p></div>
+            <p className="text-lg xl:text-xl font-bold tabular-nums text-amber-700 truncate">{money(totals.adjustment).toLocaleString()} SAR</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {lang === 'ar' ? 'رصيدٌ ثُبِّت يدويًّا داخل الفترة' : 'balance set manually in the period'}
+            </p>
+          </div>
+        )}
+        <div className="min-w-0 bg-white border border-yellow-500/30 rounded-xl p-4 overflow-hidden">
+          <div className="flex items-center gap-2 mb-2"><Wallet className="w-4 h-4 text-yellow-700" /><p className="text-slate-500 text-xs truncate">{T.closingBalance}</p></div>
+          <p className="text-lg xl:text-xl font-bold tabular-nums text-yellow-700 truncate"
+            title={`${money(totals.closing).toLocaleString()} SAR`}>{money(totals.closing).toLocaleString()} SAR</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2"><Users className="w-4 h-4 text-slate-500" /><p className="text-slate-500 text-xs">{T.activeWallets}</p></div>
@@ -223,6 +283,13 @@ export default function WalletDashboardPage() {
               {b.branch.code && <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{b.branch.code}</span>}
             </div>
             <div className="space-y-2 text-sm">
+              {/* بطاقةُ الفرع تُقرأ كسطر حساب: من كم بدأ، وما جرى، وإلامَ انتهى. */}
+              <div className="flex justify-between pb-2 border-b border-slate-100">
+                <span className="text-slate-500">{lang === 'ar' ? 'الافتتاحي' : 'Opening'}</span>
+                <span className={`font-medium tabular-nums ${(b.openingBalance || 0) >= 0 ? 'text-slate-800' : 'text-red-600'}`}>
+                  {money(b.openingBalance || 0).toLocaleString()}
+                </span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">{T.collections}</span>
                 <span className="text-green-600 font-medium">+{b.totalCollections.toLocaleString()}</span>
@@ -239,9 +306,17 @@ export default function WalletDashboardPage() {
                 <span className="text-slate-700 font-medium">{T.net}</span>
                 <span className={`font-bold ${b.netMovement >= 0 ? 'text-green-600' : 'text-red-600'}`}>{b.netMovement.toLocaleString()} SAR</span>
               </div>
+              {!!b.adjustment && Math.abs(b.adjustment) > 0.01 && (
+                <div className="flex justify-between">
+                  <span className="text-amber-600" title={lang === 'ar' ? 'رصيدٌ ثُبِّت يدويًّا داخل الفترة' : 'balance set manually in the period'}>
+                    {lang === 'ar' ? 'تسوية جرد' : 'Adjustment'}
+                  </span>
+                  <span className="font-medium tabular-nums text-amber-700">{money(b.adjustment).toLocaleString()}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-yellow-700 font-medium">{T.closingBalance}</span>
-                <span className="font-bold text-yellow-700">{(b.closingBalance || 0).toLocaleString()} SAR</span>
+                <span className="font-bold tabular-nums text-yellow-700">{money(b.closingBalance || 0).toLocaleString()} SAR</span>
               </div>
               {b.closedWallets > 0 && b.totalDifference !== 0 && (
                 <div className="flex justify-between pt-2 border-t border-slate-200">

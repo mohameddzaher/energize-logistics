@@ -906,6 +906,23 @@ exports.getAllBranchesDashboard = async (req, res) => {
     // يوميّةٍ له **حتّى** ذلك التاريخ. فالحركاتُ تُقرأ من يوميّات المدى، والرصيدُ
     // من آخر يوميّةٍ قبله أو فيه — فتُقرأ الصورةُ كاملةً بلا انتظار أحد.
     const hi = typeof dateFilter === 'string' ? dateFilter : dateFilter.$lte;
+    const lo = typeof dateFilter === 'string' ? dateFilter : dateFilter.$gte;
+
+    // ── ورصيدُ أوّل الفترة ────────────────────────────────────────────────────
+    // «الافتتاحيُّ» لفترةٍ ليس مجموعَ افتتاحيّات أيّامها — ذلك يعدُّ المالَ
+    // نفسَه مرّةً لكلّ يوم. هو ما كان في يد الفرع **قبل** أن تبدأ: ختاميُّ آخر
+    // يومٍ يسبقها. فإن لم يسبقها يومٌ فهو افتتاحيُّ أوّل يومٍ فيها — رأسُ
+    // السلسلة نفسُه.
+    //
+    // وبه يصحّ الميزان: افتتاحيُّ الفترة + حركاتُها = ختاميُّها. وبدونه تُقرأ
+    // الحركاتُ بلا ما جرت عليه.
+    const opening = await DailyWallet.aggregate([
+      { $match: { branch: { $in: branchIds }, date: { $lt: lo } } },
+      { $sort: { date: 1 } },
+      { $group: { _id: '$branch', closingBalance: { $last: '$closingBalance' } } },
+    ]);
+    const openingByBranch = new Map(opening.map((o) => [String(o._id), o.closingBalance || 0]));
+
     const [movementWallets, carried] = await Promise.all([
       DailyWallet.find({ branch: { $in: branchIds }, date: dateFilter }).lean(),
       DailyWallet.aggregate([
@@ -961,6 +978,19 @@ exports.getAllBranchesDashboard = async (req, res) => {
       }
       // والرصيدُ من آخر يوميّةٍ لكلّ موظّفٍ حتّى التاريخ — سواءٌ فتح شاشتَه أم لا.
       const carriedRows = carriedByBranch[branch._id.toString()] || [];
+      // ── الافتتاحيُّ يُقرأ من أوّل يومٍ في الفترة لا من اليوم الذي يسبقها ────
+      // القاعدةُ أنّ افتتاحيَّ اليوم ختاميُّ ما قبله، وهي تصحّ ما لم يُثبَّت
+      // رصيدٌ يدويًّا. ويُثبَّت حين تُجرَد الخزنةُ فيُعتمَد ما فيها فعلًا بدل ما
+      // يقوله الدفتر — فيصير ذلك اليومُ رأسًا لسلسلةٍ جديدة، ولا يُشتقّ ممّا
+      // قبله. فأخذُ ختاميّ اليوم السابق كان يُظهر ميزانًا لا يقفل.
+      //
+      // فيُقرأ افتتاحيُّ أوّل يومٍ في الفترة — وهو رأسُها أيًّا كان مصدرُه —
+      // ولا يُرجَع إلى ما قبلها إلّا حين لا يكون فيها يومٌ أصلًا.
+      const inRange = (walletsByBranch[branch._id.toString()] || []).slice()
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      const openingBalance = inRange.length
+        ? (inRange[0].openingBalance || 0)
+        : (openingByBranch.get(branch._id.toString()) || 0);
       for (const c of carriedRows) {
         totalClosingBalance += c.closingBalance || 0;
         if (c.isClosed) {
@@ -971,8 +1001,19 @@ exports.getAllBranchesDashboard = async (req, res) => {
         }
       }
 
+      // ── وتسويةُ الجرد تُقال ولا تُخبَّأ ──────────────────────────────────
+      // «افتتاحيٌّ + حركات = ختاميّ» تصحّ ما لم يُثبَّت رصيدٌ يدويًّا داخل
+      // الفترة. ويُثبَّت حين تُجرَد الخزنةُ فيُعتمَد ما فيها فعلًا — وهو فرقٌ
+      // حقيقيٌّ لا خطأَ حساب. وإخفاؤه يجعل الأرقامَ تبدو متناقضةً بلا تفسير،
+      // فيُحسب ويُعرَض باسمه حين لا يكون صفرًا.
+      const r2 = (x) => Math.round(x * 100) / 100;
+      const netMovement = totalCollections - totalExpenses - totalPurchases;
+      const adjustment = r2(totalClosingBalance - (openingBalance + netMovement));
+
       branchData.push({
         branch: { _id: branch._id, name: branch.name, code: branch.code },
+        openingBalance: r2(openingBalance),
+        adjustment,
         totalCollections,
         totalExpenses,
         totalPurchases,

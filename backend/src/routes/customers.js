@@ -1,57 +1,59 @@
+/**
+ * قائمةُ العملاء — من سجلّ قسم التحصيل، لا من `Customer`.
+ *
+ * ── لماذا بقيت هذه البادئة ─────────────────────────────────────────────────
+ * `Customer` جدولُ ورك فلو «العملاء والمالية» الذي زال، وصار فارغًا. وهذه
+ * النقطةُ يقرؤها موضعان: شاشةُ المستخدمين (لربط حسابِ شريكٍ بعملائه) والتطبيق.
+ * فلو تُركت تقرأ من الجدول القديم لعرضت قائمةً فارغةً في الاثنين.
+ *
+ * فصارت تقرأ من `CollectionsParty` — سجلُّ الأطراف الحيّ الذي بُني من كشوف
+ * التشغيل وبقيّة سجلّات الشركة. وشكلُ الردّ كما كان (`companyName`) فلا تُعاد
+ * كتابةُ ما يقرؤه.
+ */
 const express = require('express');
-const { body } = require('express-validator');
 const router = express.Router();
-const customerController = require('../controllers/customerController');
-const { generateStatement } = require('../services/statementService');
 const authenticate = require('../middleware/auth');
-const authorize = require('../middleware/rbac');
-const validate = require('../middleware/validate');
+const CollectionsParty = require('../models/CollectionsParty');
+const { flexSpaceRegex } = require('../utils/plateKey');
 
 router.use(authenticate);
 
-router.get('/', customerController.getCustomers);
-router.get('/:id', customerController.getCustomer);
-
-router.post(
-  '/',
-  authorize('super_admin', 'admin'),
-  [
-    body('companyName').notEmpty().trim(),
-    body('contactPerson').notEmpty().trim(),
-    body('email').isEmail().normalizeEmail(),
-    body('creditTerm').toInt().isIn([15, 30, 45, 60]),
-    body('creditLimit').toFloat(),
-    body('customerNumber').optional({ values: 'falsy' }).trim(),
-  ],
-  validate,
-  customerController.createCustomer
-);
-
-router.put('/:id', authorize('super_admin', 'admin'), customerController.updateCustomer);
-
-router.put(
-  '/:id/credit-term',
-  authorize('super_admin', 'admin'),
-  [body('creditTerm').isIn([15, 30, 45, 60])],
-  validate,
-  customerController.updateCreditTerm
-);
-
-router.post('/:id/stop', authorize('super_admin', 'admin'), customerController.stopCustomer);
-router.post('/:id/unstop', authorize('super_admin', 'admin'), customerController.unstopCustomer);
-
-router.get('/:id/statement', authorize('super_admin', 'admin', 'operations_manager'), async (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const { dateFrom, dateTo } = req.query;
-    const pdfBuffer = await generateStatement(req.params.id, dateFrom, dateTo);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=statement-${req.params.id}.pdf`);
-    res.send(pdfBuffer);
-  } catch (err) {
-    res.status(500).json({ message: err.message || 'Failed to generate statement' });
+    const filter = { kind: 'customer' };
+    if (req.query.active !== 'false') filter.isActive = true;
+    const q = String(req.query.q || req.query.search || '').trim();
+    if (q) {
+      const rx = flexSpaceRegex(q);
+      filter.$or = [{ name: rx }, { nameKey: rx }, { phone: rx }, { commercialRegister: rx }];
+    }
+    const limit = Math.min(2000, Math.max(1, Number(req.query.limit) || 1000));
+    const rows = await CollectionsParty.find(filter)
+      .select('name phone email city status paymentTerms creditLimit')
+      .sort({ name: 1 })
+      .limit(limit)
+      .lean();
+
+    // `companyName` هو ما تقرؤه الشاشاتُ القائمة — يُرسَل بجانب `name` فلا
+    // يُكسر ما يعمل، ولا يُجبَر الجديدُ على اسمٍ من جدولٍ زال.
+    res.json({
+      customers: rows.map((r) => ({ ...r, companyName: r.name })),
+      total: rows.length,
+    });
+  } catch (error) {
+    console.error('List customers error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل العملاء' });
   }
 });
 
-router.delete('/:id', authorize('super_admin'), customerController.deleteCustomer);
+router.get('/:id', async (req, res) => {
+  try {
+    const c = await CollectionsParty.findOne({ _id: req.params.id, kind: 'customer' }).lean();
+    if (!c) return res.status(404).json({ message: 'العميل غير موجود' });
+    res.json({ customer: { ...c, companyName: c.name } });
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر تحميل العميل' });
+  }
+});
 
 module.exports = router;

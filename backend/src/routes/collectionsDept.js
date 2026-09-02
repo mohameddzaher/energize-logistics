@@ -38,4 +38,12 @@ router.get('/parties/:id', authorize(...READ_ROLES), ctrl.getPartyProfile);
 router.put('/parties/:id', authorize(...EDIT_ROLES), ctrl.updateParty);
 router.delete('/parties/:id', authorize(...EDIT_ROLES), ctrl.deleteParty);
 
+// ── المتابعات ─────────────────────────────────────────────────────────────
+// «المستحقّ» قبل `/parties/:id/...` لأنّه لا يخصّ طرفًا بعينه.
+router.get('/follow-ups/due', authorize(...READ_ROLES), ctrl.dueFollowUps);
+router.get('/parties/:id/follow-ups', authorize(...READ_ROLES), ctrl.listFollowUps);
+router.post('/parties/:id/follow-ups', authorize(...EDIT_ROLES), ctrl.createFollowUp);
+router.put('/follow-ups/:fuId', authorize(...EDIT_ROLES), ctrl.updateFollowUp);
+router.delete('/follow-ups/:fuId', authorize(...EDIT_ROLES), ctrl.deleteFollowUp);
+
 module.exports = router;

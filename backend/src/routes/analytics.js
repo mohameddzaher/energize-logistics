@@ -2,79 +2,43 @@ const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
-const { getAgingReport } = require('../services/agingService');
-const { calculateDSO, getDSOByBranch, getDSOByCreditTerm, getDSOByCollector, getDSOTrend, getDSOAlerts } = require('../services/dsoService');
-const { calculateRiskScore, recalculateAllRiskScores, getHighRiskClients, getRiskDistribution } = require('../services/riskService');
-const { getCashflowForecast, getProjectedVsExpected } = require('../services/forecastService');
-const { getCollectorPerformance, getCollectorRanking, getPerformanceTrend } = require('../services/performanceService');
-const { predictLatePayment, flagPotentialDefaults, suggestFollowUpTiming, suggestCreditTermReduction, detectAbnormalBehavior } = require('../services/predictionService');
-const { getOverdueInvoices } = require('../controllers/analyticsController');
+const User = require('../models/User');
+// ── وهذه الثلاثةُ لبوّابة العميل وحدَها ─────────────────────────────────────
+// لوحةُ البوّابة تعرض فواتيرَ الشريك ومدفوعاتِه، وسيرُ عمل التشغيل ما زال
+// مصدرَ ما يُنشأ منها. فتبقى هنا لتلك النقطةِ وحدَها، لا لأرقام الشركة.
 const Invoice = require('../models/Invoice');
 const Payment = require('../models/Payment');
 const Customer = require('../models/Customer');
-const User = require('../models/User');
+
+/**
+ * ── المصدرُ صار كشوفَ التشغيل ───────────────────────────────────────────────
+ *
+ * كانت هذه النقاطُ تقرأ من `Invoice` و`Payment` و`Customer` — جداولِ ورك فلو
+ * «العملاء والمالية» الذي زال. فكانت الصفحةُ الرئيسة تعرض أصفارًا لا لأنّ
+ * الشركة لا تُحصّل، بل لأنّها تسأل جدولًا لا يكتب فيه أحد.
+ *
+ * وما بقي من تلك الخدمات (تقديرُ المخاطر، والتنبّؤُ بالتأخّر، وتدفّقُ النقد
+ * المتوقَّع، وأداءُ المحصّلين) نماذجُ مبنيّةٌ على سجلّ فواتيرَ ومدفوعاتٍ لم يعد
+ * يُكتب — لا مدخلاتٍ لها ولا مقابلَ لها في البيانات الحيّة، فأُزيلت بدل أن
+ * تبقى تعرض أرقامًا مخترَعة. والمخاطرُ الحقيقيّةُ اليوم تُقرأ في تقادم المستحقّ
+ * وتنبيهات الائتمان، وكلاهما محسوبٌ من الكشوف.
+ */
+const receivables = require('../services/receivablesService');
 
 router.use(authenticate);
 
 // Executive Dashboard Summary
-router.get('/dashboard', authorize('super_admin', 'admin', 'operations_manager', 'operations_staff', 'employee', 'moderator', 'workshop_manager', 'workshop_employee', 'procurement_staff'), async (req, res) => {
+router.get('/dashboard', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'employee', 'moderator', 'workshop_manager', 'workshop_employee', 'procurement_staff', 'collections_manager', 'collections_staff', 'finance_manager', 'accountant'), async (req, res) => {
   try {
-    const { dateFrom, dateTo, branch, collector } = req.query;
-
     // authorize() ran at the route, so the data is the same for every permitted
-    // viewer (per filter set) — cache briefly to absorb concurrent loads / socket
-    // reloads against the high-latency cluster.
+    // viewer (per filter set) — cache briefly to absorb concurrent loads.
     const cache = require('../utils/ttlCache');
-    const _ck = `dash:analytics:${JSON.stringify(req.query)}`;
-    const _hit = cache.get(_ck);
-    if (_hit !== undefined) return res.json(_hit);
+    const key = `dash:analytics:${JSON.stringify(req.query)}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return res.json(hit);
 
-    const now = new Date();
-    const hasDateFilter = dateFrom && dateTo;
-    const periodStart = hasDateFilter ? new Date(dateFrom) : new Date(now.getFullYear(), now.getMonth(), 1);
-    // dateTo is a bare YYYY-MM-DD = midnight — push it to end-of-day so the
-    // selected last day's payments/invoices are INCLUDED, not silently dropped.
-    const periodEnd = hasDateFilter ? new Date(new Date(dateTo).getTime() + 86400000 - 1) : now;
-    const yearStart = new Date(now.getFullYear(), 0, 1);
-
-    // Total Outstanding — when date-filtered, scope to invoices created in that period
-    const outstandingMatch = { status: { $nin: ['paid'] } };
-    if (hasDateFilter) outstandingMatch.invoiceDate = { $gte: periodStart, $lte: periodEnd };
-
-    // Overdue — use periodEnd as reference date when filtered
-    const overdueRef = hasDateFilter ? periodEnd : now;
-    const overdueMatch = { status: { $nin: ['paid', 'frozen'] }, dueDate: { $lt: overdueRef } };
-    if (hasDateFilter) overdueMatch.invoiceDate = { $lte: periodEnd };
-
-    // The cluster has ~90ms per-query latency, so run every INDEPENDENT query in
-    // one parallel wave instead of 8 sequential round-trips (~8x faster here).
-    const [totalOutstanding, monthlyCollected, monthlyInvoiced, yearlyAgg, dso, creditTermDist, overdueCount, customerCount] = await Promise.all([
-      Invoice.aggregate([{ $match: outstandingMatch }, { $group: { _id: null, total: { $sum: '$balance' } } }]),
-      Payment.aggregate([{ $match: { paymentDate: { $gte: periodStart, $lte: periodEnd } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
-      Invoice.aggregate([{ $match: { invoiceDate: { $gte: periodStart, $lte: periodEnd } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
-      hasDateFilter ? Promise.resolve(null) : Payment.aggregate([{ $match: { paymentDate: { $gte: yearStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
-      calculateDSO({ dateFrom, dateTo, branch, collector }),
-      Customer.aggregate([{ $match: { isActive: true } }, { $group: { _id: '$creditTerm', count: { $sum: 1 } } }, { $sort: { _id: 1 } }]),
-      Invoice.countDocuments(overdueMatch),
-      Customer.countDocuments({ isActive: true }),
-    ]);
-
-    const collectedAmt = monthlyCollected[0]?.total || 0;
-    const invoicedAmt = monthlyInvoiced[0]?.total || 0;
-    const collectionRate = invoicedAmt > 0 ? Math.round((collectedAmt / invoicedAmt) * 100) : 0;
-    const yearlyCollected = hasDateFilter ? monthlyCollected : yearlyAgg;
-
-    const payload = {
-      totalOutstanding: totalOutstanding[0]?.total || 0,
-      monthlyCollected: collectedAmt,
-      yearlyCollected: yearlyCollected[0]?.total || 0,
-      collectionRate,
-      dso: dso.dso,
-      overdueCount,
-      customerCount,
-      creditTermDistribution: creditTermDist.map((d) => ({ term: d._id, count: d.count })),
-    };
-    cache.set(_ck, payload, 12000);
+    const payload = await receivables.dashboard(req.query);
+    cache.set(key, payload, 12000);
     res.json(payload);
   } catch (error) {
     console.error('Dashboard error:', error);
@@ -83,195 +47,43 @@ router.get('/dashboard', authorize('super_admin', 'admin', 'operations_manager',
 });
 
 // Aging
-router.get('/aging', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'), async (req, res) => {
+router.get('/aging', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff', 'finance_manager', 'accountant'), async (req, res) => {
   try {
-    const report = await getAgingReport(req.query);
-    res.json(report);
+    res.json(await receivables.aging(req.query));
   } catch (error) {
     console.error('Aging error:', error);
     res.status(500).json({ message: 'Failed to load aging report' });
   }
 });
 
-// DSO
-router.get('/dso', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'), async (req, res) => {
+// أيّامُ التحصيل — متوسّطُ ما بين الكشف وتحصيله، محسوبًا من الواقع لا مقدَّرًا.
+router.get('/dso', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff', 'finance_manager', 'accountant'), async (req, res) => {
   try {
-    const results = await Promise.allSettled([
-      calculateDSO(req.query),
-      getDSOByBranch(),
-      getDSOByCreditTerm(),
-      getDSOByCollector(),
-      getDSOTrend(12),
-      getDSOAlerts(),
-    ]);
-
-    const get = (i) => results[i].status === 'fulfilled' ? results[i].value : null;
-
-    res.json({
-      overall: get(0) || { dso: 0 },
-      byBranch: get(1) || [],
-      byCreditTerm: get(2) || [],
-      byCollector: get(3) || [],
-      trend: get(4) || [],
-      alerts: get(5) || [],
-    });
+    const t = await receivables.dsoTrend({ months: 12 });
+    res.json({ overall: { dso: t.dso }, trend: t.trend, byBranch: [], byCreditTerm: [], byCollector: [], alerts: [] });
   } catch (error) {
     console.error('DSO error:', error);
     res.status(500).json({ message: 'Failed to load DSO data' });
   }
 });
 
-// Risk
-router.get('/risk', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'), async (req, res) => {
+router.get('/credit-alerts', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'employee', 'moderator', 'collections_manager', 'collections_staff', 'finance_manager', 'accountant'), async (req, res) => {
   try {
-    const [highRisk, distribution] = await Promise.all([
-      getHighRiskClients(),
-      getRiskDistribution(),
-    ]);
-    res.json({ highRiskClients: highRisk, distribution });
-  } catch (error) {
-    console.error('Risk error:', error);
-    res.status(500).json({ message: 'Failed to load risk analysis' });
-  }
-});
-
-router.get('/risk/:customerId', async (req, res) => {
-  try {
-    const result = await calculateRiskScore(req.params.customerId);
-    if (!result) return res.status(404).json({ message: 'Customer not found' });
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to calculate risk score' });
-  }
-});
-
-router.post('/risk/recalculate', authorize('super_admin', 'admin'), async (req, res) => {
-  try {
-    const results = await recalculateAllRiskScores();
-    res.json({ message: 'Risk scores recalculated', results });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to recalculate risk scores' });
-  }
-});
-
-// Forecast
-router.get('/forecast', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'), async (req, res) => {
-  try {
-    const [forecast, projected] = await Promise.all([
-      getCashflowForecast(),
-      getProjectedVsExpected(),
-    ]);
-    res.json({ forecast, projectedVsExpected: projected });
-  } catch (error) {
-    console.error('Forecast error:', error);
-    res.status(500).json({ message: 'Failed to load forecast data' });
-  }
-});
-
-// Performance
-router.get('/performance', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'), async (req, res) => {
-  try {
-    const ranking = await getCollectorRanking(req.query.dateFrom, req.query.dateTo);
-    res.json({ ranking });
-  } catch (error) {
-    console.error('Performance error:', error);
-    res.status(500).json({ message: 'Failed to load performance data' });
-  }
-});
-
-router.get('/performance/:collectorId', async (req, res) => {
-  try {
-    const { dateFrom, dateTo } = req.query;
-    const [performance, trend] = await Promise.all([
-      getCollectorPerformance(req.params.collectorId, dateFrom, dateTo),
-      getPerformanceTrend(req.params.collectorId, 6),
-    ]);
-
-    const collector = await User.findById(req.params.collectorId).select('role');
-    let assignedCustomersList = [];
-    let teamRanking = null;
-
-    if (collector && collector.role === 'admin') {
-      // Admin: fetch team ranking for top/bottom display
-      teamRanking = await getCollectorRanking(dateFrom, dateTo);
-    } else {
-      // Employee: fetch their assigned customers list
-      assignedCustomersList = await Customer.find({
-        assignedCollector: req.params.collectorId, isActive: true,
-      }).select('companyName currentOutstanding lastPaymentDate grade clientStatus').lean();
-    }
-
-    res.json({ performance, trend, assignedCustomersList, teamRanking });
-  } catch (error) {
-    console.error('Collector performance error:', error);
-    res.status(500).json({ message: 'Failed to load collector performance' });
-  }
-});
-
-// Predictions
-router.get('/predictions', authorize('super_admin', 'admin', 'employee'), async (req, res) => {
-  try {
-    const [defaults, creditSuggestions, anomalies] = await Promise.all([
-      flagPotentialDefaults(),
-      suggestCreditTermReduction(),
-      detectAbnormalBehavior(),
-    ]);
-    res.json({ potentialDefaults: defaults, creditTermSuggestions: creditSuggestions, anomalies });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to load predictions' });
-  }
-});
-
-router.get('/predictions/late-payment/:invoiceId', async (req, res) => {
-  try {
-    const result = await predictLatePayment(req.params.invoiceId);
-    if (!result) return res.status(404).json({ message: 'Invoice not found' });
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to predict late payment' });
-  }
-});
-
-router.get('/predictions/follow-up/:customerId', async (req, res) => {
-  try {
-    const result = await suggestFollowUpTiming(req.params.customerId);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to generate follow-up suggestion' });
-  }
-});
-
-// Credit Limit Alerts
-router.get('/credit-alerts', authorize('super_admin', 'admin', 'operations_manager', 'employee', 'moderator'), async (req, res) => {
-  try {
-    const customers = await Customer.find({ isActive: true, creditLimit: { $gt: 0 } })
-      .populate('assignedCollector', 'firstName lastName')
-      .select('companyName customerNumber currentOutstanding creditLimit creditTerm grade clientStatus office salesManager assignedCollector lastPaymentDate lastPaymentAmount');
-
-    const alerts = customers
-      .map((c) => {
-        const doc = c.toObject();
-        doc.usagePercent = Math.round((doc.currentOutstanding / doc.creditLimit) * 100);
-        doc.remaining = doc.creditLimit - doc.currentOutstanding;
-        doc.isExceeded = doc.currentOutstanding > doc.creditLimit;
-        doc.isNearLimit = doc.usagePercent >= 80 && !doc.isExceeded;
-        return doc;
-      })
-      .filter((c) => c.usagePercent >= 70)
-      .sort((a, b) => b.usagePercent - a.usagePercent);
-
-    const exceeded = alerts.filter(a => a.isExceeded).length;
-    const nearLimit = alerts.filter(a => a.isNearLimit).length;
-
-    res.json({ alerts, exceeded, nearLimit, total: alerts.length });
+    res.json(await receivables.creditAlerts());
   } catch (error) {
     console.error('Credit alerts error:', error);
     res.status(500).json({ message: 'Failed to load credit alerts' });
   }
 });
 
-// Overdue Invoices
-router.get('/overdue', authorize('super_admin', 'admin', 'employee', 'operations_manager', 'moderator'), getOverdueInvoices);
+router.get('/overdue', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'moderator', 'collections_manager', 'collections_staff', 'finance_manager', 'accountant'), async (req, res) => {
+  try {
+    res.json(await receivables.overdueList(req.query));
+  } catch (error) {
+    console.error('Overdue error:', error);
+    res.status(500).json({ message: 'Failed to load overdue reports' });
+  }
+});
 
 // Super-admin "everything at a glance" overview. Returns aggregate counts +
 // quick stats from every major module in a single response so the dashboard
@@ -311,7 +123,6 @@ router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res
     const Driver = safeRequire('Driver');
     const Vendor = safeRequire('Vendor');
     const Branch = safeRequire('Branch');
-    const CollectionTask = safeRequire('CollectionTask');
     const Complaint = safeRequire('Complaint');
     const Dispute = safeRequire('Dispute');
     const MaintenanceRequest = safeRequire('MaintenanceRequest');
@@ -394,8 +205,8 @@ router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res
       tryQuery(() => Driver.countDocuments({}), 0),
       tryQuery(() => Vendor.countDocuments({}), 0),
       tryQuery(() => Branch.countDocuments({}), 0),
-      tryQuery(() => CollectionTask.countDocuments({ status: 'pending' }), 0),
-      tryQuery(() => CollectionTask.countDocuments({ status: 'pending', dueDate: { $gte: startOfDay, $lte: endOfDay } }), 0),
+      Promise.resolve(0), // لوحُ مهامّ التحصيل القديم زال — والمهامُّ الآن في قسم التحصيل
+      Promise.resolve(0),
       tryQuery(() => Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] } }), 0),
       tryQuery(() => Dispute.countDocuments({ status: { $in: ['open', 'under_review'] } }), 0),
       tryQuery(() => MaintenanceRequest.countDocuments({ status: { $in: ['open', 'in_progress'] } }), 0),

@@ -37,10 +37,8 @@ const analyticsRoutes = require('./routes/analytics');
 const assistantRoutes = require('./routes/assistant');
 const invoiceRoutes = require('./routes/invoices');
 const paymentRoutes = require('./routes/payments');
-const collectionRoutes = require('./routes/collections');
 const workflowRoutes = require('./routes/workflows');
 const collectionsDeptRoutes = require('./routes/collectionsDept');
-const taskRoutes = require('./routes/tasks');
 const branchRoutes = require('./routes/branches');
 const vendorRoutes = require('./routes/vendors');
 const driverRoutes = require('./routes/drivers');
@@ -197,11 +195,11 @@ app.use('/api/users', userRoutes);
 //   · الفواتيرُ والمدفوعات — بوّابةُ العميل تقرأ منها (وكلٌّ من `getInvoices`
 //     و`getPayments` يقصر الردَّ على صفوف صاحب الحساب حين يكون `client`)،
 //     وسيرُ عمل التشغيل والمحفظةُ ما زالا يُنشئان فيها.
-//   · متابعاتُ التحصيل — تبويبٌ في ملفّ العميل.
+//   · ومتابعاتُ التحصيل انتقلت كلُّها إلى قسم التحصيل — لا تُقيَّد على عميلٍ
+//     من ورك فلو زال بل على طرفٍ يعرفه القسم.
 // وحارسُ القسم نُزع عنها: قسمٌ لا وجود له لا يحرس شيئًا.
 app.use('/api/invoices', authenticate, invoiceRoutes);
 app.use('/api/payments', authenticate, paymentRoutes);
-app.use('/api/collections', authenticate, collectionRoutes);
 app.use('/api/customers', customerRoutes);
 // ── واجهة الأسطول للأتمتة ────────────────────────────────────────────────────
 // خارج `authenticate` لأنها تُصادَق بمفتاح لا بجلسة، وخارج `csrfGuard` لأن
@@ -213,7 +211,6 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/workflows', workflowRoutes);
-app.use('/api/tasks', taskRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/drivers', driverRoutes);

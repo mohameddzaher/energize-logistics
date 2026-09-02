@@ -4,7 +4,6 @@ const User = require('../models/User');
 const Customer = require('../models/Customer');
 const Invoice = require('../models/Invoice');
 const Payment = require('../models/Payment');
-const CollectionActivity = require('../models/CollectionActivity');
 
 const seedDemo = async () => {
   try {
@@ -194,30 +193,8 @@ const seedDemo = async () => {
       { customer: 0, type: 'follow_up', contactType: 'whatsapp', status: 'done', notes: 'WhatsApp follow-up on partial payment for INV-2025-002. Client confirmed remaining payment scheduled.', nextFollowUpDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), daysAgo: 1 },
     ];
 
-    for (const def of activityDefs) {
-      const cust = customers[def.customer];
-      const createdAt = new Date(now);
-      createdAt.setDate(createdAt.getDate() - def.daysAgo);
-
-      const existing = await CollectionActivity.findOne({
-        customer: cust._id,
-        notes: def.notes,
-      });
-      if (existing) continue;
-
-      await CollectionActivity.create({
-        customer: cust._id,
-        collector: users.collector._id,
-        type: def.type,
-        contactType: def.contactType,
-        status: def.status,
-        amountCollected: def.amountCollected || 0,
-        promiseAmount: def.promiseAmount,
-        nextFollowUpDate: def.nextFollowUpDate,
-        notes: def.notes,
-      });
-      console.log(`  Created activity: ${def.type} for ${cust.companyName}`);
-    }
+    // بذرةُ متابعات التحصيل أُزيلت: صارت تُقيَّد في قسم التحصيل على طرفٍ
+    // وكشف، لا على عميلٍ وفاتورةٍ من ورك فلو زال.
 
     // ── Done ────────────────────────────────────────────────────────
     console.log('\n=== Demo Data Seeded Successfully ===\n');

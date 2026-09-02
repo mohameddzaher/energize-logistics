@@ -374,10 +374,10 @@ exports.deleteInvoice = async (req, res) => {
     // Delete related payments and disputes
     const Payment = require('../models/Payment');
     const Dispute = require('../models/Dispute');
-    const CollectionActivity = require('../models/CollectionActivity');
     await Payment.deleteMany({ invoice: invoice._id });
     await Dispute.deleteMany({ invoice: invoice._id });
-    await CollectionActivity.deleteMany({ invoice: invoice._id });
+    // ولا متابعاتٍ تُحذف معها: صارت تُقيَّد على طرفٍ في قسم التحصيل وعلى
+    // كشفٍ من كشوف التشغيل، لا على فاتورة.
 
     await Invoice.findByIdAndDelete(invoice._id);
 

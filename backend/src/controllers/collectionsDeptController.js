@@ -19,6 +19,9 @@
 const mongoose = require('mongoose');
 const CollectionsParty = require('../models/CollectionsParty');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
+const CollectionsFollowUp = require('../models/CollectionsFollowUp');
+const { FleetShipment } = require('../models/FleetModels');
+const ShipmentOrder = require('../models/ShipmentOrder');
 const { fold } = require('../models/CollectionsParty');
 const { dayRange } = require('../utils/companyDay');
 const { flexSpaceRegex } = require('../utils/plateKey');
@@ -260,8 +263,37 @@ exports.getPartyProfile = async (req, res) => {
       ]),
     ]);
 
+    // ── وشغلُه معنا ليس كشوفَ التشغيل وحدَها ──────────────────────────────
+    // العميلُ يُنقَل له بشاحناتنا (إدارة الأسطول) وبشاحناتِ موردٍ (طلبات
+    // الشحنات) كما يُنقَل له على منصّة التشغيل. وملفٌّ يعرض واحدةً منها يقول
+    // «تعاملنا معه كذا مرّة» وهو رقمٌ ناقص.
+    //
+    // والمطابقةُ بكلّ صيغةٍ كُتب بها اسمُه، لا بصيغةٍ واحدة.
+    const nameRx = names.length
+      ? names.map((n) => flexSpaceRegex(n))
+      : [flexSpaceRegex(party.name)];
+    const nameMatch = { $or: nameRx.map((rx) => ({ customerName: rx })) };
+    const supplierMatch = { $or: nameRx.map((rx) => ({ supplierName: rx })) };
+
+    const [fleetLoads, orders] = await Promise.all([
+      kind === 'customer'
+        ? FleetShipment.find(nameMatch)
+          .select('waybillNumber shipmentDate fromCity toCity status price customerName vehiclePlate driverName')
+          .sort({ shipmentDate: -1 }).limit(50).lean()
+        : [],
+      ShipmentOrder.find(kind === 'customer' ? nameMatch : supplierMatch)
+        .select('orderNumber orderDate fromCity toCity status sellPrice buyPrice customerName supplierName truckType')
+        .sort({ orderDate: -1 }).limit(50).lean(),
+    ]);
+
     res.json({
       party: withStats(party, stats),
+      // شغلُه معنا من كلّ باب: أسطولُنا، وطلباتُ الشحنات، وكشوفُ التشغيل.
+      work: {
+        fleetLoads,
+        orders,
+        counts: { reports: reportsTotal, fleetLoads: fleetLoads.length, orders: orders.length },
+      },
       reports,
       reportsTotal,
       page,
@@ -370,6 +402,124 @@ exports.deleteParty = async (req, res) => {
     try { emitToAll('collections:party', { id: party._id, kind: party.kind }); } catch (_) {}
     res.json({ deleted: true });
   } catch (e) { sendMongooseError(res, e, 'تعذّر حذف الطرف'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  المتابعات — مكالمةٌ أو وعدٌ بالسداد، مقيَّدةٌ على طرف
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// كانت صفحةً تحت «العملاء والمالية» تُقيَّد على عميلٍ من ورك فلو لم يعد يجري.
+// وكلُّ ما يخصّ التحصيل موضعُه قسمُ التحصيل — وإلّا سُجّلت المتابعةُ في قسمٍ لا
+// يملكها، على طرفٍ لا يعرفه أحد.
+
+const FU_EDITABLE = [
+  'report', 'type', 'status', 'notes', 'amountCollected',
+  'promiseDate', 'promiseAmount', 'promiseFulfilled', 'nextFollowUpAt',
+];
+const pickFu = (body) => {
+  const out = {};
+  for (const k of FU_EDITABLE) if (body[k] !== undefined) out[k] = body[k];
+  return out;
+};
+
+const FU_POPULATE = (q) => q
+  .populate('collector', 'firstName lastName')
+  .populate('party', 'name kind')
+  .populate('report', 'reportNumber reportDate');
+
+exports.listFollowUps = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'معرّف غير صالح' });
+    const items = await FU_POPULATE(CollectionsFollowUp.find({ party: req.params.id }))
+      .sort({ createdAt: -1 }).limit(200).lean();
+    res.json({ followUps: items });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل المتابعات', error: e.message });
+  }
+};
+
+/**
+ * المتابعاتُ المستحقّة — ما حان موعدُه ولم يُقفَل.
+ *
+ * الوعدُ بلا موعدٍ يُسأل عنه ليس متابعة بل ملاحظة. وهذه النقطةُ هي ما يجعل
+ * «قال يسدّد الخميس» بندًا يعود يوم الخميس، لا سطرًا يُنسى.
+ */
+exports.dueFollowUps = async (req, res) => {
+  try {
+    const now = new Date();
+    const filter = { closedAt: null, nextFollowUpAt: { $ne: null, $lte: now } };
+    if (req.query.mine === 'true') filter.collector = req.user._id;
+    const items = await FU_POPULATE(CollectionsFollowUp.find(filter))
+      .sort({ nextFollowUpAt: 1 }).limit(200).lean();
+    res.json({ followUps: items, total: items.length });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل المستحقّ', error: e.message });
+  }
+};
+
+exports.createFollowUp = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'معرّف غير صالح' });
+    const party = await CollectionsParty.findById(req.params.id).select('_id name kind').lean();
+    if (!party) return res.status(404).json({ message: 'الطرف غير موجود' });
+
+    const body = stripEmpty(pickFu(req.body), CollectionsFollowUp.schema);
+    if (!body.notes || !String(body.notes).trim()) {
+      return res.status(400).json({ message: 'حقول مطلوبة ناقصة: الملاحظات', fields: { notes: 'مطلوب' } });
+    }
+    if (!body.type) {
+      return res.status(400).json({ message: 'حقول مطلوبة ناقصة: نوع المتابعة', fields: { type: 'مطلوب' } });
+    }
+
+    const fu = await CollectionsFollowUp.create({ ...body, party: party._id, collector: req.user._id });
+
+    // آخرُ تواصلٍ على الطرف نفسِه: يُقرأ في القائمة بلا فتح ملفّه. والمتابعةُ
+    // القادمة تُنقَل إليه كذلك، فلا يُبحَث عنها في سجلٍّ آخر.
+    const patch = { lastContactAt: new Date() };
+    if (body.nextFollowUpAt) patch.nextFollowUpAt = body.nextFollowUpAt;
+    await CollectionsParty.findByIdAndUpdate(party._id, { $set: patch });
+
+    await logAudit({
+      user: req.user._id, action: 'log_collections_follow_up', entity: 'CollectionsFollowUp',
+      entityId: fu._id, changes: { after: { party: party.name, type: body.type } }, ipAddress: req.ip,
+    });
+    try { emitToAll('collections:follow-up', { party: party._id }); } catch (_) {}
+    res.status(201).json({ followUp: await FU_POPULATE(CollectionsFollowUp.findById(fu._id)).lean() });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر تسجيل المتابعة'); }
+};
+
+exports.updateFollowUp = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.fuId)) return res.status(400).json({ message: 'معرّف غير صالح' });
+    const body = stripEmpty(pickFu(req.body), CollectionsFollowUp.schema);
+    // الإقفالُ فعلٌ يُسجَّل بصاحبه ووقتِه، لا حقلٌ يُكتب.
+    if (req.body.close === true) { body.closedAt = new Date(); body.closedBy = req.user._id; }
+    if (req.body.close === false) { body.closedAt = null; body.closedBy = null; }
+
+    const fu = await CollectionsFollowUp.findByIdAndUpdate(req.params.fuId, { $set: body }, { new: true, runValidators: true });
+    if (!fu) return res.status(404).json({ message: 'المتابعة غير موجودة' });
+    await logAudit({
+      user: req.user._id, action: 'update_collections_follow_up', entity: 'CollectionsFollowUp',
+      entityId: fu._id, changes: { after: body }, ipAddress: req.ip,
+    });
+    try { emitToAll('collections:follow-up', { party: fu.party }); } catch (_) {}
+    res.json({ followUp: await FU_POPULATE(CollectionsFollowUp.findById(fu._id)).lean() });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر حفظ المتابعة'); }
+};
+
+exports.deleteFollowUp = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.fuId)) return res.status(400).json({ message: 'معرّف غير صالح' });
+    const fu = await CollectionsFollowUp.findById(req.params.fuId);
+    if (!fu) return res.status(404).json({ message: 'المتابعة غير موجودة' });
+    await fu.deleteOne();
+    await logAudit({
+      user: req.user._id, action: 'delete_collections_follow_up', entity: 'CollectionsFollowUp',
+      entityId: fu._id, changes: { before: { notes: fu.notes } }, ipAddress: req.ip,
+    });
+    try { emitToAll('collections:follow-up', { party: fu.party }); } catch (_) {}
+    res.json({ deleted: true });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر حذف المتابعة'); }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

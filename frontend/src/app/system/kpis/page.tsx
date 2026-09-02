@@ -73,7 +73,7 @@ export default function KpisPage() {
           <StatCard label={tx.crmCompanies} value={num(data.crm.companies)} />
         </Group>
 
-        <Group icon={<Users className="w-4 h-4" />} title={tx.customers} href="/system/customers">
+        <Group icon={<Users className="w-4 h-4" />} title={tx.customers} href="/system/collections-dept/customers">
           <StatCard label={tx.total} value={num(data.customers.total)} />
           <StatCard label={tx.active} value={num(data.customers.active)} accent="text-green-600" />
         </Group>

@@ -1,8 +1,7 @@
 const mongoose = require('mongoose');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/companyDay');
-const Customer = require('../models/Customer');
-const Invoice = require('../models/Invoice');
+const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 const XLSX = require('xlsx');
@@ -544,55 +543,14 @@ exports.createWorkflow = async (req, res) => {
 
     const workflow = await OperationsWorkflow.create(filteredBody);
 
-    // Create invoice and update customer outstanding if username matches a customer
-    const sellingVal = Number(filteredBody.sellingValue) || 0;
-    if (filteredBody.username && sellingVal > 0) {
-      let customer = await Customer.findOne({
-        companyName: { $regex: `^${filteredBody.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
-        isActive: true,
-      });
-
-      if (!customer && filteredBody.username) {
-        // Auto-create customer from operations workflow
-        customer = await Customer.create({
-          companyName: filteredBody.username.trim(),
-          creditTerm: 30,
-          isActive: true,
-          clientStatus: 'new_client',
-          notes: 'Auto-created from operations workflow',
-        });
-        try { emitToAll('customer:created', { customer }); } catch (e) { console.error('WebSocket emit error:', e); }
-      }
-
-      if (customer) {
-        const invoiceNumber = filteredBody.reportNumber || `WF-${workflow._id.toString().slice(-8)}`;
-        const invoiceDate = filteredBody.reportDate ? new Date(filteredBody.reportDate) : new Date();
-        const dueDate = new Date(invoiceDate);
-        dueDate.setDate(dueDate.getDate() + (customer.creditTerm || 30));
-
-        const existingInvoice = await Invoice.findOne({ invoiceNumber });
-        if (!existingInvoice) {
-          const invoice = await Invoice.create({
-            invoiceNumber,
-            customer: customer._id,
-            amount: sellingVal,
-            paidAmount: 0,
-            balance: sellingVal,
-            invoiceDate,
-            dueDate,
-            creditTerm: customer.creditTerm || 30,
-            status: 'pending',
-            notes: `Auto-created from operations workflow - ${filteredBody.fromLocation || ''} → ${filteredBody.toLocation || ''}`,
-            createdBy: req.user._id,
-          });
-          try { emitToAll('invoice:created', { invoice }); } catch (e) { console.error('WebSocket emit error:', e); }
-        }
-
-        customer.currentOutstanding = (Number(customer.currentOutstanding) || 0) + sellingVal;
-        await customer.save();
-        try { emitToAll('customer:updated', { customer }); } catch (e) { console.error('WebSocket emit error:', e); }
-      }
-    }
+    // ── ولا يُنسَخ الكشفُ إلى عميلٍ وفاتورة ──────────────────────────────
+    // كان كلُّ كشفٍ يُنشئ خلفَه سجلَّ عميلٍ وفاتورةً في ورك فلو «العملاء
+    // والمالية»، ويزيد «المستحقّ» على ذلك العميل. فصار للشيء الواحد رقمان:
+    // يُعدَّل الكشفُ فيبقى المستحقُّ على القديم، ولا يُعرف أيُّهما الصحيح.
+    //
+    // والكشفُ نفسُه هو المستند: قسمُ التحصيل يقرأ منه ما لنا وما علينا مباشرةً
+    // (`collectionsDeptController`)، وملفُّ الطرف يُبنى من صفوفه. فالنسخُ لم
+    // يعد يضيف شيئًا سوى رقمٍ ثانٍ يتأخّر عن الأوّل.
 
     const populated = await OperationsWorkflow.findById(workflow._id)
       .populate('createdBy', 'firstName lastName')
@@ -675,55 +633,10 @@ exports.updateWorkflow = async (req, res) => {
     Object.assign(workflow, filteredBody);
     await workflow.save();
 
-    // ─── AUTO-PAYMENT: If collectionDate was just set, record payment ───
-    if (!hadCollectionDate && workflow.collectionDate && workflow.username) {
-      const paymentAmount = Number(workflow.totalInvoice) || Number(workflow.sellingValue) || 0;
-      if (paymentAmount > 0) {
-        const custName = workflow.username.trim();
-        const customer = await Customer.findOne({
-          companyName: { $regex: `^${custName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
-          isActive: true,
-        });
-
-        if (customer) {
-          // Find the matching invoice
-          const invNumber = workflow.invoiceNumber || workflow.reportNumber;
-          const invoice = invNumber ? await Invoice.findOne({ invoiceNumber: invNumber, customer: customer._id }) : null;
-
-          // Record payment
-          const Payment = require('../models/Payment');
-          await Payment.create({
-            invoice: invoice?._id || undefined,
-            customer: customer._id,
-            amount: paymentAmount,
-            paymentDate: new Date(workflow.collectionDate),
-            paymentMethod: 'bank_transfer',
-            receivedBy: req.user._id,
-            reference: `OPS-${workflow.reportNumber}`,
-            notes: `Auto-payment from operations collection - ${workflow.reportNumber}`,
-          });
-
-          // Update invoice if found
-          if (invoice) {
-            invoice.paidAmount = (invoice.paidAmount || 0) + paymentAmount;
-            invoice.balance = invoice.amount - invoice.paidAmount;
-            if (invoice.balance <= 0) { invoice.status = 'paid'; invoice.balance = 0; }
-            else { invoice.status = 'partial'; }
-            await invoice.save();
-            try { emitToAll('invoice:updated', { invoice }); } catch (e) { console.error('WebSocket emit error:', e); }
-          }
-
-          // Update customer outstanding
-          customer.currentOutstanding = Math.max(0, (Number(customer.currentOutstanding) || 0) - paymentAmount);
-          customer.lastPaymentDate = new Date(workflow.collectionDate);
-          customer.lastPaymentAmount = paymentAmount;
-          await customer.save();
-
-          try { emitToAll('payment:logged', { workflowPayment: true }); } catch (e) { console.error('WebSocket emit error:', e); }
-          try { emitToAll('customer:updated', { customer }); } catch (e) { console.error('WebSocket emit error:', e); }
-        }
-      }
-    }
+    // ── وتاريخُ التحصيل لا يُنشئ دفعةً في مكانٍ آخر ──────────────────────
+    // كان إثباتُ تاريخ التحصيل يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميل في
+    // ورك فلو لم يعد يجري. والتاريخُ في الكشف هو الإثبات: قسمُ التحصيل يقرأ
+    // «ما حُصِّل» من عمود التحصيل نفسِه، لا من نسخةٍ عنه.
 
     const populated = await OperationsWorkflow.findById(workflow._id)
       .populate('createdBy', 'firstName lastName')
@@ -1203,98 +1116,11 @@ exports.bulkImport = async (req, res) => {
       }
     }
 
-    // Create invoices and update customer outstanding based on sellingValue.
-    // username (اسم المستخدم) maps to the customer companyName.
-    //
-    // Batched: customers and existing invoices are prefetched with two queries
-    // (the per-row case-insensitive-regex findOne could not use the index and
-    // collection-scanned per row); outstanding increments are accumulated and
-    // written once per customer; emits are coalesced AFTER the loop — the
-    // per-row broadcasts made every connected client refetch mid-import,
-    // hundreds of times.
-    const updatedCustomers = [];
-    const rowsWithMoney = workflowsToCreate.filter((row) => {
-      if (!row.username || (Number(row.sellingValue) || 0) <= 0) return false;
-      return createdWorkflows.some((w) => w.reportNumber === row.reportNumber);
-    });
+    // ── ولا يُنسَخ إلى عملاءَ وفواتير ────────────────────────────────────
+    // كان الاستيرادُ يُنشئ خلفَ كلّ صفٍّ سجلَّ عميلٍ وفاتورةً في ورك فلو
+    // «العملاء والمالية» ويزيد المستحقَّ عليه. زال القسمُ، وصار الكشفُ هو
+    // المستندَ الوحيد: قسمُ التحصيل يقرأ منه مباشرةً.
 
-    const names = [...new Set(rowsWithMoney.map((r) => r.username.trim()))];
-    const invoiceNumbers = [...new Set(rowsWithMoney.map((r) => r.reportNumber).filter(Boolean))];
-    const [existingCustomers, existingInvoices] = await Promise.all([
-      names.length
-        ? Customer.find({ isActive: true, companyName: { $in: names } })
-          .collation({ locale: 'en', strength: 2 }) // case-insensitive equality, ONE query
-        : [],
-      invoiceNumbers.length
-        ? Invoice.find({ invoiceNumber: { $in: invoiceNumbers } }).select('invoiceNumber').lean()
-        : [],
-    ]);
-    const customerCache = {};
-    for (const c of existingCustomers) customerCache[c.companyName.trim().toLowerCase()] = c;
-    const invoiceExists = new Set(existingInvoices.map((i) => i.invoiceNumber));
-    let createdCustomers = 0;
-    let createdInvoices = 0;
-    const outstandingAdd = new Map(); // customerId -> total added
-
-    for (const row of rowsWithMoney) {
-      const createdWf = createdWorkflows.find((w) => w.reportNumber === row.reportNumber);
-      const sellingVal = Number(row.sellingValue) || 0;
-      const name = row.username.trim();
-
-      let customer = customerCache[name.toLowerCase()];
-      if (!customer) {
-        customer = await Customer.create({
-          companyName: name,
-          creditTerm: 30,
-          isActive: true,
-          clientStatus: 'new_client',
-          notes: 'Auto-created from operations import',
-        });
-        customerCache[name.toLowerCase()] = customer;
-        createdCustomers += 1;
-      }
-
-      // Create invoice using reportNumber as invoice number
-      const invoiceNumber = row.reportNumber || `WF-${createdWf._id.toString().slice(-8)}`;
-      if (!invoiceExists.has(invoiceNumber)) {
-        const invoiceDate = row.reportDate ? new Date(row.reportDate) : new Date();
-        const dueDate = new Date(invoiceDate);
-        dueDate.setDate(dueDate.getDate() + (customer.creditTerm || 30));
-        await Invoice.create({
-          invoiceNumber,
-          customer: customer._id,
-          amount: sellingVal,
-          paidAmount: 0,
-          balance: sellingVal,
-          invoiceDate,
-          dueDate,
-          creditTerm: customer.creditTerm || 30,
-          status: 'pending',
-          notes: `Auto-created from operations import - ${row.fromLocation || ''} → ${row.toLocation || ''}`,
-          createdBy: req.user._id,
-        });
-        invoiceExists.add(invoiceNumber);
-        createdInvoices += 1;
-      }
-
-      outstandingAdd.set(String(customer._id), (outstandingAdd.get(String(customer._id)) || 0) + sellingVal);
-    }
-
-    // One write per customer, one broadcast per entity type for the whole batch.
-    if (outstandingAdd.size) {
-      await Customer.bulkWrite([...outstandingAdd.entries()].map(([id, add]) => ({
-        updateOne: { filter: { _id: id }, update: { $inc: { currentOutstanding: add } } },
-      })), { ordered: false });
-      for (const [id, add] of outstandingAdd.entries()) {
-        const c = Object.values(customerCache).find((x) => String(x._id) === id);
-        if (c) updatedCustomers.push({ companyName: c.companyName, added: add });
-      }
-    }
-    if (createdCustomers) { try { emitToAll('customer:created', { bulk: true, count: createdCustomers }); } catch (e) {} }
-    if (createdInvoices) { try { emitToAll('invoice:created', { bulk: true, count: createdInvoices }); } catch (e) {} }
-    if (outstandingAdd.size) { try { emitToAll('customer:updated', { bulk: true, count: outstandingAdd.size }); } catch (e) {} }
-
-    // Populate user references
     const populated = await OperationsWorkflow.find({
       _id: { $in: createdWorkflows.map((w) => w._id) },
     })
@@ -1306,7 +1132,7 @@ exports.bulkImport = async (req, res) => {
       action: 'bulk_import_workflows',
       entity: 'OperationsWorkflow',
       entityId: null,
-      changes: { after: { count: createdWorkflows.length, customerUpdates: updatedCustomers } },
+      changes: { after: { count: createdWorkflows.length } },
       ipAddress: req.ip,
     });
 
@@ -1323,7 +1149,6 @@ exports.bulkImport = async (req, res) => {
       skipped: skipped.length,
       skippedReports: skipped,
       workflows: populated,
-      customerUpdates: updatedCustomers,
     });
   } catch (error) {
     console.error('Bulk import workflows error:', error);
@@ -1334,13 +1159,16 @@ exports.bulkImport = async (req, res) => {
 // GET /api/workflows/pending-by-customer/:customerId
 exports.getPendingByCustomer = async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.customerId);
-    if (!customer) {
-      return res.status(404).json({ message: 'Customer not found' });
+    // الطرفُ من سجلّ التحصيل لا من `Customer`: ذاك سجلُّ ورك فلو زال، وهذا
+    // هو الذي يعرفه القسمُ ويُبنى منه ملفُّ العميل.
+    const CollectionsParty = require('../models/CollectionsParty');
+    const party = await CollectionsParty.findById(req.params.customerId).select('name').lean();
+    if (!party) {
+      return res.status(404).json({ message: 'الطرف غير موجود' });
     }
 
     const workflows = await OperationsWorkflow.find({
-      username: { $regex: `^${customer.companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+      username: flexSpaceRegex(party.name),
       $and: [
         { $or: [{ paymentDate: null }, { paymentDate: '' }, { paymentDate: { $exists: false } }] },
         { $or: [{ invoiceNumber: null }, { invoiceNumber: '' }, { invoiceNumber: { $exists: false } }] },

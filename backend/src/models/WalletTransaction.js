@@ -16,8 +16,11 @@ const walletTransactionSchema = new mongoose.Schema(
     amount: { type: Number, required: true, min: 0.01 },
     // Collection fields
     collectionSource: { type: String, enum: ['client', 'company'], default: 'client' },
-    customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
-    invoice: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice' },
+    // ── الطرفُ من سجلّ التحصيل ────────────────────────────────────────────
+    // كان يشير إلى `Customer` ومعه `invoice` — وكلاهما من ورك فلو «العملاء
+    // والمالية» الذي زال. والتحصيلُ يُقيَّد على الطرف الذي يعرفه قسمُ التحصيل،
+    // والمستحقُّ يُقرأ من كشوف التشغيل لا من فاتورةٍ تُنسَخ هنا.
+    customer: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectionsParty' },
     deliveryStatementNumber: { type: String, trim: true },
     description: { type: String, trim: true }, // Used for company collections (بيان)
     // Expense fields (general spending - fuel, supplies, etc.)

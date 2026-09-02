@@ -3,9 +3,6 @@ const WalletTransaction = require('../models/WalletTransaction');
 const Customer = require('../models/Customer');
 const Invoice = require('../models/Invoice');
 const Payment = require('../models/Payment');
-const CollectionActivity = require('../models/CollectionActivity');
-const CollectionTask = require('../models/CollectionTask');
-const TaskSuggestion = require('../models/TaskSuggestion');
 const Dispute = require('../models/Dispute');
 const Notification = require('../models/Notification');
 const AuditLog = require('../models/AuditLog');
@@ -56,9 +53,7 @@ const clearData = async (req, res) => {
       { name: 'Customer', model: Customer },
       { name: 'Invoice', model: Invoice },
       { name: 'Payment', model: Payment },
-      { name: 'CollectionActivity', model: CollectionActivity },
-      { name: 'CollectionTask', model: CollectionTask },
-      { name: 'TaskSuggestion', model: TaskSuggestion },
+      { name: 'CollectionsFollowUp', model: require('../models/CollectionsFollowUp') },
       { name: 'Dispute', model: Dispute },
       { name: 'Notification', model: Notification },
       { name: 'AuditLog', model: AuditLog },

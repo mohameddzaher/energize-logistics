@@ -56,22 +56,29 @@ function getRoleFlags(role?: string) {
     showAging: isAdmin || isEmployee || isOpsManager || isOps || isModerator,
     // DSO trend: admin only
     showDso: isAdmin,
-    // Risk / forecast / credit terms / high-risk clients: admin only
-    showRisk: isAdmin,
-    showForecast: isAdmin,
+    // ── ولوحاتٌ أُطفئت لأنّ مصدرَها زال ───────────────────────────────────
+    // تقديرُ المخاطر، والتنبّؤُ بالتدفّق النقديّ، وترتيبُ المحصّلين: ثلاثةُ
+    // نماذجَ مبنيّةٌ على سجلّ فواتيرَ ومدفوعاتٍ من ورك فلو «العملاء والمالية»
+    // — لم يعد يُكتب فيه شيء. ولوحةٌ تُغذّى من جدولٍ فارغٍ لا تعرض «لا شيء»،
+    // بل تعرض رقمًا مطمئنًّا لا أصلَ له: صفرَ مخاطر وصفرَ تأخّر متوقَّع.
+    //
+    // وما يقابلها في البيانات الحيّة موجودٌ ويعمل: تقادمُ المستحقّ، وأيّامُ
+    // التحصيل، وتنبيهاتُ الائتمان — كلُّها محسوبةٌ من كشوف التشغيل.
+    showRisk: false,
+    showForecast: false,
     showCreditTerms: isAdmin,
-    showHighRisk: isAdmin,
-    // Collector ranking table: admin only
-    showCollectorRanking: isAdmin,
-    // Personal performance stats: employee
-    showPersonalPerformance: isEmployee,
+    showHighRisk: false,
+    showCollectorRanking: false,
+    showPersonalPerformance: false,
     // Export: admin only (they see everything)
     showExport: isAdmin,
     // Date filter: all roles
     showDateFilter: true,
-    // Credit alerts / low visit: admin only
+    // تنبيهاتُ الائتمان محسوبةٌ من الكشوف وحدُّ الطرف — حيّةٌ وتبقى.
     showCreditAlerts: isAdmin,
-    showLowVisit: isAdmin,
+    // «عملاء بلا زيارة» كانت تُقرأ من مهامّ قسمٍ زال — والمتابعاتُ صارت في
+    // قسم التحصيل، وله شاشتُه.
+    showLowVisit: false,
   };
 }
 
@@ -102,7 +109,6 @@ export default function DashboardPage() {
   const [forecast, setForecast] = useState<any>(null);
   const [performance, setPerformance] = useState<any>(null);
   const [creditAlerts, setCreditAlerts] = useState<any>(null);
-  const [lowVisitCustomers, setLowVisitCustomers] = useState<any>(null);
   const [workshopSummary, setWorkshopSummary] = useState<any>(null);
   const [workflowsTotal, setWorkflowsTotal] = useState<number>(0);
   const [complaintsData, setComplaintsData] = useState<any>(null);
@@ -220,7 +226,6 @@ export default function DashboardPage() {
       if (apis.risk) fetches.push(safe('risk', api.get('/api/analytics/risk'), setRisk));
       if (apis.forecast) fetches.push(safe('forecast', api.get('/api/analytics/forecast'), setForecast));
       if (apis.creditAlerts) fetches.push(safe('credit-alerts', api.get('/api/analytics/credit-alerts'), setCreditAlerts));
-      if (apis.lowVisit) fetches.push(safe('low-visit', api.get('/api/tasks/low-visit-customers'), setLowVisitCustomers));
 
       if (user?.role === 'super_admin' || user?.role === 'admin') {
         fetches.push(
@@ -829,14 +834,19 @@ export default function DashboardPage() {
 
           {/* Operational KPIs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div onClick={() => router.push('/system/low-visit-customers')} className="cursor-pointer hover:scale-[1.02] transition-transform">
-              <StatCard title={T.lowVisitCustomers} value={lowVisitCustomers?.count || 0} icon={UserX} color="#f59e0b" />
+            {/* ── بطاقاتٌ تُقرأ من الكشوف ────────────────────────────────────
+                «عملاء بلا زيارة» و«العملاء الأخطر» كانتا تُقرآن من لوحِ مهامَّ
+                وسجلِّ فواتيرَ زالا. وما بقي محسوبٌ من كشوف التشغيل: الكشوفُ
+                غيرُ المحصَّلة، والمتأخّرةُ عن مهلة صاحبها، وعددُ العملاء. */}
+            <div onClick={() => router.push('/system/collections-dept/dashboard')} className="cursor-pointer hover:scale-[1.02] transition-transform">
+              <StatCard title={lang === 'ar' ? 'كشوف لم تُحصَّل' : 'Uncollected reports'} value={dashboard?.openReports || 0} icon={UserX} color="#f59e0b" />
             </div>
             <div onClick={() => router.push('/system/overdue')} className="cursor-pointer hover:scale-[1.02] transition-transform">
               <StatCard title={T.overdueInvoices} value={dashboard?.overdueCount || 0} icon={AlertTriangle} color="#ef4444" />
             </div>
-            <StatCard title={T.totalCustomers} value={dashboard?.customerCount || 0} icon={Users} />
-            <StatCard title={T.highRiskClients} value={risk?.highRiskClients?.length || 0} icon={AlertTriangle} color="#ef4444" />
+            <div onClick={() => router.push('/system/collections-dept/customers')} className="cursor-pointer hover:scale-[1.02] transition-transform">
+              <StatCard title={T.totalCustomers} value={dashboard?.customerCount || 0} icon={Users} />
+            </div>
           </div>
 
           {/* Charts Row 1: Aging + DSO */}

@@ -1,10 +1,8 @@
 const DailyWallet = require('../models/DailyWallet');
 const WalletTransaction = require('../models/WalletTransaction');
-const Customer = require('../models/Customer');
-const Invoice = require('../models/Invoice');
+const { flexSpaceRegex } = require('../utils/plateKey');
 const Vendor = require('../models/Vendor');
 const Driver = require('../models/Driver');
-const Payment = require('../models/Payment');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 
@@ -191,8 +189,7 @@ exports.getDailyWallet = async (req, res) => {
       // المحفظةُ صارت للفرع، فالسطرُ هو ما يقول مَن فعل. وبدونه يصير النقدُ
       // المشتركُ بلا مسؤولٍ عن أيّ حركةٍ فيه — وهو عكسُ المقصود.
       .populate('user', 'firstName lastName')
-      .populate('customer', 'companyName customerNumber')
-      .populate('invoice', 'invoiceNumber amount balance')
+      .populate('customer', 'name kind')
       .populate('vendor', 'name')
       .populate('driver', 'name')
       .populate('expenseCategory', 'name')
@@ -246,59 +243,30 @@ exports.addTransaction = async (req, res) => {
       return res.status(400).json({ message: 'Day is closed. Contact manager to reopen.' });
     }
 
-    // For collections: validate based on source
-    let invoiceDoc = null;
-    let resolvedCustomer = customer;
-    let resolvedInvoice = invoice;
+    // ── التحصيلُ يُقيَّد على الطرف، لا على فاتورة ──────────────────────────
+    // كان رقمُ كشف التخريج يُبحَث به عن سجلّ عميلٍ ثمّ عن فاتورةٍ في ورك فلو
+    // «العملاء والمالية» — ولا سجلّاتِ هناك أصلًا بعد حذف القسم، فكان البحثُ
+    // رحلتين إلى القاعدة تعودان فارغتين دائمًا.
+    //
+    // والطرفُ يُعرَف من الكشف نفسِه: `username` هو العميل، ويُطابَق بسجلّ
+    // التحصيل بالاسم المطويّ — وهو المرجعُ الوحيد للأطراف الآن.
+    let resolvedParty = customer || null;
     const source = collectionSource || 'client';
-    if (type === 'collection') {
-      if (source === 'client') {
-        // Auto-lookup customer AND invoice from delivery statement number
-        if (deliveryStatementNumber) {
-          const dsEscaped = deliveryStatementNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-          // Step 1: Try to find workflow by reportNumber
-          try {
-            const OperationsWorkflow = require('../models/OperationsWorkflow');
-            const wf = await OperationsWorkflow.findOne({
-              reportNumber: { $regex: `^${dsEscaped}$`, $options: 'i' },
-            });
-            if (wf && !resolvedCustomer && wf.username) {
-              const custDoc = await Customer.findOne({
-                companyName: { $regex: `^${wf.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
-                isActive: true,
-              });
-              if (custDoc) resolvedCustomer = custDoc._id;
-            }
-          } catch (e) {
-            console.error('Wallet: workflow lookup error', e.message);
-          }
-
-          // Step 2: Find invoice by invoiceNumber = deliveryStatementNumber
-          if (!resolvedInvoice) {
-            const invoiceQuery = {
-              invoiceNumber: { $regex: `^${dsEscaped}$`, $options: 'i' },
-            };
-            if (resolvedCustomer) invoiceQuery.customer = resolvedCustomer;
-            const matchedInvoice = await Invoice.findOne(invoiceQuery);
-            if (matchedInvoice && !matchedInvoice.isFrozen) {
-              resolvedInvoice = matchedInvoice._id;
-              invoiceDoc = matchedInvoice;
-              if (!resolvedCustomer && matchedInvoice.customer) {
-                resolvedCustomer = matchedInvoice.customer;
-              }
-            }
-          }
+    if (type === 'collection' && source === 'client' && !resolvedParty && deliveryStatementNumber) {
+      try {
+        const OperationsWorkflow = require('../models/OperationsWorkflow');
+        const CollectionsParty = require('../models/CollectionsParty');
+        const wf = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(deliveryStatementNumber) })
+          .select('username').lean();
+        if (wf && wf.username) {
+          const party = await CollectionsParty.findOne({
+            kind: 'customer', nameKey: CollectionsParty.fold(wf.username),
+          }).select('_id').lean();
+          if (party) resolvedParty = party._id;
         }
-
-        // If invoice specified directly, validate
-        if (resolvedInvoice && !invoiceDoc) {
-          invoiceDoc = await Invoice.findById(resolvedInvoice);
-          if (!invoiceDoc) return res.status(404).json({ message: 'Invoice not found' });
-          if (invoiceDoc.isFrozen) return res.status(400).json({ message: 'Invoice is frozen' });
-        }
+      } catch (e) {
+        console.error('Wallet: party lookup error', e.message);
       }
-      // Company collections don't require customer - just description and amount
     }
 
     // For purchases: look up selling value from delivery statement
@@ -325,8 +293,7 @@ exports.addTransaction = async (req, res) => {
       type,
       amount,
       collectionSource: type === 'collection' ? source : undefined,
-      customer: resolvedCustomer || undefined,
-      invoice: resolvedInvoice || undefined,
+      customer: resolvedParty || undefined,
       deliveryStatementNumber: deliveryStatementNumber || undefined,
       description: description || undefined,
       vendor: vendor || undefined,
@@ -348,42 +315,11 @@ exports.addTransaction = async (req, res) => {
       flagReason: isFlagged ? riskFlags.join('; ') : undefined,
     });
 
-    // ─── FINANCIAL SYNC ──────────────────────────────────────
-    if (type === 'collection' && source === 'client' && resolvedCustomer) {
-      // Update customer outstanding
-      const customerDoc = await Customer.findById(resolvedCustomer);
-      if (customerDoc) {
-        customerDoc.currentOutstanding = Math.max(0, customerDoc.currentOutstanding - amount);
-        customerDoc.lastPaymentDate = new Date();
-        customerDoc.lastPaymentAmount = amount;
-        await customerDoc.save();
-      }
-
-      // Update invoice if linked
-      if (invoiceDoc) {
-        invoiceDoc.paidAmount += amount;
-        invoiceDoc.balance = invoiceDoc.amount - invoiceDoc.paidAmount;
-        if (invoiceDoc.balance <= 0) {
-          invoiceDoc.status = 'paid';
-          invoiceDoc.balance = 0;
-        } else {
-          invoiceDoc.status = 'partial';
-        }
-        await invoiceDoc.save();
-      }
-
-      // Log payment in Payments collection for sync
-      await Payment.create({
-        invoice: resolvedInvoice || undefined,
-        customer: resolvedCustomer,
-        amount,
-        paymentDate: new Date(),
-        paymentMethod: 'cash',
-        receivedBy: req.user._id,
-        reference: `WALLET-${transaction._id}`,
-        notes: `Cash collection via wallet${notes ? ': ' + notes : ''}`,
-      });
-    }
+    // ── ولا مزامنةَ ماليّةً في مكانٍ آخر ────────────────────────────────
+    // كان تحصيلُ العهدة يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميلٍ في ورك فلو
+    // «العملاء والمالية». زال ذلك القسم، والمحفظةُ ليست دفترَ عملاء: هي عهدةُ
+    // الفرع — ما دخل وما خرج ورصيدُ اليوم. ومَن يريد «كم لنا عند هذا العميل»
+    // يقرؤه في قسم التحصيل من كشوف التشغيل نفسِها، لا من نسخةٍ تُكتب هنا.
 
     // Update vendor total if expense paid to vendor
     if (type === 'expense' && vendor) {
@@ -407,8 +343,7 @@ exports.addTransaction = async (req, res) => {
     const updatedWallet = await recalcWallet(wallet._id);
 
     const populated = await WalletTransaction.findById(transaction._id)
-      .populate('customer', 'companyName customerNumber')
-      .populate('invoice', 'invoiceNumber amount balance')
+      .populate('customer', 'name kind')
       .populate('vendor', 'name')
       .populate('driver', 'name')
       .populate('expenseCategory', 'name');
@@ -466,30 +401,10 @@ exports.deleteTransaction = async (req, res) => {
       return res.status(400).json({ message: 'Day is closed' });
     }
 
-    // Reverse financial effects
-    if (transaction.type === 'collection' && transaction.customer) {
-      const customerDoc = await Customer.findById(transaction.customer);
-      if (customerDoc) {
-        customerDoc.currentOutstanding += transaction.amount;
-        await customerDoc.save();
-      }
-      if (transaction.invoice) {
-        const invoiceDoc = await Invoice.findById(transaction.invoice);
-        if (invoiceDoc) {
-          invoiceDoc.paidAmount = Math.max(0, invoiceDoc.paidAmount - transaction.amount);
-          invoiceDoc.balance = invoiceDoc.amount - invoiceDoc.paidAmount;
-          if (invoiceDoc.balance <= 0) {
-            invoiceDoc.status = 'paid';
-            invoiceDoc.balance = 0;
-          } else if (invoiceDoc.balance >= invoiceDoc.amount) {
-            invoiceDoc.status = 'pending';
-          } else {
-            invoiceDoc.status = 'partial';
-          }
-          await invoiceDoc.save();
-        }
-      }
-    }
+    // ── ولا عكسَ لأثرٍ لم يعد يُكتب ────────────────────────────────────────
+    // كان حذفُ التحصيل يعكس رصيدَ عميلٍ وفاتورةً في ورك فلو زال. والحركةُ
+    // نفسُها هي الأثرُ الآن، فحذفُها يعيد الرصيدَ وحدَه — وسلسلةُ الأرصدة
+    // تُبنى بعده كما تُبنى بعد أيّ حذف.
 
     if (transaction.type === 'expense' && transaction.vendor) {
       const vendorDoc = await Vendor.findById(transaction.vendor);
@@ -505,11 +420,6 @@ exports.deleteTransaction = async (req, res) => {
         driverDoc.totalPaid = Math.max(0, driverDoc.totalPaid - transaction.amount);
         await driverDoc.save();
       }
-    }
-
-    // Delete linked Payment record if it was a collection
-    if (transaction.type === 'collection') {
-      await Payment.deleteMany({ reference: `WALLET-${transaction._id}` });
     }
 
     await WalletTransaction.findByIdAndDelete(req.params.id);
@@ -561,29 +471,7 @@ exports.updateTransaction = async (req, res) => {
     const newAmount = amount != null ? Number(amount) : transaction.amount;
 
     // ─── REVERSE OLD FINANCIAL EFFECTS ────────────────────
-    if (transaction.type === 'collection' && transaction.customer) {
-      const customerDoc = await Customer.findById(transaction.customer);
-      if (customerDoc) {
-        customerDoc.currentOutstanding += transaction.amount;
-        await customerDoc.save();
-      }
-      if (transaction.invoice) {
-        const oldInvoice = await Invoice.findById(transaction.invoice);
-        if (oldInvoice) {
-          oldInvoice.paidAmount = Math.max(0, oldInvoice.paidAmount - transaction.amount);
-          oldInvoice.balance = oldInvoice.amount - oldInvoice.paidAmount;
-          if (oldInvoice.balance <= 0) {
-            oldInvoice.status = 'paid';
-            oldInvoice.balance = 0;
-          } else if (oldInvoice.balance >= oldInvoice.amount) {
-            oldInvoice.status = 'pending';
-          } else {
-            oldInvoice.status = 'partial';
-          }
-          await oldInvoice.save();
-        }
-      }
-    }
+    // التحصيلُ لم يعد له أثرٌ خارج الحركة نفسِها — لا رصيدَ عميلٍ ولا فاتورة.
     if (transaction.type === 'expense' && transaction.vendor) {
       const vendorDoc = await Vendor.findById(transaction.vendor);
       if (vendorDoc) { vendorDoc.totalPaid = Math.max(0, vendorDoc.totalPaid - transaction.amount); await vendorDoc.save(); }
@@ -596,7 +484,6 @@ exports.updateTransaction = async (req, res) => {
     // ─── UPDATE TRANSACTION FIELDS ────────────────────────
     transaction.amount = newAmount;
     if (customer !== undefined) transaction.customer = customer || undefined;
-    if (invoice !== undefined) transaction.invoice = invoice || undefined;
     if (deliveryStatementNumber !== undefined) transaction.deliveryStatementNumber = deliveryStatementNumber || undefined;
     if (vendor !== undefined) transaction.vendor = vendor || undefined;
     if (driver !== undefined) transaction.driver = driver || undefined;
@@ -633,28 +520,6 @@ exports.updateTransaction = async (req, res) => {
     await transaction.save();
 
     // ─── APPLY NEW FINANCIAL EFFECTS ──────────────────────
-    const newCustomer = transaction.customer;
-    const newInvoice = transaction.invoice;
-
-    if (transaction.type === 'collection' && newCustomer) {
-      const customerDoc = await Customer.findById(newCustomer);
-      if (customerDoc) {
-        customerDoc.currentOutstanding = Math.max(0, customerDoc.currentOutstanding - newAmount);
-        customerDoc.lastPaymentDate = new Date();
-        customerDoc.lastPaymentAmount = newAmount;
-        await customerDoc.save();
-      }
-      if (newInvoice) {
-        const invoiceDoc = await Invoice.findById(newInvoice);
-        if (invoiceDoc) {
-          invoiceDoc.paidAmount += newAmount;
-          invoiceDoc.balance = invoiceDoc.amount - invoiceDoc.paidAmount;
-          if (invoiceDoc.balance <= 0) { invoiceDoc.status = 'paid'; invoiceDoc.balance = 0; }
-          else { invoiceDoc.status = 'partial'; }
-          await invoiceDoc.save();
-        }
-      }
-    }
     if (transaction.type === 'expense' && transaction.vendor) {
       const vendorDoc = await Vendor.findById(transaction.vendor);
       if (vendorDoc) { vendorDoc.totalPaid += newAmount; await vendorDoc.save(); }
@@ -664,20 +529,11 @@ exports.updateTransaction = async (req, res) => {
       if (driverDoc) { driverDoc.totalPaid += newAmount; await driverDoc.save(); }
     }
 
-    // Update linked Payment record if collection
-    if (transaction.type === 'collection') {
-      await Payment.updateMany(
-        { reference: `WALLET-${transaction._id}` },
-        { amount: newAmount, customer: transaction.customer || undefined, invoice: transaction.invoice || undefined }
-      );
-    }
-
     // Recalculate wallet
     const updatedWallet = await recalcWallet(wallet._id);
 
     const populated = await WalletTransaction.findById(transaction._id)
-      .populate('customer', 'companyName customerNumber')
-      .populate('invoice', 'invoiceNumber amount balance')
+      .populate('customer', 'name kind')
       .populate('vendor', 'name')
       .populate('driver', 'name')
       .populate('expenseCategory', 'name');
@@ -1102,26 +958,23 @@ exports.lookupByReport = async (req, res) => {
       branch: workflow.branch || '',
     };
 
-    // Try to resolve the customer + open invoices (collections need this). Missing
-    // customer is NOT an error — purchases don't require it.
+    // ── والطرفُ من سجلّ التحصيل ──────────────────────────────────────────
+    // كان يُبحَث عنه في `Customer` ثمّ تُجلَب فواتيرُه المفتوحة — وكلاهما من
+    // ورك فلو زال، فكانت الرحلتان تعودان فارغتين دائمًا. والعميلُ يُعرَف من
+    // `username` في الكشف، ويُطابَق بالاسم المطويّ في سجلّ التحصيل.
+    //
+    // ولا فواتيرَ تُعرض معه: المستحقُّ يُقرأ من الكشوف في قسم التحصيل، لا من
+    // جدولٍ ثانٍ يقول رقمًا آخر.
     let customer = null;
-    let invoices = [];
     if (workflow.username) {
-      const found = await Customer.findOne({
-        companyName: { $regex: `^${workflow.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
-        isActive: true,
-      });
-      if (found) {
-        customer = { _id: found._id, companyName: found.companyName, customerNumber: found.customerNumber, currentOutstanding: found.currentOutstanding };
-        invoices = await Invoice.find({
-          customer: found._id,
-          status: { $in: ['pending', 'partial', 'overdue'] },
-          balance: { $gt: 0 },
-        }).select('invoiceNumber amount balance status').sort({ createdAt: -1 });
-      }
+      const CollectionsParty = require('../models/CollectionsParty');
+      const found = await CollectionsParty.findOne({
+        kind: 'customer', nameKey: CollectionsParty.fold(workflow.username),
+      }).select('name phone status').lean();
+      if (found) customer = { _id: found._id, name: found.name, phone: found.phone, status: found.status };
     }
 
-    res.json({ ...base, customer, invoices });
+    res.json({ ...base, customer });
   } catch (error) {
     console.error('lookupByReport error:', error);
     res.status(500).json({ message: error.message || 'Failed to lookup report' });
@@ -1198,8 +1051,7 @@ exports.getUserWalletRange = async (req, res) => {
       // مَن سجّل الحركة — المحفظةُ للفرع، فالملفُّ المصدَّرُ بلا اسمِ الفاعل
       // يقول ماذا جرى ولا يقول من فعل.
       .populate('user', 'firstName lastName')
-      .populate('customer', 'companyName customerNumber')
-      .populate('invoice', 'invoiceNumber amount balance')
+      .populate('customer', 'name kind')
       .populate('vendor', 'name')
       .populate('driver', 'name')
       .populate('expenseCategory', 'name')
@@ -1229,28 +1081,11 @@ exports.resetAllWallets = async (req, res) => {
   try {
     const allTransactions = await WalletTransaction.find({}).lean();
 
-    // Reverse financial effects of every collection on customers + invoices
+    // ── ولا أثرَ ماليًّا يُعكَس خارج المحفظة ──────────────────────────────
+    // كان التصفيرُ يعكس أرصدةَ عملاءَ وفواتيرَ في ورك فلو زال، ويحذف دفعاتٍ
+    // كانت المحفظةُ تكتبها. لم يعد شيءٌ من ذلك يُكتب، فلا شيءَ يُعكَس.
+    // ويبقى ما هو خارجَ ذلك الورك فلو على حاله: المورّدُ والسائق.
     for (const t of allTransactions) {
-      if (t.type === 'collection') {
-        if (t.customer) {
-          const c = await Customer.findById(t.customer);
-          if (c) {
-            c.currentOutstanding += t.amount;
-            await c.save();
-          }
-        }
-        if (t.invoice) {
-          const inv = await Invoice.findById(t.invoice);
-          if (inv) {
-            inv.paidAmount = Math.max(0, inv.paidAmount - t.amount);
-            inv.balance = inv.amount - inv.paidAmount;
-            if (inv.balance >= inv.amount) inv.status = 'pending';
-            else if (inv.balance > 0) inv.status = 'partial';
-            else { inv.status = 'paid'; inv.balance = 0; }
-            await inv.save();
-          }
-        }
-      }
       if (t.type === 'expense') {
         if (t.vendor) {
           const v = await Vendor.findById(t.vendor);
@@ -1262,9 +1097,6 @@ exports.resetAllWallets = async (req, res) => {
         }
       }
     }
-
-    // Drop every wallet-derived Payment record
-    await Payment.deleteMany({ reference: /^WALLET-/ });
 
     // Wipe transactions and wallets
     const txResult = await WalletTransaction.deleteMany({});

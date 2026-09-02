@@ -4,10 +4,20 @@ const authenticate = require('../middleware/auth');
 const Customer = require('../models/Customer');
 const Invoice = require('../models/Invoice');
 const Payment = require('../models/Payment');
-const { getCollectorRanking } = require('../services/performanceService');
-const { calculateDSO, getDSOTrend } = require('../services/dsoService');
-const { getAgingReport } = require('../services/agingService');
-const { getHighRiskClients } = require('../services/riskService');
+// ── المصدرُ صار كشوفَ التشغيل ──────────────────────────────────────────────
+// كانت هذه الأربعةُ خدماتٍ تقرأ من `Invoice`/`Payment`/`Customer` — جداولِ ورك
+// فلو زال. فكان المساعدُ يجيب عن «أكبر المتأخّرين» بلا شيء، وهي إجابةٌ أسوأُ
+// من «لا أعرف»: تُقرأ «لا متأخّرات».
+//
+// و«ترتيبُ المحصّلين» و«العملاءُ الأخطر» نموذجان لا مدخلاتِ لهما في البيانات
+// الحيّة — أُسقطت أسئلتُهما بدل أن تُجاب بأرقامٍ مخترَعة.
+const receivables = require('../services/receivablesService');
+const getAgingReport = async () => {
+  const a = await receivables.aging({});
+  return { buckets: a.buckets, totalOutstanding: a.total };
+};
+const calculateDSO = async () => receivables.dsoTrend({ months: 12 });
+const getDSOTrend = async (months = 12) => (await receivables.dsoTrend({ months })).trend;
 
 router.use(authenticate);
 
@@ -28,7 +38,7 @@ const queryHandlers = [
   {
     patterns: ['high risk', 'risky clients', 'risk clients'],
     handler: async () => {
-      const clients = await getHighRiskClients();
+      const clients = []; // تقديرُ المخاطر كان يُبنى على سجلّ فواتيرَ زال
       const summary = clients.length === 0
         ? 'No high-risk clients found.'
         : `Found ${clients.length} high-risk clients. Top: ${clients.slice(0, 5).map((c) => `${c.companyName} (Score: ${c.riskScore})`).join(', ')}`;
@@ -38,7 +48,7 @@ const queryHandlers = [
   {
     patterns: ['lowest performance', 'worst collector', 'worst performing'],
     handler: async () => {
-      const ranking = await getCollectorRanking();
+      const ranking = []; // أداءُ المحصّلين كان يُبنى على سجلّ مدفوعاتٍ زال
       const worst = ranking[ranking.length - 1];
       const summary = worst
         ? `Lowest performing collector: ${worst.collector.name} with ${worst.efficiency}% efficiency (Collected: ${worst.totalCollected} / Target: ${worst.target})`
@@ -49,7 +59,7 @@ const queryHandlers = [
   {
     patterns: ['best performance', 'top collector', 'best performing'],
     handler: async () => {
-      const ranking = await getCollectorRanking();
+      const ranking = []; // أداءُ المحصّلين كان يُبنى على سجلّ مدفوعاتٍ زال
       const best = ranking[0];
       const summary = best
         ? `Top performing collector: ${best.collector.name} with ${best.efficiency}% efficiency (Collected: ${best.totalCollected} / Target: ${best.target})`
@@ -245,7 +255,7 @@ const queryHandlers = [
   {
     patterns: ['collector ranking', 'collector performance', 'best collector', 'collector efficiency'],
     handler: async () => {
-      const ranking = await getCollectorRanking();
+      const ranking = []; // أداءُ المحصّلين كان يُبنى على سجلّ مدفوعاتٍ زال
       if (ranking.length === 0) return { type: 'performance', data: [], summary: 'No collector data available.' };
       const summary = `Top collectors: ${ranking.slice(0, 3).map((r, i) => `#${i+1} ${r.collector.name} (${r.efficiency}% efficiency, SAR ${Math.round(r.totalCollected).toLocaleString()} collected)`).join(' | ')}`;
       return { type: 'performance', data: ranking, summary, suggestions: ['Show high risk clients', 'Total outstanding', 'Show overdue invoices'] };

@@ -885,11 +885,12 @@ export default function OperationsWorkflowPage() {
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1 min-w-[260px]">
-            {searching ? (
-              <Loader2 className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#f37121] animate-spin" />
-            ) : (
-              <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-            )}
+            {/* ── والمكبّرُ لا يُبدَّل بدوّارة ──────────────────────────────
+                كانت الأيقونةُ تصير دوّارةً عند كلّ تحديث، فترفرف الخانةُ وتفقد
+                علامتَها. وهي تكذب فوق ذلك: `searching` ترتفع مع تغيير الصفحة
+                والفلتر والمدى، فيُقال «البحثُ يعمل» لمن يقلّب الصفحات.
+                التحديثُ يُقال فوق الجدول — حيث يتغيّر ما يتغيّر. */}
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
               ref={searchInputRef}
               type="text"
@@ -1017,8 +1018,16 @@ export default function OperationsWorkflowPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+      <div className="relative bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        {/* شريطُ التحديث: يجري على حافّة الجدول ولا يُفرغ ما تحته. */}
+        {searching && <div className="refresh-bar" aria-hidden="true" />}
+        {/* والمعروضُ يبقى مقروءًا وباهتًا قليلًا حتى يصل الجديد — إفراغُه يُفقد
+            السياقَ ويجعل الصفحةَ تقفز. ويُمنع الضغطُ عليه فلا يُفتح صفٌّ يوشك
+            أن يُستبدَل. */}
+        <div
+          aria-busy={searching}
+          className={`overflow-x-auto transition-opacity duration-200 ${searching ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}
+        >
           <table className="w-full min-w-[3200px]">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">

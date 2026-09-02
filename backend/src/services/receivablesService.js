@@ -40,7 +40,7 @@ function termDays(paymentTerms) {
 /** مهلةُ كلّ عميلٍ مفهرسةً بالاسم المطويّ — قراءةٌ واحدةٌ للسجلّ كلِّه. */
 async function termsByParty() {
   const rows = await CollectionsParty.find({ kind: 'customer' })
-    .select('nameKey name paymentTerms creditLimit status phone').lean();
+    .select('_id nameKey name paymentTerms creditLimit status phone').lean();
   const map = new Map();
   for (const p of rows) map.set(p.nameKey || fold(p.name), p);
   return map;
@@ -117,8 +117,11 @@ async function dashboard({ dateFrom, dateTo } = {}) {
     byTerm.set(t, (byTerm.get(t) || 0) + row.n);
   }
 
-  const overdue = await overdueCount();
-  const trailingDso = (periodAgg[0]?.daysCount || 0) ? 0 : (await dsoTrend({ months: 12 })).dso;
+  // الاثنان في موجةٍ واحدة: زمنُ الردّ تسعون جزءًا من الألف، والتتابعُ يضاعفه.
+  const [overdue, trailingDso] = await Promise.all([
+    overdueCount(),
+    (periodAgg[0]?.daysCount || 0) ? Promise.resolve(0) : dsoTrend({ months: 12 }).then((t) => t.dso),
+  ]);
 
   return {
     totalOutstanding: r2(openAgg[0]?.total || 0),
@@ -204,57 +207,100 @@ async function dsoTrend({ months = 12 } = {}) {
 /**
  * الكشوفُ المتأخّرة — تجاوزت مهلةَ صاحبها ولم تُحصَّل.
  *
- * تُبنى الصفوفُ بشكل الصفحة القديمة (رقمٌ، عميل، تاريخ، استحقاق، أيّام، رصيد)
- * حتى لا تُعاد كتابةُ الشاشة، والمصدرُ وحدَه هو الذي تغيّر.
+ * ── ولماذا لا تُقرأ الصفوفُ كلُّها ─────────────────────────────────────────
+ * كُتبت أوّلًا بجلب كلّ كشفٍ مفتوحٍ إلى العقدة ثمّ حسابِ التأخّر فيها. وهي
+ * سبعةٌ وعشرون ألفَ صفٍّ على عنقودٍ مقيَّد النطاق — فتجاوز الطلبُ مهلةَ nginx
+ * ورجع ٥٠٢. والحسابُ لم يكن بطيئًا؛ النقلُ هو الذي كان.
+ *
+ * والمهلةُ تختلف بالطرف، فلا يكفي شرطٌ واحد. فتُقرأ أسماءُ من لهم كشوفٌ مفتوحة
+ * (مئتان وبضع)، وتُجمَّع بمهلتها، ويُبنى شرطٌ واحدٌ فيه فرعٌ لكلّ مهلة — فتجري
+ * الفلترةُ والترقيمُ في القاعدة، ولا يعود إلّا ما يُعرض.
  */
-async function overdueList({ page = 1, limit = 50, dateFrom, dateTo, sortBy = 'overdueDays' } = {}) {
-  const terms = await termsByParty();
-  const rows = await OperationsWorkflow.find({
+async function overdueMatch({ dateFrom, dateTo } = {}) {
+  const base = {
     ...NOT_CANCELLED, ...dateMatch(dateFrom, dateTo),
     collectionDate: null, reportDate: { $ne: null }, username: { $nin: [null, ''] },
-  })
-    .select('reportNumber reportDate username sellingValue branch fromLocation toLocation invoiceNumber')
-    .lean();
+  };
+
+  const [names, terms] = await Promise.all([
+    OperationsWorkflow.aggregate([{ $match: base }, { $group: { _id: '$username' } }]),
+    termsByParty(),
+  ]);
+
+  // الاسمُ الخام → مهلتُه، مجموعًا بالمهلة فيصير الشرطُ فرعًا لكلّ قيمة لا
+  // فرعًا لكلّ اسم.
+  const byTerm = new Map();
+  for (const row of names) {
+    const raw = row._id;
+    if (!raw) continue;
+    const days = termDays(terms.get(fold(raw))?.paymentTerms);
+    if (!byTerm.has(days)) byTerm.set(days, []);
+    byTerm.get(days).push(raw);
+  }
 
   const now = Date.now();
-  const mapped = [];
-  for (const w of rows) {
+  const branches = [...byTerm.entries()].map(([days, list]) => ({
+    username: { $in: list },
+    reportDate: { ...(base.reportDate || {}), $lt: new Date(now - days * 86400000) },
+  }));
+
+  // بلا فرعٍ واحد لا شيءَ متأخّر — و`$or: []` خطأٌ في mongo، فيُعاد شرطٌ
+  // مستحيلٌ صراحةً بدل أن يُرمى.
+  if (!branches.length) return { match: { _id: null }, terms };
+  return { match: { ...base, $or: branches }, terms };
+}
+
+async function overdueList({ page = 1, limit = 50, dateFrom, dateTo, sortBy = 'overdueDays' } = {}) {
+  const { match, terms } = await overdueMatch({ dateFrom, dateTo });
+
+  const [total, rows, sums] = await Promise.all([
+    OperationsWorkflow.countDocuments(match),
+    OperationsWorkflow.find(match)
+      .select('reportNumber reportDate username sellingValue branch fromLocation toLocation invoiceNumber')
+      // الأقدمُ أوّلًا هو «الأكثرُ تأخّرًا» — الترتيبُ في القاعدة لا في العقدة.
+      .sort(sortBy === 'balance' ? { sellingValue: -1 } : { reportDate: 1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean(),
+    OperationsWorkflow.aggregate([
+      { $match: match },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$sellingValue', 0] } } } },
+    ]),
+  ]);
+
+  const now = Date.now();
+  const invoices = rows.map((w) => {
     const party = terms.get(fold(w.username));
     const days = termDays(party?.paymentTerms);
-    const due = new Date(new Date(w.reportDate).getTime() + days * 86400000);
-    const overdueDays = Math.floor((now - due.getTime()) / 86400000);
-    if (overdueDays <= 0) continue; // داخلَ مهلته — ليس متأخّرًا
-    mapped.push({
+    const dueAt = new Date(new Date(w.reportDate).getTime() + days * 86400000);
+    return {
       _id: w._id,
       invoiceNumber: w.invoiceNumber || w.reportNumber,
       reportNumber: w.reportNumber,
-      customer: { _id: null, companyName: party?.name || w.username },
+      customer: { _id: party?._id || null, companyName: party?.name || w.username },
       invoiceDate: w.reportDate,
-      dueDate: due,
-      overdueDays,
+      dueDate: dueAt,
+      overdueDays: Math.floor((now - dueAt.getTime()) / 86400000),
       balance: r2(w.sellingValue),
       branch: w.branch || '',
       route: [w.fromLocation, w.toLocation].filter(Boolean).join(' — '),
       creditTerm: days,
       status: 'overdue',
-    });
-  }
+    };
+  });
 
-  mapped.sort((a, b) => (sortBy === 'balance' ? b.balance - a.balance : b.overdueDays - a.overdueDays));
-  const total = mapped.length;
-  const start = (Number(page) - 1) * Number(limit);
   return {
-    invoices: mapped.slice(start, start + Number(limit)),
+    invoices,
     total,
     page: Number(page),
     pages: Math.max(1, Math.ceil(total / Number(limit))),
-    totalBalance: r2(mapped.reduce((s, m) => s + m.balance, 0)),
+    totalBalance: r2(sums[0]?.total || 0),
   };
 }
 
-async function overdueCount() {
-  const { total } = await overdueList({ page: 1, limit: 1 });
-  return total;
+async function overdueCount(opts = {}) {
+  const { match } = await overdueMatch(opts);
+  return OperationsWorkflow.countDocuments(match);
 }
 
 /**

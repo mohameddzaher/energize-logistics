@@ -21,11 +21,6 @@
 
 const SECTIONS = [
   {
-    key: 'Customers & Finance',
-    apiPrefixes: ['/api/invoices', '/api/payments', '/api/collections', '/api/disputes'],
-    defaultRoles: ['admin', 'it_manager', 'employee', 'operations_manager', 'moderator'],
-  },
-  {
     key: 'Operations',
     apiPrefixes: ['/api/wallet'],
     defaultRoles: ['admin', 'it_manager', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff'],
@@ -174,7 +169,6 @@ const SECTION_KEYS = SECTIONS.map((s) => s.key);
 // output (PDF reports, notifications) isn't the only place in an Arabic system
 // that says "Software & IT".
 const SECTION_LABELS_AR = {
-  'Customers & Finance': 'العملاء والمالية',
   'Operations': 'العمليات',
   'Collections': 'التحصيل',
   'Operations Platform': 'منصة الأوبريشن',

@@ -31,14 +31,13 @@ const { startKeepAlive } = require('./jobs/keepAlive');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const customerRoutes = require('./routes/customers');
-const invoiceRoutes = require('./routes/invoices');
-const paymentRoutes = require('./routes/payments');
-const collectionRoutes = require('./routes/collections');
-const disputeRoutes = require('./routes/disputes');
 const notificationRoutes = require('./routes/notifications');
 const auditRoutes = require('./routes/audit');
 const analyticsRoutes = require('./routes/analytics');
 const assistantRoutes = require('./routes/assistant');
+const invoiceRoutes = require('./routes/invoices');
+const paymentRoutes = require('./routes/payments');
+const collectionRoutes = require('./routes/collections');
 const workflowRoutes = require('./routes/workflows');
 const collectionsDeptRoutes = require('./routes/collectionsDept');
 const taskRoutes = require('./routes/tasks');
@@ -192,11 +191,18 @@ app.use('/api/', generalLimiter);
 // prefixes (auth, users, analytics, notifications, tasks, ...) stay ungated.
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+// ── ما بقي من «العملاء والمالية» بعد حذف القسم ────────────────────────────
+// القسمُ زال بصفحاته وأدواره ومدخله في مصفوفة الصلاحيّات، وبقيت هذه النقاطُ
+// لأنّ لها قارئًا حقيقيًّا بعده:
+//   · الفواتيرُ والمدفوعات — بوّابةُ العميل تقرأ منها (وكلٌّ من `getInvoices`
+//     و`getPayments` يقصر الردَّ على صفوف صاحب الحساب حين يكون `client`)،
+//     وسيرُ عمل التشغيل والمحفظةُ ما زالا يُنشئان فيها.
+//   · متابعاتُ التحصيل — تبويبٌ في ملفّ العميل.
+// وحارسُ القسم نُزع عنها: قسمٌ لا وجود له لا يحرس شيئًا.
+app.use('/api/invoices', authenticate, invoiceRoutes);
+app.use('/api/payments', authenticate, paymentRoutes);
+app.use('/api/collections', authenticate, collectionRoutes);
 app.use('/api/customers', customerRoutes);
-app.use('/api/invoices', authenticate, sectionGate('Customers & Finance'), invoiceRoutes);
-app.use('/api/payments', authenticate, sectionGate('Customers & Finance'), paymentRoutes);
-app.use('/api/collections', authenticate, sectionGate('Customers & Finance'), collectionRoutes);
-app.use('/api/disputes', authenticate, sectionGate('Customers & Finance'), disputeRoutes);
 // ── واجهة الأسطول للأتمتة ────────────────────────────────────────────────────
 // خارج `authenticate` لأنها تُصادَق بمفتاح لا بجلسة، وخارج `csrfGuard` لأن
 // الحارس يتخطّى ما لا كوكي جلسة فيه أصلًا. للقراءة وحدها.

@@ -17,11 +17,11 @@ router.use(authenticate);
 // النظام، وحسابات العملاء والموردين في البوّابة من بينها فهي مستخدمون عاديّون،
 // يقرأ الملفّ المالي للشركة بطلبٍ واحد.
 const authorize = require('../middleware/rbac');
-// `collections_manager` و`collector` اسمان ميّتان: لا وجود لهما في سجلّ الأدوار
-// منذ أن صار قسمُ التحصيل `customers_finance_*`. وحارسٌ يذكر دورًا لا وجود له
-// لا يفتح لأحد — يبدو أوسعَ ممّا هو، ويُقرأ كأنّ التحصيل يصل وهو لا يصل.
+// حارسٌ يذكر دورًا لا وجود له لا يفتح لأحد — يبدو أوسعَ ممّا هو. وقد حمل هذا
+// السطرُ اسمين ميّتين مرّتين: `collections_manager`/`collector` قبل أن يصيرا
+// `customers_finance_*`، ثمّ هذين بعد أن حُذف قسمُ العملاء والمالية.
 router.use(authorize('super_admin', 'admin', 'finance_manager', 'accountant',
-  'customers_finance_manager', 'customers_finance_staff'));
+  'collections_manager', 'collections_staff'));
 
 // Query patterns and their handlers
 const queryHandlers = [

@@ -53,7 +53,7 @@ const SUBJECT_SECTIONS = {
   vehicle: ['Vehicles', 'Fleet Management', 'Location Solutions', 'Workshop'],
   tire: ['Location Solutions', 'Workshop'],
   driver: ['Fleet Management', 'Location Solutions'],
-  customer: ['CRM', 'Customers & Finance', 'Sales'],
+  customer: ['CRM', 'Collections', 'Sales'],
   vendor: ['CRM', 'Contracts', 'Procurement'],
   // تقريرُ الموظّف يحمل الراتبَ والإقامةَ والتقييم — الموارد البشريّة وحدَها.
   employee: ['HR'],

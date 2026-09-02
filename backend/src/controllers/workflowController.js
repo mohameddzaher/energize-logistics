@@ -80,8 +80,6 @@ const ROLE_FIELD_ACCESS = {
   employee: FIELD_GROUPS.collections,
   finance_manager: MONEY_FIELDS,
   accountant: MONEY_FIELDS,
-  customers_finance_manager: MONEY_FIELDS,
-  customers_finance_staff: MONEY_FIELDS,
   // ── وقسمُ التحصيل يكتب الكشفَ كلَّه ───────────────────────────────────────
   // أعمدةُ المال وحدَها لا تكفيه: مَن يلاحق فاتورةً يصحّح معها اسمَ العميل
   // ورقمَ السند والفرعَ المسدِّد ووجهةَ الكشف النهائيّة — وكلُّها خارجَ

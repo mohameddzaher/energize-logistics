@@ -37,21 +37,6 @@ export const GLOBAL_ROLES: RoleDef[] = [
 
 export const SECTION_ROLES: SectionRoles[] = [
   {
-    "section": "Customers & Finance",
-    "manager": {
-      "key": "customers_finance_manager",
-      "ar": "مدير العملاء والمالية",
-      "en": "Customers & Finance Manager"
-    },
-    "staff": [
-      {
-        "key": "customers_finance_staff",
-        "ar": "موظف العملاء والمالية",
-        "en": "Customers & Finance Officer"
-      }
-    ]
-  },
-  {
     "section": "Operations",
     "manager": {
       "key": "operations_manager",

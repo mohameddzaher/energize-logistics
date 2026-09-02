@@ -33,10 +33,6 @@ const GLOBAL_ROLES = [
  * `section` لازم يطابق مفتاح في config/sections.js حرفيًا.
  */
 const SECTION_ROLES = [
-  { section: 'Customers & Finance',
-    manager: { key: 'customers_finance_manager', ar: 'مدير العملاء والمالية', en: 'Customers & Finance Manager' },
-    staff: [{ key: 'customers_finance_staff', ar: 'موظف العملاء والمالية', en: 'Customers & Finance Officer' }] },
-
   { section: 'Operations',
     manager: { key: 'operations_manager', ar: 'مدير العمليات', en: 'Operations Manager' },
     staff: [{ key: 'operations_staff', ar: 'موظف العمليات', en: 'Operations Team' }] },

@@ -28,6 +28,6 @@ router.get('/follow-ups', collectionController.getFollowUps);
 router.put('/:id/promise', collectionController.markPromiseFulfilled);
 router.put('/:id/complete', collectionController.completeFollowUp);
 router.put('/:id', collectionController.updateActivity);
-router.delete('/:id', authorize('super_admin', 'admin', 'customers_finance_manager'), collectionController.deleteActivity);
+router.delete('/:id', authorize('super_admin', 'admin', 'collections_manager'), collectionController.deleteActivity);
 
 module.exports = router;

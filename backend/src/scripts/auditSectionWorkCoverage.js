@@ -28,7 +28,6 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
 
 // مفتاح القسم في الإعدادات → مفتاح section-work ومسار صفحاته.
 const MAP = {
-  'Customers & Finance': ['finance', 'finance'],
   Operations: ['operations', 'operations'],
   Collections: ['collections', 'collections-dept'],
   'Operations Platform': ['ops', 'ops'],

@@ -654,10 +654,15 @@ export default function UsersPage() {
     });
   };
 
+  // ── ما يُبحَث فيه في كلّ عمود ────────────────────────────────────────────
+  // العمودُ يعرض شيئًا مركَّبًا (اسمٌ من حقلين، لقبُ دورٍ من خريطة، حالةٌ
+  // محسوبة)، والبحثُ كان يقرأ الحقلَ الخام باسم العمود — و`row.name` لا وجود
+  // له أصلًا. فمن بحث عن موظّفٍ باسمه لم يجده وهو معروضٌ أمامه في العمود نفسِه.
   const columns = [
     {
       key: 'name',
       label: T.name,
+      search: (row: UserRecord) => `${row.firstName || ''} ${row.lastName || ''}`,
       render: (_: any, row: UserRecord) => (
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-900">
@@ -675,6 +680,12 @@ export default function UsersPage() {
     {
       key: 'role',
       label: T.role,
+      // يُبحَث باللقب المعروض وبالمفتاح معًا، وباسم الشريك لحسابات البوّابة —
+      // مَن يقرأ «مدير التحصيل» يبحث بها لا بـ`collections_manager`.
+      search: (row: UserRecord) => [
+        roleLabels[row.role], row.role,
+        row.partner?.name, row.linkedCustomer?.companyName,
+      ].filter(Boolean).join(' '),
       render: (_: any, row: UserRecord) => {
         // A partner login's "role" is meaningless to a reader — what matters is
         // WHICH customer or supplier it is. Show that instead.
@@ -701,6 +712,10 @@ export default function UsersPage() {
     {
       key: 'status',
       label: T.status,
+      search: (row: UserRecord) => {
+        const st = getUserStatus(row);
+        return `${statusLabels[st] || ''} ${st}`;
+      },
       render: (_: any, row: UserRecord) => {
         const status = getUserStatus(row);
         return (
@@ -714,6 +729,7 @@ export default function UsersPage() {
     {
       key: 'lastLogin',
       label: T.lastLogin,
+      search: (row: UserRecord) => formatDate(row.lastLogin),
       render: (_: any, row: UserRecord) => (
         <span className="text-slate-500 text-xs">{formatDate(row.lastLogin)}</span>
       ),

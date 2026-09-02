@@ -148,7 +148,6 @@ const _roleInsight = <String, HomeInsight>{
 
 // صلاحية القسم (للأدوار المُدارة) → نظرة القسم.
 const _sectionInsight = <String, HomeInsight>{
-  'Customers & Finance': _finance,
   'Collections': _collections,
   'Fleet Management': _fleet,
   'Workshop': _workshop,

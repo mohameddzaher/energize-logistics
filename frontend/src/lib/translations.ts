@@ -99,7 +99,6 @@ const layout = {
     vendorBills: 'Vendor Bills',
     // Sidebar section headers
     sectionMain: 'Main',
-    sectionCustomersFinance: 'Customers & Finance',
     sectionOperations: 'Operations',
     sectionCollections: 'Collections',
     sectionOpsPlatform: 'Operations Platform',
@@ -280,7 +279,6 @@ const layout = {
     vendorBills: 'فواتير الموردين',
     // Sidebar section headers
     sectionMain: 'الرئيسية',
-    sectionCustomersFinance: 'العملاء والمالية',
     sectionOperations: 'العمليات',
     sectionCollections: 'التحصيل',
     sectionOpsPlatform: 'منصة الأوبريشن (B2B)',
@@ -7221,7 +7219,6 @@ export const NAV_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
 // Anything not in this map falls back to its raw key wrapped in `sectionOther`.
 export const SECTION_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   'Main': 'sectionMain',
-  'Customers & Finance': 'sectionCustomersFinance',
   'Operations': 'sectionOperations',
   'Collections': 'sectionCollections',
   'Operations Platform': 'sectionOpsPlatform',

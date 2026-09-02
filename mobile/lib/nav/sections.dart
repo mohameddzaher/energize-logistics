@@ -20,7 +20,6 @@ import '../screens/hr_employees.dart';
 import '../screens/ls2_vehicles.dart';
 import '../screens/section_work.dart';
 import '../screens/team_board.dart';
-import '../screens/finance_suite.dart';
 import '../screens/remote_attendance.dart';
 import '../screens/hr_inbox.dart';
 import '../screens/ls2_alerts.dart';
@@ -44,14 +43,10 @@ import '../screens/executive_overview.dart';
 import '../screens/marketing_report.dart';
 import '../screens/ls2_drivers.dart';
 import '../screens/marketing_activities.dart';
-import '../screens/collections_disputes.dart';
 import '../screens/ops_workflows.dart';
 import '../screens/b2c_wallet.dart';
 import '../screens/my_profile.dart';
-import '../screens/finance_alerts.dart';
-import '../screens/collectors_performance.dart';
 import '../screens/customs_guide.dart';
-import '../screens/finance_tasks.dart';
 import '../screens/cash_wallet.dart';
 import '../screens/wallet_dashboard.dart';
 import '../screens/accounting_reports.dart';
@@ -137,23 +132,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('القوائم المرجعية', 'Reference Data', Icons.tune_rounded, (c) => const ReferenceDataScreen()),
         AppPage('مهامي', 'My Tasks', Icons.checklist_rounded, (c) => const SectionWorkScreen(section: 'collections')),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'collections', complaints: true)),
-      ],
-    ),
-    // العملاء والمالية — منقول لأسفل (غير مستخدم حاليًا) قبل الشؤون الإدارية.
-    AppSection(
-      key: 'Customers & Finance', arTitle: 'العملاء والمالية', enTitle: 'Customers & Finance', icon: Icons.payments_outlined,
-      roles: const [..._admins, 'employee', 'operations_manager', 'moderator'],
-      pages: [
-        AppPage('اللوحة المالية', 'Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: mainFinanceDashSpec)),
-        AppPage('العملاء', 'Customers', Icons.people_outline, (c) => const CustomersScreen()),
-        AppPage('الفواتير', 'Invoices', Icons.receipt_long_outlined, (c) => const InvoicesScreen()),
-        AppPage('المدفوعات', 'Payments', Icons.payments_outlined, (c) => const PaymentsScreen()),
-        AppPage('متابعات التحصيل', 'Collections', Icons.task_alt_outlined, (c) => const CollectionsScreen()),
-        AppPage('النزاعات', 'Disputes', Icons.gavel_outlined, (c) => const DisputesScreen()),
-        AppPage('تنبيهات الائتمان', 'Credit Alerts', Icons.credit_card_outlined, (c) => const CreditAlertsScreen()),
-        AppPage('الفواتير المتأخرة', 'Overdue', Icons.event_busy_outlined, (c) => const OverdueScreen()),
-        AppPage('أداء المحصّلين', 'Collectors', Icons.leaderboard_outlined, (c) => const CollectorsPerformanceScreen()),
-        AppPage('مهام التحصيل', 'Tasks', Icons.checklist_rtl_outlined, (c) => const FinanceTasksScreen()),
       ],
     ),
     // اجتماعات مراجعة الأعمال — the managers/board forum. Broad `roles` because

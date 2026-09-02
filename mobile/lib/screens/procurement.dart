@@ -5,7 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
-import 'collections_disputes.dart' show pickFromApi;
+import '../ui/api_picker.dart' show pickFromApi;
 
 /// المشتريات — طلبات الشراء (المسار الكامل: مسودة → اعتماد → أمر شراء)،
 /// أوامر الشراء (استلام)، وفواتير الموردين (تسجيل دفعات).

@@ -529,14 +529,21 @@ export default function OperationsWorkflowPage() {
     }
     if (!Object.keys(patch).length) { handleInlineCancel(); return; }
     try {
-      const r = await api.put<{ refusedMessage?: string }>(`/api/workflows/${editingId}`, patch);
+      const savedId = editingId;
+      const r = await api.put<Workflow & { refusedMessage?: string }>(`/api/workflows/${savedId}`, patch);
       // ما رفضه الخادمُ يُقال، ولا يُترك المستخدم يظنّ أنّه حُفظ.
       if (r && r.refusedMessage) setError(r.refusedMessage);
       setEditingId(null);
       setEditData({});
       setEditBase({});
       setFocusField(null);
-      fetchWorkflows(true);
+      // ── والصفُّ يُكتب من ردِّ الحفظ، لا من طلبٍ جديد ────────────────────
+      // كان الحفظُ يُتبَع بجلب الصفحة كلِّها. وردُّ الحفظ **هو** الصفُّ بعد
+      // الحفظ — فيه ما كتبه المستخدمُ وما اشتقّه الخادمُ معه (تصفيرُ أعمدة
+      // الفاتورة في النقديّ، ونوعُ الدفع من ملفّ العميل). فالجلبُ يطلب ما في
+      // اليد، ويفتح معه سباقًا: ردٌّ أُطلق قبل الحفظ قد يصل بعده فيمسح
+      // التعديلَ من الشاشة — فيبدو أنّه لم يُحفظ وقد حُفظ.
+      if (r && r._id) setWorkflows((prev) => prev.map((w) => (w._id === savedId ? { ...w, ...r } : w)));
       fetchStats();
     } catch (err: any) { setError(err.message); }
   };
@@ -550,7 +557,15 @@ export default function OperationsWorkflowPage() {
 
   // Enter row-edit mode from a single cell click and remember which field to
   // focus. Skips locked rows.
-  const beginEditField = (wf: Workflow, field: string) => {
+  //
+  // ── ومَدخلٌ واحدٌ إلى وضع التعديل ────────────────────────────────────────
+  // كان زرُّ القلم يفتح الوضعَ بنفسِه: يضبط `editingId` و`editData` **وينسى**
+  // `editBase`. فيقارن الحفظُ بنسخةٍ من صفٍّ سابقٍ أو بلا شيء، فيُرسل الصفَّ
+  // كلَّه — ستّةً وخمسين حقلًا فيها ما لا يملكه الدور — فيردّ الخادمُ أكثرَها
+  // ويظهر «رُفض» على تعديلٍ صحيح.
+  //
+  // فلا يُفتح الوضعُ إلّا من هنا: الثلاثةُ تُضبط معًا أو لا تُضبط.
+  const beginEditField = (wf: Workflow, field: string | null) => {
     if (isLockedByOther(wf)) return;
     setEditingId(wf._id);
     setEditData({ ...wf });
@@ -1142,7 +1157,7 @@ export default function OperationsWorkflowPage() {
                         ) : (
                           <>
                             {!locked && (
-                              <button type="button" onClick={() => { setEditingId(wf._id); setEditData({...wf}); setFocusField(null); }} className="p-1 text-slate-700 hover:text-[#f37121] rounded" title={T.edit}>
+                              <button type="button" onClick={() => beginEditField(wf, null)} className="p-1 text-slate-700 hover:text-[#f37121] rounded" title={T.edit}>
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
                             )}

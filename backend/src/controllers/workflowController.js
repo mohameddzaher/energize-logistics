@@ -3,7 +3,7 @@ const OperationsWorkflow = require('../models/OperationsWorkflow');
 const { startOfDay, endOfDay, DAY_MS: COMPANY_DAY_MS } = require('../utils/companyDay');
 const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
-const { emitToAll } = require('../websocket/socketManager');
+const { emitToAll, emitPerRole } = require('../websocket/socketManager');
 const XLSX = require('xlsx');
 const cache = require('../utils/ttlCache');
 
@@ -711,7 +711,7 @@ exports.createWorkflow = async (req, res) => {
     });
 
     bustFilterCache();
-    try { emitToAll('workflow:created', populated); } catch (e) { console.error('WebSocket emit error:', e); }
+    try { emitPerRole('workflow:created', (r) => stripMoneyFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.status(201).json(populated);
   } catch (error) {
@@ -819,17 +819,20 @@ exports.updateWorkflow = async (req, res) => {
     });
 
     bustFilterCache();
-    try { emitToAll('workflow:updated', populated); } catch (e) { console.error('WebSocket emit error:', e); }
+    try { emitPerRole('workflow:updated', (r) => stripMoneyFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
 
     // ما رُفض يُقال حتّى حين نجح غيرُه: الحفظُ الجزئيُّ الصامتُ يترك الموظّف
     // يظنّ أنّ الستّةَ حُفظت وقد حُفظ واحد.
+    // وردُّ الحفظ يُحجب كما تُحجب القائمة: هو نسخةُ الصفّ التي تحلّ محلَّ
+    // القديمة في الشاشة، فلو خرج كاملًا عاد المحجوبُ من باب الحفظ.
+    const out = stripMoneyFor(req.user.role, populated);
     if (rejected.length) {
-      return res.json(Object.assign(populated.toObject ? populated.toObject() : populated, {
+      return res.json(Object.assign(out.toObject ? out.toObject() : { ...out }, {
         refusedFields: rejected,
         refusedMessage: `لم تُحفظ (خارج صلاحيّتك): ${rejected.join('، ')}`,
       }));
     }
-    res.json(populated);
+    res.json(out);
   } catch (error) {
     console.error('Update workflow error:', error);
     res.status(500).json({ message: 'Failed to update workflow' });
@@ -908,7 +911,7 @@ exports.updateStage = async (req, res) => {
     });
 
     bustFilterCache();
-    try { emitToAll('workflow:stageChanged', populated); } catch (e) { console.error('WebSocket emit error:', e); }
+    try { emitPerRole('workflow:stageChanged', (r) => stripMoneyFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
 
     res.json(populated);
   } catch (error) {

@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useMemo } from 'react';
 
 /**
  * حارسُ الطلب الأحدث — لا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث.
@@ -20,13 +20,29 @@ import { useRef, useCallback } from 'react';
  *     const d = await api.get(...);
  *     if (!guard.isCurrent(mine)) return;   // سبقَه أحدثُ منه
  *     setRows(d.rows);
- *   }, [...]);
+ *   }, [..., guard]);
+ *
+ * ── والمُرجَعُ ثابتٌ بين الرسمات ─────────────────────────────────────────────
+ * الدالّتان ثابتتان بأنفسهما، أمّا الكائنُ الذي يحملهما فكان يُبنى جديدًا في كلّ
+ * رسمة. ومَن كتب `guard` في قائمة اعتماد `useCallback` — وهو الصوابُ الذي يطلبه
+ * لِنتر React نفسُه — صار له طلبٌ جديدٌ في كلّ رسمة:
+ *
+ *     الرسمةُ ← كائنٌ جديد ← `fetchRows` جديدة ← `useEffect` يعمل ← `setRows`
+ *     ← رسمةٌ جديدة ← …
+ *
+ * حلقةٌ لا تنتهي: مئاتُ الطلبات في الدقيقة على الخادم، وجدولٌ يُعاد بناؤه بلا
+ * توقّف. وأسوأُ منها أنّ الحلقتين تتسابقان عند البحث — واحدةٌ تحمل النصَّ
+ * الجديد وأخرى أُطلقت قبله بلا نصّ — فيفوز آخرُ الواصلين ويظهر الجدولُ غيرَ
+ * مفلتَر، فيبدو البحثُ معطَّلًا وهو يعمل.
+ *
+ * فيُثبَّت الكائنُ هنا مرّةً واحدة. الحارسُ الذي وُضع ليمنع سباقَ الطلبات لا
+ * يجوز أن يكون هو سببَه — ومَن يستعمله غدًا لا يحتاج أن يعرف هذا كلَّه.
  */
 export function useLatestRequest() {
   const seq = useRef(0);
   const begin = useCallback(() => ++seq.current, []);
   const isCurrent = useCallback((token: number) => token === seq.current, []);
-  return { begin, isCurrent };
+  return useMemo(() => ({ begin, isCurrent }), [begin, isCurrent]);
 }
 
 export default useLatestRequest;

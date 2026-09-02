@@ -82,6 +82,32 @@ const emitToAll = (event, data) => {
   if (io) io.emit(event, data);
 };
 
+/**
+ * البثُّ الذي يحترم ما يراه كلُّ دور.
+ *
+ * ── العلّة ──────────────────────────────────────────────────────────────────
+ * الأعمدةُ الماليّة تُحجب عن غير أهلها في كلّ مسارٍ يمرّ بالخادم — القائمةُ
+ * والتفصيلُ والتصديرُ وقوائمُ القيم والبحث. ثمّ يُعدَّل كشفٌ واحد، فيُبَثّ
+ * المستندُ كاملًا إلى **كلّ** متّصل: رقمُ الفاتورة وصافيها وضريبتها تصل موظّفَ
+ * العمليات في شاشته وقد مُنعت عنه في كلّ طلبٍ يطلبه.
+ *
+ * فالحجبُ لا يكون في مسارٍ ويُترك في آخر: بابٌ واحدٌ مفتوحٌ يُبطل الأبواب
+ * المغلقةَ كلَّها.
+ *
+ * ── والحلُّ ────────────────────────────────────────────────────────────────
+ * الحمولةُ تُبنى لكلّ دورٍ مرّةً واحدة، ثمّ تذهب لكلّ متّصلٍ حمولةُ دورِه —
+ * وعددُ المتّصلين عشراتٌ لا آلاف، فالكلفةُ لا تُذكر.
+ */
+const emitPerRole = (event, buildPayload) => {
+  if (!io) return;
+  const cache = new Map();
+  for (const socket of io.sockets.sockets.values()) {
+    const role = socket.userRole || '';
+    if (!cache.has(role)) cache.set(role, buildPayload(role));
+    socket.emit(event, cache.get(role));
+  }
+};
+
 const emitToUser = (userId, event, data) => {
   if (io) io.to(`user:${userId}`).emit(event, data);
 };
@@ -98,6 +124,7 @@ module.exports = {
   initializeSocket,
   getIO,
   emitToAll,
+  emitPerRole,
   emitToUser,
   emitToDashboard,
   emitToCustomer,

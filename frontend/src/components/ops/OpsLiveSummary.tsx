@@ -1,6 +1,6 @@
 'use client';
 // Reusable LIVE operations summary — drop into any section dashboard to surface
-// the external UPL field-ops data (counts + status breakdown + latest shipments)
+// the external UPL field-ops data (counts + status breakdown)
 // with a click-through to the full Operations Platform. Updates in real time via
 // the `ops:stats` / `ops:shipments:changed` socket events and renders nothing if
 // the current user has no ops read access (graceful degrade).
@@ -15,7 +15,6 @@ import { statusStyle, fmtNum, locName, opsText } from '@/lib/ops';
 interface Dash {
   home?: { stats?: { status: string; count: string; label: string }[] } | null;
   stats?: { counts?: Record<string, string> } | null;
-  charts?: { latestShipments?: any[] } | null;
 }
 
 export default function OpsLiveSummary({ title }: { title?: string }) {
@@ -38,7 +37,6 @@ export default function OpsLiveSummary({ title }: { title?: string }) {
   if (!d) return null;
   const counts = d.stats?.counts || {};
   const statuses = (d.home?.stats || []).filter((s) => s.status !== 'all').slice(0, 6);
-  const latest = (d.charts?.latestShipments || []).slice(0, 4);
   const go = (path = '') => router.push(`/system/ops${path}`);
 
   const mini = [
@@ -84,19 +82,11 @@ export default function OpsLiveSummary({ title }: { title?: string }) {
         </div>
       )}
 
-      {latest.length > 0 && (
-        <div className="divide-y divide-slate-100 border-t border-slate-100 pt-1">
-          {latest.map((s: any) => {
-            const st = statusStyle(s.status);
-            return (
-              <button key={s.id} type="button" onClick={() => go('/shipments')} className="w-full text-start py-2 flex items-center justify-between gap-3 hover:bg-slate-50 rounded px-1">
-                <span className="text-xs text-slate-700 truncate">#{s.reference_num || String(s.id).slice(0, 6)} · {s.address_from} → {s.address_to}</span>
-                {st && <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${st.bg} ${st.text}`}>{lang === 'ar' ? st.ar : st.en}</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* ── ولا تُعرَض آخرُ أربع حمولات ────────────────────────────────────
+          كانت أربعةَ صفوفٍ بأرقامها ومساراتها تحت البطاقة في سبع صفحات —
+          عيّنةٌ من عشرات الآلاف لا يُقرأ منها شيء: لا هي أهمُّ ما يجري ولا
+          هي كلُّه، ومَن أراد الحمولات فتح صفحتَها. فبقيت العدّاداتُ وحالاتُ
+          الشحنات، وهي ما يُقرأ فعلًا. */}
     </div>
   );
 }

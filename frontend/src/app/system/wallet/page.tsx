@@ -261,8 +261,23 @@ export default function WalletPage() {
   useSocket('wallet:dayReopened', handleWalletEvent);
 
   // ─── ADD TRANSACTION ───────────────────────────────────────
+  /**
+   * ── ما يكفي لتسجيل الحركة، في تعريفٍ واحد ─────────────────────────────────
+   *
+   * كان الشرطُ «لها مبلغٌ أكبرُ من صفر» مكتوبًا في ثلاثة مواضع: خانةُ المبلغ،
+   * وتعطيلُ الزرّ، وحارسٌ صامتٌ في أوّل الدالّة. وقيدُ استلام الفواتير بلا
+   * مبلغٍ بطبيعته — فصُحّح موضعان وبقي الثالث، فكان الزرُّ يعمل ولا يحدث شيء
+   * عند الضغط: لا طلبَ ولا خطأَ ولا سبب.
+   *
+   * فالسؤالُ يُجاب مرّةً هنا، ويقرؤه الزرُّ والحارسُ معًا. ونوعٌ رابعٌ يُضاف
+   * غدًا يُعرَّف شرطُه في سطرٍ واحدٍ لا في ثلاثة.
+   */
+  const canSubmitTx = txType === 'tax_invoice'
+    ? (txForm.receivedReportNumbers.length > 0 || !!String(txForm.receivedDocNumber || '').trim())
+    : (!!txForm.amount && Number(txForm.amount) > 0);
+
   const handleAddTransaction = async () => {
-    if (!txForm.amount || Number(txForm.amount) <= 0) return;
+    if (!canSubmitTx) return;
     setSubmitting(true);
     setTxError('');
     try {
@@ -1173,10 +1188,7 @@ export default function WalletPage() {
                       كان الشرطُ `!txForm.amount` على الأنواع كلِّها، وقيدُ
                       الاستلام بلا مبلغ — فكان الزرُّ مطفأً أبدًا ولا سبيلَ إلى
                       حفظه. يُختبَر ما يطلبه كلُّ نوعٍ لا ما يطلبه أكثرُها. */}
-                  <button type="button" onClick={handleAddTransaction}
-                    disabled={submitting || (txType === 'tax_invoice'
-                      ? (!txForm.receivedReportNumbers.length && !String(txForm.receivedDocNumber || '').trim())
-                      : !txForm.amount)}
+                  <button type="button" onClick={handleAddTransaction} disabled={submitting || !canSubmitTx}
                     className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50">
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                     {txType === 'tax_invoice'

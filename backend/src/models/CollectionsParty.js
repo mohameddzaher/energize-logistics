@@ -57,6 +57,34 @@ const collectionsPartySchema = new mongoose.Schema({
   city: { type: String, trim: true, default: '' },
   partyType: { type: String, trim: true, default: '' },
 
+  // ── الكودُ المحاسبيُّ — هويّةُ الحساب ──────────────────────────────────────
+  // الاسمُ يُكتب بصورٍ شتّى وتتغيّر صيغتُه الرسميّة، والكودُ لا يتغيّر. وهو ما
+  // يُقرأ به الحسابُ في دفاتر المحاسبة، فصار هو المفتاح لا الاسم.
+  //
+  // وسياقتُه من الواقع: الضريبيُّ رقمٌ من سلسلة `1104xxxx`، والنقديُّ `C####`.
+  // فمَن أُضيف جديدًا يأخذ التاليَ في سلسلة نوعِه من نفسِه.
+  code: { type: String, trim: true, default: '' },
+
+  // ── وأسماؤه الأخرى ────────────────────────────────────────────────────────
+  // اسمُ الحساب في المحاسبة غيرُ الاسم الذي يُكتب في كشف التشغيل: «شركة صليهم
+  // سعيد الهاجري للنقليات» و«شركه صليهم الهاجري» حسابٌ واحد. فتُحفظ الصيغُ
+  // الأخرى هنا مطويّةً، ويُقرأ بها الكشفُ إلى حسابه بدل أن يصير حسابين.
+  aliases: [{ type: String, trim: true }],
+  aliasKeys: [{ type: String, index: true }],
+
+  // ── بياناتُ الحساب في سجلّ التحصيل ────────────────────────────────────────
+  collectionOfficer: { type: String, trim: true, default: '', index: true }, // موظّفُ التحصيل المسؤول
+  officer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },            // حين يُربط باسمٍ في النظام
+  hoLocation: { type: String, trim: true, default: '', index: true },        // فرعُ العميل
+  grade: { type: String, trim: true, default: '', index: true },             // A1 … C3
+  salesManagers: [{ type: String, trim: true }],                             // قد يتعامل معه أكثرُ من مندوب
+  department: { type: String, trim: true, default: '', index: true },        // Branches / Fleet / Customs Clearance
+  region: { type: String, trim: true, default: '' },                         // Central / Western / …
+  // ── مدّةُ السداد المتّفق عليها ────────────────────────────────────────────
+  // تُعَدّ **من تاريخ تسليم الفاتورة** لا من تاريخ إصدارها: العميلُ لا يبدأ
+  // عدَّ أيّامه قبل أن تصله الفاتورة.
+  creditDays: { type: Number, default: 0 },
+
   // ── نوعُ دفع العميل ───────────────────────────────────────────────────────
   // صفةٌ ثابتةٌ فيه لا في الكشف: عميلُ الكاش يدفع في يده دائمًا، والضريبيُّ
   // يُفوتَر دائمًا. فتُقرأ من ملفّه ويُملأ بها «نوع الدفع» على كشوفه من نفسِه
@@ -81,7 +109,14 @@ const collectionsPartySchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-collectionsPartySchema.pre('save', function preSave(next) { this.nameKey = fold(this.name); next(); });
+collectionsPartySchema.pre('save', function preSave(next) {
+  this.nameKey = fold(this.name);
+  // الصيغُ الأخرى تُطوى مثلَ الاسم، فيُقرأ بها الكشفُ إلى حسابه.
+  if (Array.isArray(this.aliases)) {
+    this.aliasKeys = [...new Set(this.aliases.map(fold).filter(Boolean))];
+  }
+  next();
+});
 collectionsPartySchema.pre('findOneAndUpdate', function preUpd(next) {
   const u = this.getUpdate() || {};
   const name = (u.$set && u.$set.name) || u.name;
@@ -89,9 +124,20 @@ collectionsPartySchema.pre('findOneAndUpdate', function preUpd(next) {
   next();
 });
 
-// طرفٌ واحدٌ بالاسم الواحد لكلّ جهة — ولا عميلان بالاسم نفسِه.
-collectionsPartySchema.index({ kind: 1, nameKey: 1 }, { unique: true });
+// ── طرفٌ واحدٌ بالاسم الواحد — إلّا أن يكونا حسابين ────────────────────────
+// كان الشرطُ (الجهة + الاسم)، وهو صوابٌ ما دام الاسمُ هو الهويّة. ثمّ دخل
+// الكود، وبان في الدفتر أنّ الشركة الواحدة قد تحمل حسابين: «شركة المنشور
+// الذهبي» لها ١١٠٤٠٢٢٦ ضريبيٌّ وC0011 نقديّ — تتعامل معنا بالوجهين، ولكلٍّ
+// رصيدُه ومدّةُ سداده.
+//
+// فالشرطُ صار (الجهة + الاسم + الكود): حسابان بالاسم نفسِه يجتمعان إن اختلف
+// كوداهما، ومَن لا كودَ له يبقى محكومًا بالقديم تمامًا — كودُه الفارغ يساوي
+// الفارغ، فلا يدخل عميلان بلا كودٍ بالاسم الواحد كما كان.
+collectionsPartySchema.index({ kind: 1, nameKey: 1, code: 1 }, { unique: true });
 collectionsPartySchema.index({ kind: 1, isActive: 1, name: 1 });
+// كودُ الحساب فريدٌ حيث وُجد — ولا يُفرَض على من لا كودَ له بعد.
+collectionsPartySchema.index({ code: 1 }, { unique: true, partialFilterExpression: { code: { $type: 'string', $gt: '' } } });
+collectionsPartySchema.index({ collectionOfficer: 1, kind: 1 });
 
 module.exports = mongoose.models.CollectionsParty
   || mongoose.model('CollectionsParty', collectionsPartySchema);

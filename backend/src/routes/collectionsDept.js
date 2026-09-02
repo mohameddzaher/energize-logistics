@@ -56,4 +56,29 @@ router.get('/invoices/tax', authorize(...READ_ROLES), ctrl.taxInvoices);
 router.get('/invoices/tax/:invoiceNumber', authorize(...READ_ROLES), ctrl.taxInvoiceDetail);
 router.post('/invoices/collect', authorize(...EDIT_ROLES), ctrl.recordCollection);
 
+// ── دفترُ التحصيل ──────────────────────────────────────────────────────────
+// سجلُّ الحسابات بأعماره، ودفترُ الفواتير، والتنبيهاتُ والخطّةُ والتقييم.
+// مبنيٌّ على `CollectionInvoice` لا على كشوف التشغيل — انظر رأسَ المتحكِّم.
+const ledger = require('../controllers/collectionsLedgerController');
+
+router.get('/ledger/aging/filters', authorize(...READ_ROLES), ledger.agingFilters);
+router.get('/ledger/aging', authorize(...READ_ROLES), ledger.aging);
+router.get('/ledger/invoices/filters', authorize(...READ_ROLES), ledger.invoiceFilters);
+router.get('/ledger/invoices', authorize(...READ_ROLES), ledger.invoices);
+
+router.get('/ledger/alerts', authorize(...READ_ROLES), ledger.alerts);
+router.post('/ledger/alerts/ack', authorize(...EDIT_ROLES), ledger.ackAlert);
+
+router.get('/ledger/tasks', authorize(...READ_ROLES), ledger.listTasks);
+router.post('/ledger/tasks', authorize(...EDIT_ROLES), ledger.createTask);
+router.put('/ledger/tasks/:id', authorize(...EDIT_ROLES), ledger.updateTask);
+router.delete('/ledger/tasks/:id', authorize(...EDIT_ROLES), ledger.deleteTask);
+
+router.get('/ledger/team', authorize(...READ_ROLES), ledger.team);
+router.put('/ledger/team/assign', authorize(...EDIT_ROLES), ledger.assignOfficer);
+router.get('/ledger/performance', authorize(...READ_ROLES), ledger.performance);
+
+router.get('/ledger/link-suggestions', authorize(...READ_ROLES), ledger.linkSuggestions);
+router.post('/ledger/link-suggestions/:id', authorize(...EDIT_ROLES), ledger.decideLink);
+
 module.exports = router;

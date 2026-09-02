@@ -56,6 +56,12 @@ const EDITABLE = [
   'accountantPhone', 'commercialRegister', 'taxNumber', 'iban', 'bankName',
   'address', 'city', 'partyType', 'paymentType', 'paymentTerms', 'creditLimit', 'status',
   'assignedTo', 'lastContactAt', 'nextFollowUpAt', 'notes', 'isActive',
+  // ── حقولُ دفتر التحصيل ──────────────────────────────────────────────────
+  // تُقرأ في سجلّ الأعمار وفي التنبيهات، فلا بدّ أن تُصحَّح من ملفّ العميل:
+  // رفعُ الحدّ الائتمانيّ ونقلُ الحساب إلى موظّفٍ آخر عملٌ يوميّ، وما يُقرأ
+  // ولا يُصحَّح يبقى خطأً إلى الأبد.
+  'code', 'collectionOfficer', 'officer', 'hoLocation', 'grade', 'salesManagers',
+  'department', 'region', 'creditDays', 'aliases',
 ];
 const pick = (body) => {
   const out = {};
@@ -337,14 +343,30 @@ exports.createParty = async (req, res) => {
       return res.status(400).json({ message: 'حقول مطلوبة ناقصة: الاسم', fields: { name: 'مطلوب' } });
     }
     // الاسمُ المكرَّرُ يُقال باسمه: «موجود بالفعل» بلا اسمٍ يترك المستخدم يبحث.
-    const dup = await CollectionsParty.findOne({ kind, nameKey: fold(body.name) }).select('_id name').lean();
-    if (dup) {
+    // الاسمُ وحدَه لم يعد الهويّة — الشركةُ الواحدة قد تحمل حسابين (نقديًّا
+    // وضريبيًّا) بكودين. فيُمنع التكرارُ حيث لا كودَ يفرّق، ويُسمَح به حين
+    // يُكتب كودٌ صريحٌ يختلف.
+    const wantedCode = String(req.body.code || '').trim();
+    const dup = await CollectionsParty.findOne({
+      kind, nameKey: fold(body.name), ...(wantedCode ? { code: { $ne: wantedCode } } : {}),
+    }).select('_id name code').lean();
+    if (dup && !wantedCode) {
       return res.status(409).json({
         message: `«${dup.name}» مسجَّل بالفعل — الاسمان يُقرآن واحدًا بعد طيّ فروق الرسم`,
         existingId: dup._id,
       });
     }
-    const party = await CollectionsParty.create({ ...body, kind, source: 'manual', createdBy: req.user._id });
+    // ── والكودُ يُولَّد على سياقة الدفتر ────────────────────────────────────
+    // لكلّ حسابٍ كودٌ يُعرَف به في المحاسبة وفي كلّ مراسلة: النقديُّ `C####`
+    // والضريبيُّ `1104####`. تركُه لمن يُدخل يعني صيغًا شتّى وأكوادًا مكرَّرة،
+    // فيُقرأ التاليَ في سلسلة نوعِه ويُكتب من نفسِه. ومَن كتب كودًا بيده يُترك
+    // له — الاستيرادُ والتصحيحُ يحتاجانه.
+    let code = String(body.code || '').trim();
+    if (!code && kind === 'customer') {
+      const { nextPartyCode } = require('../utils/partyCode');
+      code = await nextPartyCode(body.paymentType === 'cash' ? 'cash' : 'tax');
+    }
+    const party = await CollectionsParty.create({ ...body, ...(code ? { code } : {}), kind, source: 'manual', createdBy: req.user._id });
     await logAudit({
       user: req.user._id, action: 'create_collections_party', entity: 'CollectionsParty',
       entityId: party._id, changes: { after: { kind, name: party.name } }, ipAddress: req.ip,

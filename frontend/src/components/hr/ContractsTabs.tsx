@@ -20,7 +20,7 @@ const TABS = [
 ];
 
 export default function ContractsTabs() {
-  const { lang } = useLanguage();
+  const { lang } = uمتseLanguage();
   const ar = lang === 'ar';
   const router = useRouter();
   const pathname = usePathname() || '';

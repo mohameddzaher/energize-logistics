@@ -49,9 +49,16 @@ const call = async (method, path, ck, body) => {
 
   await User.deleteMany({ email: /^zz-w2c/ });
   const branch = await Branch.findOne({}).select('_id name').lean();
+  // ── والحسابُ بلا فرعٍ عن قصد ──────────────────────────────────────────────
+  // كان يُنشأ بفرعٍ عليه، فيمرّ فحصُ «الفرع المسدد» لأنّ الفحصَ ضَمِن شرطَه
+  // بنفسِه. والواقعُ عكسُه: سبعةٌ وثلاثون من اثنين وخمسين حسابًا نشطًا بلا
+  // فرع — فكان التاريخُ يصل والفرعُ لا يصل، وقِيس ذلك على كشوف سبتمبر:
+  // التاريخُ على أربعةٍ وثلاثين من سبعةٍ وثلاثين، والفرعُ على عشرة.
+  //
+  // فيُفحَص من غير فرعٍ على الحساب: الفرعُ يجب أن يأتي من العهدة نفسِها.
   const acc = await User.create({
     email: 'zz-w2c-acc@example.invalid', password: PW, firstName: 'م', lastName: 'ح',
-    role: 'accountant', branch: branch?._id,
+    role: 'accountant',
   });
 
   const accLogin = await login(acc.email);
@@ -60,6 +67,11 @@ const call = async (method, path, ck, body) => {
   ok('دخول مدير التحصيل', mgr.status === 200);
   if (accLogin.status !== 200) process.exit(1);
 
+  // الفرعُ المنتظَر: فرعُ العهدة التي ستستقبل الحركة، بالعربيّة من القائمة.
+  const { arabicBranchName } = require('../utils/payingBranch');
+  const expectedBranchAr = await arabicBranchName(branch?._id);
+  ok('القائمةُ المرجعيّة تعرف اسمَ الفرع بالعربيّة', !!expectedBranchAr, `${branch?.name} → ${expectedBranchAr || '(لا نظير)'}`);
+
   const stamp = Date.now();
   const made = []; const parties = [];
 
@@ -67,7 +79,8 @@ const call = async (method, path, ck, body) => {
     // ── ١ · المحاسبُ يعمل على صفحة التشغيل والعهدة ───────────────────────
     head('صلاحيات المحاسب');
     ok('يفتح سير عمل التشغيل', (await call('GET', '/api/workflows?limit=1', accLogin.ck)).status === 200);
-    ok('يفتح العهدة اليوميّة', (await call('GET', '/api/wallet/daily', accLogin.ck)).status === 200);
+    // الحسابُ بلا فرع، فيُختار الفرعُ كما تختاره الصفحة — وهو المسارُ الواقعيّ.
+    ok('يفتح عهدةَ فرعٍ يختاره', (await call('GET', `/api/wallet/daily?branchId=${branch?._id}`, accLogin.ck)).status === 200);
     ok('يفتح لوحة المحفظة', (await call('GET', '/api/wallet/dashboard', accLogin.ck)).status === 200);
 
     const perms = await call('GET', '/api/workflows/permissions', accLogin.ck);
@@ -107,13 +120,20 @@ const call = async (method, path, ck, body) => {
     const target = await mk(`zz-عميل-كاش-${stamp}`);
     const buy = await call('POST', '/api/wallet/transactions', accLogin.ck, {
       type: 'purchase', amount: 800, purchaseDeliveryStatementNumber: target.reportNumber,
-      itemName: 'zz', notes: 'zz-فحص',
+      itemName: 'zz', notes: 'zz-فحص', branchId: String(branch?._id),
     });
     ok('تُقيَّد المشتريات', buy.status === 201, `${buy.status}`);
     const t1 = await OW.findById(target._id).select('paymentAmount paymentDate payingBranch paymentType').lean();
     ok('المبلغُ يصل «مبلغ السداد»', t1.paymentAmount === 800, `${t1.paymentAmount}`);
     ok('والتاريخُ يصل «تاريخ السداد»', !!t1.paymentDate);
-    ok('وفرعُ الموظّف يصل «الفرع المسدد»', t1.payingBranch === branch?.name, `${t1.payingBranch} — المتوقَّع ${branch?.name}`);
+    // ── والفرعُ عربيٌّ كما في العمود ────────────────────────────────────
+    // العمودُ عربيٌّ في أربعةٍ وعشرين ألفَ صفّ وسجلاتُ الفروع إنجليزيّة. وكان
+    // الفحصُ يقارن بـ`Branch.name` — أي يؤكّد أنّ الكودَ يفعل ما يفعله، لا
+    // أنّه صواب. فيُقارَن بالقائمة المرجعيّة التي تُملأ منها الخانةُ باليد.
+    ok('والفرعُ يصل «الفرع المسدد» من العهدة لا من الحساب',
+      !!t1.payingBranch && t1.payingBranch === expectedBranchAr,
+      `${t1.payingBranch || '(فارغ)'} — المتوقَّع ${expectedBranchAr}`);
+    ok('ومكتوبٌ بالعربيّة كما في بقيّة العمود', !!t1.payingBranch && !/[A-Za-z]/.test(t1.payingBranch), `${t1.payingBranch}`);
     ok('ونوعُ الدفع من ملفّ العميل', t1.paymentType === 'cash', t1.paymentType || '(فارغ)');
     if (buy.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${buy.json.transaction._id}`, accLogin.ck);
 
@@ -122,18 +142,18 @@ const call = async (method, path, ck, body) => {
     const rec = await mk(`zz-عميل-ضريبي-${stamp}`);
     const ti = await call('POST', '/api/wallet/transactions', accLogin.ck, {
       type: 'tax_invoice', amount: 0, receivedDocType: 'report',
-      receivedDocNumber: rec.reportNumber, notes: 'zz-فحص',
+      receivedDocNumber: rec.reportNumber, notes: 'zz-فحص', branchId: String(branch?._id),
     });
     ok('يُقبل القيد', ti.status === 201, `${ti.status} ${ti.json?.message || ''}`);
     const t2 = await OW.findById(rec._id).select('paymentAmount paymentDate payingBranch').lean();
     ok('مبلغُ السداد = سعرُ الشراء', t2.paymentAmount === 800, `${t2.paymentAmount}`);
-    ok('والفرعُ فرعُ الموظّف', t2.payingBranch === branch?.name, `${t2.payingBranch}`);
+    ok('والفرعُ فرعُ العهدة', t2.payingBranch === expectedBranchAr, `${t2.payingBranch || '(فارغ)'} — المتوقَّع ${expectedBranchAr}`);
     ok('وتاريخُ اليوم', !!t2.paymentDate);
     if (ti.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${ti.json.transaction._id}`, accLogin.ck);
 
     // ── ٥ · ويصل الصفحةَ الصحيحة ─────────────────────────────────────────
     head('يصل الصفحة الصحيحة من الصفحتين');
-    await OW.updateOne({ _id: target._id }, { $set: { paymentAmount: 800, payingBranch: branch?.name } });
+    await OW.updateOne({ _id: target._id }, { $set: { paymentAmount: 800, payingBranch: expectedBranchAr } });
     const cash = await call('GET', `/api/collections-dept/invoices/cash?q=${encodeURIComponent(target.reportNumber)}`, mgr.ck);
     ok('النقديُّ في فواتير الكاش فورًا', (cash.json?.total || 0) >= 1, `${cash.json?.total}`);
 

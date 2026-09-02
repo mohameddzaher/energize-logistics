@@ -124,13 +124,24 @@ async function fillReportFromWallet({ workflow, amount, date, branchId }) {
   if (!workflow.paymentAmount && amount > 0) patch.paymentAmount = amount;
   if (!workflow.paymentDate) patch.paymentDate = new Date(date);
 
-  if (!workflow.payingBranch && branchId) {
-    // اسمُ الفرع لا معرّفُه: العمودُ نصٌّ تقرؤه الفلاترُ والتصديراتُ في عشرين
-    // ألفَ صفّ، ووضعُ معرّفٍ فيه يجعلها تقرأ رمزًا لا فرعًا.
+  // ── والفرعُ المسدِّد فرعُ العهدة، لا فرعُ الموظّف ────────────────────────
+  //
+  // كان يُقرأ من `req.user.branch`. وسبعةٌ وثلاثون من اثنين وخمسين مستخدمًا
+  // نشطًا بلا فرعٍ على حسابهم أصلًا — فيمتلئ التاريخُ والمبلغُ ويبقى الفرعُ
+  // فارغًا، بلا خطأٍ يُقال. قِيس ذلك على كشوف سبتمبر: التاريخ على ٣٤ من ٣٧،
+  // والفرعُ على عشرة.
+  //
+  // والعهدةُ نفسُها تعرف فرعَها دائمًا — مئةٌ وواحدٌ وأربعون محفظةً، ولا واحدةَ
+  // بلا فرع. وهي المعنى المقصود: المالُ خرج من عهدة فرعٍ بعينه، فذلك هو الفرعُ
+  // الذي سدّد. أمّا مَن ناوَل المال فقد يكون منقولًا أو زائرًا أو بلا فرعٍ
+  // مسجّل، ولا شأنَ له بمصدر المال.
+  if (!workflow.payingBranch) {
+    // اسمُ الفرع لا معرّفُه، وبالعربيّة كما يكتبه الموظّف — لا `Branch.name`
+    // الإنجليزيّ. التفصيلُ في `utils/payingBranch.js`.
     try {
-      const Branch = require('../models/Branch');
-      const b = await Branch.findById(branchId).select('name').lean();
-      if (b?.name) patch.payingBranch = b.name;
+      const { arabicBranchName } = require('../utils/payingBranch');
+      const name = await arabicBranchName(branchId);
+      if (name) patch.payingBranch = name;
     } catch (e) { console.error('wallet→report branch lookup:', e.message); }
   }
 
@@ -374,7 +385,9 @@ exports.addTransaction = async (req, res) => {
     const transaction = await WalletTransaction.create({
       wallet: wallet._id,
       user: req.user._id,
-      branch: req.user.branch,
+      // فرعُ الحركة فرعُ العهدة التي قُيّدت فيها، لا فرعُ مَن سجّلها: المديرُ
+      // يسجّل عن فرعٍ يديره، فيُختم القيدُ بفرعه هو ويُقرأ في غير موضعه.
+      branch: txBranch,
       date: txDate,
       type,
       amount,
@@ -424,7 +437,8 @@ exports.addTransaction = async (req, res) => {
         // المطلوبُ نفسُه: مبلغُ السداد سعرُ الشراء الحقيقيّ.
         amount: type === 'purchase' ? amount : (Number(purchaseWorkflow.purchaseValue) || 0),
         date: txDate,
-        branchId: req.user.branch,
+        // فرعُ العهدة التي خرج منها المال — لا فرعُ الحساب الذي سجّله.
+        branchId: wallet.branch || transaction.branch || req.user.branch,
       });
     }
 

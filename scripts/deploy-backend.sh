@@ -99,6 +99,24 @@ verify() {
       "$API/api/health" | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')
   check "CORS allows the site" "${origin:-none}" "https://energize-logistics.com"
 
+  # ── وكلُّ عاملٍ على المنفذ يجب أن يكون عاملًا يعرفه pm2 ───────────────────
+  #
+  # الحادثة: مستخدمٌ يعدّل كشفًا فيُقال له «خارج صلاحيّتك» لعمودين يملكهما،
+  # مرّةً من كلّ ثلاث. والسبب لم يكن الصلاحيات: على المنفذ ثلاثةُ عمّال، وpm2
+  # يعرف اثنين. الثالث بقيّةُ إعادةِ تشغيلٍ سابقة، أفلت من `reload` وظلّ ممسكًا
+  # بالمنفذ المشترَك ثلاثَ ساعات — فالنواةُ توزّع الطلبات على ثلاثةٍ أحدُهم
+  # يشغّل كودًا قديمًا. والنشرُ يقول «سليم» لأنّه يسأل أوّلَ عاملٍ فيجده جديدًا.
+  #
+  # فيُعَدُّ العمّالُ لا يُسأل أوّلُهم: كلُّ ما يشغّل `server.js` ولا يعرفه pm2
+  # يتيمٌ يُقتَل. عاملٌ واحدٌ متخلّفٌ يُبطل النشرَ كلَّه، وبصمت.
+  #
+  # والنمطُ مثبَّتُ الطرفين عن قصد: `pgrep -f` يطابق سطرَ الأمر كلَّه، فنمطٌ
+  # حرٌّ يطابق أيضًا الصَّدَفةَ التي تحمل المسارَ في أمرها — أي أمرَ الفحص
+  # نفسِه. جُرِّب فعَدَّ يتيمًا وهمًا؛ ولو مضى القتلُ على ذلك لقتل الفحصُ نفسَه.
+  local stray
+  stray=$("${SSH[@]}" "MANAGED=\$(pm2 jlist 2>/dev/null | node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>{try{console.log(JSON.parse(s).map(p=>p.pid).filter(Boolean).join(\" \"))}catch(e){console.log(\"\")}})'); n=0; for pid in \$(pgrep -f \"^node $APP_DIR/src/server.js\$\"); do case \" \$MANAGED \" in *\" \$pid \"*) ;; *) n=\$((n+1));; esac; done; echo \$n" 2>/dev/null | tr -d '\r')
+  check "no stray workers on the port" "${stray:-unreadable}" "0"
+
   # The process, and the env it is actually running with.
   check "pm2 online"  "$("${SSH[@]}" "pm2 jlist" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s).find(x=>x.name==="'"$PM2_NAME"'");console.log(p?p.pm2_env.status:"missing")}catch(e){console.log("unreadable")}})')" "online"
   check "NODE_ENV"    "$("${SSH[@]}" "grep -m1 '^NODE_ENV=' $APP_DIR/.env | cut -d= -f2" 2>/dev/null | tr -d '\r')" "production"
@@ -253,6 +271,12 @@ good "dependencies installed"
 # قِيس ذلك: تسعون طلبًا أثناء إعادةٍ حيّة، تسعون نجحت وصفرٌ فشل.
 "${SSH[@]}" "pm2 reload $PM2_NAME >/dev/null"
 good "$PM2_NAME restarted"
+
+# ── والأيتامُ تُجمَع قبل أن تخدم ─────────────────────────────────────────────
+# `reload` يستبدل العمّالَ واحدًا واحدًا، وقد يفلت منه واحدٌ فيبقى ممسكًا
+# بالمنفذ المشترَك بكودٍ قديم. فيُمهَل ثوانٍ حتى يستقرّ العمّالُ الجدد، ثمّ
+# يُقتَل كلُّ ما يشغّل `server.js` ولا يعرفه pm2.
+"${SSH[@]}" "sleep 6; MANAGED=\$(pm2 jlist 2>/dev/null | node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>{try{console.log(JSON.parse(s).map(p=>p.pid).filter(Boolean).join(\" \"))}catch(e){console.log(\"\")}})'); [ -z \"\$MANAGED\" ] && exit 0; for pid in \$(pgrep -f \"^node $APP_DIR/src/server.js\$\"); do case \" \$MANAGED \" in *\" \$pid \"*) ;; *) kill -9 \$pid 2>/dev/null && echo \"reaped \$pid\";; esac; done" 2>/dev/null | while read -r l; do note "$l"; done
 
 # ── Prove it, or put it back ────────────────────────────────────────────────
 note "waiting for the app to come up…"

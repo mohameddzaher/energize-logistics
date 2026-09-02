@@ -14,14 +14,14 @@ import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { money, dt, receivablesOnly } from '@/lib/collections';
 import { useAuth } from '@/context/AuthContext';
-import { Spinner, PageHeader } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, Field, Select } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
   LineChart, Line,
 } from 'recharts';
-import { Wallet, Users, Truck, TrendingDown, ChevronLeft } from 'lucide-react';
+import { Wallet, Users, Truck, TrendingDown, ChevronLeft, SlidersHorizontal, X } from 'lucide-react';
 
 interface Side {
   reports: number; total: number; settled: number; outstanding: number;
@@ -29,12 +29,21 @@ interface Side {
   top: { name: string; reports: number; outstanding: number; oldest: string | null }[];
 }
 interface Dash {
-  customers: Side; suppliers: Side;
+  customers: Side; suppliers?: Side;
   monthly: { month: string; total: number; settled: number; outstanding: number }[];
-  aging: { customer: { bucket: string; amount: number }[]; supplier: { bucket: string; amount: number }[] };
-  byBranch: { branch: string; reports: number; receivable: number; payable: number }[];
+  aging: { customer: { bucket: string; amount: number }[]; supplier?: { bucket: string; amount: number }[] };
+  byBranch: { branch: string; reports: number; receivable: number; payable?: number }[];
   counts: { customer: { active: number; inactive: number }; supplier: { active: number; inactive: number } };
 }
+
+/** شرائحُ العمر — هي هي في اللوحة وفي صفحتَي الفواتير. */
+const AGE_BANDS: [string, string, string][] = [
+  ['0_15', 'حتى ١٥ يومًا', 'Up to 15 days'],
+  ['15_30', 'من ١٥ إلى ٣٠', '15 – 30 days'],
+  ['30_45', 'من ٣٠ إلى ٤٥', '30 – 45 days'],
+  ['45_60', 'من ٤٥ إلى ٦٠', '45 – 60 days'],
+  ['60_plus', 'أكثر من ٦٠', 'Over 60 days'],
+];
 
 export default function CollectionsDashboardPage() {
   const { user } = useAuth();
@@ -52,6 +61,19 @@ export default function CollectionsDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  // ── واللوحةُ تُفلتر كما تُفلتر الصفحات ────────────────────────────────────
+  // لوحةٌ لا تقبل إلّا مدًى تُقرأ مرّةً ثمّ يُنزَل منها إلى الصفحات لتُقرأ
+  // ثانيةً. والأسئلةُ التي تُطرح عليها هي هي: عميلٌ بعينه، ومورّد، وفرع،
+  // وشريحةُ عمر.
+  const [customer, setCustomer] = useState('');
+  const [supplier, setSupplier] = useState('');
+  const [branch, setBranch] = useState('');
+  const [age, setAge] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [opts, setOpts] = useState<{ customers: string[]; suppliers: string[]; branches: string[] }>(
+    { customers: [], suppliers: [], branches: [] },
+  );
+  const activeCount = [customer, supplier, branch, age, from, to].filter(Boolean).length;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,18 +81,27 @@ export default function CollectionsDashboardPage() {
       const p = new URLSearchParams();
       if (from) p.set('from', from);
       if (to) p.set('to', to);
+      if (customer) p.set('customer', customer);
+      if (supplier) p.set('supplier', supplier);
+      if (branch) p.set('branch', branch);
+      if (age) p.set('age', age);
       setData(await api.get<Dash>(`/api/collections-dept/dashboard?${p.toString()}`));
     } catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); }
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to]);
+  }, [from, to, customer, supplier, branch, age]);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    api.get<typeof opts>('/api/collections-dept/dashboard/filters').then(setOpts).catch(() => {});
+  }, []);
 
   if (loading && !data) return <Spinner />;
   if (!data) return null;
 
   const C = data.customers;
-  const S = data.suppliers;
+  // الخادمُ لا يُرسل الموردين لمن لا يراهم — فيُقرأ الغيابُ لا يُفترَض الوجود.
+  const S = data.suppliers || { reports: 0, total: 0, settled: 0, outstanding: 0, settledCount: 0, openReports: 0, top: [] };
   // ما يبقى لنا بعد سداد ما علينا — الرقمُ الذي يُسأل عنه بعد الرقمين.
   const net = C.outstanding - S.outstanding;
 
@@ -102,7 +133,7 @@ export default function CollectionsDashboardPage() {
   const agingRows = data.aging.customer.map((c, i) => ({
     bucket: c.bucket,
     [t('لنا', 'Receivable')]: c.amount,
-    ...(receivables ? {} : { [t('علينا', 'Payable')]: data.aging.supplier[i]?.amount || 0 }),
+    ...(receivables ? {} : { [t('علينا', 'Payable')]: data.aging.supplier?.[i]?.amount || 0 }),
   }));
 
   const topCols = [
@@ -115,7 +146,7 @@ export default function CollectionsDashboardPage() {
   const TopTable = ({ rows, kind }: { rows: Side['top']; kind: 'customer' | 'supplier' }) => (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-slate-50 text-slate-500 text-xs">
+        <thead className="table-head">
           <tr>
             {[t('الاسم', 'Name'), t('كشوف', 'Reports'), t('المستحق', 'Outstanding'), t('أقدم كشف', 'Oldest')].map((h, i) => (
               <th key={i} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>
@@ -186,8 +217,64 @@ export default function CollectionsDashboardPage() {
       </PageHeader>
 
       {/* المدى اختياريّ: بلا مدًى تُقرأ الصورةُ كلُّها، وهي ما يُسأل عنه أوّلًا. */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-        <DateRangeFilter from={from} to={to} onFrom={setFrom} onTo={setTo} ar={ar} />
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <DateRangeFilter from={from} to={to} onFrom={setFrom} onTo={setTo} ar={ar} />
+          <button type="button" onClick={() => setShowFilters((p) => !p)}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+              activeCount ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'}`}>
+            <SlidersHorizontal className="w-4 h-4" />{t('فلاتر', 'Filters')}{activeCount ? ` (${activeCount})` : ''}
+          </button>
+          {activeCount > 0 && (
+            <button type="button"
+              onClick={() => { setCustomer(''); setSupplier(''); setBranch(''); setAge(''); setFrom(''); setTo(''); }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-slate-400 hover:text-red-600 text-sm">
+              <X className="w-4 h-4" />{t('إزالة الفلاتر', 'Clear')}
+            </button>
+          )}
+        </div>
+
+        {showFilters && (
+          <div className="space-y-4 border-t border-slate-100 pt-4">
+            {/* شرائحُ العمر لا تتداخل: «من ١٥ إلى ٣٠» لا «كلُّ ما تجاوز ١٥» —
+                فمجموعُها يساوي الكلَّ ولا يُعدّ الكشفُ مرّتين. */}
+            <div>
+              <p className="text-[12px] font-bold text-slate-600 mb-2">{t('عمر الكشف', 'Report age')}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {AGE_BANDS.map(([k, arL, enL]) => (
+                  <button key={k} type="button" onClick={() => setAge(age === k ? '' : k)}
+                    className={`px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors ${
+                      age === k ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'}`}>
+                    {t(arL, enL)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Field label={t('العميل', 'Customer')}>
+                <Select value={customer} onChange={(e) => setCustomer(e.target.value)}>
+                  <option value="">{t('جميع العملاء', 'All customers')}</option>
+                  {opts.customers.map((c) => <option key={c} value={c}>{c}</option>)}
+                </Select>
+              </Field>
+              {/* المورّدُ لمن يرى ما علينا — والخادمُ لا يُرسل أسماءهم لغيره. */}
+              {opts.suppliers.length > 0 && (
+                <Field label={t('المورد', 'Supplier')}>
+                  <Select value={supplier} onChange={(e) => setSupplier(e.target.value)}>
+                    <option value="">{t('جميع الموردين', 'All suppliers')}</option>
+                    {opts.suppliers.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </Select>
+                </Field>
+              )}
+              <Field label={t('الفرع', 'Branch')}>
+                <Select value={branch} onChange={(e) => setBranch(e.target.value)}>
+                  <option value="">{t('جميع الفروع', 'All branches')}</option>
+                  {opts.branches.map((b) => <option key={b} value={b}>{b}</option>)}
+                </Select>
+              </Field>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -313,7 +400,7 @@ export default function CollectionsDashboardPage() {
       >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>
                 {[t('الفرع', 'Branch'), t('كشوف', 'Reports'), t('المستحق لنا', 'Receivable'),
                   ...(receivables ? [] : [t('المستحق علينا', 'Payable'), t('الصافي', 'Net')])].map((h, i) => (
@@ -329,8 +416,8 @@ export default function CollectionsDashboardPage() {
                   <td className="px-3 py-2 tabular-nums text-red-600">{money(b.receivable)}</td>
                   {!receivables && <td className="px-3 py-2 tabular-nums text-amber-600">{money(b.payable)}</td>}
                   {!receivables && (
-                    <td className={`px-3 py-2 tabular-nums font-semibold ${b.receivable - b.payable >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                      {money(b.receivable - b.payable)}
+                    <td className={`px-3 py-2 tabular-nums font-semibold ${b.receivable - (b.payable || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                      {money(b.receivable - (b.payable || 0))}
                     </td>
                   )}
                 </tr>

@@ -139,7 +139,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>
                 {[t('الاسم', 'Name'), ...(kind === 'agent' ? [t('البريد', 'Email')] : []), t('التواصل', 'Contact'),
                   t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'), t('الربح', 'Profit'),

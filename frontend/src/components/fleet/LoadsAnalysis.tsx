@@ -153,7 +153,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
       <div className="px-4 py-3 bg-slate-50 border-b border-slate-100"><p className="font-bold text-slate-900 text-sm">{title}</p></div>
       <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-500 text-xs sticky top-0">
+          <thead className="table-head sticky top-0">
             <tr>{[nameHead, ar ? 'الحمولات' : 'Loads', ar ? 'الدخل' : 'Income', ar ? 'المصروف' : 'Expense'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -277,7 +277,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
             </div>
             <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-slate-500 text-xs sticky top-0">
+                <thead className="table-head sticky top-0">
                   <tr>{[ar ? 'السائق' : 'Driver', ar ? 'عدد الحمولات' : 'Loads', ar ? 'الدخل المُحقَّق' : 'Income', ar ? 'المصروف المستحق' : 'Expense owed'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

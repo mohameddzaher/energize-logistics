@@ -95,15 +95,34 @@ async function call(method, path, ck, body) {
   const dash = await call('GET', '/api/collections-dept/dashboard', mgr.ck);
   ok('اللوحة تُفتح', dash.status === 200, `${dash.status}`);
   const d = dash.json || {};
-  ok('اللوحة فيها الجهتان', !!(d.customers && d.suppliers),
-    `عملاء=${d.customers?.reports} كشفًا · موردون=${d.suppliers?.reports} كشفًا`);
-  ok('التقادم أربعُ شرائح', (d.aging?.customer || []).length === 4 && (d.aging?.supplier || []).length === 4);
+  // ── ومدير التحصيل لا يصله «ما علينا» ──────────────────────────────────
+  // القسمُ يُحصِّل؛ وما ندفعه للموردين والصافيُ شأنُ الإدارة والمالية. والحجبُ
+  // على الخادم لا على الشاشة: إخفاءٌ في الواجهة وحدَها يُقرأ في أدوات المتصفّح
+  // ويخرج في أيّ تصدير.
+  ok('اللوحة تحمل جهة العملاء', !!d.customers, `${d.customers?.reports} كشفًا`);
+  ok('ولا يصله المستحقّ علينا', !('suppliers' in d), 'suppliers' in d ? 'وصلت!' : 'محجوبة');
+  ok('ولا تقادمُ الموردين', !(d.aging || {}).supplier);
+  ok('ولا عمودُ «علينا» في الفروع', !((d.byBranch || [])[0] || {}).payable);
+  ok('وتقادمُ العملاء أربعُ شرائح', (d.aging?.customer || []).length === 4);
   ok('الفروع محسوبة', Array.isArray(d.byBranch) && d.byBranch.length > 0, `${d.byBranch?.length} فرعًا`);
 
   const custList = await call('GET', '/api/collections-dept/parties?kind=customer&limit=5', mgr.ck);
   const suppList = await call('GET', '/api/collections-dept/parties?kind=supplier&limit=5', mgr.ck);
   ok('صفحة العملاء', custList.status === 200 && custList.json?.total > 0, `${custList.json?.total} عميلًا`);
   ok('صفحة الموردين', suppList.status === 200 && suppList.json?.total > 0, `${suppList.json?.total} موردًا`);
+
+  // ومَن يملك الوجهين يراهما — وإلّا كان الحجبُ عامًّا لا مقصودًا.
+  await User.deleteMany({ email: /^zz-bothsides/ });
+  const both = await User.create({
+    email: 'zz-bothsides@example.invalid', password: PASSWORD,
+    firstName: 'ت', lastName: 'ت', role: 'finance_manager',
+  });
+  const bothLogin = await login(both.email);
+  const bothDash = await call('GET', '/api/collections-dept/dashboard', bothLogin.ck);
+  ok('والمالية ترى الوجهين', !!(bothDash.json?.customers && bothDash.json?.suppliers),
+    `موردون=${bothDash.json?.suppliers?.reports} كشفًا`);
+  ok('ومعها عمودُ «علينا»', ((bothDash.json?.byBranch || [])[0] || {}).payable !== undefined);
+  await User.deleteMany({ email: /^zz-bothsides/ });
 
   // ── ٤ · الأرقام تطابق القاعدة ──────────────────────────────────────────
   head('الأرقام تطابق القاعدة');

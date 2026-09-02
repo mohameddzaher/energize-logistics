@@ -173,7 +173,7 @@ export default function DriverCardsPage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>{[t('الاسم', 'Name'), t('رقم الهوية', 'ID'), t('جوال أبشر', 'Absher'), t('السجل اللوجستي', 'Register'),
                 t('رقم البطاقة', 'Card no.'), t('النوع', 'Type'), t('الانتهاء', 'Expiry'), t('المتبقي', 'Days left'),
                 t('الحالة', 'State'), t('الموظف', 'Employee'), ''].map((h, i) => (

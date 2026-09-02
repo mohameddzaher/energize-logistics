@@ -365,7 +365,7 @@ export default function PartyProfilePage() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>
                 {[t('رقم الكشف', 'Report'), t('التاريخ', 'Date'), t('المسار', 'Route'), t('الفرع', 'Branch'),
                   kind === 'customer' ? t('قيمة البيع', 'Selling') : t('قيمة الشراء', 'Purchase'),
@@ -490,7 +490,7 @@ function WorkPanel({ title, rows, cols }: {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-500 text-xs">
+          <thead className="table-head">
             <tr>{cols.map(([h]) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
           </thead>
           <tbody>

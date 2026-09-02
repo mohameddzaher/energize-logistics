@@ -179,7 +179,7 @@ export default function FleetSettingsPage() {
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2"><Target className="w-4 h-4 text-[#f37121]" /> <p className="font-bold text-slate-900">{ar ? 'الهدف الشهري لكل سيارة' : 'Monthly target per vehicle'}</p></div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs"><tr>
+            <thead className="table-head"><tr>
               <th className="px-4 py-2 text-start font-semibold">{ar ? 'اللوحة' : 'Plate'}</th>
               <th className="px-4 py-2 text-start font-semibold">{ar ? 'الاسم' : 'Name'}</th>
               <th className="px-4 py-2 text-start font-semibold">{ar ? 'الهدف الشهري' : 'Monthly target'}</th>

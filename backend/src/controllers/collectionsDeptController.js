@@ -64,6 +64,22 @@ const pick = (body) => {
 };
 
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+
+/**
+ * ── مَن يقتصر على «ما لنا» ──────────────────────────────────────────────────
+ *
+ * قسمُ التحصيل يُحصِّل؛ وما ندفعه للموردين والصافيُ بينهما شأنُ الإدارة والمالية.
+ *
+ * وأُخفيت أوّلًا في الشاشة وحدَها — فبقي الخادمُ يرسل «المستحقّ علينا» وأكبرَ
+ * الموردين وتقادمَهم وعمودَ الفرع، تُقرأ في أدوات المتصفّح وتخرج في أيّ تصدير.
+ * والحجبُ في مكانٍ واحدٍ حجبٌ في نصف الطريق، ويُقرأ أسوأَ من غيابه: مَن رآه
+ * مخفيًّا حسبه محجوبًا. فالقاعدةُ هنا، والشاشةُ تتبعها.
+ *
+ * وهي بالدور لا بالقسم: الإدارةُ والماليةُ ومديرُ العمليات يفتحون القسمَ نفسَه
+ * ويرَون الوجهين.
+ */
+const RECEIVABLES_ONLY_ROLES = ['collections_manager', 'collections_staff'];
+const receivablesOnly = (user) => RECEIVABLES_ONLY_ROLES.includes(user?.role);
 const isKind = (k) => k === 'customer' || k === 'supplier';
 
 /**
@@ -538,13 +554,34 @@ exports.dashboard = async (req, res) => {
     // حدُّ اليوم بتوقيت الشركة — لا بغرينتش: بغرينتش تُفقَد أوّلُ ثلاثِ ساعاتٍ
     // من يوم البداية وتُكسَب ثلاثٌ من اليوم التالي لآخر يوم.
     const range = from || to ? dayRange(from, to) : null;
-    const dateMatch = range ? { reportDate: range } : {};
+    // ── وفلاترُ اللوحة هي فلاترُ الصفحات ──────────────────────────────────
+    // كانت اللوحةُ تقبل مدًى فحسب، والأسئلةُ التي تُطرح عليها أكثر: عميلٌ
+    // بعينه، ومورّدٌ بعينه، وفرعٌ، وشريحةُ عمر. ولوحةٌ لا تُفلتر تُقرأ مرّةً
+    // ثمّ يُنزل منها إلى الصفحات لتُقرأ ثانيةً.
+    const extra = {};
+    if (req.query.customer) extra.username = flexSpaceRegex(String(req.query.customer));
+    if (req.query.supplier) extra.carOwner = flexSpaceRegex(String(req.query.supplier));
+    if (req.query.branch) extra.branch = String(req.query.branch);
+    const dateMatch = { ...extra, ...(range ? { reportDate: range } : {}) };
+
+    // شريحةُ العمر تُقاس على تاريخ الكشف — وهي شرائحُ لا تتداخل، فمجموعُها
+    // يساوي الكلَّ ولا يُعدّ الكشفُ مرّتين.
+    const ageBand = AGE_BANDS[req.query.age] ? req.query.age : null;
+    if (ageBand) {
+      const c = ageCondition('reportDate', ageBand).reportDate;
+      dateMatch.reportDate = { ...(dateMatch.reportDate || {}), ...c };
+    }
     // ── والمدى يُدمَج، لا يُنسَخ فوقه ─────────────────────────────────────
     // «تاريخُ الكشف موجود» و«تاريخُ الكشف داخل المدى» شرطان على الحقل نفسِه،
     // وكتابةُ أحدهما بعد الآخر في كائنٍ واحدٍ تُلغيه — فيسقط المدى صامتًا
     // وتُقرأ اللوحةُ المفلترةُ على البيانات كلِّها.
-    const datedMatch = { reportDate: range ? { $ne: null, ...range } : { $ne: null } };
-    const key = `${CACHE_PREFIX}dash:${from || ''}:${to || ''}`;
+    const datedMatch = {
+      ...extra,
+      reportDate: { $ne: null, ...(dateMatch.reportDate || {}) },
+    };
+    // المفتاحُ يحمل الفلاترَ كلَّها والدور: نتيجةٌ حُسبت لمن يرى الوجهين لا
+    // تُخدَم لمن يرى وجهًا واحدًا، ولا نتيجةُ عميلٍ لعميلٍ آخر.
+    const key = `${CACHE_PREFIX}dash:${receivablesOnly(req.user) ? 'r' : 'a'}:${JSON.stringify(req.query || {})}`;
 
     const data = await cache.wrap(key, STATS_TTL, async () => {
       const side = async (kind) => {
@@ -688,9 +725,42 @@ exports.dashboard = async (req, res) => {
       };
     });
 
+    // ما لا يُعرض لا يُرسَل. والكاشُ مشتركٌ بين الأدوار، فالحجبُ يجري على
+    // النسخة العائدة لا على المخزَّنة.
+    if (receivablesOnly(req.user)) {
+      const { suppliers: _s, ...rest } = data;
+      return res.json({
+        ...rest,
+        aging: { customer: data.aging.customer },
+        byBranch: data.byBranch.map(({ payable, ...b }) => b),
+        counts: { customer: data.counts.customer, supplier: data.counts.supplier },
+      });
+    }
+
     res.json(data);
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تحميل اللوحة', error: e.message });
+  }
+};
+
+/** قيمُ فلاتر اللوحة — من الكشوف نفسِها. */
+exports.dashboardFilterOptions = async (req, res) => {
+  try {
+    const only = receivablesOnly(req.user);
+    const [customers, suppliers, branches] = await Promise.all([
+      OperationsWorkflow.distinct('username', { ...NOT_CANCELLED, username: { $nin: [null, ''] } }),
+      // ولا تُعرَض أسماءُ الموردين لمن لا يرى ما عليهم: فلترٌ لا نتيجةَ له.
+      only ? Promise.resolve([]) : OperationsWorkflow.distinct('carOwner', { ...NOT_CANCELLED, carOwner: { $nin: [null, ''] } }),
+      OperationsWorkflow.distinct('branch', { ...NOT_CANCELLED, branch: { $nin: [null, ''] } }),
+    ]);
+    res.json({
+      customers: customers.sort().slice(0, 1000),
+      suppliers: suppliers.sort().slice(0, 1000),
+      branches: branches.sort(),
+      receivablesOnly: only,
+    });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل الفلاتر', error: e.message });
   }
 };
 
@@ -777,7 +847,11 @@ function ageCondition(field, band) {
   const cond = {};
   // الأقدمُ عمرًا هو الأصغرُ تاريخًا: «مضى عليه أكثرُ من ١٥» = تاريخُه أقدمُ
   // من (اليوم − ١٥).
-  if (from != null) cond.$lte = new Date(now - from * 86400000);
+  //
+  // والشريحةُ الأحدث بلا حدٍّ أعلى: في البيانات كشوفٌ بتواريخَ مستقبليّة، وحدٌّ
+  // «أقدمُ من اليوم» كان يُسقطها من الشرائح كلِّها — فينقص المجموعُ عن الكلّ
+  // واحدًا لا يُعرف أين ذهب.
+  if (from) cond.$lte = new Date(now - from * 86400000);
   if (to != null) cond.$gt = new Date(now - to * 86400000);
   return { [field]: cond };
 }
@@ -890,7 +964,14 @@ exports.taxInvoices = async (req, res) => {
     const filter = {
       ...rowFilter,
       ...REAL_INVOICE,
-      paymentType: { $ne: 'cash' },
+      // ── ولا يصل القسمَ كشفٌ لم يُختَر نوعُ دفعه ────────────────────────────
+      // كُتب الشرطُ أوّلًا «ليس نقديًّا»، وهو يشمل الفارغ — فدخلت الصفحةَ كلُّ
+      // الكشوف القديمة التي تحمل رقمَ فاتورة، أربعةٌ وثلاثون ألفًا لم يُختَر
+      // لواحدٍ منها نوعُ دفع. وظهرت ٥٥٤ «فاتورة» لم يرسلها أحد.
+      //
+      // والقاعدةُ أنّ الكشفَ لا يصل التحصيلَ إلّا باختيارٍ صريح: نقديٌّ فيذهب
+      // إلى فواتير الكاش، أو ضريبيٌّ فيذهب إلى هذه. والفارغُ لم يُقرَّر بعد.
+      paymentType: 'tax',
     };
 
     const page = Math.max(1, Number(req.query.page) || 1);
@@ -1062,7 +1143,7 @@ exports.invoiceFilterOptions = async (req, res) => {
     const kind = req.query.kind === 'cash' ? 'cash' : 'tax';
     const base = kind === 'cash'
       ? { paymentType: 'cash', ...NOT_CANCELLED }
-      : { ...REAL_INVOICE, paymentType: { $ne: 'cash' }, ...NOT_CANCELLED };
+      : { ...REAL_INVOICE, paymentType: 'tax', ...NOT_CANCELLED };
     const [customers, branches] = await Promise.all([
       OperationsWorkflow.distinct('username', { ...base, username: { $nin: [null, ''] } }),
       OperationsWorkflow.distinct('payingBranch', { ...base, payingBranch: { $nin: [null, ''] } }),

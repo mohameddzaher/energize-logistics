@@ -160,7 +160,7 @@ export default function CustomsPartyProfile() {
         </div>
         <div className="overflow-x-auto max-h-[32rem]">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs sticky top-0">
+            <thead className="table-head sticky top-0">
               <tr>
                 {[t('المرجع', 'Ref'), t('البوليصة', 'BL'), isAgent ? t('العميل', 'Customer') : t('الوكيل', 'Agent'),
                   t('الميناء', 'Port'), t('المرحلة', 'Stage'), t('حاويات', 'Cntrs'), t('الإيراد', 'Revenue'),

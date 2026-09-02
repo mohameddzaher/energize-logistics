@@ -343,7 +343,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-slate-500 text-xs">
+                <thead className="table-head">
                   <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor', ar ? 'الحمولات' : 'Loads', ar ? 'شغّالة من' : 'Active from', ar ? 'المحقَّق' : 'Achieved', ar ? 'الهدف' : 'Target', ar ? 'الناقص' : 'Shortfall', ar ? 'التحقيق' : 'Attained'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -422,7 +422,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-slate-500 text-xs">
+                <thead className="table-head">
                   <tr>{[ar ? 'العميل' : 'Customer', ar ? 'النوع' : 'Type', ar ? 'التقييم' : 'Rating', ar ? 'الرحلات' : 'Trips', ar ? 'الدخل' : 'Income'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

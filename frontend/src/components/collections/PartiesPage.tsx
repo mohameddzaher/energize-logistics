@@ -280,7 +280,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>
                 {[t('الاسم', 'Name'), t('التواصل', 'Contact'), t('المدينة', 'City'), t('الحالة', 'Status'),
                   ...(hideMoney ? [] : [t('كشوف', 'Reports'), W.totalLabel, W.settledLabel, W.dueLabel]),

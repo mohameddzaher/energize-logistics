@@ -30,6 +30,7 @@ const EDIT_ROLES = [
 ];
 
 router.get('/dashboard', authorize(...READ_ROLES), ctrl.dashboard);
+router.get('/dashboard/filters', authorize(...READ_ROLES), ctrl.dashboardFilterOptions);
 // قبل `/parties/:id` لا بعده: «filters» لو جاءت بعدَه قُرئت معرّفَ طرف.
 router.get('/parties/filters', authorize(...READ_ROLES), ctrl.filterOptions);
 router.get('/parties', authorize(...READ_ROLES), ctrl.listParties);

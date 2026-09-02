@@ -94,7 +94,7 @@ export default function HrSettingsPage() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[520px]">
-            <thead><tr className="bg-slate-50 text-slate-500 text-xs">
+            <thead><tr className="table-head">
               {[t('النوع', 'Type'), t('تُخصَم من الرصيد', 'Deducts balance'), t('مدفوعة', 'Paid'), t('إخطار مسبق', 'Advance notice'), t('نشط', 'Active')].map((h) => (
                 <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>
               ))}

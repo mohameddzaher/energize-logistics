@@ -112,7 +112,7 @@ export default function TaxInvoiceDetailPage() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>
                 {[t('رقم الكشف', 'Report'), t('التاريخ', 'Date'), t('المسار', 'Route'), t('الفرع', 'Branch'),
                   t('السيارة', 'Vehicle'), t('الصافي', 'Net'), t('الضريبة', 'VAT'), t('الإجمالي', 'Total'),

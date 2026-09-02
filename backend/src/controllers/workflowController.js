@@ -339,6 +339,31 @@ function columnFilters(query, skipField, allowMoney = true) {
  */
 const bustFilterCache = () => { try { cache.clear('wf:'); } catch (e) {} };
 
+/**
+ * ── ما يُرسَل إلى الجدول ────────────────────────────────────────────────────
+ *
+ * المستندُ يحمل نحوَ ستّين حقلًا، فيها بقايا استيراداتٍ قديمة لا يعرضها الجدول
+ * ولا يقرؤها أحد (`ownerName`, `region`, `product`, `invoiceRef`, `volume`…).
+ * وخمسون صفًّا كاملةً ثلاثةٌ وستّون كيلوبايت على عنقودٍ نطاقُه مئةُ كيلوبايت في
+ * الثانية — فالفتحةُ الواحدة تكلّف ثانيةً ونصفًا. والاستعلامُ نفسُه صفرُ
+ * ميلي ثانية: النقلُ هو الثمن كلُّه، لا الحساب.
+ *
+ * فتُرسَل أعمدةُ الجدول وحدَها. وما لا يُعرض لا يُنقل.
+ */
+const LIST_FIELDS = [
+  'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch',
+  'carOwner', 'carNumber', 'ownerType', 'executionStatus', 'applicationStatus',
+  'paymentMethod', 'username', 'userPhone', 'taxIndicator',
+  'purchaseValue', 'sellingValue', 'loadingTime', 'driverRentalType', 'reference',
+  'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
+  'representativeName', 'operationsReview',
+  'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType',
+  'finalReportDestination', 'documentNumber', 'sendingDate', 'deliveryDate',
+  'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
+  'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
+  'stage', 'lockedBy', 'lockedByName', 'lockedAt', 'externalSource', 'createdAt',
+].join(' ');
+
 // GET /api/workflows
 exports.getWorkflows = async (req, res) => {
   try {
@@ -348,14 +373,18 @@ exports.getWorkflows = async (req, res) => {
     const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role));
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    // ── ولا يُملأ في القائمة ما لا يُقرأ فيها ──────────────────────────────
+    // كانت ثلاثةُ `populate` على كلّ صفحة: المُنشئُ وآخرُ مَن عدّل ومَن يقفل.
+    // والجدولُ لا يقرأ من الثلاثة إلّا `lockedBy._id` — وهو المعرّفُ الخام
+    // الموجودُ أصلًا. فثلاثُ رحلاتٍ إلى القاعدة في كلّ فتحةٍ وكلّ حرفِ بحث،
+    // ثمنُها ثمنُ ما لا يُعرض. والتفاصيلُ تُملأ في صفحة الكشف حيث تُقرأ.
     const [workflows, total] = await Promise.all([
       OperationsWorkflow.find(filter)
-        .populate('createdBy', 'firstName lastName')
-        .populate('lastModifiedBy', 'firstName lastName')
-        .populate('lockedBy', 'firstName lastName')
+        .select(LIST_FIELDS)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(parseInt(limit))
+        .lean(),
       OperationsWorkflow.countDocuments(filter),
     ]);
 
@@ -435,14 +464,23 @@ function buildWorkflowFilter(query, skipField, allowMoney = true) {
     ] }];
   }
   if (search) {
+    // ── الرقمُ التامُّ يُطابَق تمامًا، فيمرّ على الفهرس ──────────────────────
+    // كان البحثُ تعبيرًا نمطيًّا غيرَ مثبَّتِ الطرفين على أربعة حقول، فيمسح
+    // أربعةً وثلاثين ألفَ صفٍّ في كلّ حرفٍ يُكتب — والفهرسُ على «رقم الكشف»
+    // موجودٌ ولا يُستعمَل. ومَن يبحث برقم كشفٍ يريد ذلك الكشفَ لا ما يحويه.
+    //
+    // فإن كان المكتوبُ أرقامًا كلَّه جُرّب التطابقُ التامّ أوّلًا؛ ويبقى معه
+    // البحثُ الجزئيّ في بقيّة الحقول كي لا يضيع مَن يبحث بجزءٍ من لوحة.
+    const digitsOnly = /^\d+$/.test(search);
+    const rx = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
     filter.$or = [
-      { reportNumber: { $regex: search, $options: 'i' } },
-      { carOwner: { $regex: search, $options: 'i' } },
-      { carNumber: { $regex: search, $options: 'i' } },
-      { branch: { $regex: search, $options: 'i' } },
+      digitsOnly ? { reportNumber: search } : { reportNumber: rx },
+      { carOwner: rx },
+      { carNumber: rx },
+      { branch: rx },
       // والبحثُ برقم الفاتورة لمن يراها: مطابقتُه لمن لا يراها تؤكّد وجودَ
       // فاتورةٍ على صفٍّ بعينه — وهي القيمةُ المحجوبة نفسُها بصورةٍ أخرى.
-      ...(allowMoney ? [{ invoiceNumber: { $regex: search, $options: 'i' } }] : []),
+      ...(allowMoney ? [digitsOnly ? { invoiceNumber: search } : { invoiceNumber: rx }] : []),
     ];
   }
   // فلاتر الأعمدة تُطبَّق هنا لا في المتصفح: كانت الصفحة تنزّل الجدول كلّه لتفلتره

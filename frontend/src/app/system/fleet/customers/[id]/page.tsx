@@ -284,7 +284,7 @@ export default function FleetCustomerProfilePage() {
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100"><p className="font-bold text-slate-900">{ar ? 'سجل الرحلات الكامل' : 'Full trip history'} ({data.shipments.length})</p></div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>{[ar ? 'البوليصة' : 'Waybill', ar ? 'المسار' : 'Route', ar ? 'اللوحة' : 'Plate', ar ? 'السائق' : 'Driver', ar ? 'النوع' : 'Load', ar ? 'السعر' : 'Price', ar ? 'التاريخ' : 'Date', ar ? 'الحالة' : 'Status'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

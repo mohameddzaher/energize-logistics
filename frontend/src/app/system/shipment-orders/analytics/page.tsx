@@ -246,7 +246,7 @@ function Inner() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[760px]">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>{[t('البند', 'Item'), t('شحنات', 'Orders'), t('البيع', 'Sell'), t('الشراء', 'Buy'), t('الفرق', 'Spread'), t('الهامش', 'Margin'), t('متوسط الفرق', 'Avg spread')]
                 .map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
             </thead>
@@ -279,7 +279,7 @@ function Inner() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
-              <thead className="bg-slate-50 text-slate-500 text-xs">
+              <thead className="table-head">
                 <tr>{[t('البوليصة', 'Waybill'), t('العميل', 'Customer'), t('المورّد', 'Supplier'), t('من', 'From'), t('إلى', 'To'), t('البيع', 'Sell'), t('الشراء', 'Buy'), t('الفرق', 'Spread')]
                   .map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
               </thead>

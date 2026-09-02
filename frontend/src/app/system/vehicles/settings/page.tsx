@@ -106,7 +106,7 @@ export default function VehiclesSettingsPage() {
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-500 text-xs">
+              <thead className="table-head">
                 <tr>
                   <th className="px-3 py-2 text-start font-semibold">{t('المستند', 'Document')}</th>
                   <th className="px-3 py-2 text-center font-semibold">{t('مُفعّل', 'On')}</th>

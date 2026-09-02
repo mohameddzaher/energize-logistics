@@ -354,7 +354,7 @@ export default function VendorProfilePage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-slate-50 text-slate-500 text-xs">
+                      <tr className="table-head">
                         <th className="text-start font-semibold px-4 py-2">{ar ? 'الشهر' : 'Month'}</th>
                         <th className="text-center font-semibold px-4 py-2">{ar ? 'الطلبات' : 'Orders'}</th>
                         <th className="text-center font-semibold px-4 py-2">{ar ? 'الطاقة المتوقعة' : 'Capacity'}</th>

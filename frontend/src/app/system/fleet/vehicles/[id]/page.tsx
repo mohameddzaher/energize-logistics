@@ -291,7 +291,7 @@ function VehicleAnalyticsInner() {
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-100"><p className="font-bold text-slate-900 text-sm">{ar ? 'المسارات التي سارتها' : 'Routes travelled'}</p></div>
           <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-500 text-xs sticky top-0"><tr>
+              <thead className="table-head sticky top-0"><tr>
                 {[ar ? 'المسار' : 'Route', ar ? 'الرحلات' : 'Trips', ar ? 'الدخل' : 'Income', ar ? 'المصروف' : 'Expense'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
@@ -313,7 +313,7 @@ function VehicleAnalyticsInner() {
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-100"><p className="font-bold text-slate-900 text-sm">{ar ? 'العملاء الذين نقلت لهم' : 'Customers served'}</p></div>
           <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-500 text-xs sticky top-0"><tr>
+              <thead className="table-head sticky top-0"><tr>
                 {[ar ? 'العميل' : 'Customer', ar ? 'الرحلات' : 'Trips', ar ? 'الدخل' : 'Income', ar ? 'المصروف' : 'Expense'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold">{h}</th>)}
               </tr></thead>
               <tbody className="divide-y divide-slate-100">

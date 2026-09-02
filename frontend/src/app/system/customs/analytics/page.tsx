@@ -197,7 +197,7 @@ export default function CustomsAnalyticsPage() {
         )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>{[t('البند', 'Item'), t('معاملات', 'Deals'), t('حاويات', 'Containers'), t('الإيراد', 'Revenue'),
                 t('التكلفة', 'Cost'), t('الربح', 'Profit'), t('الهامش', 'Margin')].map((h, i) => (
                 <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>))}</tr>

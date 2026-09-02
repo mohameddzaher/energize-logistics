@@ -322,7 +322,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         {refreshing && <div className="refresh-bar" aria-hidden="true" />}
         <div aria-busy={refreshing} className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs">
+            <thead className="table-head">
               <tr>
                 {(isCash
                   ? [t('رقم كشف التخريج', 'Report no.'), t('العميل', 'Customer'), t('المسار', 'Route'),

@@ -54,7 +54,7 @@ const NOT_CANCELLED = {
 const EDITABLE = [
   'name', 'phone', 'email', 'contactPerson', 'contactPhone', 'accountantName',
   'accountantPhone', 'commercialRegister', 'taxNumber', 'iban', 'bankName',
-  'address', 'city', 'partyType', 'paymentTerms', 'creditLimit', 'status',
+  'address', 'city', 'partyType', 'paymentType', 'paymentTerms', 'creditLimit', 'status',
   'assignedTo', 'lastContactAt', 'nextFollowUpAt', 'notes', 'isActive',
 ];
 const pick = (body) => {

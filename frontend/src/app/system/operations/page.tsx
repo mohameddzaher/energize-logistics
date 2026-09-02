@@ -1165,20 +1165,37 @@ export default function OperationsWorkflowPage() {
                       // enters edit mode for the row and focuses that field. System
                       // cells keep the row's navigate-on-click behaviour.
                       const editableClass = 'cursor-text hover:bg-amber-50 rounded px-1 -mx-1';
+                      // ── ولا تُعرَض خانةٌ لن تُحفَظ ──────────────────────────
+                      // كان الحقلُ يُفتح للكتابة ثمّ يردّه الخادمُ ٤٠٣ لأنّ الدورَ
+                      // لا يملكه — فيكتب المستخدمُ ويضغط «صح» فلا يُحفظ شيء.
+                      // وقعت مع موظّف العمليات ثمّ مع المحاسب: قائمةُ الحقول
+                      // تُكتب دورًا دورًا فيُنسى فيها ما يعمله صاحبُها كلَّ يوم.
+                      //
+                      // فالشاشةُ تقرأ الخريطةَ نفسَها التي يفلتر بها الخادمُ
+                      // (`myFields`): ما لا يملكه الدورُ لا يُفتح أصلًا، ويُقال
+                      // سببُه عند المرور عليه. ولا تُصلَح القائمةُ مرّةً بعد
+                      // مرّة — يُقفل البابُ الذي منه تدخل الغلطة.
+                      const owns = (field: keyof Workflow) =>
+                        myFields === null || role === 'super_admin' || myFields.has(field as string);
+                      const noPermMsg = lang === 'ar'
+                        ? 'صلاحيّتك لا تسمح بتعديل هذا العمود'
+                        : 'Your role cannot edit this column';
                       const cellClick = (field: keyof Workflow) => {
                         if (isEditing) return (e: any) => e.stopPropagation();
-                        if (!SYSTEM_FIELDS.has(field as string) && !locked) return (e: any) => { e.stopPropagation(); beginEditField(wf, field as string); };
+                        if (!SYSTEM_FIELDS.has(field as string) && !locked && owns(field)) {
+                          return (e: any) => { e.stopPropagation(); beginEditField(wf, field as string); };
+                        }
                         return undefined;
                       };
                       const spanCls = (field: keyof Workflow, color: string) =>
-                        `${color} ${!isEditing && !SYSTEM_FIELDS.has(field as string) && !locked ? editableClass : ''}`;
+                        `${color} ${!isEditing && !SYSTEM_FIELDS.has(field as string) && !locked && owns(field) ? editableClass : ''}`;
                       // حقول كشف التخريج المسحوبة من النظام الخارجي غير قابلة للتعديل
                       const systemPulledFields = new Set(['fromLocation', 'toLocation', 'purchaseValue', 'sellingValue', 'branch', 'carOwner', 'carNumber', 'ownerType']);
                       const textCell = (field: keyof Workflow, color = 'text-slate-700') => {
-                        const isSystemPulled = systemPulledFields.has(field as string) && wf.reportNumber;
+                        const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field);
                         return (
                           <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
-                            title={isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
+                            title={!owns(field) ? noPermMsg : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
                             {isEditing && !isSystemPulled ? <input type="text" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber ? ' opacity-60' : ''}`}>{(wf as any)[field] || '-'}</span>}
                           </td>
                         );
@@ -1199,9 +1216,10 @@ export default function OperationsWorkflowPage() {
                       // من القوائم المرجعيّة، فتُضاف قيمةٌ جديدةٌ حين تلزم بلا
                       // أن يُفتح فيها بابُ الكتابة الحرّة ثانيةً.
                       const lookupCell = (field: keyof Workflow, type: string, color = 'text-slate-700') => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[140px]" onClick={cellClick(field)}>
-                          {isEditing ? (
-                            <ManagedSelect type={type} storeLabel noAdd
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[140px]" onClick={cellClick(field)}
+                          title={!owns(field) ? noPermMsg : undefined}>
+                          {isEditing && owns(field) ? (
+                            <ManagedSelect type={type} storeLabel noAdd className={ic}
                               value={(editData as any)[field] || ''}
                               onChange={(v) => setEditData((prev) => ({ ...prev, [field]: v }))}
                               placeholder={lang === 'ar' ? 'اختر الفرع' : 'Pick branch'} />
@@ -1209,10 +1227,10 @@ export default function OperationsWorkflowPage() {
                         </td>
                       );
                       const numCell = (field: keyof Workflow, color = 'text-slate-700') => {
-                        const isSystemPulled = systemPulledFields.has(field as string) && wf.reportNumber;
+                        const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field);
                         return (
                           <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
-                            title={isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
+                            title={!owns(field) ? noPermMsg : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
                             {isEditing && !isSystemPulled ? <input type="number" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value ? Number(e.target.value) : ''}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber ? ' opacity-60' : ''}`}>{formatMoney((wf as any)[field])}</span>}
                           </td>
                         );
@@ -1223,11 +1241,11 @@ export default function OperationsWorkflowPage() {
                       // فالحقل مقفل، ومكتوبٌ سببُ قفله لا مجرّد أنه مقفل.
                       const bondReceived = String(wf.applicationStatus || '').trim() === 'bond_received';
                       const dateCell = (field: keyof Workflow, color = 'text-slate-700') => {
-                        const gated = field === 'paymentDate' && !bondReceived;
+                        const gated = (field === 'paymentDate' && !bondReceived) || !owns(field);
                         return (
                           <td className="px-3 py-2.5 text-sm whitespace-nowrap"
-                            onClick={gated ? (e) => { e.stopPropagation(); notifyGate(); } : cellClick(field)}
-                            title={gated ? gateMsg : undefined}>
+                            onClick={gated ? (e) => { e.stopPropagation(); if (owns(field)) notifyGate(); } : cellClick(field)}
+                            title={!owns(field) ? noPermMsg : gated ? gateMsg : undefined}>
                             {isEditing && !gated
                               ? <input type="date" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] ? (editData as any)[field].slice(0, 10) : ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} />
                               : <span className={`${spanCls(field, color)}${gated ? ' opacity-60 cursor-not-allowed' : ''}`}>
@@ -1243,8 +1261,9 @@ export default function OperationsWorkflowPage() {
                       // من هذا — هذا هو المرجع.
                       const isCash = String(wf.paymentType || '') === 'cash';
                       const paymentTypeCell = () => (
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[120px]" onClick={cellClick('paymentType')}>
-                          {isEditing ? (
+                        <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[120px]" onClick={cellClick('paymentType')}
+                          title={!owns('paymentType') ? noPermMsg : undefined}>
+                          {isEditing && owns('paymentType') ? (
                             <select title={T.thPaymentType} className={ic}
                               value={(editData as any).paymentType || ''}
                               onChange={(e) => setEditData((prev) => ({ ...prev, paymentType: e.target.value as Workflow['paymentType'] }))}>

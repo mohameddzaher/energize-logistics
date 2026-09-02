@@ -107,6 +107,53 @@ const getOrCreateWallet = async (branchId, date) => {
 };
 
 // ─── RECALCULATE WALLET TOTALS ───────────────────────────────
+/**
+ * ما تكتبه العهدةُ على الكشف.
+ *
+ * ── مرّةً واحدةً لا مرّتين ──────────────────────────────────────────────────
+ * الموظّفُ يكتب رقمَ الكشف والمبلغَ في العهدة، فلا يُطلب منه أن يعيدهما في سير
+ * عمل التشغيل. والفرعُ فرعُه هو — مَن دفع من عهدة فرعٍ فذلك الفرعُ هو المسدِّد،
+ * ولا يُسأل عنه ثانيةً. والتاريخُ يومُ اليوميّة.
+ *
+ * ولا يُكتب فوق ما كُتب بيد: `$set` على الفارغ وحدَه. مَن صحّح مبلغًا أو فرعًا
+ * في سير عمل التشغيل قصدًا لا تعود العهدةُ فتدهسه.
+ */
+async function fillReportFromWallet({ workflow, amount, date, branchId }) {
+  const OperationsWorkflow = require('../models/OperationsWorkflow');
+  const patch = {};
+  if (!workflow.paymentAmount && amount > 0) patch.paymentAmount = amount;
+  if (!workflow.paymentDate) patch.paymentDate = new Date(date);
+
+  if (!workflow.payingBranch && branchId) {
+    // اسمُ الفرع لا معرّفُه: العمودُ نصٌّ تقرؤه الفلاترُ والتصديراتُ في عشرين
+    // ألفَ صفّ، ووضعُ معرّفٍ فيه يجعلها تقرأ رمزًا لا فرعًا.
+    try {
+      const Branch = require('../models/Branch');
+      const b = await Branch.findById(branchId).select('name').lean();
+      if (b?.name) patch.payingBranch = b.name;
+    } catch (e) { console.error('wallet→report branch lookup:', e.message); }
+  }
+
+  // ── ونوعُ الدفع يُملأ هنا كما يُملأ هناك ────────────────────────────────
+  // تسجيلُ السداد من العهدة تسجيلٌ للسداد. فلو مُلئ النوعُ في سير عمل التشغيل
+  // وحدَه لذهب كشفُ عميلٍ نقديٍّ سُدّد من العهدة إلى لا مكان — لا يصل التحصيلَ
+  // حتى يفتح أحدٌ الصفَّ ويختار بيده.
+  if (patch.paymentDate && !workflow.paymentType && workflow.username) {
+    try {
+      const CollectionsParty = require('../models/CollectionsParty');
+      const party = await CollectionsParty.findOne({
+        kind: 'customer', nameKey: CollectionsParty.fold(workflow.username),
+      }).select('paymentType').lean();
+      if (party?.paymentType) patch.paymentType = party.paymentType;
+    } catch (e) { console.error('wallet→report paymentType:', e.message); }
+  }
+
+  if (!Object.keys(patch).length) return null;
+  await OperationsWorkflow.updateOne({ _id: workflow._id }, { $set: patch });
+  try { emitToAll('workflow:updated', { _id: workflow._id, fromWallet: true }); } catch (_) {}
+  return patch;
+}
+
 const recalcWallet = async (walletId) => {
   const txns = await WalletTransaction.find({ wallet: walletId }).select('type amount').lean();
   let totalCollections = 0;
@@ -286,6 +333,16 @@ exports.addTransaction = async (req, res) => {
     let purchaseInvoiceAmountVal;
     let purchaseWorkflow = null;
     let purchaseMismatch = null;
+    // قيدُ استلام الفاتورة يحمل رقمَ كشفٍ كذلك، ويملأ منه ما تملؤه المشتريات.
+    const lookupNumber = type === 'tax_invoice'
+      ? (req.body.receivedDocNumber || '').trim()
+      : purchaseDeliveryStatementNumber;
+    if (type === 'tax_invoice' && lookupNumber) {
+      try {
+        const OperationsWorkflow = require('../models/OperationsWorkflow');
+        purchaseWorkflow = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(lookupNumber) });
+      } catch (e) { console.error('walletController silent catch:', e.message); }
+    }
     if (type === 'purchase' && purchaseDeliveryStatementNumber) {
       try {
         const OperationsWorkflow = require('../models/OperationsWorkflow');
@@ -358,15 +415,17 @@ exports.addTransaction = async (req, res) => {
     //
     // ولا يُكتب فوق ما كُتب بيد: مَن صحّح المبلغَ في سير عمل التشغيل قصدًا لا
     // تعود المحفظةُ فتدهسه. `$set` على الفارغ وحدَه.
-    if (type === 'purchase' && purchaseWorkflow) {
-      const patch = {};
-      if (!purchaseWorkflow.paymentAmount) patch.paymentAmount = amount;
-      if (!purchaseWorkflow.paymentDate) patch.paymentDate = new Date(txDate);
-      if (Object.keys(patch).length) {
-        const OperationsWorkflow = require('../models/OperationsWorkflow');
-        await OperationsWorkflow.updateOne({ _id: purchaseWorkflow._id }, { $set: patch });
-        try { emitToAll('workflow:updated', { _id: purchaseWorkflow._id, fromWallet: true }); } catch (_) {}
-      }
+    if ((type === 'purchase' || type === 'tax_invoice') && purchaseWorkflow) {
+      await fillReportFromWallet({
+        workflow: purchaseWorkflow,
+        // ── المبلغُ من حيث يُعرَف ────────────────────────────────────────────
+        // في المشتريات هو ما دفعه الموظّفُ بيده. وفي قيد استلام الفاتورة لا
+        // مبلغَ يُكتب أصلًا، فيُؤخذ سعرُ الشراء المسجَّل على الكشف — وهو
+        // المطلوبُ نفسُه: مبلغُ السداد سعرُ الشراء الحقيقيّ.
+        amount: type === 'purchase' ? amount : (Number(purchaseWorkflow.purchaseValue) || 0),
+        date: txDate,
+        branchId: req.user.branch,
+      });
     }
 
     // Update vendor total if expense paid to vendor

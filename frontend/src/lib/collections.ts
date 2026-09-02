@@ -65,6 +65,8 @@ export interface CollectionsParty {
   address?: string;
   city?: string;
   partyType?: string;
+  // نوعُ دفع العميل — منه يُملأ «نوع الدفع» على كشوفه من نفسِه.
+  paymentType?: '' | 'cash' | 'tax';
   paymentTerms?: string;
   creditLimit?: number;
   status?: string;
@@ -114,3 +116,7 @@ export const money = (n?: number | null) =>
   (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 export const dt = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
+
+/** اسمُ نوع الدفع كما يُقرأ. */
+export const paymentTypeLabel = (t: string | undefined, ar: boolean) =>
+  t === 'cash' ? (ar ? 'كاش' : 'Cash') : t === 'tax' ? (ar ? 'ضريبي' : 'Tax') : '—';

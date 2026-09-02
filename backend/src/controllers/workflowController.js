@@ -75,10 +75,17 @@ const ROLE_FIELD_ACCESS = {
   operations_manager: OPS_FIELDS,
   operations_staff: OPS_FIELDS,
   // الإدارةُ العليا فوق المحاسبة لا دونَها.
-  admin: MONEY_FIELDS,
+  admin: ALL_FIELDS,
   employee: FIELD_GROUPS.collections,
-  finance_manager: MONEY_FIELDS,
-  accountant: MONEY_FIELDS,
+  // ── والمحاسبةُ تسجّل السدادَ كما تسجّل الفاتورة ──────────────────────────
+  // كانت تملك مجموعةَ الفاتورة وحدَها، فيكتب المحاسبُ تاريخَ السداد ويضغط
+  // «صح» فيُردُّ ٤٠٣ ولا يُحفظ شيء — وهو عملُه اليوميّ لا استثناء.
+  //
+  // وهي الغلطةُ نفسُها التي وقعت مع موظّف العمليات من قبل: قائمةٌ تُكتب دورًا
+  // دورًا فيُنسى فيها ما يعمله صاحبُها كلَّ يوم. ولذلك لم يعد الأمرُ قائمةً
+  // وحدَها — الشاشةُ صارت تقرأ الخريطةَ نفسَها فلا تعرض خانةً لن تُحفَظ.
+  finance_manager: ALL_FIELDS,
+  accountant: ALL_FIELDS,
   // ── وقسمُ التحصيل يكتب الكشفَ كلَّه ───────────────────────────────────────
   // أعمدةُ المال وحدَها لا تكفيه: مَن يلاحق فاتورةً يصحّح معها اسمَ العميل
   // ورقمَ السند والفرعَ المسدِّد ووجهةَ الكشف النهائيّة — وكلُّها خارجَ
@@ -160,6 +167,35 @@ function deriveInvoiceTotals(patch, current) {
   const vat = Math.round(net * VAT_RATE * 100) / 100;
   patch.tax = vat;
   patch.totalInvoice = Math.round((net + vat) * 100) / 100;
+  return patch;
+}
+
+/**
+ * نوعُ الدفع يُملأ من ملفّ العميل حين يُسجَّل السداد.
+ *
+ * ── لماذا لا يُختار في كلّ كشف ─────────────────────────────────────────────
+ * النوعُ صفةُ العميل لا صفةُ الشحنة: عميلُ الكاش يدفع في يده دائمًا، والضريبيُّ
+ * يُفوتَر دائمًا. فاختيارُه في كلّ كشفٍ على حدة عملٌ مكرَّرٌ يُنسى ويُخطأ —
+ * ويكفي خطأٌ واحدٌ ليذهب كشفُ عميلٍ ضريبيّ إلى فواتير الكاش.
+ *
+ * فيُقرأ من سجلّ الطرف لحظةَ تسجيل السداد، وهي اللحظةُ التي يصير فيها الكشفُ
+ * شغلًا للتحصيل. ولا يُكتب فوق اختيارٍ صريح: مَن اختار بيده يُحترَم اختيارُه.
+ */
+async function fillPaymentTypeFromCustomer(patch, current) {
+  const settingPayment = Object.prototype.hasOwnProperty.call(patch, 'paymentDate') && patch.paymentDate;
+  const alreadyTyped = patch.paymentType || current.paymentType;
+  const customer = patch.username || current.username;
+  if (!settingPayment || alreadyTyped || !customer) return patch;
+  try {
+    const CollectionsParty = require('../models/CollectionsParty');
+    const party = await CollectionsParty.findOne({
+      kind: 'customer', nameKey: CollectionsParty.fold(customer),
+    }).select('paymentType').lean();
+    if (party?.paymentType) patch.paymentType = party.paymentType;
+  } catch (e) {
+    // تعذُّرُ القراءة لا يمنع تسجيلَ السداد: النوعُ يُختار بيدٍ بعده.
+    console.error('paymentType from customer:', e.message);
+  }
   return patch;
 }
 
@@ -743,6 +779,9 @@ exports.updateWorkflow = async (req, res) => {
     // تُضيف الأعمدةَ المقفولة بقيمها الصفريّة، فلو قيس عليها بعدُ لبدا الطلبُ
     // كأنّه حمل حقولًا مسموحة ولم يُرفض شيء.
     const sentKeys = Object.keys(filteredBody);
+    // نوعُ الدفع يُملأ من ملفّ العميل قبل تطبيق القواعد، فيُقفل الكشفُ النقديُّ
+    // في الحفظة نفسِها التي سُجّل فيها سدادُه — لا في تعديلٍ ثانٍ.
+    await fillPaymentTypeFromCustomer(filteredBody, workflow.toObject());
     const billing = applyBillingRules(filteredBody, workflow.toObject());
     if (billing.blocked.length && sentKeys.every((k) => billing.blocked.includes(k))) {
       return res.status(400).json({
@@ -1012,7 +1051,7 @@ exports.bulkUpdate = async (req, res) => {
 
     const wantsPayment = keys.includes('paymentDate') && patch.paymentDate && String(patch.paymentDate).trim();
     const rows = await OperationsWorkflow.find({ _id: { $in: ids } })
-      .select('reportNumber applicationStatus paymentType lockedBy lockedByName lockedAt').lean();
+      .select('reportNumber applicationStatus paymentType username lockedBy lockedByName lockedAt').lean();
 
     // ── والقواعدُ تُطبَّق صفًّا صفًّا ──────────────────────────────────────
     // نوعُ الدفع يختلف من كشفٍ لآخر، فالتعديلُ الواحد لا ينتج تعديلًا واحدًا:
@@ -1030,7 +1069,8 @@ exports.bulkUpdate = async (req, res) => {
         skipped.push({ reportNumber: r.reportNumber, reason: 'لم يُستلم السند بعد' });
         continue;
       }
-      const own = applyBillingRules({ ...patch }, r);
+      const rowPatch = await fillPaymentTypeFromCustomer({ ...patch }, r);
+      const own = applyBillingRules(rowPatch, r);
       if (own.blocked.length && !Object.keys(own.patch).length) {
         skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — لا فاتورة له' });
         continue;

@@ -23,7 +23,10 @@ const SECTIONS = [
   {
     key: 'Operations',
     apiPrefixes: ['/api/wallet'],
-    defaultRoles: ['admin', 'it_manager', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff'],
+    // المحاسبةُ والتحصيل معهم: العهدةُ قيدٌ ماليٌّ يُراجَع ويُقفَل، وحارسُ
+    // القسم يقف قبل قائمة المسار — فبقاؤهم خارجَه يردّهم ٤٠٣ ولو فُتحت لهم
+    // النقطةُ نفسُها.
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff', 'finance_manager', 'accountant', 'collections_manager', 'collections_staff'],
   },
   {
     // قسمُ التحصيل — العملاءُ الذين نحصّل منهم والموردون الذين نسدّد لهم.

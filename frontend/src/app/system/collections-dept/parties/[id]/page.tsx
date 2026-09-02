@@ -11,7 +11,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
-import { kindWords, money, dt, type CollectionsParty } from '@/lib/collections';
+import { kindWords, money, dt, paymentTypeLabel, type CollectionsParty } from '@/lib/collections';
 import { Spinner, PageHeader, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import { useAuth } from '@/context/AuthContext';
 import { canEditCollections } from '@/lib/collections';
@@ -222,6 +222,8 @@ export default function PartyProfilePage() {
           <div>
             <p className="text-[13px] font-bold text-slate-900 mb-2">{t('شروط التحصيل', 'Collection terms')}</p>
             <div className="space-y-1.5">
+              {/* نوعُ الدفع: منه يُملأ العمودُ على كشوفه لحظةَ تسجيل السداد. */}
+              {kind === 'customer' && <Row label={t('نوع الدفع', 'Payment type')} value={paymentTypeLabel(p.paymentType, ar)} />}
               <Row label={t('شروط السداد', 'Payment terms')} value={p.paymentTerms} />
               <Row label={t('حد الائتمان', 'Credit limit')} value={p.creditLimit ? money(p.creditLimit) : ''} />
               <Row label={t('آخر كشف', 'Last report')} value={p.lastReportAt ? dt(p.lastReportAt) : ''} />

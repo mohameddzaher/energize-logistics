@@ -11,7 +11,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
-  canEditCollections, receivablesOnly, kindWords, money, dt,
+  canEditCollections, receivablesOnly, kindWords, money, dt, paymentTypeLabel,
   type PartyKind, type CollectionsParty,
 } from '@/lib/collections';
 import {
@@ -146,6 +146,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     { header: t('المدينة', 'City'), key: 'city', width: 14 },
     { header: t('شروط السداد', 'Payment terms'), key: 'paymentTerms', width: 14 },
     { header: t('الحالة', 'Status'), key: 'status', width: 14 },
+    ...(kind === 'customer' ? [{ header: t('نوع الدفع', 'Payment type'), key: 'paymentType', width: 14, transform: (v: any) => paymentTypeLabel(v, ar) }] : []),
     // الملفُّ لا يخرج بما لا يُعرَض على الشاشة.
     ...(hideMoney ? [] : [
       { header: t('كشوف', 'Reports'), key: 'reports', width: 10 },
@@ -283,6 +284,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
             <thead className="table-head">
               <tr>
                 {[t('الاسم', 'Name'), t('التواصل', 'Contact'), t('المدينة', 'City'), t('الحالة', 'Status'),
+                  ...(kind === 'customer' ? [t('نوع الدفع', 'Payment type')] : []),
                   ...(hideMoney ? [] : [t('كشوف', 'Reports'), W.totalLabel, W.settledLabel, W.dueLabel]),
                   t('آخر كشف', 'Last report'), ''].map((h, i) => (
                   <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
@@ -291,9 +293,9 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={hideMoney ? 6 : 10} className="px-4 py-12"><Spinner /></td></tr>
+                <tr><td colSpan={(hideMoney ? 6 : 10) + (kind === "customer" ? 1 : 0)} className="px-4 py-12"><Spinner /></td></tr>
               ) : shown.length === 0 ? (
-                <tr><td colSpan={hideMoney ? 6 : 10} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
+                <tr><td colSpan={(hideMoney ? 6 : 10) + (kind === "customer" ? 1 : 0)} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
               ) : shown.map((p) => (
                 <tr
                   key={p._id}
@@ -326,6 +328,18 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
                   </td>
                   <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{p.city || '—'}</td>
                   <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{p.status || '—'}</td>
+                  {/* نوعُ الدفع: منه يُملأ العمودُ على كشوفه، فيُقرأ هنا قبل
+                      أن يُسأل عنه في كلّ كشف. */}
+                  {kind === 'customer' && (
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {p.paymentType ? (
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                          p.paymentType === 'cash' ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'}`}>
+                          {paymentTypeLabel(p.paymentType, ar)}
+                        </span>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
+                  )}
                   {!hideMoney && (
                     <td className="px-3 py-2.5 tabular-nums">
                       {money(p.reports)}
@@ -397,6 +411,20 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
               <ManagedSelect type="collections_party_type" value={editing?.partyType || ''}
                 onChange={(v) => setEditing((p) => ({ ...p, partyType: v }))} storeLabel placeholder={t('— اختر —', '— select —')} />
             </Field>
+            {/* ── نوعُ الدفع صفةُ العميل ────────────────────────────────────
+                يُكتب هنا مرّةً فيُملأ على كشوفه كلِّها لحظةَ تسجيل السداد —
+                بدل أن يُختار في كلّ كشفٍ فيُنسى أو يُخطأ، وخطأٌ واحدٌ يُرسل
+                كشفَ عميلٍ ضريبيّ إلى فواتير الكاش. */}
+            {kind === 'customer' && (
+              <Field label={t('نوع الدفع', 'Payment type')}>
+                <Select value={editing?.paymentType || ''}
+                  onChange={(e) => setEditing((p) => ({ ...p, paymentType: e.target.value as any }))}>
+                  <option value="">{t('— غير محدَّد —', '— not set —')}</option>
+                  <option value="cash">{t('كاش', 'Cash')}</option>
+                  <option value="tax">{t('ضريبي', 'Tax')}</option>
+                </Select>
+              </Field>
+            )}
             <Field label={t('المدينة', 'City')}>
               <ManagedSelect type="collections_city" value={editing?.city || ''}
                 onChange={(v) => setEditing((p) => ({ ...p, city: v }))} storeLabel placeholder={t('— اختر —', '— select —')} />

@@ -6,8 +6,16 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const validate = require('../middleware/validate');
 
-const walletRoles = ['super_admin', 'admin', 'operations_manager', 'operations_staff'];
-const walletReadRoles = [...walletRoles, 'moderator'];
+// ── ومَن يقرأ العهدةَ ويكتب فيها ──────────────────────────────────────────
+// المحاسبةُ تقرأ عهدةَ الفروع وتكتب فيها: التحصيلُ والمصروفُ والمشترياتُ قيودٌ
+// ماليّةٌ تُراجَع وتُقفَل. وكانت خارجَ القائمة، فيفتح المحاسبُ الصفحةَ فيُردّ
+// ٤٠٣ — ولا يُقال له لماذا.
+const walletRoles = [
+  'super_admin', 'admin', 'it_manager', 'it_specialist',
+  'operations_manager', 'operations_staff',
+  'finance_manager', 'accountant',
+];
+const walletReadRoles = [...walletRoles, 'moderator', 'collections_manager', 'collections_staff'];
 const managerRoles = ['super_admin', 'admin', 'operations_manager'];
 
 router.use(authenticate);

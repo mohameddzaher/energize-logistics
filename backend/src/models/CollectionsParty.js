@@ -57,6 +57,12 @@ const collectionsPartySchema = new mongoose.Schema({
   city: { type: String, trim: true, default: '' },
   partyType: { type: String, trim: true, default: '' },
 
+  // ── نوعُ دفع العميل ───────────────────────────────────────────────────────
+  // صفةٌ ثابتةٌ فيه لا في الكشف: عميلُ الكاش يدفع في يده دائمًا، والضريبيُّ
+  // يُفوتَر دائمًا. فتُقرأ من ملفّه ويُملأ بها «نوع الدفع» على كشوفه من نفسِه
+  // — بدل أن تُختار في كلّ كشفٍ على حدة فتُنسى أو تُخطأ.
+  paymentType: { type: String, enum: ['', 'cash', 'tax'], default: '' },
+
   // ── شروطُ التحصيل ────────────────────────────────────────────────────────
   paymentTerms: { type: String, trim: true, default: '' },
   creditLimit: { type: Number, default: 0 },

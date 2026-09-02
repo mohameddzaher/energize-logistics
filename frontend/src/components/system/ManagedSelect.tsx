@@ -46,6 +46,7 @@ export default function ManagedSelect({
   disabled,
   storeLabel,
   noAdd,
+  className,
 }: {
   type: string;
   value: string;
@@ -72,6 +73,14 @@ export default function ManagedSelect({
    * عربيًّا، لكنّه لا يأتي إلّا من القائمة — فلا تصير «مرسيدس» ثلاثَ ماركات.
    */
   storeLabel?: boolean;
+  /**
+   * مقاسُ الخانة حين تختلف عن الافتراضيّ.
+   *
+   * الافتراضيُّ مقاسُ الاستمارات؛ وداخلَ صفٍّ في جدولٍ يبدو ضخمًا بجانب خاناتٍ
+   * أصغرَ منه في الصفّ نفسِه — فيختلف ارتفاعُ الخلايا ويتقطّع الصفّ. فيُمرَّر
+   * مقاسُ الجدول من موضعه، ولا يُنسَخ المكوّنُ نسخةً ثانيةً لأجل المقاس.
+   */
+  className?: string;
 }) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
@@ -129,7 +138,7 @@ export default function ManagedSelect({
         onChange={(e) => onChange(e.target.value)}
         required={required}
         disabled={disabled}
-        className={inputCls}
+        className={className || inputCls}
       >
         <option value="">{placeholder || (ar ? 'اختر…' : 'Select…')}</option>
         {value && !hasValue && <option value={value}>{value}</option>}

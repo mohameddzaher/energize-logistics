@@ -56,8 +56,17 @@ async function call(method, path, ck, body) {
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const Lookup = require('../models/Lookup');
 
-  const MANAGER = 'hatim.mohamed@energize-logistics.com';
-  const STAFF = 'collections.officer@energize-logistics.com';
+  // ── ولا يعتمد الفحصُ على حساب إنسان ────────────────────────────────────
+  // كان يدخل بحسابٍ يعمل به موظّفٌ حقيقيّ وكلمةِ مروره. فلمّا غيّرها — وهو
+  // حقُّه — سقط الفحصُ كلُّه بسببٍ لا علاقةَ له بما يفحص، فقُرئ كأنّ القسمَ
+  // تعطّل. وأسوأُ منه أنّ محاولاتِ الدخول تتكرّر على حسابٍ يعمل به إنسان.
+  await User.deleteMany({ email: /^zz-cs-/ });
+  const MANAGER = 'zz-cs-mgr@example.invalid';
+  const STAFF = 'zz-cs-staff@example.invalid';
+  await User.create([
+    { email: MANAGER, password: 'Passenergize1!', firstName: 'م', lastName: 'ت', role: 'collections_manager' },
+    { email: STAFF, password: 'Passenergize1!', firstName: 'م', lastName: 'ف', role: 'collections_staff' },
+  ]);
 
   // ── ١ · الحسابان ───────────────────────────────────────────────────────
   head('الحسابان');
@@ -337,6 +346,8 @@ async function call(method, path, ck, body) {
   } finally {
     await User.deleteMany({ email: { $regex: '^zz-money' } });
   }
+  // وحسابا الفحص يُمحيان كما يُمحى ما أنشأه.
+  await User.deleteMany({ email: /^zz-cs-/ });
 
   console.log(`\n${pass} passed, ${fail} failed`);
   await mongoose.disconnect();

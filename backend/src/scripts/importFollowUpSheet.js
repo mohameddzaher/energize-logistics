@@ -92,12 +92,24 @@ const readText = (v) => {
   if (v == null) return null;
   if (v instanceof Date) return null;               // تاريخٌ في خانةٍ نصّيّة — يُترك
   const s = typeof v === 'number' ? String(v) : String(v).trim();
-  return s === '' ? null : s;
+  if (s === '') return null;
+  // ── ولا يُنقَل النائبُ عن الفراغ من ورقةٍ إلى قاعدة ────────────────────
+  // «no inv» في الورقة تعني «لا فاتورة»، لا أنّها قيمةٌ تُكتب. ولمّا صار
+  // النائبُ يُقرأ فراغًا عندنا، كادت الورقةُ تكتبه فوق ألفٍ وتسعمئة كشفٍ
+  // يحملونه أصلًا — كتابةٌ لا تغيّر شيئًا وتُحسب ألفًا وتسعمئة تعديل.
+  return PLACEHOLDER.test(s) ? null : s;
 };
 const READ = { text: readText, num: readNum, date: readDate };
 
-// الفارغُ عندنا: لا شيء، أو نصٌّ فارغ، أو صفرٌ في خانةِ رقم.
-const isEmpty = (v) => v == null || v === '' || (typeof v === 'string' && v.trim() === '');
+// ── والنائبُ عن الفراغ فراغ ───────────────────────────────────────────────
+// «no inv» و«بدون» و«—» ليست أرقامَ فواتير — هي طريقةُ الموظّف في قول «لا
+// فاتورةَ لهذا الكشف». وكانت تُعَدّ قيمةً مكتوبةً فتمنع الشيتَ من كتابة الرقم
+// الحقيقيّ فوقها: كشفان يحملان «no inv» والشيتُ يعرف لهما الفاتورة ١٠٩١٨.
+//
+// فالنائبُ عن الفراغ يُعامَل فراغًا: يُملأ ولا يُحسب خلافًا.
+const PLACEHOLDER = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|بدون(?:\s*فاتورة)?|لا\s*يوجد|لا\s*توجد|غير\s*مفوتر(?:ة)?)\s*$/i;
+const isEmpty = (v) => v == null || v === ''
+  || (typeof v === 'string' && (v.trim() === '' || PLACEHOLDER.test(v)));
 const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
 
 (async () => {

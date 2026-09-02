@@ -44,12 +44,20 @@ const call = async (method, path, ck, body) => {
   const User = require('../models/User');
   const OperationsWorkflow = require('../models/OperationsWorkflow');
 
+  // ── ولا يعتمد الفحصُ على حساب إنسان ────────────────────────────────────
+  // كان يدخل بحسابٍ يعمل به موظّفٌ حقيقيّ وكلمةِ مروره. فلمّا غيّرها — وهو
+  // حقُّه — سقط الفحصُ كلُّه بسببٍ لا علاقةَ له بما يفحص، فقُرئ كأنّ القسمَ
+  // تعطّل. وأسوأُ منه أنّ محاولاتِ الدخول تتكرّر على حسابٍ يعمل به إنسان.
   const su = await User.findOne({ role: 'super_admin', isActive: true }).select('email').lean();
-  const admin = await login('hatim.mohamed@energize-logistics.com', 'Passenergize1!');
-  ok('دخول مدير التحصيل', admin.status === 200);
+  await User.deleteMany({ email: /^zz-bill/ });
+  const mgrUser = await User.create({
+    email: 'zz-bill-mgr@example.invalid', password: 'Passenergize1!',
+    firstName: 'م', lastName: 'ت', role: 'collections_manager',
+  });
+  const admin = await login(mgrUser.email, 'Passenergize1!');
+  ok('دخول مدير التحصيل', admin.status === 200, `${admin.status}`);
 
   // السوبر أدمن يملك كلَّ الحقول — به تُنشأ كشوفُ الفحص.
-  await User.deleteMany({ email: /^zz-bill/ });
   // المحفظةُ تُقيَّد على فرع، فحسابُ الفحص يأخذ فرعًا حقيقيًّا وإلّا رُدَّت
   // حركاتُه بـ«لا يوجد فرع» — وهو شرطٌ صحيحٌ لا عيبٌ يُلتَفّ عليه.
   const Branch = require('../models/Branch');
@@ -200,7 +208,14 @@ const call = async (method, path, ck, body) => {
     const dbT = await OperationsWorkflow.findById(tid).select('paymentAmount paymentDate').lean();
     ok('ومبلغُها يصل «مبلغ السداد»', dbT.paymentAmount === 1000, `${dbT.paymentAmount}`);
     ok('وتاريخُها يصل «تاريخ السداد»', !!dbT.paymentDate);
-    ok('وبلا علامةٍ ما دام مطابقًا', buy.json?.transaction?.isFlagged !== true);
+    // ── والمقصودُ علامةُ فرق السعر وحدَها ──────────────────────────────────
+    // كان الشرطُ «بلا أيّ علامة»، والعهدةُ تعلّم أشياءَ أخرى صحيحة: مبلغًا
+    // كبيرًا، أو قيدًا خارجَ ساعات العمل. فكان الفحصُ ينجح نهارًا ويسقط ليلًا —
+    // وهو يقيس الساعةَ لا الكود. فيُسأل عمّا يعنيه: هل عُلِّم فرقُ سعرٍ وهو
+    // مطابق؟
+    ok('وبلا علامةِ فرقِ سعرٍ ما دام مطابقًا',
+      !/سعرُ الشراء مختلف/.test(buy.json?.transaction?.flagReason || ''),
+      buy.json?.transaction?.flagReason || '(بلا علامات)');
     if (buy.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${buy.json.transaction._id}`, op.ck);
 
     const target2 = await mk({ paymentType: 'tax', purchaseValue: 1000 });

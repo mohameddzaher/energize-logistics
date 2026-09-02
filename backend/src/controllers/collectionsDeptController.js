@@ -732,6 +732,34 @@ exports._internals = { statsByKind, FIELD_OF, VALUE_OF, CLOSED_BY, NOT_CANCELLED
 // «فوق ١٥ يومًا» تعني من خمسةَ عشرَ إلى ثلاثين، لا كلَّ ما تجاوز الخمسةَ عشر.
 // الشرائحُ المتداخلة تجعل الفاتورةَ الواحدة تُعدّ في أربعة أرقام، فلا يُعرف
 // كم فاتورةً في كلّ عمرٍ حقًّا.
+/**
+ * ── ورقمٌ يعني «لا فاتورة» ليس رقمَ فاتورة ─────────────────────────────────
+ *
+ * في البيانات ألفٌ وتسعُمئةٍ وثلاثةٌ وتسعون كشفًا مكتوبٌ في خانة فاتورتها
+ * «no inv» — وهي عبارةٌ تقول إنّ الكشفَ لم يُفوتَر بعد. فلو عُدَّت رقمَ فاتورةٍ
+ * لظهرت في صدر الصفحة «فاتورةٌ» فيها ألفان من الكشوف وقيمةٌ مجمَّعة، وهي لا
+ * وجودَ لها — والفواتيرُ الحقيقيّةُ أرقامٌ من أربع خاناتٍ تحمل الواحدةُ نحوَ
+ * ثمانيةَ عشرَ كشفًا.
+ *
+ * غيابُ القيمة ليس قيمة. فما يعني «لا فاتورة» يُقرأ كما لو كانت الخانةُ فارغة.
+ */
+const NO_INVOICE_TOKENS = [
+  'no inv', 'no invoice', 'noinv', 'no-inv', 'none', 'n/a', 'na', '-', '—', '0',
+  'بدون', 'بدون فاتورة', 'لا يوجد', 'لا توجد', 'غير مفوتر', 'غير مفوترة',
+];
+/**
+ * شرطُ «رقمُ فاتورةٍ حقيقيّ».
+ *
+ * والمطابقةُ لا تبالي بحالة الحرف: كُتبت في البيانات «no inv» و«no Inv»، وعدُّ
+ * الصيغ يدًا يُسقط ما لم يُتخيَّل منها — وقد أسقط الثانيةَ فعلًا حتى ظهرت في
+ * الصفحة. فتُطابَق بتعبيرٍ واحدٍ يقبل الحالتين والفراغَ الزائد.
+ */
+const NO_INVOICE_RX = new RegExp(
+  `^\\s*(?:${NO_INVOICE_TOKENS.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\s*$`,
+  'i',
+);
+const REAL_INVOICE = { invoiceNumber: { $nin: [null, ''], $not: NO_INVOICE_RX } };
+
 const AGE_BANDS = {
   '0_15': [0, 15],
   '15_30': [15, 30],
@@ -861,7 +889,7 @@ exports.taxInvoices = async (req, res) => {
     const { [`invoiceDate`]: ageCond, ...rowFilter } = invoiceFilters(req.query, { ageField: 'invoiceDate' });
     const filter = {
       ...rowFilter,
-      invoiceNumber: { $nin: [null, ''] },
+      ...REAL_INVOICE,
       paymentType: { $ne: 'cash' },
     };
 
@@ -1034,7 +1062,7 @@ exports.invoiceFilterOptions = async (req, res) => {
     const kind = req.query.kind === 'cash' ? 'cash' : 'tax';
     const base = kind === 'cash'
       ? { paymentType: 'cash', ...NOT_CANCELLED }
-      : { invoiceNumber: { $nin: [null, ''] }, paymentType: { $ne: 'cash' }, ...NOT_CANCELLED };
+      : { ...REAL_INVOICE, paymentType: { $ne: 'cash' }, ...NOT_CANCELLED };
     const [customers, branches] = await Promise.all([
       OperationsWorkflow.distinct('username', { ...base, username: { $nin: [null, ''] } }),
       OperationsWorkflow.distinct('payingBranch', { ...base, payingBranch: { $nin: [null, ''] } }),
@@ -1046,3 +1074,4 @@ exports.invoiceFilterOptions = async (req, res) => {
 };
 
 exports.AGE_BANDS = AGE_BANDS;
+exports.NO_INVOICE_TOKENS = NO_INVOICE_TOKENS;

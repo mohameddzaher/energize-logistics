@@ -338,10 +338,15 @@ export default function OperationsWorkflowPage() {
     } catch (err: any) {
       console.error(err);
     } finally {
-      if (guard.isCurrent(mySeq)) {
-        setLoading(false);
-        setSearching(false);
-      }
+      // ── ورايةُ الانشغال تُطفأ دائمًا ────────────────────────────────────
+      // كانت مربوطةً بحارس «الأحدث يفوز»، وهما أمران مختلفان: الحارسُ يقرّر
+      // **بياناتِ مَن** تُعرض، والرايةُ تقول إنّ الطلبَ الذي أشعلها انتهى.
+      //
+      // و`workflow:updated` يُبَثّ إلى كلّ من يفتح الصفحة عند أيّ تعديل، فمع
+      // فريقٍ يعمل عليها معًا لا يكاد طلبٌ ينتهي إلّا وقد سبقه أحدث — فلا
+      // يتحقّق `isCurrent` أبدًا، وتبقى الرايةُ مشتعلةً إلى الأبد.
+      if (!isBackground) setSearching(false);
+      if (guard.isCurrent(mySeq)) setLoading(false);
       initialLoadDone.current = true;
     }
   }, [buildParams, page, guard]);
@@ -1021,13 +1026,16 @@ export default function OperationsWorkflowPage() {
       <div className="relative bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         {/* شريطُ التحديث: يجري على حافّة الجدول ولا يُفرغ ما تحته. */}
         {searching && <div className="refresh-bar" aria-hidden="true" />}
-        {/* والمعروضُ يبقى مقروءًا وباهتًا قليلًا حتى يصل الجديد — إفراغُه يُفقد
-            السياقَ ويجعل الصفحةَ تقفز. ويُمنع الضغطُ عليه فلا يُفتح صفٌّ يوشك
-            أن يُستبدَل. */}
-        <div
-          aria-busy={searching}
-          className={`overflow-x-auto transition-opacity duration-200 ${searching ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}
-        >
+        {/* ── والعملُ لا يُمنع في أثناء التحديث ──────────────────────────────
+            كُتب هنا أوّلًا `pointer-events-none` مع تعتيمٍ إلى النصف، ليُمنع
+            فتحُ صفٍّ يوشك أن يُستبدَل. فعلقت الرايةُ مشتعلةً (انظر أعلاه)
+            وأُقفل الجدولُ في وجه القسم كلِّه.
+            
+            والدرسُ أكبرُ من العطل: مؤشّرُ حالةٍ لا يجوز أن يسحب القدرةَ على
+            العمل. أسوأُ ما يقع حين يُضغط صفٌّ أثناء التحديث أن يُعاد رسمُه —
+            وذلك أهونُ ألفَ مرّةٍ من شاشةٍ لا تستجيب. فالشريطُ وحدَه يقول
+            «جارٍ»، والجدولُ يبقى حيًّا. */}
+        <div aria-busy={searching} className="overflow-x-auto">
           <table className="w-full min-w-[3200px]">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">

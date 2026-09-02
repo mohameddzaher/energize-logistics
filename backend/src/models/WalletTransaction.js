@@ -10,10 +10,25 @@ const walletTransactionSchema = new mongoose.Schema(
     date: { type: String, required: true }, // YYYY-MM-DD
     type: {
       type: String,
-      enum: ['collection', 'expense', 'purchase'],
+      // ── و«فاتورة ضريبيّة» ليست حركةَ مال ──────────────────────────────
+      // تُقيَّد ليُعرَف أنّ الموظّف استلم فاتورةً أو كشفًا بيده، لا لأنّ مالًا
+      // دخل أو خرج. فهي **خارج** رصيد المحفظة تمامًا: تُقرأ ولا تُحسَب.
+      enum: ['collection', 'expense', 'purchase', 'tax_invoice'],
       required: true,
     },
-    amount: { type: Number, required: true, min: 0.01 },
+    // ── والصفرُ مسموحٌ لقيد الاستلام وحدَه ────────────────────────────────
+    // حركةُ مالٍ بصفرٍ لا معنى لها، فالحدُّ الأدنى يبقى على الثلاثة الأصليّة.
+    // أمّا «فاتورة ضريبيّة» فقيدُ استلامٍ لا حركةُ مال، وأكثرُ ما يُستلَم يصل
+    // بلا قيمةٍ معروفةٍ بعد — فاشتراطُ مبلغٍ عليه يمنع تسجيلَ الواقع.
+    amount: {
+      type: Number,
+      required: true,
+      min: [0, 'المبلغ لا يكون سالبًا'],
+      validate: {
+        validator(v) { return this.type === 'tax_invoice' ? v >= 0 : v >= 0.01; },
+        message: 'المبلغ يجب أن يكون أكبر من صفر',
+      },
+    },
     // Collection fields
     collectionSource: { type: String, enum: ['client', 'company'], default: 'client' },
     // ── الطرفُ من سجلّ التحصيل ────────────────────────────────────────────
@@ -43,6 +58,10 @@ const walletTransactionSchema = new mongoose.Schema(
     mismatchReason: { type: String, enum: ['daily', 'violation', 'other', null], default: null },
     mismatchNote: { type: String, trim: true },
     // Common
+    // ما استُلم في قيد «فاتورة ضريبيّة»: رقمُ فاتورةٍ أو رقمُ كشف — وتُقرأ
+    // تفاصيلُه من سير عمل التشغيل عند العرض، فلا تُنسَخ هنا وتشيخ.
+    receivedDocType: { type: String, enum: ['', 'invoice', 'report'], default: '' },
+    receivedDocNumber: { type: String, trim: true, default: '' },
     reference: { type: String, trim: true },
     notes: { type: String, trim: true },
     // Risk flags

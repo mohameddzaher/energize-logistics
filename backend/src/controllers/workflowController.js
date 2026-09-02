@@ -25,8 +25,8 @@ const FIELD_GROUPS = {
     'operationsReview',
   ],
   manual_moderator: [
-    'paymentDate', 'payingBranch', 'finalReportDestination',
-    'documentNumber', 'sendingDate', 'deliveryDate',
+    'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType',
+    'finalReportDestination', 'documentNumber', 'sendingDate', 'deliveryDate',
   ],
   // ── ومراجعةُ الحسابات مجموعةٌ بذاتها ────────────────────────────────────
   // كانت داخل `manual_moderator` فورثها كلُّ من يسجّل سدادًا. وهي إقرارُ
@@ -37,7 +37,7 @@ const FIELD_GROUPS = {
   ],
   collections: [
     'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
-    'invoiceDate', 'invoiceNotes', 'collectionDate',
+    'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
   ],
 };
 
@@ -117,6 +117,75 @@ const stripMoneyFor = (role, docs) => {
   if (canSeeMoney(role)) return docs;
   return Array.isArray(docs) ? docs.map(stripMoney) : stripMoney(docs);
 };
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  قواعدُ الفوترة — تُطبَّق على الخادم، لا على الشاشة وحدَها
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * الشاشةُ تُعين المستخدمَ على الصواب؛ والخادمُ هو الذي يضمنه. وقاعدةٌ مكتوبةٌ
+ * في الواجهة وحدَها تُلتَفّ عليها من أيّ نافذة: تحديثٌ جماعيّ، أو استيراد، أو
+ * نداءٌ مباشر.
+ */
+
+// عميلُ الكاش لا يُفوتَر: يدفع في يده، فلا سندَ ولا فاتورةَ ولا ضريبةَ ولا
+// تاريخَ إرسالٍ وتسليم. تُصفَّر هذه الأعمدةُ وتُقفَل، ويبقى مفتوحًا ما يخصّ
+// التحصيلَ نفسَه: مراجعةُ الحسابات، ومبلغُ التحصيل، وتاريخُه.
+const CASH_LOCKED_FIELDS = [
+  'finalReportDestination', 'documentNumber', 'sendingDate', 'deliveryDate',
+  'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate',
+];
+// ما يُكتب صفرًا وما يُترك فارغًا — الرقمُ صفرٌ والتاريخُ لا صفرَ له.
+const CASH_ZERO_NUMERIC = new Set(['netInvoice', 'tax', 'totalInvoice']);
+const VAT_RATE = 0.15;
+
+/** القيمُ التي تُثبَّت على كشفٍ نقديّ. */
+function cashLockedValues() {
+  const out = {};
+  for (const f of CASH_LOCKED_FIELDS) out[f] = CASH_ZERO_NUMERIC.has(f) ? 0 : (f.endsWith('Date') ? null : '0');
+  return out;
+}
+
+/**
+ * الضريبةُ والإجماليّ يُشتقّان من صافي الفاتورة، ولا يُكتبان.
+ *
+ * كان المحاسبُ يكتب الثلاثةَ بيده، فيُخطئ في واحدٍ منها فلا يساوي الإجماليُّ
+ * مجموعَ ما تحته — ولا يُكتشف إلّا عند مطابقةِ حسابٍ بعد شهر. وهي معادلةٌ
+ * ثابتة: الضريبةُ خمسةَ عشرَ بالمئة من الصافي، والإجماليُّ مجموعُهما.
+ */
+function deriveInvoiceTotals(patch, current) {
+  const hasNet = Object.prototype.hasOwnProperty.call(patch, 'netInvoice');
+  if (!hasNet) return patch;
+  const net = Number(patch.netInvoice) || 0;
+  const vat = Math.round(net * VAT_RATE * 100) / 100;
+  patch.tax = vat;
+  patch.totalInvoice = Math.round((net + vat) * 100) / 100;
+  return patch;
+}
+
+/**
+ * يُطبِّق قواعدَ نوع الدفع على تعديلٍ قادم.
+ *
+ * تُرجِع الحقولَ التي أُسقطت باسمها — فالمرفوضُ يُقال ولا يُبتلع.
+ */
+function applyBillingRules(patch, current = {}) {
+  const nextType = Object.prototype.hasOwnProperty.call(patch, 'paymentType')
+    ? patch.paymentType
+    : current.paymentType;
+
+  const blocked = [];
+  if (nextType === 'cash') {
+    // ما يحاول المستخدمُ كتابتَه في عمودٍ مقفولٍ يُقال له إنّه لم يُكتب.
+    for (const f of CASH_LOCKED_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(patch, f)) { delete patch[f]; blocked.push(f); }
+    }
+    // والتصفيرُ يجري متى صار الكشفُ نقديًّا — لا عند إنشائه فقط.
+    Object.assign(patch, cashLockedValues());
+  } else {
+    deriveInvoiceTotals(patch, current);
+  }
+  return { patch, blocked };
+}
 
 // Filter update body to only include fields the role can edit
 // ── والحذفُ لا يكون صامتًا ──────────────────────────────────────────────────
@@ -537,6 +606,8 @@ exports.getWorkflow = async (req, res) => {
 exports.createWorkflow = async (req, res) => {
   try {
     const filteredBody = filterFieldsByRole(req.body, req.user.role);
+    // نوعُ الدفع يقرّر شكلَ الكشف من لحظة إنشائه، لا بعد أوّل تعديل.
+    applyBillingRules(filteredBody, {});
     filteredBody.createdBy = req.user._id;
     filteredBody.lastModifiedBy = req.user._id;
     filteredBody.stage = 'draft';
@@ -624,6 +695,24 @@ exports.updateWorkflow = async (req, res) => {
           applicationStatus: statusAfter || null,
         });
       }
+    }
+
+    // ── وقواعدُ الفوترة تُطبَّق هنا ────────────────────────────────────────
+    // كشفٌ نقديٌّ لا يُفوتَر، وصافي الفاتورة يشتقّ ضريبتَه وإجماليَّها. والشرطُ
+    // على الخادم لا على الشاشة: أيُّ نافذةٍ أخرى (تحديثٌ جماعيّ، تطبيق، نداءٌ
+    // مباشر) تمرّ من هنا كذلك.
+    // ما أرسله المستخدمُ فعلًا — يُلتقط قبل التصفير، لأنّ `applyBillingRules`
+    // تُضيف الأعمدةَ المقفولة بقيمها الصفريّة، فلو قيس عليها بعدُ لبدا الطلبُ
+    // كأنّه حمل حقولًا مسموحة ولم يُرفض شيء.
+    const sentKeys = Object.keys(filteredBody);
+    const billing = applyBillingRules(filteredBody, workflow.toObject());
+    if (billing.blocked.length && sentKeys.every((k) => billing.blocked.includes(k))) {
+      return res.status(400).json({
+        code: 'CASH_INVOICE_LOCKED',
+        fields: billing.blocked,
+        message: 'الكشف نقديّ: لا فاتورة له ولا سند — الأعمدة المقفولة لا تُكتب.'
+          + ` (${billing.blocked.join('، ')})`,
+      });
     }
 
     filteredBody.lastModifiedBy = req.user._id;
@@ -872,6 +961,8 @@ exports.bulkUpdate = async (req, res) => {
     if (ids.length > CAP) return res.status(400).json({ message: `الحدُّ الأقصى ${CAP} كشفًا في المرّة.` });
 
     const patch = filterFieldsByRole(req.body.fields || {}, req.user.role);
+    // والقواعدُ نفسُها في الجملة: لا يكسب أحدٌ بالتحديد ما لا يملكه بالمفرد.
+    // (وتُعاد لكلّ صفٍّ على حدة أدناه، لأنّ نوعَ الدفع يختلف من كشفٍ لآخر.)
     const refused = patch.__rejected || [];
     const keys = Object.keys(patch);
     if (!keys.length) {
@@ -883,9 +974,14 @@ exports.bulkUpdate = async (req, res) => {
 
     const wantsPayment = keys.includes('paymentDate') && patch.paymentDate && String(patch.paymentDate).trim();
     const rows = await OperationsWorkflow.find({ _id: { $in: ids } })
-      .select('reportNumber applicationStatus lockedBy lockedByName lockedAt').lean();
+      .select('reportNumber applicationStatus paymentType lockedBy lockedByName lockedAt').lean();
 
-    const skipped = []; const targets = [];
+    // ── والقواعدُ تُطبَّق صفًّا صفًّا ──────────────────────────────────────
+    // نوعُ الدفع يختلف من كشفٍ لآخر، فالتعديلُ الواحد لا ينتج تعديلًا واحدًا:
+    // كشفٌ نقديٌّ في الدفعة يُسقِط عنه أعمدةَ الفاتورة، وكشفٌ ضريبيٌّ يشتقّ
+    // ضريبتَه من صافيه. وتطبيقُ قاعدةٍ واحدةٍ على الجميع كان سيكتب فاتورةً
+    // على عميلِ كاش.
+    const skipped = []; const perRow = [];
     for (const r of rows) {
       // الصفُّ الذي يحرّره غيرُك لا يُكتب فوقه في دفعةٍ لا يراها.
       if (isLocked(r, req.user._id)) {
@@ -896,16 +992,31 @@ exports.bulkUpdate = async (req, res) => {
         skipped.push({ reportNumber: r.reportNumber, reason: 'لم يُستلم السند بعد' });
         continue;
       }
-      targets.push(r._id);
+      const own = applyBillingRules({ ...patch }, r);
+      if (own.blocked.length && !Object.keys(own.patch).length) {
+        skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — لا فاتورة له' });
+        continue;
+      }
+      perRow.push({ _id: r._id, patch: own.patch });
     }
 
     let updated = 0;
-    if (targets.length) {
-      const r = await OperationsWorkflow.updateMany(
-        { _id: { $in: targets } },
-        { $set: { ...patch, lastModifiedBy: req.user._id } },
-      );
-      updated = r.modifiedCount || 0;
+    if (perRow.length) {
+      // تُجمَّع الصفوفُ التي تأخذ التعديلَ نفسَه في كتابةٍ واحدة، فلا تصير
+      // مئةُ صفٍّ مئةَ رحلةٍ إلى القاعدة.
+      const byPatch = new Map();
+      for (const t of perRow) {
+        const k = JSON.stringify(t.patch);
+        if (!byPatch.has(k)) byPatch.set(k, { patch: t.patch, ids: [] });
+        byPatch.get(k).ids.push(t._id);
+      }
+      const results = await OperationsWorkflow.bulkWrite([...byPatch.values()].map((g) => ({
+        updateMany: {
+          filter: { _id: { $in: g.ids } },
+          update: { $set: { ...g.patch, lastModifiedBy: req.user._id } },
+        },
+      })), { ordered: false });
+      updated = results.modifiedCount || 0;
       cache.clear('wf:');
       try { emitToAll('workflow:bulkImported', { bulkUpdate: true, updated }); } catch (e) {}
       logAudit({

@@ -46,4 +46,13 @@ router.post('/parties/:id/follow-ups', authorize(...EDIT_ROLES), ctrl.createFoll
 router.put('/follow-ups/:fuId', authorize(...EDIT_ROLES), ctrl.updateFollowUp);
 router.delete('/follow-ups/:fuId', authorize(...EDIT_ROLES), ctrl.deleteFollowUp);
 
+// ── الفواتير ──────────────────────────────────────────────────────────────
+// من هاتين الصفحتين يعمل القسم: الكاشُ بالكشف، والضريبيُّ بالفاتورة.
+router.get('/invoices/filters', authorize(...READ_ROLES), ctrl.invoiceFilterOptions);
+router.get('/invoices/cash', authorize(...READ_ROLES), ctrl.cashInvoices);
+router.get('/invoices/tax', authorize(...READ_ROLES), ctrl.taxInvoices);
+// الرقمُ قد يحمل شرطاتٍ ومسافات — يُلتقط كما هو.
+router.get('/invoices/tax/:invoiceNumber', authorize(...READ_ROLES), ctrl.taxInvoiceDetail);
+router.post('/invoices/collect', authorize(...EDIT_ROLES), ctrl.recordCollection);
+
 module.exports = router;

@@ -713,3 +713,336 @@ exports.filterOptions = async (req, res) => {
 // تُنادى من السكربتات بعد الاستيراد فلا تبقى الشاشة على أرقامٍ قديمة دقيقةً.
 exports.invalidate = () => cache.clear(CACHE_PREFIX);
 exports._internals = { statsByKind, FIELD_OF, VALUE_OF, CLOSED_BY, NOT_CANCELLED };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  الفواتير — من هنا يعمل قسمُ التحصيل
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ── لماذا صفحتان لا صفحةُ كشوف ─────────────────────────────────────────────
+// التحصيلُ لا يُحصِّل كشوفًا؛ يُحصِّل فواتير. والكشفُ الذي لم يُفوتَر بعد لا
+// شأنَ له بالقسم أصلًا — إلّا أن يكون نقديًّا، فالنقديُّ يُحصَّل في يومه بلا
+// فاتورة، ويُعرَف برقم كشفه.
+//
+//   · فواتيرُ الكاش    — كشوفٌ نوعُ دفعها نقديّ، اكتمل لها سدادٌ وفرعٌ ومبلغ.
+//                       العنصرُ فيها الكشف، والقيمةُ يكتبها المحصِّل بيده.
+//   · فواتيرُ الضريبي  — مجموعةٌ برقم الفاتورة لا بالكشف: الفاتورةُ الواحدة قد
+//                       تضمّ كشوفًا عدّة، والقسمُ يتعامل بها لا بها منفردة.
+//
+// ── وأعمارُ الفواتير شرائحُ لا تتداخل ──────────────────────────────────────
+// «فوق ١٥ يومًا» تعني من خمسةَ عشرَ إلى ثلاثين، لا كلَّ ما تجاوز الخمسةَ عشر.
+// الشرائحُ المتداخلة تجعل الفاتورةَ الواحدة تُعدّ في أربعة أرقام، فلا يُعرف
+// كم فاتورةً في كلّ عمرٍ حقًّا.
+const AGE_BANDS = {
+  '0_15': [0, 15],
+  '15_30': [15, 30],
+  '30_45': [30, 45],
+  '45_60': [45, 60],
+  '60_plus': [60, null],
+};
+
+/** شرطُ العمر على حقلِ تاريخٍ ما — بالأيّام منذُه حتى اليوم. */
+function ageCondition(field, band) {
+  const b = AGE_BANDS[band];
+  if (!b) return {};
+  const [from, to] = b;
+  const now = Date.now();
+  const cond = {};
+  // الأقدمُ عمرًا هو الأصغرُ تاريخًا: «مضى عليه أكثرُ من ١٥» = تاريخُه أقدمُ
+  // من (اليوم − ١٥).
+  if (from != null) cond.$lte = new Date(now - from * 86400000);
+  if (to != null) cond.$gt = new Date(now - to * 86400000);
+  return { [field]: cond };
+}
+
+/** فلاترُ الصفحتين المشتركة: عميلٌ وفرعٌ ومدًى وحالةُ التحصيل وشريحةُ العمر. */
+function invoiceFilters(query, { ageField }) {
+  const f = { ...NOT_CANCELLED };
+  if (query.customer) f.username = flexSpaceRegex(String(query.customer));
+  if (query.branch) f.payingBranch = String(query.branch);
+  if (query.q) {
+    const rx = flexSpaceRegex(String(query.q));
+    f.$or = [{ reportNumber: rx }, { invoiceNumber: rx }, { username: rx }, { documentNumber: rx }];
+  }
+
+  // ── حالةُ التحصيل ───────────────────────────────────────────────────────
+  // الصفحةُ تعرض المحصَّلَ وغيرَه معًا، والسؤالُ يُطرح على الوجهين: «ما الذي
+  // بقي؟» و«كم حصّلنا؟». فالاختيارُ صريحٌ فوق الجدول لا مخبوءٌ في فلتر.
+  if (query.collected === 'yes') f.collectionDate = { $ne: null };
+  else if (query.collected === 'no') f.collectionDate = null;
+
+  const range = query.from || query.to ? dayRange(query.from, query.to) : null;
+  if (range) f[ageField] = range;
+  if (query.age && AGE_BANDS[query.age]) {
+    const c = ageCondition(ageField, query.age)[ageField];
+    f[ageField] = { ...(f[ageField] || {}), ...c };
+  }
+  if (!f[ageField]) f[ageField] = { $ne: null };
+  return f;
+}
+
+/**
+ * فواتيرُ الكاش — كشوفٌ نقديّة اكتمل سدادُها للمورّد.
+ *
+ * تصل هنا لحظةَ ما يختار موظّفُ التشغيل «كاش» ويكتب تاريخَ السداد وفرعَه
+ * ومبلغَه: ذلك معناه أنّ الشحنة نُفّذت ودُفع للمورّد، فالمالُ عند العميل الآن
+ * ويُطلَب في يومه.
+ *
+ * ولا يُعرَض «مبلغ السداد» هنا: ذاك ما دُفع للمورّد، وما يُحصَّل من العميل رقمٌ
+ * آخر يكتبه المحصِّل بيده حين يقبضه.
+ */
+exports.cashInvoices = async (req, res) => {
+  try {
+    const filter = {
+      ...invoiceFilters(req.query, { ageField: 'paymentDate' }),
+      paymentType: 'cash',
+      payingBranch: { $nin: [null, ''] },
+      paymentAmount: { $gt: 0 },
+    };
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+
+    const [rows, total, totals] = await Promise.all([
+      OperationsWorkflow.find(filter)
+        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate branch fromLocation toLocation')
+        .sort({ paymentDate: -1, _id: -1 })
+        .skip((page - 1) * limit).limit(limit).lean(),
+      OperationsWorkflow.countDocuments(filter),
+      OperationsWorkflow.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: null,
+            collected: { $sum: { $ifNull: ['$collectedAmount', 0] } },
+            collectedCount: { $sum: { $cond: [{ $ifNull: ['$collectionDate', false] }, 1, 0] } },
+          },
+        },
+      ]),
+    ]);
+
+    const now = Date.now();
+    const t = totals[0] || { collected: 0, collectedCount: 0 };
+    res.json({
+      invoices: rows.map((w) => ({
+        _id: w._id,
+        reportNumber: w.reportNumber,
+        customer: w.username || '',
+        branch: w.branch || '',
+        payingBranch: w.payingBranch || '',
+        paymentDate: w.paymentDate,
+        route: [w.fromLocation, w.toLocation].filter(Boolean).join(' — '),
+        collectedAmount: r2(w.collectedAmount),
+        collectionDate: w.collectionDate || null,
+        ageDays: w.paymentDate ? Math.floor((now - new Date(w.paymentDate).getTime()) / 86400000) : null,
+      })),
+      total,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(total / limit)),
+      totals: { collected: r2(t.collected), collectedCount: t.collectedCount, pendingCount: total - t.collectedCount },
+    });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل فواتير الكاش', error: e.message });
+  }
+};
+
+/**
+ * فواتيرُ الضريبي — مجموعةٌ برقم الفاتورة.
+ *
+ * الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف، وذلك معتاد. فالصفُّ هنا فاتورةٌ لا
+ * كشف، ومعه عددُ كشوفه — ومن أراد تفصيلَها فتحها.
+ */
+exports.taxInvoices = async (req, res) => {
+  try {
+    // ── وعمرُ الفاتورة يُقاس على الفاتورة، لا على كلّ كشفٍ فيها ────────────
+    // فُلتِرت أوّلًا قبل التجميع، فالفاتورةُ التي تحمل كشوفًا بتواريخَ متفرّقة
+    // كانت تظهر في شريحتين — ومجموعُ الشرائح يزيد على الكلّ، فلا يُعرف كم
+    // فاتورةً في كلّ عمر. الشرطُ الزمنيُّ يُطبَّق بعد التجميع على تاريخها هي.
+    const { [`invoiceDate`]: ageCond, ...rowFilter } = invoiceFilters(req.query, { ageField: 'invoiceDate' });
+    const filter = {
+      ...rowFilter,
+      invoiceNumber: { $nin: [null, ''] },
+      paymentType: { $ne: 'cash' },
+    };
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+
+    const grouped = await OperationsWorkflow.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$invoiceNumber',
+          // العميلُ والتواريخُ تُؤخَذ من أوّل كشفٍ في الفاتورة — وهي واحدةٌ
+          // فيها كلِّها في العمل الطبيعيّ.
+          customer: { $first: '$username' },
+          invoiceDate: { $max: '$invoiceDate' },
+          deliveryDate: { $max: '$deliveryDate' },
+          branch: { $first: '$branch' },
+          payingBranch: { $first: '$payingBranch' },
+          value: { $sum: { $ifNull: ['$totalInvoice', 0] } },
+          net: { $sum: { $ifNull: ['$netInvoice', 0] } },
+          vat: { $sum: { $ifNull: ['$tax', 0] } },
+          reports: { $sum: 1 },
+          // الفاتورةُ تُعدّ محصَّلةً حين تُحصَّل كشوفُها كلُّها — لا بعضُها.
+          collectedReports: { $sum: { $cond: [{ $ifNull: ['$collectionDate', false] }, 1, 0] } },
+          collectionDate: { $max: '$collectionDate' },
+        },
+      },
+      // الشرطُ الزمنيُّ هنا — على تاريخ الفاتورة المجمَّع.
+      ...(ageCond ? [{ $match: { invoiceDate: ageCond } }] : []),
+      { $sort: { invoiceDate: -1, _id: -1 } },
+      {
+        $facet: {
+          rows: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+          count: [{ $count: 'n' }],
+          totals: [{
+            $group: {
+              _id: null,
+              value: { $sum: '$value' },
+              invoices: { $sum: 1 },
+              fullyCollected: { $sum: { $cond: [{ $eq: ['$reports', '$collectedReports'] }, 1, 0] } },
+            },
+          }],
+        },
+      },
+    ]).allowDiskUse(true);
+
+    const f = grouped[0] || { rows: [], count: [], totals: [] };
+    const total = f.count[0]?.n || 0;
+    const t = f.totals[0] || { value: 0, invoices: 0, fullyCollected: 0 };
+    const now = Date.now();
+
+    res.json({
+      invoices: f.rows.map((g) => ({
+        invoiceNumber: g._id,
+        customer: g.customer || '',
+        value: r2(g.value),
+        net: r2(g.net),
+        vat: r2(g.vat),
+        invoiceDate: g.invoiceDate,
+        deliveryDate: g.deliveryDate,
+        branch: g.branch || '',
+        payingBranch: g.payingBranch || '',
+        reports: g.reports,
+        collectedReports: g.collectedReports,
+        // محصَّلةٌ تمامًا أم بعضُها — والفرقُ يُقال، لا يُقرَّب.
+        fullyCollected: g.reports === g.collectedReports,
+        collectionDate: g.reports === g.collectedReports ? g.collectionDate : null,
+        ageDays: g.invoiceDate ? Math.floor((now - new Date(g.invoiceDate).getTime()) / 86400000) : null,
+      })),
+      total,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(total / limit)),
+      totals: { value: r2(t.value), invoices: t.invoices, fullyCollected: t.fullyCollected, pending: t.invoices - t.fullyCollected },
+    });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل الفواتير الضريبية', error: e.message });
+  }
+};
+
+/** تفصيلُ فاتورةٍ ضريبيّة: كشوفُها كلُّها بأرقامها. */
+exports.taxInvoiceDetail = async (req, res) => {
+  try {
+    const number = String(req.params.invoiceNumber || '').trim();
+    if (!number) return res.status(400).json({ message: 'رقم الفاتورة مطلوب' });
+
+    const rows = await OperationsWorkflow.find({ invoiceNumber: number, ...NOT_CANCELLED })
+      .select('reportNumber reportDate username branch payingBranch fromLocation toLocation carNumber carOwner sellingValue netInvoice tax totalInvoice invoiceDate deliveryDate sendingDate documentNumber collectedAmount collectionDate accountingReview')
+      .sort({ reportDate: 1 }).lean();
+
+    if (!rows.length) return res.status(404).json({ message: 'لا كشوف بهذا الرقم' });
+
+    const sum = (k) => r2(rows.reduce((a, r) => a + (Number(r[k]) || 0), 0));
+    res.json({
+      invoiceNumber: number,
+      customer: rows[0].username || '',
+      invoiceDate: rows.find((r) => r.invoiceDate)?.invoiceDate || null,
+      deliveryDate: rows.find((r) => r.deliveryDate)?.deliveryDate || null,
+      reports: rows,
+      totals: {
+        reports: rows.length,
+        net: sum('netInvoice'),
+        vat: sum('tax'),
+        value: sum('totalInvoice'),
+        collectedReports: rows.filter((r) => r.collectionDate).length,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل الفاتورة', error: e.message });
+  }
+};
+
+/**
+ * تسجيلُ التحصيل.
+ *
+ * ── ويُكتب على الكشوف نفسِها ───────────────────────────────────────────────
+ * لا في جدولٍ ثانٍ للتحصيل. الكشفُ هو المستند، وتاريخُ تحصيله عمودٌ فيه —
+ * فيراه قسمُ التشغيل في اللحظة نفسِها بلا مزامنة.
+ *
+ * والفاتورةُ التي تضمّ كشوفًا يُكتب تاريخُها على كشوفها كلِّها: تحصيلُ الفاتورة
+ * تحصيلٌ لما فيها، وتركُ بعضِها مفتوحًا يجعلها تظهر «نصفَ محصَّلة» إلى الأبد.
+ */
+exports.recordCollection = async (req, res) => {
+  try {
+    const { collectionDate, collectedAmount } = req.body;
+    if (!collectionDate) {
+      return res.status(400).json({ message: 'حقول مطلوبة ناقصة: تاريخ التحصيل', fields: { collectionDate: 'مطلوب' } });
+    }
+
+    const invoiceNumber = String(req.body.invoiceNumber || '').trim();
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
+    if (!invoiceNumber && !ids.length) {
+      return res.status(400).json({ message: 'حدِّد فاتورةً أو كشوفًا' });
+    }
+
+    const filter = invoiceNumber
+      ? { invoiceNumber, ...NOT_CANCELLED }
+      : { _id: { $in: ids } };
+
+    const $set = { collectionDate: new Date(collectionDate), lastModifiedBy: req.user._id };
+    // المبلغُ للكاش: الفاتورةُ الضريبيّة قيمتُها مكتوبةٌ فيها، والنقديُّ يقبضه
+    // المحصِّل فيكتب ما قبض.
+    if (collectedAmount !== undefined && collectedAmount !== '') $set.collectedAmount = Number(collectedAmount) || 0;
+
+    const r = await OperationsWorkflow.updateMany(filter, { $set });
+    cache.clear('wf:');
+    cache.clear(CACHE_PREFIX);
+
+    await logAudit({
+      user: req.user._id, action: 'record_collection', entity: 'OperationsWorkflow',
+      entityId: ids.length === 1 ? ids[0] : null,
+      entityKey: invoiceNumber || undefined,
+      changes: { after: { collectionDate, collectedAmount, count: r.modifiedCount } },
+      ipAddress: req.ip,
+    });
+    try { emitToAll('workflow:updated', { bulk: true, collection: true }); } catch (_) {}
+
+    res.json({
+      updated: r.modifiedCount || 0,
+      message: invoiceNumber
+        ? `سُجِّل التحصيل على ${r.modifiedCount} كشفًا تحت الفاتورة ${invoiceNumber}`
+        : `سُجِّل التحصيل على ${r.modifiedCount} كشفًا`,
+    });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر تسجيل التحصيل'); }
+};
+
+/** قيمُ فلاتر صفحتَي الفواتير — مبنيّةٌ من البيانات نفسِها. */
+exports.invoiceFilterOptions = async (req, res) => {
+  try {
+    const kind = req.query.kind === 'cash' ? 'cash' : 'tax';
+    const base = kind === 'cash'
+      ? { paymentType: 'cash', ...NOT_CANCELLED }
+      : { invoiceNumber: { $nin: [null, ''] }, paymentType: { $ne: 'cash' }, ...NOT_CANCELLED };
+    const [customers, branches] = await Promise.all([
+      OperationsWorkflow.distinct('username', { ...base, username: { $nin: [null, ''] } }),
+      OperationsWorkflow.distinct('payingBranch', { ...base, payingBranch: { $nin: [null, ''] } }),
+    ]);
+    res.json({ customers: customers.sort().slice(0, 1000), branches: branches.sort() });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل الفلاتر', error: e.message });
+  }
+};
+
+exports.AGE_BANDS = AGE_BANDS;

@@ -29,8 +29,21 @@ router.post(
   '/transactions',
   authorize(...walletRoles),
   [
-    body('type').isIn(['collection', 'expense', 'purchase']).withMessage('Type must be collection, expense, or purchase'),
-    body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
+    body('type').isIn(['collection', 'expense', 'purchase', 'tax_invoice'])
+      .withMessage('النوع: تحصيل أو مصروف أو مشتريات أو فاتورة ضريبية'),
+    // ── و«فاتورة ضريبيّة» بلا مبلغ ────────────────────────────────────────
+    // هي قيدُ استلامٍ لا حركةُ مال، فاشتراطُ مبلغٍ أكبرَ من صفرٍ عليها يمنع
+    // تسجيلَ ما جاء بلا قيمةٍ معروفةٍ بعد — وهو أكثرُ ما يُستلم.
+    body('amount').custom((v, { req }) => {
+      if (req.body.type === 'tax_invoice') return true;
+      if (!(Number(v) > 0)) throw new Error('المبلغ يجب أن يكون أكبر من صفر');
+      return true;
+    }),
+    body('receivedDocNumber').custom((v, { req }) => {
+      if (req.body.type !== 'tax_invoice') return true;
+      if (!String(v || '').trim()) throw new Error('رقم الفاتورة أو الكشف مطلوب');
+      return true;
+    }),
   ],
   validate,
   walletController.addTransaction

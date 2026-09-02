@@ -61,6 +61,20 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // ══════════════════════════════════════════════════════════
     paymentDate: { type: Date },                             // تاريخ السداد
     payingBranch: { type: String, trim: true },              // الفرع المسدد
+
+    // ── ما دُفع للمورّد، وبأيّ صفةٍ يُفوتَر العميل ────────────────────────
+    // `paymentAmount` سعرُ الشراء الحقيقيّ: يُملأ وحدَه من مشتريات المحفظة
+    // (رقمُ الكشف + المبلغ)، ويبقى قابلًا للتعديل باليد هنا.
+    //
+    // و`paymentType` هو ما يفرّق الطريقين: عميلُ الكاش يُحصَّل منه فورًا بلا
+    // فاتورة، وعميلُ الضريبيّ تُكتب له فاتورةٌ ثمّ يُحصَّل بها. وعمودُ «طريقة
+    // الدفع» القادمُ من المنصّة لا يُعتمَد عليه في شيءٍ من ذلك — هذا هو المرجع.
+    paymentAmount: { type: Number, default: 0 },             // مبلغ السداد
+    paymentType: {                                           // نوع الدفع
+      type: String,
+      enum: ['', 'cash', 'tax'],
+      default: '',
+    },
     finalReportDestination: { type: String, trim: true },    // وجهه الكشف النهائي
     documentNumber: { type: String, trim: true },            // رقم السند
     sendingDate: { type: Date },                             // تاريخ الارسال
@@ -76,6 +90,9 @@ const operationsWorkflowSchema = new mongoose.Schema(
     totalInvoice: { type: Number, default: 0 },              // اجمالى الفاتوره
     invoiceDate: { type: Date },                             // تاريخ الفاتوره
     invoiceNotes: { type: String, trim: true },              // ملاحظات الفاتوره
+    // ما حصّله قسمُ التحصيل فعلًا — يكتبه بيده عند التحصيل، ولا يُشتقّ من
+    // مبلغ السداد: ذاك ما دُفع للمورّد، وهذا ما قُبض من العميل.
+    collectedAmount: { type: Number, default: 0 },           // مبلغ التحصيل
     collectionDate: { type: Date },                          // تاريخ التحصيل
 
     // ══════════════════════════════════════════════════════════
@@ -120,6 +137,11 @@ const operationsWorkflowSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// صفحتا الفواتير تُبنيان على هذين: الكاشُ بنوع الدفع، والضريبيُّ برقم
+// الفاتورة الذي يجمع أكثرَ من كشفٍ تحت صفٍّ واحد.
+operationsWorkflowSchema.index({ paymentType: 1, paymentDate: -1 });
+operationsWorkflowSchema.index({ invoiceNumber: 1, invoiceDate: -1 });
 
 operationsWorkflowSchema.index(
   { externalSource: 1, externalId: 1 },

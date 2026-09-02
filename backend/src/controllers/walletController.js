@@ -117,6 +117,10 @@ const recalcWallet = async (walletId) => {
     if (t.type === 'collection') totalCollections += t.amount;
     else if (t.type === 'expense') totalExpenses += t.amount;
     else if (t.type === 'purchase') totalPurchases += t.amount;
+    // ── و«فاتورة ضريبيّة» لا تدخل الرصيد ─────────────────────────────────
+    // قيدٌ يقول «استلمتُ هذه الفاتورة بيدي»، لا أنّ مالًا دخل أو خرج. وإسقاطُه
+    // هنا مقصودٌ ومكتوب: لو تُرك للصمت لظُنّ نسيانًا فأُضيف يومًا، فاختلّ رصيدُ
+    // العهدة بمبلغٍ لم يتحرّك.
   }
 
   const wallet = await DailyWallet.findById(walletId);
@@ -269,20 +273,45 @@ exports.addTransaction = async (req, res) => {
       }
     }
 
-    // For purchases: look up selling value from delivery statement
+    // ── المشتريات: الكشفُ يُقرأ منه ويُكتب فيه ──────────────────────────
+    //
+    // ما يدفعه الموظّفُ للمورّد **هو** سعرُ الشراء الحقيقيّ. فبدل أن يُكتب
+    // مرّتين — مرّةً في العهدة ومرّةً في الكشف — يُكتب هنا مرّةً ويصل هناك:
+    // المبلغُ إلى «مبلغ السداد»، وتاريخُ اليوميّة إلى «تاريخ السداد».
+    //
+    // ويُقارَن بقيمة الشراء القادمة من المنصّة. والاختلافُ لا يُمنع — قد يكون
+    // صحيحًا (اتُّفق على غير المسجَّل) — لكنّه يُعلَّم، فيراه المديرُ في لوحة
+    // المحفظة ويُقرّ به أو يصحّحه. ومنعُه كان سيوقف عملًا صحيحًا؛ والسكوتُ عنه
+    // كان سيمرّ فرقًا لا يعلمه أحد.
     let purchaseInvoiceAmountVal;
+    let purchaseWorkflow = null;
+    let purchaseMismatch = null;
     if (type === 'purchase' && purchaseDeliveryStatementNumber) {
       try {
         const OperationsWorkflow = require('../models/OperationsWorkflow');
-        const wf = await OperationsWorkflow.findOne({
-          reportNumber: { $regex: `^${purchaseDeliveryStatementNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+        purchaseWorkflow = await OperationsWorkflow.findOne({
+          reportNumber: flexSpaceRegex(purchaseDeliveryStatementNumber),
         });
-        if (wf && wf.sellingValue) purchaseInvoiceAmountVal = wf.sellingValue;
+        if (purchaseWorkflow) {
+          if (purchaseWorkflow.sellingValue) purchaseInvoiceAmountVal = purchaseWorkflow.sellingValue;
+          const expected = Number(purchaseWorkflow.purchaseValue) || 0;
+          if (expected > 0 && Math.abs(expected - amount) > 0.5) {
+            purchaseMismatch = { reportNumber: purchaseWorkflow.reportNumber, expected, paid: amount, difference: Math.round((amount - expected) * 100) / 100 };
+          }
+        }
       } catch (e) { console.error('walletController silent catch:', e.message); }
     }
 
     // Check risk flags
     const riskFlags = checkRiskFlags({ amount, type });
+    // فرقُ سعر الشراء يُعلَّم كما تُعلَّم بقيّةُ الملاحظات — بالجملة نفسِها التي
+    // يُقرأ بها في اللوحة: مَن دفع، وعلى أيّ كشف، وكم كان المسجَّل.
+    if (purchaseMismatch) {
+      riskFlags.push(
+        `سعرُ الشراء مختلف — الكشف ${purchaseMismatch.reportNumber}: المسجَّل ${purchaseMismatch.expected}`
+        + ` والمدفوع ${purchaseMismatch.paid} (فرق ${purchaseMismatch.difference})`,
+      );
+    }
     const isFlagged = riskFlags.length > 0;
 
     const transaction = await WalletTransaction.create({
@@ -309,6 +338,8 @@ exports.addTransaction = async (req, res) => {
       purchaseBranch: purchaseBranch || undefined,
       mismatchReason: cleanMismatchReason || undefined,
       mismatchNote: cleanMismatchReason === 'other' ? (mismatchNote || undefined) : undefined,
+      receivedDocType: type === 'tax_invoice' ? (req.body.receivedDocType || 'invoice') : undefined,
+      receivedDocNumber: type === 'tax_invoice' ? (req.body.receivedDocNumber || '').trim() || undefined : undefined,
       reference: reference || undefined,
       notes: notes || undefined,
       isFlagged,
@@ -320,6 +351,23 @@ exports.addTransaction = async (req, res) => {
     // «العملاء والمالية». زال ذلك القسم، والمحفظةُ ليست دفترَ عملاء: هي عهدةُ
     // الفرع — ما دخل وما خرج ورصيدُ اليوم. ومَن يريد «كم لنا عند هذا العميل»
     // يقرؤه في قسم التحصيل من كشوف التشغيل نفسِها، لا من نسخةٍ تُكتب هنا.
+
+    // ── ويصل المبلغُ إلى الكشف ────────────────────────────────────────────
+    // بعد أن تُحفَظ الحركة، لا قبلها: لو فشل الحفظُ لما صحّ أن يحمل الكشفُ
+    // سدادًا لم يُقيَّد في العهدة.
+    //
+    // ولا يُكتب فوق ما كُتب بيد: مَن صحّح المبلغَ في سير عمل التشغيل قصدًا لا
+    // تعود المحفظةُ فتدهسه. `$set` على الفارغ وحدَه.
+    if (type === 'purchase' && purchaseWorkflow) {
+      const patch = {};
+      if (!purchaseWorkflow.paymentAmount) patch.paymentAmount = amount;
+      if (!purchaseWorkflow.paymentDate) patch.paymentDate = new Date(txDate);
+      if (Object.keys(patch).length) {
+        const OperationsWorkflow = require('../models/OperationsWorkflow');
+        await OperationsWorkflow.updateOne({ _id: purchaseWorkflow._id }, { $set: patch });
+        try { emitToAll('workflow:updated', { _id: purchaseWorkflow._id, fromWallet: true }); } catch (_) {}
+      }
+    }
 
     // Update vendor total if expense paid to vendor
     if (type === 'expense' && vendor) {

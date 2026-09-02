@@ -117,6 +117,13 @@ verify() {
   stray=$("${SSH[@]}" "MANAGED=\$(pm2 jlist 2>/dev/null | node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>{try{console.log(JSON.parse(s).map(p=>p.pid).filter(Boolean).join(\" \"))}catch(e){console.log(\"\")}})'); n=0; for pid in \$(pgrep -f \"^node $APP_DIR/src/server.js\$\"); do case \" \$MANAGED \" in *\" \$pid \"*) ;; *) n=\$((n+1));; esac; done; echo \$n" 2>/dev/null | tr -d '\r')
   check "no stray workers on the port" "${stray:-unreadable}" "0"
 
+  # ── وحدُّ كومة node مضبوطٌ دون حدّ pm2 ────────────────────────────────────
+  # بدونه ترى node ثمانيةَ جيجا على الجهاز فتضبط حدَّها على ٢٠٩٦ ميجا ولا تجمع
+  # القمامةَ جادًّا قبلها، فتقتلها pm2 عند ٩٠٠ — إعادةُ تشغيلٍ كلَّ ثلاث دقائق
+  # بلا خطأٍ في السجلّ. وهو إعدادٌ يضيع بأيّ `pm2 delete` ثمّ `pm2 start` بغير
+  # ملفّ الإعداد، فيُفحَص لا يُفترَض.
+  check "node heap capped under pm2" "$("${SSH[@]}" "pm2 jlist" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const a=JSON.parse(s).filter(x=>x.name==="'"$PM2_NAME"'");console.log(a.length&&a.every(p=>String(p.pm2_env.node_args||"").includes("max-old-space-size"))?"yes":"NO")}catch(e){console.log("unreadable")}})')" "yes"
+
   # The process, and the env it is actually running with.
   check "pm2 online"  "$("${SSH[@]}" "pm2 jlist" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s).find(x=>x.name==="'"$PM2_NAME"'");console.log(p?p.pm2_env.status:"missing")}catch(e){console.log("unreadable")}})')" "online"
   check "NODE_ENV"    "$("${SSH[@]}" "grep -m1 '^NODE_ENV=' $APP_DIR/.env | cut -d= -f2" 2>/dev/null | tr -d '\r')" "production"
@@ -269,7 +276,10 @@ good "dependencies installed"
 # `reload` لا `restart`: التطبيق يعمل في نسختين بوضع العنقود، فتُستبدَل واحدةٌ
 # بينما الأخرى تخدم. و`restart` كان يقتلهما معًا فيردّ nginx ٥٠٢ في تلك الثواني —
 # قِيس ذلك: تسعون طلبًا أثناء إعادةٍ حيّة، تسعون نجحت وصفرٌ فشل.
-"${SSH[@]}" "pm2 reload $PM2_NAME >/dev/null"
+# ── ويُعاد التحميلُ من ملفّ الإعداد ─────────────────────────────────────────
+# `pm2 reload <name>` يعيد الكودَ ولا يعيد قراءةَ الإعداد، فتغييرٌ في
+# `ecosystem.config.js` — كحدّ كومة node — لا يصل أبدًا. ومن الملفّ يصل الاثنان.
+"${SSH[@]}" "cd $APP_DIR && pm2 reload ecosystem.config.js --update-env >/dev/null 2>&1 || pm2 reload $PM2_NAME >/dev/null"
 good "$PM2_NAME restarted"
 
 # ── والأيتامُ تُجمَع قبل أن تخدم ─────────────────────────────────────────────

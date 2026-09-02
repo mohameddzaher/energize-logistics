@@ -4,7 +4,7 @@
  *   node src/scripts/auditWalletToCollections.js
  *
  * تمشي المسارَ الذي يمشيه الموظّف: يسجّل مشترياتٍ برقم كشفٍ ومبلغ، فيمتلئ
- * الكشفُ من نفسِه — المبلغُ والفرعُ والتاريخُ ونوعُ الدفع من ملفّ العميل — ثمّ
+ * الكشفُ من نفسِه — المبلغُ والفرعُ والتاريخ، لا نوعُ الدفع — ثمّ
  * يصل قسمَ التحصيل في الصفحة الصحيحة من الصفحتين.
  *
  * لا يترك أثرًا: ما يُنشئه يُحذف، وحساباتُ الفحص تُمحى.
@@ -100,8 +100,11 @@ const call = async (method, path, ck, body) => {
     ok('ويملك حقولَ عمله كلَّها', need.every((f) => mine.includes(f)),
       need.filter((f) => !mine.includes(f)).join(', ') || `${mine.length} حقلًا`);
 
-    // ── ٢ · نوعُ الدفع يُملأ من ملفّ العميل ───────────────────────────────
-    head('نوع الدفع يُملأ من ملفّ العميل');
+    // ── ٢ · نوعُ الدفع يُكتب بيد، ولا يُستنتَج ─────────────────────────────
+    // كان يُملأ من ملفّ العميل على أنّه صفةٌ ثابتةٌ فيه، وليس كذلك: العميلُ
+    // الواحد يحاسب كاشًا في حمولةٍ وضريبيًّا في أخرى. فالاستنتاجُ كان يكتب على
+    // الكشف ما لم يقله أحدٌ ويرسله إلى صفحةِ تحصيلٍ ليست له.
+    head('نوعُ الدفع يُكتب بيد ولا يُستنتَج من العميل');
     for (const [name, type] of [[`zz-عميل-كاش-${stamp}`, 'cash'], [`zz-عميل-ضريبي-${stamp}`, 'tax']]) {
       const p = await Party.create({ kind: 'customer', name, paymentType: type });
       parties.push(p._id);
@@ -117,14 +120,22 @@ const call = async (method, path, ck, body) => {
 
     const cashWf = await mk(`zz-عميل-كاش-${stamp}`);
     await call('PUT', `/api/workflows/${cashWf._id}`, accLogin.ck, { paymentDate: '2026-09-02' });
-    const cashDb = await OW.findById(cashWf._id).select('paymentType netInvoice documentNumber').lean();
-    ok('عميلٌ نقديّ ← الكشفُ نقديّ من نفسِه', cashDb.paymentType === 'cash', cashDb.paymentType || '(فارغ)');
-    ok('وأعمدةُ الفاتورة أُقفلت معه', cashDb.netInvoice === 0 && cashDb.documentNumber === '0');
+    const cashDb = await OW.findById(cashWf._id).select('paymentType').lean();
+    ok('حسابٌ نقديٌّ لا يفرض نوعًا على كشفه', !cashDb.paymentType, cashDb.paymentType || '(فارغ — صواب)');
 
     const taxWf = await mk(`zz-عميل-ضريبي-${stamp}`);
     await call('PUT', `/api/workflows/${taxWf._id}`, accLogin.ck, { paymentDate: '2026-09-02' });
     const taxDb = await OW.findById(taxWf._id).select('paymentType').lean();
-    ok('عميلٌ ضريبيّ ← الكشفُ ضريبيّ من نفسِه', taxDb.paymentType === 'tax', taxDb.paymentType || '(فارغ)');
+    ok('وحسابٌ ضريبيٌّ كذلك', !taxDb.paymentType, taxDb.paymentType || '(فارغ — صواب)');
+
+    // ── والعميلُ الواحدُ يحاسب بالوجهين ─────────────────────────────────────
+    // حمولتان لعميلٍ واحد: واحدةٌ نقدًا وأخرى بفاتورة. كلتاهما تُكتب وتبقى.
+    await call('PUT', `/api/workflows/${cashWf._id}`, accLogin.ck, { paymentType: 'cash' });
+    await call('PUT', `/api/workflows/${taxWf._id}`, accLogin.ck, { paymentType: 'tax' });
+    const both = await OW.find({ _id: { $in: [cashWf._id, taxWf._id] } }).select('paymentType netInvoice documentNumber').lean();
+    ok('ما يُكتب بيدٍ يُحفظ كما كُتب', both.every((w) => w.paymentType), both.map((w) => w.paymentType).join(' + '));
+    const cashRow = both.find((w) => w.paymentType === 'cash');
+    ok('والنقديُّ تُقفَل أعمدةُ فاتورته', cashRow.netInvoice === 0 && cashRow.documentNumber === '0');
 
     // ── ٣ · العهدةُ تملأ الكشف ────────────────────────────────────────────
     head('المشتريات تملأ الكشف');
@@ -145,7 +156,8 @@ const call = async (method, path, ck, body) => {
       !!t1.payingBranch && t1.payingBranch === expectedBranchAr,
       `${t1.payingBranch || '(فارغ)'} — المتوقَّع ${expectedBranchAr}`);
     ok('ومكتوبٌ بالعربيّة كما في بقيّة العمود', !!t1.payingBranch && !/[A-Za-z]/.test(t1.payingBranch), `${t1.payingBranch}`);
-    ok('ونوعُ الدفع من ملفّ العميل', t1.paymentType === 'cash', t1.paymentType || '(فارغ)');
+    // والمحفظةُ تكتب ما تعرفه يقينًا، ولا تخترع نوعَ الدفع.
+    ok('ولا تخترع المحفظةُ نوعَ الدفع', !t1.paymentType, t1.paymentType || '(فارغ — صواب)');
     if (buy.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${buy.json.transaction._id}`, accLogin.ck);
 
     // ── ٤ · قيدُ استلام الفاتورة يملأ من سعر الشراء ───────────────────────
@@ -190,17 +202,23 @@ const call = async (method, path, ck, body) => {
 
     if (ti.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${ti.json.transaction._id}`, accLogin.ck);
 
-    // ── ٥ · ويصل الصفحةَ الصحيحة ─────────────────────────────────────────
-    head('يصل الصفحة الصحيحة من الصفحتين');
+    // ── ٥ · ويصل الصفحةَ الصحيحة بعد أن يُكتب نوعُه ────────────────────────
+    // الكشفُ لا يصل التحصيلَ حتى يقول أحدٌ نوعَه — وهو الصواب: قبل أن يُقال،
+    // لا أحدَ يعرف أنقدًا حوسب أم بفاتورة.
+    head('ويصل الصفحة الصحيحة بعد كتابة نوعه');
+    const beforeType = await call('GET', `/api/collections-dept/invoices/cash?q=${encodeURIComponent(target.reportNumber)}`, mgr.ck);
+    ok('بلا نوعٍ لا يصل أيَّ صفحة', (beforeType.json?.total || 0) === 0, `${beforeType.json?.total}`);
+
+    await call('PUT', `/api/workflows/${target._id}`, accLogin.ck, { paymentType: 'cash' });
     await OW.updateOne({ _id: target._id }, { $set: { paymentAmount: 800, payingBranch: expectedBranchAr } });
     const cash = await call('GET', `/api/collections-dept/invoices/cash?q=${encodeURIComponent(target.reportNumber)}`, mgr.ck);
-    ok('النقديُّ في فواتير الكاش فورًا', (cash.json?.total || 0) >= 1, `${cash.json?.total}`);
+    ok('ومتى كُتب «كاش» وصل فواتيرَ الكاش', (cash.json?.total || 0) >= 1, `${cash.json?.total}`);
 
     const taxBefore = await call('GET', `/api/collections-dept/invoices/tax?q=${encodeURIComponent(`zz-عميل-ضريبي-${stamp}`)}`, mgr.ck);
     ok('والضريبيُّ لا يصل قبل رقم الفاتورة', (taxBefore.json?.total || 0) === 0, `${taxBefore.json?.total}`);
 
     const invNo = `ZZ-W2C-${stamp}`;
-    await call('PUT', `/api/workflows/${rec._id}`, accLogin.ck, { invoiceNumber: invNo, netInvoice: 1000, invoiceDate: '2026-09-02' });
+    await call('PUT', `/api/workflows/${rec._id}`, accLogin.ck, { paymentType: 'tax', invoiceNumber: invNo, netInvoice: 1000, invoiceDate: '2026-09-02' });
     const taxAfter = await call('GET', `/api/collections-dept/invoices/tax?q=${invNo}`, mgr.ck);
     ok('ويصل فورَ كتابة رقم الفاتورة', (taxAfter.json?.total || 0) === 1, `${taxAfter.json?.total}`);
     ok('وضريبتُه محسوبة', taxAfter.json?.invoices?.[0]?.vat === 150, `${taxAfter.json?.invoices?.[0]?.vat}`);

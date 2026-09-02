@@ -1269,15 +1269,24 @@ export default function OperationsWorkflowPage() {
                           </td>
                         );
                       };
-                      // ── نوعُ الدفع: كاشٌ أم ضريبيّ ──────────────────────
+                      // ── نوعُ الدفع: كاشٌ أم ضريبيّ — يُكتب بيد ────────────
                       // هو ما يقرّر شكلَ الكشف كلَّه: النقديُّ لا يُفوتَر ويصل
                       // التحصيلَ في يومه، والضريبيُّ يُفوتَر ثمّ يُحصَّل بفاتورته.
                       // وعمودُ «طريقة الدفع» القادمُ من المنصّة لا يقرّر شيئًا
                       // من هذا — هذا هو المرجع.
+                      //
+                      // ولا يُملأ من ملفّ العميل: العميلُ الواحد يقول في حمولةٍ
+                      // «حاسبوني كاش» وفي أخرى «افتحوا فاتورة»، فالنوعُ صفةُ
+                      // الشحنة لا صفةُ الطرف. يكتبه مَن يعرف ما اتُّفق عليه في
+                      // هذه الحمولة، ويبقى مكتوبًا على الكشف فيُعرَف بعد سنةٍ
+                      // أيُّها كان نقدًا وأيُّها فاتورة.
                       const isCash = String(wf.paymentType || '') === 'cash';
                       const paymentTypeCell = () => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[120px]" onClick={cellClick('paymentType')}
-                          title={!owns('paymentType') ? noPermMsg : undefined}>
+                          title={!owns('paymentType') ? noPermMsg
+                            : (lang === 'ar'
+                              ? 'يُكتب لكل كشف على حدة — العميل قد يحاسب كاشًا في حمولة وضريبيًّا في أخرى'
+                              : 'Set per report — a customer may settle one load in cash and another by invoice')}>
                           {isEditing && owns('paymentType') ? (
                             <select title={T.thPaymentType} className={ic}
                               value={(editData as any).paymentType || ''}

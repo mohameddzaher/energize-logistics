@@ -84,9 +84,13 @@ const readStatus = (v) => {
   // أحدثُ عقدٍ لكلّ موظّف هو الجاري — والورقةُ تصف الجاري.
   const contracts = await Contract.find({}).lean();
   const byEmp = new Map();
+  // ومفتاحٌ ثانٍ بالفترة نفسِها، فلا يُنشأ عقدٌ لفترةٍ لها عقد.
+  const bySpan = new Map();
   for (const c of contracts.sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')))) {
     const k = String(c.employee);
     if (!byEmp.has(k)) byEmp.set(k, c);
+    const sk = `${k}|${c.startDate || ''}|${c.endDate || ''}`;
+    if (!bySpan.has(sk)) bySpan.set(sk, c);
   }
 
   const plan = []; const noEmployee = []; const noStart = []; const suspect = [];
@@ -116,7 +120,16 @@ const readStatus = (v) => {
     const status = readStatus(r[2]);
     if (status) src.status = status;
 
-    const cur = byEmp.get(String(emp._id));
+    // ── ولا يُنشأ عقدٌ لفترةٍ له فيها عقد ────────────────────────────────
+    // كان الشرطُ «هل له عقدٌ جارٍ؟» فقط، فمن اختلف تاريخُ عقده الجاري عن سطر
+    // الورقة أُنشئ له عقدٌ ثانٍ بنفس الفترة تمامًا. خمسةُ موظّفين صاروا يحملون
+    // عقدين «ساريين»، ورصيدُ الإجازات يُحسب على «العقد الجاري» — فأيُّهما؟
+    //
+    // فيُسأل عن الفترة نفسِها لا عن الأحدث: مَن له عقدٌ بهذين التاريخين يُحدَّث
+    // عقدُه ذاك ولا يُنشأ له آخر.
+    const spanKey = `${String(emp._id)}|${src.startDate}|${src.endDate}`;
+    const sameSpan = bySpan.get(spanKey);
+    const cur = sameSpan || byEmp.get(String(emp._id));
     const name = `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || iq;
 
     if (!cur) {

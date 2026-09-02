@@ -150,7 +150,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     { header: t('المدينة', 'City'), key: 'city', width: 14 },
     { header: t('شروط السداد', 'Payment terms'), key: 'paymentTerms', width: 14 },
     { header: t('الحالة', 'Status'), key: 'status', width: 14 },
-    ...(kind === 'customer' ? [{ header: t('نوع الدفع', 'Payment type'), key: 'paymentType', width: 14, transform: (v: any) => paymentTypeLabel(v, ar) }] : []),
+    ...(kind === 'customer' ? [{ header: t('نوع الحساب', 'Account type'), key: 'paymentType', width: 14, transform: (v: any) => paymentTypeLabel(v, ar) }] : []),
     // الملفُّ لا يخرج بما لا يُعرَض على الشاشة.
     ...(hideMoney ? [] : [
       { header: t('كشوف', 'Reports'), key: 'reports', width: 10 },
@@ -332,8 +332,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
                   </td>
                   <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{p.city || '—'}</td>
                   <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{p.status || '—'}</td>
-                  {/* نوعُ الدفع: منه يُملأ العمودُ على كشوفه، فيُقرأ هنا قبل
-                      أن يُسأل عنه في كلّ كشف. */}
+                  {/* نوعُ الحساب — في أيّ دفترٍ يجلس، لا قاعدةٌ على شحناته. */}
                   {kind === 'customer' && (
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {p.paymentType ? (
@@ -415,12 +414,13 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
               <ManagedSelect type="collections_party_type" value={editing?.partyType || ''}
                 onChange={(v) => setEditing((p) => ({ ...p, partyType: v }))} storeLabel placeholder={t('— اختر —', '— select —')} />
             </Field>
-            {/* ── نوعُ الدفع صفةُ العميل ────────────────────────────────────
-                يُكتب هنا مرّةً فيُملأ على كشوفه كلِّها لحظةَ تسجيل السداد —
-                بدل أن يُختار في كلّ كشفٍ فيُنسى أو يُخطأ، وخطأٌ واحدٌ يُرسل
-                كشفَ عميلٍ ضريبيّ إلى فواتير الكاش. */}
+            {/* ── نوعُ الحساب لا نوعُ الشحنة ────────────────────────────────
+                يقول في أيّ دفترٍ يجلس الحساب، ومنه يُولَّد كودُه: النقديُّ
+                `C####` والضريبيُّ `1104####`. ولا يقرّر نوعَ دفعِ كشفٍ بعينه —
+                ذاك يُكتب على الكشف في سير عمل التشغيل، لأنّ العميلَ الواحد
+                يحاسب كاشًا في حمولةٍ وضريبيًّا في أخرى. */}
             {kind === 'customer' && (
-              <Field label={t('نوع الدفع', 'Payment type')}>
+              <Field label={t('نوع الحساب', 'Account type')}>
                 <Select value={editing?.paymentType || ''}
                   onChange={(e) => setEditing((p) => ({ ...p, paymentType: e.target.value as any }))}>
                   <option value="">{t('— غير محدَّد —', '— not set —')}</option>

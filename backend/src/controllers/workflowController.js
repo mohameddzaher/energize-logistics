@@ -171,33 +171,22 @@ function deriveInvoiceTotals(patch, current) {
 }
 
 /**
- * نوعُ الدفع يُملأ من ملفّ العميل حين يُسجَّل السداد.
+ * ── ونوعُ الدفع يُكتب بيدٍ، ولا يُستنتَج من العميل ─────────────────────────
  *
- * ── لماذا لا يُختار في كلّ كشف ─────────────────────────────────────────────
- * النوعُ صفةُ العميل لا صفةُ الشحنة: عميلُ الكاش يدفع في يده دائمًا، والضريبيُّ
- * يُفوتَر دائمًا. فاختيارُه في كلّ كشفٍ على حدة عملٌ مكرَّرٌ يُنسى ويُخطأ —
- * ويكفي خطأٌ واحدٌ ليذهب كشفُ عميلٍ ضريبيّ إلى فواتير الكاش.
+ * كان يُقرأ من ملفّ العميل ويُملأ من نفسِه، على أنّ النوعَ صفةٌ ثابتةٌ فيه.
+ * وليس كذلك: العميلُ الواحد يقول في حمولةٍ «حاسبوني كاش» وفي أخرى «افتحوا
+ * فاتورة». النوعُ صفةُ **الشحنة** لا صفةُ الطرف.
  *
- * فيُقرأ من سجلّ الطرف لحظةَ تسجيل السداد، وهي اللحظةُ التي يصير فيها الكشفُ
- * شغلًا للتحصيل. ولا يُكتب فوق اختيارٍ صريح: مَن اختار بيده يُحترَم اختيارُه.
+ * فاستنتاجُه من الملفّ يكتب على الكشف ما لم يقله أحد، ويرسله إلى صفحةِ تحصيلٍ
+ * ليست له — وهو خطأٌ صامتٌ لا يُكتشف إلّا حين يُطالَب عميلٌ بفاتورةٍ اتُّفق على
+ * نقدِها. ومن كتبه بيده يعرف ما اتُّفق عليه في تلك الحمولة.
+ *
+ * والتاريخُ محفوظٌ على كلّ حال: النوعُ مكتوبٌ على الكشف نفسِه، فيُعرَف بعد سنةٍ
+ * أيُّ كشوفِ هذا العميل كانت نقدًا وأيُّها فاتورة.
+ *
+ * (بقيت الدالّةُ محذوفةً لا معطَّلة: دالّةٌ لا تُستدعى تُعاد يومًا بلا قراءةِ
+ *  سببِ إزالتها.)
  */
-async function fillPaymentTypeFromCustomer(patch, current) {
-  const settingPayment = Object.prototype.hasOwnProperty.call(patch, 'paymentDate') && patch.paymentDate;
-  const alreadyTyped = patch.paymentType || current.paymentType;
-  const customer = patch.username || current.username;
-  if (!settingPayment || alreadyTyped || !customer) return patch;
-  try {
-    const CollectionsParty = require('../models/CollectionsParty');
-    const party = await CollectionsParty.findOne({
-      kind: 'customer', nameKey: CollectionsParty.fold(customer),
-    }).select('paymentType').lean();
-    if (party?.paymentType) patch.paymentType = party.paymentType;
-  } catch (e) {
-    // تعذُّرُ القراءة لا يمنع تسجيلَ السداد: النوعُ يُختار بيدٍ بعده.
-    console.error('paymentType from customer:', e.message);
-  }
-  return patch;
-}
 
 /**
  * يُطبِّق قواعدَ نوع الدفع على تعديلٍ قادم.
@@ -781,7 +770,6 @@ exports.updateWorkflow = async (req, res) => {
     const sentKeys = Object.keys(filteredBody);
     // نوعُ الدفع يُملأ من ملفّ العميل قبل تطبيق القواعد، فيُقفل الكشفُ النقديُّ
     // في الحفظة نفسِها التي سُجّل فيها سدادُه — لا في تعديلٍ ثانٍ.
-    await fillPaymentTypeFromCustomer(filteredBody, workflow.toObject());
     const billing = applyBillingRules(filteredBody, workflow.toObject());
     if (billing.blocked.length && sentKeys.every((k) => billing.blocked.includes(k))) {
       return res.status(400).json({
@@ -1072,7 +1060,7 @@ exports.bulkUpdate = async (req, res) => {
         skipped.push({ reportNumber: r.reportNumber, reason: 'لم يُستلم السند بعد' });
         continue;
       }
-      const rowPatch = await fillPaymentTypeFromCustomer({ ...patch }, r);
+      const rowPatch = { ...patch };
       const own = applyBillingRules(rowPatch, r);
       if (own.blocked.length && !Object.keys(own.patch).length) {
         skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — لا فاتورة له' });

@@ -240,8 +240,13 @@ export default function PartyProfilePage() {
           <div>
             <p className="text-[13px] font-bold text-slate-900 mb-2">{t('شروط التحصيل', 'Collection terms')}</p>
             <div className="space-y-1.5">
-              {/* نوعُ الدفع: منه يُملأ العمودُ على كشوفه لحظةَ تسجيل السداد. */}
-              {kind === 'customer' && <Row label={t('نوع الدفع', 'Payment type')} value={paymentTypeLabel(p.paymentType, ar)} />}
+              {/* ── نوعُ الحساب، لا قاعدةٌ على شحناته ────────────────────────
+                  يقول في أيّ دفترٍ يجلس الحساب ومنه يُولَّد كودُه. ولا يقرّر
+                  نوعَ دفعِ كشفٍ بعينه: العميلُ الواحد يقول في حمولةٍ «كاش»
+                  وفي أخرى «افتحوا فاتورة»، وذلك يُكتب على الكشف نفسِه. */}
+              {kind === 'customer' && (
+                <Row label={t('نوع الحساب', 'Account type')} value={paymentTypeLabel(p.paymentType, ar)} />
+              )}
               {/* المهلةُ تُعَدّ من تسليم الفاتورة، لا من تاريخها — تُقال صراحةً
                   لأنّ الفرقَ بينهما هو الفرقُ بين «متأخّر» و«لم يستلم بعد». */}
               <Row label={t('مهلة السداد (من تاريخ التسليم)', 'Credit days (from delivery)')}

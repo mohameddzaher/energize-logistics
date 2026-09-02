@@ -145,19 +145,13 @@ async function fillReportFromWallet({ workflow, amount, date, branchId }) {
     } catch (e) { console.error('wallet→report branch lookup:', e.message); }
   }
 
-  // ── ونوعُ الدفع يُملأ هنا كما يُملأ هناك ────────────────────────────────
-  // تسجيلُ السداد من العهدة تسجيلٌ للسداد. فلو مُلئ النوعُ في سير عمل التشغيل
-  // وحدَه لذهب كشفُ عميلٍ نقديٍّ سُدّد من العهدة إلى لا مكان — لا يصل التحصيلَ
-  // حتى يفتح أحدٌ الصفَّ ويختار بيده.
-  if (patch.paymentDate && !workflow.paymentType && workflow.username) {
-    try {
-      const CollectionsParty = require('../models/CollectionsParty');
-      const party = await CollectionsParty.findOne({
-        kind: 'customer', nameKey: CollectionsParty.fold(workflow.username),
-      }).select('paymentType').lean();
-      if (party?.paymentType) patch.paymentType = party.paymentType;
-    } catch (e) { console.error('wallet→report paymentType:', e.message); }
-  }
+  // ── ولا يُستنتَج نوعُ الدفع من ملفّ العميل ───────────────────────────────
+  // كان يُقرأ من السجلّ ويُكتب هنا، على أنّ النوعَ صفةٌ ثابتةٌ في العميل. وليس
+  // كذلك: العميلُ الواحد يقول في حمولةٍ «كاش» وفي أخرى «افتحوا فاتورة» — فهو
+  // صفةُ الشحنة لا صفةُ الطرف. واستنتاجُه يكتب على الكشف ما لم يقله أحد.
+  //
+  // فالمحفظةُ تكتب ما تعرفه يقينًا (المبلغ والتاريخ والفرع)، ويبقى النوعُ
+  // لصاحب الكشف يكتبه بيده.
 
   if (!Object.keys(patch).length) return null;
   await OperationsWorkflow.updateOne({ _id: workflow._id }, { $set: patch });

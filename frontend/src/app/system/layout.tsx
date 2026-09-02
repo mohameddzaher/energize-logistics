@@ -19,6 +19,7 @@ import {
   Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail,
   CalendarClock, TriangleAlert,
   FileSignature, PhoneCall, UserCheck, Fuel, ClipboardCheck,
+  Receipt, Banknote,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -220,6 +221,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // أربعُ صفحاتٍ لا أكثر: لوحةٌ، وسجلّا العملاء والموردين، وإعداداتُ القسم.
     // ومعها الصفحتان الثابتتان في كلّ قسم (مهامي والشكاوى).
     { href: '/system/collections-dept/dashboard', label: lang === 'ar' ? 'لوحة التحصيل' : 'Collections Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    // ── الفواتير: من هنا يعمل القسم ────────────────────────────────────────
+    // التحصيلُ لا يُحصِّل كشوفًا بل فواتير — فصفحتاهما قبل السجلّات.
+    { href: '/system/collections-dept/invoices/tax', label: lang === 'ar' ? 'الفواتير الضريبية' : 'Tax Invoices', icon: <Receipt className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    { href: '/system/collections-dept/invoices/cash', label: lang === 'ar' ? 'فواتير الكاش' : 'Cash Invoices', icon: <Banknote className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/suppliers', label: lang === 'ar' ? 'الموردين' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     // ── وصفحةُ التشغيل من داخل قسمهم ──────────────────────────────────────

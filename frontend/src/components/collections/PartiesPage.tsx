@@ -11,7 +11,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
-  canEditCollections, kindWords, money, dt,
+  canEditCollections, receivablesOnly, kindWords, money, dt,
   type PartyKind, type CollectionsParty,
 } from '@/lib/collections';
 import {
@@ -38,6 +38,12 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   // الحذفُ كالتعديل: منحُ «تعديل» على قسمٍ يمرّ كلَّ نقطةٍ فيه على الخادم،
   // فزرٌّ مخفيٌّ بشرطٍ أضيق يُخفي فعلًا مسموحًا لا يمنعه.
   const canDelete = canEdit;
+
+  // ── وسجلُّ الموردين يُقرأ بلا أرقام لمن يُحصِّل ──────────────────────────
+  // الاسمُ والتواصلُ والهويّةُ التجاريّة شغلٌ مشترك؛ أمّا ما ندفعه لهم فليس
+  // شأنَ التحصيل. فالصفحةُ تبقى مفتوحةً وتسقط أعمدةُ المال وحدَها — إخفاؤها
+  // كلِّها كان سيمنع بحثًا مشروعًا عن رقمِ مورّدٍ أو سجلِّه.
+  const hideMoney = kind === 'supplier' && receivablesOnly(user);
 
   const [rows, setRows] = useState<CollectionsParty[]>([]);
   const [total, setTotal] = useState(0);
@@ -140,10 +146,13 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     { header: t('المدينة', 'City'), key: 'city', width: 14 },
     { header: t('شروط السداد', 'Payment terms'), key: 'paymentTerms', width: 14 },
     { header: t('الحالة', 'Status'), key: 'status', width: 14 },
-    { header: t('كشوف', 'Reports'), key: 'reports', width: 10 },
-    { header: W.totalLabel, key: 'total', width: 16 },
-    { header: W.settledLabel, key: 'settled', width: 16 },
-    { header: W.dueLabel, key: 'outstanding', width: 16 },
+    // الملفُّ لا يخرج بما لا يُعرَض على الشاشة.
+    ...(hideMoney ? [] : [
+      { header: t('كشوف', 'Reports'), key: 'reports', width: 10 },
+      { header: W.totalLabel, key: 'total', width: 16 },
+      { header: W.settledLabel, key: 'settled', width: 16 },
+      { header: W.dueLabel, key: 'outstanding', width: 16 },
+    ]),
     { header: t('آخر كشف', 'Last report'), key: 'lastReportAt', width: 14 },
   ];
 
@@ -205,9 +214,9 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Stat label={W.title} value={money(total)} />
         <Stat label={t('كشوف', 'Reports')} value={money(totals.reports)} />
-        <Stat label={W.totalLabel} value={money(totals.total)} />
-        <Stat label={W.settledLabel} value={money(totals.settled)} accent="text-emerald-600" />
-        <Stat label={W.dueLabel} value={money(totals.outstanding)} accent={totals.outstanding > 0 ? 'text-red-600' : 'text-slate-900'} />
+        {!hideMoney && <Stat label={W.totalLabel} value={money(totals.total)} />}
+        {!hideMoney && <Stat label={W.settledLabel} value={money(totals.settled)} accent="text-emerald-600" />}
+        {!hideMoney && <Stat label={W.dueLabel} value={money(totals.outstanding)} accent={totals.outstanding > 0 ? 'text-red-600' : 'text-slate-900'} />}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -248,10 +257,12 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
             </Select>
           </Field>
           <div className="flex items-end gap-2">
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 pb-2">
-              <input type="checkbox" checked={onlyDue} onChange={(e) => setOnlyDue(e.target.checked)} className="accent-[#f37121]" />
-              {t('عليه مستحق فقط', 'Has outstanding only')}
-            </label>
+            {!hideMoney && (
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 pb-2">
+                <input type="checkbox" checked={onlyDue} onChange={(e) => setOnlyDue(e.target.checked)} className="accent-[#f37121]" />
+                {t('عليه مستحق فقط', 'Has outstanding only')}
+              </label>
+            )}
             {activeCount > 0 && (
               <button
                 type="button"
@@ -272,16 +283,17 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
             <thead className="bg-slate-50 text-slate-500 text-xs">
               <tr>
                 {[t('الاسم', 'Name'), t('التواصل', 'Contact'), t('المدينة', 'City'), t('الحالة', 'Status'),
-                  t('كشوف', 'Reports'), W.totalLabel, W.settledLabel, W.dueLabel, t('آخر كشف', 'Last report'), ''].map((h, i) => (
+                  ...(hideMoney ? [] : [t('كشوف', 'Reports'), W.totalLabel, W.settledLabel, W.dueLabel]),
+                  t('آخر كشف', 'Last report'), ''].map((h, i) => (
                   <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={10} className="px-4 py-12"><Spinner /></td></tr>
+                <tr><td colSpan={hideMoney ? 6 : 10} className="px-4 py-12"><Spinner /></td></tr>
               ) : shown.length === 0 ? (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
+                <tr><td colSpan={hideMoney ? 6 : 10} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
               ) : shown.map((p) => (
                 <tr
                   key={p._id}
@@ -314,13 +326,15 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
                   </td>
                   <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{p.city || '—'}</td>
                   <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{p.status || '—'}</td>
-                  <td className="px-3 py-2.5 tabular-nums">
-                    {money(p.reports)}
-                    {p.openReports > 0 && <span className="text-[11px] text-red-500 ms-1">({money(p.openReports)})</span>}
-                  </td>
-                  <td className="px-3 py-2.5 tabular-nums text-slate-700">{money(p.total)}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-emerald-700">{money(p.settled)}</td>
-                  <td className={`px-3 py-2.5 tabular-nums font-semibold ${p.outstanding > 0 ? 'text-red-600' : 'text-slate-400'}`}>{money(p.outstanding)}</td>
+                  {!hideMoney && (
+                    <td className="px-3 py-2.5 tabular-nums">
+                      {money(p.reports)}
+                      {p.openReports > 0 && <span className="text-[11px] text-red-500 ms-1">({money(p.openReports)})</span>}
+                    </td>
+                  )}
+                  {!hideMoney && <td className="px-3 py-2.5 tabular-nums text-slate-700">{money(p.total)}</td>}
+                  {!hideMoney && <td className="px-3 py-2.5 tabular-nums text-emerald-700">{money(p.settled)}</td>}
+                  {!hideMoney && <td className={`px-3 py-2.5 tabular-nums font-semibold ${p.outstanding > 0 ? 'text-red-600' : 'text-slate-400'}`}>{money(p.outstanding)}</td>}
                   <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{dt(p.lastReportAt)}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">

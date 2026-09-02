@@ -37,7 +37,7 @@ interface DailyWallet {
 
 interface Transaction {
   _id: string;
-  type: 'collection' | 'expense' | 'purchase';
+  type: 'collection' | 'expense' | 'purchase' | 'tax_invoice';
   amount: number;
   customer: { _id: string; companyName: string; customerNumber: string } | null;
   invoice: { invoiceNumber: string; amount: number; balance: number } | null;
@@ -79,6 +79,11 @@ const TYPE_CONFIG = {
   collection: { label: 'Collection', labelAr: 'تحصيل', icon: ArrowUpCircle, color: 'text-green-600', bg: 'bg-green-500/20' },
   expense: { label: 'Expense', labelAr: 'مصروف', icon: ArrowDownCircle, color: 'text-red-600', bg: 'bg-red-500/20' },
   purchase: { label: 'Purchase', labelAr: 'مشتريات', icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-500/20' },
+  // ── قيدُ استلام، لا حركةُ مال ────────────────────────────────────────────
+  // يُسجَّل ليُعرَف أنّ الموظّف استلم فاتورةً أو كشفًا بيده. وهو **خارج** رصيد
+  // العهدة تمامًا: لا يُجمَع ولا يُطرَح — ولذلك لونُه محايدٌ لا أخضرُ ولا أحمر،
+  // فاللونُ في هذه الشاشة يقول اتّجاهَ المال.
+  tax_invoice: { label: 'Tax invoice received', labelAr: 'فاتورة ضريبية', icon: Receipt, color: 'text-slate-600', bg: 'bg-slate-200/70' },
 };
 
 const getTodayStr = () => {
@@ -98,7 +103,7 @@ export default function WalletPage() {
   const { lang } = useLanguage();
   const L = getWalletTranslations(lang);
   const txx = getWalletExtraTranslations(lang);
-  const typeLabel = (type: 'collection' | 'expense' | 'purchase') => lang === 'ar' ? TYPE_CONFIG[type].labelAr : TYPE_CONFIG[type].label;
+  const typeLabel = (type: 'collection' | 'expense' | 'purchase' | 'tax_invoice') => lang === 'ar' ? TYPE_CONFIG[type].labelAr : TYPE_CONFIG[type].label;
 
   const [wallet, setWallet] = useState<DailyWallet | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -129,13 +134,15 @@ export default function WalletPage() {
 
   // Transaction modal
   const [showTxModal, setShowTxModal] = useState(false);
-  const [txType, setTxType] = useState<'collection' | 'expense' | 'purchase'>('collection');
+  const [txType, setTxType] = useState<'collection' | 'expense' | 'purchase' | 'tax_invoice'>('collection');
   const [txForm, setTxForm] = useState({
     amount: '', deliveryStatementNumber: '', itemName: '', notes: '',
     collectionSource: 'client' as 'client' | 'company', description: '',
     purchaseDeliveryStatementNumber: '', purchaseDriverName: '', purchaseReceiptNumber: '', purchaseBranch: '',
     // Amount-mismatch reason (when entered amount != expected dispatch-sheet value)
     mismatchReason: '' as '' | 'daily' | 'violation' | 'other', mismatchNote: '',
+    // قيدُ استلام فاتورةٍ أو كشف — معلومةٌ خارج الرصيد.
+    receivedDocType: 'invoice' as 'invoice' | 'report', receivedDocNumber: '',
   });
   // Empty form used on open/reset — keeps the three reset sites in sync.
   const EMPTY_TX_FORM = {
@@ -143,6 +150,8 @@ export default function WalletPage() {
     collectionSource: 'client' as 'client' | 'company', description: '',
     purchaseDeliveryStatementNumber: '', purchaseDriverName: '', purchaseReceiptNumber: '', purchaseBranch: '',
     mismatchReason: '' as '' | 'daily' | 'violation' | 'other', mismatchNote: '',
+    // قيدُ استلام فاتورةٍ أو كشف — معلومةٌ خارج الرصيد.
+    receivedDocType: 'invoice' as 'invoice' | 'report', receivedDocNumber: '',
   };
   const [submitting, setSubmitting] = useState(false);
   const [txError, setTxError] = useState('');
@@ -256,6 +265,11 @@ export default function WalletPage() {
         notes: txForm.notes || undefined,
       };
       // Expected dispatch-sheet value for this transaction type (null = no lookup done).
+      if (txType === 'tax_invoice' && !String(txForm.receivedDocNumber || '').trim()) {
+        setTxError(lang === 'ar' ? 'اكتب رقم الفاتورة أو رقم الكشف' : 'Enter the invoice or report number');
+        setSubmitting(false);
+        return;
+      }
       const expected = txType === 'purchase' ? expectedPurchaseValue : txType === 'collection' ? expectedSellingValue : null;
       const isMismatch = expected != null && Math.abs(Number(txForm.amount) - expected) > 0.009;
       if (isMismatch) {
@@ -282,6 +296,11 @@ export default function WalletPage() {
       }
       if (txType === 'expense') {
         payload.itemName = txForm.itemName || undefined;
+      }
+      if (txType === 'tax_invoice') {
+        payload.amount = Number(txForm.amount) || 0;
+        payload.receivedDocType = txForm.receivedDocType || 'invoice';
+        payload.receivedDocNumber = String(txForm.receivedDocNumber || '').trim();
       }
       if (txType === 'purchase') {
         payload.purchaseDeliveryStatementNumber = txForm.purchaseDeliveryStatementNumber || undefined;
@@ -532,7 +551,7 @@ export default function WalletPage() {
 
 
 
-  const openTxModal = (type: 'collection' | 'expense' | 'purchase') => {
+  const openTxModal = (type: 'collection' | 'expense' | 'purchase' | 'tax_invoice') => {
     setTxType(type);
     setTxForm(EMPTY_TX_FORM);
     setTxError('');
@@ -680,6 +699,11 @@ export default function WalletPage() {
                 className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-500/30 transition-colors border border-blue-500/30">
                 <ShoppingCart className="w-4 h-4" /> {L.purchase}
               </button>
+              {/* استلامُ فاتورةٍ أو كشف — معلومةٌ لا مال. */}
+              <button type="button" onClick={() => openTxModal('tax_invoice')}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-200/70 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300/70 transition-colors border border-slate-300">
+                <Receipt className="w-4 h-4" /> {lang === 'ar' ? 'فاتورة ضريبية' : 'Tax invoice'}
+              </button>
             </>
           )}
           {!wallet.isClosed && (
@@ -746,8 +770,11 @@ export default function WalletPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`font-bold ${tx.type === 'collection' ? 'text-green-600' : 'text-red-600'}`}>
-                        {tx.type === 'collection' ? '+' : '-'}{tx.amount.toLocaleString()}
+                      <span className={`font-bold ${tx.type === 'tax_invoice' ? 'text-slate-500' : tx.type === 'collection' ? 'text-green-600' : 'text-red-600'}`}>
+                        {tx.type === 'tax_invoice' ? '' : tx.type === 'collection' ? '+' : '-'}
+                        {tx.type === 'tax_invoice'
+                          ? (lang === 'ar' ? 'خارج الرصيد' : 'off-balance')
+                          : tx.amount.toLocaleString()}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-700 text-xs">
@@ -930,6 +957,40 @@ export default function WalletPage() {
                       onChange={(e) => setTxForm((f) => ({ ...f, itemName: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.expensePlaceholder} />
                   </div>
+                )}
+
+                {/* ── قيدُ استلام فاتورةٍ أو كشف ────────────────────────────
+                    معلومةٌ لا حركةُ مال: تُقال صراحةً في الشاشة كي لا يظنّها
+                    أحدٌ تحصيلًا ناقصًا. */}
+                {txType === 'tax_invoice' && (
+                  <>
+                    <div className="rounded-lg bg-slate-100 border border-slate-200 p-3 text-[12.5px] text-slate-600">
+                      {lang === 'ar'
+                        ? 'قيدُ استلام — لا يدخل رصيدَ العهدة ولا يُحسب في إقفال اليوم. لتسجيل أنّ الفاتورة أو الكشف صار بيدك.'
+                        : 'A receipt record — it does not enter the wallet balance or the day’s close.'}
+                    </div>
+                    <div>
+                      <label className="text-slate-500 text-xs mb-1 block">{lang === 'ar' ? 'المستند المستلَم' : 'Document'}</label>
+                      <select value={txForm.receivedDocType}
+                        title={lang === 'ar' ? 'المستند المستلَم' : 'Document'}
+                        onChange={(e) => setTxForm((f) => ({ ...f, receivedDocType: e.target.value as 'invoice' | 'report' }))}
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
+                        <option value="invoice">{lang === 'ar' ? 'فاتورة ضريبية' : 'Tax invoice'}</option>
+                        <option value="report">{lang === 'ar' ? 'كشف تخريج' : 'Dispatch report'}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-slate-500 text-xs mb-1 block">
+                        {txForm.receivedDocType === 'report'
+                          ? (lang === 'ar' ? 'رقم الكشف' : 'Report number')
+                          : (lang === 'ar' ? 'رقم الفاتورة' : 'Invoice number')} *
+                      </label>
+                      <input type="text" value={txForm.receivedDocNumber}
+                        onChange={(e) => setTxForm((f) => ({ ...f, receivedDocNumber: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                        placeholder={lang === 'ar' ? 'اكتب الرقم كما هو على المستند' : 'as written on the document'} />
+                    </div>
+                  </>
                 )}
 
                 {/* Purchase Fields (dispatch sheet related payments) */}

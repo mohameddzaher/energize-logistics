@@ -12,7 +12,8 @@ import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
-import { money, dt } from '@/lib/collections';
+import { money, dt, receivablesOnly } from '@/lib/collections';
+import { useAuth } from '@/context/AuthContext';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu from '@/components/ls2/ExportMenu';
@@ -36,6 +37,11 @@ interface Dash {
 }
 
 export default function CollectionsDashboardPage() {
+  const { user } = useAuth();
+  // ── ما علينا والصافي ليسا شغلَ التحصيل ──────────────────────────────────
+  // القسمُ يُحصِّل؛ ما ندفعه للموردين والصافيُ بينهما شأنُ الإدارة والمالية.
+  // ويُخفَيان بالدور لا بالقسم: مَن يفتح القسمَ من الإدارة يرى الوجهين.
+  const receivables = receivablesOnly(user);
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
@@ -96,7 +102,7 @@ export default function CollectionsDashboardPage() {
   const agingRows = data.aging.customer.map((c, i) => ({
     bucket: c.bucket,
     [t('لنا', 'Receivable')]: c.amount,
-    [t('علينا', 'Payable')]: data.aging.supplier[i]?.amount || 0,
+    ...(receivables ? {} : { [t('علينا', 'Payable')]: data.aging.supplier[i]?.amount || 0 }),
   }));
 
   const topCols = [
@@ -151,7 +157,7 @@ export default function CollectionsDashboardPage() {
             label: t('المعروض', 'Shown'),
             sheets: [
               { name: t('أكبر المتأخرين — عملاء', 'Top customers due'), rows: C.top, columns: topCols },
-              { name: t('أكبر المتأخرين — موردون', 'Top suppliers due'), rows: S.top, columns: topCols },
+              ...(receivables ? [] : [{ name: t('أكبر المتأخرين — موردون', 'Top suppliers due'), rows: S.top, columns: topCols }]),
               {
                 name: t('بالفرع', 'By branch'),
                 rows: data.byBranch,
@@ -159,7 +165,9 @@ export default function CollectionsDashboardPage() {
                   { header: t('الفرع', 'Branch'), key: 'branch', width: 18 },
                   { header: t('كشوف', 'Reports'), key: 'reports', width: 10 },
                   { header: t('لنا', 'Receivable'), key: 'receivable', width: 16 },
-                  { header: t('علينا', 'Payable'), key: 'payable', width: 16 },
+                  // الملفُّ لا يخرج بما لا يُعرَض: الحجبُ على الشاشة وحدَها
+                  // يلتفّ حوله زرُّ تصدير.
+                  ...(receivables ? [] : [{ header: t('علينا', 'Payable'), key: 'payable', width: 16 }]),
                 ],
               },
               {
@@ -190,19 +198,33 @@ export default function CollectionsDashboardPage() {
           accent="text-red-600"
           onClick={() => router.push('/system/collections-dept/customers')}
         />
-        <Card
-          label={t('المستحق علينا (الموردون)', 'Payable (suppliers)')}
-          value={money(S.outstanding)}
-          sub={t(`${money(S.openReports)} كشفًا لم تُسدَّد`, `${money(S.openReports)} unpaid reports`)}
-          accent="text-amber-600"
-          onClick={() => router.push('/system/collections-dept/suppliers')}
-        />
-        <Card
-          label={t('الصافي', 'Net position')}
-          value={money(net)}
-          sub={t('ما يبقى لنا بعد سداد ما علينا', 'What is left after paying what we owe')}
-          accent={net >= 0 ? 'text-emerald-600' : 'text-red-600'}
-        />
+        {!receivables && (
+          <Card
+            label={t('المستحق علينا (الموردون)', 'Payable (suppliers)')}
+            value={money(S.outstanding)}
+            sub={t(`${money(S.openReports)} كشفًا لم تُسدَّد`, `${money(S.openReports)} unpaid reports`)}
+            accent="text-amber-600"
+            onClick={() => router.push('/system/collections-dept/suppliers')}
+          />
+        )}
+        {!receivables && (
+          <Card
+            label={t('الصافي', 'Net position')}
+            value={money(net)}
+            sub={t('ما يبقى لنا بعد سداد ما علينا', 'What is left after paying what we owe')}
+            accent={net >= 0 ? 'text-emerald-600' : 'text-red-600'}
+          />
+        )}
+        {/* ومكانُهما لمن لا يراهما: ما يخصّه — كم فاتورةً بقيت وكم عمرُها. */}
+        {receivables && (
+          <Card
+            label={t('كشوف لم تُحصَّل', 'Uncollected reports')}
+            value={money(C.openReports)}
+            sub={t('من كشوف التشغيل', 'from the operations reports')}
+            accent="text-amber-600"
+            onClick={() => router.push('/system/collections-dept/invoices/tax')}
+          />
+        )}
         <Card
           label={t('نسبة التحصيل', 'Collection rate')}
           value={C.total ? `${Math.round((C.settled / C.total) * 1000) / 10}%` : '—'}
@@ -225,7 +247,9 @@ export default function CollectionsDashboardPage() {
           onClick={() => router.push('/system/collections-dept/suppliers')}
         />
         <Card label={t('إجمالي المبيعات', 'Total billed')} value={money(C.total)} sub={t(`${money(C.reports)} كشفًا`, `${money(C.reports)} reports`)} />
-        <Card label={t('إجمالي المشتريات', 'Total purchased')} value={money(S.total)} sub={t(`${money(S.reports)} كشفًا`, `${money(S.reports)} reports`)} />
+        {!receivables && (
+          <Card label={t('إجمالي المشتريات', 'Total purchased')} value={money(S.total)} sub={t(`${money(S.reports)} كشفًا`, `${money(S.reports)} reports`)} />
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -239,7 +263,7 @@ export default function CollectionsDashboardPage() {
                 <Tooltip formatter={(v: any) => money(v)} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey={t('لنا', 'Receivable')} fill="#ef4444" radius={[4, 4, 0, 0]} />
-                <Bar dataKey={t('علينا', 'Payable')} fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                {!receivables && <Bar dataKey={t('علينا', 'Payable')} fill="#f59e0b" radius={[4, 4, 0, 0]} />}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -273,12 +297,14 @@ export default function CollectionsDashboardPage() {
         >
           <TopTable rows={C.top} kind="customer" />
         </Panel>
-        <Panel
-          title={t('أكبر المستحقّ — موردون', 'Largest amounts owed — suppliers')}
-          right={<span className="text-[11px] text-slate-400 inline-flex items-center gap-1"><Truck className="w-3.5 h-3.5" />{t('أعلى ١٥', 'Top 15')}</span>}
-        >
-          <TopTable rows={S.top} kind="supplier" />
-        </Panel>
+        {!receivables && (
+          <Panel
+            title={t('أكبر المستحقّ — موردون', 'Largest amounts owed — suppliers')}
+            right={<span className="text-[11px] text-slate-400 inline-flex items-center gap-1"><Truck className="w-3.5 h-3.5" />{t('أعلى ١٥', 'Top 15')}</span>}
+          >
+            <TopTable rows={S.top} kind="supplier" />
+          </Panel>
+        )}
       </div>
 
       <Panel
@@ -289,7 +315,8 @@ export default function CollectionsDashboardPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500 text-xs">
               <tr>
-                {[t('الفرع', 'Branch'), t('كشوف', 'Reports'), t('المستحق لنا', 'Receivable'), t('المستحق علينا', 'Payable'), t('الصافي', 'Net')].map((h, i) => (
+                {[t('الفرع', 'Branch'), t('كشوف', 'Reports'), t('المستحق لنا', 'Receivable'),
+                  ...(receivables ? [] : [t('المستحق علينا', 'Payable'), t('الصافي', 'Net')])].map((h, i) => (
                   <th key={i} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -300,10 +327,12 @@ export default function CollectionsDashboardPage() {
                   <td className="px-3 py-2 font-medium text-slate-900">{b.branch}</td>
                   <td className="px-3 py-2 tabular-nums text-slate-600">{money(b.reports)}</td>
                   <td className="px-3 py-2 tabular-nums text-red-600">{money(b.receivable)}</td>
-                  <td className="px-3 py-2 tabular-nums text-amber-600">{money(b.payable)}</td>
-                  <td className={`px-3 py-2 tabular-nums font-semibold ${b.receivable - b.payable >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                    {money(b.receivable - b.payable)}
-                  </td>
+                  {!receivables && <td className="px-3 py-2 tabular-nums text-amber-600">{money(b.payable)}</td>}
+                  {!receivables && (
+                    <td className={`px-3 py-2 tabular-nums font-semibold ${b.receivable - b.payable >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                      {money(b.receivable - b.payable)}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

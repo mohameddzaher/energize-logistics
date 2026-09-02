@@ -29,11 +29,14 @@ const _finance = HomeInsight('نظرة مالية', 'Finance snapshot', '/api/an
 ]);
 
 // ما لنا وما علينا — أوّلُ ما يُسأل عنه في التحصيل.
+// ── ولا «ما علينا» لمن يُحصِّل ────────────────────────────────────────────
+// القسمُ يُحصِّل، وما ندفعه للموردين شأنُ الإدارة والمالية. فنظرتُهم على وجهٍ
+// واحد — وللإدارة نظرتُها الكاملة في لوحة القسم.
 const _collections = HomeInsight('نظرة التحصيل', 'Collections snapshot', '/api/collections-dept/dashboard', 'collections:party', [
   HomeKpi('المستحق لنا', 'Receivable', 'customers.outstanding', Icons.call_received_rounded, T.danger, money: true),
-  HomeKpi('المستحق علينا', 'Payable', 'suppliers.outstanding', Icons.call_made_rounded, T.orange, money: true),
   HomeKpi('المحصَّل', 'Collected', 'customers.settled', Icons.task_alt_rounded, T.success, money: true),
   HomeKpi('كشوف لم تُحصَّل', 'Uncollected', 'customers.openReports', Icons.pending_actions_outlined, T.info),
+  HomeKpi('إجمالي المبيعات', 'Total billed', 'customers.total', Icons.receipt_long_outlined, T.navy, money: true),
 ]);
 
 const _fleet = HomeInsight('نظرة الأسطول', 'Fleet snapshot', '/api/fleet/dashboard', 'fleet:updated', [

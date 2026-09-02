@@ -1042,6 +1042,60 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       ],
     );
 
+// ── فواتيرُ التحصيل ────────────────────────────────────────────────────────
+// القسمُ يعمل بالفواتير لا بالكشوف. والنقديُّ صفُّه كشفٌ يُحصَّل في يومه،
+// والضريبيُّ صفُّه فاتورةٌ قد تضمّ كشوفًا وقيمتُها مكتوبةٌ فيها.
+final collectionsCashInvoicesCfg = ResourceConfig(
+  arTitle: 'فواتير الكاش', enTitle: 'Cash Invoices', icon: Icons.payments_outlined,
+  endpoint: '/api/collections-dept/invoices/cash', listKey: 'invoices',
+  liveEvent: 'workflow:updated', serverSearch: true,
+  canCreate: false, canDelete: false,
+  filterField: 'collected',
+  searchFields: const ['reportNumber', 'customer', 'payingBranch'],
+  titleOf: (r) => _s(r, 'reportNumber'),
+  subtitleOf: (r) => [_s(r, 'customer'), _s(r, 'payingBranch')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
+    if (_s(r, 'collectionDate').isEmpty) ('لم يُحصَّل', T.danger)
+    else ('${_n(r['collectedAmount'])} محصَّل', T.success),
+  ],
+  // ── والتحصيلُ حاجتان: مبلغٌ وتاريخ ─────────────────────────────────────
+  // النقديُّ يقبضه المحصِّلُ في يده فيكتب ما قبض — لا يُشتقّ من مبلغ السداد،
+  // فذاك ما دُفع للمورّد وهذا ما قُبض من العميل.
+  fields: const [
+    FieldSpec('collectedAmount', 'مبلغ التحصيل', 'Collected amount', type: FieldType.number, required: true),
+    FieldSpec('collectionDate', 'تاريخ التحصيل', 'Collection date', type: FieldType.date, required: true),
+  ],
+  sortFields: const [('ageDays', 'العمر', 'Age')],
+);
+
+final collectionsTaxInvoicesCfg = ResourceConfig(
+  arTitle: 'الفواتير الضريبية', enTitle: 'Tax Invoices', icon: Icons.receipt_long_outlined,
+  endpoint: '/api/collections-dept/invoices/tax', listKey: 'invoices',
+  liveEvent: 'workflow:updated', serverSearch: true,
+  canCreate: false, canEdit: false, canDelete: false,
+  searchFields: const ['invoiceNumber', 'customer'],
+  titleOf: (r) => _s(r, 'invoiceNumber'),
+  subtitleOf: (r) => [_s(r, 'customer'), '${_n(r['value'])} ر.س'].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [
+    // عددُ الكشوفات: الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف.
+    ('${r['reports'] ?? 0} كشف', T.navy),
+    if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
+    if (r['fullyCollected'] == true) ('محصَّلة', T.success) else ('لم تُحصَّل', T.danger),
+  ],
+  fields: const [],
+);
+
+/// لونُ العمر — الأقدمُ أشدّ. الرقمُ وحدَه لا يقول خطرَه.
+Color _ageColor(dynamic d) {
+  final n = (d is num) ? d : num.tryParse('$d') ?? 0;
+  if (n > 60) return T.danger;
+  if (n > 45) return T.orange;
+  if (n > 30) return T.warn;
+  if (n > 15) return T.info;
+  return T.inkSoft;
+}
+
 final collectionsCustomersCfg = _collectionsPartyCfg(customer: true);
 final collectionsSuppliersCfg = _collectionsPartyCfg(customer: false);
 

@@ -30,6 +30,21 @@ export const canEditCollections = (u: RoleOrUser): boolean =>
 export const isCollectionsAdmin = (u: RoleOrUser): boolean =>
   COLLECTIONS_ADMIN_ROLES.includes(roleOf(u));
 
+/**
+ * ── مَن يرى «ما علينا» ─────────────────────────────────────────────────────
+ *
+ * قسمُ التحصيل يُحصِّل، ولا شأنَ له بما ندفعه للموردين ولا بالصافي ولا بالربح.
+ * فالمستحقُّ علينا والصافي يُخفَيان عن دورَيه — لا عن القسم، فالإدارةُ والماليةُ
+ * ومديرُ العمليات يفتحون القسمَ نفسَه ويرَون الوجهين.
+ *
+ * والقاعدةُ بالدور لا بالقسم: القسمُ واحدٌ ومن فيه يختلفون.
+ */
+const RECEIVABLES_ONLY_ROLES = ['collections_manager', 'collections_staff'];
+
+/** هل يقتصر هذا المستخدم على «ما لنا»؟ */
+export const receivablesOnly = (u: RoleOrUser): boolean =>
+  RECEIVABLES_ONLY_ROLES.includes(roleOf(u));
+
 export type PartyKind = 'customer' | 'supplier';
 
 export interface CollectionsParty {

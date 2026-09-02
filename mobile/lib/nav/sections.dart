@@ -126,6 +126,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'collections_manager', 'collections_staff', 'operations_manager', 'finance_manager', 'accountant'],
       pages: [
         AppPage('لوحة التحصيل', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: collectionsDashSpec)),
+        // الفواتيرُ قبل السجلّات: منها يعمل القسم.
+        AppPage('الفواتير الضريبية', 'Tax Invoices', Icons.receipt_long_outlined, (c) => ResourceScreen(config: collectionsTaxInvoicesCfg)),
+        AppPage('فواتير الكاش', 'Cash Invoices', Icons.payments_outlined, (c) => ResourceScreen(config: collectionsCashInvoicesCfg)),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: collectionsCustomersCfg)),
         AppPage('الموردون', 'Suppliers', Icons.local_shipping_outlined, (c) => ResourceScreen(config: collectionsSuppliersCfg)),
         AppPage('سير عمل التشغيل', 'Operations Workflow', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen()),

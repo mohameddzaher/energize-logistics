@@ -399,6 +399,11 @@ exports.updateParty = async (req, res) => {
       entityId: party._id, changes: { before, after: body }, ipAddress: req.ip,
     });
     try { emitToAll('collections:party', { id: party._id, kind: party.kind }); } catch (_) {}
+    // ── ودفترُ التحصيل يُبطَل معه ──────────────────────────────────────────
+    // سجلُّ الأعمار والتنبيهاتُ تُخزَّن دقيقةً. ورفعُ الحدّ الائتمانيّ من ملفّ
+    // العميل هو الفعلُ الذي يُطفئ تنبيهَه — فلو بقيت الذاكرةُ لظلّ التنبيهُ
+    // معلَّقًا بعد أن عولج، وهو أسوأُ من ألّا يظهر أصلًا.
+    try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
     res.json({ party: withStats(party, await statsByKind(party.kind)) });
   } catch (e) { sendMongooseError(res, e, 'تعذّر حفظ الطرف'); }
 };

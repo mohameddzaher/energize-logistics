@@ -28,6 +28,25 @@ const cache = require('../utils/ttlCache');
 const CACHE_PREFIX = 'colledger:';
 const DAY = 86400000;
 
+/**
+ * ── ولماذا تُخزَّن الإجاباتُ لدقيقة ────────────────────────────────────────
+ * هذه شاشاتٌ تُقرأ ولا تُكتب: الأعمارُ والتنبيهاتُ والتقييمُ تُفتح كلَّ صباحٍ
+ * من عدّة أجهزةٍ في الدقيقة الواحدة، ودفترُها لا يتغيّر إلّا باستيرادٍ أو
+ * بتعديلٍ نادر. فحسابُها من جديدٍ لكلّ فتحةٍ عملٌ مكرَّرٌ بلا جوابٍ جديد.
+ *
+ * والمهلةُ قصيرةٌ عن قصد، والكتابةُ تُبطلها فورًا — فلا يرى أحدٌ رقمًا قديمًا
+ * بعد أن يغيّره بيده. و«الطلعةُ الواحدة» تجعل عشرةً يفتحون معًا يكلّفون
+ * حسابًا واحدًا لا عشرة.
+ */
+const TTL = 60000;
+const keyOf = (name, req) => {
+  const q = req.query || {};
+  const parts = Object.keys(q).sort().map((k) => `${k}=${[].concat(q[k]).join(',')}`);
+  // الدورُ جزءٌ من المفتاح: ما يُحجب عن قسم التحصيل لا يجوز أن يصله من ذاكرةٍ
+  // ملأها مديرٌ يرى أكثرَ منه.
+  return `${CACHE_PREFIX}${name}:${req.user?.role || ''}:${parts.join('&')}`;
+};
+
 /** شرائحُ العمر كما هي في دفترهم — حدودُها شاملةٌ من الأسفل (`>=`). */
 const BANDS = [
   { key: '15-', label: '15-', min: 0 },
@@ -99,16 +118,49 @@ function partyFilter(q = {}) {
  */
 async function agingByParty(partyIds) {
   const today = startOfToday();
-  const rows = await CollectionInvoice.find({ ...OPEN, party: { $in: partyIds } })
-    .select('party total invoiceDate deliveryDate').lean();
+  // ── والحسابُ في القاعدة لا في العقدة ────────────────────────────────────
+  // كانت تُقرأ الفواتيرُ المفتوحةُ كلُّها ثمّ تُجمَع بالجافاسكربت. قِيس ذلك
+  // على الإنتاج: سجلُّ الأعمار ٢٫٧ ثانية، والتنبيهاتُ ٤٫٩، والتقييمُ **١٥٫٤** —
+  // وصفحةُ الفريق كانت تبدو معطَّلةً لأنّ المتصفّح ينتظر خمسَ عشرةَ ثانية.
+  //
+  // والعملُ نفسُه في القاعدة يمرّ على الفهرس ولا ينقل صفًّا واحدًا إلى الشبكة
+  // إلّا المجاميع. والشريحةُ تُحسب بـ`$switch` على فرق التاريخ، فهي حسابٌ
+  // واحدٌ لا تسعةُ مقارناتٍ لكلّ صفّ.
+  const rows = await CollectionInvoice.aggregate([
+    { $match: { ...OPEN, party: { $in: partyIds } } },
+    { $addFields: {
+      _base: { $ifNull: ['$invoiceDate', '$deliveryDate'] },
+    } },
+    { $addFields: {
+      _days: { $cond: [{ $eq: ['$_base', null] }, null, { $dateDiff: { startDate: '$_base', endDate: today, unit: 'day' } }] },
+    } },
+    { $addFields: {
+      _band: { $switch: { branches: [
+        { case: { $eq: ['$_days', null] }, then: 'noDate' },
+        { case: { $gte: ['$_days', 365] }, then: '1Y+' },
+        { case: { $gte: ['$_days', 120] }, then: '120+' },
+        { case: { $gte: ['$_days', 90] }, then: '90+' },
+        { case: { $gte: ['$_days', 60] }, then: '60+' },
+        { case: { $gte: ['$_days', 45] }, then: '60-' },
+        { case: { $gte: ['$_days', 30] }, then: '45-' },
+        { case: { $gte: ['$_days', 15] }, then: '30-' },
+      ], default: '15-' } },
+    } },
+    { $group: { _id: { p: '$party', b: '$_band' }, sum: { $sum: '$total' }, n: { $sum: 1 } } },
+  ]);
+
   const out = new Map();
-  for (const v of rows) {
-    const k = String(v.party);
-    if (!out.has(k)) out.set(k, { outstanding: 0, count: 0, bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])), counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])) });
+  const blank = () => ({
+    outstanding: 0, count: 0,
+    bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])),
+    counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])),
+  });
+  for (const r of rows) {
+    const k = String(r._id.p);
+    if (!out.has(k)) out.set(k, blank());
     const e = out.get(k);
-    e.outstanding += v.total; e.count += 1;
-    const b = bandOf(daysBetween(v.invoiceDate || v.deliveryDate, today));
-    e.bands[b] += v.total; e.counts[b] += 1;
+    e.outstanding += r.sum; e.count += r.n;
+    e.bands[r._id.b] += r.sum; e.counts[r._id.b] += r.n;
   }
   return out;
 }
@@ -117,6 +169,9 @@ async function agingByParty(partyIds) {
 exports.aging = async (req, res) => {
   try {
     const { page = 1, limit = 50, band, sort = 'outstanding' } = req.query;
+    const cacheKey = keyOf('aging', req);
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
     const filter = partyFilter(req.query);
     const parties = await CollectionsParty.find(filter)
       .select('code name paymentType collectionOfficer hoLocation grade salesManagers department region creditLimit creditDays status')
@@ -146,7 +201,9 @@ exports.aging = async (req, res) => {
     });
 
     const p = Math.max(1, parseInt(page, 10)); const l = Math.min(500, Math.max(1, parseInt(limit, 10)));
-    res.json({ rows: rows.slice((p - 1) * l, p * l), total: rows.length, page: p, pages: Math.ceil(rows.length / l), totals, bands: BANDS });
+    const out = { rows: rows.slice((p - 1) * l, p * l), total: rows.length, page: p, pages: Math.ceil(rows.length / l), totals, bands: BANDS };
+    cache.set(cacheKey, out, TTL);
+    res.json(out);
   } catch (e) {
     console.error('aging error:', e);
     res.status(500).json({ message: 'تعذّر حسابُ أعمار الديون' });
@@ -312,15 +369,26 @@ const DUE_WARN_DAYS = 3;       // ينبَّه قبل الاستحقاق بثل�
 // GET /api/collections-dept/ledger/alerts
 exports.alerts = async (req, res) => {
   try {
+    const cacheKey = keyOf('alerts', req);
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
     const warnPct = Number(req.query.warnPct) || LIMIT_WARN_PCT;
     const warnDays = Number(req.query.warnDays) || DUE_WARN_DAYS;
     const today = startOfToday();
 
     const parties = await CollectionsParty.find({ ...partyFilter(req.query), isActive: { $ne: false } })
       .select('code name creditLimit creditDays collectionOfficer hoLocation grade paymentType').lean();
-    const byId = new Map(parties.map((p) => [String(p._id), p]));
-    const ageMap = await agingByParty(parties.map((p) => p._id));
-    const acks = await CreditAlertAck.find({ party: { $in: parties.map((p) => p._id) } }).lean();
+    const ids = parties.map((p) => p._id);
+    // ── والثلاثةُ معًا لا واحدًا بعد واحد ────────────────────────────────────
+    // لا يعتمد أيٌّ منها على نتيجة الآخر، وكانت تُطلب بالتتابع — فثلاثُ رحلاتٍ
+    // إلى العنقود المشترك ثمنُها ثلاثةُ أضعاف الواحدة بلا سبب.
+    const cdByCode = new Map(parties.filter((p) => p.creditDays > 0).map((p) => [p.code, p]));
+    const [ageMap, acks, open] = await Promise.all([
+      agingByParty(ids),
+      CreditAlertAck.find({ party: { $in: ids } }).lean(),
+      CollectionInvoice.find({ ...OPEN, partyCode: { $in: [...cdByCode.keys()] }, deliveryDate: { $ne: null } })
+        .select('invoiceNumber partyCode partyName party total deliveryDate invoiceDate').lean(),
+    ]);
 
     // ── تنبيهُ الحدّ ────────────────────────────────────────────────────────
     const ackLimit = new Map(acks.filter((a) => a.kind === 'limit').map((a) => [String(a.party), a]));
@@ -343,10 +411,7 @@ exports.alerts = async (req, res) => {
     limitAlerts.sort((a, b) => b.pct - a.pct);
 
     // ── تنبيهُ الاستحقاق ────────────────────────────────────────────────────
-    const cdByCode = new Map(parties.filter((p) => p.creditDays > 0).map((p) => [p.code, p]));
     const ackDue = new Set(acks.filter((a) => a.kind === 'due').map((a) => `${a.party}::${a.invoiceNumber}`));
-    const open = await CollectionInvoice.find({ ...OPEN, partyCode: { $in: [...cdByCode.keys()] }, deliveryDate: { $ne: null } })
-      .select('invoiceNumber partyCode partyName party total deliveryDate invoiceDate').lean();
     const dueAlerts = [];
     for (const v of open) {
       const p = cdByCode.get(v.partyCode); if (!p) continue;
@@ -363,7 +428,7 @@ exports.alerts = async (req, res) => {
     }
     dueAlerts.sort((a, b) => a.daysToDue - b.daysToDue);
 
-    res.json({
+    const out = {
       limit: limitAlerts,
       due: dueAlerts,
       counts: {
@@ -373,7 +438,9 @@ exports.alerts = async (req, res) => {
         overdue: dueAlerts.filter((a) => a.daysToDue < 0).length,
       },
       settings: { warnPct, warnDays },
-    });
+    };
+    cache.set(cacheKey, out, TTL);
+    res.json(out);
   } catch (e) {
     console.error('alerts error:', e);
     res.status(500).json({ message: 'تعذّر حسابُ التنبيهات' });
@@ -390,11 +457,13 @@ exports.ackAlert = async (req, res) => {
     // يُقيَّد الرصيدُ لحظةَ الإسكات، فيعود التنبيهُ إن ارتفع بعده.
     const at = kind === 'limit'
       ? (await agingByParty([p._id])).get(String(p._id))?.outstanding || 0 : 0;
+    exports.invalidate();
     await CreditAlertAck.findOneAndUpdate(
       { party: p._id, kind, invoiceNumber },
       { $set: { party: p._id, kind, invoiceNumber, atOutstanding: at, note, ackedBy: req.user._id, ackedAt: new Date() } },
       { upsert: true },
     );
+    exports.invalidate();
     res.json({ ok: true, atOutstanding: at });
   } catch (e) { res.status(500).json({ message: 'تعذّر إغلاق التنبيه' }); }
 };
@@ -470,9 +539,13 @@ exports.deleteTask = async (req, res) => {
 // GET /api/collections-dept/ledger/team
 exports.team = async (req, res) => {
   try {
+    const cacheKey = keyOf('team', req);
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
     const parties = await CollectionsParty.find({ kind: 'customer', code: { $gt: '' } })
       .select('code name collectionOfficer creditLimit paymentType').lean();
     const ageMap = await agingByParty(parties.map((p) => p._id));
+    // (رحلتان لا ثلاث: الثانيةُ تحتاج معرّفاتِ الأولى فلا تُوازى.)
     const byOfficer = new Map();
     for (const p of parties) {
       const k = p.collectionOfficer || '';
@@ -483,7 +556,9 @@ exports.team = async (req, res) => {
       if (p.creditLimit > 0 && out > p.creditLimit) e.overLimit += 1;
       if (p.paymentType === 'cash') e.cash += 1; else e.tax += 1;
     }
-    res.json({ officers: [...byOfficer.values()].sort((a, b) => b.outstanding - a.outstanding) });
+    const out = { officers: [...byOfficer.values()].sort((a, b) => b.outstanding - a.outstanding) };
+    cache.set(cacheKey, out, TTL);
+    res.json(out);
   } catch (e) { res.status(500).json({ message: 'تعذّر جلبُ الفريق' }); }
 };
 
@@ -504,6 +579,9 @@ exports.assignOfficer = async (req, res) => {
 // GET /api/collections-dept/ledger/performance
 exports.performance = async (req, res) => {
   try {
+    const cacheKey = keyOf('performance', req);
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
     const { from, to, officer } = req.query;
     const range = {};
     if (from) range.$gte = new Date(`${from}T00:00:00.000Z`);
@@ -512,57 +590,71 @@ exports.performance = async (req, res) => {
 
     const partyQ = { kind: 'customer', code: { $gt: '' } };
     if (officer) partyQ.collectionOfficer = { $in: Array.isArray(officer) ? officer : [officer] };
-    const parties = await CollectionsParty.find(partyQ).select('code name collectionOfficer creditLimit creditDays').lean();
+    const parties = await CollectionsParty.find(partyQ).select('code collectionOfficer creditDays').lean();
     const officerOf = new Map(parties.map((p) => [p.code, p.collectionOfficer || '']));
+    const cdOf = new Map(parties.map((p) => [p.code, p.creditDays || 0]));
     const codes = parties.map((p) => p.code);
+    const today = startOfToday();
 
-    // ما حُصِّل في الفترة، وما زال مفتوحًا — لكلّ موظّف.
+    // ── والمجاميعُ تُحسب في القاعدة ─────────────────────────────────────────
+    // كانت تسعةُ آلاف فاتورةٍ تُنقَل إلى العقدة لتُجمَع هناك: خمسَ عشرةَ ثانيةً
+    // على الإنتاج، تكفي لأن تبدو الصفحةُ معطَّلة. والمجموعُ عملُ القاعدة.
     const collectedMatch = { partyCode: { $in: codes }, status: 'Collected' };
     if (hasRange) collectedMatch.collectionDate = range;
-    const [collected, openRows] = await Promise.all([
-      CollectionInvoice.find(collectedMatch).select('partyCode total collectionDate deliveryDate invoiceDate').lean(),
-      CollectionInvoice.find({ ...OPEN, partyCode: { $in: codes } }).select('partyCode total invoiceDate deliveryDate').lean(),
+    const [collected, open] = await Promise.all([
+      CollectionInvoice.aggregate([
+        { $match: collectedMatch },
+        { $addFields: { _base: { $ifNull: ['$deliveryDate', '$invoiceDate'] } } },
+        { $group: {
+          _id: '$partyCode', n: { $sum: 1 }, amount: { $sum: '$total' },
+          // متوسّطُ أيّام التحصيل يُحسب هنا أيضًا: ما لا تاريخَ له يُهمَل ولا
+          // يُحسب صفرًا — الصفرُ يجرّ المتوسّطَ إلى أسفلَ بلا سبب.
+          days: { $avg: { $cond: [
+            { $or: [{ $eq: ['$_base', null] }, { $eq: ['$collectionDate', null] }] }, null,
+            { $dateDiff: { startDate: '$_base', endDate: '$collectionDate', unit: 'day' } },
+          ] } },
+        } },
+      ]),
+      CollectionInvoice.aggregate([
+        { $match: { ...OPEN, partyCode: { $in: codes } } },
+        { $group: { _id: '$partyCode', n: { $sum: 1 }, amount: { $sum: '$total' },
+          overdue: { $push: { d: '$deliveryDate', t: '$total' } } } },
+      ]),
     ]);
 
-    const today = startOfToday();
     const stats = new Map();
     const of = (code) => {
       const k = officerOf.get(code) || '';
-      if (!stats.has(k)) stats.set(k, { officer: k, accounts: 0, collectedCount: 0, collectedAmount: 0, openCount: 0, openAmount: 0, overdueCount: 0, overdueAmount: 0, avgDaysToCollect: null, _days: [] });
+      if (!stats.has(k)) stats.set(k, { officer: k, accounts: 0, collectedCount: 0, collectedAmount: 0, openCount: 0, openAmount: 0, overdueCount: 0, overdueAmount: 0, _dayNum: 0, _dayDen: 0 });
       return stats.get(k);
     };
     for (const p of parties) of(p.code).accounts += 1;
-    for (const v of collected) {
-      const e = of(v.partyCode);
-      e.collectedCount += 1; e.collectedAmount += v.total;
-      const base = v.deliveryDate || v.invoiceDate;
-      if (base && v.collectionDate) e._days.push(Math.floor((new Date(v.collectionDate) - new Date(base)) / DAY));
+    for (const c of collected) {
+      const e = of(c._id);
+      e.collectedCount += c.n; e.collectedAmount += c.amount;
+      if (c.days != null) { e._dayNum += c.days * c.n; e._dayDen += c.n; }
     }
-    const cdOf = new Map(parties.map((p) => [p.code, p.creditDays || 0]));
-    for (const v of openRows) {
-      const e = of(v.partyCode);
-      e.openCount += 1; e.openAmount += v.total;
-      const cd = cdOf.get(v.partyCode) || 0;
-      if (v.deliveryDate && cd) {
-        const due = new Date(new Date(v.deliveryDate).getTime() + cd * DAY);
-        if (due < today) { e.overdueCount += 1; e.overdueAmount += v.total; }
+    for (const o of open) {
+      const e = of(o._id);
+      e.openCount += o.n; e.openAmount += o.amount;
+      const cd = cdOf.get(o._id) || 0;
+      if (!cd) continue;
+      for (const x of o.overdue) {
+        if (!x.d) continue;
+        if (new Date(new Date(x.d).getTime() + cd * DAY) < today) { e.overdueCount += 1; e.overdueAmount += x.t; }
       }
     }
+
     const rows = [...stats.values()].map((e) => {
-      const d = e._days;
-      delete e._days;
+      const avg = e._dayDen ? Math.round(e._dayNum / e._dayDen) : null;
+      delete e._dayNum; delete e._dayDen;
       // ── نسبةُ التحصيل: ما حُصِّل من مجموع ما حُصِّل وما بقي ─────────────
       // لا «من الإجمالي» وحدَه: موظّفٌ حساباتُه صغيرةٌ يبدو ضعيفًا وهو حصّل
       // كلَّ ما لديه.
       const denom = e.collectedAmount + e.openAmount;
-      return {
-        ...e,
-        avgDaysToCollect: d.length ? Math.round(d.reduce((a, b) => a + b, 0) / d.length) : null,
-        collectionRate: denom > 0 ? (e.collectedAmount / denom) * 100 : null,
-      };
+      return { ...e, avgDaysToCollect: avg, collectionRate: denom > 0 ? (e.collectedAmount / denom) * 100 : null };
     }).sort((a, b) => b.collectedAmount - a.collectedAmount);
 
-    // والمهامُّ في الفترة نفسِها.
     const taskQ = {};
     if (from || to) { taskQ.date = {}; if (from) taskQ.date.$gte = from; if (to) taskQ.date.$lte = to; }
     const tasks = await CollectionTask.aggregate([
@@ -581,7 +673,9 @@ exports.performance = async (req, res) => {
       collectedCount: a.collectedCount + r.collectedCount, openCount: a.openCount + r.openCount,
     }), { accounts: 0, collectedAmount: 0, openAmount: 0, overdueAmount: 0, collectedCount: 0, openCount: 0 });
 
-    res.json({ rows, totals, range: { from: from || null, to: to || null } });
+    const out = { rows, totals, range: { from: from || null, to: to || null } };
+    cache.set(cacheKey, out, TTL);
+    res.json(out);
   } catch (e) {
     console.error('performance error:', e);
     res.status(500).json({ message: 'تعذّر حسابُ التقييم' });

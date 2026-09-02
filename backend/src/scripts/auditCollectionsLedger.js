@@ -152,7 +152,17 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
     const target = await CollectionsParty.findOne({ kind: 'customer', code: { $gt: '' }, creditLimit: { $gt: 0 } }).lean();
     const upd = await call('PUT', `/api/collections-dept/parties/${target._id}`, { creditLimit: target.creditLimit + 12345 });
     ok('يُحفظ الحدُّ الجديد', upd.status === 200 && upd.j?.party?.creditLimit === target.creditLimit + 12345, `${upd.j?.party?.creditLimit}`);
+    // ── والسجلُّ يقرؤه فورًا ────────────────────────────────────────────
+    // الأعمارُ تُخزَّن دقيقةً لتخفيف الحمل. ورفعُ الحدّ هو الفعلُ الذي يُطفئ
+    // التنبيه، فلو بقيت الذاكرةُ لظلّ معلَّقًا بعد معالجته — والموظّف يظنّ أنّه
+    // لم يُحفظ. فالكتابةُ تُبطلها.
+    const reread = await call('GET', `/api/collections-dept/ledger/aging?search=${encodeURIComponent(target.name)}&limit=5`);
+    const seen = (reread.j?.rows || []).find((r) => String(r._id) === String(target._id));
+    ok('ويظهر في سجلّ الأعمار فورًا بلا انتظار ذاكرة',
+      !!seen && seen.creditLimit === target.creditLimit + 12345,
+      `${seen?.creditLimit} — المنتظَر ${target.creditLimit + 12345}`);
     await CollectionsParty.updateOne({ _id: target._id }, { $set: { creditLimit: target.creditLimit } });
+    try { require('../controllers/collectionsLedgerController').invalidate(); } catch (_) {}
 
     head('الفريق');
     const team = await call('GET', '/api/collections-dept/ledger/team');

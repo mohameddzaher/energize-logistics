@@ -200,6 +200,29 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
     ok('تُقرأ الاقتراحات', sug.status === 200, `${sug.j?.rows?.length} معروضة · ${JSON.stringify(sug.j?.counts)}`);
     ok('والمربوطُ تلقائيًّا مقيَّدٌ بأنّه تلقائيّ', (sug.j?.counts?.linked || 0) >= 1, `${sug.j?.counts?.linked}`);
 
+    head('الكودُ يُولَّد على سياقة الدفتر');
+    // ── ويُقرأ التاليَ من القاعدة لا من عدّادٍ محفوظ ────────────────────────
+    // العدّادُ المنفصل يفترق عن الواقع عند أوّل استيرادٍ أو حذف، فيُعيد كودًا
+    // مأخوذًا. وأكبرُ كودٍ موجودٍ فعلًا صحيحٌ دائمًا بلا صيانة.
+    const codes = await CollectionsParty.distinct('code', { code: { $gt: '' } });
+    const maxCash = Math.max(0, ...codes.filter((c) => /^C\d+$/i.test(c)).map((c) => Number(c.slice(1))));
+    const maxTax = Math.max(0, ...codes.filter((c) => /^1104\d+$/.test(c)).map((c) => Number(c.slice(4))));
+    const madeParties = [];
+    const mkParty = async (name, paymentType) => {
+      const r = await call('POST', '/api/collections-dept/parties', { kind: 'customer', name, paymentType });
+      if (r.j?.party?._id) madeParties.push(r.j.party._id);
+      return r;
+    };
+    const c1 = await mkParty(`zz-كاش-${Date.now()}`, 'cash');
+    ok('النقديُّ يأخذ التاليَ في سلسلة C', c1.j?.party?.code === `C${String(maxCash + 1).padStart(4, '0')}`,
+      `${c1.j?.party?.code} — المنتظَر C${String(maxCash + 1).padStart(4, '0')}`);
+    const c2 = await mkParty(`zz-ضريبي-${Date.now()}`, 'tax');
+    ok('والضريبيُّ في سلسلة 1104', c2.j?.party?.code === `1104${String(maxTax + 1).padStart(4, '0')}`,
+      `${c2.j?.party?.code} — المنتظَر 1104${String(maxTax + 1).padStart(4, '0')}`);
+    const c3 = await mkParty(`zz-كاش2-${Date.now()}`, 'cash');
+    ok('ولا يتكرّر كودٌ', c3.j?.party?.code !== c1.j?.party?.code, `${c1.j?.party?.code} ثمّ ${c3.j?.party?.code}`);
+    if (madeParties.length) await CollectionsParty.deleteMany({ _id: { $in: madeParties } });
+
     head('وقسمُ التحصيل لا يرى ما علينا');
     const dash = await call('GET', '/api/collections-dept/dashboard');
     ok('اللوحةُ تُفتح', dash.status === 200, `${dash.status}`);

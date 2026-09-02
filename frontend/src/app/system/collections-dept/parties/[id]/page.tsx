@@ -219,11 +219,33 @@ export default function PartyProfilePage() {
             </div>
           </div>
 
+          {/* ── الحسابُ في دفتر التحصيل ──────────────────────────────────────
+              الكودُ هويّتُه في المحاسبة وفي كلّ مراسلة، ومَن يتولّاه هو أوّلُ
+              ما يُسأل عنه حين يتأخّر. وكانت تُقرأ من الإكسل في كلّ مرّة. */}
+          {(p.code || p.collectionOfficer || p.grade || p.department) && (
+            <div>
+              <p className="text-[13px] font-bold text-slate-900 mb-2">{t('الحساب', 'The account')}</p>
+              <div className="space-y-1.5">
+                <Row label={t('الكود', 'Code')} value={p.code} />
+                <Row label={t('موظف التحصيل', 'Collection officer')} value={p.collectionOfficer} />
+                <Row label={t('التقييم', 'Grade')} value={p.grade} />
+                <Row label={t('القسم', 'Department')} value={p.department} />
+                <Row label={t('فرع العميل', 'Location')} value={p.hoLocation} />
+                <Row label={t('المنطقة', 'Region')} value={p.region} />
+                <Row label={t('مندوب المبيعات', 'Sales manager')} value={(p.salesManagers || []).join(' / ')} />
+              </div>
+            </div>
+          )}
+
           <div>
             <p className="text-[13px] font-bold text-slate-900 mb-2">{t('شروط التحصيل', 'Collection terms')}</p>
             <div className="space-y-1.5">
               {/* نوعُ الدفع: منه يُملأ العمودُ على كشوفه لحظةَ تسجيل السداد. */}
               {kind === 'customer' && <Row label={t('نوع الدفع', 'Payment type')} value={paymentTypeLabel(p.paymentType, ar)} />}
+              {/* المهلةُ تُعَدّ من تسليم الفاتورة، لا من تاريخها — تُقال صراحةً
+                  لأنّ الفرقَ بينهما هو الفرقُ بين «متأخّر» و«لم يستلم بعد». */}
+              <Row label={t('مهلة السداد (من تاريخ التسليم)', 'Credit days (from delivery)')}
+                value={p.creditDays ? (ar ? `${p.creditDays} يومًا` : `${p.creditDays} days`) : ''} />
               <Row label={t('شروط السداد', 'Payment terms')} value={p.paymentTerms} />
               <Row label={t('حد الائتمان', 'Credit limit')} value={p.creditLimit ? money(p.creditLimit) : ''} />
               <Row label={t('آخر كشف', 'Last report')} value={p.lastReportAt ? dt(p.lastReportAt) : ''} />

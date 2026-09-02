@@ -17,6 +17,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Spinner, PageHeader, Field, Select } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu from '@/components/ls2/ExportMenu';
+import CreditAlerts from '@/components/collections/CreditAlerts';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
   LineChart, Line,
@@ -215,6 +216,12 @@ export default function CollectionsDashboardPage() {
           }]}
         />
       </PageHeader>
+
+      {/* ── ما يحتاج تصرّفًا اليوم، فوق كلّ شيء ────────────────────────────
+          اللوحةُ تقول ما حدث؛ وهذا يقول ما يجب أن يحدث: مَن قارب حدَّه، وأيُّ
+          فاتورةٍ تستحقّ بعد يومين. ووضعُه تحت الأرقام يجعله يُقرأ بعد أن
+          يكون قد فات. */}
+      <CreditAlerts compact />
 
       {/* المدى اختياريّ: بلا مدًى تُقرأ الصورةُ كلُّها، وهي ما يُسأل عنه أوّلًا. */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-4">

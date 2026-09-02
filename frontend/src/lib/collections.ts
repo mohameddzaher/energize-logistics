@@ -65,6 +65,18 @@ export interface CollectionsParty {
   address?: string;
   city?: string;
   partyType?: string;
+  // ── بياناتُ الحساب في دفتر التحصيل ────────────────────────────────────────
+  // كودُه المحاسبيّ (وهو هويّتُه لا اسمُه)، ومَن يتولّاه، وتقييمُه، ومَن يبيع
+  // له من عندنا، ومهلةُ السداد المتّفق عليها.
+  code?: string;
+  aliases?: string[];
+  collectionOfficer?: string;
+  hoLocation?: string;
+  grade?: string;
+  salesManagers?: string[];
+  department?: string;
+  region?: string;
+  creditDays?: number;
   // نوعُ دفع العميل — منه يُملأ «نوع الدفع» على كشوفه من نفسِه.
   paymentType?: '' | 'cash' | 'tax';
   paymentTerms?: string;
@@ -120,3 +132,106 @@ export const dt = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en
 /** اسمُ نوع الدفع كما يُقرأ. */
 export const paymentTypeLabel = (t: string | undefined, ar: boolean) =>
   t === 'cash' ? (ar ? 'كاش' : 'Cash') : t === 'tax' ? (ar ? 'ضريبي' : 'Tax') : '—';
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  دفترُ التحصيل
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** شريحةُ عمرٍ كما يقرؤها الفريق في ورقته. */
+export interface AgeBand { key: string; label: string; min: number | null }
+
+export interface AgingRow extends CollectionsParty {
+  outstanding: number;
+  invoiceCount: number;
+  bands: Record<string, number>;
+  bandCounts: Record<string, number>;
+  /** نسبةُ ما عليه إلى حدّه الائتمانيّ — `null` حين لا حدَّ له. */
+  limitUsedPct: number | null;
+}
+
+export interface LedgerInvoice {
+  _id: string;
+  invoiceNumber: string;
+  kind: 'tax' | 'cash';
+  partyCode?: string;
+  partyName?: string;
+  party?: string;
+  total: number;
+  invoiceDate?: string | null;
+  deliveryDate?: string | null;
+  collectionDate?: string | null;
+  status?: string;
+  comments?: string;
+  reportNumbers?: string[];
+  // ── محسوبةٌ عند القراءة لا مخزَّنة ──────────────────────────────────────
+  // الرقمُ المخزَّن يصدق يومَ كُتب ويكذب في اليوم التالي.
+  ageDays?: number | null;
+  band?: string;
+  daysInvoiceToDelivery?: number | null;
+  daysDeliveryToCollection?: number | null;
+  daysTotal?: number | null;
+  creditDays?: number;
+  dueDate?: string | null;
+  daysToDue?: number | null;
+  overdue?: boolean;
+}
+
+export interface CollectionTask {
+  _id: string;
+  party?: string;
+  partyCode?: string;
+  partyName?: string;
+  officerName?: string;
+  date: string;
+  requestType?: string;
+  planned?: boolean;
+  status?: string;
+  collected?: number;
+  action?: string;
+  notes?: string;
+}
+
+export interface OfficerStat {
+  officer: string;
+  accounts: number;
+  collectedCount: number;
+  collectedAmount: number;
+  openCount: number;
+  openAmount: number;
+  overdueCount: number;
+  overdueAmount: number;
+  avgDaysToCollect: number | null;
+  collectionRate: number | null;
+  tasks?: number;
+  tasksDone?: number;
+  tasksCollected?: number;
+}
+
+/** تقييمُ العميل — يُلوَّن ليُقرأ في لمحة. */
+export const gradeTone = (g?: string) => {
+  const k = String(g || '').toUpperCase();
+  if (k.startsWith('A')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (k.startsWith('B')) return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (k.startsWith('C')) return 'bg-red-50 text-red-700 border-red-200';
+  return 'bg-slate-100 text-slate-600 border-slate-200';
+};
+
+/**
+ * لونُ استهلاك الحدّ الائتمانيّ.
+ * لا لونَ لمن لا حدَّ له: الرماديُّ يقول «لا سقفَ مضبوطٌ لهذا العميل»، وهو
+ * خبرٌ في نفسِه — لا يُقرأ «سليم».
+ */
+export const limitTone = (pct: number | null | undefined) => {
+  if (pct == null) return 'text-slate-400';
+  if (pct >= 100) return 'text-red-600 font-semibold';
+  if (pct >= 80) return 'text-amber-600 font-semibold';
+  return 'text-emerald-600';
+};
+
+/** أيّامٌ حتى الاستحقاق، مقروءةً بكلامٍ لا برقمٍ سالب. */
+export const dueWords = (d: number | null | undefined, ar: boolean) => {
+  if (d == null) return '—';
+  if (d < 0) return ar ? `متأخّرة ${Math.abs(d)} يومًا` : `${Math.abs(d)}d overdue`;
+  if (d === 0) return ar ? 'تستحقّ اليوم' : 'due today';
+  return ar ? `بعد ${d} يومًا` : `in ${d}d`;
+};

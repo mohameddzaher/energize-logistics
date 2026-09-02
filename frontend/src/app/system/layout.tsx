@@ -19,7 +19,7 @@ import {
   Compass, Handshake, Gavel, MonitorCog, LifeBuoy, Laptop, Server, RefreshCw, Inbox, LayoutGrid, Mail,
   CalendarClock, TriangleAlert,
   FileSignature, PhoneCall, UserCheck, Fuel, ClipboardCheck,
-  Receipt, Banknote,
+  Receipt, Banknote, Layers, Link2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -225,6 +225,15 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // التحصيلُ لا يُحصِّل كشوفًا بل فواتير — فصفحتاهما قبل السجلّات.
     { href: '/system/collections-dept/invoices/tax', label: lang === 'ar' ? 'الفواتير الضريبية' : 'Tax Invoices', icon: <Receipt className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/invoices/cash', label: lang === 'ar' ? 'فواتير الكاش' : 'Cash Invoices', icon: <Banknote className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    // ── ودفترُ التحصيل ────────────────────────────────────────────────────
+    // سجلُّ الأعمار أوّلًا: هو الشاشةُ التي يُفتح عليها الصباح — كم على كلٍّ
+    // ومنذ متى. ثمّ دفترُ الفواتير بتفصيله، ثمّ الخطّةُ والفريق.
+    { href: '/system/collections-dept/aging', label: lang === 'ar' ? 'أعمار الديون' : 'Aging', icon: <Layers className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    { href: '/system/collections-dept/ledger', label: lang === 'ar' ? 'دفتر الفواتير' : 'Invoice Ledger', icon: <BookOpen className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    { href: '/system/collections-dept/plan', label: lang === 'ar' ? 'الخطة اليومية' : 'Daily Plan', icon: <CalendarCheck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    { href: '/system/collections-dept/team', label: lang === 'ar' ? 'الفريق' : 'The Team', icon: <UserCog className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    // ومراجعةُ الربط قرارُ المدير وحدَه — الدمجُ ينقل مديونيّةً.
+    { href: '/system/collections-dept/links', label: lang === 'ar' ? 'ربط الحسابات' : 'Account Linking', icon: <Link2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'collections_manager'], section: 'Collections', restrict: true },
     { href: '/system/collections-dept/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/suppliers', label: lang === 'ar' ? 'الموردين' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     // ── وصفحةُ التشغيل من داخل قسمهم ──────────────────────────────────────

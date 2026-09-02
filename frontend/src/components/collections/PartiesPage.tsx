@@ -140,6 +140,10 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     { header: t('الاسم', 'Name'), key: 'name', width: 32 },
     { header: t('الجوال', 'Phone'), key: 'phone', width: 16 },
     { header: t('مسؤول التواصل', 'Contact'), key: 'contactPerson', width: 20 },
+    { header: t('الكود', 'Code'), key: 'code', width: 14 },
+    { header: t('موظف التحصيل', 'Officer'), key: 'collectionOfficer', width: 16 },
+    { header: t('التقييم', 'Grade'), key: 'grade', width: 10 },
+    { header: t('مهلة السداد', 'Credit days'), key: 'creditDays', width: 12 },
     { header: t('السجل التجاري', 'CR'), key: 'commercialRegister', width: 16 },
     { header: t('الرقم الضريبي', 'Tax no.'), key: 'taxNumber', width: 18 },
     ...(kind === 'supplier' ? [{ header: t('الآيبان', 'IBAN'), key: 'iban', width: 28 }] : []),
@@ -429,7 +433,52 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
               <ManagedSelect type="collections_city" value={editing?.city || ''}
                 onChange={(v) => setEditing((p) => ({ ...p, city: v }))} storeLabel placeholder={t('— اختر —', '— select —')} />
             </Field>
+            {/* ── والكودُ يُولَّد إن تُرك ────────────────────────────────────
+                لكلّ حسابٍ كودٌ يُعرَف به في المحاسبة: النقديُّ `C####`
+                والضريبيُّ `1104####`. يُترك فارغًا فيأخذ التاليَ في سلسلة
+                نوعِه من نفسِه، ويُكتب بيدٍ عند الاستيراد أو التصحيح. */}
+            {kind === 'customer' && (
+              <Field label={t('الكود', 'Code')}>
+                <TextInput value={editing?.code || ''} onChange={(e) => setEditing((p) => ({ ...p, code: e.target.value }))}
+                  placeholder={editing?._id ? '' : t('يُولَّد تلقائيًّا', 'generated automatically')} />
+              </Field>
+            )}
           </Card>
+
+          {kind === 'customer' && (
+            <Card title={t('دفتر التحصيل', 'Collections ledger')}>
+              <Field label={t('موظف التحصيل', 'Collection officer')}>
+                <TextInput value={editing?.collectionOfficer || ''} onChange={(e) => setEditing((p) => ({ ...p, collectionOfficer: e.target.value }))} />
+              </Field>
+              <Field label={t('التقييم', 'Grade')}>
+                <TextInput value={editing?.grade || ''} onChange={(e) => setEditing((p) => ({ ...p, grade: e.target.value }))} placeholder="A1 · B2 · C3" />
+              </Field>
+              <Field label={t('القسم', 'Department')}>
+                <TextInput value={editing?.department || ''} onChange={(e) => setEditing((p) => ({ ...p, department: e.target.value }))} placeholder="Branches · Fleet · Customs Clearance" />
+              </Field>
+              <Field label={t('فرع العميل', 'Location')}>
+                <TextInput value={editing?.hoLocation || ''} onChange={(e) => setEditing((p) => ({ ...p, hoLocation: e.target.value }))} />
+              </Field>
+              {/* ── المهلةُ تُعَدّ من التسليم ───────────────────────────────
+                  لا من تاريخ الفاتورة: لا تبدأ مهلةُ الثلاثين قبل أن تصل
+                  الورقةُ العميلَ. والفرقُ بينهما هو الفرقُ بين «متأخّر»
+                  و«لم يستلم بعد»، فيُقال في عنوان الحقل لا في وثيقة. */}
+              <Field label={t('مهلة السداد — من تاريخ التسليم', 'Credit days — from delivery')}>
+                <TextInput type="number" value={editing?.creditDays ?? ''} onChange={(e) => setEditing((p) => ({ ...p, creditDays: e.target.value === '' ? undefined : Number(e.target.value) }))} />
+              </Field>
+              {/* ورفعُ الحدّ من هنا: التنبيهُ يقول «قارب حدَّه»، والقرارُ إمّا
+                  ملاحقتُه أو رفعُ سقفه — فيكون الاثنان في متناول اليد. */}
+              <Field label={t('حد الائتمان', 'Credit limit')}>
+                <TextInput type="number" value={editing?.creditLimit ?? ''} onChange={(e) => setEditing((p) => ({ ...p, creditLimit: e.target.value === '' ? undefined : Number(e.target.value) }))} />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label={t('مندوبو المبيعات (يفصل بينهم /)', 'Sales managers (separate with /)')}>
+                  <TextInput value={(editing?.salesManagers || []).join(' / ')}
+                    onChange={(e) => setEditing((p) => ({ ...p, salesManagers: e.target.value.split('/').map((x) => x.trim()).filter(Boolean) }))} />
+                </Field>
+              </div>
+            </Card>
+          )}
 
           <Card title={t('التواصل', 'Contact')}>
             <Field label={t('الجوال', 'Phone')}>

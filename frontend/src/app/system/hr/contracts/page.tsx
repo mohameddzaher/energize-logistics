@@ -13,7 +13,7 @@ import { getHrContractsTranslations } from '@/lib/translations';
 import ContractsTabs from '@/components/hr/ContractsTabs';
 
 const EMPTY = { employee: '', type: 'fixed', startDate: '', endDate: '', durationMonths: 12, annualLeaveDays: 21, jobTitle: '', basicSalary: 0, allowances: 0, probationMonths: 3, notes: '',
-  iqamaNumber: '', contractProfession: '', sponsorRegistration: '' };
+  iqamaNumber: '', contractProfession: '', sponsorRegistration: '', contractNumber: '' };
 
 export default function ContractsPage() {
   const { notify, prompt, confirm } = useDialog();
@@ -67,7 +67,7 @@ export default function ContractsPage() {
 
   // ── نافذةُ التجديد ────────────────────────────────────────────────────────
   const [renewing, setRenewing] = useState<Contract | null>(null);
-  const [renewForm, setRenewForm] = useState({ startDate: '', endDate: '', annualLeaveDays: '', carryOver: true });
+  const [renewForm, setRenewForm] = useState({ startDate: '', endDate: '', annualLeaveDays: '', carryOver: true, contractProfession: '', contractNumber: '' });
   const [renewSaving, setRenewSaving] = useState(false);
   useEffect(() => {
     if (!renewing) return;
@@ -76,7 +76,14 @@ export default function ContractsPage() {
       ? new Date(new Date(renewing.endDate).getTime() + 86400000).toISOString().slice(0, 10)
       : '';
     const after = next ? new Date(new Date(next).getTime() + 364 * 86400000).toISOString().slice(0, 10) : '';
-    setRenewForm({ startDate: next, endDate: after, annualLeaveDays: String(renewing.annualLeaveDays ?? ''), carryOver: true });
+    setRenewForm({
+      startDate: next, endDate: after,
+      annualLeaveDays: String(renewing.annualLeaveDays ?? ''), carryOver: true,
+      // تُملأ من العقد القائم: التجديدُ إبقاءٌ على ما هو قائمٌ إلّا ما يُغيَّر
+      // عمدًا — فمَن لا يمسّها يجدها كما كانت، ومَن يغيّرها يكتبها هنا مرّةً.
+      contractProfession: renewing.contractProfession || '',
+      contractNumber: renewing.contractNumber || '',
+    });
   }, [renewing]);
 
   const doRenew = async () => {
@@ -88,6 +95,8 @@ export default function ContractsPage() {
         endDate: renewForm.endDate,
         annualLeaveDays: renewForm.annualLeaveDays ? Number(renewForm.annualLeaveDays) : undefined,
         carryOver: renewForm.carryOver,
+        contractProfession: renewForm.contractProfession,
+        contractNumber: renewForm.contractNumber,
       });
       notify(r?.message || (ar ? 'جُدِّد العقد' : 'Contract renewed'), 'success');
       setRenewing(null);
@@ -132,12 +141,14 @@ export default function ContractsPage() {
       || (c.iqamaNumber || '').includes(search)
       || (c.sponsorRegistration || '').includes(search)
       || (c.employeeNameAr || '').toLowerCase().includes(search.toLowerCase())
+      || (c.contractNumber || '').includes(search)
       || (c.contractProfession || '').toLowerCase().includes(search.toLowerCase());
   });
 
   const exportColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'employee', transform: (v: any) => empName(v), width: 22 },
     { header: ar ? 'الهوية' : 'ID number', key: 'iqamaNumber', width: 16, transform: (v: any) => v || '—' },
+    { header: ar ? 'رقم العقد' : 'Contract no.', key: 'contractNumber', width: 16, transform: (v: any) => v || '—' },
     { header: ar ? 'المهنة في العقد' : 'Contract profession', key: 'contractProfession', width: 22, transform: (v: any) => v || '—' },
     { header: tx.colType, key: 'type', width: 12 },
     { header: tx.colStart, key: 'startDate', width: 14 },
@@ -189,6 +200,7 @@ export default function ContractsPage() {
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colEmployee}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الهوية' : 'ID number'}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'رقم العقد' : 'Contract no.'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'المهنة في العقد' : 'Contract profession'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colType}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.thStart}</th>
@@ -201,11 +213,12 @@ export default function ContractsPage() {
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={11} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
+              <tr><td colSpan={12} className="text-center text-slate-800 py-12">{tx.noContracts}</td></tr>
             ) : filtered.map((c) => (
               <tr key={c._id} className="border-b border-slate-200/70 hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-900 font-medium">{empName(c.employee, lang) || c.employeeNameAr || '—'}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.iqamaNumber || '—'}</td>
+                <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.contractNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{c.contractProfession || c.jobTitle || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(c.startDate)}</td>
@@ -272,6 +285,7 @@ export default function ContractsPage() {
           {/* بيانات ورقة العقد نفسِها — تُقرأ في الجدول، فتُصحَّح من هنا. */}
           <Field label={ar ? 'الهوية (كما في العقد)' : 'ID number (as on the contract)'}><TextInput value={form.iqamaNumber || ''} onChange={(e) => set('iqamaNumber', e.target.value)} /></Field>
           <Field label={ar ? 'المهنة في العقد' : 'Profession on the contract'}><TextInput value={form.contractProfession || ''} onChange={(e) => set('contractProfession', e.target.value)} /></Field>
+          <Field label={ar ? 'رقم العقد' : 'Contract number'}><TextInput value={form.contractNumber || ''} onChange={(e) => set('contractNumber', e.target.value)} /></Field>
           <Field label={ar ? 'السجل التجاري' : 'CR number'}><TextInput value={form.sponsorRegistration || ''} onChange={(e) => set('sponsorRegistration', e.target.value)} /></Field>
           <Field label={tx.fieldNotes} span2><TextArea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
         </div>
@@ -303,6 +317,19 @@ export default function ContractsPage() {
               <TextInput type="date" value={renewForm.endDate} onChange={(e) => setRenewForm((f) => ({ ...f, endDate: e.target.value }))} /></Field>
             <Field label={ar ? 'أيام الإجازة السنوية' : 'Annual leave days'}>
               <TextInput type="number" value={renewForm.annualLeaveDays} onChange={(e) => setRenewForm((f) => ({ ...f, annualLeaveDays: e.target.value }))} /></Field>
+            {/* ── والمهنةُ تُراجَع هنا، اختياريّةً ──────────────────────────
+                التجديدُ هو اللحظةُ التي تتغيّر فيها المهنةُ فعلًا: يُرقّى
+                سائقٌ أو يُنقل إلى عملٍ آخر فيُكتب ذلك في العقد الجديد. وكانت
+                تُترك كما هي ثمّ يُفتح العقدُ الجديدُ بعد إنشائه ليُصحَّح.
+                مملوءةٌ سلفًا من العقد القائم — فمَن لا يريد تغييرها لا يمسّها. */}
+            <Field label={ar ? 'المهنة في العقد (اختياري)' : 'Contract profession (optional)'}>
+              <TextInput value={renewForm.contractProfession}
+                placeholder={ar ? 'كما في العقد الحالي' : 'as on the current contract'}
+                onChange={(e) => setRenewForm((f) => ({ ...f, contractProfession: e.target.value }))} /></Field>
+            <Field label={ar ? 'رقم العقد (اختياري)' : 'Contract number (optional)'}>
+              <TextInput value={renewForm.contractNumber}
+                placeholder={ar ? 'رقم العقد الجديد في قوى' : 'new contract number'}
+                onChange={(e) => setRenewForm((f) => ({ ...f, contractNumber: e.target.value }))} /></Field>
           </div>
           {/* ── ورصيدُ الإجازات غيرُ المستهلَك ──────────────────────────────
               يتراكم من بداية العقد النشط، فعقدٌ جديدٌ يعني تراكمًا من الصفر —

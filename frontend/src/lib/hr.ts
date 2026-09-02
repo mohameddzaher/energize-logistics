@@ -75,6 +75,8 @@ export interface Contract {
   employeeNameAr?: string;
   contractProfession?: string;
   sponsorRegistration?: string;
+  // رقمُه في «قوى» — هو ما يُطلب في التفتيش وفي مراسلة المكتب، لا اسمُ الموظّف.
+  contractNumber?: string;
   // «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — فالنصّ إلى جانب الرقم.
   annualLeaveText?: string;
   probationText?: string;

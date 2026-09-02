@@ -48,6 +48,10 @@ const contractSchema = new mongoose.Schema(
     employeeNameAr: { type: String, trim: true, default: '' },     // الاسم كما في العقد
     contractProfession: { type: String, trim: true, default: '' }, // المهنة في العقد
     sponsorRegistration: { type: String, trim: true, default: '' },// السجل
+    // ── ورقمُ العقد ────────────────────────────────────────────────────────
+    // رقمُه في «قوى» — وهو ما يُطلب في التفتيش وفي كلّ مراسلةٍ مع المكتب، لا
+    // اسمُ الموظّف. وكان يُبحث عنه في الشيت في كلّ مرّة.
+    contractNumber: { type: String, trim: true, default: '', index: true },
 
     // «غير مطلوب» في خانة الإجازة أو فترة التجربة حالةٌ سليمة لا نقصُ بيانات:
     // العقدُ الموسميّ لا إجازةَ سنويّةً له. ولو حُشرت في الرقم صارت صفرًا،

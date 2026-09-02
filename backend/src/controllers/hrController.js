@@ -474,7 +474,15 @@ exports.renewContract = async (req, res) => {
     const old = await Contract.findById(req.params.id);
     if (!old) return res.status(404).json({ message: 'العقد غير موجود' });
 
-    const { startDate, endDate, annualLeaveDays, salary, contractType, notes, carryOver = true } = req.body;
+    const {
+      startDate, endDate, annualLeaveDays, notes, carryOver = true,
+      // ── والمهنةُ تُراجَع عند التجديد ──────────────────────────────────────
+      // التجديدُ هو اللحظةُ التي تتغيّر فيها المهنةُ فعلًا — يُرقّى سائقٌ أو
+      // يُنقل إلى عملٍ آخر ويُكتب ذلك في العقد الجديد. فتُقبَل هنا اختياريّةً:
+      // مَن لا يكتبها يبقى على مهنته، ومَن يكتبها لا يحتاج أن يفتح العقدَ
+      // الجديد بعد إنشائه ليصحّحه.
+      contractProfession, jobTitle, contractNumber, basicSalary, allowances, type,
+    } = req.body;
     if (!startDate) return res.status(400).json({ message: 'تاريخ بداية العقد الجديد مطلوب.' });
 
     // الرصيدُ لحظةَ التجديد — يُقاس على العقد المنتهي لا على الجديد.
@@ -485,13 +493,36 @@ exports.renewContract = async (req, res) => {
     old.endDate = old.endDate || startDate;
     await old.save();
 
+    // ── والعقدُ الجديد يرث شروطَ سابقِه ──────────────────────────────────
+    // كان يُكتب هنا `salary` و`contractType` — وليسا حقلين في هذا المستند
+    // أصلًا (الاسمان `basicSalary` و`type`). فيُسقطهما mongoose بلا شكوى،
+    // ويخرج العقدُ المجدَّد بلا راتبٍ ولا بدلاتٍ ولا نوعٍ ولا مدّةٍ ولا فترةِ
+    // تجربة — ولا مهنةَ ولا هويّةَ ولا سجلًّا تجاريًّا، فهذه لم تُذكر أصلًا.
+    // أي أنّ التجديد كان يُفرغ العقد ويُبقي تاريخَيه.
+    //
+    // لم يُجدَّد عقدٌ بعد فلم يقع الضرر؛ والتجديدُ الأوّل كان سيقع فيه.
+    //
+    // فالأصلُ أن يرث الجديدُ كلَّ شيءٍ من سابقِه، ولا يختلف إلّا فيما كُتب في
+    // نموذج التجديد بيد.
+    const pick = (v, fallback) => (v === undefined || v === null || v === '' ? fallback : v);
     const fresh = await Contract.create({
       employee: old.employee,
       startDate,
       endDate: endDate || '',
+      type: pick(type, old.type),
+      durationMonths: old.durationMonths,
       annualLeaveDays: annualLeaveDays != null ? Number(annualLeaveDays) : old.annualLeaveDays,
-      salary: salary != null ? Number(salary) : old.salary,
-      contractType: contractType || old.contractType,
+      annualLeaveText: old.annualLeaveText,
+      probationMonths: old.probationMonths,
+      probationText: old.probationText,
+      basicSalary: basicSalary != null ? Number(basicSalary) : old.basicSalary,
+      allowances: allowances != null ? Number(allowances) : old.allowances,
+      jobTitle: pick(jobTitle, old.jobTitle),
+      contractProfession: pick(contractProfession, old.contractProfession),
+      contractNumber: pick(contractNumber, old.contractNumber),
+      iqamaNumber: old.iqamaNumber,
+      employeeNameAr: old.employeeNameAr,
+      sponsorRegistration: old.sponsorRegistration,
       status: 'active',
       carriedOverDays: carried,
       renewedFrom: old._id,
@@ -778,7 +809,8 @@ exports.updateContract = async (req, res) => {
     const fields = ['type', 'startDate', 'endDate', 'durationMonths', 'annualLeaveDays', 'jobTitle', 'basicSalary', 'allowances', 'probationMonths', 'status', 'notes',
       // حقول ملفّ العقود — تُعرَض في الجدول، فلا بدّ أن تُعدَّل من الشاشة
       // أيضًا: ما يُقرأ ولا يُصحَّح يبقى خطأً إلى الأبد.
-      'iqamaNumber', 'employeeNameAr', 'contractProfession', 'sponsorRegistration', 'annualLeaveText', 'probationText'];
+      'iqamaNumber', 'employeeNameAr', 'contractProfession', 'sponsorRegistration', 'annualLeaveText', 'probationText',
+      'contractNumber'];
     for (const f of fields) if (req.body[f] !== undefined) contract[f] = req.body[f];
     await contract.save();
     try { emitToUser(String(req.user._id), 'hr:contract', { id: String(contract._id) }); } catch (e) {}

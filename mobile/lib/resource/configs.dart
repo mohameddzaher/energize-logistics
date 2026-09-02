@@ -1196,7 +1196,7 @@ final hrContractsCfg = ResourceConfig(
   // بياناتُ ورقة العقد نفسِها: الهويّةُ كما كُتبت فيه، والمهنةُ **كما في العقد**
   // (تختلف عن المهنة في الإقامة وعن المسمّى الوظيفيّ)، والسجلُّ الصادر تحته —
   // وهي ما يُبحَث به فعلًا، لا حالةُ العقد.
-  searchFields: const ['jobTitle', 'type', 'status', 'iqamaNumber', 'contractProfession', 'sponsorRegistration', 'employeeNameAr'],
+  searchFields: const ['jobTitle', 'type', 'status', 'iqamaNumber', 'contractProfession', 'sponsorRegistration', 'employeeNameAr', 'contractNumber'],
   titleOf: (r) => (r['employee'] is Map ? (r['employee']['arabicName'] ?? r['employee']['englishName'] ?? r['employee']['name']) : null)?.toString()
       ?? (_s(r, 'employeeNameAr').isNotEmpty ? _s(r, 'employeeNameAr') : _s(r, 'jobTitle')),
   subtitleOf: (r) => [
@@ -1209,6 +1209,9 @@ final hrContractsCfg = ResourceConfig(
     // «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — تُكتب كما هي.
     if (_s(r, 'annualLeaveText').isNotEmpty) (_s(r, 'annualLeaveText'), T.warn)
     else if (r['annualLeaveDays'] != null) ('إجازة ${r['annualLeaveDays']}', T.cyan),
+    // رقمُ العقد في «قوى» — هو ما يُطلب في التفتيش ومراسلة المكتب، فيُقرأ
+    // من الجوّال كما يُقرأ من الشاشة.
+    if (_s(r, 'contractNumber').isNotEmpty) ('عقد ${_s(r, 'contractNumber')}', T.navy),
     if (_s(r, 'sponsorRegistration').isNotEmpty) ('سجل ${_s(r, 'sponsorRegistration')}', T.inkFaint),
     if (r['basicSalary'] != null && r['basicSalary'] != 0) ('${r['basicSalary']}', T.navy),
   ],

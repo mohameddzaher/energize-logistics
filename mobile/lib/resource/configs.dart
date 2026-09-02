@@ -998,16 +998,24 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       // ثلاثةُ آلافِ موردٍ لا تُنزَّل إلى هاتف — فالبحثُ على الخادم لا في
       // المحمَّل، وإلّا بحث المستخدمُ في أوّل مئتين وقيل له «لا نتائج».
       serverSearch: true,
-      searchFields: const ['name', 'phone', 'contactPerson', 'commercialRegister', 'taxNumber', 'iban', 'city'],
+      searchFields: const ['name', 'code', 'phone', 'contactPerson', 'commercialRegister', 'taxNumber', 'iban', 'city', 'collectionOfficer'],
       titleOf: (r) => _s(r, 'name'),
-      subtitleOf: (r) => [_s(r, 'city'), _s(r, 'phone'), _s(r, 'contactPerson')]
+      // الكودُ أوّلَ السطر: هو هويّةُ الحساب في المحاسبة وفي كلّ مراسلة، ومَن
+      // يتولّاه أوّلُ ما يُسأل عنه حين يتأخّر.
+      subtitleOf: (r) => [_s(r, 'code'), _s(r, 'collectionOfficer'), _s(r, 'city'), _s(r, 'phone')]
           .where((x) => x.isNotEmpty)
           .join(' · '),
       chipsOf: (r) {
         final due = (r['outstanding'] as num?)?.toDouble() ?? 0;
+        final limit = (r['creditLimit'] as num?)?.toDouble() ?? 0;
         return [
           if (due > 0) ('${_n(due)} ${customer ? 'لنا' : 'علينا'}', T.danger),
-          if (r['reports'] != null) ('${_n(r['reports'])} كشف', T.navy),
+          // ── واستهلاكُ الحدّ يُقرأ في السطر ────────────────────────────────
+          // «قارب حدَّه» قرارٌ يُتّخذ قبل تحميل الشحنة التالية، ومَن يفتح
+          // القائمةَ في الطريق يحتاجه هنا لا بعد نقرتين.
+          if (limit > 0) ('${(due / limit * 100).round()}% من الحد', due > limit ? T.danger : due >= limit * 0.8 ? T.warn : T.success),
+          if (_s(r, 'grade').isNotEmpty) (_s(r, 'grade'), T.cyan),
+          if (r['creditDays'] != null && r['creditDays'] != 0) ('${r['creditDays']} يوم سداد', T.navy),
           if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), T.info),
           if (r['isActive'] == false) ('معطَّل', T.inkFaint),
         ];
@@ -1033,6 +1041,17 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
         const FieldSpec('paymentTerms', 'شروط السداد', 'Payment terms'),
         const FieldSpec('status', 'حالة التحصيل', 'Collection status'),
         const FieldSpec('creditLimit', 'حد الائتمان', 'Credit limit', type: FieldType.number),
+        // ── حقولُ دفتر التحصيل ────────────────────────────────────────────
+        // الكودُ يُترك فارغًا للجديد فيُولَّد على سياقة الدفتر (C#### للنقديّ
+        // و1104#### للضريبيّ). والمهلةُ تُعَدّ من **تسليم** الفاتورة لا من
+        // تاريخها — يُقال في العنوان لأنّ الفرق بينهما هو الفرق بين «متأخّر»
+        // و«لم يستلم بعد».
+        const FieldSpec('code', 'الكود', 'Code'),
+        const FieldSpec('collectionOfficer', 'موظف التحصيل', 'Collection officer'),
+        const FieldSpec('grade', 'التقييم', 'Grade'),
+        const FieldSpec('department', 'القسم', 'Department'),
+        const FieldSpec('hoLocation', 'فرع العميل', 'Location'),
+        const FieldSpec('creditDays', 'مهلة السداد (من التسليم)', 'Credit days (from delivery)', type: FieldType.number),
         const FieldSpec('nextFollowUpAt', 'المتابعة القادمة', 'Next follow-up', type: FieldType.date),
         const FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
       ],
@@ -1041,6 +1060,67 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
         ('reports', 'عدد الكشوف', 'Reports'),
       ],
     );
+
+// ── دفترُ التحصيل على الجوّال ───────────────────────────────────────────────
+// سجلُّ الأعمار ودفترُ الفواتير: يُقرآن في الطريق وقبل الزيارة — «كم عليه
+// ومنذ متى» و«أيُّ فاتورةٍ تستحقّ». وهما للقراءة هنا: التعديلُ يقع على الشاشة
+// حيث تُرى الأعمدةُ كلُّها بجانب بعضها.
+final collectionsAgingCfg = ResourceConfig(
+  arTitle: 'أعمار الديون', enTitle: 'Aging', icon: Icons.layers_outlined,
+  endpoint: '/api/collections-dept/ledger/aging', listKey: 'rows', liveEvent: 'collections:party',
+  canCreate: false, canEdit: false, canDelete: false,
+  serverSearch: true,
+  searchFields: const ['name', 'code', 'collectionOfficer'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [_s(r, 'code'), _s(r, 'collectionOfficer'), _s(r, 'hoLocation')]
+      .where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) {
+    final out = (r['outstanding'] as num?)?.toDouble() ?? 0;
+    final pct = (r['limitUsedPct'] as num?)?.toDouble();
+    final bands = (r['bands'] as Map?) ?? const {};
+    final old = ((bands['120+'] as num?)?.toDouble() ?? 0) + ((bands['1Y+'] as num?)?.toDouble() ?? 0);
+    return [
+      (_n(out), T.danger),
+      // ما مضى عليه أربعةُ أشهرٍ فأكثر يُفرد بلونه: هو الذي يُلاحَق أوّلًا.
+      if (old > 0) ('${_n(old)} فوق 120 يوم', T.warn),
+      if (pct != null) ('${pct.round()}% من الحد', pct >= 100 ? T.danger : pct >= 80 ? T.warn : T.success),
+      if (_s(r, 'grade').isNotEmpty) (_s(r, 'grade'), T.cyan),
+    ];
+  },
+  fields: const [],
+  sortFields: const [
+    ('outstanding', 'المديونية', 'Outstanding'),
+    ('limitUsedPct', 'استهلاك الحد', 'Limit used'),
+    ('creditDays', 'مهلة السداد', 'Credit days'),
+  ],
+);
+
+final collectionsLedgerCfg = ResourceConfig(
+  arTitle: 'دفتر الفواتير', enTitle: 'Invoice Ledger', icon: Icons.menu_book_outlined,
+  endpoint: '/api/collections-dept/ledger/invoices', listKey: 'rows', liveEvent: 'collections:party',
+  canCreate: false, canEdit: false, canDelete: false,
+  serverSearch: true,
+  searchFields: const ['invoiceNumber', 'partyName', 'partyCode'],
+  titleOf: (r) => '${_s(r, 'invoiceNumber')} · ${_s(r, 'partyName')}',
+  subtitleOf: (r) => [
+    if (_s(r, 'invoiceDate').isNotEmpty) 'فُوترت ${_s(r, 'invoiceDate').split('T').first}',
+    if (_s(r, 'deliveryDate').isNotEmpty) 'سُلّمت ${_s(r, 'deliveryDate').split('T').first}',
+    if (_s(r, 'collectionDate').isNotEmpty) 'حُصّلت ${_s(r, 'collectionDate').split('T').first}',
+  ].join(' · '),
+  chipsOf: (r) {
+    final d = (r['daysToDue'] as num?)?.toInt();
+    return [
+      (_n(r['total']), T.navy),
+      if (_s(r, 'band').isNotEmpty && _s(r, 'band') != 'noDate') (_s(r, 'band'), T.cyan),
+      // ── والاستحقاقُ بكلامٍ لا برقمٍ سالب ──────────────────────────────
+      // «متأخّرة ١٢ يومًا» تُقرأ في لمحة، و«−١٢» تحتاج وقفةً لتُفهَم.
+      if (d != null && d < 0) ('متأخّرة ${-d} يومًا', T.danger)
+      else if (d != null && d <= 3) ('تستحق بعد $d', T.warn),
+      if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), _s(r, 'status') == 'Collected' ? T.success : T.info),
+    ];
+  },
+  fields: const [],
+);
 
 // ── فواتيرُ التحصيل ────────────────────────────────────────────────────────
 // القسمُ يعمل بالفواتير لا بالكشوف. والنقديُّ صفُّه كشفٌ يُحصَّل في يومه،

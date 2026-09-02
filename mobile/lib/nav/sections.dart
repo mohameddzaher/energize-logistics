@@ -129,6 +129,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // الفواتيرُ قبل السجلّات: منها يعمل القسم.
         AppPage('الفواتير الضريبية', 'Tax Invoices', Icons.receipt_long_outlined, (c) => ResourceScreen(config: collectionsTaxInvoicesCfg)),
         AppPage('فواتير الكاش', 'Cash Invoices', Icons.payments_outlined, (c) => ResourceScreen(config: collectionsCashInvoicesCfg)),
+        // سجلُّ الأعمار قبل السجلّات: هو ما يُفتح في الطريق قبل الزيارة.
+        AppPage('أعمار الديون', 'Aging', Icons.layers_outlined, (c) => ResourceScreen(config: collectionsAgingCfg)),
+        AppPage('دفتر الفواتير', 'Invoice Ledger', Icons.menu_book_outlined, (c) => ResourceScreen(config: collectionsLedgerCfg)),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: collectionsCustomersCfg)),
         AppPage('الموردون', 'Suppliers', Icons.local_shipping_outlined, (c) => ResourceScreen(config: collectionsSuppliersCfg)),
         AppPage('سير عمل التشغيل', 'Operations Workflow', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen()),

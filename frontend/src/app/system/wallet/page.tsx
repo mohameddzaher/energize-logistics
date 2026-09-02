@@ -723,10 +723,13 @@ export default function WalletPage() {
                 className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-500/30 transition-colors border border-blue-500/30">
                 <ShoppingCart className="w-4 h-4" /> {L.purchase}
               </button>
-              {/* استلامُ فاتورةٍ أو كشف — معلومةٌ لا مال. */}
+              {/* ── واسمُ الزرّ من موضعٍ واحد ────────────────────────────────
+                  كان مكتوبًا هنا بيده وفي `TYPE_CONFIG` مرّةً أخرى. فلمّا
+                  صُحّح الاسمُ في الخريطة بقي الزرُّ يقول «فاتورة ضريبية» —
+                  والاسمُ في موضعين يُصحَّح في أحدهما ويُنسى في الآخر. */}
               <button type="button" onClick={() => openTxModal('tax_invoice')}
                 className="flex items-center gap-2 px-4 py-2 bg-slate-200/70 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300/70 transition-colors border border-slate-300">
-                <Receipt className="w-4 h-4" /> {lang === 'ar' ? 'فاتورة ضريبية' : 'Tax invoice'}
+                <Receipt className="w-4 h-4" /> {typeLabel('tax_invoice')}
               </button>
             </>
           )}

@@ -62,6 +62,13 @@ const walletTransactionSchema = new mongoose.Schema(
     // تفاصيلُه من سير عمل التشغيل عند العرض، فلا تُنسَخ هنا وتشيخ.
     receivedDocType: { type: String, enum: ['', 'invoice', 'report'], default: '' },
     receivedDocNumber: { type: String, trim: true, default: '' },
+    // ── الكشوفُ المستلَمة، جمعًا ───────────────────────────────────────────
+    // الاستلامُ يقع على حزمةٍ من الكشوف لا على واحد: يأتي المندوبُ ومعه سبعةٌ
+    // فيسجّلها دفعةً. وإجبارُه على قيدٍ لكلّ كشفٍ يجعله يكرّر التاريخَ والفرعَ
+    // سبعَ مرّات ويترك الباقيَ حين يملّ.
+    //
+    // و`receivedDocNumber` باقٍ للقيود التي كُتبت قبل هذا، ويُقرأ معها.
+    receivedReportNumbers: [{ type: String, trim: true }],
     reference: { type: String, trim: true },
     notes: { type: String, trim: true },
     // Risk flags

@@ -287,6 +287,24 @@ exports.addTransaction = async (req, res) => {
 
     const txDate = date || toDateStr();
 
+    // ── استلامُ الفواتير الضريبيّة: كشوفٌ لا مبلغ ────────────────────────────
+    // القيدُ يقول «استلمتُ كشوفَ هذه الفواتير بيدي» — لا مالَ دخل ولا خرج،
+    // فلا مبلغَ يُكتب أصلًا. وكان الحقلُ معروضًا مطلوبًا بنجمة، فيقف الموظّف
+    // أمام خانةٍ لا جوابَ لها ويكتب صفرًا ليمرّ.
+    //
+    // والاستلامُ يقع على حزمةٍ: يأتي المندوبُ ومعه سبعةُ كشوفٍ فيسجّلها دفعةً.
+    // وقيدٌ لكلّ كشفٍ يعني تكرارَ التاريخ والفرع سبعَ مرّات، ومَن يملّ يترك
+    // الباقيَ بلا تسجيل.
+    const receivedReports = type === 'tax_invoice'
+      ? [...new Set([
+        ...(Array.isArray(req.body.receivedReportNumbers) ? req.body.receivedReportNumbers : []),
+        req.body.receivedDocNumber,          // الشكلُ القديم، ما زال يُقبَل
+      ].map((x) => String(x ?? '').trim()).filter(Boolean))]
+      : [];
+    if (type === 'tax_invoice' && !receivedReports.length) {
+      return res.status(400).json({ message: 'اكتب رقم كشف تخريج واحدًا على الأقلّ.' });
+    }
+
     // الحركةُ تُقيَّد على محفظة فرعٍ بعينه. والفرعُ من الطلب إن أُرسل — المدير
     // يسجّل عن فرعٍ يديره — وإلّا فرعُ صاحب الحساب.
     const txBranch = req.body.branchId || req.body.branch || req.user.branch;
@@ -344,14 +362,14 @@ exports.addTransaction = async (req, res) => {
     let purchaseInvoiceAmountVal;
     let purchaseWorkflow = null;
     let purchaseMismatch = null;
-    // قيدُ استلام الفاتورة يحمل رقمَ كشفٍ كذلك، ويملأ منه ما تملؤه المشتريات.
-    const lookupNumber = type === 'tax_invoice'
-      ? (req.body.receivedDocNumber || '').trim()
-      : purchaseDeliveryStatementNumber;
-    if (type === 'tax_invoice' && lookupNumber) {
+    // قيدُ استلام الفاتورة يحمل أرقامَ كشوفٍ، ويملأ منها ما تملؤه المشتريات.
+    let receivedWorkflows = [];
+    if (type === 'tax_invoice' && receivedReports.length) {
       try {
         const OperationsWorkflow = require('../models/OperationsWorkflow');
-        purchaseWorkflow = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(lookupNumber) });
+        receivedWorkflows = await OperationsWorkflow.find({
+          $or: receivedReports.map((n) => ({ reportNumber: flexSpaceRegex(n) })),
+        });
       } catch (e) { console.error('walletController silent catch:', e.message); }
     }
     if (type === 'purchase' && purchaseDeliveryStatementNumber) {
@@ -390,7 +408,8 @@ exports.addTransaction = async (req, res) => {
       branch: txBranch,
       date: txDate,
       type,
-      amount,
+      // قيدُ الاستلام بلا مبلغ: لا يدخل الرصيدَ ولا إقفالَ اليوم.
+      amount: type === 'tax_invoice' ? 0 : amount,
       collectionSource: type === 'collection' ? source : undefined,
       customer: resolvedParty || undefined,
       deliveryStatementNumber: deliveryStatementNumber || undefined,
@@ -408,8 +427,11 @@ exports.addTransaction = async (req, res) => {
       purchaseBranch: purchaseBranch || undefined,
       mismatchReason: cleanMismatchReason || undefined,
       mismatchNote: cleanMismatchReason === 'other' ? (mismatchNote || undefined) : undefined,
-      receivedDocType: type === 'tax_invoice' ? (req.body.receivedDocType || 'invoice') : undefined,
-      receivedDocNumber: type === 'tax_invoice' ? (req.body.receivedDocNumber || '').trim() || undefined : undefined,
+      // المستندُ المستلَم فاتورةٌ ضريبيّة دائمًا — لم يعد يُسأل عنه، فالزرُّ
+      // نفسُه يقول ما هو. والكشوفُ هي ما يُكتب.
+      receivedDocType: type === 'tax_invoice' ? 'invoice' : undefined,
+      receivedDocNumber: type === 'tax_invoice' ? (receivedReports[0] || undefined) : undefined,
+      receivedReportNumbers: type === 'tax_invoice' ? receivedReports : undefined,
       reference: reference || undefined,
       notes: notes || undefined,
       isFlagged,
@@ -428,18 +450,30 @@ exports.addTransaction = async (req, res) => {
     //
     // ولا يُكتب فوق ما كُتب بيد: مَن صحّح المبلغَ في سير عمل التشغيل قصدًا لا
     // تعود المحفظةُ فتدهسه. `$set` على الفارغ وحدَه.
-    if ((type === 'purchase' || type === 'tax_invoice') && purchaseWorkflow) {
+    if (type === 'purchase' && purchaseWorkflow) {
       await fillReportFromWallet({
         workflow: purchaseWorkflow,
-        // ── المبلغُ من حيث يُعرَف ────────────────────────────────────────────
-        // في المشتريات هو ما دفعه الموظّفُ بيده. وفي قيد استلام الفاتورة لا
-        // مبلغَ يُكتب أصلًا، فيُؤخذ سعرُ الشراء المسجَّل على الكشف — وهو
-        // المطلوبُ نفسُه: مبلغُ السداد سعرُ الشراء الحقيقيّ.
-        amount: type === 'purchase' ? amount : (Number(purchaseWorkflow.purchaseValue) || 0),
+        // ما دفعه الموظّفُ بيده هو سعرُ الشراء الحقيقيّ.
+        amount,
         date: txDate,
         // فرعُ العهدة التي خرج منها المال — لا فرعُ الحساب الذي سجّله.
         branchId: wallet.branch || transaction.branch || req.user.branch,
       });
+    }
+    // ── وكلُّ كشفٍ مستلَمٍ يُختَم، لا الأوّلُ منها ─────────────────────────
+    // لا مبلغَ في هذا القيد، فيُؤخذ لكلّ كشفٍ **سعرُ شرائه هو** — وهو المطلوب:
+    // مبلغُ السداد سعرُ الشراء الحقيقيّ. وأخذُ مبلغٍ واحدٍ للحزمة كلِّها كان
+    // سيكتب سعرَ أوّلِ كشفٍ على السبعة.
+    if (type === 'tax_invoice') {
+      for (const wf of receivedWorkflows) {
+        // eslint-disable-next-line no-await-in-loop
+        await fillReportFromWallet({
+          workflow: wf,
+          amount: Number(wf.purchaseValue) || 0,
+          date: txDate,
+          branchId: wallet.branch || transaction.branch || req.user.branch,
+        });
+      }
     }
 
     // Update vendor total if expense paid to vendor
@@ -483,7 +517,22 @@ exports.addTransaction = async (req, res) => {
       }
     } catch (e) { console.error('walletController silent catch:', e.message); }
 
-    res.status(201).json({ transaction: populated, wallet: updatedWallet });
+    // ── ورقمٌ لم يُعرَف يُقال ────────────────────────────────────────────────
+    // القيدُ يُحفظ بكلّ ما كُتب — الكشفُ موجودٌ عند العميل وإن لم يصلنا بعد —
+    // لكنّ الرقمَ الذي لا كشفَ له عندنا يُسمّى، فربّما كُتب خطأً. والسكوتُ عنه
+    // يجعل الموظّفَ يظنّ أنّ السبعةَ خُتمت وقد خُتم منها خمسة.
+    const unknownReports = type === 'tax_invoice'
+      ? receivedReports.filter((n) => !receivedWorkflows.some((w) => String(w.reportNumber).trim() === n))
+      : [];
+    res.status(201).json({
+      transaction: populated,
+      wallet: updatedWallet,
+      ...(unknownReports.length ? {
+        unknownReports,
+        message: `حُفظ القيد. ولم نجد عندنا كشوفًا بهذه الأرقام: ${unknownReports.join('، ')}`,
+      } : {}),
+      ...(type === 'tax_invoice' ? { matchedReports: receivedWorkflows.map((w) => w.reportNumber) } : {}),
+    });
   } catch (error) {
     console.error('addTransaction error:', error);
     res.status(500).json({ message: error.message || 'Failed to add transaction' });

@@ -55,6 +55,10 @@ interface Transaction {
   purchaseDriverName: string;
   purchaseReceiptNumber: string;
   purchaseBranch: string;
+  // كشوفُ التخريج المستلَمة في قيد الاستلام. و`receivedDocNumber` للقيود
+  // التي كُتبت قبل أن يُسمح بأكثرَ من كشفٍ في القيد الواحد.
+  receivedReportNumbers?: string[];
+  receivedDocNumber?: string;
   reference: string;
   notes: string;
   isFlagged: boolean;
@@ -83,7 +87,9 @@ const TYPE_CONFIG = {
   // يُسجَّل ليُعرَف أنّ الموظّف استلم فاتورةً أو كشفًا بيده. وهو **خارج** رصيد
   // العهدة تمامًا: لا يُجمَع ولا يُطرَح — ولذلك لونُه محايدٌ لا أخضرُ ولا أحمر،
   // فاللونُ في هذه الشاشة يقول اتّجاهَ المال.
-  tax_invoice: { label: 'Tax invoice received', labelAr: 'فاتورة ضريبية', icon: Receipt, color: 'text-slate-600', bg: 'bg-slate-200/70' },
+  // ── واسمُ الزرّ يقول الفعلَ لا الشيء ──────────────────────────────────────
+  // «فاتورة ضريبية» تُقرأ كأنّها إصدارُ فاتورةٍ أو دفعُ قيمتها؛ والفعلُ استلامٌ.
+  tax_invoice: { label: 'Tax invoices received', labelAr: 'استلام فاتورة ضريبية', icon: Receipt, color: 'text-slate-600', bg: 'bg-slate-200/70' },
 };
 
 const getTodayStr = () => {
@@ -143,6 +149,7 @@ export default function WalletPage() {
     mismatchReason: '' as '' | 'daily' | 'violation' | 'other', mismatchNote: '',
     // قيدُ استلام فاتورةٍ أو كشف — معلومةٌ خارج الرصيد.
     receivedDocType: 'invoice' as 'invoice' | 'report', receivedDocNumber: '',
+    receivedReportNumbers: [] as string[],
   });
   // Empty form used on open/reset — keeps the three reset sites in sync.
   const EMPTY_TX_FORM = {
@@ -152,6 +159,7 @@ export default function WalletPage() {
     mismatchReason: '' as '' | 'daily' | 'violation' | 'other', mismatchNote: '',
     // قيدُ استلام فاتورةٍ أو كشف — معلومةٌ خارج الرصيد.
     receivedDocType: 'invoice' as 'invoice' | 'report', receivedDocNumber: '',
+    receivedReportNumbers: [] as string[],
   };
   const [submitting, setSubmitting] = useState(false);
   const [txError, setTxError] = useState('');
@@ -265,8 +273,12 @@ export default function WalletPage() {
         notes: txForm.notes || undefined,
       };
       // Expected dispatch-sheet value for this transaction type (null = no lookup done).
-      if (txType === 'tax_invoice' && !String(txForm.receivedDocNumber || '').trim()) {
-        setTxError(lang === 'ar' ? 'اكتب رقم الفاتورة أو رقم الكشف' : 'Enter the invoice or report number');
+      // ما بقي في خانة الكتابة ولم يُضَف بعد يُحسب: مَن كتب رقمًا وضغط «حفظ»
+      // مباشرةً قصد إضافتَه — وإسقاطُه بصمتٍ يفقده كشفًا ظنّ أنّه سجّله.
+      const pendingReport = String(txForm.receivedDocNumber || '').trim();
+      const allReports = [...new Set([...txForm.receivedReportNumbers, ...(pendingReport ? [pendingReport] : [])])];
+      if (txType === 'tax_invoice' && !allReports.length) {
+        setTxError(lang === 'ar' ? 'اكتب رقم كشف تخريج واحدًا على الأقل' : 'Enter at least one dispatch report number');
         setSubmitting(false);
         return;
       }
@@ -298,9 +310,9 @@ export default function WalletPage() {
         payload.itemName = txForm.itemName || undefined;
       }
       if (txType === 'tax_invoice') {
-        payload.amount = Number(txForm.amount) || 0;
-        payload.receivedDocType = txForm.receivedDocType || 'invoice';
-        payload.receivedDocNumber = String(txForm.receivedDocNumber || '').trim();
+        // بلا مبلغ: القيدُ يقول «استلمتُ»، ولا مالَ دخل ولا خرج.
+        payload.amount = 0;
+        payload.receivedReportNumbers = allReports;
       }
       if (txType === 'purchase') {
         payload.purchaseDeliveryStatementNumber = txForm.purchaseDeliveryStatementNumber || undefined;
@@ -308,7 +320,19 @@ export default function WalletPage() {
         payload.purchaseReceiptNumber = txForm.purchaseReceiptNumber || undefined;
         payload.purchaseBranch = txForm.purchaseBranch || undefined;
       }
-      await api.post('/api/wallet/transactions', payload);
+      const res = await api.post<{ unknownReports?: string[] }>('/api/wallet/transactions', payload);
+      // ── ورقمٌ لم يُعرَف يُقال قبل إغلاق النافذة ──────────────────────────
+      // القيدُ يُحفظ بكلّ ما كُتب، لكنّ رقمًا لا كشفَ له عندنا قد يكون خطأً
+      // مطبعيًّا. وإغلاقُ النافذة بصمتٍ يجعل الموظّفَ يظنّ أنّ السبعةَ خُتمت
+      // وقد خُتم منها خمسة.
+      if (res?.unknownReports?.length) {
+        setTxError(lang === 'ar'
+          ? `حُفظ القيد — ولم نجد كشوفًا بهذه الأرقام: ${res.unknownReports.join('، ')}`
+          : `Saved — but no reports found for: ${res.unknownReports.join(', ')}`);
+        setTxForm(EMPTY_TX_FORM);
+        fetchWallet(false);
+        return;
+      }
       setShowTxModal(false);
       setTxForm(EMPTY_TX_FORM);
       fetchWallet(false);
@@ -788,6 +812,14 @@ export default function WalletPage() {
                       {tx.itemName && <div>{tx.itemName}</div>}
                       {tx.purchaseDriverName && <div>{L.driver}: {tx.purchaseDriverName}</div>}
                       {tx.purchaseReceiptNumber && <div>{L.receipt}: {tx.purchaseReceiptNumber}</div>}
+                      {/* الكشوفُ المستلَمة في هذا القيد — وهي كلُّ محتواه. */}
+                      {tx.type === 'tax_invoice' && (
+                        <div className="flex flex-wrap gap-1">
+                          {(tx.receivedReportNumbers?.length ? tx.receivedReportNumbers : [tx.receivedDocNumber]).filter((n): n is string => !!n).map((n) => (
+                            <span key={n} className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 font-mono text-[11px]">{n}</span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     {/* Delivery Statement # — its own column */}
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.deliveryStatementNumber || tx.purchaseDeliveryStatementNumber || '—'}</td>
@@ -864,7 +896,10 @@ export default function WalletPage() {
                   })}
                 </div>
 
-                {/* Amount */}
+                {/* ── والمبلغُ لا يُسأل عنه في قيد الاستلام ────────────────
+                    لا مالَ في هذا القيد. وكانت الخانةُ تُعرَض مطلوبةً بنجمة،
+                    فيقف الموظّفُ أمام سؤالٍ لا جوابَ له ويكتب صفرًا ليمرّ. */}
+                {txType !== 'tax_invoice' && (
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{L.amountSar} *</label>
                   <input type="number" min="0.01" step="0.01" value={txForm.amount}
@@ -903,6 +938,7 @@ export default function WalletPage() {
                     );
                   })()}
                 </div>
+                )}
 
                 {/* Collection Fields */}
                 {txType === 'collection' && (
@@ -966,29 +1002,68 @@ export default function WalletPage() {
                   <>
                     <div className="rounded-lg bg-slate-100 border border-slate-200 p-3 text-[12.5px] text-slate-600">
                       {lang === 'ar'
-                        ? 'قيدُ استلام — لا يدخل رصيدَ العهدة ولا يُحسب في إقفال اليوم. لتسجيل أنّ الفاتورة أو الكشف صار بيدك.'
-                        : 'A receipt record — it does not enter the wallet balance or the day’s close.'}
+                        ? 'تسجيلُ استلام — تقول به إنّ كشوف هذه الفواتير صارت بيدك. لا مبلغَ فيه، ولا يدخل رصيدَ العهدة ولا إقفالَ اليوم.'
+                        : 'A receipt record — it says these reports are now in your hands. No amount, and it does not touch the wallet balance or the day’s close.'}
                     </div>
-                    <div>
-                      <label className="text-slate-500 text-xs mb-1 block">{lang === 'ar' ? 'المستند المستلَم' : 'Document'}</label>
-                      <select value={txForm.receivedDocType}
-                        title={lang === 'ar' ? 'المستند المستلَم' : 'Document'}
-                        onChange={(e) => setTxForm((f) => ({ ...f, receivedDocType: e.target.value as 'invoice' | 'report' }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
-                        <option value="invoice">{lang === 'ar' ? 'فاتورة ضريبية' : 'Tax invoice'}</option>
-                        <option value="report">{lang === 'ar' ? 'كشف تخريج' : 'Dispatch report'}</option>
-                      </select>
-                    </div>
+                    {/* ── أرقامُ الكشوف، حزمةً ──────────────────────────────
+                        المندوبُ يأتي بسبعةٍ فيسجّلها دفعةً. وقيدٌ لكلّ كشفٍ
+                        يعني تكرارَ التاريخ والفرع سبعَ مرّات، ومَن يملّ يترك
+                        الباقيَ بلا تسجيل. */}
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">
-                        {txForm.receivedDocType === 'report'
-                          ? (lang === 'ar' ? 'رقم الكشف' : 'Report number')
-                          : (lang === 'ar' ? 'رقم الفاتورة' : 'Invoice number')} *
+                        {lang === 'ar' ? 'أرقام كشوف التخريج' : 'Dispatch report numbers'} *
                       </label>
-                      <input type="text" value={txForm.receivedDocNumber}
-                        onChange={(e) => setTxForm((f) => ({ ...f, receivedDocNumber: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-                        placeholder={lang === 'ar' ? 'اكتب الرقم كما هو على المستند' : 'as written on the document'} />
+                      <div className="flex gap-2">
+                        <input type="text" value={txForm.receivedDocNumber}
+                          onChange={(e) => setTxForm((f) => ({ ...f, receivedDocNumber: e.target.value }))}
+                          onKeyDown={(e) => {
+                            // الإدخالُ يُضيف كما تُضيف الفاصلة: اليدُ لا تترك
+                            // لوحةَ المفاتيح بين رقمٍ وآخر.
+                            if (e.key !== 'Enter' && e.key !== ',') return;
+                            e.preventDefault();
+                            const v = String(txForm.receivedDocNumber || '').trim();
+                            if (!v) return;
+                            setTxForm((f) => ({
+                              ...f,
+                              receivedDocNumber: '',
+                              receivedReportNumbers: f.receivedReportNumbers.includes(v)
+                                ? f.receivedReportNumbers : [...f.receivedReportNumbers, v],
+                            }));
+                          }}
+                          className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                          placeholder={lang === 'ar' ? 'اكتب رقم الكشف ثم Enter' : 'type a report number then Enter'} />
+                        <button type="button"
+                          onClick={() => {
+                            const v = String(txForm.receivedDocNumber || '').trim();
+                            if (!v) return;
+                            setTxForm((f) => ({
+                              ...f,
+                              receivedDocNumber: '',
+                              receivedReportNumbers: f.receivedReportNumbers.includes(v)
+                                ? f.receivedReportNumbers : [...f.receivedReportNumbers, v],
+                            }));
+                          }}
+                          className="px-4 py-2.5 rounded-lg bg-[#f37121] text-white text-sm hover:bg-[#e06010] transition-colors">
+                          {lang === 'ar' ? 'إضافة' : 'Add'}
+                        </button>
+                      </div>
+                      {txForm.receivedReportNumbers.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {txForm.receivedReportNumbers.map((n) => (
+                            <span key={n} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-xs font-mono">
+                              {n}
+                              <button type="button" title={lang === 'ar' ? 'إزالة' : 'Remove'}
+                                onClick={() => setTxForm((f) => ({ ...f, receivedReportNumbers: f.receivedReportNumbers.filter((x) => x !== n) }))}
+                                className="text-slate-400 hover:text-red-600">×</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-[11px] text-slate-400 mt-1.5">
+                        {txForm.receivedReportNumbers.length > 0
+                          ? (lang === 'ar' ? `${txForm.receivedReportNumbers.length} كشفًا في هذا القيد` : `${txForm.receivedReportNumbers.length} reports in this record`)
+                          : (lang === 'ar' ? 'يمكنك إضافة أكثر من كشف في القيد الواحد' : 'You can add more than one report in a single record')}
+                      </p>
                     </div>
                   </>
                 )}

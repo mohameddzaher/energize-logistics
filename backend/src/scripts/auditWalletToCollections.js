@@ -61,10 +61,21 @@ const call = async (method, path, ck, body) => {
     role: 'accountant',
   });
 
+  // ── ولا يعتمد الفحصُ على حسابِ إنسان ────────────────────────────────────
+  // كان يدخل بحساب مدير التحصيل الحقيقيّ وكلمةِ مروره. فلمّا غيّرها صاحبُها —
+  // وهو حقُّه — سقط الفحصُ بأربعة إخفاقاتٍ لا علاقةَ لها بما يفحصه، وبدا كأنّ
+  // صفحاتِ الفواتير تعطّلت. وأسوأُ منه أنّ محاولاتِ الدخول المتكرّرة تقع على
+  // حسابٍ يعمل به إنسان.
+  //
+  // فيُنشئ الفحصُ حسابَه ويحذفه، كما يفعل مع المحاسب.
+  const mgrUser = await User.create({
+    email: 'zz-w2c-mgr@example.invalid', password: PW, firstName: 'م', lastName: 'ت',
+    role: 'collections_manager',
+  });
   const accLogin = await login(acc.email);
-  const mgr = await login('hatim.mohamed@energize-logistics.com');
+  const mgr = await login(mgrUser.email);
   ok('دخول المحاسب', accLogin.status === 200);
-  ok('دخول مدير التحصيل', mgr.status === 200);
+  ok('دخول مدير التحصيل', mgr.status === 200, `${mgr.status}`);
   if (accLogin.status !== 200) process.exit(1);
 
   // الفرعُ المنتظَر: فرعُ العهدة التي ستستقبل الحركة، بالعربيّة من القائمة.
@@ -138,17 +149,45 @@ const call = async (method, path, ck, body) => {
     if (buy.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${buy.json.transaction._id}`, accLogin.ck);
 
     // ── ٤ · قيدُ استلام الفاتورة يملأ من سعر الشراء ───────────────────────
-    head('استلام فاتورة ضريبيّة يملأ الكشف');
+    head('استلام الفواتير الضريبيّة — حزمةُ كشوفٍ بلا مبلغ');
+    // ── الحزمةُ لا الواحد ─────────────────────────────────────────────────
+    // المندوبُ يأتي بسبعة كشوفٍ فيسجّلها دفعةً؛ وقيدٌ لكلّ كشفٍ يعني تكرارَ
+    // التاريخ والفرع سبعَ مرّات، ومَن يملّ يترك الباقيَ بلا تسجيل.
     const rec = await mk(`zz-عميل-ضريبي-${stamp}`);
+    const rec2 = await mk(`zz-عميل-ضريبي-${stamp}`);
     const ti = await call('POST', '/api/wallet/transactions', accLogin.ck, {
-      type: 'tax_invoice', amount: 0, receivedDocType: 'report',
-      receivedDocNumber: rec.reportNumber, notes: 'zz-فحص', branchId: String(branch?._id),
+      type: 'tax_invoice',
+      receivedReportNumbers: [rec.reportNumber, rec2.reportNumber, 'zz-لا-وجود-له'],
+      notes: 'zz-فحص', branchId: String(branch?._id),
     });
-    ok('يُقبل القيد', ti.status === 201, `${ti.status} ${ti.json?.message || ''}`);
-    const t2 = await OW.findById(rec._id).select('paymentAmount paymentDate payingBranch').lean();
-    ok('مبلغُ السداد = سعرُ الشراء', t2.paymentAmount === 800, `${t2.paymentAmount}`);
-    ok('والفرعُ فرعُ العهدة', t2.payingBranch === expectedBranchAr, `${t2.payingBranch || '(فارغ)'} — المتوقَّع ${expectedBranchAr}`);
-    ok('وتاريخُ اليوم', !!t2.paymentDate);
+    ok('يُقبل القيد بلا مبلغٍ أصلًا', ti.status === 201, `${ti.status} ${ti.json?.message || ''}`);
+    ok('ولا يحمل مالًا', ti.json?.transaction?.amount === 0, `${ti.json?.transaction?.amount}`);
+    ok('ويحفظ الكشوفَ كلَّها', (ti.json?.transaction?.receivedReportNumbers || []).length === 3,
+      `${(ti.json?.transaction?.receivedReportNumbers || []).length}`);
+    // ورقمٌ لا كشفَ له يُسمّى، فلا يُظنّ أنّ الثلاثةَ خُتمت وقد خُتم منها اثنان.
+    ok('ويُسمّي الرقمَ الذي لا كشفَ له', (ti.json?.unknownReports || []).includes('zz-لا-وجود-له'),
+      JSON.stringify(ti.json?.unknownReports));
+
+    for (const [label, r] of [['الأوّل', rec], ['والثاني', rec2]]) {
+      // eslint-disable-next-line no-await-in-loop
+      const t = await OW.findById(r._id).select('paymentAmount paymentDate payingBranch').lean();
+      ok(`${label}: مبلغُ السداد = سعرُ شرائه هو`, t.paymentAmount === 800, `${t.paymentAmount}`);
+      ok(`${label}: والفرعُ فرعُ العهدة`, t.payingBranch === expectedBranchAr, `${t.payingBranch || '(فارغ)'}`);
+      ok(`${label}: وتاريخُ اليوم`, !!t.paymentDate);
+    }
+
+    // ── ولا يمسّ رصيدَ العهدة ────────────────────────────────────────────
+    const walletBefore = await call('GET', `/api/wallet/daily?branchId=${branch?._id}`, accLogin.ck);
+    ok('ورصيدُ العهدة كما هو — القيدُ خارجَه',
+      Number(walletBefore.json?.wallet?.totalPurchases || 0) >= 0
+      && !(walletBefore.json?.transactions || []).some((t) => t.type === 'tax_invoice' && t.amount > 0),
+      `مشتريات ${walletBefore.json?.wallet?.totalPurchases}`);
+
+    const empty = await call('POST', '/api/wallet/transactions', accLogin.ck, {
+      type: 'tax_invoice', receivedReportNumbers: [], branchId: String(branch?._id),
+    });
+    ok('ولا يُقبل قيدٌ بلا كشفٍ واحد', empty.status === 400, `${empty.status}`);
+
     if (ti.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${ti.json.transaction._id}`, accLogin.ck);
 
     // ── ٥ · ويصل الصفحةَ الصحيحة ─────────────────────────────────────────

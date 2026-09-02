@@ -18,6 +18,11 @@ const _txTypes = {
   'collection': ('تحصيل', 'Collection', T.success, Icons.south_west),
   'expense': ('مصروف', 'Expense', T.danger, Icons.north_east),
   'purchase': ('شراء', 'Purchase', T.orange, Icons.shopping_bag_outlined),
+  // ── واستلامُ الفواتير الضريبيّة ─────────────────────────────────────────
+  // اسمُ الزرّ يقول الفعلَ لا الشيء: «فاتورة ضريبية» تُقرأ كأنّها إصدارٌ أو
+  // دفعُ قيمة، والفعلُ استلام. وهو قيدٌ بلا مبلغ: يقول إنّ كشوفَ هذه الفواتير
+  // صارت بيد الموظّف، ولا يدخل رصيدَ العهدة ولا إقفالَ اليوم.
+  'tax_invoice': ('استلام فاتورة ضريبية', 'Tax invoices received', T.inkFaint, Icons.receipt_long_outlined),
 };
 
 String _money(dynamic v) {
@@ -75,6 +80,10 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     final amount = TextEditingController();
     final desc = TextEditingController();
     final dsNumber = TextEditingController();
+    // الاستلامُ يقع على حزمةِ كشوفٍ لا على واحد: يأتي المندوبُ بسبعةٍ فيسجّلها
+    // دفعةً، وقيدٌ لكلٍّ يعني تكرارَ التاريخ سبعَ مرّاتٍ ومَن يملّ يترك الباقي.
+    final reportInput = TextEditingController();
+    final reports = <String>[];
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -91,28 +100,90 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                 onSelectionChanged: (s) => setS(() => type = s.first),
               ),
               const SizedBox(height: 12),
-              TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المبلغ *', 'Amount *'))),
-              const SizedBox(height: 10),
-              if (type == 'collection' || type == 'purchase')
+              // ── ولا يُسأل عن مبلغٍ في قيد الاستلام ──────────────────────
+              // لا مالَ فيه. وعرضُ الخانة مطلوبةً يوقف الموظّفَ أمام سؤالٍ لا
+              // جوابَ له فيكتب صفرًا ليمرّ.
+              if (type != 'tax_invoice') ...[
+                TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المبلغ *', 'Amount *'))),
+                const SizedBox(height: 10),
+              ],
+              if (type == 'collection' || type == 'purchase') ...[
                 TextField(controller: dsNumber, decoration: InputDecoration(labelText: tr('رقم كشف التخريج (يربط تلقائيًا)', 'Delivery statement # (auto-links)'))),
-              if (type == 'collection' || type == 'purchase') const SizedBox(height: 10),
+                const SizedBox(height: 10),
+              ],
+              if (type == 'tax_invoice') ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: .08), borderRadius: BorderRadius.circular(8)),
+                  child: Text(
+                    tr('تسجيلُ استلام — تقول به إنّ كشوف هذه الفواتير صارت بيدك. لا مبلغَ فيه ولا يدخل رصيدَ العهدة.',
+                       'A receipt record — these reports are now in your hands. No amount, and it does not touch the balance.'),
+                    style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                ),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: TextField(
+                    controller: reportInput,
+                    textInputAction: TextInputAction.done,
+                    decoration: InputDecoration(labelText: tr('رقم كشف التخريج', 'Dispatch report number')),
+                    onSubmitted: (v) {
+                      final x = v.trim();
+                      if (x.isEmpty || reports.contains(x)) return;
+                      setS(() { reports.add(x); reportInput.clear(); });
+                    },
+                  )),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () {
+                      final x = reportInput.text.trim();
+                      if (x.isEmpty || reports.contains(x)) return;
+                      setS(() { reports.add(x); reportInput.clear(); });
+                    },
+                    child: Text(tr('إضافة', 'Add')),
+                  ),
+                ]),
+                if (reports.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 6, runSpacing: 6, children: reports.map((r) => Chip(
+                    label: Text(r, style: const TextStyle(fontSize: 11.5)),
+                    onDeleted: () => setS(() => reports.remove(r)),
+                  )).toList()),
+                ],
+                const SizedBox(height: 10),
+              ],
               TextField(controller: desc, decoration: InputDecoration(labelText: tr('البيان / الوصف', 'Description'))),
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () async {
-                    if ((num.tryParse(amount.text) ?? 0) <= 0) return;
+                    // ما بقي في خانة الكتابة ولم يُضَف يُحسب: مَن كتب رقمًا
+                    // وضغط «تسجيل» قصد إضافتَه، وإسقاطُه بصمتٍ يفقده كشفًا.
+                    final pending = reportInput.text.trim();
+                    final allReports = [...reports, if (pending.isNotEmpty && !reports.contains(pending)) pending];
+                    if (type == 'tax_invoice') {
+                      if (allReports.isEmpty) return;
+                    } else if ((num.tryParse(amount.text) ?? 0) <= 0) {
+                      return;
+                    }
                     final body = <String, dynamic>{
                       'type': type,
-                      'amount': num.tryParse(amount.text),
+                      'amount': type == 'tax_invoice' ? 0 : num.tryParse(amount.text),
                       'date': _dateKey,
                       if (desc.text.trim().isNotEmpty) 'description': desc.text.trim(),
+                      if (type == 'tax_invoice') 'receivedReportNumbers': allReports,
                     };
                     if (type == 'collection' && dsNumber.text.trim().isNotEmpty) body['deliveryStatementNumber'] = dsNumber.text.trim();
                     if (type == 'purchase' && dsNumber.text.trim().isNotEmpty) body['purchaseDeliveryStatementNumber'] = dsNumber.text.trim();
                     try {
-                      await Api.instance.post('/api/wallet/transactions', body);
+                      final res = await Api.instance.post('/api/wallet/transactions', body);
+                      // ورقمٌ لا كشفَ له يُقال، فلا يُظنّ أنّ السبعةَ خُتمت
+                      // وقد خُتم منها خمسة.
+                      final unknown = (res is Map ? res['unknownReports'] : null) as List?;
+                      if (c.mounted && unknown != null && unknown.isNotEmpty) {
+                        ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(
+                          tr('حُفظ — ولم نجد كشوفًا بهذه الأرقام: ', 'Saved — no reports found for: ') + unknown.join('، '))));
+                      }
                       if (c.mounted) Navigator.pop(c);
                       _load();
                     } catch (e) {
@@ -243,9 +314,22 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 Text(label.toString().isEmpty ? tr(ty.$1, ty.$2) : label.toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5), maxLines: 1, overflow: TextOverflow.ellipsis),
                                 Text('${tr(ty.$1, ty.$2)}${(t['deliveryStatementNumber'] ?? '').toString().isNotEmpty ? ' · ${t['deliveryStatementNumber']}' : ''}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                                // الكشوفُ المستلَمة هي كلُّ محتوى قيد الاستلام،
+                                // فتُعرَض في سطره لا خلف نقرة.
+                                if (t['type'] == 'tax_invoice')
+                                  Text(
+                                    ((t['receivedReportNumbers'] as List?)?.isNotEmpty == true
+                                        ? (t['receivedReportNumbers'] as List).join('، ')
+                                        : (t['receivedDocNumber'] ?? '').toString()),
+                                    style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
                               ]),
                             ),
-                            Text('${isIn ? '+' : '−'}${_money(t['amount'])}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: ty.$3)),
+                            // ولا يُعرَض مبلغٌ لقيدٍ لا مالَ فيه: «−0» تُقرأ
+                            // خطأً في التسجيل.
+                            if (t['type'] == 'tax_invoice')
+                              Text(tr('خارج الرصيد', 'off-balance'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: T.inkFaint))
+                            else
+                              Text('${isIn ? '+' : '−'}${_money(t['amount'])}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: ty.$3)),
                           ]),
                         ),
                       );

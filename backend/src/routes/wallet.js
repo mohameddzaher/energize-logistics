@@ -38,7 +38,7 @@ router.post(
   authorize(...walletRoles),
   [
     body('type').isIn(['collection', 'expense', 'purchase', 'tax_invoice'])
-      .withMessage('النوع: تحصيل أو مصروف أو مشتريات أو فاتورة ضريبية'),
+      .withMessage('النوع: تحصيل أو مصروف أو مشتريات أو استلام فاتورة ضريبية'),
     // ── و«فاتورة ضريبيّة» بلا مبلغ ────────────────────────────────────────
     // هي قيدُ استلامٍ لا حركةُ مال، فاشتراطُ مبلغٍ أكبرَ من صفرٍ عليها يمنع
     // تسجيلَ ما جاء بلا قيمةٍ معروفةٍ بعد — وهو أكثرُ ما يُستلم.
@@ -47,9 +47,17 @@ router.post(
       if (!(Number(v) > 0)) throw new Error('المبلغ يجب أن يكون أكبر من صفر');
       return true;
     }),
-    body('receivedDocNumber').custom((v, { req }) => {
+    // ── والاستلامُ يقع على حزمةِ كشوفٍ لا على واحد ────────────────────────
+    // المندوبُ يأتي بسبعةٍ فتُسجَّل دفعةً. والشرطُ هنا كان على الحقل المفرد
+    // وحدَه، فكان يردّ الحزمةَ كلَّها بـ«رقم الفاتورة مطلوب» وهي تحمل سبعةَ
+    // أرقام. فالشرطُ على المعنى: كشفٌ واحدٌ على الأقلّ، من أيّ الشكلين.
+    body('receivedReportNumbers').custom((v, { req }) => {
       if (req.body.type !== 'tax_invoice') return true;
-      if (!String(v || '').trim()) throw new Error('رقم الفاتورة أو الكشف مطلوب');
+      const list = [
+        ...(Array.isArray(v) ? v : []),
+        req.body.receivedDocNumber,          // الشكلُ القديم، ما زال يُقبَل
+      ].map((x) => String(x ?? '').trim()).filter(Boolean);
+      if (!list.length) throw new Error('اكتب رقم كشف تخريج واحدًا على الأقلّ');
       return true;
     }),
   ],

@@ -884,9 +884,12 @@ export default function WalletPage() {
               </div>
 
               <div className="p-6 overflow-y-auto space-y-4">
-                {/* Type Selector */}
-                <div className="grid grid-cols-3 gap-2">
-                  {(['collection', 'expense', 'purchase'] as const).map((t) => {
+                {/* ── والأنواعُ أربعةٌ في المختار كما هي في الأزرار ────────
+                    كان الاستلامُ يُفتح من زرِّه وحدَه ولا يظهر بين الثلاثة في
+                    النافذة، فمن فتحها على «تحصيل» لم يجد طريقًا إليه وأغلق
+                    وبحث عنه في الصفحة. */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(['collection', 'expense', 'purchase', 'tax_invoice'] as const).map((t) => {
                     const c = TYPE_CONFIG[t]; const I = c.icon;
                     return (
                       <button key={t} type="button" onClick={() => setTxType(t)}
@@ -1166,10 +1169,19 @@ export default function WalletPage() {
                 )}
                 <div className="flex justify-end gap-3">
                   <button type="button" onClick={() => setShowTxModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{L.cancel}</button>
-                  <button type="button" onClick={handleAddTransaction} disabled={submitting || !txForm.amount}
+                  {/* ── ولا يُعطَّل الحفظُ بمبلغٍ لا يُطلَب ────────────────────
+                      كان الشرطُ `!txForm.amount` على الأنواع كلِّها، وقيدُ
+                      الاستلام بلا مبلغ — فكان الزرُّ مطفأً أبدًا ولا سبيلَ إلى
+                      حفظه. يُختبَر ما يطلبه كلُّ نوعٍ لا ما يطلبه أكثرُها. */}
+                  <button type="button" onClick={handleAddTransaction}
+                    disabled={submitting || (txType === 'tax_invoice'
+                      ? (!txForm.receivedReportNumbers.length && !String(txForm.receivedDocNumber || '').trim())
+                      : !txForm.amount)}
                     className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50">
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                    {L.add} {typeLabel(txType)}
+                    {txType === 'tax_invoice'
+                      ? (lang === 'ar' ? 'تسجيل الاستلام' : 'Record receipt')
+                      : `${L.add} ${typeLabel(txType)}`}
                   </button>
                 </div>
               </div>

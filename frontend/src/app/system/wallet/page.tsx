@@ -323,6 +323,13 @@ export default function WalletPage() {
         type: txType,
         amount: Number(txForm.amount),
         notes: txForm.notes || undefined,
+        // ── وتُقيَّد الحركةُ على الفرع المعروض ──────────────────────────────
+        // كانت الصفحةُ **تقرأ** عهدةَ الفرع المختار و**تكتب** بلا فرع، فيقع
+        // القيدُ على فرع صاحب الحساب. ومَن لا فرعَ له — المحاسبةُ كلُّها — يُردّ
+        // «لا يوجد فرع محدَّد لهذه الحركة» بعد أن ملأ النموذج كلَّه.
+        //
+        // ويُقرأ ويُكتب على الفرع نفسِه: ما تراه هو ما تكتب فيه.
+        ...(selectedBranch ? { branchId: selectedBranch } : {}),
       };
       // Expected dispatch-sheet value for this transaction type (null = no lookup done).
       // ما بقي في خانة الكتابة ولم يُضَف بعد يُحسب: مَن كتب رقمًا وضغط «حفظ»

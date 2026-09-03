@@ -61,19 +61,41 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       .then((d) => { setManagers(d.managers || []); setBranches(d.branches || []); }).catch(() => {});
   }, [open]);
 
-  // Reset the form whenever we open (for a new record or a different employee).
+  /**
+   * ── النموذجُ يقرأ السجلَّ كاملًا، لا ما وصله من قائمة ─────────────────────
+   *
+   * كان يُبنى من الكائن الممرَّر إليه — وهو في صفحة القائمة **مقتطَعٌ**: تختار
+   * القائمةُ حقولًا بعينها لتخفّ، وليس فيها `idType`.
+   *
+   * فيُفتح تعديلُ موظّفٍ هويّتُه «هوية» فلا يجد النموذجُ نوعَها، فيقع على
+   * الافتراضيّ «إقامة» — ولأنّ خانةَ رقم الهويّة لا تُعرَض إلّا مع نوعها، يرى
+   * صاحبُها رقمَه وقد اختفى، وهو مكتوبٌ في الملفّ كما تركه.
+   *
+   * وأسوأُ من الاختفاء: مَن حفظ بعدها كتب «إقامة» فوق نوعه، فانقلبت هويّتُه.
+   *
+   * ولا يُعالَج بإضافة `idType` إلى اختيار القائمة — تلك قائمةٌ تُكتب بيدٍ
+   * ويُنسى منها الحقلُ التالي. النموذجُ يقرأ سجلَّه بنفسِه، فأيُّ حقلٍ يُضاف
+   * غدًا يعمل بلا سطرٍ يُضاف هنا.
+   */
   useEffect(() => {
     if (!open) return;
-    if (employee) {
-      setForm({
-        ...EMPTY_EMPLOYEE, ...employee,
-        branch: (typeof employee.branch === 'object' ? employee.branch?._id : employee.branch) || '',
-        branches: (employee.branches || []).map((b: any) => (typeof b === 'object' ? b?._id : b)).filter(Boolean),
-        directManager: (typeof employee.directManager === 'object' ? employee.directManager?._id : employee.directManager) || '',
-      });
-    } else {
-      setForm(EMPTY_EMPLOYEE);
-    }
+    if (!employee) { setForm(EMPTY_EMPLOYEE); return; }
+
+    const seed = (src: any) => setForm({
+      ...EMPTY_EMPLOYEE, ...src,
+      branch: (typeof src.branch === 'object' ? src.branch?._id : src.branch) || '',
+      branches: (src.branches || []).map((b: any) => (typeof b === 'object' ? b?._id : b)).filter(Boolean),
+      directManager: (typeof src.directManager === 'object' ? src.directManager?._id : src.directManager) || '',
+    });
+
+    // ما وصل يُعرَض فورًا حتى لا تُفتح نافذةٌ فارغة، ثمّ يحلّ محلَّه الكاملُ.
+    seed(employee);
+    let alive = true;
+    api.get<any>(`/api/hr/employees/${employee._id}`)
+      .then((d) => { const full = d?.employee || d; if (alive && full?._id) seed(full); })
+      // وتعذُّرُ القراءة يُبقي المعروضَ كما هو — لا يُفرغ النموذج.
+      .catch(() => {});
+    return () => { alive = false; };
   }, [open, employee]);
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));

@@ -275,7 +275,7 @@ exports.addTransaction = async (req, res) => {
       vendor, driver, vendorName, driverName, expenseCategory, itemName, reference, notes,
       collectionSource, description,
       purchaseDeliveryStatementNumber, purchaseDriverName, purchaseReceiptNumber, purchaseBranch,
-      mismatchReason, mismatchNote, documentNumber,
+      mismatchReason, mismatchNote,
     } = req.body;
 
     // Validate the amount-mismatch reason: only these enum values, and 'other'
@@ -445,7 +445,7 @@ exports.addTransaction = async (req, res) => {
       receivedDocNumber: type === 'tax_invoice' ? (receivedReports[0] || undefined) : undefined,
       receivedReportNumbers: type === 'tax_invoice' ? receivedReports : undefined,
       receivedReports: type === 'tax_invoice' ? pairs : undefined,
-      documentNumber: (type === 'purchase' && documentNumber) ? String(documentNumber).trim() : undefined,
+
       reference: reference || undefined,
       notes: notes || undefined,
       isFlagged,
@@ -470,7 +470,12 @@ exports.addTransaction = async (req, res) => {
         // ما دفعه الموظّفُ بيده هو سعرُ الشراء الحقيقيّ.
         amount,
         date: txDate,
-        documentNumber,
+        // ── و«رقم السند» خانةٌ واحدةٌ كانت موجودةً من قبل ──────────────────
+        // `purchaseReceiptNumber` اسمُها في الخادم و«رقم السند» اسمُها على
+        // الشاشة منذ البداية — تُحفظ في العهدة ولا تخرج منها. فكانت تُكتب
+        // مرّتين: هنا وفي عمود الكشف. تصل الآن من نفسِها، ولا يُسأل عنها
+        // سؤالان.
+        documentNumber: purchaseReceiptNumber,
         // فرعُ العهدة التي خرج منها المال — لا فرعُ الحساب الذي سجّله.
         branchId: wallet.branch || transaction.branch || req.user.branch,
       });

@@ -45,13 +45,10 @@ const walletTransactionSchema = new mongoose.Schema(
     purchaseDeliveryStatementNumber: { type: String, trim: true },
     purchaseInvoiceAmount: { type: Number },
     purchaseDriverName: { type: String, trim: true },
+    // «رقم السند» على الشاشة. يُحفظ هنا **ويصل** عمودَ «رقم السند» في سير عمل
+    // التشغيل — خانةٌ واحدةٌ تُملأ مرّةً، لا سؤالان متطابقان في نموذجٍ واحد.
     purchaseReceiptNumber: { type: String, trim: true },
-    // ── رقمُ السند — يصل الكشفَ ولا يقف هنا ─────────────────────────────────
-    // «رقم السند» عمودٌ في سير عمل التشغيل يُكتب بيدٍ بعد أن يُدفع. ومَن يدفع
-    // هو من يمسك السندَ في يده لحظتَها، فيكتبه هنا مرّةً ويصل هناك — بدل أن
-    // يُكتب في العهدة ويُنسى في الكشف. (`purchaseReceiptNumber` شيءٌ آخر:
-    // إيصالُ المورّد، ولا يخرج من العهدة.)
-    documentNumber: { type: String, trim: true, default: '' },
+
     purchaseBranch: { type: String, trim: true },
     // Legacy/shared fields
     vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' },

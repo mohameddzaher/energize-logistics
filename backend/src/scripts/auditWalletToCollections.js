@@ -149,7 +149,7 @@ const call = async (method, path, ck, body) => {
     const buy = await call('POST', '/api/wallet/transactions', accLogin.ck, {
       type: 'purchase', amount: 800, purchaseDeliveryStatementNumber: target.reportNumber,
       itemName: 'zz', notes: 'zz-فحص', branchId: String(branch?._id),
-      documentNumber: 'ZZ-SAND-1',
+      purchaseReceiptNumber: 'ZZ-SAND-1',
     });
     ok('تُقيَّد المشتريات', buy.status === 201, `${buy.status}`);
     const t1 = await OW.findById(target._id).select('paymentAmount paymentDate payingBranch paymentType documentNumber').lean();

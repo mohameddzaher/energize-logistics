@@ -161,7 +161,6 @@ export default function WalletPage() {
     // كلُّ كشفٍ وسندُه معًا — لا قائمتان تتزحزحان عن بعضهما عند أوّل حذف.
     receivedReports: [] as { reportNumber: string; documentNumber: string }[],
     receivedDocSand: '',
-    documentNumber: '',
   });
   // Empty form used on open/reset — keeps the three reset sites in sync.
   const EMPTY_TX_FORM = {
@@ -175,7 +174,6 @@ export default function WalletPage() {
     // كلُّ كشفٍ وسندُه معًا — لا قائمتان تتزحزحان عن بعضهما عند أوّل حذف.
     receivedReports: [] as { reportNumber: string; documentNumber: string }[],
     receivedDocSand: '',
-    documentNumber: '',
   };
   const [submitting, setSubmitting] = useState(false);
   const [txError, setTxError] = useState('');
@@ -381,8 +379,7 @@ export default function WalletPage() {
         payload.purchaseDriverName = txForm.purchaseDriverName || undefined;
         payload.purchaseReceiptNumber = txForm.purchaseReceiptNumber || undefined;
         payload.purchaseBranch = txForm.purchaseBranch || undefined;
-        // رقمُ السند يصل عمودَه في سير عمل التشغيل.
-        payload.documentNumber = txForm.documentNumber?.trim() || undefined;
+
       }
       const res = await api.post<{ unknownReports?: string[] }>('/api/wallet/transactions', payload);
       // ── ورقمٌ لم يُعرَف يُقال قبل إغلاق النافذة ──────────────────────────
@@ -1174,29 +1171,22 @@ export default function WalletPage() {
                         placeholder={L.enterDriverName} />
                     </div>
                     <div>
-                      <label className="text-slate-500 text-xs mb-1 block">{L.receiptNumber}</label>
+                      {/* ── وخانةٌ واحدةٌ لرقم السند ──────────────────────────
+                          هذه هي «رقم السند» وكانت موجودةً من قبل — تُحفظ في
+                          العهدة ولا تخرج منها. فأُضيفت خانةٌ ثانيةٌ بالاسم
+                          نفسِه لتصل الكشف، فصار في النموذج سؤالان متطابقان.
+                          والصوابُ أن تصل هذه، لا أن تُستنسَخ. */}
+                      <label className="text-slate-500 text-xs mb-1 block">
+                        {L.receiptNumber}
+                        <span className="text-slate-400 ms-1">{lang === 'ar' ? '— يُكتب في الكشف تلقائيًّا' : '— written onto the report'}</span>
+                      </label>
                       <input type="text" value={txForm.purchaseReceiptNumber}
                         name="purchaseReceiptNumber"
                         autoComplete="off"
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseReceiptNumber: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterReceiptNumber} />
                     </div>
-                    {/* ── ورقمُ السند يصل الكشف ────────────────────────────────
-                        «رقم السند» عمودٌ في سير عمل التشغيل يُكتب بيدٍ بعد
-                        الدفع. ومَن دفع هو من يمسك السندَ لحظتَها — فيكتبه هنا
-                        مرّةً ويصل هناك، بدل أن يُبحث عنه بعد أسبوع.
-                        (وهو غيرُ «رقم الإيصال» فوقه: ذاك إيصالُ المورّد.) */}
-                    <div>
-                      <label className="text-slate-500 text-xs mb-1 block">
-                        {lang === 'ar' ? 'رقم السند' : 'Voucher number'}
-                        <span className="text-slate-400 ms-1">{lang === 'ar' ? '— يُكتب في الكشف' : '— written onto the report'}</span>
-                      </label>
-                      <input type="text" value={txForm.documentNumber}
-                        name="documentNumber" autoComplete="off"
-                        onChange={(e) => setTxForm((f) => ({ ...f, documentNumber: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-                        placeholder={lang === 'ar' ? 'رقم السند كما هو عليه' : 'as written on the voucher'} />
-                    </div>
+
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">{L.branch}</label>
                       {/* Auto-filled from the dispatch sheet on search (like driver

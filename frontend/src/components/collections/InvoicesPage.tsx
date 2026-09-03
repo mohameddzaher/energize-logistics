@@ -29,6 +29,8 @@ export type InvoiceKind = 'cash' | 'tax';
 interface CashRow {
   _id: string; reportNumber: string; customer: string; branch: string; payingBranch: string;
   paymentDate: string | null; route: string; collectedAmount: number; collectionDate: string | null;
+  /** الدفترُ يقول «محصَّل» ولا يعرف يومَه — يُقال كما هو لا «لم يُحصَّل». */
+  collectedNoDate?: boolean;
   ageDays: number | null;
 }
 interface TaxRow {
@@ -207,7 +209,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('تاريخ السداد', 'Paid on'), key: 'paymentDate', width: 14, transform: (v: any) => dt(v) },
       { header: t('الفرع المسدد', 'Paying branch'), key: 'payingBranch', width: 14 },
       { header: t('مبلغ التحصيل', 'Collected'), key: 'collectedAmount', width: 14 },
-      { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14, transform: (v: any) => dt(v) },
+      { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14,
+        transform: (v: any, r: any) => (v ? dt(v) : (r?.collectedNoDate ? t('محصَّل — بلا تاريخ', 'Collected — no date') : '')) },
       { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12 },
     ]
     : [
@@ -376,8 +379,13 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                   <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{r.payingBranch || '—'}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap">{ageChip(r.ageDays)}</td>
                   <td className="px-3 py-2.5 tabular-nums font-semibold text-emerald-700">{r.collectedAmount ? money(r.collectedAmount) : '—'}</td>
-                  <td className={`px-3 py-2.5 whitespace-nowrap ${r.collectionDate ? 'text-emerald-700' : 'text-red-500'}`}>
-                    {r.collectionDate ? dt(r.collectionDate) : t('لم يُحصَّل', 'open')}
+                  <td className={`px-3 py-2.5 whitespace-nowrap ${r.collectionDate || r.collectedNoDate ? 'text-emerald-700' : 'text-red-500'}`}>
+                    {r.collectionDate ? dt(r.collectionDate)
+                      : r.collectedNoDate
+                        ? <span title={t('دفترُ التحصيل يقول إنّها حُصّلت ولا يذكر اليوم', 'The collections book says collected but not when')}>
+                            {t('محصَّل — بلا تاريخ', 'Collected — no date')}
+                          </span>
+                        : t('لم يُحصَّل', 'open')}
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     {canEdit && (

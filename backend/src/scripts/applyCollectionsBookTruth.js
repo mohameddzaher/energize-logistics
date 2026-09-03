@@ -48,7 +48,7 @@ const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
   for (const r of rows) {
     const no = S(r[5]);
     if (!/^\d+$/.test(no)) continue;
-    ship.set(no, { total: N(r[6]), account: S(r[2]), owner: S(r[1]) });
+    ship.set(no, { total: N(r[6]), account: S(r[2]), owner: S(r[1]), status: S(r[14]) });
   }
   console.log(`ورقةُ الكشوف النقديّة: ${ship.size} كشفًا`);
 
@@ -56,7 +56,7 @@ const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
   const ours = [];
   for (let i = 0; i < keys.length; i += 1000) {
     ours.push(...await OW.find({ reportNumber: { $in: keys.slice(i, i + 1000) } })
-      .select('reportNumber paymentType sellingValue username lastModifiedBy').lean());
+      .select('reportNumber paymentType sellingValue username lastModifiedBy cashCollectionStatus collectionDate').lean());
   }
   console.log(`منها في كشوفنا: ${ours.length}\n`);
 
@@ -85,13 +85,25 @@ const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
   }
   console.log(`   ${DRY ? 'سيتغيّر' : 'تغيّر'}: ${valOps.length} كشفًا${valOps.length > 15 ? ' (عُرض منها ١٥)' : ''} · صافي الفرق ${money(gap).toLocaleString()} ر.س\n`);
 
+  // ③ حالةُ التحصيل كما قالها الدفتر — ولا يُخترَع تاريخ.
+  console.log('③ حالةُ التحصيل من عمود «Status» في الدفتر:');
+  const statOps = []; let noDate = 0;
+  for (const w of ours) {
+    const s = ship.get(w.reportNumber);
+    const want = /collected/i.test(s?.status || '') ? 'collected' : '';
+    if ((w.cashCollectionStatus || '') === want) continue;
+    if (want === 'collected' && !w.collectionDate) noDate += 1;
+    statOps.push({ updateOne: { filter: { _id: w._id }, update: { $set: { cashCollectionStatus: want } } } });
+  }
+  console.log(`   ${DRY ? 'سيتغيّر' : 'تغيّر'}: ${statOps.length} كشفًا · منها ${noDate} «محصَّل» بلا تاريخٍ في الدفتر\n`);
+
   if (!DRY) {
-    for (const ops of [typeOps, valOps]) {
+    for (const ops of [typeOps, valOps, statOps]) {
       for (let i = 0; i < ops.length; i += 500) await OW.bulkWrite(ops.slice(i, i + 500), { ordered: false });
     }
     await logAudit({
       bySystem: true, action: 'apply_collections_book', entity: 'OperationsWorkflow',
-      changes: { source: 'Shipment Report', paymentTypeSetToCash: typeOps.length, sellingValueRewritten: valOps.length, netValueChange: money(gap) },
+      changes: { source: 'Shipment Report', paymentTypeSetToCash: typeOps.length, sellingValueRewritten: valOps.length, cashStatusSet: statOps.length, netValueChange: money(gap) },
       ipAddress: 'script',
     });
     console.log('✓ كُتب، وقُيِّد في سجلّ المراجعة.');

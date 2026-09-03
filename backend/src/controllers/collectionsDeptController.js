@@ -902,8 +902,9 @@ function invoiceFilters(query, { ageField }) {
   // ── حالةُ التحصيل ───────────────────────────────────────────────────────
   // الصفحةُ تعرض المحصَّلَ وغيرَه معًا، والسؤالُ يُطرح على الوجهين: «ما الذي
   // بقي؟» و«كم حصّلنا؟». فالاختيارُ صريحٌ فوق الجدول لا مخبوءٌ في فلتر.
-  if (query.collected === 'yes') f.collectionDate = { $ne: null };
-  else if (query.collected === 'no') f.collectionDate = null;
+  // والدفترُ قد يقول «محصَّل» بلا تاريخ — فالفلترُ يسأل عن الاثنين معًا.
+  if (query.collected === 'yes') f.$and = [...(f.$and || []), { $or: [{ collectionDate: { $ne: null } }, { cashCollectionStatus: 'collected' }] }];
+  else if (query.collected === 'no') f.$and = [...(f.$and || []), { collectionDate: null, cashCollectionStatus: { $ne: 'collected' } }];
 
   const range = query.from || query.to ? dayRange(query.from, query.to) : null;
   if (range) f[ageField] = range;
@@ -939,7 +940,7 @@ exports.cashInvoices = async (req, res) => {
 
     const [rows, total, totals] = await Promise.all([
       OperationsWorkflow.find(filter)
-        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate branch fromLocation toLocation')
+        .select('reportNumber reportDate username payingBranch paymentDate collectedAmount collectionDate cashCollectionStatus branch fromLocation toLocation')
         .sort({ paymentDate: -1, _id: -1 })
         .skip((page - 1) * limit).limit(limit).lean(),
       OperationsWorkflow.countDocuments(filter),
@@ -949,7 +950,18 @@ exports.cashInvoices = async (req, res) => {
           $group: {
             _id: null,
             collected: { $sum: { $ifNull: ['$collectedAmount', 0] } },
-            collectedCount: { $sum: { $cond: [{ $ifNull: ['$collectionDate', false] }, 1, 0] } },
+            // ── والمحصَّلُ بلا تاريخٍ محصَّل ────────────────────────────────
+            // دفترُ الكاش يقول عن تسعةٍ وتسعين كشفًا «Collected» ولا تاريخَ
+            // لها فيه. فعدُّها غيرَ محصَّلةٍ لأنّ خانةَ التاريخ فارغةٌ يجعل
+            // الشاشةَ تطالب بمالٍ وصل.
+            collectedCount: {
+              $sum: {
+                $cond: [
+                  { $or: [{ $ifNull: ['$collectionDate', false] }, { $eq: ['$cashCollectionStatus', 'collected'] }] },
+                  1, 0,
+                ],
+              },
+            },
           },
         },
       ]),
@@ -968,6 +980,9 @@ exports.cashInvoices = async (req, res) => {
         route: [w.fromLocation, w.toLocation].filter(Boolean).join(' — '),
         collectedAmount: r2(w.collectedAmount),
         collectionDate: w.collectionDate || null,
+        // «محصَّل» في الدفتر وإن لم يُعرف يومُه — تقرؤها الشاشة فتقول ذلك
+        // صراحةً بدل «لم يُحصَّل».
+        collectedNoDate: !w.collectionDate && w.cashCollectionStatus === 'collected',
         ageDays: w.paymentDate ? Math.floor((now - new Date(w.paymentDate).getTime()) / 86400000) : null,
       })),
       total,

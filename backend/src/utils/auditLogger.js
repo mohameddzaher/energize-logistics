@@ -22,16 +22,25 @@ const isObjectId = (v) => !!v && mongoose.Types.ObjectId.isValid(String(v)) && S
 // الإنتاج (`AUDIT_SUPPRESS=1`، وتضعها سكربتاتُ الفحص) لم يُكتب شيء.
 const SUPPRESSED = process.env.AUDIT_SUPPRESS === '1';
 
-const logAudit = async ({ user, action, entity, entityId, entityKey, changes, ipAddress }) => {
+const logAudit = async ({ user, action, entity, entityId, entityKey, changes, ipAddress, bySystem }) => {
   if (SUPPRESSED) return;
   try {
+    // الفاعلُ إمّا إنسانٌ وإمّا النظامُ صراحةً. وغيابُهما معًا خطأُ نداءٍ: يُقيَّد
+    // في السجلّ التقنيّ ولا يُكتب قيدُ مراجعةٍ بلا فاعل.
+    const actor = user?._id || (isObjectId(user) ? user : null);
+    if (!actor && !bySystem) {
+      console.error(`[audit] فعلٌ بلا فاعل: ${action} على ${entity} — لم يُقيَّد`);
+      return;
+    }
     const id = isObjectId(entityId) ? entityId : undefined;
     const key = entityKey || (entityId != null && id === undefined ? String(entityId) : '');
     await AuditLog.create({
-      user: user?._id || user,
+      user: actor || undefined,
+      bySystem: !actor,
       // يُلتقط الاسمُ الآن لا يُقرأ لاحقًا — راجع models/AuditLog.
       userName: user && (user.firstName || user.lastName)
-        ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '',
+        ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
+        : (actor ? '' : 'النظام'),
       userEmail: (user && user.email) || '',
       action,
       entity,

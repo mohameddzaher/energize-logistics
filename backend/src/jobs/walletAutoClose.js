@@ -37,7 +37,10 @@ const autoCloseOpenWallets = async () => {
       await wallet.save();
 
       await logAudit({
-        user: wallet.user,
+        // المحفظةُ للفرع لا لموظّف، و`wallet.user` أثرٌ قديمٌ فارغٌ في الجديد —
+        // فالفاعلُ هنا النظامُ صراحةً لا حقلٌ يُرجى أن يكون مملوءًا.
+        bySystem: true,
+        user: wallet.user || null,
         action: 'auto_close_wallet_day',
         entity: 'DailyWallet',
         entityId: wallet._id,

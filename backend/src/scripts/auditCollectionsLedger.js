@@ -138,6 +138,16 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
       return Math.abs(new Date(withDue.dueDate) - exp) < 1000;
     })(), withDue ? `${String(withDue.dueDate).slice(0, 10)}` : '(لا عيّنة)');
 
+    // إبطالُ ذاكرة العاملَين بعد تعديلٍ يُكتب في القاعدة مباشرةً — تُكتب
+    // البصمةُ نفسُها التي يكتبها `cache.clear`، فيمسح كلُّ عاملٍ ما عنده.
+    const cacheBust = async () => {
+      try {
+        await mongoose.connection.db.collection('cachestamps')
+          .updateOne({ _id: 'colledger:' }, { $set: { at: new Date() } }, { upsert: true });
+        await new Promise((r) => setTimeout(r, 250));
+      } catch (_) { /* تحسينٌ لا شرط */ }
+    };
+
     head('التنبيهات');
     const al = await call('GET', '/api/collections-dept/ledger/alerts');
     ok('تُحسب', al.status === 200, `${al.status}`);
@@ -145,12 +155,28 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
     ok('والاستحقاقُ يُقاس بأيّامه', (al.j?.due || []).every((a) => a.daysToDue <= 3), `${al.j?.counts?.dueSoon} قريب · ${al.j?.counts?.overdue} متأخّر`);
     const first = (al.j?.limit || [])[0];
     if (first) {
-      const before = al.j.limit.length;
       const ack = await call('POST', '/api/collections-dept/ledger/alerts/ack', { party: first.party, kind: 'limit' });
       ok('يُغلَق التنبيه', ack.status === 200, `${ack.status}`);
-      const after = await call('GET', '/api/collections-dept/ledger/alerts');
-      ok('فيختفي من القائمة', (after.j?.limit || []).length === before - 1, `${after.j?.limit?.length} بعد ${before}`);
+
+      // ── يُسأل عن الحساب بعينه لا عن العدد ────────────────────────────────
+      // مقارنةُ الأعداد تكذب متى مسّ أحدٌ سجلَّ الإسكات من خارج النداءات — يُحذف
+      // في القاعدة فتبقى القائمةُ المخزَّنة على عددها، فيقرأ الفحصُ «٤٢ بعد ٤٢»
+      // ويظنّها إخفاقًا وليست به. والسؤالُ الصحيح: أذهب هذا الحساب من القائمة؟
+      //
+      // ويُقرأ ستَّ مرّاتٍ لا مرّة: البرودكشن عاملان ولكلٍّ ذاكرتُه، وقراءةٌ
+      // واحدةٌ تصيب أحدَهما ولا تُثبت شيئًا — راجع utils/ttlCache.
+      const gone = [];
+      for (let i = 0; i < 6; i += 1) {
+        const after = await call('GET', '/api/collections-dept/ledger/alerts');
+        gone.push(!(after.j?.limit || []).some((a) => String(a.party) === String(first.party)));
+      }
+      ok('فيختفي من القائمة — وعلى العاملَين معًا', gone.every(Boolean),
+        `${gone.map((g) => (g ? 'غاب' : 'ظهر')).join(' ')}`);
+
+      // ويُرفَع الإسكاتُ بالنداء لا بالقاعدة، وإلّا بقيت القائمةُ المخزَّنة على
+      // ما كانت — وهو بعينه ما جعل هذا الفحصَ يكذب.
       await CreditAlertAck.deleteMany({ party: first.party });
+      cacheBust();
     }
 
     head('رفعُ الحدّ من ملفّ العميل');

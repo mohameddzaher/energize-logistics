@@ -228,7 +228,14 @@ export default function WalletPage() {
       // لاختيار محفظةٍ منهم.
       const users = (data.users || data || []).filter((u: any) => ['operations_staff', 'operations_manager'].includes(u.role));
       setBranchUsers(users);
-    }).catch((err: any) => { setActionError(err?.message || 'Failed to load users'); setLoading(false); });
+    }).catch(() => {
+      // ── وتعذُّرُ قراءةٍ للزينة لا يُقال خطأً ─────────────────────────────
+      // هذا السطرُ يعرض «مَن يعمل على هذه المحفظة» ولا شيءَ يتوقّف عليه.
+      // والمحاسبُ لا يملك قراءةَ المستخدمين، فكان يُردّ ٤٠٣ فيُرفَع شريطُ
+      // خطأٍ أحمرُ فوق عهدةٍ فُتحت وعُرضت كاملةً — يُقرأ «الصفحة فشلت» وهي
+      // لم تفشل. وأسوأُ منه أنّه كان يُطفئ رايةَ التحميل قبل أوانها.
+      setBranchUsers([]);
+    });
   }, [canSelectBranch, selectedBranch]);
 
   // ─── FETCH WALLET ──────────────────────────────────────────

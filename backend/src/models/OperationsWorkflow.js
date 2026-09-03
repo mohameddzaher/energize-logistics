@@ -23,7 +23,20 @@ const operationsWorkflowSchema = new mongoose.Schema(
     username: { type: String, trim: true },                  // اسم المستخدم
     taxIndicator: { type: String, trim: true },              // ض / غ ض
     purchaseValue: { type: Number, default: 0 },             // قيمه الشراء
-    sellingValue: { type: Number, default: 0 },              // قيمه البيع
+    sellingValue: { type: Number, default: 0 },
+
+    // ── ومن أين جاءت قيمةُ البيع ──────────────────────────────────────────────
+    //
+    // `sellingValue` تُكتب من منصّة التشغيل في كلّ مزامنة. فتصحيحُها باليد لا
+    // يعيش دقائق: كُتبت قيمُ سبعةٍ وأربعين كشفًا نقديًّا من دفتر التحصيل فأعادتها
+    // المزامنةُ إلى ما كانت قبل أن يراها أحد.
+    //
+    // ودفترُ التحصيل هو المرجعُ في الكشف النقديّ — «لو دي بالذات فواتير كاش
+    // فالسعرُ في شيت التحصيل هو الأصحّ». فمتى كُتبت القيمةُ من الدفتر عُلِّمت
+    // هنا، وامتنعت المزامنةُ عن الكتابة فوقها وحدَها. وبقيّةُ الحقول تُنقَل كما
+    // هي، والقرّاءُ كلُّهم يقرؤون `sellingValue` كما كانوا — لا شرطَ يتناثر في
+    // الشاشات.
+    sellingValueSource: { type: String, enum: ['', 'platform', 'collections_book'], default: '' },              // قيمه البيع
 
     // Additional Application fields (from Excel import)
     loadingTime: { type: String, trim: true },                // وقت التحميل

@@ -130,8 +130,11 @@ const money = (n) => Math.round(n * 100) / 100;
       invoiceDate: rd(r[4]), deliveryDate: rd(r[6]), collectionDate: rd(r[8]),
       status: S(r[9]), exitDate: rd(r[10]), comments: S(r[11]),
     };
-    const prev = inv.get(no);
-    if (!prev) { inv.set(no, row); continue; }
+    // المفتاحُ رقمٌ **وكودُ الورقة**: الصفوفُ السالبة تسوياتٌ يرقّمها المحاسب
+    // لكلّ حسابٍ على حدة، فـ‎-14‎ لشركةِ فكر غيرُ ‎-14‎ لشركةِ صليهم.
+    const key = `${no}::${row.code}`;
+    const prev = inv.get(key);
+    if (!prev) { inv.set(key, row); continue; }
     prev.total += row.total;                       // كما يجمع الاستيراد
     for (const f of ['code', 'name', 'status', 'comments']) if (!prev[f]) prev[f] = row[f];
     for (const f of ['invoiceDate', 'deliveryDate', 'collectionDate', 'exitDate']) if (!prev[f]) prev[f] = row[f];
@@ -143,16 +146,17 @@ const money = (n) => Math.round(n * 100) / 100;
   }
   console.log(`  الورقة: ${inv.size} فاتورةً (تُخطَّى ${invSkipped} صفًّا بلا رقمٍ صالح، و${hollow} رقمًا محجوزًا بلا أيّ بيان)`);
 
-  const ours = await CollectionInvoice.find({}).select('invoiceNumber total invoiceDate deliveryDate collectionDate status partyCode').lean();
-  const ourInv = new Map(ours.map((i) => [i.invoiceNumber, i]));
+  const ours = await CollectionInvoice.find({}).select('invoiceNumber total invoiceDate deliveryDate collectionDate status partyCode sheetCode').lean();
+  const ourInv = new Map(ours.map((i) => [`${i.invoiceNumber}::${i.sheetCode || ''}`, i]));
   const missInv = [...inv.keys()].filter((k) => !ourInv.has(k));
   ok('كلُّ فاتورةٍ في الورقة موجودةٌ عندنا', missInv.length === 0,
     missInv.length ? `ناقص ${missInv.length}: ${missInv.slice(0, 6).join('، ')}` : `${inv.size} فاتورة`);
 
   let badTotal = 0; let badDate = 0; let badStatus = 0; let badCode = 0;
   const invDiffs = [];
-  for (const [no, w] of inv) {
-    const h = ourInv.get(no); if (!h) continue;
+  for (const [key, w] of inv) {
+    const h = ourInv.get(key); if (!h) continue;
+    const no = w.no;
     if (money(w.total) !== money(h.total || 0)) { badTotal += 1; if (invDiffs.length < 6) invDiffs.push(`${no} قيمة: ${w.total} ≠ ${h.total}`); }
     if (d10(w.invoiceDate) !== d10(h.invoiceDate) || d10(w.deliveryDate) !== d10(h.deliveryDate) || d10(w.collectionDate) !== d10(h.collectionDate)) badDate += 1;
     if (S(w.status) !== S(h.status)) badStatus += 1;
@@ -178,7 +182,10 @@ const money = (n) => Math.round(n * 100) / 100;
       else seen.set(no, code);
     }
   }
-  if (negDup.length) needsYou.push(`رقمٌ سالبٌ واحدٌ يحمله حسابان — ${negDup.join('، ')}؛ الرقمُ مفتاحُ الفاتورة فيندمجان`);
+  // لم تعد مشكلةً: كودُ الورقة صار جزءًا من المفتاح، فلكلِّ حسابٍ تسويتُه.
+  ok('التسويةُ السالبةُ لكلّ حسابٍ على حدة',
+    negDup.length === 0 || ours.filter((i) => i.invoiceNumber === '-14').length === 2,
+    negDup.length ? `${negDup.join('، ')} — كلٌّ في سجلّه` : 'لا تصادم');
 
   const sheetOut = [...inv.values()].reduce((s, i) => s + i.total, 0);
   const ourOut = ours.reduce((s, i) => s + (i.total || 0), 0);

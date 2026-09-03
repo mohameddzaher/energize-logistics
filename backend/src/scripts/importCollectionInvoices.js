@@ -102,10 +102,20 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     const party = byCode.get(code) || byName.get(fold(name));
     if (!party) { noParty += 1; if (code) unknownCodes.add(code); }
     const kind = party?.paymentType === 'cash' ? 'cash' : (/^C/i.test(code) ? 'cash' : 'tax');
-    const key = `${kind}::${number}`;
+    // ── والحسابُ جزءٌ من المفتاح، وهو **كودُ الورقة** لا كودُنا ────────────
+    //
+    // الصفوفُ السالبة تسوياتٌ لا فواتير، وترقيمُها لكلّ حسابٍ على حدة: شركةُ
+    // فكر لها ‎-14‎ وشركةُ صليهم لها ‎-14‎ أخرى. وبالرقم وحدَه اندمجتا في سجلٍّ
+    // واحدٍ بمجموعهما ونُسبتا إلى حسابٍ واحد.
+    //
+    // والكودُ المستعمَل هنا هو المكتوبُ في الورقة لا الذي نستنتجه: صفوفٌ بلا
+    // كودٍ يُطابَق حسابُها بالاسم، وإن لم يوجد وُلِّد له كودٌ جديد — ورقمُ المولَّد
+    // يختلف بين تشغيلٍ وآخر، فيصير المفتاحُ متحرّكًا وتتضاعف الفاتورةُ نفسُها
+    // بكودين. حدث ذلك: سبعُ فواتيرَ منها ‎5899‎ مرّتين بكودين مولَّدين.
+    const key = `${kind}::${number}::${code}`;
 
     const doc = {
-      invoiceNumber: number, kind,
+      invoiceNumber: number, kind, sheetCode: code,
       party: party?._id, partyCode: code || party?.code || '', partyName: name || party?.name || '',
       total: N(r[3]),
       invoiceDate: D(r[4]), deliveryDate: D(r[6]), collectionDate: D(r[8]), exitDate: D(r[10]),
@@ -166,7 +176,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   if (DRY) { console.log('\n— تجربةٌ فقط —\n'); await mongoose.disconnect(); return; }
 
   const ops = [...invoices.values()].map((d) => ({
-    updateOne: { filter: { kind: d.kind, invoiceNumber: d.invoiceNumber }, update: { $set: d }, upsert: true },
+    updateOne: { filter: { kind: d.kind, invoiceNumber: d.invoiceNumber, sheetCode: d.sheetCode }, update: { $set: d }, upsert: true },
   }));
   let done = 0;
   for (let i = 0; i < ops.length; i += 500) {

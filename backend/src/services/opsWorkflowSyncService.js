@@ -116,7 +116,26 @@ async function upsertShipments(ships) {
     return {
       updateOne: {
         filter: { externalSource: SOURCE, externalId: String(s.id) },
-        update: { $set: set, $setOnInsert: setOnInsert },
+        // ── إلّا قيمةَ بيعٍ صُحِّحت من دفتر التحصيل ────────────────────────
+        // تُكتب الحقولُ كلُّها من المنصّة إلّا `sellingValue` متى كان مصدرُها
+        // الدفتر: هو المرجعُ في الكشف النقديّ، وبدون هذا الشرط تعود القيمةُ
+        // القديمة في أوّل مزامنةٍ بعد التصحيح — وقد عادت.
+        // (خطُّ تجميعٍ لا `$set` عاديّ، فالشرطُ يحتاج قراءةَ الصفّ نفسِه.)
+        update: [
+          {
+            $set: {
+              ...set,
+              sellingValue: {
+                $cond: [
+                  { $eq: [{ $ifNull: ['$sellingValueSource', ''] }, 'collections_book'] },
+                  { $ifNull: ['$sellingValue', 0] },
+                  set.sellingValue,
+                ],
+              },
+            },
+          },
+          { $set: Object.fromEntries(Object.entries(setOnInsert).map(([k, v]) => [k, { $ifNull: [`$${k}`, v] }])) },
+        ],
         upsert: true,
       },
     };

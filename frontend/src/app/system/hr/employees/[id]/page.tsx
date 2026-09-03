@@ -342,6 +342,32 @@ export default function EmployeeProfilePage() {
         </div>
       )}
 
+      {/* ── وتناقضُ الحالتين يُقال، لا يُترك للقارئ يكتشفه ──────────────────
+          حالةُ التوظيف تأتي من ماستر الموارد البشريّة، وحالةُ العقد من ملفّ
+          العقود — ملفّان يُملآن بيدين. فيقول أعلى الصفحة «منتهي» ويقول تبويبُ
+          العقود «ساري»، ولا شيءَ يفسّر أيُّهما الصواب. أربعون موظّفًا كذلك.
+          فيُقال هنا صراحةً ومن أين جاء كلُّ رقم، بدل أن يُقرأ عطلًا في النظام. */}
+      {terminated && data.contracts.some((c: any) => c.status === 'active') && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+          <b>{ar ? 'تنبيه: الحالتان لا تتّفقان' : 'Heads up: the two records disagree'}</b>
+          <p className="mt-1 text-[13px]">
+            {ar
+              ? 'حالة التوظيف «منتهي» (من ماستر الموارد البشرية)، وعقده ما زال مسجَّلًا «ساري» (من ملف العقود). أحد الملفّين لم يُحدَّث — راجِع العقد في تبويب العقود وأنهِه إن كان قد انتهى.'
+              : 'Employment says “terminated” (from the HR master) while the contract is still “active” (from the contracts file). One of the two was not updated — review it in the Contracts tab.'}
+          </p>
+        </div>
+      )}
+      {!terminated && data.contracts.length > 0 && data.contracts.every((c: any) => c.status === 'terminated') && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+          <b>{ar ? 'تنبيه: الحالتان لا تتّفقان' : 'Heads up: the two records disagree'}</b>
+          <p className="mt-1 text-[13px]">
+            {ar
+              ? 'الموظف على رأس العمل ولا عقد ساري له — كل عقوده منتهية. جدِّد العقد أو صحِّح حالة التوظيف.'
+              : 'The employee is active but has no live contract — all of them are terminated. Renew the contract or correct the employment status.'}
+          </p>
+        </div>
+      )}
+
       {/* Leave balance stats */}
       {b && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

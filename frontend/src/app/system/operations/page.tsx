@@ -232,7 +232,7 @@ export default function OperationsWorkflowPage() {
   // السنداتُ تصل دفعةً بتاريخٍ واحدٍ وفرعٍ واحد، وكان يُفتح كلُّ صفٍّ ليُكتب
   // فيه التاريخُ نفسُه — مئةُ فرصةِ خطأٍ لعملٍ واحد.
   const [showBulkPay, setShowBulkPay] = useState(false);
-  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', documentNumber: '', sendingDate: '', deliveryDate: '' });
+  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', deliveryDate: '' });
   const [bulkPaying, setBulkPaying] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ message: string; skipped: { reportNumber: string; reason: string }[] } | null>(null);
   const [bulkReviewText, setBulkReviewText] = useState('تم');
@@ -622,7 +622,7 @@ export default function OperationsWorkflowPage() {
       setBulkResult({ message: r.message, skipped: r.skipped || [] });
       if (!(r.skipped || []).length) {
         setShowBulkPay(false); setSelectedIds(new Set());
-        setBulkPay({ paymentDate: '', payingBranch: '', documentNumber: '', sendingDate: '', deliveryDate: '' });
+        setBulkPay({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', deliveryDate: '' });
       }
       fetchWorkflows(true);
     } catch (err: any) { setBulkResult({ message: err.message, skipped: [] }); }
@@ -779,7 +779,7 @@ export default function OperationsWorkflowPage() {
                 <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'تسجيل سداد' : 'Record payment'} ({selectedIds.size})
               </button>
               {showBulkPay && (
-                <div className="absolute top-full mt-2 end-0 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-4 w-[320px]" onClick={(e) => e.stopPropagation()}>
+                <div className="absolute top-full mt-2 end-0 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-4 w-[340px] max-w-[calc(100vw-2rem)] overflow-visible" onClick={(e) => e.stopPropagation()}>
                   <p className="text-sm font-bold text-slate-900 mb-1">
                     {lang === 'ar' ? `تطبيق على ${selectedIds.size} كشفًا` : `Apply to ${selectedIds.size} rows`}
                   </p>
@@ -798,23 +798,36 @@ export default function OperationsWorkflowPage() {
                         onChange={(v) => setBulkPay((p) => ({ ...p, payingBranch: v }))}
                         placeholder={lang === 'ar' ? 'اختر الفرع' : 'Pick branch'} />
                     </div>
+                    {/* ── ووجهةُ الكشف النهائيّة مع الفرع المسدِّد ─────────
+                        سؤالان متجاوران يُجابان في الجلسة الواحدة: مَن سدّد،
+                        وأين يستقرّ الملفُّ بعدها. وكان الثاني يُكتب صفًّا صفًّا
+                        بعد أن يُكتب الأوّلُ للخمسين دفعةً. */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'وجهة الكشف النهائية' : 'Final destination'}</label>
+                      <ManagedSelect type="workflow_final_destination" storeLabel noAdd value={bulkPay.finalReportDestination}
+                        onChange={(v) => setBulkPay((p) => ({ ...p, finalReportDestination: v }))}
+                        placeholder={lang === 'ar' ? 'اختر الوجهة' : 'Pick destination'} />
+                    </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'رقم السند' : 'Voucher no.'}</label>
                       <input value={bulkPay.documentNumber} onChange={(e) => setBulkPay((p) => ({ ...p, documentNumber: e.target.value }))}
                         placeholder={lang === 'ar' ? 'اختياري' : 'Optional'}
                         className="w-full px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'الإرسال' : 'Sent'}</label>
-                        <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ الإرسال' : 'Sending date'}
-                          value={bulkPay.sendingDate} onChange={(v) => setBulkPay((p) => ({ ...p, sendingDate: v }))} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'التسليم' : 'Delivered'}</label>
-                        <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ التسليم' : 'Delivery date'}
-                          value={bulkPay.deliveryDate} onChange={(v) => setBulkPay((p) => ({ ...p, deliveryDate: v }))} />
-                      </div>
+                    {/* ── والتاريخان تحت بعضهما لا جنبَ بعضهما ────────────────
+                        كانا في عمودين داخل بطاقةٍ عرضُها ٣٢٠ بكسل، وخانةُ
+                        التاريخ لا تنضغط أكثرَ من حدٍّ — فيخرج «التسليم» من
+                        حافّة البطاقة. البطاقةُ أوسعُ قليلًا والتاريخان في سطرين،
+                        فلا يخرج شيءٌ مهما ضاقت الشاشة. */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'تاريخ الإرسال' : 'Sending date'}</label>
+                      <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ الإرسال' : 'Sending date'}
+                        value={bulkPay.sendingDate} onChange={(v) => setBulkPay((p) => ({ ...p, sendingDate: v }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'تاريخ التسليم' : 'Delivery date'}</label>
+                      <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ التسليم' : 'Delivery date'}
+                        value={bulkPay.deliveryDate} onChange={(v) => setBulkPay((p) => ({ ...p, deliveryDate: v }))} />
                     </div>
                   </div>
                   {bulkResult && (

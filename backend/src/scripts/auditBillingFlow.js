@@ -229,6 +229,44 @@ const call = async (method, path, ck, body) => {
       String(bad.json?.transaction?.flagReason || '').includes(target2.json?.reportNumber)
       && String(bad.json?.transaction?.flagReason || '').includes('400'));
     if (bad.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${bad.json.transaction._id}`, op.ck);
+
+    // ══════════════════════════════════════════════════════════════════════
+    head('الرجوعُ عن «كاش» يفكّ ما أقفله');
+    const back = await mk({});
+    await call('PUT', `/api/workflows/${back.json._id}`, op.ck, { paymentType: 'cash' });
+    const locked = await OperationsWorkflow.findById(back.json._id).select('netInvoice documentNumber').lean();
+    ok('يُقفَل ويُصفَّر أوّلًا', locked.netInvoice === 0 && locked.documentNumber === '0',
+      `صافي ${locked.netInvoice} · سند ${locked.documentNumber}`);
+
+    await call('PUT', `/api/workflows/${back.json._id}`, op.ck, { paymentType: '' });
+    const freed = await OperationsWorkflow.findById(back.json._id)
+      .select('netInvoice documentNumber deliveryDate sendingDate finalReportDestination totalInvoice').lean();
+    ok('ثمّ تعود الأعمدةُ فارغةً لا أصفارًا', !freed.netInvoice && !freed.documentNumber && !freed.totalInvoice,
+      `صافي ${JSON.stringify(freed.netInvoice)} · سند ${JSON.stringify(freed.documentNumber)}`);
+    ok('والتواريخُ كذلك', !freed.deliveryDate && !freed.sendingDate);
+    ok('ووجهةُ الكشف', !freed.finalReportDestination, JSON.stringify(freed.finalReportDestination));
+
+    // ── ولا يمسح الفكُّ إلّا ما وضعه القفل ────────────────────────────────
+    // ما يُكتب بعد الفكّ — والكشفُ ليس نقديًّا — لا يمسّه شيء. (وما كُتب قبل
+    // اختيار «كاش» يُصفَّر باختياره نفسِه، وذلك مقصودٌ: النقديُّ لا فاتورةَ له.)
+    await call('PUT', `/api/workflows/${back.json._id}`, op.ck, { documentNumber: 'ZZ-حقيقي' });
+    await call('PUT', `/api/workflows/${back.json._id}`, op.ck, { paymentType: 'tax' });
+    const kept = await OperationsWorkflow.findById(back.json._id).select('documentNumber').lean();
+    ok('وما كُتب والكشفُ غيرُ نقديٍّ يبقى كما كُتب', kept.documentNumber === 'ZZ-حقيقي', `${kept.documentNumber}`);
+
+    head('ومبلغُ التحصيل للنقديّ وحدَه');
+    const camt = await mk({ paymentType: 'tax' });
+    const rej = await call('PUT', `/api/workflows/${camt.json._id}`, op.ck, { collectedAmount: 500 });
+    const c1 = await OperationsWorkflow.findById(camt.json._id).select('collectedAmount').lean();
+    ok('يُرفَض على الضريبيّ', !c1.collectedAmount, `${c1.collectedAmount}`);
+    // ويُقال بصريح العبارة، لا يُبتلَع ويُقال «حُفِظ».
+    ok('ويُقال إنّه رُفض لا يُبتلَع',
+      rej.status === 400 && /collectedAmount/.test(JSON.stringify(rej.json?.fields || [])),
+      `${rej.status} ${JSON.stringify(rej.json?.fields)}`);
+    await call('PUT', `/api/workflows/${camt.json._id}`, op.ck, { paymentType: 'cash' });
+    await call('PUT', `/api/workflows/${camt.json._id}`, op.ck, { collectedAmount: 500 });
+    const c2 = await OperationsWorkflow.findById(camt.json._id).select('collectedAmount').lean();
+    ok('ويُقبَل على النقديّ', c2.collectedAmount === 500, `${c2.collectedAmount}`);
   } finally {
     if (made.length) await OperationsWorkflow.deleteMany({ _id: { $in: made } });
     await User.deleteMany({ email: /^zz-bill/ });

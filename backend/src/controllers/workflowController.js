@@ -207,6 +207,35 @@ function applyBillingRules(patch, current = {}) {
     // والتصفيرُ يجري متى صار الكشفُ نقديًّا — لا عند إنشائه فقط.
     Object.assign(patch, cashLockedValues());
   } else {
+    // ── ومبلغُ التحصيل للنقديّ وحدَه ────────────────────────────────────────
+    // الضريبيُّ يُحصَّل بفاتورته وصافيها هو المبلغ، فلا معنى لخانةٍ ثانيةٍ
+    // تقول مبلغًا آخر — وإن اختلفا لم يُعرف أيُّهما الصحيح. والنقديُّ لا
+    // فاتورةَ له، فمبلغُ تحصيله يُكتب بيده.
+    if (Object.prototype.hasOwnProperty.call(patch, 'collectedAmount') && patch.collectedAmount) {
+      delete patch.collectedAmount;
+      blocked.push('collectedAmount');
+    }
+    // ── والخروجُ من «كاش» يفكّ ما أقفله ──────────────────────────────────
+    // كان القفلُ في اتّجاهٍ واحد: يُختار «كاش» فتُصفَّر تسعةُ أعمدة، ثمّ يُرجَع
+    // الاختيارُ فتبقى الأصفارُ مكانها — أعمدةٌ مفتوحةٌ للكتابة تقول «0» وليس
+    // فيها صفر. فيظنّ صاحبُها أنّ الكشف مفوتَرٌ بصفر، أو يمسحها تسعَ مرّات
+    // بيده.
+    //
+    // ولا يُمسح إلّا ما وضعه القفلُ نفسُه: تُقارَن كلُّ خانةٍ بقيمة القفل، فما
+    // كان صفرَ القفل عاد فارغًا، وما كتبه إنسانٌ يبقى كما كتبه.
+    const wasCash = current.paymentType === 'cash';
+    if (wasCash) {
+      const locked = cashLockedValues();
+      for (const f of CASH_LOCKED_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(patch, f)) continue;   // كتبه المستخدمُ الآن
+        const now = current[f];
+        const placeholder = locked[f];
+        const isPlaceholder = placeholder === null
+          ? (now === null || now === undefined)
+          : String(now ?? '') === String(placeholder);
+        if (isPlaceholder) patch[f] = CASH_ZERO_NUMERIC.has(f) ? 0 : (f.endsWith('Date') ? null : '');
+      }
+    }
     deriveInvoiceTotals(patch, current);
   }
   return { patch, blocked };

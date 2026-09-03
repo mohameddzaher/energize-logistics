@@ -256,7 +256,12 @@ export default function HRLeavesPage() {
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="text-start font-semibold px-4 py-3">{tx.colEmployee}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colPeriod}</th>
+            {/* ── ومن/إلى عمودان لا عمود ────────────────────────────────────
+                «١٤/٠٩ → ١٩/٠٩» في خانةٍ واحدة يُقرأ سطرًا واحدًا، ولا يُفرَز
+                ولا يُقارَن بجاره. والسؤالان مختلفان: متى يبدأ غيابُه، ومتى
+                يعود. فعمودان يُقرآن ويُرتَّبان. */}
+            <th className="text-start font-semibold px-4 py-3">{ar ? 'من' : 'From'}</th>
+            <th className="text-start font-semibold px-4 py-3">{ar ? 'إلى' : 'To'}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colDays}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colBalance}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
@@ -264,14 +269,15 @@ export default function HRLeavesPage() {
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
+              <tr><td colSpan={8} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((l) => {
               const over = l.balanceSnapshot && typeof l.balanceSnapshot.remainingAfter === 'number' && l.balanceSnapshot.remainingAfter < 0;
               return (
                 <tr key={l._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => openReview(l)}>
                   <td className="px-4 py-3 text-slate-900 font-medium">{empName(l.employee, lang)}</td>
                   <td className="px-4 py-3 text-slate-700">{leaveTypeLabel(l.leaveType, lang)}</td>
-                  <td className="px-4 py-3 text-slate-700">{fmtDate(l.startDate)} → {fmtDate(l.endDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(l.startDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{fmtDate(l.endDate)}</td>
                   <td className="px-4 py-3 text-slate-700">{l.days}</td>
                   <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.accrued ?? '—'}{over ? ` ${tx.over}` : ''}</span></td>
                   <td className="px-4 py-3">
@@ -308,11 +314,22 @@ export default function HRLeavesPage() {
             <Row k={tx.fieldEmployee} v={empName(review.employee, lang)} />
             <Row k={tx.fieldRequester} v={userName(review.requester)} />
             <Row k={tx.fieldType} v={leaveTypeLabel(review.leaveType, lang)} />
-            <Row k={tx.fieldPeriod} v={`${fmtDate(review.startDate)} → ${fmtDate(review.endDate)} (${review.days} ${tx.dayUnit})`} />
+            <Row k={ar ? 'من' : 'From'} v={fmtDate(review.startDate)} />
+            <Row k={ar ? 'إلى' : 'To'} v={fmtDate(review.endDate)} />
+            <Row k={tx.colDays} v={`${review.days} ${tx.dayUnit}`} />
             <Row k={tx.fieldAccrued} v={`${review.balanceSnapshot?.accrued ?? '—'} ${tx.dayUnit}`} />
             <Row k={tx.fieldRemainingAfter} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${tx.dayUnit}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />
             <Row k={tx.fieldStatus} v={<Badge style={LEAVE_STATUS[review.status]} lang={lang} />} />
-            {review.reason && <div className="border-t border-slate-200 pt-3"><span className="text-slate-500">{tx.fieldReason}: </span><span className="text-slate-900">{review.reason}</span></div>}
+            {/* ── ولكلِّ نصٍّ صاحبُه في عنوانه ──────────────────────────────
+                في النافذة نصّان: ما كتبه الموظّفُ في طلبه، وما يكتبه المراجعُ
+                مع قراره. وكانا «السبب» و«ملاحظة (اختياري)» — لا يقول أيٌّ
+                منهما لمن هو، فيُقرآن شيئًا واحدًا مكرَّرًا. */}
+            {review.reason && (
+              <div className="border-t border-slate-200 pt-3">
+                <span className="text-slate-500">{ar ? 'سبب الموظّف في طلبه' : 'Employee’s reason'}: </span>
+                <span className="text-slate-900">{review.reason}</span>
+              </div>
+            )}
             {/* سندُ الطلب يُقرأ قبل البتّ فيه: تقريرُ الطبيب لا يُطلب على
                 الواتساب ثمّ يُوافَق هنا على غير أساس. */}
             {!!((review as any).attachments || []).length && (
@@ -325,8 +342,11 @@ export default function HRLeavesPage() {
             {(review.status === 'pending_manager' || review.status === 'pending_hr') && (
               <div className="border-t border-slate-200 pt-3 space-y-3">
                 <div>
-                  <label className="text-slate-500 text-xs mb-1 block">{tx.noteOptional}</label>
-                  <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+                  <label className="text-slate-500 text-xs mb-1 block">
+                    {ar ? 'ملاحظتك على القرار (اختياري)' : 'Your note on this decision (optional)'}
+                  </label>
+                  <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
+                    placeholder={ar ? 'تُحفظ مع موافقتك أو رفضك ويقرؤها الموظّف' : 'saved with your approval or rejection'} />
                 </div>
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{ar ? 'مرفقات القرار (اختياري)' : 'Decision attachments (optional)'}</label>

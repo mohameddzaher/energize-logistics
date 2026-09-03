@@ -8,10 +8,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { FileSpreadsheet, ChevronDown } from 'lucide-react';
-import { exportMultiSheet } from '@/utils/exportExcel';
+import { exportMultiSheet, type ExportBlock } from '@/utils/exportExcel';
 
 export type ExportColumn = { header: string; key: string; transform?: (value: any, row: any) => any; width?: number };
-export interface ExportSheet { name: string; rows: Record<string, any>[]; columns: ExportColumn[] }
+export interface ExportSheet {
+  name: string;
+  rows: Record<string, any>[];
+  columns: ExportColumn[];
+  /**
+   * كتلٌ تُطبَع فوق الجدول الرئيسيّ في الورقة نفسها — ملخّصٌ فوق وتفصيلٌ تحته.
+   * ورقتان في ملفٍّ واحد تعنيان أنّ من يفتحه يرى نصفَ الصورة ولا يعرف أنّ
+   * نصفَها الآخرَ في لسانٍ ثانٍ؛ والصفحةُ نفسُها تعرضهما فوق بعضهما.
+   * عدّادُ الصفوف في القائمة يعدّ `rows` وحدها — وهي الجدول الذي يُصدَّر.
+   */
+  above?: ExportBlock[];
+  /** عنوانٌ يُطبع فوق ترويسة الجدول الرئيسيّ. */
+  title?: string;
+}
 export interface ExportOption {
   key: string; label: string;
   sheets?: ExportSheet[];
@@ -77,7 +90,7 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
     const total = (sheets || []).reduce((n, s) => n + (s.rows?.length || 0), 0);
     if (!total) { notify(ar ? 'لا توجد بيانات للتصدير' : 'No data to export'); return; }
     const date = new Date().toISOString().slice(0, 10);
-    exportMultiSheet((sheets || []).map((s) => ({ name: s.name, data: s.rows, columns: s.columns })), `${fileName}-${date}`);
+    exportMultiSheet((sheets || []).map((s) => ({ name: s.name, data: s.rows, columns: s.columns, above: s.above, title: s.title })), `${fileName}-${date}`);
   };
 
   // ── شكلٌ واحد لزرّ التصدير في المنصّة كلّها ────────────────────────────────

@@ -115,6 +115,7 @@ export default function WalletPage() {
   const canSelectBranch = canPickWalletBranch(user?.role);
 
   const { lang } = useLanguage();
+  const ar = lang === 'ar';
   const L = getWalletTranslations(lang);
   const txx = getWalletExtraTranslations(lang);
   const typeLabel = (type: 'collection' | 'expense' | 'purchase' | 'tax_invoice') => lang === 'ar' ? TYPE_CONFIG[type].labelAr : TYPE_CONFIG[type].label;
@@ -558,73 +559,126 @@ export default function WalletPage() {
     }
   };
 
-  // Column definitions shared between single-day and range exports.
+  // ── الملفُّ صورةُ الشاشة ───────────────────────────────────────────────────
+  //
+  // كان الجدولُ على الشاشة يعرض ستَّ عشرة خانة، والملفُّ يخرج بسبعٍ منها: لا
+  // العميل ولا «من» و«إلى» ولا نوعُ السيّارة وطولُها ورقمُها ولا تاريخُ الكشف.
+  // ومن يصدّر إنّما يصدّر ليُرسل أو ليراجع، فيرسل نصفَ ما رأى وهو يحسبه كلَّه.
+  // فترويسةُ كلِّ عمودٍ هنا تُقرأ من `L` نفسِها التي تكتب ترويسةَ الشاشة، فلا
+  // يفترقان بعدها لا في العدد ولا في التسمية.
+  //
+  // وهما كتلتان في ورقةٍ واحدة لا ورقتان: الملخّصُ فوق والحركاتُ تحته، كما
+  // تُقرأ الصفحة. ورقتان في ملفٍّ تعنيان أنّ من يفتحه يرى نصفَ الصورة ولا
+  // يدري أنّ نصفَها الآخرَ في لسانٍ ثانٍ.
+  const dash = (v: any) => (v === 0 ? 0 : (v || ''));
+  const opDetail = (k: 'client' | 'from' | 'to' | 'carType' | 'length' | 'carNumber') =>
+    ({ header: L[k], key: 'operationDetails', transform: (v: any) => dash(v?.[k]), width: 18 });
+
   const walletSummaryColumns = [
     // المحفظةُ صارت للفرع: «المستخدم» لم يعد وصفًا ليوميّةٍ بل لحركة. راجع
     // models/DailyWallet.
-    { header: 'Branch', key: 'branch.name', width: 20 },
-    { header: 'Date', key: 'date', width: 12 },
-    { header: 'Opening Balance (SAR)', key: 'openingBalance', transform: fmt.money, width: 20 },
-    { header: 'Collections (SAR)', key: 'totalCollections', transform: fmt.money, width: 18 },
-    { header: 'Expenses (SAR)', key: 'totalExpenses', transform: fmt.money, width: 18 },
-    { header: 'Purchases (SAR)', key: 'totalPurchases', transform: fmt.money, width: 18 },
-    { header: 'Closing Balance (SAR)', key: 'closingBalance', transform: fmt.money, width: 20 },
-    { header: 'Status', key: 'isClosed', transform: (v: any) => v ? 'Closed' : 'Open', width: 10 },
-    { header: 'Actual Cash (SAR)', key: 'actualCash', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : 'Not Closed'), width: 18 },
-    { header: 'Cash Difference (SAR)', key: 'cashDifference', transform: (v: any, row: any) => v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : 'Not Closed'), width: 20 },
+    { header: L.branch, key: 'branch.name', width: 20 },
+    { header: ar ? 'التاريخ' : 'Date', key: 'date', width: 12 },
+    { header: `${L.opening} (SAR)`, key: 'openingBalance', transform: fmt.money, width: 18 },
+    { header: `${L.collections} (SAR)`, key: 'totalCollections', transform: fmt.money, width: 18 },
+    { header: `${L.expenses} (SAR)`, key: 'totalExpenses', transform: fmt.money, width: 18 },
+    { header: `${L.purchases} (SAR)`, key: 'totalPurchases', transform: fmt.money, width: 18 },
+    { header: `${L.closingBalance} (SAR)`, key: 'closingBalance', transform: fmt.money, width: 20 },
+    { header: L.status, key: 'isClosed', transform: (v: any) => (v ? L.closed : L.open), width: 12 },
+    { header: `${L.actual} (SAR)`, key: 'actualCash', transform: (v: any, row: any) => (v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : L.open)), width: 18 },
+    { header: ar ? 'فرق النقد (SAR)' : 'Cash Difference (SAR)', key: 'cashDifference', transform: (v: any, row: any) => (v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : L.open)), width: 20 },
   ];
+
+  // «التفاصيل» على الشاشة سطورٌ مركَّبة في خانةٍ واحدة، فتُكتب كما تُعرض —
+  // ومعها أعمدتُها المفردة، لأنّ الملفَّ يُفلتَر ويُجمَع والسطرُ المركَّب لا
+  // يُفلتَر عليه.
+  const detailsText = (tx: any) => {
+    const parts: string[] = [];
+    if (tx.type === 'collection' && tx.collectionSource === 'company') parts.push(L.fromCompany);
+    if (tx.description) parts.push(tx.description);
+    if (tx.customer) parts.push(`${tx.customer.companyName} (${tx.customer.customerNumber})`);
+    if (tx.invoice) parts.push(`${txx.invoiceShort}: ${tx.invoice.invoiceNumber}`);
+    if (tx.vendor || tx.vendorName) parts.push(`${L.vendor}: ${tx.vendor?.name || tx.vendorName}`);
+    if (tx.driver || tx.driverName) parts.push(`${L.driver}: ${tx.driver?.name || tx.driverName}`);
+    if (tx.expenseCategory) parts.push(`${L.category}: ${tx.expenseCategory.name}`);
+    if (tx.itemName) parts.push(tx.itemName);
+    if (tx.purchaseDriverName) parts.push(`${L.driver}: ${tx.purchaseDriverName}`);
+    if (tx.purchaseReceiptNumber) parts.push(`${L.receipt}: ${tx.purchaseReceiptNumber}`);
+    if (tx.type === 'tax_invoice') {
+      const nums = (tx.receivedReportNumbers?.length ? tx.receivedReportNumbers : [tx.receivedDocNumber]).filter(Boolean);
+      if (nums.length) parts.push(nums.join(' , '));
+    }
+    return parts.join(' | ');
+  };
+
   const txColumns = [
-    { header: 'Date', key: 'date', width: 12 },
-    { header: 'Time', key: 'createdAt', transform: (v: any) => v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '', width: 8 },
-    { header: 'Type', key: 'type', transform: (v: any) => v ? v.charAt(0).toUpperCase() + v.slice(1) : '', width: 12 },
-    { header: 'Amount (SAR)', key: 'amount', transform: fmt.money, width: 15 },
+    { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: fmt.date, width: 12 },
+    { header: L.time, key: 'createdAt', transform: (v: any) => (v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''), width: 8 },
+    { header: L.type, key: 'type', transform: (v: any) => (v ? typeLabel(v) : ''), width: 14 },
+    // قيدُ الفاتورة الضريبيّة لا يمسّ الرصيد، والرقمُ فيه صفرٌ لا مبلغ —
+    // فيُكتب كما يُقرأ على الشاشة لا كصفرٍ يُجمَع مع المال.
+    { header: `${L.amount} (SAR)`, key: 'amount', transform: (v: any, row: any) => (row?.type === 'tax_invoice' ? (ar ? 'خارج الرصيد' : 'off-balance') : fmt.money(v)), width: 15 },
+    { header: L.details, key: '_details', transform: (_v: any, row: any) => detailsText(row), width: 40 },
+    { header: L.deliveryStatementNumber, key: 'deliveryStatementNumber', transform: (v: any, row: any) => dash(v || row?.purchaseDeliveryStatementNumber), width: 20 },
+    { header: L.branch, key: 'purchaseBranch', transform: (v: any, row: any) => dash(v || row?.operationDetails?.branch), width: 16 },
+    opDetail('client'),
+    opDetail('from'),
+    opDetail('to'),
+    opDetail('carType'),
+    opDetail('length'),
+    opDetail('carNumber'),
+    { header: L.reportDate, key: 'operationDetails', transform: (v: any) => (v?.reportDate ? new Date(v.reportDate).toLocaleDateString('en-GB') : ''), width: 14 },
+    { header: L.notes, key: 'notes', width: 25 },
     // مَن سجّلها: المحفظةُ للفرع يعمل عليها أكثرُ من موظّف، فالملفُّ بلا اسمِ
     // الفاعل يقول ماذا جرى ولا يقول من فعل.
-    { header: 'Recorded by', key: 'user', transform: (v: any) => (v ? `${v.firstName || ''} ${v.lastName || ''}`.trim() : ''), width: 20 },
-    { header: 'Customer', key: 'customer', transform: (v: any) => v ? `${v.companyName} (${v.customerNumber})` : '', width: 25 },
-    { header: 'Invoice #', key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
-    { header: 'Invoice Amount (SAR)', key: 'invoice', transform: (v: any) => v?.amount != null ? fmt.money(v.amount) : '', width: 18 },
-    { header: 'Invoice Balance (SAR)', key: 'invoice', transform: (v: any) => v?.balance != null ? fmt.money(v.balance) : '', width: 18 },
-    { header: 'Delivery Statement #', key: 'deliveryStatementNumber', transform: (v: any, row: any) => v || row?.purchaseDeliveryStatementNumber || '', width: 20 },
-    { header: 'Branch', key: 'purchaseBranch', transform: (v: any, row: any) => v || row?.operationDetails?.branch || '', width: 16 },
-    { header: 'Vendor', key: 'vendor', transform: (v: any, row: any) => v?.name || row?.vendorName || '', width: 18 },
-    { header: 'Driver', key: 'driver', transform: (v: any, row: any) => v?.name || row?.driverName || row?.purchaseDriverName || '', width: 18 },
-    { header: 'Category', key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
-    { header: 'Item / Description', key: 'itemName', transform: (v: any, row: any) => v || row?.description || '', width: 22 },
-    { header: 'Receipt #', key: 'purchaseReceiptNumber', width: 15 },
-    { header: 'Reference', key: 'reference', width: 15 },
-    { header: 'Notes', key: 'notes', width: 25 },
-    { header: 'Flagged', key: 'isFlagged', transform: fmt.yesNo, width: 8 },
+    { header: ar ? 'سجّلها' : 'Recorded by', key: 'user', transform: (v: any) => (v ? `${v.firstName || ''} ${v.lastName || ''}`.trim() : ''), width: 20 },
+    // وما لا تسعه الشاشةُ عرضًا يسعه الملفّ — تفكيكُ «التفاصيل» إلى أعمدةٍ
+    // يُفلتَر عليها ويُجمَع.
+    { header: ar ? 'العميل (سجلّ)' : 'Customer (record)', key: 'customer', transform: (v: any) => (v ? `${v.companyName} (${v.customerNumber})` : ''), width: 25 },
+    { header: ar ? 'رقم الفاتورة' : 'Invoice #', key: 'invoice', transform: (v: any) => v?.invoiceNumber || '', width: 15 },
+    { header: ar ? 'قيمة الفاتورة (SAR)' : 'Invoice Amount (SAR)', key: 'invoice', transform: (v: any) => (v?.amount != null ? fmt.money(v.amount) : ''), width: 18 },
+    { header: ar ? 'رصيد الفاتورة (SAR)' : 'Invoice Balance (SAR)', key: 'invoice', transform: (v: any) => (v?.balance != null ? fmt.money(v.balance) : ''), width: 18 },
+    { header: ar ? 'كشوف الفاتورة الضريبيّة' : 'Received reports', key: 'receivedReportNumbers', transform: (v: any, row: any) => ((v?.length ? v : [row?.receivedDocNumber]).filter(Boolean).join(' , ')), width: 24 },
+    { header: L.vendor, key: 'vendor', transform: (v: any, row: any) => v?.name || row?.vendorName || '', width: 18 },
+    { header: L.driver, key: 'driver', transform: (v: any, row: any) => v?.name || row?.driverName || row?.purchaseDriverName || '', width: 18 },
+    { header: L.category, key: 'expenseCategory', transform: (v: any) => v?.name || '', width: 18 },
+    { header: L.itemDescription, key: 'itemName', transform: (v: any, row: any) => v || row?.description || '', width: 22 },
+    { header: L.receipt, key: 'purchaseReceiptNumber', width: 15 },
+    { header: ar ? 'مرجع' : 'Reference', key: 'reference', width: 15 },
+    { header: ar ? 'مُعلَّمة' : 'Flagged', key: 'isFlagged', transform: fmt.yesNo, width: 10 },
   ];
-
-  // Single-day export — uses already-loaded wallet + transactions.
-
-  // Range export — fetches every wallet + transaction in the range, then exports.
 
   // ── التصديرُ بالزرّ الموحَّد ونطاقين ──────────────────────────────────────
   // كانت لهذه الشاشة نافذتُها الخاصّة: شكلٌ آخرُ لزرٍّ يحمل في تسعين شاشةً شكلًا
   // واحدًا، وخطوةٌ زائدةٌ قبل كلّ تصدير. والنطاقان هما ما يُطلب فعلًا: يومُ
   // الشاشة، أو الدفترُ كلُّه.
-  const scope = exportScopeLabels(lang === 'ar');
+  const scope = exportScopeLabels(ar);
   const branchNameForFile = wallet?.branch?.name || 'wallet';
+  const sheetName = ar ? 'المحفظة اليومية' : 'Daily Wallet';
+  const summaryTitle = (label: string) => (ar ? `ملخّص المحفظة — ${label}` : `Wallet summary — ${label}`);
+  const txTitle = (n: number) => (ar ? `الحركات (${n})` : `Transactions (${n})`);
+  const oneSheet = (label: string, wallets: Record<string, any>[], txs: Record<string, any>[]) => ([
+    {
+      name: sheetName,
+      title: txTitle(txs.length),
+      rows: txs,
+      columns: txColumns,
+      above: [{ title: summaryTitle(label), rows: wallets, columns: walletSummaryColumns }],
+    },
+  ]);
+
   const rangeSheets = async (from: string, to: string) => {
     const targetBranchId = canSelectBranch && selectedBranch ? selectedBranch : ((user as any)?.branch || '');
     const params = new URLSearchParams({ dateFrom: from, dateTo: to });
     if (targetBranchId) params.set('branchId', String(targetBranchId));
     const d = await api.get<any>(`/api/wallet/range?${params.toString()}`);
-    return [
-      { name: 'Wallet Summary', rows: (d.wallets || []) as Record<string, any>[], columns: walletSummaryColumns },
-      { name: 'Transaction Log', rows: (d.transactions || []) as Record<string, any>[], columns: txColumns },
-    ];
+    return oneSheet(scope.all, (d.wallets || []) as Record<string, any>[], (d.transactions || []) as Record<string, any>[]);
   };
   const exportOptions = [
     {
       key: 'day',
       label: `${scope.shown} — ${selectedDate}`,
-      sheets: [
-        { name: 'Wallet Summary', rows: (wallet ? [wallet] : []) as Record<string, any>[], columns: walletSummaryColumns },
-        { name: 'Transaction Log', rows: transactions as unknown as Record<string, any>[], columns: txColumns },
-      ],
+      sheets: oneSheet(selectedDate, (wallet ? [wallet] : []) as Record<string, any>[], transactions as unknown as Record<string, any>[]),
     },
     {
       key: 'all',
@@ -633,7 +687,6 @@ export default function WalletPage() {
       resolve: () => rangeSheets('2000-01-01', '2100-12-31'),
     },
   ];
-
 
 
   const openTxModal = (type: 'collection' | 'expense' | 'purchase' | 'tax_invoice') => {

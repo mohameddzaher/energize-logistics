@@ -25,7 +25,20 @@ const GROUPS = [
       // أو رسالة، فيُبحث عن صاحبه. وبغير ذلك يبقى عمودًا يُقرأ ولا يُسأل عنه.
       { key: 'employeeNumber', ar: 'الرقم الوظيفي', en: 'Employee no.', type: 'text', groupable: true },
       { key: 'arabicName', ar: 'الاسم', en: 'Name', type: 'text' },
-      { key: 'iqamaNumber', ar: 'رقم الهوية/الإقامة', en: 'ID number', type: 'text' },
+      // ── رقمُ الهويّة عمودان لا عمود ──────────────────────────────────────
+      //
+      // السعوديُّ رقمُه في `nationalId` والمقيمُ في `iqamaNumber` — والحقلُ
+      // هنا واحدٌ اسمُه «رقم الهوية/الإقامة»، فمن قرأ عمودًا واحدًا قرأ نصفَ
+      // الناس. وهذا ما كان: ملفُّ الموظّفة يعرض رقمَ هويّتها كاملًا، وشاشةُ
+      // الماستر تقول عنها «لا يوجد» وتعدُّها نقصًا يُطالَب به.
+      //
+      // فيُقرأ العمودان معًا، ويُكتب في العمود الذي يوافق نوعَ الهويّة — وهي
+      // القاعدةُ نفسُها التي تكتب بها استمارةُ الملفّ، فلا تفترق الشاشتان.
+      { key: 'iqamaNumber', ar: 'رقم الهوية/الإقامة', en: 'ID number', type: 'text',
+        readFrom: (e) => (e?.idType === 'national_id'
+          ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)),
+        writeTo: (e) => (e?.idType === 'national_id' ? 'nationalId' : 'iqamaNumber'),
+        alsoSearch: ['nationalId'], deps: ['idType', 'nationalId'] },
       { key: 'idType', ar: 'نوع الهوية', en: 'ID type', type: 'text', groupable: true },
       { key: 'gender', ar: 'الجنس', en: 'Gender', type: 'text', groupable: true },
       { key: 'nationality', ar: 'الجنسية', en: 'Nationality', type: 'text', groupable: true },
@@ -243,7 +256,41 @@ const stateOf = (expiry, statusCode, alert = {}, now = new Date()) => {
   return { state: 'valid', days };
 };
 
+/**
+ * قيمةُ الحقل على موظّفٍ بعينه.
+ *
+ * الحقلُ الذي له `readFrom` يُقرأ منها لا من `emp[key]` — والفرقُ ليس تجميلًا:
+ * قراءةُ العمود مباشرةً تجعل صاحبَ رقمِ هويّةٍ مكتوبًا يُعَدُّ ناقصًا. وكلُّ من
+ * يعرض الماستر أو يعدّ نقصَه يمرّ من هنا.
+ */
+const valueOf = (emp, key) => {
+  const f = getField(key);
+  return f && typeof f.readFrom === 'function' ? f.readFrom(emp) : emp?.[key];
+};
+
+/** العمودُ الذي يُكتب فيه هذا الحقل لهذا الموظّف — قد يختلف باختلافه. */
+const writeKeyOf = (emp, key) => {
+  const f = getField(key);
+  return f && typeof f.writeTo === 'function' ? f.writeTo(emp) : key;
+};
+
+/**
+ * الأعمدةُ التي تحتاجها دوالُّ `readFrom`/`writeTo` لتعمل.
+ *
+ * كلُّ استعلامٍ يختار أعمدةً بعينها يجب أن يجرَّها معه، وإلّا قرأت الدالّةُ
+ * `undefined` وأعادت الخطأَ نفسَه الذي جاءت لتصلحه — ولا شيء يُعلن الخطأ: صفٌّ
+ * يقول «لا يوجد» فقط. فتُشتقّ القائمةُ من التعريف ولا تُكتب في كلّ استعلام.
+ */
+const READ_DEPS = [...new Set(ALL_FIELDS.flatMap((f) => f.deps || []))];
+
+/** كلُّ الأعمدة التي قد تحمل هذا الحقل — للبحث والفلترة. */
+const searchKeysOf = (key) => {
+  const f = getField(key);
+  return [key, ...((f && f.alsoSearch) || [])];
+};
+
 module.exports = {
   GROUPS, GROUP_KEYS, GROUP_ALIASES, getGroup, DOCUMENT_GROUPS, ALL_FIELDS, getField, statusKeyOf,
   STATUS_LABELS, statusLabel, STATE_LABELS, daysLeft, stateOf,
+  valueOf, writeKeyOf, searchKeysOf, READ_DEPS,
 };

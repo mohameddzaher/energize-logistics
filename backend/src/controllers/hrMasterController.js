@@ -30,10 +30,13 @@ const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\
  * ولا تنقضهما قيمةٌ موجودة.
  */
 const statusOf = (emp, fieldKey) => {
+  // القيمةُ تُقرأ بـ`H.valueOf` لا من العمود مباشرةً: «رقم الهوية/الإقامة»
+  // عمودان، والقراءةُ من أحدهما تجعل السعوديَّ صاحبَ الرقم «ناقصًا».
+  const val = H.valueOf(emp, fieldKey);
   const st = emp.fieldStatus?.[H.statusKeyOf(fieldKey)];
-  if (st === 'required' && filled(emp[fieldKey])) return 'filled';
+  if (st === 'required' && filled(val)) return 'filled';
   if (st) return st;
-  return filled(emp[fieldKey]) ? 'filled' : 'none';
+  return filled(val) ? 'filled' : 'none';
 };
 
 // عتبات التنبيه — نفس فكرة المركبات. لو حبينا نخلّيها قابلة للتعديل بعدين،
@@ -119,7 +122,10 @@ function buildFilter(q) {
   // قراءتها تاريخًا حقيقيًّا.
   if (q.q && q.q.trim()) {
     const r = rx(q.q);
-    f.$or = [{ arabicName: r }, { firstName: r }, { lastName: r }, { employeeNumber: r }, { iqamaNumber: r }, { passportNumber: r }, { companyNumber: r }, { absherNumber: r }];
+    // ويُبحَث في عمودَي رقم الهويّة معًا: مَن كتب رقمَ سعوديٍّ كان لا يجده.
+    f.$or = [{ arabicName: r }, { firstName: r }, { lastName: r }, { employeeNumber: r },
+      ...H.searchKeysOf('iqamaNumber').map((k) => ({ [k]: r })),
+      { passportNumber: r }, { companyNumber: r }, { absherNumber: r }];
   }
   return f;
 }
@@ -230,7 +236,10 @@ exports._DATE_FILTERABLE = DATE_FILTERABLE;
 /** جلب الموظفين بكل شروط الاستعلام — شروط قاعدة البيانات ثم شروط التواريخ. */
 async function findEmployees(q, select) {
   let query = Employee.find(buildFilter(q));
-  if (select) query = query.select(select);
+  // الأعمدةُ التي تقرأ منها الحقولُ المشتقّة تُجرّ دائمًا — راجع H.READ_DEPS.
+  // خمسةُ استعلاماتٍ هنا تختار أعمدةً بعينها، ونسيانُ العمود في واحدٍ منها
+  // يجعل الشاشة تقول «لا يوجد» عن رقمٍ مكتوب.
+  if (select) query = query.select([select, ...H.READ_DEPS].join(' '));
   // بلا hint: إجبار المخطِّط على فهرسٍ بعينه يجعل كل استعلام يفشل إن لم يكن
   // ذلك الفهرس موجودًا على العنقود — وهو ما كان يحدث هنا حرفيًّا. الفهارس
   // تُنشأ بـ scripts/addHrIndexes.js ويختار المخطِّط منها ما يناسب كل استعلام.
@@ -432,7 +441,7 @@ exports.overview = async (req, res) => {
           const st = statusOf(e, f.key);
           counts[st] = (counts[st] || 0) + 1;
           if (f.groupable) {
-            const raw = e[f.key];
+            const raw = H.valueOf(e, f.key);
             const v = raw === true ? 'نعم' : raw === false ? 'لا' : (filled(raw) ? String(raw) : '—');
             values.set(v, (values.get(v) || 0) + 1);
           }
@@ -579,14 +588,14 @@ exports.records = async (req, res) => {
     let rows = employees.map((e) => {
       const values = {};
       const statuses = {};
-      for (const f of g.fields) { values[f.key] = e[f.key] ?? null; statuses[f.key] = statusOf(e, f.key); }
+      for (const f of g.fields) { values[f.key] = H.valueOf(e, f.key) ?? null; statuses[f.key] = statusOf(e, f.key); }
       const doc = g.document
         ? H.stateOf(e[g.expiryField], statuses[g.expiryField] === 'filled' ? '' : statuses[g.expiryField], ALERT)
         : null;
       return {
         _id: e._id,
         employeeNumber: e.employeeNumber, name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
-        iqamaNumber: e.iqamaNumber || '',
+        iqamaNumber: H.valueOf(e, 'iqamaNumber') || '',
         department: e.department, branchName: e.branchName, project: e.project,
         workStatusText: e.workStatusText, employmentStatus: e.employmentStatus,
         values, statuses,
@@ -677,7 +686,10 @@ exports.updateFields = async (req, res) => {
       } else if (f.type === 'bool') {
         emp[k] = v === true || v === 'true' || v === '1'; applied[k] = emp[k];
       } else {
-        emp[k] = String(v ?? '').trim(); applied[k] = emp[k];
+        // ويُكتب في العمود الموافق لنوع الهويّة — وإلّا كُتب رقمُ السعوديّ في
+        // خانة الإقامة، فيقرؤه الماستر ولا يقرؤه ملفُّ الموظّف.
+        const target = H.writeKeyOf(emp, k);
+        emp[target] = String(v ?? '').trim(); applied[k] = emp[target];
       }
     }
     if (!Object.keys(applied).length) {
@@ -744,7 +756,7 @@ exports.expiring = async (req, res) => {
         rows.push({
           employeeId: e._id, employeeNumber: e.employeeNumber,
           name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
-          iqamaNumber: e.iqamaNumber || '',
+          iqamaNumber: H.valueOf(e, 'iqamaNumber') || '',
           department: e.department, branchName: e.branchName,
           docKey: g.key, docAr: g.ar, docEn: g.en, expiryField: g.expiryField,
           expiryDate: e[g.expiryField], daysRemaining: st.days, state: st.state,

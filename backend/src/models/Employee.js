@@ -191,6 +191,29 @@ const employeeSchema = new mongoose.Schema(
  * يحصل هنا مش في الكونترولر عشان يشتغل مهما كان مصدر التعديل — الشاشة، أو
  * الاستيراد، أو أي سكربت.
  */
+/**
+ * ── رقمُ الهويّة يبقى في العمودين ─────────────────────────────────────────────
+ *
+ * السعوديُّ رقمُه في `nationalId` والمقيمُ في `iqamaNumber`، وهذا صحيحٌ في
+ * المعنى. لكنّ الشاشات كلَّها تقرأ `iqamaNumber` — الجداولُ والتصديراتُ
+ * وقوائمُ الاختيار — لأنّه في الواقع «رقمُ هويّة هذا الشخص» أيًّا كان نوعُها؛
+ * واثنتان وخمسون من أربعٍ وخمسين بطاقةَ سعوديٍّ تحمله فيه أصلًا.
+ *
+ * فكانت النتيجةُ صفًّا يقول «لا يوجد» عن رقمٍ مكتوبٍ في ملفّ صاحبه، ويُعَدُّ
+ * نقصًا يُطالَب بجمعه. والقراءةُ المزدوجة في `config/hrFields` تصلح الماستر،
+ * لكنّها لا تصل إلى عشرين شاشةً أخرى تقرأ العمود مباشرة.
+ *
+ * فيُنسَخ رقمُ السعوديّ إلى `iqamaNumber` عند الحفظ. لا يُنسخ العكس: رقمُ
+ * الإقامة ليس رقمًا وطنيًّا، وكتابتُه في `nationalId` تجعل مقيمًا يبدو سعوديًّا.
+ */
+employeeSchema.pre('save', function mirrorNationalId(next) {
+  if (this.idType === 'national_id') {
+    const nid = String(this.nationalId || '').trim();
+    if (nid && String(this.iqamaNumber || '').trim() !== nid) this.iqamaNumber = nid;
+  }
+  next();
+});
+
 employeeSchema.pre('save', function clearSatisfiedStatuses(next) {
   if (!this.fieldStatus || typeof this.fieldStatus.forEach !== 'function') return next();
   const filled = (v) => !(v === null || v === undefined || v === '' || (v instanceof Date && isNaN(v)));

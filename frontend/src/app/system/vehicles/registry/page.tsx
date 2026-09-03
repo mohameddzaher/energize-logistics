@@ -241,6 +241,29 @@ function VehicleRegistryListInner() {
   );
 }
 
+// ── `L` و`Card` خارج المكوِّن، وهذا ليس ترتيبًا ───────────────────────────────
+//
+// كانا يُعرَّفان داخل `VehicleForm`. ودالّةُ مكوِّنٍ تُعرَّف داخل عرضٍ تولَد
+// بهويّةٍ جديدة في كلّ حرفٍ يُكتب، فيرى React نوعًا مختلفًا فيهدم الشجرة كلَّها
+// ويبنيها: ستٌّ وثلاثون خانةً وخمسَ عشرة قائمةً تُهدَم وتُبنى عند كلّ ضغطة.
+//
+// وأثرُه هو ما اشتكى منه المستخدم بالحرف: الخانةُ التي يكتب فيها تُحذف من
+// الصفحة، فيذهب التركيزُ إلى أوّل المستند — و`Tab` بعدها لا تنتقل إلى الخانة
+// التالية بل تقفز إلى أعلى الصفحة. ومعه بطءٌ ظاهر، إذ تُعيد كلُّ قائمةٍ
+// منسدلةٍ نداءَ `/api/lookups` من جديد مع كلّ حرف.
+const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
+const L = ({ children }: { children: React.ReactNode }) => <label className="block text-xs font-semibold text-slate-600 mb-1">{children}</label>;
+// بطاقةُ قسم: عنوانٌ واضحٌ وإطارٌ يحدّ ما يخصّه — بدل خطٍّ رفيعٍ يفصل ستّةً
+// وثلاثين خانةً مسكوبةً في شبكةٍ واحدة.
+const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <section className="rounded-xl border border-slate-200 bg-slate-50/40">
+    <header className="px-4 py-2.5 border-b border-slate-200 bg-white rounded-t-xl">
+      <p className="text-[13px] font-bold text-slate-800">{title}</p>
+    </header>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">{children}</div>
+  </section>
+);
+
 function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onClose: () => void; onSaved: () => void }) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
@@ -259,19 +282,6 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
       notify(ar ? 'تم الحفظ' : 'Saved', 'success'); onSaved();
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setSaving(false); }
   };
-
-  const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
-  const L = ({ children }: { children: React.ReactNode }) => <label className="block text-xs font-semibold text-slate-600 mb-1">{children}</label>;
-  // بطاقةُ قسم: عنوانٌ واضحٌ وإطارٌ يحدّ ما يخصّه — بدل خطٍّ رفيعٍ يفصل ستّةً
-  // وثلاثين خانةً مسكوبةً في شبكةٍ واحدة.
-  const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <section className="rounded-xl border border-slate-200 bg-slate-50/40">
-      <header className="px-4 py-2.5 border-b border-slate-200 bg-white rounded-t-xl">
-        <p className="text-[13px] font-bold text-slate-800">{title}</p>
-      </header>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">{children}</div>
-    </section>
-  );
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>

@@ -4,6 +4,7 @@
 // البطاقةُ وثيقةٌ تنتهي ويُطالَب بتجديدها، ولها سجلٌّ لوجستيٌّ تُصدَر تحته —
 // ومركباتُ سجلٍّ لا يقودها إلّا مَن بطاقتُه منه. فالسجلُّ هنا لا في ملفّ الموظّف.
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -13,13 +14,28 @@ import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, SearchableSelect, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { IdCard, Plus, Pencil, Trash2, RotateCcw, Phone } from 'lucide-react';
+import { flexNormalize } from '@/lib/flexMatch';
 
 interface Card {
   _id: string; idNumber: string; name?: string; dateOfBirth?: string; absherPhone?: string;
   logisticRegister?: string; cardNumber?: string; cardType?: string; expiryDate?: string;
   notes?: string; isActive?: boolean; daysLeft: number | null; state: string;
   employee?: { _id: string; employeeNumber?: string; arabicName?: string; firstName?: string; lastName?: string; employmentStatus?: string } | null;
+  // الشيءان الآخران اللذان يخصّان السائق لا المركبة.
+  fidelity?: { status?: '' | 'covered' | 'required'; policyNumber?: string; addedDate?: string; notes?: string };
+  authorizations?: { _id: string; source?: 'registry' | 'assignment'; vehicle: string | null; plateNumber: string; startDate?: string; expiryDate?: string; authorizationNumber?: string }[];
+  // لوحاتٌ يسمّيها سجلُّ الإسناد الأقدمُ لهذا السائق وتخالف ورقةَ تفويضه.
+  staleAssignments?: string[];
 }
+
+// ── خيانة الأمانة ────────────────────────────────────────────────────────────
+// وثيقةٌ واحدةٌ على مستوى الشركة، والسؤالُ عن السائق سؤالٌ واحد: أمشمولٌ هو؟
+// و«مطلوب» ليست حالةً محايدة — هي سائقٌ يعمل والوثيقةُ لا تغطّيه.
+const FIDELITY: Record<string, { ar: string; en: string; cls: string }> = {
+  covered: { ar: 'مشمول', en: 'Covered', cls: 'bg-emerald-100 text-emerald-700' },
+  required: { ar: 'مطلوب ضمُّه', en: 'Required', cls: 'bg-red-100 text-red-700' },
+  '': { ar: 'غير محدَّد', en: 'Not set', cls: 'bg-slate-100 text-slate-500' },
+};
 
 // شرائحُ الانتهاء بلغة بقيّة مستندات القسم ولونِها نفسِه.
 const STATE: Record<string, { ar: string; en: string; cls: string }> = {
@@ -51,6 +67,7 @@ export default function DriverCardsPage() {
   const [fState, setFState] = useState('');
   const [fReg, setFReg] = useState('');
   const [fType, setFType] = useState('');
+  const [fFid, setFFid] = useState('');
   const [editing, setEditing] = useState<Partial<Card> | null>(null);
   const [saving, setSaving] = useState(false);
   const [emps, setEmps] = useState<any[]>([]);
@@ -71,22 +88,24 @@ export default function DriverCardsPage() {
   }, [editing]);
 
   // الفلترةُ في المتصفّح: ثلاثةٌ وستّون صفًّا، ونداءُ الخادم لكلّ حرفٍ إسراف.
-  const fold = (v: any) => String(v ?? '')
-    .replace(/[أإآٱ]/g, 'ا').replace(/[ةه]/g, 'ه').replace(/[ىئي]/g, 'ي')
-    .replace(/\s+/g, '').toLowerCase();
+  // والطيُّ هو الطيُّ الموحَّد — راجع lib/flexMatch.
+  const fold = flexNormalize;
   const shown = useMemo(() => {
     const n = fold(q);
     return cards.filter((c) => {
       if (fState && c.state !== fState) return false;
       if (fReg && (c.logisticRegister || '') !== fReg) return false;
       if (fType && (c.cardType || '') !== fType) return false;
+      if (fFid && (c.fidelity?.status || '') !== fFid) return false;
       if (!n) return true;
+      // ويُبحَث باللوحة أيضًا: «مَن المفوَّض على ٥٠٣٤؟» سؤالٌ يُسأل من هنا الآن.
       return [c.name, c.idNumber, c.cardNumber, c.absherPhone, c.logisticRegister, c.cardType, c.notes,
-        c.employee?.employeeNumber, c.employee?.arabicName].some((v) => fold(v).includes(n));
+        c.employee?.employeeNumber, c.employee?.arabicName,
+        ...(c.authorizations || []).map((a) => a.plateNumber)].some((v) => fold(v).includes(n));
     });
-  }, [cards, q, fState, fReg, fType]);
+  }, [cards, q, fState, fReg, fType, fFid]);
 
-  const activeF = [fState, fReg, fType].filter(Boolean).length;
+  const activeF = [fState, fReg, fType, fFid].filter(Boolean).length;
 
   const save = async () => {
     if (!editing?.idNumber?.trim()) { notify(t('رقم الهوية مطلوب', 'ID number required'), 'error'); return; }
@@ -114,6 +133,12 @@ export default function DriverCardsPage() {
     { header: t('نوع البطاقة', 'Card type'), key: 'cardType', width: 12 },
     { header: t('تاريخ الانتهاء', 'Expiry'), key: 'expiryDate', width: 14 },
     { header: t('الأيام المتبقية', 'Days left'), key: 'daysLeft', width: 12 },
+    { header: t('خيانة الأمانة', 'Fidelity insurance'), key: 'fidelity',
+      transform: (v: any) => (ar ? FIDELITY[v?.status || ''].ar : FIDELITY[v?.status || ''].en), width: 14 },
+    { header: t('عدد التفاويض', 'Authorisations'), key: 'authorizations', transform: (v: any) => (v?.length || 0), width: 12 },
+    { header: t('المركبات المفوَّضة', 'Authorised vehicles'), key: 'authorizations',
+      transform: (v: any) => (v || []).map((a: any) => a.plateNumber).filter(Boolean).join(' · '), width: 30 },
+    { header: t('ملاحظات', 'Notes'), key: 'notes', width: 30 },
   ];
 
   if (loading) return <Spinner />;
@@ -139,11 +164,24 @@ export default function DriverCardsPage() {
 
       {/* البطاقاتُ تُفلتِر بالضغط: الرقمُ الذي يُقرأ هو الذي يُفتح. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <Stat label={t('إجمالي البطاقات', 'Total cards')} value={totals.total || 0} onClick={() => setFState('')} on={!fState} />
+        <Stat label={t('إجمالي البطاقات', 'Total cards')} value={totals.total || 0} onClick={() => { setFState(''); setFFid(''); }} on={!fState && !fFid} />
         <Stat label={t('منتهية', 'Expired')} value={totals.expired || 0} accent="text-red-600" onClick={() => setFState('expired')} on={fState === 'expired'} />
         <Stat label={t('تنتهي خلال ٣٠ يوم', 'Within 30 days')} value={totals.critical || 0} accent="text-orange-600" onClick={() => setFState('critical')} on={fState === 'critical'} />
         <Stat label={t('تنتهي خلال ٦٠ يوم', 'Within 60 days')} value={totals.warning || 0} accent="text-amber-600" onClick={() => setFState('warning')} on={fState === 'warning'} />
         <Stat label={t('سارية', 'Valid')} value={totals.valid || 0} accent="text-emerald-600" onClick={() => setFState('valid')} on={fState === 'valid'} />
+      </div>
+
+      {/* ── الشخصُ لا المركبة ────────────────────────────────────────────────
+          ثلاثةُ أشياء تخصُّ السائق نفسَه: بطاقتُه، وخيانةُ أمانته، وما هو
+          مفوَّضٌ عليه. وكانت متفرّقةً في ثلاث شاشات لا يجمعها اسمُه. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Stat label={t('مشمولون بخيانة الأمانة', 'Fidelity covered')} value={totals.fidelityCovered || 0} accent="text-emerald-600"
+          onClick={() => setFFid('covered')} on={fFid === 'covered'} />
+        <Stat label={t('مطلوب ضمُّهم', 'Fidelity required')} value={totals.fidelityRequired || 0} accent="text-red-600"
+          onClick={() => setFFid('required')} on={fFid === 'required'} />
+        <Stat label={t('بلا جواب', 'Not set')} value={totals.fidelityUnknown || 0} accent="text-slate-500"
+          onClick={() => setFFid('')} on={false} />
+        <Stat label={t('لديهم تفويض ساري', 'Holding a live authorisation')} value={totals.authorized || 0} accent="text-sky-600" />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -161,8 +199,14 @@ export default function DriverCardsPage() {
           <option value="">{t('كل الأنواع', 'All types')}</option>
           {options.cardType.map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
+        <select value={fFid} onChange={(e) => setFFid(e.target.value)} aria-label={t('خيانة الأمانة', 'Fidelity insurance')}
+          className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
+          <option value="">{t('خيانة الأمانة — الكل', 'Fidelity — all')}</option>
+          <option value="covered">{t('مشمول', 'Covered')}</option>
+          <option value="required">{t('مطلوب ضمُّه', 'Required')}</option>
+        </select>
         {(activeF > 0 || q) && (
-          <button type="button" onClick={() => { setFState(''); setFReg(''); setFType(''); setQ(''); }}
+          <button type="button" onClick={() => { setFState(''); setFReg(''); setFType(''); setFFid(''); setQ(''); }}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold hover:bg-[#f37121]/20">
             <RotateCcw className="w-4 h-4" /> {t('مسح', 'Clear')}
           </button>
@@ -176,12 +220,13 @@ export default function DriverCardsPage() {
             <thead className="table-head">
               <tr>{[t('الاسم', 'Name'), t('رقم الهوية', 'ID'), t('جوال أبشر', 'Absher'), t('السجل اللوجستي', 'Register'),
                 t('رقم البطاقة', 'Card no.'), t('النوع', 'Type'), t('الانتهاء', 'Expiry'), t('المتبقي', 'Days left'),
-                t('الحالة', 'State'), t('الموظف', 'Employee'), ''].map((h, i) => (
+                t('الحالة', 'State'), t('خيانة الأمانة', 'Fidelity'), t('التفاويض', 'Authorisations'),
+                t('الموظف', 'Employee'), ''].map((h, i) => (
                 <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>))}</tr>
             </thead>
             <tbody>
               {shown.length === 0 ? (
-                <tr><td colSpan={11} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
+                <tr><td colSpan={13} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
               ) : shown.map((c) => {
                 const st = STATE[c.state] || STATE.unknown;
                 return (
@@ -197,6 +242,39 @@ export default function DriverCardsPage() {
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{c.expiryDate || '—'}</td>
                     <td className="px-3 py-2.5 tabular-nums text-slate-700">{c.daysLeft === null ? '—' : c.daysLeft}</td>
                     <td className="px-3 py-2.5"><span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${st.cls}`}>{ar ? st.ar : st.en}</span></td>
+                    <td className="px-3 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${FIDELITY[c.fidelity?.status || ''].cls}`}
+                        title={c.fidelity?.notes || c.fidelity?.policyNumber || ''}>
+                        {ar ? FIDELITY[c.fidelity?.status || ''].ar : FIDELITY[c.fidelity?.status || ''].en}
+                      </span>
+                    </td>
+                    {/* اللوحاتُ تُفتَح: الصفُّ يجيب «ما بيده؟» ثمّ يوصل إليه. */}
+                    <td className="px-3 py-2.5 text-xs">
+                      {(c.authorizations || []).length === 0
+                        ? <span className="text-slate-300">—</span>
+                        : (
+                          <div className="flex flex-wrap gap-1 max-w-[15rem]">
+                            {c.authorizations!.map((a) => (
+                              <Link key={a._id} href={a.vehicle ? `/system/vehicles/registry/${a.vehicle}` : '#'}
+                                className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-sky-700 font-mono text-[11px] hover:bg-sky-100"
+                                title={[a.authorizationNumber && t(`تفويض ${a.authorizationNumber}`, `authorisation ${a.authorizationNumber}`),
+                                  a.startDate && t(`من ${a.startDate}`, `from ${a.startDate}`),
+                                  a.expiryDate && t(`إلى ${a.expiryDate}`, `to ${a.expiryDate}`)].filter(Boolean).join(' · ')}>
+                                {a.plateNumber || '—'}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      {/* الخلافُ يُعرَض ولا يُبتلَع: سجلُّ الإسناد الأقدم يسمّي
+                          له شاحنةً أخرى، وأحدُهما قديم — ومَن يعرف أيُّهما هو
+                          مديرُ القسم لا الشاشة. */}
+                      {!!c.staleAssignments?.length && (
+                        <p className="mt-1 text-[10px] text-amber-600 leading-tight"
+                          title={t('سجلّ الإسناد الأقدم يسمّي له هذه اللوحة — يُراجَع', 'The older assignment register names this plate for him — needs review')}>
+                          ⚠ {t('سجلٌّ أقدم:', 'older register:')} {c.staleAssignments.join(' · ')}
+                        </p>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
                       {c.employee ? (c.employee.employeeNumber || c.employee.arabicName || '✓')
                         : <span className="text-amber-600 text-xs">{t('غير مربوط', 'unlinked')}</span>}
@@ -247,6 +325,24 @@ export default function DriverCardsPage() {
             <TextInput type="date" value={editing?.expiryDate || ''} onChange={(e) => setEditing((p) => ({ ...p, expiryDate: e.target.value }))} /></Field>
           <Field label={t('تاريخ الميلاد', 'Date of birth')}>
             <TextInput type="date" value={editing?.dateOfBirth || ''} onChange={(e) => setEditing((p) => ({ ...p, dateOfBirth: e.target.value }))} /></Field>
+          {/* ── خيانة الأمانة ───────────────────────────────────────────────
+              رقمُ الوثيقة وتاريخُ انتهائها في «وثائق تأمين الشركة» لا هنا،
+              فوثيقةٌ واحدةٌ تغطّي الجميع ونسخُها على كلّ سائقٍ يجعلها تفترق عند
+              أوّل تجديد. الذي يُكتب هنا هو موقعُ هذا السائق منها. */}
+          <Field label={t('خيانة الأمانة', 'Fidelity insurance')}>
+            <select value={editing?.fidelity?.status || ''} aria-label={t('خيانة الأمانة', 'Fidelity insurance')}
+              onChange={(e) => setEditing((p) => ({ ...p, fidelity: { ...(p?.fidelity || {}), status: e.target.value as any } }))}
+              className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+              <option value="">{t('غير محدَّد', 'Not set')}</option>
+              <option value="covered">{t('مشمول', 'Covered')}</option>
+              <option value="required">{t('مطلوب ضمُّه', 'Required')}</option>
+            </select></Field>
+          <Field label={t('تاريخ الضمّ للوثيقة', 'Added to policy on')}>
+            <TextInput type="date" value={editing?.fidelity?.addedDate || ''}
+              onChange={(e) => setEditing((p) => ({ ...p, fidelity: { ...(p?.fidelity || {}), addedDate: e.target.value } }))} /></Field>
+          <div className="sm:col-span-2"><Field label={t('وثيقة خاصّة (إن لم يكن على وثيقة الشركة)', 'Own policy number (if not on the company policy)')}>
+            <TextInput value={editing?.fidelity?.policyNumber || ''}
+              onChange={(e) => setEditing((p) => ({ ...p, fidelity: { ...(p?.fidelity || {}), policyNumber: e.target.value } }))} /></Field></div>
           <div className="sm:col-span-2"><Field label={t('ملاحظات', 'Notes')}>
             <TextInput value={editing?.notes || ''} onChange={(e) => setEditing((p) => ({ ...p, notes: e.target.value }))} /></Field></div>
         </div>

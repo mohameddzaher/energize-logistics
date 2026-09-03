@@ -27,6 +27,16 @@ const ymd = (v) => {
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 };
+// «موجود» و«مطلوب» كما كُتبا في الشيت. وأيُّ صياغةٍ أخرى تُترك فارغةً وتُعرَض
+// في آخر التقرير: تخمينُ حالة تأمينٍ أسوأُ من الاعتراف بأنّها غير معروفة.
+const fidelity = (v) => {
+  const s = String(v || '').trim();
+  if (!s) return null;
+  if (/^(موجود|موجوده|موجودة|نعم|yes|covered|✓)$/i.test(s)) return 'covered';
+  if (/^(مطلوب|مطلوبه|مطلوبة|لا|no|required)$/i.test(s)) return 'required';
+  return undefined;   // غيرُ مفهوم
+};
+
 // رقمُ البطاقة يصل عددًا عشريًّا لأنّ إكسل خزّنه رقمًا — يُنظَّف ولا يُخترَع.
 const cardNo = (v) => {
   const s = n(v); if (!s) return '';
@@ -53,19 +63,23 @@ const cardNo = (v) => {
     absher: col('جوال ابشر'), reg: col('سجل لوجستي'),
     card: col(' بطاقة السائق') || col('بطاقة السائق'),
     type: col('نوع البطاقة'), exp: col('تاريخ انتهاء بطاقة السائق'),
+    // العمودان الجديدان في «بطاقات سائقين النقل الثقيل وخيانة الأمانة - محدث».
+    // غيابُهما في ملفٍّ أقدمَ لا يمسح ما سُجِّل — راجع أدناه.
+    fid: col('خيانة الامانة') || col('خيانة الأمانة'),
+    note: col('ملاحظة') || col('ملاحظات'),
   };
 
   const emps = await Employee.find({}).select('iqamaNumber nationalId').lean();
   const byId = new Map();
   for (const e of emps) for (const k of [e.iqamaNumber, e.nationalId]) if (n(k)) byId.set(n(k), e._id);
 
-  const docs = []; let unmatched = 0;
+  const docs = []; let unmatched = 0; const unreadableFid = [];
   for (const r of rows) {
     if (r.r <= hdr.r || !r.cells) continue;
     const id = n(r.cells[C.id]); if (!id) continue;
     const emp = byId.get(id);
     if (!emp) unmatched += 1;
-    docs.push({
+    const d = {
       idNumber: id,
       employee: emp || undefined,
       name: n(r.cells[C.name]),
@@ -75,7 +89,17 @@ const cardNo = (v) => {
       cardNumber: cardNo(r.cells[C.card]),
       cardType: n(r.cells[C.type]),
       expiryDate: ymd(r.cells[C.exp]),
-    });
+    };
+    // العمودُ الغائبُ لا يُكتب: ملفٌّ أقدمُ بلا عمود «خيانة الامانة» كان
+    // سيمسح حالةَ واحدٍ وستّين سائقًا لو كتبنا `''` مكانَ الغائب. وكذلك
+    // الملاحظةُ الفارغة لا تمحو ملاحظةً كُتبت بالإيد.
+    if (C.fid) {
+      const f = fidelity(r.cells[C.fid]);
+      if (f === undefined) unreadableFid.push(`${id} «${n(r.cells[C.fid])}»`);
+      else if (f !== null) d['fidelity.status'] = f;
+    }
+    if (C.note && n(r.cells[C.note])) d.notes = n(r.cells[C.note]);
+    docs.push(d);
   }
 
   console.log(`\n  بطاقات: ${docs.length} · مطابقةٌ لموظّفين: ${docs.length - unmatched} · بلا موظّف: ${unmatched}`);
@@ -90,6 +114,16 @@ const cardNo = (v) => {
     return left >= 0 && left <= 60;
   }).length;
   console.log(`  منتهية: ${expired} · تنتهي خلال ٦٠ يومًا: ${soon}`);
+  if (C.fid) {
+    const cov = docs.filter((d) => d['fidelity.status'] === 'covered').length;
+    const req = docs.filter((d) => d['fidelity.status'] === 'required').length;
+    console.log(`  خيانة الأمانة — مشمول: ${cov} · مطلوب ضمُّه: ${req} · بلا جواب: ${docs.length - cov - req}`);
+    if (unreadableFid.length) {
+      console.log(`  ⚠ قيمٌ لم أفهمها فتُركت (${unreadableFid.length}): ${unreadableFid.slice(0, 8).join(' · ')}`);
+    }
+  } else {
+    console.log('  (لا عمودَ «خيانة الامانة» في هذا الملفّ — لن تُمَسّ حالاتُ التأمين المسجَّلة)');
+  }
 
   if (!APPLY) { console.log('\n  فحصٌ فقط — أضِف --yes للتنفيذ.\n'); await mongoose.disconnect(); return; }
 

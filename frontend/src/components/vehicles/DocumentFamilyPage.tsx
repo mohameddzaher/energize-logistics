@@ -32,6 +32,8 @@ import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar'
 import { RenewModal, BulkRenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
 import { ArrowRight, RefreshCw, Plus, Pencil, Eraser, Trash2, X, Save, Search } from 'lucide-react';
 import { VReg, DOC_TYPES, daysText, STATE_META, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
+import { flexIncludes } from '@/lib/flexMatch';
+import ManagedSelect from '@/components/system/ManagedSelect';
 
 /** عمودٌ واحد: كيف يُقرأ من المركبة، وكيف يُسمّى، وكيف يُرسَم. */
 export type DocColumn = {
@@ -63,6 +65,14 @@ export type DocField = {
   /** يأخذ عرضَ الشبكة كلَّه — للأسماء الطويلة. */
   wide?: boolean;
   hint?: string;
+  /**
+   * نوعُ قائمةٍ منسدلة يُملأ منها الحقل بدل الكتابة الحرّة — تُدار من
+   * «إعدادات القسم ← القوائم المنسدلة». الخانةُ الحرّة تُكتب بألف صيغة:
+   * «سائق نقل ثقيل» و«سائق ثقيل» و«سائق» ثلاثةُ مسمّياتٍ لواحد، فيصير الفلترُ
+   * ثلاثةَ خيارات. ويُخزَّن الاسمُ العربيّ لا المفتاح، لأنّ المخزَّن نصٌّ
+   * عربيٌّ منذ أوّل استيراد وتقرؤه الفلاتر والتصديرات.
+   */
+  lookup?: string;
 };
 
 /** قراءةُ مسارٍ منقوط. `?.` لا يكفي هنا لأن المسار نصٌّ لا يُعرَف إلا وقت التشغيل. */
@@ -619,15 +629,12 @@ function DocFormModal({ vehicle, fields, famLabel, ar, canDelete, onClose, onDon
       .catch((e: any) => notify(e?.message || 'Failed', 'error'));
   }, [creating, notify]);
 
-  const candidates = useMemo(() => {
-    const q = pq.trim().toLowerCase();
-    return (pool || []).filter((v) => {
-      if (onlyMissing && hasDoc(v, fields)) return false;
-      if (!q) return true;
-      return [v.plateNumber, v.ownerNameAr, v.departmentAr, v.sectorAr]
-        .some((x) => String(x || '').toLowerCase().includes(q));
-    }).slice(0, 400);
-  }, [pool, pq, onlyMissing, fields]);
+  // اختيارُ المركبة يُبحَث فيه باللوحة، فيُطوى كما تُطوى في كلّ بحثٍ آخر:
+  // مَن ينسخ اللوحة بمسافتين كان لا يجد مركبتَه هنا فيسجّل المستند على غيرها.
+  const candidates = useMemo(() => (pool || []).filter((v) => {
+    if (onlyMissing && hasDoc(v, fields)) return false;
+    return flexIncludes(pq, v.plateNumber, v.ownerNameAr, v.departmentAr, v.sectorAr);
+  }).slice(0, 400), [pool, pq, onlyMissing, fields]);
 
   /** اختيارُ مركبةٍ يملأ الاستمارة بما عليها فعلًا — لا بفراغٍ يمحو ما هو مسجَّل. */
   const pick = (v: VReg) => {
@@ -753,12 +760,18 @@ function DocFormModal({ vehicle, fields, famLabel, ar, canDelete, onClose, onDon
                         {ar ? fl.ar : fl.en}
                         {fl.hint && <span className="font-normal text-slate-400"> ({fl.hint})</span>}
                       </label>
-                      <input
-                        type={fl.kind === 'date' ? 'date' : fl.kind === 'number' ? 'number' : 'text'}
-                        value={vals[fl.path] ?? ''}
-                        onChange={(e) => setVals((p) => ({ ...p, [fl.path]: e.target.value }))}
-                        className={`${inp} ${fl.mono ? 'font-mono' : ''}`}
-                        {...(fl.mono ? { dir: 'ltr' } : {})} />
+                      {fl.lookup ? (
+                        <ManagedSelect storeLabel type={fl.lookup} value={vals[fl.path] ?? ''}
+                          onChange={(v) => setVals((p) => ({ ...p, [fl.path]: v }))}
+                          placeholder={t('اختر…', 'Select…')} />
+                      ) : (
+                        <input
+                          type={fl.kind === 'date' ? 'date' : fl.kind === 'number' ? 'number' : 'text'}
+                          value={vals[fl.path] ?? ''}
+                          onChange={(e) => setVals((p) => ({ ...p, [fl.path]: e.target.value }))}
+                          className={`${inp} ${fl.mono ? 'font-mono' : ''}`}
+                          {...(fl.mono ? { dir: 'ltr' } : {})} />
+                      )}
                     </>
                   )}
                 </div>

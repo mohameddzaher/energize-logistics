@@ -587,7 +587,35 @@ exports.list = async (req, res) => {
       VehicleMaster.countDocuments(filter),
     ]);
     const cfg = await getConfig();
-    const withStatus = vehicles.map((v) => decorate(v, cfg));
+    // ── بطاقةُ المفوَّض تُقرأ مع صفّه ──────────────────────────────────────────
+    //
+    // «هل التفاويض ممكن تتربط مع السائق؟» — الربطُ قائمٌ برقم الإقامة، فورقةُ
+    // التفويض تحمله وبطاقةُ السائق مفتاحُها هو. وما كان ينقص أن يُقرأ: شاشةُ
+    // التفاويض تقول مَن المفوَّض ولا تقول أبطاقتُه سارية، ولا أهو مشمولٌ بخيانة
+    // الأمانة — وهما شرطا أن يقود أصلًا. فيُفوَّض على شاحنةٍ مَن بطاقتُه منتهية.
+    //
+    // إحدى وستّون بطاقةً في السجلّ كلِّه، فقراءتُها كاملةً أرخصُ من أيّ ربط.
+    const cardsAll = await DriverCard.find({ isActive: { $ne: false } })
+      .select('idNumber name cardNumber cardType expiryDate fidelity').lean();
+    const cardById = new Map(cardsAll.map((c) => [String(c.idNumber || '').trim(), c]));
+    const withStatus = vehicles.map((v) => {
+      const row = decorate(v, cfg);
+      const iq = String(v.authorizedPerson?.iqamaNumber || '').trim();
+      const card = iq ? cardById.get(iq) : null;
+      if (card) {
+        const days = cardDaysLeft(card.expiryDate);
+        row.driverCard = {
+          _id: String(card._id),
+          cardNumber: card.cardNumber || '',
+          cardType: card.cardType || '',
+          expiryDate: card.expiryDate || '',
+          daysLeft: days,
+          state: cardState(days),
+          fidelityStatus: card.fidelity?.status || '',
+        };
+      }
+      return row;
+    });
     const body = { vehicles: withStatus, total, page, pages: Math.ceil(total / limit) };
     cache.set(cacheKey, body, 30000);
     res.json(body);
@@ -2171,7 +2199,29 @@ exports.deleteVehicleDocument = async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 //  بطاقاتُ السائقين — سجلٌّ في قسم المركبات
 // ═══════════════════════════════════════════════════════════════════════════
+/**
+ * مفتاحُ «هي هي» للّوحة الواحدة كُتبت بترتيبين.
+ *
+ * السجلّان يكتبان اللوحة الواحدة معكوسةً: «أ ص ي 5034» في سجلّ المركبات
+ * و«5034 أ ص ي» في سجلّ الإسناد. و`registryPlateKey` يحفظ الترتيب — وهو محقٌّ
+ * في ذلك، فهو يخدم البحثَ والعرض. أمّا هنا فالسؤال «أهما مركبةٌ واحدة؟»،
+ * فتُرتَّب الحروفُ ألفبائيًّا وتُفصَل عن الأرقام.
+ *
+ * والحروفُ تبقى في المفتاح ولا تُسقَط: «ل أ 1080» دراجةٌ و«أ ص ر 1080» تريلا،
+ * وإسقاطُ الحروف يجعلهما واحدة — أحدَ عشرَ تصادمًا في الملفّ الحاليّ.
+ */
+const samePlate = (p) => {
+  if (p == null) return null;
+  const west = String(p).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/ؤ/g, 'و');
+  const digits = (west.match(/\d+/g) || []).join('');
+  const letters = (west.match(/[\u0621-\u064AA-Za-z]/g) || []).map((c) => c.toUpperCase()).sort().join('');
+  const k = `${digits}|${letters}`;
+  return k === '|' ? null : k;
+};
+
 const DriverCard = require('../models/DriverCard');
+const VehicleAuthorization = require('../models/VehicleAuthorization');
 
 /** الأيّامُ حتى تاريخٍ بتقويم الشركة — تُحسب ولا تُخزَّن. */
 const cardDaysLeft = (ymd) => {
@@ -2205,13 +2255,99 @@ exports.listDriverCards = async (req, res) => {
       filter.$or = [{ name: rx }, { idNumber: rx }, { cardNumber: rx },
         { absherPhone: rx }, { logisticRegister: rx }, { cardType: rx }, { notes: rx }];
     }
+    if (q.fidelity) filter['fidelity.status'] = q.fidelity === 'none' ? { $in: ['', null] } : q.fidelity;
     let cards = await DriverCard.find(filter)
       .populate('employee', 'firstName lastName arabicName employeeNumber employmentStatus')
       .sort({ expiryDate: 1 }).lean();
 
+    // ── التفاويضُ تُقرأ مع البطاقة ────────────────────────────────────────────
+    //
+    // «هل التفاويض ممكن تتربط مع السائق؟» — سؤالُ مدير المركبات. والربطُ قائمٌ
+    // في القاعدة منذ البداية: `VehicleAuthorization.employee`. لكنّه لم يكن
+    // مقروءًا من ناحية السائق قطّ: التفاويضُ تُعرَض مركبةً مركبة، فمعرفةُ ما
+    // بيد سائقٍ بعينه تعني تصفّحَ ثلاثمئة صفٍّ بحثًا عن اسمه.
+    //
+    // فبطاقةُ السائق وتفاويضُه وخيانةُ أمانته تُقرأ من سطرٍ واحد — وهي الأشياء
+    // الثلاثة التي تخصّ الشخص لا المركبة.
+    // والتفويضُ مكتوبٌ في موضعين، فيُقرآن معًا:
+    //
+    //   ١) `VehicleMaster.authorizedPerson` — ورقةُ التفويض نفسُها التي تعرضها
+    //      شاشة «التفاويض»: رقمُها ومدّتُها، مفتاحُها رقمُ الإقامة. مئتان
+    //      واثنان وأربعون مركبة، منها ثمانٍ وخمسون بيد حاملي بطاقات السائقين.
+    //   ٢) `VehicleAuthorization` — سجلُّ الإسناد بالموظّف من وحدة المركبات
+    //      الأقدم، وفيه تاريخُ التسليم والتحويل.
+    //
+    // وهما عن الشيء نفسِه من وجهين، فيُدمجان بمفتاح اللوحة المطويّ ولا تُعرَض
+    // المركبةُ الواحدة مرّتين. ولا يُوحَّد المصدران هنا: توحيدُ سجلَّين حيَّين
+    // عملٌ قائمٌ بذاته، وأمّا السؤالُ المطروح — «ما الذي بيد هذا السائق؟» —
+    // فجوابُه اجتماعُهما.
+    const empIds = cards.map((c) => c.employee?._id).filter(Boolean);
+    const idNumbers = cards.map((c) => String(c.idNumber || '').trim()).filter(Boolean);
+
+    const [auths, masterAuths] = await Promise.all([
+      empIds.length
+        ? VehicleAuthorization.find({ employee: { $in: empIds }, status: 'active' })
+          .populate('vehicle', 'plateNumber').select('employee vehicle startDate documentExpiry').lean()
+        : [],
+      idNumbers.length
+        ? VehicleMaster.find({ 'authorizedPerson.iqamaNumber': { $in: idNumbers } })
+          .select('plateNumber authorizedPerson').lean()
+        : [],
+    ]);
+
+    const byEmp = new Map(); const byIqama = new Map();
+    const push = (map, k, v) => { if (!map.has(k)) map.set(k, []); map.get(k).push(v); };
+    for (const a of auths) {
+      push(byEmp, String(a.employee), {
+        _id: String(a._id),
+        source: 'assignment',
+        vehicle: a.vehicle?._id ? String(a.vehicle._id) : null,
+        plateNumber: a.vehicle?.plateNumber || '',
+        startDate: a.startDate || '',
+        expiryDate: a.documentExpiry || '',
+        authorizationNumber: '',
+      });
+    }
+    for (const v of masterAuths) {
+      const ap = v.authorizedPerson || {};
+      push(byIqama, String(ap.iqamaNumber || '').trim(), {
+        _id: String(v._id),
+        source: 'registry',
+        vehicle: String(v._id),        // شاشةُ المركبة في السجلّ الحاليّ
+        plateNumber: v.plateNumber || '',
+        startDate: ap.startDate ? String(ap.startDate).slice(0, 10) : '',
+        expiryDate: ap.expiryDate ? String(ap.expiryDate).slice(0, 10) : '',
+        authorizationNumber: ap.authorizationNumber || '',
+      });
+    }
+
     cards = cards.map((c) => {
       const days = cardDaysLeft(c.expiryDate);
-      return { ...c, daysLeft: days, state: cardState(days) };
+      // ── ورقةُ السجلّ أوّلًا، والإسنادُ بديلٌ لا شريك ────────────────────────
+      //
+      // السجلّان لا يتّفقان: أربعةَ عشرَ سائقًا يسمّي كلٌّ منهما له شاحنةً غير
+      // التي يسمّيها الآخر، وبعضُها تبادلٌ صريح — «٥٠٩٦» عند هذا في السجلّ
+      // و«٥٠٣٣» عند ذاك، ومقلوبةً عند الثاني. أي أنّ السائقين تبادلوا الشاحنات
+      // وسجلُّ الإسناد لم يُحدَّث.
+      //
+      // فعرضُهما معًا يقول إنّ السائق يمسك شاحنتين وهو يمسك واحدة. وورقةُ
+      // التفويض في سجلّ المركبات هي الوثيقةُ السارية — بها رقمُ التفويض
+      // ومدّتُه وهي التي تُبرَز عند المرور. فإن وُجدت فهي الجواب وحدَها،
+      // ولا يُقرأ سجلُّ الإسناد إلّا لمن لا ورقةَ له فيه.
+      const fromRegistry = byIqama.get(String(c.idNumber || '').trim()) || [];
+      const fromAssign = c.employee ? (byEmp.get(String(c.employee._id)) || []) : [];
+      const authorizations = fromRegistry.length ? fromRegistry : fromAssign;
+      return {
+        ...c,
+        daysLeft: days,
+        state: cardState(days),
+        authorizations,
+        // ولا يُخفى الخلاف: الصفُّ يقول إنّ للسجلّ الأقدم رأيًا آخر، فيُراجَع.
+        staleAssignments: fromRegistry.length
+          ? fromAssign.filter((a) => !fromRegistry.some((r) => samePlate(r.plateNumber) === samePlate(a.plateNumber)))
+            .map((a) => a.plateNumber).filter(Boolean)
+          : [],
+      };
     });
     // الشريحةُ تُفلتَر بعد الحساب: هي مشتقّةٌ من التاريخ لا حقلٌ في القاعدة.
     if (q.state) cards = cards.filter((c) => c.state === q.state);
@@ -2226,6 +2362,12 @@ exports.listDriverCards = async (req, res) => {
         warning: count('warning'),
         valid: count('valid') + count('upcoming'),
         unlinked: cards.filter((c) => !c.employee).length,
+        // خيانةُ الأمانة: «مطلوب» هو الرقمُ الذي يُقرأ — سائقٌ يعمل والوثيقةُ
+        // لا تغطّيه. و«بلا جواب» ليس صفرًا: هو سؤالٌ لم يُسأل بعد.
+        fidelityCovered: cards.filter((c) => c.fidelity?.status === 'covered').length,
+        fidelityRequired: cards.filter((c) => c.fidelity?.status === 'required').length,
+        fidelityUnknown: cards.filter((c) => !c.fidelity?.status).length,
+        authorized: cards.filter((c) => (c.authorizations || []).length > 0).length,
       },
       // قيمُ الفلاتر تُبنى من السجلّ لا تُكتب يدًا.
       options: {
@@ -2240,7 +2382,7 @@ exports.listDriverCards = async (req, res) => {
 };
 
 const CARD_FIELDS = ['idNumber', 'employee', 'name', 'dateOfBirth', 'absherPhone',
-  'logisticRegister', 'cardNumber', 'cardType', 'expiryDate', 'notes', 'isActive'];
+  'logisticRegister', 'cardNumber', 'cardType', 'expiryDate', 'notes', 'isActive', 'fidelity'];
 
 const pickCard = (body) => {
   const out = {};

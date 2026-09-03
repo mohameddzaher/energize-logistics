@@ -20,6 +20,7 @@
 //    «إلغاء الفلترة» وعدد المعروض جنبه، فمحدش يقعد يدوّر على صف مخفي بفلتر نسيه.
 import { useMemo } from 'react';
 import { Search, X } from 'lucide-react';
+import { flexNormalize } from '@/lib/flexMatch';
 
 export type Chip = {
   key: string;
@@ -46,11 +47,10 @@ const TONES: Record<string, { on: string; off: string; dot: string }> = {
  * بيفضل معناه «لو دست هنا هتلاقي كام».
  */
 export function useChipFilter<T>(rows: T[], chips: Chip[], active: string, query: string, searchIn: (r: T) => (string | number | null | undefined)[]) {
-  const norm = (s: unknown) => String(s ?? '')
-    .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
-    .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/ـ/g, '')
-    .replace(/[ً-ْ]/g, '')
-    .toLowerCase().trim();
+  // الطيُّ الموحَّد — راجع lib/flexMatch. كان هذا يطوي الهمزةَ والتاءَ ولا
+  // يطوي المسافة، فاللوحةُ المنسوخة من أبشر بمسافتين لا تجد نفسَها المخزَّنة
+  // بمسافةٍ واحدة: الخادمُ يُرجعها ثم يحذفها هذا السطر.
+  const norm = flexNormalize;
 
   return useMemo(() => {
     const q = norm(query);

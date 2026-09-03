@@ -72,6 +72,13 @@ const REGISTRY = [
   vehicleList('vehicle_gps_device_status', 'حالة جهاز التتبّع', 'GPS Device Statuses', vehicleDefaults.gpsDeviceStatuses),
   vehicleList('vehicle_inspection_status', 'حالة الفحص', 'Inspection Statuses', vehicleDefaults.inspectionStatuses),
   vehicleList('vehicle_job_title', 'وظائف المفوَّضين', 'Authorised-person Job Titles', vehicleDefaults.jobTitles),
+  // جهةُ الإبلاغ عن الحادث: «نجم» أو «المرور». كانت خانةً حرّة، فكُتبت
+  // «Najm» في ستٍّ وعشرين واقعة و«المرور» في إحدى وعشرين — فلا يُعَدُّ منها
+  // شيء. راجع scripts/normalizeReportedVia.js.
+  vehicleList('vehicle_reported_via', 'جهة الإبلاغ عن الحادث', 'Accident Reported Via', [
+    { key: 'najm', nameAr: 'نجم', nameEn: 'Najm' },
+    { key: 'traffic', nameAr: 'المرور', nameEn: 'Traffic police' },
+  ]),
 
   // ── إدارة الأسطول — قوائم منسدلة قابلة للتعديل ────────────────────────────
   {

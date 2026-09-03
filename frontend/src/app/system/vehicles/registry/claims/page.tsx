@@ -13,6 +13,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import ManagedSelect from '@/components/system/ManagedSelect';
 import {
   getClaims, money, fmtDate, canEditVehicles, canAdminVehicles,
   createClaim, updateClaim, deleteClaim,
@@ -57,6 +58,8 @@ function ClaimsInner() {
     { header: t('متوقع استرداده', 'Expected recovery'), key: 'claim', transform: (v: any) => v?.expectedRecoverySar ?? '', width: 18 },
     { header: t('الحالة', 'Status'), key: 'statusAr', width: 14 },
     { header: t('الطرف الآخر', 'Counterparty'), key: 'counterpartyNameAr', width: 24 },
+    { header: t('تم الإبلاغ عبر', 'Reported via'), key: 'reportedViaAr', width: 14 },
+    { header: t('الملاحظات', 'Notes'), key: 'claim', transform: (v: any) => v?.notesAr || '', width: 46 },
   ];
 
   // البحث والحالة يُنفَّذان على الخادم، فالمصفوفة التي في اليد نتائجُ الفلتر لا
@@ -128,7 +131,7 @@ function ClaimsInner() {
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>{[t('اللوحة', 'Plate'), t('التاريخ', 'Date'), t('نسبة الخطأ', 'Fault'), t('شركة التأمين', 'Insurer'),
                 t('المقدَّر', 'Estimated'), t('متوقع استرداده', 'Recovery'), t('الحالة', 'Status'), t('آخر رد', 'Last reply'),
-                ...(canEdit ? [t('إجراءات', 'Actions')] : [])].map((h, i) => (
+                t('الملاحظات', 'Notes'), ...(canEdit ? [t('إجراءات', 'Actions')] : [])].map((h, i) => (
                 <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>
               ))}</tr>
             </thead>
@@ -170,6 +173,16 @@ function ClaimsInner() {
                         </span>
                       )}
                     </td>
+                    {/* ── الملاحظات في الجدول لا في النافذة ────────────────
+                        كلُّ مطالبةٍ من التسع والأربعين تحمل ملاحظةً، وفيها
+                        الخطوةُ التالية: «بانتظار فاتورة الإصلاح ثم التوجّه
+                        إلى…». وهي التي تُقرأ يوميًّا — إخفاؤها خلف زرِّ تعديلٍ
+                        يعني فتحَ تسعٍ وأربعين نافذةً لمعرفة أين وصلت. */}
+                    <td className="px-3 py-2.5 text-start text-[12px] text-slate-600 min-w-[16rem] max-w-[26rem]">
+                      {r.claim?.notesAr
+                        ? <span className="line-clamp-2 leading-snug" title={r.claim.notesAr}>{r.claim.notesAr}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
                     {canEdit && (
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1">
@@ -196,7 +209,7 @@ function ClaimsInner() {
                   </tr>
                 );
               })}
-              {!rows.length && <tr><td colSpan={canEdit ? 9 : 8} className="px-3 py-12 text-center text-slate-500">{t('لا توجد حوادث', 'No claims')}</td></tr>}
+              {!rows.length && <tr><td colSpan={canEdit ? 10 : 9} className="px-3 py-12 text-center text-slate-500">{t('لا توجد حوادث', 'No claims')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -307,8 +320,11 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
               <input value={f.counterpartyNameAr} onChange={(e) => set('counterpartyNameAr', e.target.value)} className={inp} /></div>
             <div><label className={lbl}>{t('نسبة الخطأ علينا %', 'Our fault %')}</label>
               <input type="number" min={0} max={100} value={f.faultPercent} onChange={(e) => set('faultPercent', e.target.value)} className={inp} /></div>
+            {/* جهةُ الإبلاغ قائمةٌ تُدار من «إعدادات القسم ← القوائم المنسدلة»:
+                كانت خانةً حرّة فكُتبت «Najm» و«المرور» فلم يُعَدَّ منها شيء. */}
             <div><label className={lbl}>{t('تم الإبلاغ عبر', 'Reported via')}</label>
-              <input value={f.reportedViaAr} onChange={(e) => set('reportedViaAr', e.target.value)} className={inp} placeholder="نجم" /></div>
+              <ManagedSelect storeLabel type="vehicle_reported_via" value={f.reportedViaAr}
+                onChange={(v) => set('reportedViaAr', v)} placeholder={t('اختر…', 'Select…')} /></div>
             <div><label className={lbl}>{t('الحالة', 'Status')}</label>
               <select value={f.statusCode} onChange={(e) => set('statusCode', e.target.value)} className={inp}>
                 <option value="pending">{t('قيد المتابعة', 'Pending')}</option>

@@ -14,6 +14,17 @@ export type VReg = {
     name?: string; iqamaNumber?: string; jobTitleAr?: string;
     authorizationNumber?: string; startDate?: string | null; expiryDate?: string | null; statusCode?: string;
   };
+  /**
+   * بطاقةُ السائق المفوَّض على هذه المركبة، مقروءةً برقم إقامته.
+   *
+   * ليست حقلًا على المركبة: يجمعها الخادمُ من سجلّ بطاقات السائقين عند كلّ
+   * قراءة. شاشةُ التفاويض كانت تقول مَن المفوَّض ولا تقول أبطاقتُه سارية ولا
+   * أهو مشمولٌ بخيانة الأمانة — وهما شرطا القيادة لا تفصيلٌ في ملفٍّ آخر.
+   */
+  driverCard?: {
+    _id: string; cardNumber?: string; cardType?: string; expiryDate?: string;
+    daysLeft?: number | null; state?: string; fidelityStatus?: '' | 'covered' | 'required';
+  };
   /** هل تعمل المركبة أصلًا: في الخدمة / غير مستخدمة / مسروقة. */
   serviceStatusAr?: string; serviceStatusCode?: string;
   /** شروط منصّة لوجستي التي لم تستوفِها هذه المركبة — قائمة عمل لا وصف. */

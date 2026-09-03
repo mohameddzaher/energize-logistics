@@ -30,7 +30,11 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { RenewModal, BulkRenewModal, SharedPolicyRenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
+import { ColumnFilter } from '@/components/ColumnFilter';
 import { ArrowRight, RefreshCw, Plus, Pencil, Eraser, Trash2, X, Save, Search } from 'lucide-react';
+
+/** مجموعةٌ فارغةٌ ثابتة — لئلّا تُبنى واحدةٌ جديدة في كلّ رسمةٍ فتُعاد اللوحة. */
+const EMPTY_SET: Set<string> = new Set();
 import { VReg, DOC_TYPES, daysText, STATE_META, publicState, canEditVehicles, canAdminVehicles, isSharedPaper } from '@/lib/vehicleRegistry';
 import { flexIncludes } from '@/lib/flexMatch';
 import ManagedSelect from '@/components/system/ManagedSelect';
@@ -213,6 +217,19 @@ function DocumentFamilyPageInner({
   // مئةً وثمانٍ وتسعين تأشيرةً لحدثٍ واحد، وأيُّ مركبةٍ تُنسى تبقى «منتهية» وهي
   // مؤمَّنة. فتُسأل الوثيقةُ بدل المركبات — راجع SharedPolicyRenewModal.
   const [sharedOpen, setSharedOpen] = useState(false);
+  // ── فلترُ العمود على طريقة إكسل ───────────────────────────────────────────
+  // القمعُ في رأس العمود يفتح قيمَه فتُؤشَّر المطلوبة. والقيمةُ تُقرأ بدالّة
+  // العمود نفسِها التي تُرسم بها الخلية ويُصدَّر بها الملفّ — فما يُفلتَر عليه
+  // هو ما يُقرأ حرفًا بحرف. والصفوفُ هنا محمَّلةٌ كاملةً (limit=2000) فالقائمة
+  // كاملةٌ لا قائمةَ صفحةٍ واحدة.
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  const setColFilter = useCallback((key: string, sel: Set<string>) => {
+    setColFilters((prev) => {
+      const next = { ...prev };
+      if (sel.size) next[key] = sel; else delete next[key];
+      return next;
+    });
+  }, []);
   /** استمارةُ العائلة: `vehicle: null` تعني «اختر المركبة أوّلًا» — أي إنشاء. */
   const [form, setForm] = useState<{ vehicle: VReg | null } | null>(null);
 
@@ -336,6 +353,23 @@ function DocumentFamilyPageInner({
     return { ...chipFiltered, shown };
   }, [chipFiltered, docKey, within, includeExpired]);
 
+  // ── وفلاترُ الأعمدة فوق ذلك كلِّه ─────────────────────────────────────────
+  // آخرُ ما يُطبَّق، فيرى ما تركته الشرائحُ والمدّة — كما يفعل إكسل بالضبط.
+  const colText = useCallback((c: DocColumn, v: VReg) => {
+    const raw = c.get(v);
+    return raw === null || raw === undefined || raw === '' ? '' : String(raw);
+  }, []);
+  const shownRows = useMemo(() => {
+    const keys = Object.keys(colFilters);
+    if (!keys.length) return f.shown;
+    return f.shown.filter((v: VReg) => keys.every((k) => {
+      const c = columns.find((x) => x.key === k);
+      if (!c) return true;
+      return colFilters[k].has(colText(c, v));
+    }));
+  }, [f.shown, colFilters, columns, colText]);
+  const colFilterCount = Object.keys(colFilters).length;
+
   // صفٌّ مسطَّح للتصدير: نفس الدوالّ التي تُرسم بها الخلايا، فالملفّ لا يختلف
   // عن الشاشة ولا يحتاج تعريفًا ثانيًا للأعمدة.
   const flat = (v: VReg) => {
@@ -418,11 +452,13 @@ function DocumentFamilyPageInner({
     return [...m.values()].sort((a, b) => b.count - a.count);
   }, [rows, docKey, doc]);
 
-  const allShownPicked = f.shown.length > 0 && f.shown.every((v: VReg) => picked.has(v._id));
+  // «اختيار كل المعروض» يعني المعروضَ بعد فلاتر الأعمدة أيضًا — وإلّا اختار
+  // صفوفًا لا يراها الضاغطُ على المربّع.
+  const allShownPicked = shownRows.length > 0 && shownRows.every((v: VReg) => picked.has(v._id));
   const toggleAll = () => setPicked((p) => {
     const n = new Set(p);
-    if (allShownPicked) f.shown.forEach((v: VReg) => n.delete(v._id));
-    else f.shown.forEach((v: VReg) => n.add(v._id));
+    if (allShownPicked) shownRows.forEach((v: VReg) => n.delete(v._id));
+    else shownRows.forEach((v: VReg) => n.add(v._id));
     return n;
   });
 
@@ -462,17 +498,38 @@ function DocumentFamilyPageInner({
             {t('إضافة', 'Add')}
           </button>
         )}
+        {/* ── نطاقان لا واحد ────────────────────────────────────────────────
+            «المعروض» هو الشاشة بالضبط بعد الفلتر والشريحة والبحث وفلاتر
+            الأعمدة. و«الكلّ» هو السجلّ كلُّه بلا فلتر — كان لا سبيل إليه إلّا
+            بمسح كلّ فلترٍ باليد ثمّ التصدير ثمّ إعادتها. والأعمدةُ واحدةٌ في
+            الحالتين، وهي أعمدةُ الشاشة نفسُها، فأيُّ عمودٍ يُضاف هنا يظهر في
+            الملفّ بلا تعريفٍ ثانٍ. */}
         <ExportMenu fileName={fileName} lang={lang as 'ar' | 'en'}
-          options={[{
-            key: 'shown',
-            // الملفّ هو المعروض بالضبط — بعد الفلتر والشريحة والبحث. تصديرُ
-            // الأسطول كلِّه من شاشةٍ مفلترة يجعل من يفتح الملف يظنّ فلترَه ضاع.
-            label: t('تصدير المعروض (بعد الفلتر)', 'Export what is shown (filtered)'),
-            sheets: [{ name: t(titleAr, titleEn).slice(0, 28), rows: f.shown.map(flat), columns: exportCols }],
-          }]} />
+          options={[
+            {
+              key: 'shown',
+              label: t('تصدير المعروض (بعد الفلتر)', 'Export what is shown (filtered)'),
+              sheets: [{ name: t(titleAr, titleEn).slice(0, 28), rows: shownRows.map(flat), columns: exportCols }],
+            },
+            {
+              key: 'all',
+              label: t('تصدير الكلّ', 'Export everything'),
+              hint: t('السجلّ كلُّه', 'whole register'),
+              resolve: async () => {
+                const d = await api.get<{ vehicles: VReg[] }>('/api/vehicle-registry?limit=2000');
+                return [{ name: t(titleAr, titleEn).slice(0, 28), rows: (d.vehicles || []).map(flat), columns: exportCols }];
+              },
+            },
+          ]} />
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2">
+        {colFilterCount > 0 && (
+          <button onClick={() => setColFilters({})}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold hover:bg-[#f37121]/20">
+            {t(`مسح فلاتر الأعمدة (${colFilterCount})`, `Clear column filters (${colFilterCount})`)}
+          </button>
+        )}
         <FilterPanel
           optionsUrl="/api/vehicle-registry/filters"
           value={filters}
@@ -524,7 +581,7 @@ function DocumentFamilyPageInner({
       <FilterBar chips={CHIPS} counts={f.counts} active={chip} onChange={setChip}
         query={q} onQuery={setQ}
         placeholder={t('ابحث بأيّ شيء — لوحة، هيكل، مالك، رقم هويّة، رقم وثيقة، سريال جهاز…', 'Search anything — plate, chassis, owner, ID, policy, serial…')}
-        shown={f.shown.length} total={rows.length} ar={ar} />
+        shown={shownRows.length} total={rows.length} ar={ar} />
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -538,14 +595,25 @@ function DocumentFamilyPageInner({
                   </th>
                 )}
                 {columns.map((c) => (
-                  <th key={c.key} className="px-3 py-3 text-start font-bold whitespace-nowrap">{ar ? c.ar : c.en}</th>
+                  <th key={c.key} className="px-3 py-3 text-start font-bold whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">
+                      {ar ? c.ar : c.en}
+                      <ColumnFilter
+                        rows={f.shown}
+                        field={c.key}
+                        valueOf={(r: any) => colText(c, r)}
+                        selected={colFilters[c.key] || EMPTY_SET}
+                        onChange={(sel) => setColFilter(c.key, sel)}
+                        lang={ar ? 'ar' : 'en'} />
+                    </span>
+                  </th>
                 ))}
                 {docKey && <th className="px-3 py-3 text-start font-bold whitespace-nowrap">{t('الحالة', 'State')}</th>}
                 {(renewable || editable) && <th className="px-3 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {f.shown.map((v: VReg) => {
+              {shownRows.map((v: VReg) => {
                 const st = docKey ? stateOf(v, docKey) : null;
                 const meta = st ? (STATE_META[st.state] || STATE_META.valid) : null;
                 return (

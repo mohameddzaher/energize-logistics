@@ -16,9 +16,18 @@ export type ColumnFilterOption = { value: string; count?: number };
 //     يجمّد التبويب.
 //   • `rows` — الاشتقاق من الصفوف المحمَّلة، ويبقى للجداول التي تُحمَّل كاملةً في
 //     المتصفح أصلًا فلا ينقصها شيء.
-export function ColumnFilter({ rows, field, selected, onChange, onOpen, lang, format, options, loading, truncated, onQuery }: {
+export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen, lang, format, options, loading, truncated, onQuery }: {
   rows?: any[];
   field: string;
+  /**
+   * قراءةُ قيمة العمود من الصفّ حين لا تكون خاصّيّةً مسطَّحة.
+   *
+   * جداولُ قسم المركبات تبني كلَّ عمودٍ بدالّة (`insurance.policyNumber`
+   * ومحسوباتٌ كالحالة)، فقراءةُ `r[field]` تُرجع `undefined` وتُخرج القائمة
+   * كلَّها «(فارغ)». وهي الدالّةُ نفسُها التي يُرسَم بها العمود ويُصدَّر —
+   * فما يُفلتَر عليه هو ما يُقرأ في الشاشة حرفًا بحرف.
+   */
+  valueOf?: (row: any) => any;
   selected: Set<string>;
   onChange: (s: Set<string>) => void;
   onOpen?: () => void;
@@ -82,14 +91,14 @@ export function ColumnFilter({ rows, field, selected, onChange, onOpen, lang, fo
 
     const map = new Map<string, string>();
     for (const r of rows || []) {
-      const raw = r?.[field];
+      const raw = valueOf ? valueOf(r) : r?.[field];
       const value = raw === null || raw === undefined || raw === '' ? '' : String(raw);
       if (!map.has(value)) map.set(value, label(value, raw));
     }
     return Array.from(map.entries())
       .map(([value, lbl]) => ({ value, label: lbl, count: undefined }))
       .sort((a, b) => a.label.localeCompare(b.label, ar ? 'ar' : 'en', { numeric: true }));
-  }, [open, options, rows, field, ar, format, selected]);
+  }, [open, options, rows, field, valueOf, ar, format, selected]);
 
   const shown = (!serverSearch && q.trim())
     ? values.filter((v) => v.label.toLowerCase().includes(q.trim().toLowerCase()))

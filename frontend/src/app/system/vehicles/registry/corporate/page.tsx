@@ -11,6 +11,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import SelectionBar from '@/components/ls2/SelectionBar';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { ShieldCheck, RefreshCw, X, Check, ArrowRight, Pencil, Plus, Users, Trash2, Search } from 'lucide-react';
 import {
   getCorporatePolicies, renewCorporatePolicy, createCorporatePolicy, updateCorporatePolicy,
@@ -52,6 +53,25 @@ export default function CorporatePoliciesPage() {
   if (loading) return <Spinner />;
   const chosen = rows.filter((p) => picked.has(p._id));
 
+  // أعمدةُ الملفّ هي ما تعرضه البطاقة — ومعها ما لا يتّسع لها: أرقامُ الوثيقة
+  // كلُّها، والإجماليُّ المحسوب، وأسماءُ المشمولين.
+  const cols: ExportColumn[] = [
+    { header: t('الوثيقة', 'Policy'), key: 'scopeAr', width: 30 },
+    { header: t('المؤمَّن له', 'Policyholder'), key: 'policyholderAr', width: 26 },
+    { header: t('شركة التأمين', 'Insurer'), key: 'companyAr', width: 24 },
+    { header: t('أرقام الوثيقة', 'Policy numbers'), key: 'policyNumbers', transform: (v: any) => (v || []).join(' · '), width: 34 },
+    { header: t('تاريخ البداية', 'Start'), key: 'startDate', transform: (v: any) => fmtDate(v), width: 14 },
+    { header: t('تاريخ الانتهاء', 'Expiry'), key: 'expiryDate', transform: (v: any) => fmtDate(v), width: 14 },
+    { header: t('المتبقي (يوم)', 'Days left'), key: 'daysRemaining', width: 12 },
+    { header: t('الحالة', 'State'), key: 'state', transform: (v: any) => stateLabel(v, ar), width: 16 },
+    { header: t('القسط للفرد سنويًّا', 'Per person / yr'), key: 'premiumPerPersonSar', transform: (v: any) => (v == null ? '' : money(v)), width: 16 },
+    { header: t('عدد المشمولين', 'Covered'), key: 'drivers', transform: (v: any) => (v ? v.coveredCount : ''), width: 12 },
+    { header: t('القسط الإجمالي', 'Total premium'), key: '_total', transform: (_: any, r: any) => money(r.computedPremiumSar ?? r.premiumSar ?? 0), width: 16 },
+    { header: t('المشمولون', 'Covered names'), key: 'drivers', transform: (v: any) => (v ? v.covered.map((d: any) => d.name || d.idNumber).join(' · ') : ''), width: 60 },
+    { header: t('مطلوب ضمُّهم', 'To be added'), key: 'drivers', transform: (v: any) => (v ? v.pending.map((d: any) => d.name || d.idNumber).join(' · ') : ''), width: 30 },
+    { header: t('ملاحظات', 'Notes'), key: 'notesAr', width: 30 },
+  ];
+
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <button onClick={() => router.push('/system/vehicles/registry/overview')}
@@ -64,6 +84,9 @@ export default function CorporatePoliciesPage() {
         title={t('وثائق التأمين على مستوى الشركة', 'Company-level Insurance')}
         subtitle={t('وثائق غير مرتبطة بمركبة بعينها — انتهاؤها يوقف العمل كله', 'Not tied to any vehicle — their expiry stops everything')}
       >
+        <ExportMenu fileName="company-policies" lang={ar ? 'ar' : 'en'}
+          options={[{ key: 'all', label: t('تصدير الكلّ', 'Export everything'),
+            sheets: [{ name: t('وثائق الشركة', 'Company policies'), rows, columns: cols }] }]} />
         {canEdit && (
           <button onClick={() => setEditing({})}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f14] text-white text-sm font-semibold">

@@ -100,6 +100,26 @@ function maybePoll() {
   syncStamps().finally(() => { polling = false; });
 }
 
+/**
+ * مزامنةٌ تُنتظَر قبل خدمة الطلب — تُنادى من وسيطٍ على كلّ نداء.
+ *
+ * ── ولماذا تُنتظَر ولا تُترك في الخلفيّة ───────────────────────────────────
+ * المزامنةُ في الخلفيّة تترك **أوّلَ** قراءةٍ بعد الإبطال قديمةً: العاملُ الساكن
+ * لا يستيقظ إلّا بطلب، فيخدم الطلبَ من ذاكرته ثمّ يزامن. وأوّلُ قراءةٍ بعد
+ * الكتابة هي بالضبط ما يفعله المستخدم — يضغط «إغلاق» فتُعاد الصفحةُ فورًا.
+ * قِيس ذلك بعد النشر: أوّلُ قراءةٍ ٤٣ والإحدى عشرةُ بعدها ٤٢.
+ *
+ * فتُنتظَر مرّةً في الثانية على الأكثر: استعلامٌ صغيرٌ واحدٌ يتحمّله طلبٌ واحدٌ
+ * كلَّ ثانية، وبقيّةُ الطلبات تقارن رقمًا ولا تنتظر شيئًا.
+ */
+async function syncIfDue() {
+  const now = Date.now();
+  if (polling || now - lastPoll < POLL_MS) return;
+  lastPoll = now;
+  polling = true;
+  try { await syncStamps(); } finally { polling = false; }
+}
+
 function clear(prefix) {
   clearLocal(prefix);
   const d = db();
@@ -147,4 +167,4 @@ async function wrap(key, ttlMs, producer) {
   }
 }
 
-module.exports = { get, set, clear, wrap, syncStamps };
+module.exports = { get, set, clear, wrap, syncStamps, syncIfDue };

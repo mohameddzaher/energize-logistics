@@ -15,7 +15,12 @@ const mongoose = require('mongoose');
 const argv = process.argv.slice(2);
 const iB = argv.indexOf('--base');
 const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
-const ORIGIN = process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000';
+// المصدرُ يتبع الخادمَ الذي نفحصه لا ملفَّ البيئة المحلّيّ: حارسُ CSRF يقبل
+// مصادرَ البرودكشن وحدها، فإرسالُ `localhost` إليه يردّ ٤٠٣ على كلّ POST — وهو
+// ما يبدو عطبًا في الميزة وهو عطبٌ في الفحص.
+const ORIGIN = /api\.energize-logistics\.com/.test(BASE)
+  ? 'https://energize-logistics.com'
+  : (process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000');
 const PW = 'Passenergize1!';
 
 let pass = 0; let fail = 0;
@@ -45,6 +50,7 @@ const call = async (method, path, ck, body) => {
   const User = require('../models/User');
   const Branch = require('../models/Branch');
   const OW = require('../models/OperationsWorkflow');
+  const WalletTransaction = require('../models/WalletTransaction');
   const Party = require('../models/CollectionsParty');
 
   await User.deleteMany({ email: /^zz-w2c/ });
@@ -81,10 +87,55 @@ const call = async (method, path, ck, body) => {
   // الفرعُ المنتظَر: فرعُ العهدة التي ستستقبل الحركة، بالعربيّة من القائمة.
   const { arabicBranchName } = require('../utils/payingBranch');
   const expectedBranchAr = await arabicBranchName(branch?._id);
+
+  // ── ويومُ العهدة يُفتَح للفحص ثمّ يُعاد كما كان ─────────────────────────────
+  //
+  // العهدةُ عهدةُ فرعٍ حقيقيّ، ويومُها يُقفَل متى أقفله موظّفُه أو أقفله النظامُ
+  // آخرَ اليوم. وسويتٌ تفشل لأنّ يومًا أُقفِل ليست سويتَ فحص: تُصبح حمراءَ في
+  // أوقاتٍ من اليوم وخضراءَ في أخرى، ومن رآها حمراءَ مرّتين لن ينظر فيها ثالثة.
+  //
+  // فتُفتَح إن كانت مقفلة، ويُحفَظ أنّها كانت كذلك، وتُعاد إلى حالها في النهاية
+  // — فلا تترك السويتُ دفترَ فرعٍ مفتوحًا وقد كان مقفلًا.
+  //
+  // وإعادةُ الفتح صلاحيّةُ مديرٍ (`operations_manager`) لا محاسب، فيُنشئ الفحصُ
+  // حسابَه لها ويحذفه — كما يفعل مع بقيّة حساباته.
+  const opsMgrUser = await User.create({
+    email: 'zz-w2c-ops@example.invalid', password: PW, firstName: 'م', lastName: 'ع',
+    role: 'operations_manager',
+  });
+  const opsMgr = await login(opsMgrUser.email);
+  let reclose = false;
+  {
+    const w = await call('GET', `/api/wallet/daily?branchId=${branch?._id}`, accLogin.ck);
+    const id = w.json?.wallet?._id;
+    if (w.json?.wallet?.isClosed && id) {
+      const r = await call('POST', `/api/wallet/reopen/${id}`, opsMgr.ck, {});
+      reclose = r.status === 200;
+      console.log(`  (يومُ عهدة ${branch?.name} كان مقفلًا — فُتح للفحص وسيُعاد إقفاله${reclose ? '' : ` — تعذّر الفتح (${r.status})`})`);
+    }
+  }
+  const restoreWalletDay = async () => {
+    if (!reclose) return;
+    const w = await call('GET', `/api/wallet/daily?branchId=${branch?._id}`, opsMgr.ck);
+    const cash = Number(w.json?.wallet?.closingBalance || 0);
+    const r = await call('POST', '/api/wallet/close-day', opsMgr.ck,
+      { branchId: String(branch?._id), actualCash: cash });
+    console.log(`  (أُعيد إقفال يوم عهدة ${branch?.name} كما كان${r.status === 200 ? '' : ` — تعذّر (${r.status})`})`);
+  };
   ok('القائمةُ المرجعيّة تعرف اسمَ الفرع بالعربيّة', !!expectedBranchAr, `${branch?.name} → ${expectedBranchAr || '(لا نظير)'}`);
 
   const stamp = Date.now();
   const made = []; const parties = [];
+  // ── وكلُّ حركةٍ تُقيَّد تُسجَّل لتُحذف ──────────────────────────────────────
+  //
+  // كانت السويت تحذف حسابَها وكشوفَها وتترك حركاتِ العهدة التي قيّدتها في محفظة
+  // فرعٍ حقيقيّ. فتراكمت أربعٌ وأربعون حركةً بثمانيةَ عشرَ ألفًا وأربعمئة ريالٍ
+  // من مالٍ لا وجودَ له في دفترٍ يقرؤه محاسبٌ ويُقفِله آخِرَ اليوم. وحذفُ
+  // السطرين اللذين كانا يُحذفان بالاسم لا يكفي: كلُّ نداءٍ ينجح يُخلّف قيدًا.
+  //
+  // فما يُقيَّد يُسجَّل هنا، ويُحذف في `finally` مهما انقطع الفحصُ في وسطه.
+  const txns = [];
+  const trackTx = (r) => { const id = r?.json?.transaction?._id; if (id) txns.push(id); return r; };
 
   try {
     // ── ١ · المحاسبُ يعمل على صفحة التشغيل والعهدة ───────────────────────
@@ -167,7 +218,7 @@ const call = async (method, path, ck, body) => {
     ok('ولا تخترع المحفظةُ نوعَ الدفع', !t1.paymentType, t1.paymentType || '(فارغ — صواب)');
     // ورقمُ السند يصل عمودَه: يُكتب في العهدة مرّةً ولا يُبحث عنه في الكشف.
     ok('ورقمُ السند يصل «رقم السند» في الكشف', t1.documentNumber === 'ZZ-SAND-1', t1.documentNumber || '(فارغ)');
-    if (buy.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${buy.json.transaction._id}`, accLogin.ck);
+    trackTx(buy);
 
     // ── ٤ · قيدُ استلام الفاتورة يملأ من سعر الشراء ───────────────────────
     head('استلام الفواتير الضريبيّة — حزمةُ كشوفٍ بلا مبلغ');
@@ -215,7 +266,7 @@ const call = async (method, path, ck, body) => {
     });
     ok('ولا يُقبل قيدٌ بلا كشفٍ واحد', empty.status === 400, `${empty.status}`);
 
-    if (ti.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${ti.json.transaction._id}`, accLogin.ck);
+    trackTx(ti);
 
     // ── ٥ · ويصل الصفحةَ الصحيحة بعد أن يُكتب نوعُه ────────────────────────
     // الكشفُ لا يصل التحصيلَ حتى يقول أحدٌ نوعَه — وهو الصواب: قبل أن يُقال،
@@ -240,8 +291,26 @@ const call = async (method, path, ck, body) => {
   } finally {
     if (made.length) await OW.deleteMany({ _id: { $in: made } });
     if (parties.length) await Party.deleteMany({ _id: { $in: parties } });
-    await User.deleteMany({ email: /^zz-w2c/ });
+
+    // ── ولا تُترَك حركةٌ في عهدة فرعٍ حقيقيّ ─────────────────────────────
+    // تُحذف بالنداء لا بالقاعدة: الحذفُ بالنداء يُعيد حساب مجاميع اليوم،
+    // وحذفُها من القاعدة يترك الرصيدَ محسوبًا على مالٍ لم يعد له سطر.
+    const mine = await WalletTransaction.find({
+      $or: [
+        { _id: { $in: txns } },
+        { itemName: 'zz' },
+        { purchaseDeliveryStatementNumber: /^RPT-\d+$/ },
+        { receivedReportNumbers: { $elemMatch: { $regex: /^RPT-\d+$|zz/i } } },
+      ],
+    }).select('_id').lean();
+    for (const t of mine) await call('DELETE', `/api/wallet/transactions/${t._id}`, opsMgr.ck);
+    if (mine.length) console.log(`  (حُذفت ${mine.length} حركةَ فحصٍ من العهدة)`);
+
+    // إرجاعُ يوم العهدة قبل حذف حساب الفحص — الإقفالُ يحتاج جلستَه.
+    await restoreWalletDay();
+    await User.deleteMany({ email: /^zz-w2c/ });   // يشمل حساب المدير أعلاه
   }
+
 
   console.log(`\n${pass} passed, ${fail} failed`);
   await mongoose.disconnect();

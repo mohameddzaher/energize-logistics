@@ -15,7 +15,12 @@ const mongoose = require('mongoose');
 const argv = process.argv.slice(2);
 const iB = argv.indexOf('--base');
 const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
-const ORIGIN = process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000';
+// المصدرُ يتبع الخادمَ الذي نفحصه لا ملفَّ البيئة المحلّيّ: حارسُ CSRF يقبل
+// مصادرَ البرودكشن وحدها، فإرسالُ `localhost` إليه يردّ ٤٠٣ على كلّ POST — وهو
+// ما يبدو عطبًا في الميزة وهو عطبٌ في الفحص.
+const ORIGIN = /api\.energize-logistics\.com/.test(BASE)
+  ? 'https://energize-logistics.com'
+  : (process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000');
 
 let pass = 0; let fail = 0;
 const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x ? '  — ' + x : ''}`); c ? (pass += 1) : (fail += 1); };

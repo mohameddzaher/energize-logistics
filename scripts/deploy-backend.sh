@@ -124,6 +124,12 @@ verify() {
   # ملفّ الإعداد، فيُفحَص لا يُفترَض.
   check "node heap capped under pm2" "$("${SSH[@]}" "pm2 jlist" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const a=JSON.parse(s).filter(x=>x.name==="'"$PM2_NAME"'");console.log(a.length&&a.every(p=>String(p.pm2_env.node_args||"").includes("max-old-space-size"))?"yes":"NO")}catch(e){console.log("unreadable")}})')" "yes"
 
+  # ── وتدويرُ السجلّات ────────────────────────────────────────────────────────
+  # سجلٌّ لا يُدوَّر ينمو حتى يملأ القرص، ثمّ يتوقّف كلُّ شيءٍ لسببٍ لا علاقةَ له
+  # بالتطبيق. يُثبَّت مرّةً ويُفحَص في كلّ نشرةٍ — الوحدةُ تُنزَع بترقيةٍ أو
+  # بإعادة تثبيتِ pm2 ولا يلاحظ أحد.
+  check "pm2 log rotation installed" "$("${SSH[@]}" "pm2 list 2>/dev/null | grep -c pm2-logrotate || true")" "1"
+
   # The process, and the env it is actually running with.
   check "pm2 online"  "$("${SSH[@]}" "pm2 jlist" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s).find(x=>x.name==="'"$PM2_NAME"'");console.log(p?p.pm2_env.status:"missing")}catch(e){console.log("unreadable")}})')" "online"
   check "NODE_ENV"    "$("${SSH[@]}" "grep -m1 '^NODE_ENV=' $APP_DIR/.env | cut -d= -f2" 2>/dev/null | tr -d '\r')" "production"

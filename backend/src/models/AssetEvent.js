@@ -24,7 +24,12 @@ const assetEventSchema = new mongoose.Schema(
         'returned',        // employee → shelf
         'damaged',         // reported broken while held
         'lost',            // reported missing while held
-        'retired',         // out of circulation for good (dead, written off, sold)
+        'retired',         // out of circulation for good (dead, written off)
+        // ── والبيعُ حدثٌ بذاته لا «إخراجٌ من الخدمة» ─────────────────────────
+        // كان يُسجَّل «retired» مع الميت والمشطوب. وهما مختلفان: المشطوبُ خسارةٌ
+        // والمباعُ دخل. وسؤالُ «كم بعنا العامَ الماضي وبكم» لا جوابَ له إن كان
+        // البيعُ مخلوطًا بالتالف.
+        'sold',            // خرج من ملكنا ببيع — لموظّفٍ أو لخارجيّ
         'updated',         // details edited (kept so the trail has no silent gaps)
       ],
     },
@@ -33,6 +38,10 @@ const assetEventSchema = new mongoose.Schema(
     // `to` is null when it went back to it.
     fromEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
     toEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+
+    // مشترٍ من خارج الشركة — لا سجلَّ له عندنا، فيُكتب اسمُه.
+    buyerName: { type: String, trim: true, default: '' },
+    price: { type: Number, default: 0 },
 
     date: { type: String }, // YYYY-MM-DD — the day it happened, not the day it was typed
     condition: { type: String, trim: true },

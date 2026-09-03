@@ -342,6 +342,30 @@ exports.deleteEmployee = async (req, res) => {
     }
     const employee = await Employee.findById(req.params.id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
+
+    // ── ولا يُحذف مَن بيده عهدةٌ أو تفويضُ مركبة ────────────────────────────
+    // كان إنهاءُ الخدمة محروسًا بالعهدة والحذفُ بلا حارس — وهو الأشدّ: الإنهاءُ
+    // يُبقي السجلَّ فيبقى الأثرُ مقروءًا، والحذفُ يمحوه فتبقى العهدةُ مسجَّلةً
+    // على اسمٍ لا وجودَ له. وقع ذلك فعلًا: حُذف سجلٌّ فبقيت أجهزتُه في سجلّ
+    // تقنية المعلومات باسمٍ فارغ.
+    const { employeeExitBlockers, returnEmployeeAssetsToStore } = require('../utils/employeeExit');
+    const blockers = await employeeExitBlockers(employee._id);
+    if (blockers.blocked && req.query.returnCustody !== 'true') {
+      return res.status(400).json({
+        code: 'EXIT_BLOCKED',
+        message: `لا يمكن الحذف: ${blockers.reasons.join(' و')}. سلِّم العهدة وأنهِ التفويض أوّلًا.`,
+        assets: blockers.assets,
+        authorizations: blockers.authorizations,
+        // ما يُمكن للنظام أن يفعله بنفسه يُعرَض ليُقرَّر، ولا يُفعَل بلا إذن:
+        // التفويضُ قرارٌ إداريٌّ يُنهى من صفحته، والعهدةُ تُردّ إلى المستودع.
+        canAutoReturnAssets: blockers.assets > 0 && blockers.authorizations === 0,
+      });
+    }
+    // ومَن أذن بالردّ: تعود عهدتُه إلى المستودع ولا تُحذف — هي أصلٌ للشركة.
+    const returned = blockers.assets
+      ? await returnEmployeeAssetsToStore(employee._id, { note: `أُعيدت للمستودع عند حذف سجلّ ${fullName(employee)}` })
+      : 0;
+
     // Detach any linked login account.
     if (employee.user) await User.updateOne({ _id: employee.user }, { $unset: { linkedEmployee: 1 } });
     // Clean up the employee's stored document files, then their sub-records.
@@ -353,7 +377,7 @@ exports.deleteEmployee = async (req, res) => {
     bustEmployeeCaches();
     await logAudit({ user: req.user._id, action: 'delete_employee', entity: 'Employee', entityId: employee._id, changes: { before: { name: fullName(employee) } }, ipAddress: req.ip });
     await notifyHR({ title: 'Employee removed', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
-    res.json({ message: 'Employee deleted' });
+    res.json({ message: 'Employee deleted', assetsReturnedToStore: returned });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete employee' });
   }
@@ -827,9 +851,18 @@ exports.terminateContract = async (req, res) => {
     const contract = await Contract.findById(req.params.id);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
 
-    const outstanding = await Asset.countDocuments({ employee: contract.employee, status: 'assigned' });
-    if (outstanding > 0) {
-      return res.status(400).json({ message: `Cannot terminate: ${outstanding} custody item(s) not returned`, code: 'CUSTODY_OUTSTANDING', outstanding });
+    // ── والقاعدةُ نفسُها التي تحرس الحذف ────────────────────────────────────
+    // كانت هنا عهدةٌ وحدَها وهناك لا شيء، ثمّ أُضيف تفويضُ المركبات إلى أحدهما
+    // دون الآخر — فيُمنع الموظّفُ من إنهاء الخدمة ويُسمح بحذفه. حارسان في
+    // موضعين يفترقان؛ فالسؤالُ يُجاب مرّةً ويقرؤه الاثنان.
+    const { employeeExitBlockers } = require('../utils/employeeExit');
+    const gate = await employeeExitBlockers(contract.employee);
+    const outstanding = gate.assets;
+    if (gate.blocked) {
+      return res.status(400).json({
+        message: `لا يمكن إنهاء الخدمة: ${gate.reasons.join(' و')}.`,
+        code: 'CUSTODY_OUTSTANDING', outstanding, authorizations: gate.authorizations,
+      });
     }
 
     contract.status = 'terminated';

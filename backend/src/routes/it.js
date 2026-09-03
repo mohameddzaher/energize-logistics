@@ -47,6 +47,8 @@ router.delete('/custody/:id', authorize(...EDIT_ROLES), it.deleteCustody);
 router.get('/custody/:id/history', it.custodyHistory);
 router.get('/custody/by-employee/:employeeId', it.custodyByEmployee);
 router.post('/custody/:id/transfer', authorize(...EDIT_ROLES), it.transferCustody);
+// والبيع: يخرج الصنفُ من ملكنا ويبقى أثرُه — لمن بيع وبكم ومتى.
+router.post('/custody/:id/sell', authorize(...EDIT_ROLES), it.sellCustody);
 // «تالف» صار إجراءً واحداً: المساران يشيران إلى معالجٍ واحد. /retire يبقى
 // معلناً لأن نسخ الموبايل المثبَّتة تناديه، لا لأنه سلوكٌ آخر.
 router.post('/custody/:id/report', authorize(...EDIT_ROLES), it.markFaulty);

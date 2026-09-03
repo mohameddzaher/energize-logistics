@@ -27,7 +27,30 @@ const assetSchema = new mongoose.Schema(
 
     // 'in_stock' = sitting in the IT store, held by nobody. 'assigned' stays the
     // default so nothing that omits `status` changes meaning.
-    status: { type: String, enum: ['assigned', 'returned', 'in_stock'], default: 'assigned' },
+    //
+    // ── و«مُباع» حالةٌ رابعة ────────────────────────────────────────────────
+    // الجهازُ يُباع أحيانًا — لموظّفٍ أو لخارجيّ. وكان ذلك يُسجَّل «مسلَّم» أو
+    // يُحذف، فيبقى في عداد ما نملك وقد خرج من ملكنا، أو يختفي أثرُه ولا يُعرف
+    // أين ذهب ولا بكم.
+    status: { type: String, enum: ['assigned', 'returned', 'in_stock', 'sold'], default: 'assigned' },
+
+    // ── ومَن بيده الجهازُ قد لا يكون موظّفًا ────────────────────────────────
+    // يُسلَّم أحيانًا لشخصٍ من خارج الشركة أو من شركةٍ شقيقة. وكان الحلُّ
+    // الوحيد أن يُسجَّل ذلك الشخصُ موظّفًا في الموارد البشريّة ليُمكن ربطُ
+    // العهدة به — فدخل في سجلّ الموظّفين اسمُ شركةٍ لا اسمُ إنسان، ثمّ حُذف
+    // فبقيت عهدتُه بلا صاحب.
+    //
+    // فالاسمُ يُكتب نصًّا لمن ليس موظّفًا: يُقرأ في السجلّ ولا يلوّث سجلَّ
+    // الموارد البشريّة بمن ليس منه. و`employee` تبقى فارغةً عندئذٍ — فلا يُحسب
+    // في تقارير الموظّفين ولا يمنع إنهاء خدمة أحد.
+    holderName: { type: String, trim: true, default: '' },
+    holderKind: { type: String, enum: ['', 'employee', 'external'], default: '' },
+
+    // ── والبيع: لمن وبكم ────────────────────────────────────────────────────
+    soldTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+    soldToName: { type: String, trim: true, default: '' },   // حين يكون المشتري خارجيًّا
+    soldDate: { type: String },                              // YYYY-MM-DD
+    soldPrice: { type: Number, default: 0 },
     returnedDate: { type: String },
     returnedCondition: { type: String, trim: true },
     returnedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

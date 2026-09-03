@@ -119,6 +119,8 @@ const logEvent = async (req, asset, action, extra = {}) => {
 const CUSTODY_EDITABLE = [
   'employee', 'type', 'serialNumber', 'brand', 'condition',
   'value', 'assignedDate', 'notes', 'category', 'specs', 'quantity',
+  // ومَن بيده الجهازُ حين لا يكون موظّفًا — يُكتب اسمُه نصًّا.
+  'holderName', 'holderKind',
 ];
 
 // Stock items have no employee and no assignedDate — they gain both the moment
@@ -637,10 +639,17 @@ exports.listCustody = async (req, res) => {
 
 exports.createCustody = async (req, res) => {
   try {
-    if (!req.body.employee) {
-      return res.status(400).json({ message: 'Employee is required' });
+    // ── يُسلَّم لموظّفٍ أو لشخصٍ مسمًّى ────────────────────────────────────
+    // كان الموظّفُ شرطًا، والجهازُ يُسلَّم أحيانًا لشخصٍ من خارج الشركة. فكان
+    // الحلُّ الوحيد أن يُسجَّل ذلك الشخصُ موظّفًا في الموارد البشريّة — فدخل
+    // سجلَّ الموظّفين اسمُ شركةٍ لا اسمُ إنسان، ثمّ حُذف فبقيت عهدتُه بلا صاحب.
+    const holderName = String(req.body.holderName || '').trim();
+    if (!req.body.employee && !holderName) {
+      return res.status(400).json({ message: 'اختر الموظّف، أو اكتب اسم من استلمه إن لم يكن موظّفًا.' });
     }
     const data = pick(req.body, CUSTODY_EDITABLE);
+    data.holderKind = req.body.employee ? 'employee' : 'external';
+    if (!req.body.employee) data.employee = null;
     // الاسم لم يعد يُكتب باليد — يُشتق من النوع والماركة كما في المستودع تماماً،
     // فيخرج الصنف باسم واحد أياً كان من أدخله ومن أي شاشة.
     data.brand = normalizeBrand(data.brand);
@@ -838,6 +847,53 @@ exports.retireCustody = exports.markFaulty;
 // The handover desk: an employee walks in with some of their gear. Pick what
 // they actually handed back; whatever is not ticked stays on them, and the
 // response says exactly what is still outstanding.
+/**
+ * ── بيعُ صنفٍ من العهدة ─────────────────────────────────────────────────────
+ *
+ * الجهازُ يُباع أحيانًا — لموظّفٍ أو لشخصٍ من خارج الشركة. وكان ذلك يُسجَّل
+ * «مسلَّم» أو يُحذف الصفُّ: في الأولى يبقى في عداد ما نملك وقد خرج من ملكنا،
+ * وفي الثانية يختفي أثرُه فلا يُعرف أين ذهب ولا بكم.
+ *
+ * فله حالتُه: يخرج من المخزون ومن العهدة، ويبقى صفُّه يقول لمن بيع وبكم ومتى.
+ *
+ * POST /api/it/custody/:id/sell
+ *   { employee?, buyerName?, price?, date?, notes? }
+ */
+exports.sellCustody = async (req, res) => {
+  try {
+    const item = await Asset.findById(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Custody item not found' });
+    if (item.status === 'sold') return res.status(400).json({ message: 'هذا الصنف مُباعٌ بالفعل.' });
+
+    const buyerName = String(req.body.buyerName || '').trim();
+    if (!req.body.employee && !buyerName) {
+      return res.status(400).json({ message: 'اختر الموظّف المشتري، أو اكتب اسم المشتري الخارجيّ.' });
+    }
+
+    const previousEmployee = item.employee ? String(item.employee) : null;
+    item.status = 'sold';
+    item.soldTo = req.body.employee || null;
+    item.soldToName = req.body.employee ? '' : buyerName;
+    item.soldDate = req.body.date || today();
+    item.soldPrice = Number(req.body.price) || 0;
+    // ولا يبقى في يد أحدٍ بعد بيعه — وإلّا مَنَع إنهاءَ خدمة من كان يمسكه.
+    item.employee = null;
+    item.holderKind = '';
+    item.holderName = '';
+    if (req.body.notes) item.notes = req.body.notes;
+    await item.save();
+
+    await logEvent(req, item, 'sold', {
+      toEmployee: item.soldTo, buyerName: item.soldToName,
+      price: item.soldPrice, date: item.soldDate,
+    });
+    emitCustody({ type: 'custody', id: String(item._id), employee: previousEmployee });
+    res.json({ item });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر تسجيل البيع');
+  }
+};
+
 exports.handoverCustody = async (req, res) => {
   try {
     const { employee, items, date, condition, notes, retire } = req.body;

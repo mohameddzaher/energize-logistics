@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../services/flex_match.dart';
 
 /// المركبات والتفويضات — أسطول الشركة الإداري: تسجيل المركبات، تفويض موظف،
 /// نقل التفويض، إلغاؤه، وتسجيل الحوادث — بنفس مفردات صفحة الويب.
@@ -64,7 +65,9 @@ String empName(dynamic e) {
   return '${e['firstName'] ?? ''} ${e['lastName'] ?? ''}'.trim();
 }
 
-String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
+/// الطيُّ الموحَّد — راجع services/flex_match. كان هذا يطوي الهمزةَ ولا يطوي
+/// المسافة، فاللوحةُ المنسوخة بمسافتين لا تجد نفسَها المخزَّنة بواحدة.
+String _fold(String s) => flexFold(s);
 List<Map<String, dynamic>> _l(dynamic v) =>
     v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : const [];
 

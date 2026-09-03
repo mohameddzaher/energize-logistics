@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../services/flex_match.dart';
 
 /// سجل المركبات (Vehicle Registry) — قائمة/تفاصيل/تحليلات/تنبيهات/إعدادات،
 /// مبنيّة على ماستر Vehicles_2026 (326 مركبة) عبر /api/vehicle-registry.
@@ -54,7 +55,9 @@ String daysText(dynamic n) {
   if (v == 1) return tr('باقي يوم واحد', '1 day left');
   return tr('باقي $v يوم', '$v days left');
 }
-String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
+/// الطيُّ الموحَّد — راجع services/flex_match. كان هذا يطوي الهمزةَ ولا يطوي
+/// المسافة، فاللوحةُ المنسوخة بمسافتين لا تجد نفسَها المخزَّنة بواحدة.
+String _fold(String s) => flexFold(s);
 
 // ══════════════════ القائمة ══════════════════
 class VehicleRegistryListScreen extends StatefulWidget {

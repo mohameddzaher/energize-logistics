@@ -9,6 +9,7 @@ import '../ui/filter_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_registry.dart' show docLabel, fmtDate, daysText, money, statusColor, statusLabel;
+import '../services/flex_match.dart';
 
 /// ── شاشةُ عائلةِ مستندٍ واحدة، نظيرُ صفحات المستندات في الموقع ─────────────
 ///
@@ -50,8 +51,13 @@ class DocEditField {
   /// خانةُ الاختيار تكتب نصًّا لا صحيحًا/خطأً: «مفتوح» في `fuelCard.limitStatus`.
   final String on, off;
   final bool mono;
+
+  /// نوعُ قائمةٍ منسدلة يُملأ منها الحقل بدل الكتابة الحرّة، تُدار من
+  /// «إعدادات القسم ← القوائم المنسدلة». يُخزَّن الاسمُ العربيّ لا المفتاح،
+  /// لأنّ المخزَّن نصٌّ عربيٌّ منذ أوّل استيراد وتقرؤه الفلاتر والتصديرات.
+  final String? lookup;
   const DocEditField(this.path, this.ar, this.en,
-      {this.kind = 'text', this.on = 'open', this.off = '', this.mono = false});
+      {this.kind = 'text', this.on = 'open', this.off = '', this.mono = false, this.lookup});
 }
 
 /// شريحةُ تصفيةٍ محلّيةٍ فوق الصفوف المحمَّلة.
@@ -150,12 +156,8 @@ bool _hasDoc(Map v, List<DocEditField> fields) => fields.any((f) {
       return x != null && '$x'.isNotEmpty;
     });
 
-String _fold(String s) => s
-    .replaceAll(RegExp('[أإآ]'), 'ا')
-    .replaceAll('ى', 'ي')
-    .replaceAll('ة', 'ه')
-    .toLowerCase()
-    .trim();
+/// الطيُّ الموحَّد — راجع services/flex_match.
+String _fold(String s) => flexFold(s);
 
 /// حالةُ هذا المستند على هذه المركبة كما حسبها الخادم بعتبات الإعدادات.
 /// لا تُحسَب هنا، وإلا اختلفت ألوانُ هذه الشاشة عن شاشة التنبيهات على المركبة
@@ -329,6 +331,20 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     final target = v;
     final vals = <String, dynamic>{};
     final ctrls = <String, TextEditingController>{};
+    // القوائمُ المنسدلة تُجلب قبل فتح الورقة: جلبُها داخل `build` يعيد النداء
+    // مع كلّ إعادة رسم، وهو ما يجعل خانةً واحدةً تنادي الخادم عشراتِ المرّات.
+    final lookups = <String, List<String>>{};
+    for (final f in fields.where((x) => x.lookup != null)) {
+      if (lookups.containsKey(f.lookup)) continue;
+      try {
+        final d = await Api.instance.get('/api/lookups?type=${Uri.encodeComponent(f.lookup!)}&active=true');
+        lookups[f.lookup!] = List<Map<String, dynamic>>.from(d['items'] ?? [])
+            .map((i) => _s(i['nameAr']).isEmpty ? _s(i['nameEn']) : _s(i['nameAr']))
+            .where((x) => x.isNotEmpty).toList();
+      } catch (_) { lookups[f.lookup!] = const []; }
+    }
+    // جلبُ القوائم انتظارٌ على الشبكة، وقد تُغلق الشاشة أثناءه.
+    if (!mounted) { for (final ctl in ctrls.values) { ctl.dispose(); } return; }
     for (final f in fields) {
       final raw = _readPath(target, f.path);
       if (f.kind == 'flag') {
@@ -339,7 +355,9 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
         vals[f.path] = raw == null ? '' : '$raw';
         ctrls[f.path] = TextEditingController(text: '$raw' == 'null' ? '' : '${raw ?? ''}');
       }
-      if (f.kind == 'number' || f.kind == 'text') {
+      // الحقلُ ذو القائمة يُكتب من `vals` مباشرةً — ولو استمع لمراقبٍ نصّيّ
+      // لأعاد الكتابةَ فوق ما اختير من القائمة.
+      if (f.lookup == null && (f.kind == 'number' || f.kind == 'text')) {
         ctrls[f.path]!.addListener(() => vals[f.path] = ctrls[f.path]!.text);
       }
     }
@@ -381,6 +399,25 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                         final d = await showDatePicker(context: c, initialDate: init, firstDate: DateTime(2000), lastDate: DateTime(2040));
                         if (d != null) setSheet(() => vals[f.path] = d.toIso8601String().split('T').first);
                       },
+                    ),
+                  );
+                }
+                if (f.lookup != null) {
+                  final opts = lookups[f.lookup] ?? const <String>[];
+                  final cur = '${vals[f.path] ?? ''}';
+                  // القيمةُ المحفوظةُ التي خرجت من القائمة تبقى خيارًا يتيمًا:
+                  // إسقاطُها من الشاشة يجعل الحقل يبدو فارغًا وهو ليس كذلك،
+                  // فيُحفَظ الفراغ فوق قيمةٍ صحيحة عند أوّل تعديلٍ لحقلٍ آخر.
+                  final items = [if (cur.isNotEmpty && !opts.contains(cur)) cur, ...opts];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: cur.isEmpty ? null : cur,
+                      isExpanded: true,
+                      decoration: InputDecoration(labelText: tr(f.ar, f.en)),
+                      hint: Text(tr('اختر…', 'Select…')),
+                      items: items.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 13.5)))).toList(),
+                      onChanged: (val) => setSheet(() => vals[f.path] = val ?? ''),
                     ),
                   );
                 }
@@ -853,17 +890,40 @@ final vehicleAuthorizationFamily = DocFamily(
     DocField('رقم التفويض', 'Authorisation number', (v) => _s(_sub(v, 'authorizedPerson')['authorizationNumber']), mono: true),
     DocField('تاريخ بداية التفويض', 'Start date', (v) => fmtDate(_sub(v, 'authorizedPerson')['startDate'])),
     DocField('تاريخ نهاية التفويض', 'End date', (v) => fmtDate(_sub(v, 'authorizedPerson')['expiryDate'])),
+    // ── والسائقُ نفسُه ──────────────────────────────────────────────────────
+    // التفويضُ ورقةٌ على مركبة، لكنّه يُعطى لشخص. وثلاثةُ أشياء تخصّ ذلك
+    // الشخص: ورقتُه هذه، وبطاقةُ سائقه، وخيانةُ أمانته — ولا يقود بواحدةٍ
+    // منها ناقصة. يجمعها الخادمُ برقم الإقامة.
+    DocField('بطاقة السائق', 'Driver card', (v) {
+      final c = _sub(v, 'driverCard');
+      if (c.isEmpty) return _s(_sub(v, 'authorizedPerson')['iqamaNumber']).isEmpty ? '' : 'لا بطاقة';
+      final exp = _s(c['expiryDate']);
+      return [_s(c['cardNumber']), if (exp.isNotEmpty) '⟵ $exp'].where((x) => x.isNotEmpty).join(' ');
+    }, mono: true),
+    DocField('خيانة الأمانة', 'Fidelity insurance', (v) {
+      final c = _sub(v, 'driverCard');
+      if (c.isEmpty) return '';
+      return switch (_s(c['fidelityStatus'])) {
+        'covered' => 'مشمول',
+        'required' => 'مطلوب ضمُّه',
+        _ => 'غير محدَّد',
+      };
+    }),
   ],
   searchIn: (v) => [
     _s(v['plateNumber']), _s(_sub(v, 'authorizedPerson')['name']),
     _s(_sub(v, 'authorizedPerson')['iqamaNumber']), _s(_sub(v, 'authorizedPerson')['authorizationNumber']),
+    _s(_sub(v, 'driverCard')['cardNumber']),
   ],
   // ورقةُ التفويض كاملةً: مَن، وبأيّ إقامة، وبأيّ رقم، ومن متى إلى متى. واسمٌ
   // بلا رقمِ تفويضٍ ولا مدّة لا يُثبِت صفةَ السائق أمام أحد.
   editable: const [
     DocEditField('authorizedPerson.name', 'اسم المفوَّض', 'Authorised person'),
     DocEditField('authorizedPerson.iqamaNumber', 'رقم الإقامة', 'Iqama number', mono: true),
-    DocEditField('authorizedPerson.jobTitleAr', 'المسمّى الوظيفي', 'Job title'),
+    // المسمّى قائمةٌ لا خانةٌ حرّة: «سائق نقل ثقيل» في سبعٍ وخمسين مركبة
+    // و«مندوب توصيل» في ثلاثٍ وعشرين — والخانةُ الحرّة تجعلها عشرين مسمًّى.
+    DocEditField('authorizedPerson.jobTitleAr', 'المسمّى الوظيفي لقائد المركبة', 'Driver job title',
+        lookup: 'vehicle_job_title'),
     DocEditField('authorizedPerson.authorizationNumber', 'رقم التفويض', 'Authorisation number', mono: true),
     DocEditField('authorizedPerson.startDate', 'تاريخ بداية التفويض', 'Start date', kind: 'date'),
     DocEditField('authorizedPerson.expiryDate', 'تاريخ نهاية التفويض', 'End date', kind: 'date'),

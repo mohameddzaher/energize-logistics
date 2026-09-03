@@ -87,7 +87,10 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
       setBusyKey(null);
     }
     setOpenMenu(false);
-    const total = (sheets || []).reduce((n, s) => n + (s.rows?.length || 0), 0);
+    // يُعَدُّ ما فوق الجدول أيضًا: يومٌ فيه محفظةٌ بلا حركةٍ واحدة ملفٌّ صحيح —
+    // فيه رصيدُه الافتتاحيُّ وإقفالُه — وكان يُرفض بحجّة أن «لا بيانات».
+    const total = (sheets || []).reduce(
+      (n, s) => n + (s.rows?.length || 0) + (s.above || []).reduce((m, b) => m + (b.rows?.length || 0), 0), 0);
     if (!total) { notify(ar ? 'لا توجد بيانات للتصدير' : 'No data to export'); return; }
     const date = new Date().toISOString().slice(0, 10);
     exportMultiSheet((sheets || []).map((s) => ({ name: s.name, data: s.rows, columns: s.columns, above: s.above, title: s.title })), `${fileName}-${date}`);

@@ -663,7 +663,12 @@ const FIELD_AR = {
   'authorizedPerson.authorizationNumber': 'رقم التفويض',
 };
 
-const badInput = (e, res) => {
+// ── ولماذا `async` ────────────────────────────────────────────────────────────
+// فرعُ التكرار يسأل القاعدة عن المركبة الأخرى ليسمّيها في الرسالة، وكان يُرجع
+// `true` فورًا ويترك الردَّ يُرسَل في وعدٍ معلَّق — يصل في الحالة العاديّة بعد
+// تكّة، لكنّ الدالّة تكذب على من ينادِيها: تقول «تولّيتُ الردّ» قبل أن تردّ.
+// فصارت تُنتظَر، ويصير الردُّ مضمونًا قبل أن يعود النداء.
+const badInput = async (e, res) => {
   // ── التكرار يُسمّى بالحقل والقيمة ─────────────────────────────────────────
   // «رقم اللوحة أو الهيكل مكرر» رسالةٌ تترك المستخدم يخمّن أيّهما ومَن يحمله.
   // ومونجو يعيد الحقل والقيمة في الخطأ نفسه، فتُقرأ منه ويُبحث عن المركبة
@@ -672,15 +677,14 @@ const badInput = (e, res) => {
     const field = Object.keys(e.keyPattern || {})[0] || '';
     const value = (e.keyValue || {})[field];
     const label = FIELD_AR[field] || field || 'أحد الأرقام الفريدة';
-    return VehicleMaster.findOne({ [field]: value }).select('plateNumber').lean()
-      .then((other) => {
-        res.status(400).json({
-          message: other
-            ? `${label} «${value}» مسجَّلٌ على المركبة ${other.plateNumber} — ولا يتكرّر على مركبتين.`
-            : `${label} «${value}» مكرَّر — ولا يتكرّر على مركبتين.`,
-        });
-      })
-      .catch(() => { res.status(400).json({ message: `${label} مكرَّر` }); }) && true;
+    let other = null;
+    try { other = await VehicleMaster.findOne({ [field]: value }).select('plateNumber').lean(); } catch (_) { /* الرسالةُ العامّة تكفي */ }
+    res.status(400).json({
+      message: other
+        ? `${label} «${value}» مسجَّلٌ على المركبة ${other.plateNumber} — ولا يتكرّر على مركبتين.`
+        : `${label} «${value}» مكرَّر — ولا يتكرّر على مركبتين.`,
+    });
+    return true;
   }
   if (e.name === 'ValidationError') {
     const first = Object.values(e.errors || {})[0];
@@ -697,8 +701,8 @@ exports.create = async (req, res) => {
     emit('vreg:updated', {});
     res.status(201).json({ vehicle: v });
   } catch (e) {
-    if (badInput(e, res)) return;
-    return sendMongooseError(res, error, 'Failed to create vehicle');
+    if (await badInput(e, res)) return;
+    return sendMongooseError(res, e, 'Failed to create vehicle');
   }
 };
 
@@ -740,8 +744,8 @@ exports.update = async (req, res) => {
     emit('vreg:updated', {});
     res.json({ vehicle: v });
   } catch (e) {
-    if (badInput(e, res)) return;
-    return sendMongooseError(res, error, 'Failed to update vehicle');
+    if (await badInput(e, res)) return;
+    return sendMongooseError(res, e, 'Failed to update vehicle');
   }
 };
 
@@ -1605,7 +1609,7 @@ exports.renew = async (req, res) => {
     res.json({ vehicle: decorate(v.toObject(), cfg) });
   } catch (e) {
     console.error('vreg renew', e);
-    return sendMongooseError(res, error, 'تعذّر تسجيل التجديد');
+    return sendMongooseError(res, e, 'تعذّر تسجيل التجديد');
   }
 };
 
@@ -1620,6 +1624,87 @@ exports.renew = async (req, res) => {
 //
 // **الكل أو لا شيء**: لو سطر واحد غلط، مفيش مركبة واحدة بتتجدّد. تجديد نصّه
 // اتنفّذ على ١٥١ مركبة كارثة — مفيش حد هيعرف مين اتجدّد ومين لأ.
+/**
+ * تجديدُ ورقةٍ مشتركةٍ دفعةً واحدة — POST /renew-shared
+ *
+ *   { document: 'insurance', number: 'P-W01-26-311-004248', newExpiry, newNumber?, cost?, reference?, note? }
+ *
+ * ── ولماذا لا يكفي «اختر ثمَّ جدِّد» ────────────────────────────────────────
+ * وثيقةُ تأمينٍ واحدةٌ تغطّي مئةً وثمانيًا وتسعين مركبة. تجديدُها بتأشير مئةٍ
+ * وثمانٍ وتسعين خانةً ليس تجديدًا للوثيقة: هو مئةٌ وثمانٍ وتسعون عمليّةً يدويّةً
+ * لحدثٍ واحد، وأيُّ مركبةٍ تُنسى تبقى في الشاشة «منتهية» وهي مؤمَّنةٌ فعلًا.
+ * وهذا هو ما كانت تفعله شاشةُ «وثائق تأمين المركبات» التي حُذفت لتكرارها، فعاد
+ * الفعلُ إلى الشاشة التي تُدار منها المركبات بدل شاشةٍ ثانيةٍ لأجله وحده.
+ *
+ * الرقمُ هنا مشتركٌ عمدًا وهذا صحيح: هي وثيقةٌ واحدة، ورقمُها الجديد رقمُها
+ * على كلّ ما تغطّيه. ولا يُقبل إلّا لمستندٍ عُلِّم `sharedNumber` — بطاقةُ
+ * التشغيل رقمُها لكلّ مركبة، ورقمٌ واحدٌ عليها كلِّها تزويرٌ لا اختصار.
+ *
+ * ويُحدَّث معها سجلُّ الوثيقة نفسِه (`VehicleInsurancePolicy`) إن وُجد، وإلّا
+ * بقي سجلُّ الوثائق يقول إنّها تنتهي في تاريخٍ مضى ومركباتُها كلُّها سارية.
+ */
+exports.renewShared = async (req, res) => {
+  try {
+    const doc = VDOC.getDoc(req.body?.document);
+    if (!doc) return res.status(400).json({ message: 'نوع المستند غير معروف' });
+    if (!doc.sharedNumber) {
+      return res.status(400).json({ message: `${doc.ar} ورقةٌ لكلّ مركبة، فلا يُجدَّد جماعةً برقمٍ واحد` });
+    }
+    const number = String(req.body?.number || '').trim();
+    if (!number) return res.status(400).json({ message: 'حدِّد رقم الوثيقة المراد تجديدها' });
+    const when = req.body?.newExpiry ? new Date(req.body.newExpiry) : null;
+    if (!when || isNaN(when)) return res.status(400).json({ message: 'أدخل تاريخ الانتهاء الجديد' });
+    const today = new Date(new Date().setHours(0, 0, 0, 0));
+    if (when < today) return res.status(400).json({ message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' });
+
+    const vehicles = await VehicleMaster.find({ [doc.numberPath]: number });
+    if (!vehicles.length) return res.status(404).json({ message: `لا مركبةَ على الوثيقة «${number}»` });
+
+    const byName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
+    const newNumber = String(req.body?.newNumber || '').trim();
+    const done = [];
+    for (const v of vehicles) {
+      const { previous } = applyRenewal(v, doc, when, {
+        documentNumber: newNumber,
+        cost: req.body.cost, reference: req.body.reference, note: req.body.note,
+      }, byName);
+      await v.save();
+      done.push({ vehicle: v._id, plate: v.plateNumber, previousExpiry: previous });
+    }
+
+    // سجلُّ الوثيقة نفسِه — إن كانت مسجَّلةً فيه.
+    let policyUpdated = false;
+    const policy = await VehicleInsurancePolicy.findOne({ policyNumber: number });
+    if (policy) {
+      const previousExpiry = policy.expiryDate;
+      policy.expiryDate = when;
+      if (newNumber) policy.policyNumber = newNumber;
+      if (!Array.isArray(policy.renewals)) policy.renewals = [];
+      policy.renewals.push({
+        previousExpiry, newExpiry: when,
+        cost: req.body.cost != null && req.body.cost !== '' ? Number(req.body.cost) : null,
+        reference: String(req.body.reference || '').trim(),
+        note: String(req.body.note || '').trim(),
+        vehiclesUpdated: done.length, byName,
+      });
+      await policy.save();
+      policyUpdated = true;
+    }
+
+    logAudit({
+      user: req.user, action: 'renew_vehicle_document', entity: 'VehicleMaster', entityId: null,
+      changes: { sharedPolicy: number, newNumber: newNumber || null, document: doc.key, count: done.length, newExpiry: when, policyUpdated },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    emit('vreg:updated', {});
+    res.json({ renewed: done, summary: { count: done.length, policyUpdated, number: newNumber || number } });
+  } catch (e) {
+    console.error('vreg renewShared', e);
+    return sendMongooseError(res, e, 'تعذّر تجديد الوثيقة');
+  }
+};
+
 exports.renewBulk = async (req, res) => {
   try {
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -1687,7 +1772,7 @@ exports.renewBulk = async (req, res) => {
     });
   } catch (e) {
     console.error('vreg renewBulk', e);
-    return sendMongooseError(res, error, 'تعذّر تسجيل التجديد');
+    return sendMongooseError(res, e, 'تعذّر تسجيل التجديد');
   }
 };
 
@@ -1814,7 +1899,7 @@ exports.registers = async (req, res) => {
     });
   } catch (e) {
     console.error('vreg registers', e);
-    return sendMongooseError(res, error, 'تعذّر تحميل سجلّات القسم');
+    return sendMongooseError(res, e, 'تعذّر تحميل سجلّات القسم');
   }
 };
 
@@ -1917,7 +2002,7 @@ exports.renewInsurancePolicy = async (req, res) => {
     res.json({ policy: pol, vehiclesUpdated: vehicles.length });
   } catch (e) {
     console.error('vreg renewInsurancePolicy', e);
-    return sendMongooseError(res, error, 'تعذّر تجديد الوثيقة');
+    return sendMongooseError(res, e, 'تعذّر تجديد الوثيقة');
   }
 };
 
@@ -1967,7 +2052,7 @@ exports.createClaim = async (req, res) => {
     res.status(201).json({ claim: doc });
   } catch (e) {
     console.error('vreg createClaim', e);
-    return sendMongooseError(res, error, 'تعذّر تسجيل الحادث');
+    return sendMongooseError(res, e, 'تعذّر تسجيل الحادث');
   }
 };
 
@@ -1984,7 +2069,7 @@ exports.updateClaim = async (req, res) => {
     res.json({ claim: doc });
   } catch (e) {
     console.error('vreg updateClaim', e);
-    return sendMongooseError(res, error, 'تعذّر تعديل الحادث');
+    return sendMongooseError(res, e, 'تعذّر تعديل الحادث');
   }
 };
 
@@ -2093,6 +2178,10 @@ exports.documentTypes = async (req, res) => {
     documents: DOC_TYPES.map((d) => ({
       key: d.key, ar: d.ar, en: d.en, icon: d.icon,
       numberAr: d.numberPath ? d.numberAr : null, numberEn: d.numberPath ? d.numberEn : null,
+      // ورقةٌ واحدةٌ تغطّي مركباتٍ كثيرة (التأمين) أم ورقةٌ لكلّ مركبة؟ عليه
+      // تتوقّف نافذةُ التجديد الجماعيّ: أتعرض رقمًا واحدًا للجميع أم رقمًا لكلّ
+      // سطر — راجع config/vehicleDocuments.
+      sharedNumber: !!d.sharedNumber,
       alert: cfg.alerts?.[d.key] || {},
     })),
     corporatePolicyAlert: cfg.alerts?.corporatePolicy || {},
@@ -2172,7 +2261,7 @@ exports.updateVehicleDocument = async (req, res) => {
     emit('vreg:updated', {});
     res.json({ document: doc.toObject() });
   } catch (e) {
-    return sendMongooseError(res, error, 'تعذّر تعديل الملفّ');
+    return sendMongooseError(res, e, 'تعذّر تعديل الملفّ');
   }
 };
 

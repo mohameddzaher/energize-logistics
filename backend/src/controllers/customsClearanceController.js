@@ -577,7 +577,7 @@ exports.createParty = async (req, res) => {
     cache.clear('customs:');
     res.status(201).json({ party });
   } catch (e) {
-    return sendMongooseError(res, error, e.message || 'تعذّر الحفظ');
+    return sendMongooseError(res, e, e.message || 'تعذّر الحفظ');
   }
 };
 
@@ -594,7 +594,7 @@ exports.updateParty = async (req, res) => {
     cache.clear('customs:');
     res.json({ party });
   } catch (e) {
-    return sendMongooseError(res, error, e.message || 'تعذّر الحفظ');
+    return sendMongooseError(res, e, e.message || 'تعذّر الحفظ');
   }
 };
 

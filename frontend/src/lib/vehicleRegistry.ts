@@ -66,7 +66,13 @@ export type RegConfig = { alerts: Record<string, { enabled: boolean; warnDays: n
 // أم تسكت؛ ورخصةُ السير والفحص لا رقم لهما فـ`numberAr` فيهما `null`، وهو ما
 // يمنع النافذة من عرض خانةٍ لا موضع لها في الخادم.
 export const DOC_TYPES = [
+  // ── ووثيقةُ التأمين وحدَها ورقةٌ مشتركة ────────────────────────────────────
+  // وثيقةٌ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة، ورقمُها واحدٌ عليها كلِّها،
+  // وتجديدُها حدثٌ واحد. أمّا بطاقةُ التشغيل والتفويض فورقةٌ لكلّ مركبة برقمها.
+  // العَلَمُ هنا نسخةٌ من `sharedNumber` في config/vehicleDocuments — والخادمُ
+  // يرفض المخالف، فلا يكفي هذا الملفُّ وحده لتزوير رقمٍ مشترك.
   { key: 'insurance', ar: 'التأمين', en: 'Insurance', datePath: (v: VReg) => v.insurance?.expiryDate,
+    sharedNumber: true,
     numberAr: 'رقم وثيقة التأمين', numberEn: 'Policy number', numberOf: (v: VReg) => v.insurance?.policyNumber || '' },
   { key: 'operatingCard', ar: 'بطاقة التشغيل', en: 'Operating Card', datePath: (v: VReg) => v.operatingCard?.expiryDate,
     numberAr: 'رقم بطاقة التشغيل', numberEn: 'Operating card number', numberOf: (v: VReg) => v.operatingCard?.cardNumber || '' },
@@ -328,6 +334,21 @@ export const renewBulk = (body: {
   newExpiry: string; reference?: string; note?: string;
 }) => api.post<{ renewed: any[]; summary: { count: number; vehicles: number } }>(
   '/api/vehicle-registry/renew-bulk', body);
+
+/**
+ * تجديدُ ورقةٍ مشتركةٍ دفعةً واحدة — وثيقةُ تأمينٍ تغطّي مئةً وثمانيًا وتسعين
+ * مركبة تُجدَّد بفعلٍ واحد لا بمئةٍ وثمانٍ وتسعين تأشيرة. والرقمُ الجديد هنا
+ * مشتركٌ عن حقّ: هي وثيقةٌ واحدة. الخادمُ يرفضه لأيّ مستندٍ ورقتُه لكلّ مركبة.
+ */
+export const renewSharedPolicy = (body: {
+  document: string; number: string; newExpiry: string; newNumber?: string;
+  cost?: number | null; reference?: string; note?: string;
+}) => api.post<{ renewed: any[]; summary: { count: number; policyUpdated: boolean; number: string } }>(
+  '/api/vehicle-registry/renew-shared', body);
+
+/** هل هذا المستند ورقةٌ واحدةٌ تغطّي عدّة مركبات؟ */
+export const isSharedPaper = (key: string): boolean =>
+  !!(DOC_TYPES.find((d) => d.key === key) as any)?.sharedNumber;
 
 // ── وثائق تأمين المركبات ─────────────────────────────────────────────────────
 // وثيقة واحدة تغطّي حتى ٢٣٩ مركبة؛ تجديدها يسري عليها كلها دفعةً واحدة.

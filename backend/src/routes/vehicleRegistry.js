@@ -31,6 +31,9 @@ router.put('/claims/:id', authorize(...EDIT), c.updateClaim);
 router.delete('/claims/:id', authorize(...ADMIN), c.deleteClaim);
 // تجديد أكتر من مستند مرة واحدة بنفس التاريخ
 router.post('/renew-bulk', authorize(...EDIT), c.renewBulk);
+// وثيقةٌ واحدةٌ تغطّي مئةً وثمانيًا وتسعين مركبة تُجدَّد بفعلٍ واحد لا بمئةٍ
+// وثمانٍ وتسعين تأشيرة — راجع renewShared.
+router.post('/renew-shared', authorize(...EDIT), c.renewShared);
 router.get('/corporate-policies', c.listCorporatePolicies);
 router.post('/corporate-policies/:id/renew', authorize(...EDIT), c.renewCorporatePolicy);
 router.get('/alerts', c.alerts);

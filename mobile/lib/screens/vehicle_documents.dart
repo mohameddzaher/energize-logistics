@@ -88,6 +88,14 @@ class DocFamily {
   /// سبعَ عائلاتٍ أخرى، ومن فتحها ليصحّح رقمَ بطاقةٍ مرّ على التأمين والفحص في
   /// طريقه — فتصير كلُّ شاشةٍ بابًا خلفيًّا إلى كل شيء. تلك شاشةُ سجل المركبات.
   final List<DocEditField> editable;
+
+  /// هل هذا المستند ورقةٌ واحدةٌ تغطّي عدّة مركبات؟
+  ///
+  /// وثيقةُ تأمينٍ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة، ورقمُها واحدٌ عليها
+  /// كلِّها، وتجديدُها حدثٌ واحد. أمّا بطاقةُ التشغيل والتفويض فورقةٌ لكلّ
+  /// مركبةٍ برقمها، ورقمٌ واحدٌ على مئةٍ منها يجعل المئةَ نسخةً من ورقةٍ واحدة.
+  /// نسخةٌ من `sharedNumber` في الخادم، والخادمُ يرفض المخالف.
+  final bool sharedPaper;
   const DocFamily({
     required this.docKey,
     required this.arTitle,
@@ -97,6 +105,7 @@ class DocFamily {
     required this.searchIn,
     this.chips,
     this.editable = const [],
+    this.sharedPaper = false,
   });
 }
 
@@ -539,6 +548,144 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     }
   }
 
+  /// ── تجديدُ ورقةٍ واحدةٍ تغطّي مركباتٍ كثيرة ────────────────────────────────
+  ///
+  /// وثيقةُ تأمينٍ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة. وتجديدُها مركبةً
+  /// مركبةً ليس تجديدًا للوثيقة: هو مئةٌ وثمانٍ وتسعون عمليّةً لحدثٍ واحد،
+  /// وأيُّ مركبةٍ تُنسى تبقى في الشاشة «منتهية» وهي مؤمَّنةٌ فعلًا.
+  ///
+  /// فتُسأل الوثيقةُ لا المركبات: تُعرَض الأرقامُ وأمام كلٍّ عددُ مركباته،
+  /// ويُكتب التاريخُ مرّةً. والرقمُ الجديد يسري على الجميع وهو صحيحٌ هنا وحده —
+  /// هي وثيقةٌ واحدة؛ والخادمُ يرفضه لأيّ مستندٍ ورقتُه لكلّ مركبة.
+  Future<void> _renewSharedPaper() async {
+    final k = widget.family.docKey;
+    if (k == null) return;
+    // المجموعاتُ تُبنى من الصفوف المحمَّلة، فما يُعرَض هو ما في الشاشة.
+    final groups = <String, ({int count, dynamic expiry})>{};
+    for (final v in _rows) {
+      final n = _numberOf(v, k);
+      if (n.isEmpty) continue;
+      final g = groups[n];
+      final exp = _dateOf(v, k);
+      if (g == null) {
+        groups[n] = (count: 1, expiry: exp);
+      } else {
+        final a = DateTime.tryParse('${g.expiry ?? ''}');
+        final b = DateTime.tryParse('${exp ?? ''}');
+        groups[n] = (count: g.count + 1, expiry: (b != null && (a == null || b.isBefore(a))) ? exp : g.expiry);
+      }
+    }
+    if (groups.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('لا وثائقَ في المعروض', 'No policies in view'))));
+      return;
+    }
+    final keys = groups.keys.toList()..sort((a, b) => groups[b]!.count.compareTo(groups[a]!.count));
+    var number = keys.first;
+    DateTime? when;
+    final newNumber = TextEditingController();
+    final note = TextEditingController();
+
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(
+        builder: (c, setSheet) {
+          final g = groups[number]!;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tr('تجديد وثيقة كاملة', 'Renew a whole policy'),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                Text(tr('الوثيقة الواحدة تغطّي عدّة مركبات، وتجديدها يسري عليها كلّها.',
+                        'One policy covers many vehicles; renewing it applies to all of them.'),
+                    style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: number,
+                  isExpanded: true,
+                  decoration: InputDecoration(labelText: tr('رقم الوثيقة', 'Policy number')),
+                  items: keys.map((n) => DropdownMenuItem(
+                        value: n,
+                        child: Text('$n — ${groups[n]!.count} ${tr('مركبة', 'vehicles')}',
+                            style: const TextStyle(fontSize: 13)),
+                      )).toList(),
+                  onChanged: (v) => setSheet(() { number = v ?? number; when = null; }),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: const Color(0xFFFFF7ED), borderRadius: BorderRadius.circular(10)),
+                  child: Text(tr('سيُجدَّد على ${g.count} مركبة', 'Will renew on ${g.count} vehicles'),
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
+                  label: Text('${tr('تاريخ الانتهاء الجديد', 'New expiry')}: '
+                      '${when == null ? tr('اختر', 'pick') : when!.toIso8601String().split('T').first}'),
+                  onPressed: () async {
+                    // سنةٌ من انتهائها الحالي إن كانت سارية، وإلّا سنةٌ من اليوم.
+                    final cur = DateTime.tryParse('${g.expiry ?? ''}');
+                    final base = (cur != null && cur.isAfter(DateTime.now())) ? cur : DateTime.now();
+                    final d = await showDatePicker(
+                      context: c,
+                      initialDate: DateTime(base.year + 1, base.month, base.day),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime(2040),
+                    );
+                    if (d != null) setSheet(() => when = d);
+                  },
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: newNumber,
+                  textDirection: TextDirection.ltr,
+                  decoration: InputDecoration(
+                    labelText: tr('رقم الوثيقة الجديد (إن تغيّر)', 'New policy number (if changed)'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)'))),
+                const SizedBox(height: 14),
+                FilledButton(
+                  onPressed: when == null ? null : () => Navigator.pop(c, true),
+                  child: Text(tr('تجديد على ${g.count} مركبة', 'Renew on ${g.count} vehicles')),
+                ),
+              ]),
+            ),
+          );
+        },
+      ),
+    );
+    final newNum = newNumber.text.trim();
+    final noteTxt = note.text.trim();
+    newNumber.dispose();
+    note.dispose();
+    if (ok != true || when == null) return;
+    try {
+      final r = await Api.instance.post('/api/vehicle-registry/renew-shared', {
+        'document': k,
+        'number': number,
+        'newExpiry': when!.toIso8601String().split('T').first,
+        if (newNum.isNotEmpty) 'newNumber': newNum,
+        if (noteTxt.isNotEmpty) 'note': noteTxt,
+      });
+      await _load();
+      final n = (r['summary'] is Map) ? r['summary']['count'] : null;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(tr('اتجدّدت الوثيقة على ${n ?? '—'} مركبة', 'Renewed on ${n ?? '—'} vehicles'))));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   /// تجديدٌ يقبل الرقم الجديد: بطاقة التشغيل تخرج برقمٍ جديد كل مرة، والتفويض
   /// كذلك أحيانًا. وتركُ الخانة فارغة يعني «الرقم هو هو» — لا محوَه.
   Future<void> _renew(Map v) async {
@@ -673,8 +820,19 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     final active = chips.firstWhere((c) => c.key == _chip, orElse: () => chips.first);
     final rows = active.test == null ? searched : searched.where((v) => active.test!(v)).toList();
 
+    final canRenewShared = f.sharedPaper && f.docKey != null
+        && (_editRoles.contains(auth.role) || auth.canEditSection('Vehicles'));
+
     return AppScaffold(
       title: Text(tr(f.arTitle, f.enTitle)),
+      actions: [
+        if (canRenewShared)
+          IconButton(
+            tooltip: tr('تجديد وثيقة كاملة', 'Renew a whole policy'),
+            icon: const Icon(Icons.autorenew),
+            onPressed: _renewSharedPaper,
+          ),
+      ],
       floatingActionButton: !canEdit ? null : FloatingActionButton.extended(
         onPressed: () => _editDoc(null),
         icon: const Icon(Icons.add),
@@ -834,6 +992,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
 
 final vehicleInsuranceFamily = DocFamily(
   docKey: 'insurance',
+  sharedPaper: true,
   arTitle: 'تأمين المركبات', enTitle: 'Vehicle Insurance',
   icon: Icons.shield_outlined,
   fields: [

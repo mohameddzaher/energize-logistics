@@ -35,6 +35,13 @@ const DOCUMENTS = [
     statusPath: 'insurance.statusCode',
     extra: ['insurance.policyNumber', 'insurance.companyAr', 'insurance.coverageTypeAr', 'insurance.premiumSar'],
     numberPath: 'insurance.policyNumber', numberAr: 'رقم وثيقة التأمين', numberEn: 'Policy number',
+    // ── ووثيقةُ التأمين وحدَها ورقةٌ مشتركة ────────────────────────────────
+    // وثيقةٌ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة: رقمُها واحدٌ عليها كلِّها،
+    // وتجديدُها حدثٌ واحد يسري على الجميع. أمّا بطاقةُ التشغيل والتفويض فلكلّ
+    // مركبةٍ ورقتُها برقمها، وكتابةُ رقمٍ واحد على مئةٍ منها تجعل المئةَ نسخةً
+    // من ورقةٍ واحدة — أسوأ من ألّا يُكتب رقم. فالفرقُ يُعلَن هنا لا يُخمَّن
+    // في الواجهة.
+    sharedNumber: true,
     icon: 'shield',
   },
   {

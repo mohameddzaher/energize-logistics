@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react';
 import { X, Check } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
-import { renewDocument, renewBulk, fmtDate, docNumberLabel, docStartLabel } from '@/lib/vehicleRegistry';
+import { renewDocument, renewBulk, renewSharedPolicy, fmtDate, docNumberLabel, docStartLabel } from '@/lib/vehicleRegistry';
 
 /** أقلّ ما تحتاجه النافذة لتجدّد مستندًا — تكتفي به الصفوف على اختلاف مصادرها.
  *  صفوف «الانتهاءات» تسمّي المستند docKey وصفوف «التنبيهات» تسمّيه docType،
@@ -282,6 +282,132 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
             {busy ? t('جارٍ التجديد…', 'Renewing…')
               : !when ? t('اختر التاريخ أولًا', 'Pick the date first')
               : t(`تجديد ${rows.length} مستند`, `Renew ${rows.length} documents`)}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── تجديد ورقةٍ واحدةٍ تغطّي مركباتٍ كثيرة ────────────────────────────────────
+//
+// وثيقةُ تأمينٍ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة. وتجديدُها بتأشير مئةٍ
+// وثمانٍ وتسعين خانةً ليس تجديدًا للوثيقة: هو مئةٌ وثمانٍ وتسعون عمليّةً يدويّةً
+// لحدثٍ واحد، وأيُّ مركبةٍ تُنسى تبقى في الشاشة «منتهية» وهي مؤمَّنةٌ فعلًا.
+//
+// فالنافذةُ تسأل عن الوثيقة لا عن المركبات: تُعرَض أرقامُ الوثائق وأمام كلٍّ
+// عددُ مركباتها، ويُختار رقمٌ ويُكتب التاريخُ الجديد مرّةً واحدة. والرقمُ
+// الجديد — إن خرجت الوثيقةُ برقمٍ آخر — يسري على الجميع، وهو صحيحٌ هنا وحده:
+// هي وثيقةٌ واحدة. والخادمُ يرفضه لأيّ مستندٍ ورقتُه لكلّ مركبة.
+export function SharedPolicyRenewModal({ docKey, groups, ar, onClose, onDone }: {
+  docKey: string;
+  /** أرقامُ الوثائق المعروضة وعددُ مركبات كلٍّ منها وأقربُ انتهاء. */
+  groups: { number: string; count: number; expiryDate?: string | null }[];
+  ar: boolean; onClose: () => void; onDone: () => void;
+}) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { notify } = useDialog();
+  const [number, setNumber] = useState(groups[0]?.number || '');
+  const [when, setWhen] = useState('');
+  const [newNumber, setNewNumber] = useState('');
+  const [cost, setCost] = useState('');
+  const [reference, setReference] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const picked = groups.find((g) => g.number === number);
+  const numLabel = docNumberLabel(docKey, ar);
+  const today = new Date().toISOString().slice(0, 10);
+  const past = !!when && when < today;
+
+  // سنةٌ من انتهائها الحالي إن كانت سارية، وإلّا سنةٌ من اليوم — كالتجديد المفرد.
+  useEffect(() => {
+    const base = picked?.expiryDate && new Date(picked.expiryDate) > new Date()
+      ? new Date(picked.expiryDate) : new Date();
+    const y = new Date(base); y.setFullYear(y.getFullYear() + 1);
+    setWhen(y.toISOString().slice(0, 10));
+  }, [number, picked?.expiryDate]);
+
+  const save = async () => {
+    if (!number || !when) return;
+    setBusy(true);
+    try {
+      const r = await renewSharedPolicy({
+        document: docKey, number, newExpiry: when,
+        newNumber: newNumber.trim(),
+        cost: cost === '' ? null : Number(cost),
+        reference: reference.trim(), note: note.trim(),
+      });
+      notify(t(`اتجدّدت الوثيقة على ${r?.summary?.count ?? 0} مركبة`
+        + (r?.summary?.policyUpdated ? ' وسجلّ الوثيقة معها' : ''),
+        `Renewed on ${r?.summary?.count ?? 0} vehicles`), 'success');
+      onDone();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
+  };
+
+  const inp = 'w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:border-[#f37121]';
+  const lbl = 'block text-[11.5px] font-semibold text-slate-700 mb-1';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
+          <h3 className="font-bold text-slate-900">{t('تجديد وثيقة كاملة', 'Renew a whole policy')}</h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3 overflow-y-auto">
+          <p className="text-[12px] text-slate-600 leading-relaxed">
+            {t('الوثيقة الواحدة تغطّي عدّة مركبات، وتجديدها يسري عليها كلّها دفعةً واحدة ويُقيَّد في سجلّ كلٍّ منها.',
+               'One policy covers many vehicles; renewing it applies to all of them and is recorded on each.')}
+          </p>
+          <div>
+            <label className={lbl}>{numLabel || t('رقم الوثيقة', 'Policy number')} *</label>
+            <select value={number} onChange={(e) => setNumber(e.target.value)} className={inp}>
+              {groups.map((g) => (
+                <option key={g.number} value={g.number}>
+                  {g.number} — {t(`${g.count} مركبة`, `${g.count} vehicles`)}
+                  {g.expiryDate ? ` · ${fmtDate(g.expiryDate)}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          {picked && (
+            <p className="text-[12px] text-slate-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {t(`سيُجدَّد على ${picked.count} مركبة`, `Will renew on ${picked.count} vehicles`)}
+            </p>
+          )}
+          <div>
+            <label className={lbl}>{t('تاريخ الانتهاء الجديد', 'New expiry date')} *</label>
+            <input type="date" min={today} value={when} onChange={(e) => setWhen(e.target.value)} className={inp} />
+            {past && <p className="text-[11.5px] text-rose-700 font-semibold mt-1">
+              {t('التاريخ في الماضي — راجعه', 'That date is in the past')}</p>}
+          </div>
+          {numLabel && (
+            <div>
+              <label className={lbl}>{t(`${numLabel} الجديد (اتركه فارغًا إن لم يتغيّر)`, `New ${numLabel} (leave empty if unchanged)`)}</label>
+              <input value={newNumber} dir="ltr" onChange={(e) => setNewNumber(e.target.value)} className={`${inp} font-mono`} />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>{t('التكلفة (اختياري)', 'Cost (optional)')}</label>
+              <input type="number" value={cost} onChange={(e) => setCost(e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>{t('رقم الإيصال (اختياري)', 'Receipt (optional)')}</label>
+              <input value={reference} onChange={(e) => setReference(e.target.value)} className={inp} />
+            </div>
+          </div>
+          <div>
+            <label className={lbl}>{t('ملاحظة (اختياري)', 'Note (optional)')}</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} className={inp} />
+          </div>
+        </div>
+
+        <div className="px-5 py-3.5 border-t border-slate-200">
+          <button onClick={save} disabled={busy || !number || !when || past}
+            className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-40">
+            {busy ? t('جارٍ التجديد…', 'Renewing…')
+              : t(`تجديد الوثيقة على ${picked?.count ?? 0} مركبة`, `Renew on ${picked?.count ?? 0} vehicles`)}
           </button>
         </div>
       </div>

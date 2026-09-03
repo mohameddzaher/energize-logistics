@@ -29,9 +29,9 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
-import { RenewModal, BulkRenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
+import { RenewModal, BulkRenewModal, SharedPolicyRenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
 import { ArrowRight, RefreshCw, Plus, Pencil, Eraser, Trash2, X, Save, Search } from 'lucide-react';
-import { VReg, DOC_TYPES, daysText, STATE_META, canEditVehicles, canAdminVehicles } from '@/lib/vehicleRegistry';
+import { VReg, DOC_TYPES, daysText, STATE_META, canEditVehicles, canAdminVehicles, isSharedPaper } from '@/lib/vehicleRegistry';
 import { flexIncludes } from '@/lib/flexMatch';
 import ManagedSelect from '@/components/system/ManagedSelect';
 
@@ -208,6 +208,11 @@ function DocumentFamilyPageInner({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [renewing, setRenewing] = useState<RenewTarget | null>(null);
   const [bulk, setBulk] = useState<RenewTarget[] | null>(null);
+  // ── تجديدُ الورقة المشتركة ────────────────────────────────────────────────
+  // وثيقةُ تأمينٍ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة. «اختر ثمّ جدِّد» يعني
+  // مئةً وثمانٍ وتسعين تأشيرةً لحدثٍ واحد، وأيُّ مركبةٍ تُنسى تبقى «منتهية» وهي
+  // مؤمَّنة. فتُسأل الوثيقةُ بدل المركبات — راجع SharedPolicyRenewModal.
+  const [sharedOpen, setSharedOpen] = useState(false);
   /** استمارةُ العائلة: `vehicle: null` تعني «اختر المركبة أوّلًا» — أي إنشاء. */
   const [form, setForm] = useState<{ vehicle: VReg | null } | null>(null);
 
@@ -374,6 +379,26 @@ function DocumentFamilyPageInner({
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   }, [fields, famLabel, confirm, notify, load, ar]);
 
+  // أرقامُ الوثائق المشتركة وعددُ مركبات كلٍّ منها — تُبنى من الصفوف المحمَّلة،
+  // فما يُعرَض للتجديد هو ما في الشاشة لا قائمةٌ من مصدرٍ آخر قد تختلف عنها.
+  const sharedGroups = useMemo(() => {
+    if (!docKey || !isSharedPaper(docKey) || !doc) return [];
+    const m = new Map<string, { number: string; count: number; expiryDate?: string | null }>();
+    for (const v of rows) {
+      const n = String(doc.numberOf(v) || '').trim();
+      if (!n) continue;
+      const g = m.get(n);
+      const exp = doc.datePath(v) || null;
+      if (!g) m.set(n, { number: n, count: 1, expiryDate: exp });
+      else {
+        g.count += 1;
+        // أقربُ انتهاءٍ في المجموعة هو انتهاءُ الوثيقة عمليًّا.
+        if (exp && (!g.expiryDate || new Date(exp) < new Date(g.expiryDate))) g.expiryDate = exp;
+      }
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count);
+  }, [rows, docKey, doc]);
+
   const allShownPicked = f.shown.length > 0 && f.shown.every((v: VReg) => picked.has(v._id));
   const toggleAll = () => setPicked((p) => {
     const n = new Set(p);
@@ -393,6 +418,16 @@ function DocumentFamilyPageInner({
       </Link>
 
       <PageHeader icon={icon} title={t(titleAr, titleEn)} subtitle={t(subtitleAr, subtitleEn)}>
+        {renewable && sharedGroups.length > 0 && (
+          <button
+            onClick={() => setSharedOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#12325c] hover:bg-[#0d2544] text-white text-sm font-semibold"
+            title={t('الوثيقة الواحدة تغطّي عدّة مركبات — تُجدَّد مرّةً واحدة',
+                     'One policy covers many vehicles — renew it once')}>
+            <RefreshCw className="w-4 h-4" />
+            {t('تجديد وثيقة كاملة', 'Renew a whole policy')}
+          </button>
+        )}
         {renewable && picked.size > 0 && (
           <button
             onClick={() => setBulk(rows.filter((v) => picked.has(v._id)).map(targetOf))}
@@ -568,6 +603,11 @@ function DocumentFamilyPageInner({
       {renewing && (
         <RenewModal row={renewing} ar={ar} onClose={() => setRenewing(null)}
           onDone={() => { setRenewing(null); load(); }} />
+      )}
+      {sharedOpen && docKey && (
+        <SharedPolicyRenewModal docKey={docKey} groups={sharedGroups} ar={ar}
+          onClose={() => setSharedOpen(false)}
+          onDone={() => { setSharedOpen(false); setPicked(new Set()); load(); }} />
       )}
       {bulk && (
         <BulkRenewModal rows={bulk} ar={ar} onClose={() => setBulk(null)}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
+import { canPickWalletBranch } from '@/lib/wallet';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -104,7 +105,14 @@ export default function WalletPage() {
   const isReadOnly = user?.role === 'moderator';
   const isSuperAdmin = user?.role === 'super_admin';
   const isOpsManager = user?.role === 'operations_manager';
-  const canSelectBranch = isSuperAdmin || isOpsManager;
+  // ── ومَن لا يُقفَل على فرعٍ يختار الفرعَ الذي ينظر فيه ────────────────────
+  // كان الشرطُ «سوبر أدمن أو مدير عمليات» — قائمةٌ موجبةٌ تُنسى كلَّما دخل
+  // دورٌ جديد. فالمحاسبُ يفتح الصفحةَ فيقع على مسار «استعمل فرعَ حسابك»،
+  // وحسابُه بلا فرعٍ (والخمسةُ كلُّهم كذلك، وهو صواب: المحاسبةُ ليست في فرع)
+  // فيُقال له «لا فرعَ لحسابك — كلّم الإدارة»، ويقف عمله.
+  //
+  // فالسؤالُ صار عكسَه: مَن **يُقفَل** على فرعه؟ موظّفُ العمليات وحدَه.
+  const canSelectBranch = canPickWalletBranch(user?.role);
 
   const { lang } = useLanguage();
   const L = getWalletTranslations(lang);
@@ -150,6 +158,10 @@ export default function WalletPage() {
     // قيدُ استلام فاتورةٍ أو كشف — معلومةٌ خارج الرصيد.
     receivedDocType: 'invoice' as 'invoice' | 'report', receivedDocNumber: '',
     receivedReportNumbers: [] as string[],
+    // كلُّ كشفٍ وسندُه معًا — لا قائمتان تتزحزحان عن بعضهما عند أوّل حذف.
+    receivedReports: [] as { reportNumber: string; documentNumber: string }[],
+    receivedDocSand: '',
+    documentNumber: '',
   });
   // Empty form used on open/reset — keeps the three reset sites in sync.
   const EMPTY_TX_FORM = {
@@ -160,6 +172,10 @@ export default function WalletPage() {
     // قيدُ استلام فاتورةٍ أو كشف — معلومةٌ خارج الرصيد.
     receivedDocType: 'invoice' as 'invoice' | 'report', receivedDocNumber: '',
     receivedReportNumbers: [] as string[],
+    // كلُّ كشفٍ وسندُه معًا — لا قائمتان تتزحزحان عن بعضهما عند أوّل حذف.
+    receivedReports: [] as { reportNumber: string; documentNumber: string }[],
+    receivedDocSand: '',
+    documentNumber: '',
   };
   const [submitting, setSubmitting] = useState(false);
   const [txError, setTxError] = useState('');
@@ -273,8 +289,22 @@ export default function WalletPage() {
    * غدًا يُعرَّف شرطُه في سطرٍ واحدٍ لا في ثلاثة.
    */
   const canSubmitTx = txType === 'tax_invoice'
-    ? (txForm.receivedReportNumbers.length > 0 || !!String(txForm.receivedDocNumber || '').trim())
+    ? (txForm.receivedReports.length > 0 || !!String(txForm.receivedDocNumber || '').trim())
     : (!!txForm.amount && Number(txForm.amount) > 0);
+
+  /** يُضيف الكشفَ وسندَه زوجًا — ويُستدعى من الزرّ ومن مفتاح الإدخال معًا. */
+  const addReceivedReport = () => {
+    const n = String(txForm.receivedDocNumber || '').trim();
+    if (!n) return;
+    setTxForm((f) => ({
+      ...f,
+      receivedDocNumber: '',
+      receivedDocSand: '',
+      receivedReports: f.receivedReports.some((x) => x.reportNumber === n)
+        ? f.receivedReports
+        : [...f.receivedReports, { reportNumber: n, documentNumber: String(f.receivedDocSand || '').trim() }],
+    }));
+  };
 
   const handleAddTransaction = async () => {
     if (!canSubmitTx) return;
@@ -291,8 +321,11 @@ export default function WalletPage() {
       // ما بقي في خانة الكتابة ولم يُضَف بعد يُحسب: مَن كتب رقمًا وضغط «حفظ»
       // مباشرةً قصد إضافتَه — وإسقاطُه بصمتٍ يفقده كشفًا ظنّ أنّه سجّله.
       const pendingReport = String(txForm.receivedDocNumber || '').trim();
-      const allReports = [...new Set([...txForm.receivedReportNumbers, ...(pendingReport ? [pendingReport] : [])])];
-      if (txType === 'tax_invoice' && !allReports.length) {
+      const allPairs = [...txForm.receivedReports];
+      if (pendingReport && !allPairs.some((x) => x.reportNumber === pendingReport)) {
+        allPairs.push({ reportNumber: pendingReport, documentNumber: String(txForm.receivedDocSand || '').trim() });
+      }
+      if (txType === 'tax_invoice' && !allPairs.length) {
         setTxError(lang === 'ar' ? 'اكتب رقم كشف تخريج واحدًا على الأقل' : 'Enter at least one dispatch report number');
         setSubmitting(false);
         return;
@@ -327,13 +360,15 @@ export default function WalletPage() {
       if (txType === 'tax_invoice') {
         // بلا مبلغ: القيدُ يقول «استلمتُ»، ولا مالَ دخل ولا خرج.
         payload.amount = 0;
-        payload.receivedReportNumbers = allReports;
+        payload.receivedReports = allPairs;
       }
       if (txType === 'purchase') {
         payload.purchaseDeliveryStatementNumber = txForm.purchaseDeliveryStatementNumber || undefined;
         payload.purchaseDriverName = txForm.purchaseDriverName || undefined;
         payload.purchaseReceiptNumber = txForm.purchaseReceiptNumber || undefined;
         payload.purchaseBranch = txForm.purchaseBranch || undefined;
+        // رقمُ السند يصل عمودَه في سير عمل التشغيل.
+        payload.documentNumber = txForm.documentNumber?.trim() || undefined;
       }
       const res = await api.post<{ unknownReports?: string[] }>('/api/wallet/transactions', payload);
       // ── ورقمٌ لم يُعرَف يُقال قبل إغلاق النافذة ──────────────────────────
@@ -1034,56 +1069,45 @@ export default function WalletPage() {
                       <label className="text-slate-500 text-xs mb-1 block">
                         {lang === 'ar' ? 'أرقام كشوف التخريج' : 'Dispatch report numbers'} *
                       </label>
+                      {/* ── ولكلّ كشفٍ سندُه ────────────────────────────────
+                          يُكتبان معًا فيُحفظان زوجًا، ويصل السندُ عمودَه في
+                          سير عمل التشغيل. وسندٌ واحدٌ يُنسَخ على الحزمة كلِّها
+                          كان سيُنسَب سندَ كشفٍ إلى ستّةٍ غيره. */}
                       <div className="flex gap-2">
                         <input type="text" value={txForm.receivedDocNumber}
                           onChange={(e) => setTxForm((f) => ({ ...f, receivedDocNumber: e.target.value }))}
-                          onKeyDown={(e) => {
-                            // الإدخالُ يُضيف كما تُضيف الفاصلة: اليدُ لا تترك
-                            // لوحةَ المفاتيح بين رقمٍ وآخر.
-                            if (e.key !== 'Enter' && e.key !== ',') return;
-                            e.preventDefault();
-                            const v = String(txForm.receivedDocNumber || '').trim();
-                            if (!v) return;
-                            setTxForm((f) => ({
-                              ...f,
-                              receivedDocNumber: '',
-                              receivedReportNumbers: f.receivedReportNumbers.includes(v)
-                                ? f.receivedReportNumbers : [...f.receivedReportNumbers, v],
-                            }));
-                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addReceivedReport(); } }}
                           className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-                          placeholder={lang === 'ar' ? 'اكتب رقم الكشف ثم Enter' : 'type a report number then Enter'} />
-                        <button type="button"
-                          onClick={() => {
-                            const v = String(txForm.receivedDocNumber || '').trim();
-                            if (!v) return;
-                            setTxForm((f) => ({
-                              ...f,
-                              receivedDocNumber: '',
-                              receivedReportNumbers: f.receivedReportNumbers.includes(v)
-                                ? f.receivedReportNumbers : [...f.receivedReportNumbers, v],
-                            }));
-                          }}
-                          className="px-4 py-2.5 rounded-lg bg-[#f37121] text-white text-sm hover:bg-[#e06010] transition-colors">
+                          placeholder={lang === 'ar' ? 'رقم الكشف' : 'report number'} />
+                        <input type="text" value={txForm.receivedDocSand}
+                          onChange={(e) => setTxForm((f) => ({ ...f, receivedDocSand: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addReceivedReport(); } }}
+                          className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                          placeholder={lang === 'ar' ? 'رقم السند (اختياري)' : 'voucher no (optional)'} />
+                        <button type="button" onClick={addReceivedReport}
+                          className="px-4 py-2.5 rounded-lg bg-[#f37121] text-white text-sm hover:bg-[#e06010] transition-colors shrink-0">
                           {lang === 'ar' ? 'إضافة' : 'Add'}
                         </button>
                       </div>
-                      {txForm.receivedReportNumbers.length > 0 && (
+                      {txForm.receivedReports.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-2">
-                          {txForm.receivedReportNumbers.map((n) => (
-                            <span key={n} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-xs font-mono">
-                              {n}
+                          {txForm.receivedReports.map((r) => (
+                            <span key={r.reportNumber} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-xs font-mono">
+                              {r.reportNumber}
+                              {r.documentNumber
+                                ? <span className="text-slate-400">· {lang === 'ar' ? 'سند' : 'vch'} {r.documentNumber}</span>
+                                : <span className="text-slate-300">· {lang === 'ar' ? 'بلا سند' : 'no vch'}</span>}
                               <button type="button" title={lang === 'ar' ? 'إزالة' : 'Remove'}
-                                onClick={() => setTxForm((f) => ({ ...f, receivedReportNumbers: f.receivedReportNumbers.filter((x) => x !== n) }))}
+                                onClick={() => setTxForm((f) => ({ ...f, receivedReports: f.receivedReports.filter((x) => x.reportNumber !== r.reportNumber) }))}
                                 className="text-slate-400 hover:text-red-600">×</button>
                             </span>
                           ))}
                         </div>
                       )}
                       <p className="text-[11px] text-slate-400 mt-1.5">
-                        {txForm.receivedReportNumbers.length > 0
-                          ? (lang === 'ar' ? `${txForm.receivedReportNumbers.length} كشفًا في هذا القيد` : `${txForm.receivedReportNumbers.length} reports in this record`)
-                          : (lang === 'ar' ? 'يمكنك إضافة أكثر من كشف في القيد الواحد' : 'You can add more than one report in a single record')}
+                        {txForm.receivedReports.length > 0
+                          ? (lang === 'ar' ? `${txForm.receivedReports.length} كشفًا في هذا القيد` : `${txForm.receivedReports.length} reports in this record`)
+                          : (lang === 'ar' ? 'يمكنك إضافة أكثر من كشف في القيد الواحد — ولكل كشف رقم سنده' : 'Add more than one report — each with its own voucher number')}
                       </p>
                     </div>
                   </>
@@ -1142,6 +1166,22 @@ export default function WalletPage() {
                         autoComplete="off"
                         onChange={(e) => setTxForm((f) => ({ ...f, purchaseReceiptNumber: e.target.value }))}
                         className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" placeholder={L.enterReceiptNumber} />
+                    </div>
+                    {/* ── ورقمُ السند يصل الكشف ────────────────────────────────
+                        «رقم السند» عمودٌ في سير عمل التشغيل يُكتب بيدٍ بعد
+                        الدفع. ومَن دفع هو من يمسك السندَ لحظتَها — فيكتبه هنا
+                        مرّةً ويصل هناك، بدل أن يُبحث عنه بعد أسبوع.
+                        (وهو غيرُ «رقم الإيصال» فوقه: ذاك إيصالُ المورّد.) */}
+                    <div>
+                      <label className="text-slate-500 text-xs mb-1 block">
+                        {lang === 'ar' ? 'رقم السند' : 'Voucher number'}
+                        <span className="text-slate-400 ms-1">{lang === 'ar' ? '— يُكتب في الكشف' : '— written onto the report'}</span>
+                      </label>
+                      <input type="text" value={txForm.documentNumber}
+                        name="documentNumber" autoComplete="off"
+                        onChange={(e) => setTxForm((f) => ({ ...f, documentNumber: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
+                        placeholder={lang === 'ar' ? 'رقم السند كما هو عليه' : 'as written on the voucher'} />
                     </div>
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">{L.branch}</label>

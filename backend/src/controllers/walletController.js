@@ -118,11 +118,18 @@ const getOrCreateWallet = async (branchId, date) => {
  * ولا يُكتب فوق ما كُتب بيد: `$set` على الفارغ وحدَه. مَن صحّح مبلغًا أو فرعًا
  * في سير عمل التشغيل قصدًا لا تعود العهدةُ فتدهسه.
  */
-async function fillReportFromWallet({ workflow, amount, date, branchId }) {
+async function fillReportFromWallet({ workflow, amount, date, branchId, documentNumber }) {
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const patch = {};
   if (!workflow.paymentAmount && amount > 0) patch.paymentAmount = amount;
   if (!workflow.paymentDate) patch.paymentDate = new Date(date);
+  // ── ورقمُ السند يصل عمودَه في الكشف ─────────────────────────────────────
+  // مَن دفع هو من يمسك السندَ لحظتَها. يكتبه في العهدة مرّةً فيصل «رقم السند»
+  // في سير عمل التشغيل — بدل أن يُكتب هنا ويُنسى هناك، أو يُبحث عنه بعد أسبوع.
+  // ولا يُكتب فوق سندٍ مكتوب: مَن صحّحه بيده يجده كما تركه.
+  if (documentNumber && !String(workflow.documentNumber || '').trim()) {
+    patch.documentNumber = String(documentNumber).trim();
+  }
 
   // ── والفرعُ المسدِّد فرعُ العهدة، لا فرعُ الموظّف ────────────────────────
   //
@@ -268,7 +275,7 @@ exports.addTransaction = async (req, res) => {
       vendor, driver, vendorName, driverName, expenseCategory, itemName, reference, notes,
       collectionSource, description,
       purchaseDeliveryStatementNumber, purchaseDriverName, purchaseReceiptNumber, purchaseBranch,
-      mismatchReason, mismatchNote,
+      mismatchReason, mismatchNote, documentNumber,
     } = req.body;
 
     // Validate the amount-mismatch reason: only these enum values, and 'other'
@@ -289,12 +296,23 @@ exports.addTransaction = async (req, res) => {
     // والاستلامُ يقع على حزمةٍ: يأتي المندوبُ ومعه سبعةُ كشوفٍ فيسجّلها دفعةً.
     // وقيدٌ لكلّ كشفٍ يعني تكرارَ التاريخ والفرع سبعَ مرّات، ومَن يملّ يترك
     // الباقيَ بلا تسجيل.
-    const receivedReports = type === 'tax_invoice'
-      ? [...new Set([
-        ...(Array.isArray(req.body.receivedReportNumbers) ? req.body.receivedReportNumbers : []),
-        req.body.receivedDocNumber,          // الشكلُ القديم، ما زال يُقبَل
-      ].map((x) => String(x ?? '').trim()).filter(Boolean))]
-      : [];
+    // الشكلُ الجديد أزواجٌ (كشفٌ وسندُه)، والقديمُ قائمةُ أرقامٍ — كلاهما يُقبَل.
+    const pairs = [];
+    const seenReports = new Set();
+    const addPair = (rn, dn) => {
+      const n = String(rn ?? '').trim();
+      if (!n || seenReports.has(n)) return;
+      seenReports.add(n);
+      pairs.push({ reportNumber: n, documentNumber: String(dn ?? '').trim() });
+    };
+    if (type === 'tax_invoice') {
+      for (const x of (Array.isArray(req.body.receivedReports) ? req.body.receivedReports : [])) {
+        addPair(x?.reportNumber, x?.documentNumber);
+      }
+      for (const x of (Array.isArray(req.body.receivedReportNumbers) ? req.body.receivedReportNumbers : [])) addPair(x, '');
+      addPair(req.body.receivedDocNumber, '');   // الشكلُ الأقدم
+    }
+    const receivedReports = pairs.map((x) => x.reportNumber);
     if (type === 'tax_invoice' && !receivedReports.length) {
       return res.status(400).json({ message: 'اكتب رقم كشف تخريج واحدًا على الأقلّ.' });
     }
@@ -426,6 +444,8 @@ exports.addTransaction = async (req, res) => {
       receivedDocType: type === 'tax_invoice' ? 'invoice' : undefined,
       receivedDocNumber: type === 'tax_invoice' ? (receivedReports[0] || undefined) : undefined,
       receivedReportNumbers: type === 'tax_invoice' ? receivedReports : undefined,
+      receivedReports: type === 'tax_invoice' ? pairs : undefined,
+      documentNumber: (type === 'purchase' && documentNumber) ? String(documentNumber).trim() : undefined,
       reference: reference || undefined,
       notes: notes || undefined,
       isFlagged,
@@ -450,6 +470,7 @@ exports.addTransaction = async (req, res) => {
         // ما دفعه الموظّفُ بيده هو سعرُ الشراء الحقيقيّ.
         amount,
         date: txDate,
+        documentNumber,
         // فرعُ العهدة التي خرج منها المال — لا فرعُ الحساب الذي سجّله.
         branchId: wallet.branch || transaction.branch || req.user.branch,
       });
@@ -465,6 +486,8 @@ exports.addTransaction = async (req, res) => {
           workflow: wf,
           amount: Number(wf.purchaseValue) || 0,
           date: txDate,
+          // ولكلّ كشفٍ سندُه هو، لا سندٌ واحدٌ يُنسَخ على الحزمة.
+          documentNumber: pairs.find((x) => x.reportNumber === String(wf.reportNumber).trim())?.documentNumber,
           branchId: wallet.branch || transaction.branch || req.user.branch,
         });
       }
@@ -854,8 +877,14 @@ exports.getBranchDashboard = async (req, res) => {
         .lean(),
       WalletTransaction.find({ branch: branchId, date: dateFilter })
         .populate('user', 'firstName lastName')
-        .populate('customer', 'companyName customerNumber')
-        .populate('invoice', 'invoiceNumber amount balance')
+        // ── ولا يُملأ ما لم يعد في المستند ────────────────────────────────
+        // `invoice` حقلٌ زال مع قسم «العملاء والمالية»، وبقي السطرُ يملؤه —
+        // فكانت الصفحةُ ترد ٥٠٠ في كلّ فتحة: «لا يمكن ملءُ invoice، ليس في
+        // مخطّطك». ولم يُلاحَظ لأنّ من يملك فتحَها كان قليلًا.
+        //
+        // و`customer` يشير إلى سجلّ التحصيل الآن لا إلى عميلٍ قديم، فحقولُه
+        // اسمُه ونوعُه.
+        .populate('customer', 'name kind')
         .populate('vendor', 'name')
         .populate('driver', 'name')
         .populate('expenseCategory', 'name')

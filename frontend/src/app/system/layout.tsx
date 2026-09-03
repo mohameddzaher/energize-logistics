@@ -33,6 +33,7 @@ import { LS2_SECTION_ROLES } from '@/lib/ls2';
 import { isManagedSection, canAccessSection } from '@/lib/sections';
 import { ALL_ROLES } from '@/lib/roles';
 import { PERF_STAFF_ROLES } from '@/lib/performance';
+import { WALLET_ROLES, WALLET_DASHBOARD_ROLES } from '@/lib/wallet';
 
 // Section-KPI pages render TeamBoard, which admits PERF_STAFF_ROLES only — a
 // nav entry offering the link to anyone else is a guaranteed dead-end screen.
@@ -207,8 +208,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
     { href: '/system/operations/dispatch-sheets', label: L.dispatchSheets, icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'procurement_manager', 'procurement_staff'], section: 'Operations' },
-    { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
-    { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'moderator'], section: 'Operations' },
+    // ── وقوائمُ العهدة من موضعٍ واحد ────────────────────────────────────────
+    // كانت مكتوبةً هنا بيدٍ وفي شرط محدِّد الفرع داخل الصفحة، فأُضيف المحاسبُ
+    // في الخادم ونُسي في الاثنين: نقاطُه مفتوحةٌ ولا يجد الرابطَ أصلًا.
+    { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: WALLET_ROLES, section: 'Operations' },
+    { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: WALLET_DASHBOARD_ROLES, section: 'Operations' },
     { href: '/system/vehicle-analytics', label: L.vehicleAnalytics, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Operations' },
     { href: '/system/vehicle-analytics/fuel', label: L.fuelAnalysis, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Operations' },
     { href: '/system/vehicle-analytics/tracking', label: L.gpsTracking, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Operations' },

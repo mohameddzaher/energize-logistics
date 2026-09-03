@@ -93,6 +93,12 @@ const call = async (method, path, ck, body) => {
     // الحسابُ بلا فرع، فيُختار الفرعُ كما تختاره الصفحة — وهو المسارُ الواقعيّ.
     ok('يفتح عهدةَ فرعٍ يختاره', (await call('GET', `/api/wallet/daily?branchId=${branch?._id}`, accLogin.ck)).status === 200);
     ok('يفتح لوحة المحفظة', (await call('GET', '/api/wallet/dashboard', accLogin.ck)).status === 200);
+    // ── والمحاسبُ ينظر في أيّ فرعٍ شاء ──────────────────────────────────────
+    // حسابُه بلا فرع — والخمسةُ الحقيقيّون كذلك، وهو صواب: المحاسبةُ ليست في
+    // فرع. فلا يجوز أن تقف صفحةُ العهدة عند «لا فرعَ لحسابك».
+    ok('وينظر في عهدة أيّ فرع', (await call('GET', `/api/wallet/daily?branchId=${branch?._id}`, accLogin.ck)).status === 200);
+    ok('ويقرأ لوحةَ فرعٍ بعينه', (await call('GET', `/api/wallet/branch/${branch?._id}`, accLogin.ck)).status === 200);
+    ok('وتنبيهاتِ المخاطر', (await call('GET', '/api/wallet/risk-alerts', accLogin.ck)).status === 200);
 
     const perms = await call('GET', '/api/workflows/permissions', accLogin.ck);
     const mine = perms.json?.roleAccess?.accountant || [];
@@ -143,9 +149,10 @@ const call = async (method, path, ck, body) => {
     const buy = await call('POST', '/api/wallet/transactions', accLogin.ck, {
       type: 'purchase', amount: 800, purchaseDeliveryStatementNumber: target.reportNumber,
       itemName: 'zz', notes: 'zz-فحص', branchId: String(branch?._id),
+      documentNumber: 'ZZ-SAND-1',
     });
     ok('تُقيَّد المشتريات', buy.status === 201, `${buy.status}`);
-    const t1 = await OW.findById(target._id).select('paymentAmount paymentDate payingBranch paymentType').lean();
+    const t1 = await OW.findById(target._id).select('paymentAmount paymentDate payingBranch paymentType documentNumber').lean();
     ok('المبلغُ يصل «مبلغ السداد»', t1.paymentAmount === 800, `${t1.paymentAmount}`);
     ok('والتاريخُ يصل «تاريخ السداد»', !!t1.paymentDate);
     // ── والفرعُ عربيٌّ كما في العمود ────────────────────────────────────
@@ -158,6 +165,8 @@ const call = async (method, path, ck, body) => {
     ok('ومكتوبٌ بالعربيّة كما في بقيّة العمود', !!t1.payingBranch && !/[A-Za-z]/.test(t1.payingBranch), `${t1.payingBranch}`);
     // والمحفظةُ تكتب ما تعرفه يقينًا، ولا تخترع نوعَ الدفع.
     ok('ولا تخترع المحفظةُ نوعَ الدفع', !t1.paymentType, t1.paymentType || '(فارغ — صواب)');
+    // ورقمُ السند يصل عمودَه: يُكتب في العهدة مرّةً ولا يُبحث عنه في الكشف.
+    ok('ورقمُ السند يصل «رقم السند» في الكشف', t1.documentNumber === 'ZZ-SAND-1', t1.documentNumber || '(فارغ)');
     if (buy.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${buy.json.transaction._id}`, accLogin.ck);
 
     // ── ٤ · قيدُ استلام الفاتورة يملأ من سعر الشراء ───────────────────────
@@ -169,7 +178,11 @@ const call = async (method, path, ck, body) => {
     const rec2 = await mk(`zz-عميل-ضريبي-${stamp}`);
     const ti = await call('POST', '/api/wallet/transactions', accLogin.ck, {
       type: 'tax_invoice',
-      receivedReportNumbers: [rec.reportNumber, rec2.reportNumber, 'zz-لا-وجود-له'],
+      receivedReports: [
+        { reportNumber: rec.reportNumber, documentNumber: 'ZZ-SAND-A' },
+        { reportNumber: rec2.reportNumber, documentNumber: 'ZZ-SAND-B' },
+        { reportNumber: 'zz-لا-وجود-له', documentNumber: '' },
+      ],
       notes: 'zz-فحص', branchId: String(branch?._id),
     });
     ok('يُقبل القيد بلا مبلغٍ أصلًا', ti.status === 201, `${ti.status} ${ti.json?.message || ''}`);
@@ -180,9 +193,11 @@ const call = async (method, path, ck, body) => {
     ok('ويُسمّي الرقمَ الذي لا كشفَ له', (ti.json?.unknownReports || []).includes('zz-لا-وجود-له'),
       JSON.stringify(ti.json?.unknownReports));
 
-    for (const [label, r] of [['الأوّل', rec], ['والثاني', rec2]]) {
+    for (const [label, r, sand] of [['الأوّل', rec, 'ZZ-SAND-A'], ['والثاني', rec2, 'ZZ-SAND-B']]) {
       // eslint-disable-next-line no-await-in-loop
-      const t = await OW.findById(r._id).select('paymentAmount paymentDate payingBranch').lean();
+      const t = await OW.findById(r._id).select('paymentAmount paymentDate payingBranch documentNumber').lean();
+      // ولكلٍّ سندُه هو، لا سندٌ واحدٌ يُنسَخ على الحزمة.
+      ok(`${label}: ورقمُ سنده هو لا سندُ غيره`, t.documentNumber === sand, `${t.documentNumber} — المنتظَر ${sand}`);
       ok(`${label}: مبلغُ السداد = سعرُ شرائه هو`, t.paymentAmount === 800, `${t.paymentAmount}`);
       ok(`${label}: والفرعُ فرعُ العهدة`, t.payingBranch === expectedBranchAr, `${t.payingBranch || '(فارغ)'}`);
       ok(`${label}: وتاريخُ اليوم`, !!t.paymentDate);

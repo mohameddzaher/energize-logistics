@@ -46,6 +46,12 @@ const walletTransactionSchema = new mongoose.Schema(
     purchaseInvoiceAmount: { type: Number },
     purchaseDriverName: { type: String, trim: true },
     purchaseReceiptNumber: { type: String, trim: true },
+    // ── رقمُ السند — يصل الكشفَ ولا يقف هنا ─────────────────────────────────
+    // «رقم السند» عمودٌ في سير عمل التشغيل يُكتب بيدٍ بعد أن يُدفع. ومَن يدفع
+    // هو من يمسك السندَ في يده لحظتَها، فيكتبه هنا مرّةً ويصل هناك — بدل أن
+    // يُكتب في العهدة ويُنسى في الكشف. (`purchaseReceiptNumber` شيءٌ آخر:
+    // إيصالُ المورّد، ولا يخرج من العهدة.)
+    documentNumber: { type: String, trim: true, default: '' },
     purchaseBranch: { type: String, trim: true },
     // Legacy/shared fields
     vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' },
@@ -69,6 +75,15 @@ const walletTransactionSchema = new mongoose.Schema(
     //
     // و`receivedDocNumber` باقٍ للقيود التي كُتبت قبل هذا، ويُقرأ معها.
     receivedReportNumbers: [{ type: String, trim: true }],
+    // ── ورقمُ السند مع كشفه، لا في قائمةٍ موازية ────────────────────────────
+    // لكلّ كشفٍ سندُه. وحفظُ الأرقام في قائمةٍ والسنداتِ في قائمةٍ أخرى يجعلهما
+    // مرتبطتين بالترتيب وحدَه — وأوّلُ حذفٍ من إحداهما يزحزح الأخرى فيُنسَب
+    // سندُ كشفٍ إلى غيره. فيُحفظ الزوجُ معًا.
+    receivedReports: [{
+      _id: false,
+      reportNumber: { type: String, trim: true },
+      documentNumber: { type: String, trim: true, default: '' },
+    }],
     reference: { type: String, trim: true },
     notes: { type: String, trim: true },
     // Risk flags

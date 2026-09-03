@@ -14,11 +14,49 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
+import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 import { Boxes } from 'lucide-react';
 import { getRegisters, fmtDate, daysText, money, STATE_META, stateLabel } from '@/lib/vehicleRegistry';
 
 const TABS = ['owners', 'authorizedPersons', 'gpsProviders', 'gpsDevices', 'gpsUnits', 'fuelCards'] as const;
 type Tab = typeof TABS[number];
+
+
+// ── أعمدةُ كلّ سجلّ وقارئُ كلٍّ منها ────────────────────────────────────────
+// السجلّاتُ ثلاثةٌ ولكلٍّ أعمدتُه، فالتعريفُ مفتاحُه التبويب. وواحدٌ للترويسة
+// وللقمع معًا: عمودٌ يُضاف يجد فلترَه بلا سطرٍ ثانٍ.
+const COL_DEFS: Record<string, [string, string, string][]> = {
+  gpsUnits: [
+    ['serial', 'السيريال', 'Serial'], ['plate', 'اللوحة', 'Plate'], ['device', 'الجهاز', 'Device'],
+    ['provider', 'المزوّد', 'Provider'], ['deviceStatus', 'حالة الجهاز', 'Device status'],
+    ['expiry', 'ينتهي في', 'Expires'], ['left', 'المتبقي', 'Left'],
+  ],
+  fuelCards: [
+    ['chip', 'رقم الشريحة', 'Chip'], ['plate', 'اللوحة', 'Plate'], ['onInvoice', 'اللوحة على الفاتورة', 'On invoice'],
+    ['status', 'الحالة', 'Status'], ['type', 'نوع الاستهلاك', 'Type'], ['limit', 'الحدّ', 'Limit'],
+    ['sector', 'القطاع', 'Sector'],
+  ],
+  default: [
+    ['name', 'الاسم', 'Name'], ['details', 'تفاصيل', 'Details'],
+    ['vehicles', 'المركبات', 'Vehicles'], ['expired', 'منها منتهية', 'Expired'],
+  ],
+};
+const GETTERS: Record<string, Record<string, (x: any) => any>> = {
+  gpsUnits: {
+    serial: (x) => x.value, plate: (x) => x.plateNumber, device: (x) => x.deviceModel,
+    provider: (x) => x.provider, deviceStatus: (x) => x.deviceStatusAr,
+    expiry: (x) => fmtDate(x.expiryDate), left: (x) => x.state,
+  },
+  fuelCards: {
+    chip: (x) => x.value, plate: (x) => x.plateNumber, onInvoice: (x) => x.plateOnInvoiceAr,
+    status: (x) => x.statusAr, type: (x) => x.consumptionTypeAr,
+    limit: (x) => (x.limitSar == null ? '' : String(x.limitSar)), sector: (x) => x.sectorAr,
+  },
+  default: {
+    name: (x) => x.value, details: (x) => [x.commercialRegistration, x.iqamaNumber, x.jobTitleAr].filter(Boolean).join(' · '),
+    vehicles: (x) => x.vehicles, expired: (x) => x.expired,
+  },
+};
 
 export default function Page() {
   const { lang, isRTL } = useLanguage();
@@ -53,6 +91,10 @@ export default function Page() {
   // فالخطّافات كلُّها فوق، والخروج المبكر تحتها.
   const reg = d?.registers?.[tab];
   const rows: any[] = reg?.items || [];
+  const cf = useColumnFilters<any>();
+
+  // الفلاترُ آخرُ ما يُطبَّق: فوق الشريحة والبحث، كما يفعل إكسل.
+  // (يُحسَب بعد `f` أدناه.)
 
   // الشرائح تختلف باختلاف السجلّ — لكل سؤاله.
   const CHIPS: Chip[] = tab === 'gpsUnits'
@@ -84,6 +126,7 @@ export default function Page() {
     .flatMap(([, val]) => (Array.isArray(val) ? val : [val]))
     .filter((val) => typeof val === 'string' || typeof val === 'number') as (string | number)[], []);
   const f = useChipFilter(rows, CHIPS, filter, q, search);
+  const shownRows = cf.apply(f.shown, GETTERS[tab] || GETTERS.default);
 
   if (loading) return <Spinner />;
 
@@ -113,7 +156,7 @@ export default function Page() {
   // بدونهما كان «تصدير المعروض» يخرج بشريحةٍ صغيرة والمستخدم يحسبه السجلّ كلَّه.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
-    { key: 'shown', label: scope.shown, sheets: [{ name: reg?.ar || tab, rows: f.shown, columns: cols }] },
+    { key: 'shown', label: scope.shown, sheets: [{ name: reg?.ar || tab, rows: shownRows, columns: cols }] },
     { key: 'all', label: scope.all, sheets: [{ name: reg?.ar || tab, rows, columns: cols }] },
   ];
 
@@ -140,23 +183,28 @@ export default function Page() {
 
       <FilterBar chips={CHIPS} counts={f.counts} active={filter} onChange={setFilter}
         query={q} onQuery={setQ} placeholder={t('بحث…', 'Search…')}
-        shown={f.shown.length} total={rows.length} ar={ar} />
+        shown={shownRows.length} total={rows.length} ar={ar}>
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
+      </FilterBar>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
+              {/* الترويسةُ وقارئُ العمود من تعريفٍ واحد — راجع COL_DEFS أدناه. */}
               <tr>
-                {(tab === 'gpsUnits'
-                  ? [t('السيريال', 'Serial'), t('اللوحة', 'Plate'), t('الجهاز', 'Device'), t('المزوّد', 'Provider'), t('حالة الجهاز', 'Device status'), t('ينتهي في', 'Expires'), t('المتبقي', 'Left')]
-                  : tab === 'fuelCards'
-                    ? [t('رقم الشريحة', 'Chip'), t('اللوحة', 'Plate'), t('اللوحة على الفاتورة', 'On invoice'), t('الحالة', 'Status'), t('نوع الاستهلاك', 'Type'), t('الحدّ', 'Limit'), t('القطاع', 'Sector')]
-                    : [t('الاسم', 'Name'), t('تفاصيل', 'Details'), t('المركبات', 'Vehicles'), t('منها منتهية', 'Expired')]
-                ).map((h, i) => <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>)}
+                {(COL_DEFS[tab] || COL_DEFS.default).map(([key, arL, enL]) => (
+                  <th key={key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                    <span className="inline-flex items-center">
+                      {t(arL, enL)}
+                      {cf.header(key, f.shown, (GETTERS[tab] || GETTERS.default)[key], ar)}
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {f.shown.map((x: any, i: number) => {
+              {shownRows.map((x: any, i: number) => {
                 if (tab === 'gpsUnits') {
                   const m = STATE_META[x.state] || STATE_META.valid;
                   return (
@@ -214,7 +262,7 @@ export default function Page() {
                   </tr>
                 );
               })}
-              {!f.shown.length && (
+              {!shownRows.length && (
                 <tr><td colSpan={7} className="px-3 py-12 text-center text-slate-500">{t('لا نتائج', 'No results')}</td></tr>
               )}
             </tbody>

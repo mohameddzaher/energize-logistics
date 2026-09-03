@@ -13,6 +13,7 @@ import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, SearchableSelect, Loader2 } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 import { IdCard, Plus, Pencil, Trash2, RotateCcw, Phone } from 'lucide-react';
 import { flexNormalize } from '@/lib/flexMatch';
 
@@ -47,6 +48,40 @@ const STATE: Record<string, { ar: string; en: string; cls: string }> = {
   unknown: { ar: 'بلا تاريخ', en: 'No date', cls: 'bg-slate-100 text-slate-600' },
 };
 
+// ── أعمدةُ الجدول وقارئُ كلٍّ منها ───────────────────────────────────────────
+// تعريفٌ واحدٌ للترويسة وللقمع: القيمةُ تُقرأ بالتعبير نفسِه الذي تُرسم به
+// الخليّة، فما يُفلتَر عليه هو ما يُقرأ حرفًا بحرف.
+const COL_DEFS: [string, string, string][] = [
+  ['name', 'الاسم', 'Name'],
+  ['idNumber', 'رقم الهوية', 'ID'],
+  ['absher', 'جوال أبشر', 'Absher'],
+  ['register', 'السجل اللوجستي', 'Register'],
+  ['cardNumber', 'رقم البطاقة', 'Card no.'],
+  ['cardType', 'النوع', 'Type'],
+  ['expiry', 'الانتهاء', 'Expiry'],
+  ['daysLeft', 'المتبقي', 'Days left'],
+  ['state', 'الحالة', 'State'],
+  ['fidelity', 'خيانة الأمانة', 'Fidelity'],
+  ['auth', 'التفاويض', 'Authorisations'],
+  ['employee', 'الموظف', 'Employee'],
+];
+const GETTERS: Record<string, (c: Card) => any> = {
+  name: (c) => c.name,
+  idNumber: (c) => c.idNumber,
+  absher: (c) => c.absherPhone,
+  register: (c) => c.logisticRegister,
+  cardNumber: (c) => c.cardNumber,
+  cardType: (c) => c.cardType,
+  expiry: (c) => c.expiryDate,
+  daysLeft: (c) => c.daysLeft,
+  state: (c) => c.state,
+  fidelity: (c) => c.fidelity?.status || '',
+  // اللوحاتُ المفوَّضة: يُفلتَر على اللوحة الواحدة لا على القائمة المجمَّعة —
+  // فمن يبحث عن مركبةٍ بعينها يجدها ولو كان السائقُ يمسك اثنتين.
+  auth: (c) => (c.authorizations || []).map((a) => a.plateNumber).filter(Boolean).join(' · '),
+  employee: (c) => (c.employee ? (c.employee.employeeNumber || c.employee.arabicName || '✓') : ''),
+};
+
 const EMPTY: Partial<Card> = { idNumber: '', name: '', absherPhone: '', logisticRegister: '', cardNumber: '', cardType: 'سنوية', expiryDate: '', notes: '' };
 
 export default function DriverCardsPage() {
@@ -71,6 +106,7 @@ export default function DriverCardsPage() {
   const [editing, setEditing] = useState<Partial<Card> | null>(null);
   const [saving, setSaving] = useState(false);
   const [emps, setEmps] = useState<any[]>([]);
+  const cf = useColumnFilters<Card>();
 
   const load = useCallback(async () => {
     try {
@@ -104,6 +140,9 @@ export default function DriverCardsPage() {
         ...(c.authorizations || []).map((a) => a.plateNumber)].some((v) => fold(v).includes(n));
     });
   }, [cards, q, fState, fReg, fType, fFid]);
+
+  // آخرُ ما يُطبَّق: فوق البحث والشرائح، كما يفعل إكسل.
+  const shownRows = cf.apply(shown, GETTERS);
 
   const activeF = [fState, fReg, fType, fFid].filter(Boolean).length;
 
@@ -158,7 +197,7 @@ export default function DriverCardsPage() {
         title={t('بطاقات السائقين', 'Driver cards')}
         subtitle={t('سجلُّ البطاقات وتواريخ انتهائها والسجل اللوجستي الصادرة تحته', 'Card register, expiry dates and the logistic register they were issued under')}>
         <ExportMenu fileName="driver-cards" lang={ar ? 'ar' : 'en'}
-          options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: t('بطاقات السائقين', 'Driver cards'), rows: shown, columns: cols }] }]} />
+          options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: t('بطاقات السائقين', 'Driver cards'), rows: shownRows, columns: cols }] }]} />
         {canEdit && <PrimaryButton onClick={() => setEditing({ ...EMPTY })}><Plus className="w-4 h-4" /> {t('بطاقة جديدة', 'New card')}</PrimaryButton>}
       </PageHeader>
 
@@ -211,23 +250,33 @@ export default function DriverCardsPage() {
             <RotateCcw className="w-4 h-4" /> {t('مسح', 'Clear')}
           </button>
         )}
-        <span className="text-xs text-slate-500">{t(`${shown.length} من ${cards.length}`, `${shown.length} of ${cards.length}`)}</span>
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
+        <span className="text-xs text-slate-500">{t(`${shownRows.length} من ${cards.length}`, `${shownRows.length} of ${cards.length}`)}</span>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="table-head">
-              <tr>{[t('الاسم', 'Name'), t('رقم الهوية', 'ID'), t('جوال أبشر', 'Absher'), t('السجل اللوجستي', 'Register'),
-                t('رقم البطاقة', 'Card no.'), t('النوع', 'Type'), t('الانتهاء', 'Expiry'), t('المتبقي', 'Days left'),
-                t('الحالة', 'State'), t('خيانة الأمانة', 'Fidelity'), t('التفاويض', 'Authorisations'),
-                t('الموظف', 'Employee'), ''].map((h, i) => (
-                <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>))}</tr>
+              <tr>
+                {COL_DEFS.map(([key, arL, enL]) => (
+                  <th key={key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center">
+                      {t(arL, enL)}
+                      {cf.header(key, shown, GETTERS[key], ar,
+                        key === 'state' ? (v: any) => (STATE[String(v)] ? (ar ? STATE[String(v)].ar : STATE[String(v)].en) : String(v))
+                          : key === 'fidelity' ? (v: any) => (ar ? FIDELITY[String(v)]?.ar : FIDELITY[String(v)]?.en) || String(v)
+                            : undefined)}
+                    </span>
+                  </th>
+                ))}
+                <th className="px-3 py-2.5" />
+              </tr>
             </thead>
             <tbody>
-              {shown.length === 0 ? (
+              {shownRows.length === 0 ? (
                 <tr><td colSpan={13} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
-              ) : shown.map((c) => {
+              ) : shownRows.map((c) => {
                 const st = STATE[c.state] || STATE.unknown;
                 return (
                   <tr key={c._id} className="border-b border-slate-100 hover:bg-slate-50">

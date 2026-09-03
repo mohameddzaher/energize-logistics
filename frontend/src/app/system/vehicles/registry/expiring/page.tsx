@@ -23,12 +23,25 @@ import { CalendarClock, RefreshCw, ArrowRight, Settings, BellOff } from 'lucide-
 import { useAuth } from '@/context/AuthContext';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { RenewModal, BulkRenewModal } from '@/components/vehicles/RenewModals';
+import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 import {
   getExpiring, canEditVehicles, STATE_META, stateLabel, publicState, fmtDate, daysText,
   type ExpiringRow,
 } from '@/lib/vehicleRegistry';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
+
+// أعمدةُ جدول الانتهاءات وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
+const COL_DEFS: [string, string, string][] = [
+  ['plate', 'اللوحة', 'Plate'],
+  ['vehicle', 'المركبة', 'Vehicle'],
+  ['doc', 'المستند', 'Document'],
+  ['expiry', 'ينتهي في', 'Expires'],
+  ['left', 'المتبقي', 'Left'],
+  ['state', 'الحالة', 'State'],
+  ['sector', 'القطاع', 'Sector'],
+  ['owner', 'المالك', 'Owner'],
+];
 // ── ثلاثُ حالاتٍ لا خمس ─────────────────────────────────────────────────────
 // «على الرادار» و«ينتهي قريبًا جدًا» و«قارب على الانتهاء» شيءٌ واحدٌ بثلاث
 // درجاتٍ من الإلحاح، واللونُ وحدَه يفرّقها. راجع publicState.
@@ -77,6 +90,7 @@ function ExpiringInner() {
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
 
+  const cf = useColumnFilters<any>();
   const all = useMemo(() => d?.rows || [], [d]);
   const needle = q.trim().toLowerCase();
   // البحث والفلتر المتوقّف يُطبَّقان هنا لا على الخادم، فيجب أن يُعاد حساب
@@ -87,6 +101,19 @@ function ExpiringInner() {
     return [r.plateNumber, r.brandAr, r.modelAr, r.sectorAr, r.ownerNameAr, r.docAr, r.docEn, r.reference]
       .some((v) => String(v || '').toLowerCase().includes(needle));
   }), [all, mutedOnly, needle]);
+
+  const GETTERS = useMemo<Record<string, (r: any) => any>>(() => ({
+    plate: (r) => r.plateNumber,
+    vehicle: (r) => [r.brandAr, r.modelAr].filter(Boolean).join(' '),
+    doc: (r) => (ar ? r.docAr : r.docEn),
+    expiry: (r) => fmtDate(r.expiryDate),
+    left: (r) => daysText(r.daysRemaining, ar),
+    state: (r) => r.state,
+    sector: (r) => r.sectorAr,
+    owner: (r) => r.ownerNameAr,
+  }), [ar]);
+  // آخرُ ما يُطبَّق: فوق البحث والحالة والمدّة.
+  const shownRows = useMemo(() => cf.apply(rows, GETTERS), [cf, rows, GETTERS]);
 
   const summary = useMemo(() => {
     const s: Record<string, number> = { total: rows.length };
@@ -208,8 +235,9 @@ function ExpiringInner() {
               <BellOff className="w-3.5 h-3.5" />{t('تنبيهه متقفول', 'Alert muted')} <b>{mutedCount}</b>
             </button>
           )}
+          <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
           <span className="text-xs text-slate-400 ms-auto">
-            {rows.length}{rows.length !== all.length ? ` / ${all.length}` : ''} {t('صف', 'rows')}
+            {shownRows.length}{shownRows.length !== all.length ? ` / ${all.length}` : ''} {t('صف', 'rows')}
           </span>
         </div>
       </div>
@@ -261,13 +289,19 @@ function ExpiringInner() {
                       })} />
                   </th>
                 )}
-                {[t('اللوحة', 'Plate'), t('المركبة', 'Vehicle'), t('المستند', 'Document'), t('ينتهي في', 'Expires'),
-                t('المتبقي', 'Left'), t('الحالة', 'State'), t('القطاع', 'Sector'), t('المالك', 'Owner'), ''].map((h, i) => (
-                <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>
-              ))}</tr>
+                {COL_DEFS.map(([key, arL, enL]) => (
+                  <th key={key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                    <span className="inline-flex items-center">
+                      {t(arL, enL)}
+                      {cf.header(key, rows, GETTERS[key], ar,
+                        key === 'state' ? (v: any) => stateLabel(String(v), ar) : undefined)}
+                    </span>
+                  </th>
+                ))}
+                <th className="px-3 py-3" /></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((r: any) => {
+              {shownRows.map((r: any) => {
                 const m = STATE_META[r.state] || STATE_META.valid;
                 return (
                   <tr key={`${r.vehicleId}-${r.docKey}`}

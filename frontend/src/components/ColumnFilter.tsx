@@ -190,11 +190,21 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
 
   return (
     <span className="relative inline-flex items-center" ref={ref}>
+      {/* ── القمعُ يُرى قبل أن يُبحَث عنه ────────────────────────────────────
+          كان أيقونةً بحجم اثنتَي عشرةَ نقطةً بلونٍ باهتٍ على ترويسةٍ كحليّةٍ
+          داكنة، فمرّ صاحبُ القسم على صفحات القسم كلِّها ولم يجده. والفلترُ الذي
+          لا يُرى غيرُ موجود. فصار خانةً صغيرةً لها أرضيّةٌ وحدٌّ — تُقرأ زرًّا
+          من موضعها قبل أن تُقرأ أيقونة — وتصير برتقاليّةً صريحةً حين تُفعَّل. */}
       <button
         type="button"
         onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }}
-        className={`ms-1 p-0.5 rounded transition-colors ${active ? 'text-[#f37121]' : 'text-slate-400 hover:text-white'}`}
-        title={ar ? 'فلتر' : 'Filter'}
+        className={`ms-1.5 inline-flex items-center justify-center w-5 h-5 rounded border transition-colors align-middle ${
+          active
+            ? 'bg-[#f37121] border-[#f37121] text-white'
+            : 'bg-white/10 border-white/25 text-white/80 hover:bg-white/25 hover:text-white'
+        }`}
+        title={ar ? 'فلترة هذا العمود' : 'Filter this column'}
+        aria-label={ar ? 'فلترة هذا العمود' : 'Filter this column'}
       >
         <Filter className="w-3 h-3" fill={active ? 'currentColor' : 'none'} />
       </button>

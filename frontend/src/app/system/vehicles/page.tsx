@@ -16,6 +16,7 @@ import {
   TextInput, Select, TextArea, Loader2,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 
 const EMPTY = {
   plateNumber: '', type: 'car', make: '', model: '', year: '', color: '',
@@ -35,6 +36,7 @@ export default function VehiclesPage() {
   // honour them or the drill-down lands on the unfiltered register.
   const sp = useSearchParams();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const cf = useColumnFilters<any>();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(sp?.get('branch') || '');
   const [typeFilter, setTypeFilter] = useState(sp?.get('type') || '');
@@ -101,6 +103,20 @@ export default function VehiclesPage() {
     { header: tx.department, key: 'department', width: 16 },
     { header: tx.project, key: 'project', width: 16 },
   ];
+  // ── قمعُ العمود ───────────────────────────────────────────────────────────
+  // القيمةُ تُقرأ بالتعبير نفسِه الذي تُرسم به الخليّة، فما يُفلتَر عليه هو ما
+  // يُقرأ. والخُطّاف قبل أيّ `return` مبكّر — خُطّافٌ بعد شرطٍ يخالف ترتيبَ
+  // الخطّافات فينهار المكوّن عند أوّل تغيّرٍ في الشرط.
+  const GETTERS: Record<string, (v: any) => any> = {
+    plate: (v) => v.plateNumber,
+    type: (v) => vehicleTypeLabel(v.type, lang),
+    makeModel: (v) => [v.make, v.model].filter(Boolean).join(' '),
+    authorizedTo: (v) => (v.currentEmployee ? empRefName(v.currentEmployee, lang) : ''),
+    department: (v) => v.department,
+    status: (v) => v.status,
+  };
+  const shownRows = cf.apply(vehicles as any[], GETTERS);
+
   // البحث والنوع والحالة تُطبَّق على الخادم، ولوحةُ المؤشّرات تفتح هذه الصفحة
   // مفلترةً مسبقًا بـ ?status=/?type=؛ فمَن دخل من كارتٍ وصدّر كان يأخذ شريحةً
   // من الأسطول وهو يظنّه الأسطول كلَّه. «الكلّ» يعيد النداء بلا معاملات.
@@ -111,11 +127,12 @@ export default function VehiclesPage() {
   };
   const scope = exportScopeLabels(ar);
   const exportOptions = [
-    { key: 'shown', label: scope.shown, sheets: [{ name: 'Vehicles', rows: vehicles as unknown as Record<string, any>[], columns: exportColumns }] },
+    { key: 'shown', label: scope.shown, sheets: [{ name: 'Vehicles', rows: shownRows as unknown as Record<string, any>[], columns: exportColumns }] },
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
   ];
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+
   if (loading) return <Spinner />;
 
   return (
@@ -142,23 +159,33 @@ export default function VehiclesPage() {
         </div>
       </div>
 
+      {cf.count > 0 && (
+        <div className="flex"><ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} /></div>
+      )}
+
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <th className="text-start font-semibold px-4 py-3">{tx.plateNumber}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.type}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.make}/{tx.model}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.authorizedTo}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.department}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.status}</th>
+              {/* الترويسةُ تحمل قمعَ كلِّ عمود — راجع components/vehicles/useColumnFilters. */}
+              {([
+                ['plate', tx.plateNumber], ['type', tx.type], ['makeModel', `${tx.make}/${tx.model}`],
+                ['authorizedTo', tx.authorizedTo], ['department', tx.department], ['status', tx.status],
+              ] as [string, string][]).map(([key, label]) => (
+                <th key={key} className="text-start font-semibold px-4 py-3">
+                  <span className="inline-flex items-center">
+                    {label}
+                    {cf.header(key, vehicles, GETTERS[key], ar)}
+                  </span>
+                </th>
+              ))}
               <th className="text-end font-semibold px-4 py-3">{tx.actions}</th>
             </tr>
           </thead>
           <tbody>
-            {vehicles.length === 0 ? (
+            {shownRows.length === 0 ? (
               <tr><td colSpan={7} className="text-center text-slate-800 py-12">{tx.noVehicles}</td></tr>
-            ) : vehicles.map((v) => (
+            ) : shownRows.map((v) => (
               <tr key={v._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => router.push(`/system/vehicles/${v._id}`)}>
                 <td className="px-4 py-3 text-slate-900 font-bold">{v.plateNumber}</td>
                 <td className="px-4 py-3 text-slate-700">{vehicleTypeLabel(v.type, lang)}</td>

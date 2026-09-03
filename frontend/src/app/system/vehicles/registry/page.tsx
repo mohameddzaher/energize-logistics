@@ -14,6 +14,7 @@ import { VReg, statusColor, statusLabel, DOC_TYPES, fmtDate, money, daysText, ca
 import { canEditSection } from '@/lib/sections';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight } from 'lucide-react';
 
@@ -34,6 +35,10 @@ function VehicleRegistryListInner() {
   const canDelete = canAdminVehicles(user);
 
   const [rows, setRows] = useState<VReg[]>([]);
+  // ── فلترُ العمود على طريقة إكسل ───────────────────────────────────────────
+  // القيمةُ تُقرأ بالتعبير نفسِه الذي تُرسم به الخليّة، فما يُفلتَر عليه هو ما
+  // يُقرأ على الشاشة حرفًا بحرف. راجع components/vehicles/useColumnFilters.
+  const cf = useColumnFilters<VReg>();
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(sp?.get('q') || '');
@@ -109,6 +114,9 @@ function VehicleRegistryListInner() {
   // أرقام المستندات، المفوَّض، القسط). تواريخ المستندات تُبنى من DOC_TYPES نفسها
   // التي يبني منها الخادمُ حالاتِها، فلا يفترق مستندٌ ظهر في «الانتهاءات» عن
   // عمودٍ لا وجود له في الملفّ.
+  // آخرُ ما يُطبَّق: فوق البحث والفلاتر، كما يفعل إكسل.
+  const shownRows = cf.apply(rows, GETTERS);
+
   const cols: ExportColumn[] = [
     { header: ar ? 'اللوحة' : 'Plate', key: 'plateNumber', width: 14 },
     { header: ar ? 'رقم الهيكل' : 'Chassis', key: 'chassisNumber', width: 20 },
@@ -163,7 +171,7 @@ function VehicleRegistryListInner() {
           {canEdit && <button onClick={() => { setEditing(null); setShowForm(true); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'إضافة' : 'Add'}</button>}
           <ExportMenu fileName="vehicle-registry" lang={lang as 'ar' | 'en'}
             options={[
-              { key: 'filtered', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'المركبات' : 'Vehicles', rows: rows as any[], columns: cols }] },
+              { key: 'filtered', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'المركبات' : 'Vehicles', rows: shownRows as any[], columns: cols }] },
               {
                 key: 'all', label: exportScopeLabels(ar).all, hint: ar ? 'كل المركبات' : 'all vehicles',
                 // «الكل» لا يُبنى من الصفوف المحمّلة: هذه ثمرةُ الفلتر الحاليّ
@@ -180,6 +188,7 @@ function VehicleRegistryListInner() {
 
       <div className="flex flex-wrap items-center gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? 'ابحث بلوحة/هيكل/مالك/بوليصة…' : 'plate / chassis / owner…'} className="px-3 py-2 rounded-lg border border-slate-200 text-sm w-72 max-w-full" />
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <FilterPanel
           optionsUrl="/api/vehicle-registry/filters"
           value={filters}
@@ -194,10 +203,20 @@ function VehicleRegistryListInner() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs">
-              <tr>{[ar ? 'اللوحة' : 'Plate', ar ? 'القطاع' : 'Sector', ar ? 'الإدارة' : 'Department', ar ? 'المدينة' : 'City', ar ? 'النوع' : 'Type', ar ? 'الماركة' : 'Brand', ar ? 'السنة' : 'Year', ar ? 'المالك' : 'Owner', ar ? 'التأمين' : 'Insurance', ar ? 'الحالة' : 'Status', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+              <tr>
+                {COL_DEFS.map(([key, arL, enL]) => (
+                  <th key={key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center">
+                      {ar ? arL : enL}
+                      {cf.header(key, rows, GETTERS[key], ar, key === 'status' ? (v: any) => statusLabel(String(v || 'valid'), ar) : undefined)}
+                    </span>
+                  </th>
+                ))}
+                <th className="px-3 py-2.5" />
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((v) => (
+              {shownRows.map((v) => (
                 <tr key={v._id} className="hover:bg-slate-50">
                   <td className="px-3 py-2 whitespace-nowrap">
                     <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{v.plateNumber}</Link>
@@ -230,7 +249,7 @@ function VehicleRegistryListInner() {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={11} className="px-3 py-10 text-center text-slate-500">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
+              {shownRows.length === 0 && <tr><td colSpan={11} className="px-3 py-10 text-center text-slate-500">{ar ? 'لا توجد مركبات مطابقة' : 'No matching vehicles'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -379,6 +398,35 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
 // `useSearchParams` يوجب حدَّ Suspense في موجِّه Next. كانت الصفحة تنجو صدفةً
 // لأن غلاف القسم يعود قبل المحتوى أثناء التوليد المسبق — وأيّ تعديلٍ في بوّابة
 // الدخول كان سيحوّلها إلى فشل بناءٍ صريح.
+// ── أعمدةُ الجدول وقارئُ كلٍّ منها ───────────────────────────────────────────
+// تعريفٌ واحدٌ للترويسة وللفلتر: عمودٌ يُضاف هنا يجد قمعَه بلا سطرٍ ثانٍ، ولا
+// يمكن أن يفلتر الفلترُ على غير ما تعرضه الخليّة.
+const COL_DEFS: [string, string, string][] = [
+  ['plate', 'اللوحة', 'Plate'],
+  ['sector', 'القطاع', 'Sector'],
+  ['department', 'الإدارة', 'Department'],
+  ['city', 'المدينة', 'City'],
+  ['regType', 'النوع', 'Type'],
+  ['brand', 'الماركة', 'Brand'],
+  ['year', 'السنة', 'Year'],
+  ['owner', 'المالك', 'Owner'],
+  ['insurance', 'التأمين', 'Insurance'],
+  ['status', 'الحالة', 'Status'],
+];
+const GETTERS: Record<string, (v: VReg) => any> = {
+  plate: (v) => v.plateNumber,
+  sector: (v) => v.sectorAr,
+  department: (v) => v.departmentAr,
+  city: (v) => v.cityAr,
+  regType: (v) => v.registrationTypeAr,
+  brand: (v) => [v.brandAr, v.modelAr].filter(Boolean).join(' '),
+  year: (v) => v.modelYear,
+  owner: (v) => v.ownerNameAr,
+  // التأمينُ يُفلتَر بتاريخه كما يُعرَض — لا بالكائن الذي تحته.
+  insurance: (v) => (v.insurance?.expiryDate ? fmtDate(v.insurance.expiryDate) : ''),
+  status: (v) => v.overallStatus || 'valid',   // النصُّ يُترجَم في القائمة بـ`format`
+};
+
 export default function VehicleRegistryList() {
   return <Suspense fallback={<Spinner />}><VehicleRegistryListInner /></Suspense>;
 }

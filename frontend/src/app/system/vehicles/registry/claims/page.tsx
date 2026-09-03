@@ -14,10 +14,35 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { TriangleAlert, Search, ArrowRight, Clock, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 import {
   getClaims, money, fmtDate, canEditVehicles, canAdminVehicles,
   createClaim, updateClaim, deleteClaim,
 } from '@/lib/vehicleRegistry';
+
+// أعمدةُ جدول الحوادث وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
+const COL_DEFS: [string, string, string][] = [
+  ['plate', 'اللوحة', 'Plate'],
+  ['date', 'التاريخ', 'Date'],
+  ['fault', 'نسبة الخطأ', 'Fault'],
+  ['insurer', 'شركة التأمين', 'Insurer'],
+  ['estimated', 'المقدَّر', 'Estimated'],
+  ['recovery', 'متوقع استرداده', 'Recovery'],
+  ['status', 'الحالة', 'Status'],
+  ['lastReply', 'آخر رد', 'Last reply'],
+  ['notes', 'الملاحظات', 'Notes'],
+];
+const GETTERS: Record<string, (r: any) => any> = {
+  plate: (r) => r.vehiclePlate || r.incidentSubjectAr,
+  date: (r) => fmtDate(r.accidentDate),
+  fault: (r) => `${r.faultPercent ?? 0}%`,
+  insurer: (r) => r.claim?.insurerAr,
+  estimated: (r) => (r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : ''),
+  recovery: (r) => (r.claim?.expectedRecoverySar ? money(r.claim.expectedRecoverySar) : ''),
+  status: (r) => r.statusAr || (r.statusCode === 'closed' ? 'مقفولة' : 'قيد المتابعة'),
+  lastReply: (r) => fmtDate(r.claim?.lastInsurerUpdateDate),
+  notes: (r) => r.claim?.notesAr,
+};
 
 function ClaimsInner() {
   const { lang, isRTL } = useLanguage();
@@ -47,7 +72,10 @@ function ClaimsInner() {
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
 
-  const rows = d?.claims || [];
+  const cf = useColumnFilters<any>();
+  const allRows = d?.claims || [];
+  // آخرُ ما يُطبَّق: فوق البحث وفلتر الحالة.
+  const rows = cf.apply(allRows, GETTERS);
   const cols: ExportColumn[] = [
     { header: t('رقم الحادث', 'Accident no.'), key: 'accidentNumber', width: 18 },
     { header: t('اللوحة', 'Plate'), key: 'vehiclePlate', width: 16 },
@@ -122,6 +150,7 @@ function ClaimsInner() {
           <option value="pending">{t('قيد المتابعة', 'Pending')}</option>
           <option value="closed">{t('مقفولة', 'Closed')}</option>
         </select>
+        <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <span className="text-xs text-slate-400 ms-auto">{rows.length} {t('حادث', 'claims')}</span>
       </div>
 
@@ -129,11 +158,17 @@ function ClaimsInner() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
-              <tr>{[t('اللوحة', 'Plate'), t('التاريخ', 'Date'), t('نسبة الخطأ', 'Fault'), t('شركة التأمين', 'Insurer'),
-                t('المقدَّر', 'Estimated'), t('متوقع استرداده', 'Recovery'), t('الحالة', 'Status'), t('آخر رد', 'Last reply'),
-                t('الملاحظات', 'Notes'), ...(canEdit ? [t('إجراءات', 'Actions')] : [])].map((h, i) => (
-                <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap">{h}</th>
-              ))}</tr>
+              <tr>
+                {COL_DEFS.map(([key, arL, enL]) => (
+                  <th key={key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
+                    <span className="inline-flex items-center">
+                      {t(arL, enL)}
+                      {cf.header(key, allRows, GETTERS[key], ar)}
+                    </span>
+                  </th>
+                ))}
+                {canEdit && <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('إجراءات', 'Actions')}</th>}
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r: any) => {

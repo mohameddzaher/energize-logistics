@@ -16,6 +16,7 @@ import {
   SearchableSelect,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { useColumnFilters, ClearColumnFilters } from '@/components/vehicles/useColumnFilters';
 
 export default function VehicleAccidentsPage() {
   const { confirm, notify } = useDialog();
@@ -29,6 +30,7 @@ export default function VehicleAccidentsPage() {
   // Dashboard KPI cards deep-link here with ?status= — honour it.
   const sp = useSearchParams();
   const [accidents, setAccidents] = useState<VehicleAccident[]>([]);
+  const cf = useColumnFilters<VehicleAccident>();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(sp?.get('status') || '');
@@ -135,6 +137,20 @@ export default function VehicleAccidentsPage() {
   ];
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
+  // قارئُ كلِّ عمود — التعبيرُ نفسُه الذي تُرسم به الخليّة، فلا يفلتر الفلترُ
+  // على غير ما يُقرأ.
+  const GETTERS: Record<string, (a: VehicleAccident) => any> = {
+    date: (a) => fmtDate(a.date),
+    plate: (a) => plateOf(a.vehicle),
+    employee: (a) => empRefName(a.employee, lang),
+    description: (a) => a.description,
+    fault: (a) => faultPartyLabel(a.faultParty, lang),
+    severity: (a) => a.severity || 'minor',
+    status: (a) => a.status || 'reported',
+  };
+  // آخرُ ما يُطبَّق.
+  const shownRows = cf.apply(accidents, GETTERS);
+
   if (loading) return <Spinner />;
 
   return (
@@ -155,24 +171,35 @@ export default function VehicleAccidentsPage() {
         </div>
       </div>
 
+      {cf.count > 0 && (
+        <div className="flex"><ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} /></div>
+      )}
+
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm">
           <thead>
+            {/* الترويسةُ تحمل قمعَ كلِّ عمود — القيمةُ تُقرأ بالتعبير نفسِه
+                الذي تُرسم به الخليّة. راجع components/vehicles/useColumnFilters. */}
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <th className="text-start font-semibold px-4 py-3">{tx.date}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.plateNumber}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.employee}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.description}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.faultParty}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.severity}</th>
-              <th className="text-start font-semibold px-4 py-3">{tx.status}</th>
+              {([
+                ['date', tx.date], ['plate', tx.plateNumber], ['employee', tx.employee],
+                ['description', tx.description], ['fault', tx.faultParty],
+                ['severity', tx.severity], ['status', tx.status],
+              ] as [string, string][]).map(([key, label]) => (
+                <th key={key} className="text-start font-semibold px-4 py-3">
+                  <span className="inline-flex items-center">
+                    {label}
+                    {cf.header(key, accidents, GETTERS[key], ar)}
+                  </span>
+                </th>
+              ))}
               <th className="text-end font-semibold px-4 py-3">{tx.actions}</th>
             </tr>
           </thead>
           <tbody>
-            {accidents.length === 0 ? (
+            {shownRows.length === 0 ? (
               <tr><td colSpan={8} className="text-center text-slate-800 py-12">{tx.noAccidents}</td></tr>
-            ) : accidents.map((a) => (
+            ) : shownRows.map((a) => (
               <tr key={a._id} className="border-b border-slate-200/70 hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-700">{fmtDate(a.date)}</td>
                 <td className="px-4 py-3 text-slate-900 font-bold cursor-pointer hover:text-[#f37121]" onClick={() => router.push(`/system/vehicles/${typeof a.vehicle === 'object' ? (a.vehicle as any)?._id : a.vehicle}`)}>{plateOf(a.vehicle)}</td>

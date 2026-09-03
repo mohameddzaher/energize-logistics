@@ -229,15 +229,27 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     if (f.chips != null) return f.chips!;
     final k = f.docKey;
     if (k == null) return const [DocChip('', 'الكل', 'All', T.navy)];
+    // ── أربعُ شرائحَ يقرؤها المستخدم ───────────────────────────────────────
+    //
+    // كانت خمسًا، وثلاثٌ منها شيءٌ واحدٌ بثلاث درجاتٍ من الإلحاح: «ينتهي قريبًا
+    // جدًا» و«قارب على الانتهاء» و«على الرادار». وسأل صاحبُ القسم: «يا ساري يا
+    // قارب على الانتهاء يا منتهي» — وهو محقّ، والشريحةُ التي تحتاج شرحًا ليست
+    // فلترًا. فصارت باسمٍ واحد، واللونُ وحدَه يفرّق الدرجات.
+    //
+    // و«بلا تاريخ مسجَّل» انضمّت إلى «مطلوب»: كلتاهما عملٌ ينتظر، وفصلُهما يجعل
+    // قائمةَ العمل نصفين لا يُقرآن معًا. والاسمُ يحمل اسمَ المستند — «التأمين
+    // منتهٍ» لا «منتهٍ» — لأنّ «منتهٍ» وحدَها تترك السائل يسأل: منتهٍ ماذا؟
+    // توأمُ هذا في components/vehicles/DocumentFamilyPage.tsx.
+    final due = ['critical', 'warning', 'upcoming'];
     return [
       const DocChip('', 'الكل', 'All', T.navy),
-      DocChip('expired', 'منتهٍ', 'Expired', T.danger, (v) => _state(v, k)['status'] == 'expired'),
-      DocChip('critical', 'ينتهي قريبًا جدًا', 'Critical', const Color(0xFFEA580C), (v) => _state(v, k)['status'] == 'critical'),
-      DocChip('warning', 'قارب على الانتهاء', 'Due soon', const Color(0xFFCA8A04), (v) => _state(v, k)['status'] == 'warning'),
+      DocChip('expired', '${f.arTitle} منتهٍ', '${f.enTitle} expired', T.danger,
+          (v) => _state(v, k)['status'] == 'expired'),
+      DocChip('due', 'قارب على الانتهاء', 'Due soon', const Color(0xFFCA8A04),
+          (v) => due.contains(_state(v, k)['status'])),
       DocChip('valid', 'ساري', 'Valid', T.success, (v) => _state(v, k)['status'] == 'valid'),
-      // «بلا تاريخ» ليست حالةً فرعية — هي قائمةُ العمل الأولى: مستندٌ لا يُعرَف
-      // متى ينتهي لا يظهر في أي تنبيه، فينتهي ولا يعلم أحد.
-      DocChip('none', 'بلا تاريخ مسجَّل', 'No date on file', T.inkFaint, (v) => _state(v, k)['status'] == 'none'),
+      DocChip('needed', 'مطلوب — ناقص', 'Needed — missing', T.danger,
+          (v) => ['none', 'missing', 'required'].contains(_state(v, k)['status'])),
     ];
   }
 

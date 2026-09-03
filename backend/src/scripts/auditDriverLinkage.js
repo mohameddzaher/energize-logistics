@@ -231,6 +231,51 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     });
     ok('الأيّامُ بعده تحمل ختاميَّ ما قبلها', broken.length === 0, broken.map((w) => w.date).join(' · '));
 
+    // ── وثائق الشركة بعد إعادة التصميم ──────────────────────────────────────
+    head('وثيقة خيانة الأمانة — مَن تغطّيهم وبكم');
+    const cp2 = await get('/api/vehicle-registry/corporate-policies', ck);
+    const fid = (cp2.j?.policies || []).find((p) => /خيانة/.test(p.scopeAr || ''));
+    ok('الوثيقة موجودة', !!fid, fid?.scopeAr || '—');
+    ok('تُعلَن أنّها تغطّي أشخاصًا', !!fid?.coversDrivers);
+    ok('القسط للفرد ١١٨٦٫٥٠', fid?.premiumPerPersonSar === 1186.5, String(fid?.premiumPerPersonSar));
+    ok('تحمل قائمة المشمولين بأسمائهم', (fid?.drivers?.covered || []).length > 0, `${fid?.drivers?.coveredCount} اسمًا`);
+    ok('القائمة هي بطاقاتُ السائقين نفسُها',
+      fid?.drivers?.coveredCount === await DriverCard.countDocuments({ 'fidelity.status': 'covered', isActive: { $ne: false } }));
+    ok('الإجماليُّ محسوبٌ لا مكتوب',
+      fid?.computedPremiumSar === Math.round(1186.5 * (fid?.drivers?.coveredCount || 0) * 100) / 100,
+      `${fid?.computedPremiumSar}`);
+    ok('الإجماليُّ المكتوبُ سابقًا أُزيل', fid?.premiumSar == null, String(fid?.premiumSar));
+    ok('ومَن ينقصه الضمُّ معروضٌ بالاسم', Array.isArray(fid?.drivers?.pending), `${fid?.drivers?.pending?.length}`);
+
+    // الضمُّ والإخراج يكتبان في بطاقة السائق — تُجرَّب ثمّ تُعاد.
+    const target = fid?.drivers?.pending?.[0] || fid?.drivers?.covered?.[0];
+    if (target) {
+      const wasCovered = (fid.drivers.covered || []).some((d) => d._id === target._id);
+      const r = await post(`/api/vehicle-registry/corporate-policies/${fid._id}/drivers`,
+        { cardId: target._id, covered: !wasCovered }, ck);
+      const after = await DriverCard.findById(target._id).select('fidelity').lean();
+      ok('الضمُّ/الإخراج يُكتب في بطاقة السائق',
+        r.status === 200 && after?.fidelity?.status === (wasCovered ? 'required' : 'covered'),
+        `HTTP ${r.status} → ${after?.fidelity?.status}`);
+      await post(`/api/vehicle-registry/corporate-policies/${fid._id}/drivers`,
+        { cardId: target._id, covered: wasCovered }, ck);
+      const back = await DriverCard.findById(target._id).select('fidelity').lean();
+      ok('وأُعيدت الحالة كما كانت', back?.fidelity?.status === (wasCovered ? 'covered' : 'required'));
+    }
+
+    head('الحالاتُ ثلاثٌ يقرؤها المستخدم');
+    ok('«على الرادار» لم تعد تُسمّى', !Object.values(dt.j?.states || {}).some((x) => /الرادار/.test(x.ar || '')));
+    const stateAr = (k) => (dt.j?.states || {})[k]?.ar;
+    ok('الدرجاتُ الثلاثُ تحمل اسمًا واحدًا',
+      stateAr('critical') === 'قارب على الانتهاء' && stateAr('warning') === 'قارب على الانتهاء' && stateAr('upcoming') === 'قارب على الانتهاء',
+      [stateAr('critical'), stateAr('warning'), stateAr('upcoming')].join(' · '));
+    ok('«منتهي» و«ساري» كما هما', stateAr('expired') === 'منتهي' && stateAr('valid') === 'ساري');
+    // والخادمُ يقبل الاسمَ المعروض في الفلتر
+    const due = await get('/api/vehicle-registry/expiring?state=due&includeExpired=0&withinDays=', ck);
+    ok('فلترُ «قارب على الانتهاء» يعمل على الخادم', due.status === 200 && Array.isArray(due.j?.rows), `HTTP ${due.status} · ${due.j?.rows?.length} صفًّا`);
+    ok('ولا يُرجع منتهيًا ولا ساريًا',
+      (due.j?.rows || []).every((r) => ['critical', 'warning', 'upcoming'].includes(r.state)));
+
     // ── الموارد البشريّة ────────────────────────────────────────────────────
     head('ماستر الموارد البشريّة — رقم الهويّة');
     const idg = await get('/api/hr/master/records/identity?limit=1000', hrCk);

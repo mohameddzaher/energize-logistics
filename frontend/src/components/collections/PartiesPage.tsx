@@ -463,7 +463,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
                   لا من تاريخ الفاتورة: لا تبدأ مهلةُ الثلاثين قبل أن تصل
                   الورقةُ العميلَ. والفرقُ بينهما هو الفرقُ بين «متأخّر»
                   و«لم يستلم بعد»، فيُقال في عنوان الحقل لا في وثيقة. */}
-              <Field label={t('مهلة السداد — من تاريخ التسليم', 'Credit days — from delivery')}>
+              <Field label={t('مهلة السداد — من يوم تسليم الفاتورة للعميل', 'Credit days — from customer delivery')}>
                 <TextInput type="number" value={editing?.creditDays ?? ''} onChange={(e) => setEditing((p) => ({ ...p, creditDays: e.target.value === '' ? undefined : Number(e.target.value) }))} />
               </Field>
               {/* ورفعُ الحدّ من هنا: التنبيهُ يقول «قارب حدَّه»، والقرارُ إمّا

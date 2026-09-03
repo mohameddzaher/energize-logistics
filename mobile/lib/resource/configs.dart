@@ -1104,7 +1104,8 @@ final collectionsLedgerCfg = ResourceConfig(
   titleOf: (r) => '${_s(r, 'invoiceNumber')} · ${_s(r, 'partyName')}',
   subtitleOf: (r) => [
     if (_s(r, 'invoiceDate').isNotEmpty) 'فُوترت ${_s(r, 'invoiceDate').split('T').first}',
-    if (_s(r, 'deliveryDate').isNotEmpty) 'سُلّمت ${_s(r, 'deliveryDate').split('T').first}',
+    // تسليمُ الفاتورة إلى العميل — منه تبدأ مهلتُه، وهو غير تسليم الكشف للفرع.
+    if (_s(r, 'deliveryDate').isNotEmpty) 'سُلّمت للعميل ${_s(r, 'deliveryDate').split('T').first}',
     if (_s(r, 'collectionDate').isNotEmpty) 'حُصّلت ${_s(r, 'collectionDate').split('T').first}',
   ].join(' · '),
   chipsOf: (r) {

@@ -83,7 +83,7 @@ export default function LedgerInvoicesPage() {
     { header: ar ? 'المبلغ' : 'Amount', key: 'total', width: 16 },
     { header: ar ? 'تاريخ الفاتورة' : 'Invoice date', key: 'invoiceDate', width: 14, transform: (v: any) => dt(v) },
     { header: ar ? 'أيام حتى التسليم' : 'Days to delivery', key: 'daysInvoiceToDelivery', width: 16 },
-    { header: ar ? 'تاريخ التسليم' : 'Delivery date', key: 'deliveryDate', width: 14, transform: (v: any) => dt(v) },
+    { header: ar ? 'تاريخ التسليم للعميل' : 'Delivered to customer', key: 'deliveryDate', width: 14, transform: (v: any) => dt(v) },
     { header: ar ? 'أيام حتى التحصيل' : 'Days to collection', key: 'daysDeliveryToCollection', width: 16 },
     { header: ar ? 'تاريخ التحصيل' : 'Collection date', key: 'collectionDate', width: 14, transform: (v: any) => dt(v) },
     { header: ar ? 'إجمالي الأيام' : 'Total days', key: 'daysTotal', width: 12 },
@@ -166,7 +166,7 @@ export default function LedgerInvoicesPage() {
           <select title={ar ? 'الفترة محسوبة بـ' : 'Period measured by'} value={dateField} onChange={(e) => { setDateField(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
             <option value="invoiceDate">{ar ? 'تاريخ الفوترة' : 'Invoice date'}</option>
-            <option value="deliveryDate">{ar ? 'تاريخ التسليم' : 'Delivery date'}</option>
+            <option value="deliveryDate">{ar ? 'تاريخ التسليم للعميل' : 'Delivered to customer'}</option>
             <option value="collectionDate">{ar ? 'تاريخ التحصيل' : 'Collection date'}</option>
           </select>
           <input type="date" title={ar ? 'من' : 'From'} value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }}

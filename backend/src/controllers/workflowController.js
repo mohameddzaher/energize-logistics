@@ -26,7 +26,7 @@ const FIELD_GROUPS = {
   ],
   manual_moderator: [
     'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType',
-    'finalReportDestination', 'documentNumber', 'sendingDate', 'deliveryDate',
+    'finalReportDestination', 'documentNumber', 'sendingDate', 'branchDeliveryDate', 'deliveryDate',
   ],
   // ── ومراجعةُ الحسابات مجموعةٌ بذاتها ────────────────────────────────────
   // كانت داخل `manual_moderator` فورثها كلُّ من يسجّل سدادًا. وهي إقرارُ
@@ -139,7 +139,9 @@ const stripMoneyFor = (role, docs) => {
 // تاريخَ إرسالٍ وتسليم. تُصفَّر هذه الأعمدةُ وتُقفَل، ويبقى مفتوحًا ما يخصّ
 // التحصيلَ نفسَه: مراجعةُ الحسابات، ومبلغُ التحصيل، وتاريخُه.
 const CASH_LOCKED_FIELDS = [
-  'finalReportDestination', 'documentNumber', 'sendingDate', 'deliveryDate',
+  'finalReportDestination', 'documentNumber', 'sendingDate',
+  // التسليمان معًا: لا كشفَ يُسلَّم لفرعٍ ولا فاتورةَ تُسلَّم لعميلٍ في الكاش.
+  'branchDeliveryDate', 'deliveryDate',
   'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate',
 ];
 // ما يُكتب صفرًا وما يُترك فارغًا — الرقمُ صفرٌ والتاريخُ لا صفرَ له.
@@ -286,7 +288,8 @@ const FILTERABLE_COLUMNS = new Set([
   'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
   'username', 'userPhone', 'taxIndicator', 'purchaseValue', 'sellingValue',
   'driverName', 'truckType', 'truckSize', 'representativeName', 'operationsReview',
-  'paymentDate', 'payingBranch', 'documentNumber', 'sendingDate', 'deliveryDate',
+  'paymentDate', 'payingBranch', 'documentNumber', 'sendingDate',
+  'branchDeliveryDate', 'deliveryDate',
   'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
   'invoiceDate', 'collectionDate', 'stage',
 ]);
@@ -296,7 +299,7 @@ const FILTERABLE_COLUMNS = new Set([
 // «تاريخ السداد» كانت سترجع صفرًا من الصفوف بلا رسالة خطأ — لذلك يُعاد كل نوعٍ
 // إلى نوعه قبل بناء الشرط.
 const NUMERIC_COLUMNS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
-const DATE_COLUMNS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
+const DATE_COLUMNS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
 
 /**
  * أعمدة التواريخ تُجمَّع باليوم لا باللحظة.
@@ -412,7 +415,8 @@ const LIST_FIELDS = [
   'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
   'representativeName', 'operationsReview',
   'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType',
-  'finalReportDestination', 'documentNumber', 'sendingDate', 'deliveryDate',
+  'finalReportDestination', 'documentNumber', 'sendingDate',
+  'branchDeliveryDate', 'deliveryDate',
   'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
   'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
   'stage', 'lockedBy', 'lockedByName', 'lockedAt', 'externalSource', 'createdAt',
@@ -1234,6 +1238,7 @@ exports.exportWorkflows = async (req, res) => {
       ['وجهه الكشف النهائي', (w) => w.finalReportDestination || ''],
       ['رقم السند', (w) => w.documentNumber || ''],
       ['تاريخ الارسال', (w) => formatDate(w.sendingDate)],
+      ['تاريخ التسليم للفرع', (w) => formatDate(w.branchDeliveryDate)],
       ['تاريخ التسليم', (w) => formatDate(w.deliveryDate)],
       ['مراجعه الحسابات', (w) => w.accountingReview || '', 'accountingReview'],
       ['رقم الفاتوره', (w) => w.invoiceNumber || '', 'invoiceNumber'],

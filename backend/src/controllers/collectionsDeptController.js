@@ -1154,18 +1154,21 @@ const syncInvoiceLedger = async (invoiceNumber, { deliveryDate, collectionDate }
 };
 
 /**
- * تسجيلُ التسليم — POST /invoices/deliver
+ * تسجيلُ تسليم الفاتورة إلى العميل — POST /invoices/deliver
  *
- * التسليمُ خطوةٌ قائمةٌ بذاتها قبل التحصيل: الفاتورةُ تُرسَل وتُستلَم ويُوقَّع
- * عليها، ومن يومئذٍ تُعَدُّ المدّةُ المتّفق عليها. وكانت الشاشةُ تسجّل التحصيل
- * وحده، فيبقى «متى وصلت العميل؟» بلا جوابٍ إلّا في ورقةٍ خارج النظام — وهو
- * السؤالُ الذي يُسأل عند كلّ مطالبة.
+ * فريقُ التحصيل يأخذ الفواتير ويذهب بها إلى العملاء، ومن يوم استلام العميل
+ * تبدأ مهلتُه المتّفق عليها: مَن مهلتُه خمسةٌ وأربعون يومًا تُعَدُّ من ذلك
+ * اليوم لا من يوم إصدار الفاتورة ولا من يوم وصولها الفرع.
+ *
+ * وهو غيرُ `branchDeliveryDate` — تسليمِ الكشف إلى الفرع، وهو عملُ التشغيل
+ * ويأتي من شيت المتابعة. كانا حقلًا واحدًا فكانت المهلةُ تُحسب من تاريخٍ
+ * أسبقَ من التسليم الحقيقيّ. راجع models/OperationsWorkflow.
  */
 exports.recordDelivery = async (req, res) => {
   try {
     const { deliveryDate } = req.body;
     if (!deliveryDate) {
-      return res.status(400).json({ message: 'حقول مطلوبة ناقصة: تاريخ التسليم', fields: { deliveryDate: 'مطلوب' } });
+      return res.status(400).json({ message: 'حقول مطلوبة ناقصة: تاريخ التسليم للعميل', fields: { deliveryDate: 'مطلوب' } });
     }
     const invoiceNumber = String(req.body.invoiceNumber || '').trim();
     const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
@@ -1189,8 +1192,8 @@ exports.recordDelivery = async (req, res) => {
     res.json({
       updated: r.modifiedCount || 0,
       message: invoiceNumber
-        ? `سُجِّل التسليم على ${r.modifiedCount} كشفًا تحت الفاتورة ${invoiceNumber}`
-        : `سُجِّل التسليم على ${r.modifiedCount} كشفًا`,
+        ? `سُجِّل تسليمُ الفاتورة ${invoiceNumber} للعميل على ${r.modifiedCount} كشفًا`
+        : `سُجِّل التسليم للعميل على ${r.modifiedCount} كشفًا`,
     });
   } catch (e) { sendMongooseError(res, e, 'تعذّر تسجيل التسليم'); }
 };

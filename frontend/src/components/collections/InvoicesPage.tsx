@@ -165,7 +165,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   };
 
   const saveDeliver = async () => {
-    if (!deliveryDate) { notify(t('تاريخ التسليم مطلوب', 'Delivery date required'), 'error'); return; }
+    if (!deliveryDate) { notify(t('تاريخ التسليم للعميل مطلوب', 'Customer delivery date required'), 'error'); return; }
     setSaving(true);
     try {
       const r = await api.post<{ message: string }>('/api/collections-dept/invoices/deliver', {
@@ -216,7 +216,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('القيمة', 'Value'), key: 'value', width: 16 },
       { header: t('عدد الكشوفات', 'Reports'), key: 'reports', width: 12 },
       { header: t('تاريخ الفاتورة', 'Invoice date'), key: 'invoiceDate', width: 14, transform: (v: any) => dt(v) },
-      { header: t('تاريخ التسليم', 'Delivered on'), key: 'deliveryDate', width: 14, transform: (v: any) => dt(v) },
+      { header: t('تاريخ التسليم للعميل', 'Delivered to customer'), key: 'deliveryDate', width: 14, transform: (v: any) => dt(v) },
       { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14, transform: (v: any) => dt(v) },
       { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12 },
     ];
@@ -359,7 +359,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                     t('تاريخ السداد', 'Paid on'), t('الفرع المسدد', 'Paying branch'), t('العمر', 'Age'),
                     t('مبلغ التحصيل', 'Collected'), t('تاريخ التحصيل', 'Collected on'), '']
                   : [t('رقم الفاتورة', 'Invoice no.'), t('العميل', 'Customer'), t('عدد الكشوفات', 'Reports'),
-                    t('القيمة', 'Value'), t('تاريخ الفاتورة', 'Invoice date'), t('تاريخ التسليم', 'Delivered'),
+                    t('القيمة', 'Value'), t('تاريخ الفاتورة', 'Invoice date'), t('التسليم للعميل', 'To customer'),
                     t('العمر', 'Age'), t('تاريخ التحصيل', 'Collected on'), '']
                 ).map((h, i) => <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}
               </tr>
@@ -452,12 +452,12 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           <button type="button" onClick={() => setDelivering(null)} className="px-4 py-2 text-slate-500 text-sm">{t('إلغاء', 'Cancel')}</button>
           <PrimaryButton onClick={saveDeliver} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}{t('حفظ', 'Save')}</PrimaryButton>
         </>}>
-        <Field label={t('تاريخ التسليم', 'Delivery date')}>
+        <Field label={t('تاريخ التسليم للعميل', 'Delivered to customer')}>
           <TextInput type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
         </Field>
         <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-          {t('يُكتب على كشوف الفاتورة في سير عمل التشغيل وفي دفتر التحصيل معًا.',
-             'Written onto the invoice\u2019s reports in the operations workflow and into the collections ledger together.')}
+          {t('يوم استلام العميل للفاتورة — ومنه تبدأ مهلة السداد المتّفق عليها معه. يُكتب على كشوف الفاتورة في سير عمل التشغيل وفي دفتر التحصيل معًا، وهو غير «تاريخ التسليم للفرع» الذي يسجّله التشغيل.',
+             'The day the customer received the invoice — the agreed credit term starts here. Written to the invoice\u2019s reports and the collections ledger together, and distinct from the branch delivery operations records.')}
         </p>
       </Modal>
 

@@ -120,7 +120,7 @@ export default function CreditAlerts({ compact = false }: { compact?: boolean })
                   <span className="text-xs text-slate-500">{a.officer}</span>
                   <span className="text-xs tabular-nums text-slate-700">{money(a.total)}</span>
                   {/* المهلةُ تُعَدّ من التسليم، فيُعرَض التسليمُ لا الفوترة. */}
-                  <span className="text-[11px] text-slate-400" title={ar ? 'تُحسب المهلة من تاريخ التسليم' : 'terms count from delivery'}>
+                  <span className="text-[11px] text-slate-400" title={ar ? 'تُحسب المهلة من يوم تسليم الفاتورة للعميل' : 'terms count from the day the customer received the invoice'}>
                     {ar ? `سُلّمت ${new Date(a.deliveryDate).toLocaleDateString('en-GB')} · ${a.creditDays} يومًا` : `del. ${new Date(a.deliveryDate).toLocaleDateString('en-GB')} · ${a.creditDays}d`}
                   </span>
                   <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${a.daysToDue < 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>

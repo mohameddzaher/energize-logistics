@@ -47,7 +47,11 @@ const COLUMNS = [
   ['executionStatus', 'text'], ['applicationStatus', 'text'], ['paymentMethod', 'text'], ['username', 'text'],
   ['taxIndicator', 'text'], ['purchaseValue', 'num'], ['sellingValue', 'num'], ['operationsReview', 'text'],
   ['paymentDate', 'date'], ['payingBranch', 'text'], ['finalReportDestination', 'text'], ['documentNumber', 'text'],
-  ['sendingDate', 'date'], ['deliveryDate', 'date'], ['accountingReview', 'text'], ['invoiceNumber', 'text'],
+  // ── وعمودُ «تاريخ التسليم» في الشيت هو تسليمُ **الفرع** ──────────────────
+  // موضعُه بين «تاريخ الإرسال» و«مراجعة الحسابات» وقبل أعمدة الفاتورة كلِّها،
+  // وهو عملُ التشغيل. أمّا تسليمُ الفاتورة إلى العميل — الذي منه تبدأ مهلةُ
+  // السداد — فيكتبه قسمُ التحصيل في `deliveryDate` ولا يأتي من هذا الملفّ.
+  ['sendingDate', 'date'], ['branchDeliveryDate', 'date'], ['accountingReview', 'text'], ['invoiceNumber', 'text'],
   ['netInvoice', 'num'], ['tax', 'num'], ['totalInvoice', 'num'], ['invoiceDate', 'date'],
   ['invoiceNotes', 'text'], ['collectionDate', 'date'],
 ];

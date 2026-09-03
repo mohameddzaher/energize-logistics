@@ -58,6 +58,7 @@ interface Workflow {
   finalReportDestination: string;
   documentNumber: string;
   sendingDate: string;
+  branchDeliveryDate: string;
   deliveryDate: string;
   accountingReview: string;
   paymentAmount: number;
@@ -90,7 +91,7 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }>
 const EMPTY_SET = new Set<string>();
 const EMPTY_OPTIONS: ColumnFilterOption[] = [];
 // Columns whose filter-dropdown labels should be formatted as dates / money.
-const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
+const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
 const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
 
 // ── أعمدة التصدير ────────────────────────────────────────────────────────────
@@ -129,7 +130,8 @@ const EXPORT_COLUMNS = [
   { header: 'وجهة الكشف النهائية', key: 'finalReportDestination', width: 18 },
   { header: 'رقم المستند', key: 'documentNumber', width: 14 },
   { header: 'تاريخ الإرسال', key: 'sendingDate', width: 12 },
-  { header: 'تاريخ التسليم', key: 'deliveryDate', width: 12 },
+  { header: 'تاريخ التسليم للفرع', key: 'branchDeliveryDate', width: 14 },
+  { header: 'تاريخ التسليم للعميل', key: 'deliveryDate', width: 14 },
   { header: 'مراجعة المحاسبة', key: 'accountingReview', width: 14 },
   { header: 'رقم الفاتورة', key: 'invoiceNumber', width: 14 },
   { header: 'صافي الفاتورة', key: 'netInvoice', width: 12 },
@@ -232,7 +234,7 @@ export default function OperationsWorkflowPage() {
   // السنداتُ تصل دفعةً بتاريخٍ واحدٍ وفرعٍ واحد، وكان يُفتح كلُّ صفٍّ ليُكتب
   // فيه التاريخُ نفسُه — مئةُ فرصةِ خطأٍ لعملٍ واحد.
   const [showBulkPay, setShowBulkPay] = useState(false);
-  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', deliveryDate: '' });
+  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '' });
   const [bulkPaying, setBulkPaying] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ message: string; skipped: { reportNumber: string; reason: string }[] } | null>(null);
   const [bulkReviewText, setBulkReviewText] = useState('تم');
@@ -622,7 +624,7 @@ export default function OperationsWorkflowPage() {
       setBulkResult({ message: r.message, skipped: r.skipped || [] });
       if (!(r.skipped || []).length) {
         setShowBulkPay(false); setSelectedIds(new Set());
-        setBulkPay({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', deliveryDate: '' });
+        setBulkPay({ paymentDate: '', payingBranch: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '' });
       }
       fetchWorkflows(true);
     } catch (err: any) { setBulkResult({ message: err.message, skipped: [] }); }
@@ -671,6 +673,7 @@ export default function OperationsWorkflowPage() {
     reportDate: formatDate(w.reportDate),
     paymentDate: formatDate(w.paymentDate),
     sendingDate: formatDate(w.sendingDate),
+    branchDeliveryDate: formatDate(w.branchDeliveryDate),
     deliveryDate: formatDate(w.deliveryDate),
     invoiceDate: formatDate(w.invoiceDate),
     collectionDate: formatDate(w.collectionDate),
@@ -825,10 +828,16 @@ export default function OperationsWorkflowPage() {
                         value={bulkPay.sendingDate} onChange={(v) => setBulkPay((p) => ({ ...p, sendingDate: v }))} />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'تاريخ التسليم' : 'Delivery date'}</label>
-                      <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ التسليم' : 'Delivery date'}
-                        value={bulkPay.deliveryDate} onChange={(v) => setBulkPay((p) => ({ ...p, deliveryDate: v }))} />
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'تاريخ التسليم للفرع' : 'Delivered to branch'}</label>
+                      <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ التسليم للفرع' : 'Delivered to branch'}
+                        value={bulkPay.branchDeliveryDate} onChange={(v) => setBulkPay((p) => ({ ...p, branchDeliveryDate: v }))} />
                     </div>
+                    {/* ── وتسليمُ العميل لا يُملأ جماعةً من هنا ────────────────
+                        منه تبدأ مهلةُ السداد لكلّ عميلٍ بمدّته، فهو واقعةٌ
+                        تُسجَّل لفاتورةٍ بعينها يوم تصل صاحبَها — يكتبها قسمُ
+                        التحصيل من زرّ «تسليم» في صفحة الفواتير. وكتابتُه على
+                        خمسين كشفًا بتاريخٍ واحد تجعل خمسين مهلةً تبدأ في يومٍ
+                        لم يستلم فيه أحد. */}
                   </div>
                   {bulkResult && (
                     <div className="mt-3 p-2 rounded-lg bg-slate-50 border border-slate-200 max-h-40 overflow-auto">
@@ -1117,6 +1126,11 @@ export default function OperationsWorkflowPage() {
                 {ColHead('finalReportDestination', lang === 'ar' ? 'وجهة الكشف النهائية' : 'Final destination', 'text-purple-300')}
                 {ColHead('documentNumber', T.thDocNumber, 'text-purple-300')}
                 {ColHead('sendingDate', T.thSendingDate, 'text-purple-300')}
+                {/* ── تسليمان لا تسليمٌ واحد ────────────────────────────────
+                    هذا تسليمُ الكشف إلى الفرع — عملُ التشغيل، ويأتي من شيت
+                    المتابعة. وتسليمُ الفاتورة إلى العميل عمودٌ آخرُ عند أعمدة
+                    التحصيل، ومنه وحدَه تبدأ مهلةُ السداد المتّفق عليها. */}
+                {ColHead('branchDeliveryDate', T.thBranchDeliveryDate, 'text-purple-300')}
                 {/* مراجعةُ الحسابات إقرارُ المحاسبة، فمكانُها مع أعمدة المال لا مع
                     تسجيل السداد — ومَن لا يراها لا تصله من الخادم أصلًا. */}
                 {canViewFinancials && ColHead('accountingReview', T.thAccountingReview, 'text-purple-300')}
@@ -1393,6 +1407,7 @@ export default function OperationsWorkflowPage() {
                         {isCash ? lockedCell('0') : lookupCell('finalReportDestination', 'workflow_final_destination', 'text-purple-700')}
                         {isCash ? lockedCell('0') : textCell('documentNumber', 'text-purple-700')}
                         {isCash ? lockedCell('—') : dateCell('sendingDate', 'text-purple-700')}
+                        {isCash ? lockedCell('—') : dateCell('branchDeliveryDate', 'text-purple-700')}
                         {canViewFinancials && accountingReviewCell()}
                         {/* Collections — financial, finance/owner roles only */}
                         {canViewFinancials && (isCash ? lockedCell('0') : textCell('invoiceNumber', 'text-green-700'))}

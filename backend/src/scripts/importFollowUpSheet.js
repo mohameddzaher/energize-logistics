@@ -33,7 +33,10 @@ const XLSX = require('xlsx');
 const mongoose = require('mongoose');
 
 const DRY = process.argv.includes('--dry');
-const FILE = path.join(__dirname, '..', '..', '..', 'operation files', 'اخر تحديث شيت المتابعه 2026.xlsx');
+// الملفُّ يُمرَّر: تصل نسخةٌ أحدث كلَّ بضعة أسابيع، وتثبيتُ اسمٍ في السكربت
+// يعني تعديلَه في كلّ مرّة — أو استيرادَ نسخةٍ قديمةٍ ولا يُلاحَظ.
+const FILE = process.argv.find((a) => a.endsWith('.xlsx'))
+  || path.join(__dirname, '..', '..', '..', 'operation files', 'شيت المتابعه 2026 بتاريخ 3 سبتمبر 2026.xlsx');
 const SHEET = '2026';
 const HEADER_ROW = 4;
 
@@ -110,6 +113,23 @@ const READ = { text: readText, num: readNum, date: readDate };
 const PLACEHOLDER = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|بدون(?:\s*فاتورة)?|لا\s*يوجد|لا\s*توجد|غير\s*مفوتر(?:ة)?)\s*$/i;
 const isEmpty = (v) => v == null || v === ''
   || (typeof v === 'string' && (v.trim() === '' || PLACEHOLDER.test(v)));
+
+// ── «ض / غ ض» تُغذّي نوعَ الدفع، ولا تحكم عليه ─────────────────────────────
+//
+// عمودُ الشيت يقول عن الحمولة أضريبيّةٌ هي أم لا، وهو أفضلُ ما نملك لثلاثين
+// ألفَ كشفٍ لا نوعَ دفعٍ لها عندنا أصلًا. لكنّه لا يحكم: «العميل ممكن في حمولات
+// يقولنا هحاسبكوا عليها كاش وساعات ضريبي» — فالنوعُ قرارٌ يُتَّخذ على الكشف
+// نفسِه ويُحفَظ تاريخُه معه.
+//
+// فالقاعدةُ هي قاعدةُ هذا الملفّ كلِّه: يُملأ الفارغُ ولا يُدهَس المكتوب. ما
+// اختاره موظّفٌ في الشاشة يبقى، وما لم يُختَر بعدُ يأخذ جوابَ الورقة.
+const readPaymentType = (v) => {
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  if (!s) return null;
+  if (/^(cash|كاش|نقد|غ\s*ض|غير\s*ضريب)/.test(s)) return 'cash';
+  if (/^(tax|ضريب|ض)$|ضريب/.test(s)) return 'tax';
+  return null;      // صياغةٌ لم نرَها — تُترك ولا تُخمَّن
+};
 const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
 
 (async () => {
@@ -134,6 +154,11 @@ const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === n
       if (SKIP.has(field)) return;
       const v = READ[kind](r[i]);
       if (v !== null) vals[field] = v;
+      // ونوعُ الدفع يُشتقّ من العمود نفسِه، فيُملأ به ما لا نوعَ له عندنا.
+      if (field === 'taxIndicator') {
+        const pt = readPaymentType(r[i]);
+        if (pt) vals.paymentType = pt;
+      }
     });
     if (bySheet.has(no)) dupes += 1;
     bySheet.set(no, vals);               // الأحدثُ في الورقة يفوز
@@ -145,7 +170,7 @@ const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === n
   // ── ثمّ كشوفُنا، على دفعات ─────────────────────────────────────────────
   // ثلاثون ألفَ رقمٍ في `$in` واحدة تقطع الاتّصالَ بالعنقود المشترك قبل أن
   // يردّ. فتُسأل على دفعاتٍ صغيرةٍ يمرّ كلٌّ منها على فهرس «رقم الكشف».
-  const FIELDS = COLUMNS.map(([f]) => f).filter((f) => !SKIP.has(f));
+  const FIELDS = [...COLUMNS.map(([f]) => f).filter((f) => !SKIP.has(f)), 'paymentType'];
   const SELECT = ['reportNumber', ...FIELDS].join(' ');
   const keys = [...bySheet.keys()];
   const ours = [];
@@ -201,5 +226,8 @@ const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === n
 
   const after = await OW.countDocuments({ collectionDate: { $ne: null } });
   console.log(`\nكشوفٌ لها تاريخُ تحصيلٍ الآن: ${after}`);
+  const pt = await OW.aggregate([{ $group: { _id: '$paymentType', n: { $sum: 1 } } }, { $sort: { n: -1 } }]);
+  console.log('نوعُ الدفع في السجلّ الآن:');
+  for (const x of pt) console.log(`  ${String(x.n).padStart(6)}  ${x._id || '(بلا نوع)'}`);
   await mongoose.disconnect();
 })().catch((e) => { console.error(e); process.exit(1); });

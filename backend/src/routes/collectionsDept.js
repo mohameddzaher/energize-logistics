@@ -55,6 +55,8 @@ router.get('/invoices/tax', authorize(...READ_ROLES), ctrl.taxInvoices);
 // الرقمُ قد يحمل شرطاتٍ ومسافات — يُلتقط كما هو.
 router.get('/invoices/tax/:invoiceNumber', authorize(...READ_ROLES), ctrl.taxInvoiceDetail);
 router.post('/invoices/collect', authorize(...EDIT_ROLES), ctrl.recordCollection);
+// التسليمُ خطوةٌ قبل التحصيل: منها تُعَدُّ المدّةُ المتّفق عليها.
+router.post('/invoices/deliver', authorize(...EDIT_ROLES), ctrl.recordDelivery);
 
 // ── دفترُ التحصيل ──────────────────────────────────────────────────────────
 // سجلُّ الحسابات بأعماره، ودفترُ الفواتير، والتنبيهاتُ والخطّةُ والتقييم.

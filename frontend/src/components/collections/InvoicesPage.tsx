@@ -22,7 +22,7 @@ import { canEditCollections, money, dt } from '@/lib/collections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select, Loader2 } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
-import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft } from 'lucide-react';
+import { Banknote, Receipt, SlidersHorizontal, X, CheckCircle2, ChevronLeft, Truck } from 'lucide-react';
 
 export type InvoiceKind = 'cash' | 'tax';
 
@@ -88,6 +88,12 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
   // ── تسجيلُ التحصيل ────────────────────────────────────────────────────────
   const [collecting, setCollecting] = useState<{ label: string; invoiceNumber?: string; ids?: string[]; needAmount: boolean } | null>(null);
+  // ── والتسليمُ خطوةٌ قبل التحصيل ───────────────────────────────────────────
+  // الفاتورةُ تُرسَل وتُستلَم ويُوقَّع عليها، ومن يومئذٍ تُعَدُّ المدّةُ المتّفق
+  // عليها. وكانت الشاشةُ تسجّل التحصيل وحدَه، فيبقى «متى وصلت العميل؟» بلا
+  // جوابٍ إلّا في ورقةٍ خارج النظام — وهو أوّلُ ما يُسأل عند كلّ مطالبة.
+  const [delivering, setDelivering] = useState<{ label: string; invoiceNumber?: string; ids?: string[] } | null>(null);
+  const [deliveryDate, setDeliveryDate] = useState('');
   const [collectForm, setCollectForm] = useState({ collectionDate: '', collectedAmount: '' });
   const [saving, setSaving] = useState(false);
 
@@ -148,6 +154,30 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       setCollecting({ label: r.invoiceNumber, invoiceNumber: r.invoiceNumber, needAmount: false });
       setCollectForm({ collectionDate: r.collectionDate?.slice(0, 10) || today, collectedAmount: '' });
     }
+  };
+
+  const openDeliver = (r: any) => {
+    const today = new Date().toISOString().slice(0, 10);
+    setDelivering(isCash
+      ? { label: r.reportNumber, ids: [r._id] }
+      : { label: r.invoiceNumber, invoiceNumber: r.invoiceNumber });
+    setDeliveryDate(r.deliveryDate?.slice(0, 10) || today);
+  };
+
+  const saveDeliver = async () => {
+    if (!deliveryDate) { notify(t('تاريخ التسليم مطلوب', 'Delivery date required'), 'error'); return; }
+    setSaving(true);
+    try {
+      const r = await api.post<{ message: string }>('/api/collections-dept/invoices/deliver', {
+        invoiceNumber: delivering?.invoiceNumber,
+        ids: delivering?.ids,
+        deliveryDate,
+      });
+      notify(r?.message || t('سُجِّل التسليم', 'Delivery recorded'));
+      setDelivering(null);
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
+    setSaving(false);
   };
 
   const saveCollect = async () => {
@@ -380,6 +410,13 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                   <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       {canEdit && (
+                        <button type="button" onClick={() => openDeliver(r)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold hover:bg-sky-100"
+                          title={t('تاريخُ وصول الفاتورة إلى العميل — منه تُعَدُّ المدّة', 'When the invoice reached the customer — the term starts here')}>
+                          <Truck className="w-3.5 h-3.5" />{r.deliveryDate ? t('تعديل التسليم', 'Edit delivery') : t('تسليم', 'Deliver')}
+                        </button>
+                      )}
+                      {canEdit && (
                         <button type="button" onClick={() => openCollect(r)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#f37121]/10 text-[#f37121] text-xs font-semibold hover:bg-[#f37121]/20">
                           <CheckCircle2 className="w-3.5 h-3.5" />{r.fullyCollected ? t('تعديل', 'Edit') : t('تحصيل', 'Collect')}
@@ -406,6 +443,23 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </div>
         )}
       </div>
+
+      <Modal
+        open={!!delivering}
+        onClose={() => setDelivering(null)}
+        title={t(`تسجيل تسليم — ${delivering?.label || ''}`, `Record delivery — ${delivering?.label || ''}`)}
+        footer={<>
+          <button type="button" onClick={() => setDelivering(null)} className="px-4 py-2 text-slate-500 text-sm">{t('إلغاء', 'Cancel')}</button>
+          <PrimaryButton onClick={saveDeliver} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}{t('حفظ', 'Save')}</PrimaryButton>
+        </>}>
+        <Field label={t('تاريخ التسليم', 'Delivery date')}>
+          <TextInput type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
+        </Field>
+        <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+          {t('يُكتب على كشوف الفاتورة في سير عمل التشغيل وفي دفتر التحصيل معًا.',
+             'Written onto the invoice\u2019s reports in the operations workflow and into the collections ledger together.')}
+        </p>
+      </Modal>
 
       <Modal
         open={!!collecting}

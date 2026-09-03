@@ -86,3 +86,6 @@ backend/_*.js
 # مستنداتُ عملٍ في جذر المشروع — ليست جزءًا من الشيفرة.
 /*.docx
 /*.pdf
+
+# Excel lock files
+~$*.xlsx

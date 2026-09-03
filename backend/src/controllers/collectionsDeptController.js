@@ -1120,6 +1120,75 @@ exports.taxInvoiceDetail = async (req, res) => {
  * والفاتورةُ التي تضمّ كشوفًا يُكتب تاريخُها على كشوفها كلِّها: تحصيلُ الفاتورة
  * تحصيلٌ لما فيها، وتركُ بعضِها مفتوحًا يجعلها تظهر «نصفَ محصَّلة» إلى الأبد.
  */
+// ── الدفتران يتحرّكان معًا ───────────────────────────────────────────────────
+//
+// الفاتورةُ مكتوبةٌ في مكانين: على كشوف التشغيل التي تحتها، وفي دفتر التحصيل
+// (`CollectionInvoice`) الذي فيه تسعةُ آلافِ فاتورةٍ ترجع إلى ٢٠٢٢ — أكثرُها
+// بلا كشفٍ عندنا أصلًا. وهما ليسا نسخةً من نسخة، بل وجهان لشيءٍ واحد.
+//
+// وكان كلٌّ يتحرّك وحدَه: الدفترُ يقول إنّ الفاتورة ٩٧١٩ سُلّمت في ١ مارس
+// وحُصّلت، وكشفُها في التشغيل خاليان. فمن فتح الكشف رأى فاتورةً لم تُسلَّم بعد.
+//
+// فكلُّ تسجيلٍ هنا يكتب في الوجهين معًا.
+const syncInvoiceLedger = async (invoiceNumber, { deliveryDate, collectionDate }) => {
+  const no = String(invoiceNumber || '').trim();
+  if (!no || NO_INVOICE_RX.test(no)) return null;
+  const CollectionInvoice = require('../models/CollectionInvoice');
+  const $set = {};
+  if (deliveryDate !== undefined) $set.deliveryDate = deliveryDate;
+  if (collectionDate !== undefined) $set.collectionDate = collectionDate;
+  // الحالةُ تتبع التواريخ لا تُكتب على حدة: «محصَّلة» أقوى من «مسلَّمة».
+  const inv = await CollectionInvoice.findOne({ invoiceNumber: no });
+  if (!inv) return null;
+  const collected = collectionDate !== undefined ? collectionDate : inv.collectionDate;
+  const delivered = deliveryDate !== undefined ? deliveryDate : inv.deliveryDate;
+  $set.status = collected ? 'Collected' : (delivered ? 'Delivered' : (inv.status || ''));
+  await CollectionInvoice.updateOne({ _id: inv._id }, { $set });
+  return inv._id;
+};
+
+/**
+ * تسجيلُ التسليم — POST /invoices/deliver
+ *
+ * التسليمُ خطوةٌ قائمةٌ بذاتها قبل التحصيل: الفاتورةُ تُرسَل وتُستلَم ويُوقَّع
+ * عليها، ومن يومئذٍ تُعَدُّ المدّةُ المتّفق عليها. وكانت الشاشةُ تسجّل التحصيل
+ * وحده، فيبقى «متى وصلت العميل؟» بلا جوابٍ إلّا في ورقةٍ خارج النظام — وهو
+ * السؤالُ الذي يُسأل عند كلّ مطالبة.
+ */
+exports.recordDelivery = async (req, res) => {
+  try {
+    const { deliveryDate } = req.body;
+    if (!deliveryDate) {
+      return res.status(400).json({ message: 'حقول مطلوبة ناقصة: تاريخ التسليم', fields: { deliveryDate: 'مطلوب' } });
+    }
+    const invoiceNumber = String(req.body.invoiceNumber || '').trim();
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
+    if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو كشوفًا' });
+
+    const filter = invoiceNumber ? { invoiceNumber, ...NOT_CANCELLED } : { _id: { $in: ids } };
+    const when = new Date(deliveryDate);
+    const r = await OperationsWorkflow.updateMany(filter, { $set: { deliveryDate: when, lastModifiedBy: req.user._id } });
+    await syncInvoiceLedger(invoiceNumber, { deliveryDate: when });
+
+    cache.clear('wf:');
+    cache.clear(CACHE_PREFIX);
+    try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
+    await logAudit({
+      user: req.user._id, action: 'record_delivery', entity: 'OperationsWorkflow',
+      entityId: ids.length === 1 ? ids[0] : null, entityKey: invoiceNumber || undefined,
+      changes: { after: { deliveryDate, count: r.modifiedCount } }, ipAddress: req.ip,
+    });
+    try { emitToAll('workflow:updated', { bulk: true, delivery: true }); } catch (_) {}
+
+    res.json({
+      updated: r.modifiedCount || 0,
+      message: invoiceNumber
+        ? `سُجِّل التسليم على ${r.modifiedCount} كشفًا تحت الفاتورة ${invoiceNumber}`
+        : `سُجِّل التسليم على ${r.modifiedCount} كشفًا`,
+    });
+  } catch (e) { sendMongooseError(res, e, 'تعذّر تسجيل التسليم'); }
+};
+
 exports.recordCollection = async (req, res) => {
   try {
     const { collectionDate, collectedAmount } = req.body;
@@ -1143,8 +1212,11 @@ exports.recordCollection = async (req, res) => {
     if (collectedAmount !== undefined && collectedAmount !== '') $set.collectedAmount = Number(collectedAmount) || 0;
 
     const r = await OperationsWorkflow.updateMany(filter, { $set });
+    // والدفترُ الآخر معه — راجع syncInvoiceLedger.
+    await syncInvoiceLedger(invoiceNumber, { collectionDate: $set.collectionDate });
     cache.clear('wf:');
     cache.clear(CACHE_PREFIX);
+    try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
 
     await logAudit({
       user: req.user._id, action: 'record_collection', entity: 'OperationsWorkflow',

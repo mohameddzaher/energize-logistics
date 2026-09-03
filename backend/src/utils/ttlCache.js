@@ -66,10 +66,40 @@ const db = () => {
   } catch (_) { return null; }
 };
 
+// ── والأدقُّ من الاستطلاع: تيّارُ التغيير ────────────────────────────────────
+//
+// الاستطلاعُ مرّةً في الثانية يترك نافذةً: عاملٌ استطلع قبل الإبطال بمئتَي جزءٍ
+// من الثانية يخدم من ذاكرته حتى تنقضي ثانيته. قِيس ذلك: قراءتان قديمتان من كلّ
+// أربع، لا واحدة.
+//
+// و«cachestamps» مجموعةٌ صغيرة في عنقودٍ يدعم `watch`، فيُفتَح عليها تيّارُ
+// تغييرٍ واحدٌ لكلّ عامل: كتابةُ ختمٍ في أيّ عاملٍ تصل الآخرَ في مِلّي ثانية بلا
+// استعلامٍ أصلًا. والاستطلاعُ يبقى شبكةَ أمان — إن لم يدعم العنقودُ التيّارَ أو
+// انقطع، عاد الأمرُ إلى ثانيةٍ واحدة بدل أن يسقط الاتّساقُ كلُّه.
+let watcher = null;
+function startWatch() {
+  const d = db();
+  if (!d || watcher) return;
+  try {
+    watcher = d.collection(STAMP_COLL).watch([], { fullDocument: 'updateLookup' });
+    watcher.on('change', (ev) => {
+      const id = ev.documentKey?._id;
+      if (!id) return;
+      const at = ev.fullDocument?.at ? new Date(ev.fullDocument.at).getTime() : Date.now();
+      if (seen.get(id) === at) return;              // ختمُنا نحن
+      seen.set(id, at);
+      clearLocal(id === '*' ? undefined : id);
+    });
+    watcher.on('error', () => { try { watcher.close(); } catch (_) {} watcher = null; });
+    watcher.on('close', () => { watcher = null; });
+  } catch (_) { watcher = null; }
+}
+
 /** يُقرأ الأختامُ ويُمسَح محلّيًّا ما أبطله عاملٌ آخر. لا يرمي أبدًا. */
 async function syncStamps() {
   const d = db();
   if (!d) return;
+  startWatch();
   try {
     const rows = await d.collection(STAMP_COLL).find({}).toArray();
     for (const r of rows) {

@@ -36,6 +36,11 @@ router.post('/renew-bulk', authorize(...EDIT), c.renewBulk);
 router.post('/renew-shared', authorize(...EDIT), c.renewShared);
 router.get('/corporate-policies', c.listCorporatePolicies);
 router.post('/corporate-policies/:id/renew', authorize(...EDIT), c.renewCorporatePolicy);
+// الوثيقةُ تُكتب وتُصحَّح لا تُجدَّد فقط، ووثيقةُ خيانة الأمانة لها قائمةُ مشمولين.
+router.post('/corporate-policies', authorize(...EDIT), c.createCorporatePolicy);
+router.put('/corporate-policies/:id', authorize(...EDIT), c.updateCorporatePolicy);
+router.delete('/corporate-policies/:id', authorize(...ADMIN), c.deleteCorporatePolicy);
+router.post('/corporate-policies/:id/drivers', authorize(...EDIT), c.setPolicyDriver);
 router.get('/alerts', c.alerts);
 // ── بطاقاتُ السائقين ───────────────────────────────────────────────────────
 router.get('/driver-cards', c.listDriverCards);

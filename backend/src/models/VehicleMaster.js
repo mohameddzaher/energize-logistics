@@ -275,8 +275,27 @@ const corporatePolicySchema = new mongoose.Schema({
   policyholderAr: { type: String, default: '' },
   policyNumbers: { type: [String], default: [] },
   companyAr: { type: String, default: '' },
+  startDate: { type: Date, default: null },
   expiryDate: { type: Date, default: null, index: true },
   premiumSar: { type: Number, default: null },
+
+  // ── ووثيقةٌ تُشترى بالرأس ──────────────────────────────────────────────────
+  //
+  // خيانةُ الأمانة تُسعَّر لكلّ سائقٍ سنويًّا (١١٨٦٫٥٠)، والمكتوبُ في الوثيقة
+  // إجماليٌّ صحيحٌ يومَ كُتب ويكذب في اليوم التالي: يدخل سائقٌ فيزيد، ويخرج
+  // فينقص. وكان اسمُ الوثيقة نفسُه «تأمين خيانة الأمانة ل 58 سائق» — عددٌ في
+  // اسمٍ لا يُسأل: أيُّ ثمانيةٍ وخمسين؟ ومَن دخل الشهرَ الماضي وليس فيهم؟
+  //
+  // فيُخزَّن السعرُ للرأس، ويُحسب الإجماليُّ من عدد المشمولين فعلًا. ومَن أراد
+  // إجماليًّا مقطوعًا يكتبه في `premiumSar` ويبقى هو المعروض.
+  premiumPerPersonSar: { type: Number, default: null },
+
+  // ── ومَن تغطّيهم ──────────────────────────────────────────────────────────
+  // لا تُنسَخ قائمةُ السائقين هنا: هي في `DriverCard.fidelity.status`، ونسخُها
+  // يعني سجلَّين يفترقان عند أوّل إضافة. هذا العَلَم يقول للشاشة فقط: اعرض
+  // لهذه الوثيقة لوحةَ السائقين المشمولين، والإضافةُ والحذفُ يكتبان في البطاقة.
+  coversDrivers: { type: Boolean, default: false },
+  notesAr2: { type: String, default: '' },
   statusAr: { type: String, default: '' },
   statusCode: { type: String, default: '' },
   notesAr: { type: String, default: '' },

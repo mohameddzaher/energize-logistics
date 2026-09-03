@@ -31,7 +31,7 @@ import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel'
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import { RenewModal, BulkRenewModal, SharedPolicyRenewModal, type RenewTarget } from '@/components/vehicles/RenewModals';
 import { ArrowRight, RefreshCw, Plus, Pencil, Eraser, Trash2, X, Save, Search } from 'lucide-react';
-import { VReg, DOC_TYPES, daysText, STATE_META, canEditVehicles, canAdminVehicles, isSharedPaper } from '@/lib/vehicleRegistry';
+import { VReg, DOC_TYPES, daysText, STATE_META, publicState, canEditVehicles, canAdminVehicles, isSharedPaper } from '@/lib/vehicleRegistry';
 import { flexIncludes } from '@/lib/flexMatch';
 import ManagedSelect from '@/components/system/ManagedSelect';
 
@@ -258,25 +258,44 @@ function DocumentFamilyPageInner({
   // لا حالة المركبة العامّة: مركبةٌ تأمينها منتهٍ وبطاقةُ تشغيلها سارية ليست
   // «منتهية» في صفحة بطاقات التشغيل، ولو عُدَّت كذلك لفتحت الشريحةُ صفوفًا لا
   // علاقة لها بالعمل الذي فُتحت الشاشة من أجله.
+  // ── الشرائح: أربعٌ يقرؤها المستخدم ────────────────────────────────────────
+  //
+  // كانت عشرًا: ثلاثُ درجاتٍ للإلحاح تُقرأ شيئًا واحدًا، و«بلا تاريخ مسجَّل»
+  // منفصلةٌ عن «مطلوب» وهي منها، و«غير مطلوب» و«موجود» و«لدى جهةٍ أخرى» —
+  // شرائحُ لا يُفتَح شيءٌ منها. وقال صاحبُ القسم في «غير مطلوب»: «طالما غير
+  // مطلوب مش عايز أعرف عنه حاجة»، وفي «موجود»: «ماهي بيانات عادية».
+  //
+  // فبقي ما يُفتَح فعلًا: ما انتهى، وما قارب، وما هو سليم، وما ينقصنا. واسمُ
+  // المستند في الشريحة نفسِها — «التأمين منتهٍ» لا «منتهٍ» — لأنّ الشاشةَ
+  // الواحدةَ تعرض مستندًا واحدًا، و«منتهٍ» وحدَها تترك السائل يسأل: منتهٍ ماذا؟
+  const famLabelShort = doc ? (ar ? doc.ar : doc.en) : '';
   const CHIPS: Chip[] = useMemo(() => (chips || (!docKey ? [{ key: '', label: t('الكل', 'All') }] : [
     { key: '', label: t('الكل', 'All') },
-    { key: 'expired', label: t('منتهٍ', 'Expired'), tone: 'red', test: (v: VReg) => stateOf(v, docKey).state === 'expired' },
-    { key: 'critical', label: t('ينتهي قريبًا جدًا', 'Critical'), tone: 'amber', test: (v: VReg) => stateOf(v, docKey).state === 'critical' },
-    { key: 'warning', label: t('قارب على الانتهاء', 'Due soon'), tone: 'amber', test: (v: VReg) => stateOf(v, docKey).state === 'warning' },
+    {
+      key: 'expired',
+      label: t(`${famLabelShort} منتهٍ`, `${famLabelShort} expired`),
+      tone: 'red',
+      test: (v: VReg) => stateOf(v, docKey).state === 'expired',
+    },
+    {
+      // الدرجاتُ الثلاثُ في شريحةٍ واحدة — راجع publicState في lib/vehicleRegistry.
+      key: 'due',
+      label: t('قارب على الانتهاء', 'Due soon'),
+      tone: 'amber',
+      test: (v: VReg) => publicState(stateOf(v, docKey).state) === 'due',
+    },
     { key: 'valid', label: t('ساري', 'Valid'), tone: 'green', test: (v: VReg) => stateOf(v, docKey).state === 'valid' },
-    // «بلا تاريخ» ليست حالةً فرعية — هي قائمةُ العمل الأولى: مستندٌ لا يُعرَف
-    // متى ينتهي لا يظهر في أي تنبيه، فينتهي ولا يعلم أحد.
-    { key: 'missing', label: t('بلا تاريخ مسجَّل', 'No date on file'), tone: 'slate', test: (v: VReg) => stateOf(v, docKey).state === 'missing' },
-    // ── والسؤال الذي يُسأل من الإدارة ───────────────────────────────────────
-    // ليس «أيُّ بطاقةٍ تنتهي قريبًا» — ذاك يُجيبه التاريخ — بل «كم مركبةً بلا
-    // بطاقة تشغيل، ومَن هي؟». وهذا لا يُقرأ من التاريخ: مركبةٌ بلا تاريخٍ قد لا
-    // تحتاج بطاقةً أصلًا (دراجةٌ ناريّة) وقد تحتاجها ولم تُستخرج — والفرق هو
-    // كلُّ الفرق، وخلطُهما يجعل الرقم يقول نقصًا لا وجود له.
-    { key: 'need_required', label: t('مطلوب — غير موجود', 'Required — missing'), tone: 'red', test: (v: VReg) => docNeed(v, docKey) === 'required' },
-    { key: 'need_not_required', label: t('غير مطلوب', 'Not required'), tone: 'slate', test: (v: VReg) => docNeed(v, docKey) === 'not_required' },
-    { key: 'need_have', label: t('موجود', 'On file'), tone: 'green', test: (v: VReg) => docNeed(v, docKey) === 'have' },
-    { key: 'need_unknown', label: t('لدى جهةٍ أخرى', 'Held elsewhere'), tone: 'blue', test: (v: VReg) => docNeed(v, docKey) === 'unknown' },
-  ])), [ar, docKey, chips]);
+    {
+      // ── «مطلوب» تجمع النقصين ─────────────────────────────────────────────
+      // مركبةٌ يلزمها المستندُ ولم يُستخرج، ومركبةٌ استُخرج لها ولا تاريخَ
+      // مسجَّلٌ له — كلتاهما عملٌ ينتظر، وفصلُهما في شريحتين يجعل قائمةَ العمل
+      // نصفين لا يُقرآن معًا. والتي لا يلزمها المستندُ أصلًا ليست منهما.
+      key: 'needed',
+      label: t('مطلوب — ناقص', 'Needed — missing'),
+      tone: 'red',
+      test: (v: VReg) => docNeed(v, docKey) === 'required' || stateOf(v, docKey).state === 'missing',
+    },
+  ])), [ar, docKey, chips, famLabelShort]);
 
   // ── البحث يمرّ مرّتين، فلا بدّ أن يتّفقا ──────────────────────────────────
   // الخادم يبحث في كلّ حقلٍ نصّيّ في المركبة، ثم تُصفَّى النتيجةُ هنا مرّةً

@@ -97,12 +97,14 @@ export default function VehiclesSettingsPage() {
 
       {tab === 'alerts' && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          {/* ── ولماذا ثلاثُ عتباتٍ لا واحدة ────────────────────────────────
-              «قريبٌ» يُخطَّط له، و«تحذيرٌ» يُبدأ فيه، و«حرجٌ» يُترك له كلُّ شيء.
-              وعتبةٌ واحدةٌ تجعل ما بقي له تسعون يومًا وما بقي له ثلاثة سواءً. */}
-          <p className="text-[12px] text-slate-500 mb-3">
-            {t('لكلّ مستند ثلاث عتبات: «قريب» للتخطيط، و«تحذير» للبدء، و«حرج» للاستعجال. تُقاس بالأيّام قبل الانتهاء.',
-               'Each document has three thresholds — soon (plan), warning (start), critical (urgent) — in days before expiry.')}
+          {/* ── ثلاثُ عتباتٍ، وحالةٌ واحدةٌ تُقرأ ──────────────────────────────
+              الشاشاتُ تعرض ثلاثَ حالاتٍ لا غير: منتهٍ · قارب على الانتهاء ·
+              ساري. و«قارب على الانتهاء» تبدأ من عتبة «قريب»؛ والعتبتان
+              الأخريان تغيّران اللونَ وحدَه — أصفرُ ثمّ برتقاليٌّ كلّما اقترب.
+              فمن أراد أن يبدأ التنبيهُ أبكرَ يزيد «قريب» وحدَها. */}
+          <p className="text-[12px] text-slate-500 mb-3 leading-relaxed">
+            {t('«قارب على الانتهاء» تبدأ من عتبة «قريب». و«تحذير» و«حرج» تغيّران اللون وحدَه كلّما اقترب الموعد — أصفر ثمّ برتقاليّ. كلُّها بالأيّام قبل الانتهاء.',
+               '“Due soon” starts at the soon threshold. Warning and critical only deepen the colour as the date nears. All in days before expiry.')}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

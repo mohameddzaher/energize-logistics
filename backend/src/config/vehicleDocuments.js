@@ -124,16 +124,38 @@ const STATUS_LABELS = {
 const statusLabel = (code, lang = 'ar') =>
   (STATUS_LABELS[code || ''] || { ar: code, en: code })[lang === 'en' ? 'en' : 'ar'];
 
-/** الحالات المحسوبة من التاريخ. */
+/**
+ * ── الحالاتُ المحسوبةُ من التاريخ، وثلاثةٌ منها يقرؤها المستخدم ───────────────
+ *
+ * كانت خمسًا: «ساري» و«على الرادار» و«قارب على الانتهاء» و«ينتهي قريبًا جدًا»
+ * و«منتهي». والثلاثةُ الوسطى شيءٌ واحدٌ بثلاث درجاتٍ من الإلحاح، وقد سألنا
+ * صاحبُ القسم: «ما (على الرادار) هذه؟ يا ساري يا قارب على الانتهاء يا منتهي».
+ * وهو محقّ: الشريحةُ التي تحتاج شرحًا ليست فلترًا، والمستخدمُ الذي يرى خمسَ
+ * درجاتٍ لا يعرف أيَّها يفتح أوّلًا.
+ *
+ * فصارت ثلاثًا يقرؤها: **منتهٍ · قارب على الانتهاء · ساري**. والدرجاتُ الثلاثُ
+ * باقيةٌ في الحساب لأنّ اللون يفرّق بينها — سبعةُ أيّامٍ أحمرُ وتسعون أصفرُ
+ * باهت — لكنّها تُسمّى باسمٍ واحد. `publicState` هي الترجمة، وكلُّ شاشةٍ
+ * وكلُّ تصديرٍ يمرّ بها فلا تفترق شاشةٌ عن أخرى في التسمية.
+ */
 const STATE_LABELS = {
-  upcoming: { ar: 'على الرادار', en: 'Upcoming' },
-  valid: { ar: 'ساري', en: 'Valid', color: '#16a34a' },
-  warning: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b' },
-  critical: { ar: 'ينتهي قريبًا جدًا', en: 'Critical', color: '#ea580c' },
+  // الحالاتُ الثلاثُ الظاهرة
   expired: { ar: 'منتهي', en: 'Expired', color: '#dc2626' },
-  missing: { ar: 'بدون تاريخ', en: 'No date', color: '#94a3b8' },
+  due: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b' },
+  valid: { ar: 'ساري', en: 'Valid', color: '#16a34a' },
+  // ودرجاتُ الإلحاح تحت «قارب على الانتهاء» — للّون لا للتسمية
+  critical: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#ea580c' },
+  warning: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b' },
+  upcoming: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#0ea5e9' },
+  // ولا تاريخَ أصلًا: هذه ليست حالةَ مستندٍ بل عملٌ ينتظر
+  missing: { ar: 'مطلوب — بلا تاريخ', en: 'Needed — no date', color: '#94a3b8' },
   not_applicable: { ar: 'غير مطلوب', en: 'Not applicable', color: '#64748b' },
 };
+
+/** الحالةُ كما تُعرَض: ثلاثٌ لا خمس. */
+const publicState = (state) => (
+  ['critical', 'warning', 'upcoming'].includes(state) ? 'due' : state
+);
 
 const DAY = 86400000;
 /** الأيام المتبقية من النهاردة (سالب = منتهي). null لو مفيش تاريخ. */
@@ -239,6 +261,7 @@ const mapSentinelAr = (v) => {
 const isGap = (code) => !!code && code !== 'not_required' && code !== '';
 
 module.exports = {
+  publicState,
   DOCUMENTS, DOC_KEYS, getDoc, STATUS_LABELS, statusLabel, STATE_LABELS,
   daysLeft, stateOf, SENTINEL_MAP, mapSentinel, isGap,
   AR_SENTINEL_MAP, mapSentinelAr, foldAr: _foldAr,

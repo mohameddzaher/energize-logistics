@@ -100,7 +100,7 @@ function VehiclesOverviewInner() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm">
             <CalendarClock className="w-4 h-4" /> {t('الانتهاءات', 'Expiries')}
           </button>
-          <button onClick={() => router.push('/system/vehicles/registry/settings')}
+          <button onClick={() => router.push('/system/vehicles/settings')}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:border-slate-400 text-sm">
             <Settings className="w-4 h-4" /> {t('إعدادات التنبيه', 'Alerts')}
           </button>
@@ -311,9 +311,12 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
 }) {
   const Icon = DOC_ICON[doc.key] || FileText;
   const s = doc.states;
+  // ثلاثُ حالاتٍ لا أربع: «ينتهي قريبًا جدًا» و«قارب على الانتهاء» و«على
+  // الرادار» شيءٌ واحدٌ بثلاث درجاتٍ من الإلحاح — راجع publicState.
   const rows: { key: string; n: number }[] = [
-    { key: 'expired', n: s.expired }, { key: 'critical', n: s.critical },
-    { key: 'warning', n: s.warning }, { key: 'valid', n: s.valid },
+    { key: 'expired', n: s.expired || 0 },
+    { key: 'due', n: (s.critical || 0) + (s.warning || 0) + ((s as any).upcoming || 0) },
+    { key: 'valid', n: s.valid || 0 },
   ];
   // الحالات المسجَّلة تُطوى إلى رقمين: ما ينقصنا تاريخه، وما لا يلزم أصلًا.
   // «غير مطلوب» قرارٌ إداريّ لا نقصٌ — خلطه بالنقص يجعل قائمة العمل تكذب.
@@ -336,7 +339,7 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
       </div>
 
       {/* الحالات المحسوبة */}
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-3 gap-1.5">
         {rows.map((r) => {
           const m = STATE_META[r.key];
           return (

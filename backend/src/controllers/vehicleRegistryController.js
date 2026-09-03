@@ -1464,7 +1464,10 @@ exports.expiring = async (req, res) => {
         // «غير مطلوب» مش بينتهي، و«بدون تاريخ» ملهاش مكان في شاشة انتهاءات.
         if (st.state === 'not_applicable' || st.state === 'missing') continue;
         if (!includeExpired && st.state === 'expired') continue;
-        if (states.length && !states.includes(st.state)) continue;
+        // الفلترُ يُقارَن بالحالة كما تُعرَض لا كما تُحسَب: الشاشةُ تعرض ثلاثًا
+        // («منتهٍ · قارب على الانتهاء · ساري») والحسابُ يفرّق تحتها ثلاثَ
+        // درجاتٍ للّون. فمن ضغط «قارب على الانتهاء» يقصدها كلَّها.
+        if (states.length && !states.includes(st.state) && !states.includes(VDOC.publicState(st.state))) continue;
         // المنتهي بالفعل بيفضل ظاهر مهما كانت المدة — هو أصلاً فات الميعاد.
         if (withinDays !== null && st.days > withinDays) continue;
         rows.push({
@@ -2133,13 +2136,140 @@ exports.listCorporatePolicies = async (req, res) => {
       CorporatePolicy.find({ isActive: true }).sort({ expiryDate: 1 }).lean(),
       getConfig(),
     ]);
+    // ── ومَن تغطّيهم وثيقةُ خيانة الأمانة ────────────────────────────────────
+    // القائمةُ ليست منسوخةً على الوثيقة: هي في بطاقات السائقين. فتُقرأ معها
+    // ويُحسب الإجماليُّ من عدد المشمولين فعلًا — لا من عددٍ مكتوبٍ في الاسم
+    // يصدق يومَ كُتب ويكذب بعد أوّل تعيين.
+    const needsDrivers = rows.some((p) => p.coversDrivers);
+    const cards = needsDrivers
+      ? await DriverCard.find({ isActive: { $ne: false } })
+        .select('idNumber name cardNumber expiryDate fidelity employee')
+        .populate('employee', 'employeeNumber arabicName')
+        .sort({ name: 1 }).lean()
+      : [];
+
     res.json({
       policies: rows.map((p) => {
         const st = VDOC.stateOf(p.expiryDate, '', cfg.alerts?.corporatePolicy);
-        return { ...p, state: st.state, daysRemaining: st.days };
+        const out = { ...p, state: st.state, daysRemaining: st.days };
+        if (p.coversDrivers) {
+          const covered = cards.filter((c) => c.fidelity?.status === 'covered');
+          const pending = cards.filter((c) => c.fidelity?.status === 'required');
+          out.drivers = {
+            covered: covered.map((c) => ({
+              _id: String(c._id), idNumber: c.idNumber, name: c.name,
+              cardNumber: c.cardNumber || '', addedDate: c.fidelity?.addedDate || '',
+              employeeNumber: c.employee?.employeeNumber || '',
+            })),
+            pending: pending.map((c) => ({
+              _id: String(c._id), idNumber: c.idNumber, name: c.name,
+              employeeNumber: c.employee?.employeeNumber || '',
+            })),
+            coveredCount: covered.length,
+          };
+          // الإجماليُّ المحسوب: السعرُ للرأس × عددُ المشمولين. و`premiumSar`
+          // يبقى كما هو إن كُتب يدًا — الشاشةُ تعرض الاثنين ولا تُخفي أيَّهما.
+          out.computedPremiumSar = p.premiumPerPersonSar != null
+            ? Math.round(p.premiumPerPersonSar * covered.length * 100) / 100
+            : null;
+        }
+        return out;
       }),
     });
-  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل وثائق الشركة' }); }
+  } catch (e) { console.error('listCorporatePolicies', e); res.status(500).json({ message: 'تعذّر تحميل وثائق الشركة' }); }
+};
+
+/** الحقولُ التي تُكتب على وثيقة الشركة — لا يُكتب غيرُها من الشاشة. */
+const CORP_FIELDS = ['scopeAr', 'policyholderAr', 'policyNumbers', 'companyAr', 'startDate',
+  'expiryDate', 'premiumSar', 'premiumPerPersonSar', 'statusAr', 'notesAr', 'coversDrivers'];
+
+/**
+ * إنشاءُ وثيقةِ شركةٍ وتعديلُها — كانت الصفحةُ تعرض ولا تكتب إلّا التجديد،
+ * فأيُّ تصحيحٍ في رقمٍ أو قسطٍ أو شركةٍ يحتاج فتحَ القاعدة.
+ */
+const pickCorp = (body) => {
+  const out = {};
+  for (const k of CORP_FIELDS) {
+    if (body[k] === undefined) continue;
+    if (k === 'policyNumbers') {
+      out[k] = Array.isArray(body[k]) ? body[k].map((x) => String(x).trim()).filter(Boolean)
+        : String(body[k] || '').split(/[,،\n]/).map((x) => x.trim()).filter(Boolean);
+    } else if (k === 'expiryDate' || k === 'startDate') {
+      out[k] = body[k] ? new Date(body[k]) : null;
+    } else if (k === 'premiumSar' || k === 'premiumPerPersonSar') {
+      out[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
+    } else if (k === 'coversDrivers') {
+      out[k] = !!body[k];
+    } else out[k] = String(body[k] ?? '').trim();
+  }
+  return out;
+};
+
+exports.createCorporatePolicy = async (req, res) => {
+  try {
+    const data = pickCorp(req.body);
+    if (!data.scopeAr) return res.status(400).json({ message: 'اكتب اسم الوثيقة' });
+    const p = await CorporatePolicy.create({ ...data, isActive: true });
+    logAudit({ user: req.user, action: 'create_corporate_policy', entity: 'CorporatePolicy', entityId: p._id, changes: { after: data }, ipAddress: req.ip }).catch(() => {});
+    emit('vreg:updated', {});
+    res.status(201).json({ policy: p });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر إنشاء الوثيقة'); }
+};
+
+exports.updateCorporatePolicy = async (req, res) => {
+  try {
+    const p = await CorporatePolicy.findById(req.params.id);
+    if (!p) return res.status(404).json({ message: 'الوثيقة غير موجودة' });
+    const data = pickCorp(req.body);
+    const before = { scopeAr: p.scopeAr, expiryDate: p.expiryDate, premiumSar: p.premiumSar, premiumPerPersonSar: p.premiumPerPersonSar };
+    Object.assign(p, data);
+    await p.save();
+    logAudit({ user: req.user, action: 'update_corporate_policy', entity: 'CorporatePolicy', entityId: p._id, changes: { before, after: data }, ipAddress: req.ip }).catch(() => {});
+    emit('vreg:updated', {});
+    res.json({ policy: p });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر حفظ الوثيقة'); }
+};
+
+exports.deleteCorporatePolicy = async (req, res) => {
+  try {
+    // حذفٌ ناعم: الوثيقةُ تاريخٌ، وسجلُّ تجديداتها يُقرأ بعد انتهائها.
+    const p = await CorporatePolicy.findByIdAndUpdate(req.params.id, { $set: { isActive: false } }, { new: true });
+    if (!p) return res.status(404).json({ message: 'الوثيقة غير موجودة' });
+    logAudit({ user: req.user, action: 'delete_corporate_policy', entity: 'CorporatePolicy', entityId: p._id, ipAddress: req.ip }).catch(() => {});
+    emit('vreg:updated', {});
+    res.json({ ok: true });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر حذف الوثيقة'); }
+};
+
+/**
+ * ضمُّ سائقٍ إلى وثيقةِ خيانة الأمانة أو إخراجُه — POST /corporate-policies/:id/drivers
+ *   { cardId, covered: true|false, addedDate? }
+ *
+ * ويُكتب في بطاقة السائق لا على الوثيقة: القائمةُ سجلٌّ واحدٌ لا نسختان.
+ */
+exports.setPolicyDriver = async (req, res) => {
+  try {
+    const p = await CorporatePolicy.findById(req.params.id).lean();
+    if (!p) return res.status(404).json({ message: 'الوثيقة غير موجودة' });
+    if (!p.coversDrivers) return res.status(400).json({ message: 'هذه الوثيقة لا تغطّي أشخاصًا' });
+    const card = await DriverCard.findById(req.body.cardId);
+    if (!card) return res.status(404).json({ message: 'بطاقة السائق غير موجودة' });
+    const covered = req.body.covered !== false;
+    card.fidelity = {
+      ...(card.fidelity ? card.fidelity.toObject?.() || card.fidelity : {}),
+      status: covered ? 'covered' : 'required',
+      addedDate: covered ? (req.body.addedDate || card.fidelity?.addedDate || new Date().toISOString().slice(0, 10)) : '',
+    };
+    card.lastModifiedBy = req.user?._id;
+    await card.save();
+    logAudit({
+      user: req.user, action: covered ? 'add_driver_to_policy' : 'remove_driver_from_policy',
+      entity: 'DriverCard', entityId: card._id,
+      changes: { after: { policy: p.scopeAr, driver: card.name, covered } }, ipAddress: req.ip,
+    }).catch(() => {});
+    emit('vreg:updated', {});
+    res.json({ card });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر تعديل قائمة المشمولين'); }
 };
 
 exports.renewCorporatePolicy = async (req, res) => {

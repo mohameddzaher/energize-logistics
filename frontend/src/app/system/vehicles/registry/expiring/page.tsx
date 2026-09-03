@@ -24,12 +24,15 @@ import { useAuth } from '@/context/AuthContext';
 import SelectionBar from '@/components/ls2/SelectionBar';
 import { RenewModal, BulkRenewModal } from '@/components/vehicles/RenewModals';
 import {
-  getExpiring, canEditVehicles, STATE_META, stateLabel, fmtDate, daysText,
+  getExpiring, canEditVehicles, STATE_META, stateLabel, publicState, fmtDate, daysText,
   type ExpiringRow,
 } from '@/lib/vehicleRegistry';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
-const STATES = ['expired', 'critical', 'warning', 'upcoming', 'valid'] as const;
+// ── ثلاثُ حالاتٍ لا خمس ─────────────────────────────────────────────────────
+// «على الرادار» و«ينتهي قريبًا جدًا» و«قارب على الانتهاء» شيءٌ واحدٌ بثلاث
+// درجاتٍ من الإلحاح، واللونُ وحدَه يفرّقها. راجع publicState.
+const STATES = ['expired', 'due', 'valid'] as const;
 
 function ExpiringInner() {
   const { lang, isRTL } = useLanguage();
@@ -88,7 +91,9 @@ function ExpiringInner() {
   const summary = useMemo(() => {
     const s: Record<string, number> = { total: rows.length };
     for (const k of STATES) s[k] = 0;
-    for (const r of rows) s[r.state] = (s[r.state] || 0) + 1;
+    // تُجمع الدرجاتُ الثلاثُ في «قارب على الانتهاء» — وإلّا عرضت الشاشةُ
+    // أصفارًا في شرائحَ لا وجودَ لها في الصفوف.
+    for (const r of rows) { const k = publicState(r.state); s[k] = (s[k] || 0) + 1; }
     return s;
   }, [rows]);
   const byDoc = useMemo(() => {
@@ -143,7 +148,7 @@ function ExpiringInner() {
         <div className="flex items-center gap-2">
           {/* العتبات تُضبط من الإعدادات، وهي التي تحدّد «حرج» من «تحذير» —
               فالرابط إليها ينتمي إلى الشاشة التي تُظهر أثرها. */}
-          <Link href="/system/vehicles/registry/settings"
+          <Link href="/system/vehicles/settings"
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
             <Settings className="w-4 h-4" /> {t('إعدادات التنبيهات', 'Alert settings')}
           </Link>

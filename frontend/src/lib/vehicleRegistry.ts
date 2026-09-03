@@ -252,15 +252,36 @@ export interface ExpiringRow {
   alertEnabled?: boolean;
 }
 
+/**
+ * ── ثلاثُ حالاتٍ يقرؤها المستخدم، لا خمس ─────────────────────────────────────
+ *
+ * كانت «ساري» و«على الرادار» و«قارب على الانتهاء» و«ينتهي قريبًا جدًا»
+ * و«منتهي». والثلاثةُ الوسطى شيءٌ واحدٌ بثلاث درجاتٍ من الإلحاح، وسأل صاحبُ
+ * القسم: «ما (على الرادار) هذه؟ يا ساري يا قارب على الانتهاء يا منتهي». وهو
+ * محقّ: شريحةٌ تحتاج شرحًا ليست فلترًا.
+ *
+ * فالاسمُ واحدٌ للثلاث — «قارب على الانتهاء» — واللونُ وحدَه يفرّق درجاتِها:
+ * سبعةُ أيّامٍ أحمرُ برتقاليّ، وتسعون أزرقُ باهت. و`publicState` هي الترجمةُ
+ * التي تمرّ بها كلُّ شاشةٍ وكلُّ تصدير، فلا تفترق تسميةٌ عن أخرى.
+ * توأمُها في `backend/src/config/vehicleDocuments.js`.
+ */
 export const STATE_META: Record<string, { ar: string; en: string; color: string; bg: string }> = {
-  upcoming: { ar: 'على الرادار', en: 'Upcoming', color: '#0ea5e9', bg: 'bg-sky-100 text-sky-800' },
-  valid: { ar: 'ساري', en: 'Valid', color: '#16a34a', bg: 'bg-emerald-100 text-emerald-700' },
-  warning: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
-  critical: { ar: 'ينتهي قريبًا جدًا', en: 'Critical', color: '#ea580c', bg: 'bg-orange-100 text-orange-700' },
   expired: { ar: 'منتهي', en: 'Expired', color: '#dc2626', bg: 'bg-red-100 text-red-700' },
-  missing: { ar: 'بدون تاريخ', en: 'No date', color: '#94a3b8', bg: 'bg-slate-100 text-slate-600' },
+  due: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
+  valid: { ar: 'ساري', en: 'Valid', color: '#16a34a', bg: 'bg-emerald-100 text-emerald-700' },
+  // درجاتُ الإلحاح — اسمٌ واحدٌ ولونٌ مختلف
+  critical: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#ea580c', bg: 'bg-orange-100 text-orange-700' },
+  warning: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#f59e0b', bg: 'bg-amber-100 text-amber-700' },
+  upcoming: { ar: 'قارب على الانتهاء', en: 'Due soon', color: '#0ea5e9', bg: 'bg-sky-100 text-sky-800' },
+  // ولا تاريخَ أصلًا: عملٌ ينتظر لا حالةُ مستند
+  missing: { ar: 'مطلوب — بلا تاريخ', en: 'Needed — no date', color: '#94a3b8', bg: 'bg-slate-100 text-slate-600' },
   not_applicable: { ar: 'غير مطلوب', en: 'Not applicable', color: '#64748b', bg: 'bg-slate-100 text-slate-500' },
 };
+
+/** الحالةُ كما تُعرَض وتُفلتَر: ثلاثٌ لا خمس. */
+export const publicState = (s: string): string =>
+  (['critical', 'warning', 'upcoming'].includes(s) ? 'due' : s);
+
 export const stateLabel = (s: string, ar: boolean) => (STATE_META[s] ? (ar ? STATE_META[s].ar : STATE_META[s].en) : s);
 
 const qs = (q: Record<string, string | number | undefined>) =>
@@ -298,6 +319,25 @@ export const getCorporatePolicies = () =>
   api.get<{ policies: any[] }>('/api/vehicle-registry/corporate-policies');
 export const renewCorporatePolicy = (id: string, body: any) =>
   api.post(`/api/vehicle-registry/corporate-policies/${id}/renew`, body);
+
+// ── الوثيقةُ تُكتب وتُصحَّح لا تُجدَّد فقط ────────────────────────────────────
+// كانت الصفحةُ تعرض وتجدّد، فأيُّ تصحيحٍ في رقمٍ أو قسطٍ أو شركةِ تأمينٍ يحتاج
+// فتحَ قاعدة البيانات.
+export const createCorporatePolicy = (body: any) =>
+  api.post<{ policy: any }>('/api/vehicle-registry/corporate-policies', body);
+export const updateCorporatePolicy = (id: string, body: any) =>
+  api.put<{ policy: any }>(`/api/vehicle-registry/corporate-policies/${id}`, body);
+export const deleteCorporatePolicy = (id: string) =>
+  api.delete(`/api/vehicle-registry/corporate-policies/${id}`);
+
+/**
+ * ضمُّ سائقٍ إلى وثيقةِ خيانة الأمانة أو إخراجُه.
+ *
+ * ويُكتب في بطاقة السائق لا على الوثيقة: القائمةُ سجلٌّ واحدٌ لا نسختان —
+ * راجع DriverCard.fidelity.
+ */
+export const setPolicyDriver = (policyId: string, body: { cardId: string; covered: boolean; addedDate?: string }) =>
+  api.post(`/api/vehicle-registry/corporate-policies/${policyId}/drivers`, body);
 
 export const getDocumentTypes = () =>
   api.get<{ documents: { key: string; ar: string; en: string; icon: string; alert: any }[]; corporatePolicyAlert: any; states: any; statuses: any }>(

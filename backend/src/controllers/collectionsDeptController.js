@@ -24,7 +24,7 @@ const { FleetShipment } = require('../models/FleetModels');
 const ShipmentOrder = require('../models/ShipmentOrder');
 const { fold } = require('../models/CollectionsParty');
 const { dayRange } = require('../utils/companyDay');
-const { flexSpaceRegex } = require('../utils/plateKey');
+const { flexSpaceRegex, numberSearchRegex } = require('../utils/plateKey');
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
@@ -889,8 +889,14 @@ function invoiceFilters(query, { ageField }) {
   if (query.customer) f.username = flexSpaceRegex(String(query.customer));
   if (query.branch) f.payingBranch = String(query.branch);
   if (query.q) {
-    const rx = flexSpaceRegex(String(query.q));
-    f.$or = [{ reportNumber: rx }, { invoiceNumber: rx }, { username: rx }, { documentNumber: rx }];
+    // ── الرقمُ الكامل يُطلَب كاملًا ──────────────────────────────────────────
+    // البحثُ عن «٩٧١٩» كان يُخرج ستّةَ صفوفٍ في فاتورتين: الفاتورةَ نفسَها،
+    // وكشفًا رقمُه ٩٧١٩، وسندًا رقمُه ٩٧١٩ تحت فاتورةٍ أخرى — فتبدو الفاتورةُ
+    // مكرَّرةً وهي واحدة. فإن طابق الرقمُ حقلًا كاملًا فهو المقصود؛ والتضمينُ
+    // يبقى لمن كتب جزءًا. راجع numberSearchRegex.
+    const { exact, loose } = numberSearchRegex(String(query.q));
+    const rx = exact || loose;
+    f.$or = [{ reportNumber: rx }, { invoiceNumber: rx }, { username: exact ? rx : loose }, { documentNumber: rx }];
   }
 
   // ── حالةُ التحصيل ───────────────────────────────────────────────────────

@@ -104,6 +104,33 @@ const flexIncludes = (needle, ...fields) => {
   return fields.some((f) => flexNormalize(f).includes(n));
 };
 
+/**
+ * ── الرقمُ الكامل يُطلَب كاملًا ───────────────────────────────────────────────
+ *
+ * `flexSpaceRegex` مطابقةٌ بالتضمين، وهي الصحيحةُ للّوحات والأسماء: من يكتب
+ * جزءًا من لوحةٍ يريد ما يحويه. لكنّ رقم الفاتورة يُكتب كاملًا ويُقصَد به هو
+ * نفسُه — ومطابقةُ التضمين تجعل البحثَ عن «٩٧١٩» يُخرج ستّةَ صفوفٍ في فاتورتين:
+ * الفاتورةَ ٩٧١٩، وكشفًا رقمُه ٩٧١٩، وسندًا رقمُه ٩٧١٩ تحت الفاتورة ٩٦٦٩.
+ * فيظنّ الموظّفُ أنّ للفاتورة نسخًا وهي واحدة.
+ *
+ * فالقاعدةُ هنا مبنيّةٌ على طول الرقم: أرقامُ الفواتير والكشوف والسندات عندنا
+ * أربعُ خاناتٍ فأكثر، فمن كتب أربعًا فقد كتب رقمًا كاملًا يقصده بعينه. ومن كتب
+ * خانةً أو خانتين فهو يستكشف، والتضمينُ هو ما يريد.
+ *
+ * تُعيد `{ exact, loose }` — و`exact` فارغةٌ حين لا يكون النصُّ رقمًا كاملًا،
+ * فيُستعمَل `exact || loose` بلا شرطٍ عند النداء.
+ */
+const numberSearchRegex = (s) => {
+  const bare = String(s || '').trim();
+  const loose = flexSpaceRegex(bare);
+  if (!/^[\d٠-٩\s]+$/.test(bare)) return { exact: null, loose };
+  const digits = bare.replace(/\s/g, '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+  if (digits.length < 4) return { exact: null, loose };
+  return { exact: new RegExp(`^\\s*${digits}\\s*$`), loose };
+};
+
+module.exports.numberSearchRegex = numberSearchRegex;
+
 module.exports.flexSpaceRegex = flexSpaceRegex;
 module.exports.flexNormalize = flexNormalize;
 module.exports.flexIncludes = flexIncludes;

@@ -59,6 +59,20 @@ const PAGES = [
   ['تحليلات', '/api/analytics/dashboard'],
   ['المركبات (القسم)', '/api/vehicles?limit=50'],
   ['الإشعارات', '/api/notifications?limit=20'],
+  // ── وبقيّةُ الأقسام ────────────────────────────────────────────────────────
+  // أُضيفت بعد أن فُحصت بياناتُها: الشاشةُ التي تُقرأ صحيحةً وتُفتَح ببطءٍ لم
+  // تُفحَص كاملةً. وهذه أثقلُها بيانًا — B2C خمسةٌ وأربعون ألفَ طلب، وطلباتُ
+  // الشحنات أربعةٌ وثلاثون ألفًا، وتنبيهاتُ LS2 ستّةٌ وخمسون ألفًا.
+  ['B2C — الطلبات', '/api/b2c/daily-orders?limit=50'],
+  ['B2C — اللوحة', '/api/b2c/dashboard'],
+  ['طلبات الشحنات', '/api/shipment-orders/orders?limit=50'],
+  ['LS2 — اللوحة', '/api/ls2/dashboard'],
+  ['LS2 — التنبيهات', '/api/ls2/alerts?limit=50'],
+  ['العقود — اللوحة', '/api/contracts/dashboard'],
+  ['العقود — الاستغلال', '/api/contracts/utilisation'],
+  ['التخليص الجمركي', '/api/customs-clearance?limit=50'],
+  ['إدارة الأسطول', '/api/fleet/dashboard'],
+  ['CRM — الشركات', '/api/crm/companies?limit=50'],
 ];
 
 (async () => {
@@ -110,7 +124,7 @@ const PAGES = [
 
   // ── ② ثباتُ الجواب عبر العاملَين ─────────────────────────────────────────
   head('ثباتُ الجواب — العاملان يقولان الشيءَ نفسَه');
-  const unstable = [];
+  const unstable = []; const drifting = [];
   for (const [name, path] of PAGES) {
     const counts = [];
     for (let i = 0; i < 6; i += 1) {
@@ -119,13 +133,24 @@ const PAGES = [
       counts.push(j.total ?? j.count ?? (Array.isArray(j.rows) ? j.rows.length : null)
         ?? (Array.isArray(j.vehicles) ? j.vehicles.length : null) ?? (Array.isArray(j.invoices) ? j.invoices.length : null) ?? -1);
     }
-    if (new Set(counts).size > 1) unstable.push(`${name}: ${counts.join(' ')}`);
+    // ── والاختلافُ نوعان ────────────────────────────────────────────────────
+    // ذاكرتان تفترقان تُعطيان تناوبًا: أ ب أ ب أ ب — أوّلُ مرّةٍ ظهر هذا العطبُ
+    // كان ٤٣ و٤٢ اثنتَي عشرةَ مرّةً بلا استثناء. أمّا البياناتُ الحيّة (تنبيهاتُ
+    // التتبّع تُضاف وتُغلَق كلَّ دقائق) فتتحرّك في اتّجاهٍ واحدٍ ولا تعود.
+    // فاشتراطُ ثباتِ العدد يجعل الشاشةَ الحيّةَ تفشل أبدًا بلا عطب.
+    const alternating = counts.length >= 4
+      && new Set(counts).size === 2
+      && counts.every((c, i) => i < 2 || c === counts[i - 2])
+      && counts[0] !== counts[1];
+    if (alternating) unstable.push(`${name}: ${counts.join(' ')} (تناوبٌ — ذاكرتان)`);
+    else if (new Set(counts).size > 1) drifting.push(`${name}: ${counts.join(' ')}`);
   }
-  ok('كلُّ شاشةٍ تُعطي العددَ نفسَه في ست قراءات', unstable.length === 0, unstable.join(' · ') || `${PAGES.length} شاشة`);
+  ok('لا شاشةَ تتناوب بين عاملَين', unstable.length === 0, unstable.join(' · ') || `${PAGES.length} شاشة`);
+  if (drifting.length) console.log(`  · بياناتٌ حيّةٌ تتحرّك أثناء القراءة (طبيعيّ): ${drifting.join(' · ')}`);
 
   // ── ③ عشرون موظّفًا في الثانية نفسِها ────────────────────────────────────
   head('الضغط — عشرون طلبًا متزامنًا على الشاشات الماليّة');
-  const heavy = PAGES.filter(([n]) => /تشغيل|فواتير|أعمار|محفظة|تحصيل|دفتر/.test(n));
+  const heavy = PAGES.filter(([n]) => /تشغيل|فواتير|أعمار|محفظة|تحصيل|دفتر|B2C|شحنات|LS2/.test(n));
   for (const [name, path] of heavy) {
     const t = Date.now();
     const res = await Promise.all(Array.from({ length: 20 }, () => call(path)));

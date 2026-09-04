@@ -208,7 +208,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
               onChange={(e) => { (set as any)(e.target.value); setPage(1); }}
               className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:ring-1 focus:ring-[#f37121] focus:outline-none">
               <option value="">{label}</option>
-              {(list as string[]).map((x) => <option key={x} value={x}>{x}</option>)}
+              {(list   as string[]).map((x) => <option key={x} value={x}>{x}</option>)}
             </select>
           ))}
           <select title={ar ? 'مهلة السداد' : 'Credit days'} value={creditDays}

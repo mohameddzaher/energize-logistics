@@ -384,20 +384,55 @@ exports.addTransaction = async (req, res) => {
         });
       } catch (e) { console.error('walletController silent catch:', e.message); }
     }
-    if (type === 'purchase' && purchaseDeliveryStatementNumber) {
-      try {
-        const OperationsWorkflow = require('../models/OperationsWorkflow');
-        purchaseWorkflow = await OperationsWorkflow.findOne({
-          reportNumber: flexSpaceRegex(purchaseDeliveryStatementNumber),
+    // ── المشترياتُ تُشترى لكشفٍ موجود، ومرّةً واحدة ────────────────────────
+    //
+    // شرطان يُفحصان هنا لا في الشاشة وحدَها: الشاشةُ تُساعد، والخادمُ يمنع.
+    //
+    //  ① الكشفُ يجب أن يكون موجودًا. كُتب في هذه الخانة رقمُ سيّارةٍ ورقمٌ
+    //    عاديّ فمرّا — وصار في الدفتر شراءٌ لكشفٍ لا وجودَ له، لا يُطابَق
+    //    بسعر شرائه ولا يظهر في كشف تكلفته. (في البيانات: ١٩٥٠ و٤٤٦٨٧.)
+    //
+    //  ② والكشفُ الواحد لا يُشترى مرّتين. الشراءُ حدثٌ واحدٌ للشحنة الواحدة،
+    //    وتكرارُه يعني دفعَ ثمنِها مرّتين من عهدة الفرع — ولا يُكتشَف إلّا عند
+    //    الجرد. (في البيانات: عشرةُ كشوفٍ عليها شراءان.)
+    //
+    // والرسالةُ تسمّي القيدَ السابق بتاريخه ومبلغه، فمن يراها يعرف أهو خطأٌ
+    // منه أم شراءٌ ثانٍ حقيقيّ يحتاج قرارَ مديرٍ لا محاولةً أخرى.
+    if (type === 'purchase') {
+      const rn = String(purchaseDeliveryStatementNumber || '').trim();
+      if (!rn) {
+        return res.status(400).json({
+          message: 'اكتب رقم كشف التخريج — لا تُقيَّد مشترياتٌ بلا كشف',
+          fields: { purchaseDeliveryStatementNumber: 'مطلوب' },
         });
-        if (purchaseWorkflow) {
-          if (purchaseWorkflow.sellingValue) purchaseInvoiceAmountVal = purchaseWorkflow.sellingValue;
-          const expected = Number(purchaseWorkflow.purchaseValue) || 0;
-          if (expected > 0 && Math.abs(expected - amount) > 0.5) {
-            purchaseMismatch = { reportNumber: purchaseWorkflow.reportNumber, expected, paid: amount, difference: Math.round((amount - expected) * 100) / 100 };
-          }
-        }
-      } catch (e) { console.error('walletController silent catch:', e.message); }
+      }
+      const OperationsWorkflow = require('../models/OperationsWorkflow');
+      purchaseWorkflow = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(rn) });
+      if (!purchaseWorkflow) {
+        return res.status(404).json({
+          message: `لا يوجد كشف تخريج بالرقم «${rn}». ابحث عن الرقم أوّلًا فتظهر بياناته، ثمّ سجّل الشراء.`,
+          fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
+        });
+      }
+      const prior = await WalletTransaction.findOne({
+        type: 'purchase',
+        purchaseDeliveryStatementNumber: flexSpaceRegex(purchaseWorkflow.reportNumber),
+      }).populate('user', 'firstName lastName').lean();
+      if (prior) {
+        const who = prior.user ? `${prior.user.firstName || ''} ${prior.user.lastName || ''}`.trim() : '';
+        return res.status(409).json({
+          message: `الكشف ${purchaseWorkflow.reportNumber} سُجِّلت له مشترياتٌ من قبل`
+            + ` — ${prior.amount} ريال بتاريخ ${prior.date}${who ? ` بواسطة ${who}` : ''}.`
+            + ' الكشف الواحد لا يُشترى مرّتين.',
+          fields: { purchaseDeliveryStatementNumber: 'مكرَّر' },
+          existing: { id: String(prior._id), amount: prior.amount, date: prior.date, by: who },
+        });
+      }
+      if (purchaseWorkflow.sellingValue) purchaseInvoiceAmountVal = purchaseWorkflow.sellingValue;
+      const expected = Number(purchaseWorkflow.purchaseValue) || 0;
+      if (expected > 0 && Math.abs(expected - amount) > 0.5) {
+        purchaseMismatch = { reportNumber: purchaseWorkflow.reportNumber, expected, paid: amount, difference: Math.round((amount - expected) * 100) / 100 };
+      }
     }
 
     // Check risk flags
@@ -671,6 +706,43 @@ exports.updateTransaction = async (req, res) => {
     if (transaction.type === 'expense' && transaction.driver) {
       const driverDoc = await Driver.findById(transaction.driver);
       if (driverDoc) { driverDoc.totalPaid = Math.max(0, driverDoc.totalPaid - transaction.amount); await driverDoc.save(); }
+    }
+
+    // ── والتعديلُ يخضع للشرطين نفسِهما ───────────────────────────────────────
+    // نقلُ شراءٍ إلى كشفٍ آخر تعديلٌ لا إنشاء، ولو لم يُفحَص هنا لأمكن تجاوزُ
+    // المنع بخطوتين: يُسجَّل على كشفٍ سليم ثمّ يُنقَل إلى كشفٍ مشترًى سلفًا.
+    // ويُستثنى القيدُ نفسُه من فحص التكرار — وإلّا منع نفسَه.
+    if (transaction.type === 'purchase' && purchaseDeliveryStatementNumber !== undefined) {
+      const rn = String(purchaseDeliveryStatementNumber || '').trim();
+      if (!rn) {
+        return res.status(400).json({
+          message: 'اكتب رقم كشف التخريج — لا تُقيَّد مشترياتٌ بلا كشف',
+          fields: { purchaseDeliveryStatementNumber: 'مطلوب' },
+        });
+      }
+      const OperationsWorkflow = require('../models/OperationsWorkflow');
+      const wf = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(rn) });
+      if (!wf) {
+        return res.status(404).json({
+          message: `لا يوجد كشف تخريج بالرقم «${rn}». ابحث عن الرقم أوّلًا فتظهر بياناته، ثمّ احفظ.`,
+          fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
+        });
+      }
+      const prior = await WalletTransaction.findOne({
+        _id: { $ne: transaction._id },
+        type: 'purchase',
+        purchaseDeliveryStatementNumber: flexSpaceRegex(wf.reportNumber),
+      }).populate('user', 'firstName lastName').lean();
+      if (prior) {
+        const who = prior.user ? `${prior.user.firstName || ''} ${prior.user.lastName || ''}`.trim() : '';
+        return res.status(409).json({
+          message: `الكشف ${wf.reportNumber} سُجِّلت له مشترياتٌ من قبل`
+            + ` — ${prior.amount} ريال بتاريخ ${prior.date}${who ? ` بواسطة ${who}` : ''}.`
+            + ' الكشف الواحد لا يُشترى مرّتين.',
+          fields: { purchaseDeliveryStatementNumber: 'مكرَّر' },
+          existing: { id: String(prior._id), amount: prior.amount, date: prior.date, by: who },
+        });
+      }
     }
 
     // ─── UPDATE TRANSACTION FIELDS ────────────────────────
@@ -1148,12 +1220,27 @@ exports.lookupByReport = async (req, res) => {
     // Core dispatch-sheet data — always returned when the report exists. Purchases
     // use purchaseValue/driverName/branch (no customer needed); collections use
     // sellingValue + the linked customer's open invoices.
+    // ── ويُقال هنا إن كان الكشفُ مشترًى سلفًا ────────────────────────────────
+    // البحثُ يسبق الإدخال، فهو الموضعُ الذي يُعرَف فيه ذلك قبل ملء الاستمارة —
+    // لا بعد الضغط على «حفظ». والخادمُ يمنع على أيّ حال (راجع addTransaction)،
+    // لكنّ المنعَ بعد ملء أربع خاناتٍ عقوبةٌ لا إرشاد.
+    const priorPurchase = await WalletTransaction.findOne({
+      type: 'purchase',
+      purchaseDeliveryStatementNumber: flexSpaceRegex(workflow.reportNumber),
+    }).populate('user', 'firstName lastName').lean();
+
     const base = {
       reportNumber: workflow.reportNumber,
       purchaseValue: workflow.purchaseValue || 0,
       sellingValue: workflow.sellingValue || 0,
       driverName: workflow.driverName || '',
       branch: workflow.branch || '',
+      alreadyPurchased: priorPurchase ? {
+        amount: priorPurchase.amount,
+        date: priorPurchase.date,
+        by: priorPurchase.user ? `${priorPurchase.user.firstName || ''} ${priorPurchase.user.lastName || ''}`.trim() : '',
+        receipt: priorPurchase.purchaseReceiptNumber || '',
+      } : null,
     };
 
     // ── والطرفُ من سجلّ التحصيل ──────────────────────────────────────────

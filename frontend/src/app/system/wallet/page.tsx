@@ -201,6 +201,8 @@ export default function WalletPage() {
   const [purchaseReportSearch, setPurchaseReportSearch] = useState('');
   const [purchaseReportMsg, setPurchaseReportMsg] = useState('');
   const [purchaseReportFound, setPurchaseReportFound] = useState(false);
+  /** شراءٌ سابقٌ على الكشف نفسِه — يُعرَف من البحث قبل ملء الاستمارة. */
+  const [purchaseAlready, setPurchaseAlready] = useState<null | { amount: number; date: string; by: string; receipt: string }>(null);
   const [purchaseInvoiceAmount, setPurchaseInvoiceAmount] = useState<number | null>(null);
   // Expected dispatch-sheet values for the amount-match alert: purchaseValue
   // (سعر الشراء) for purchases, sellingValue (سعر البيع) for collections.
@@ -296,7 +298,13 @@ export default function WalletPage() {
    */
   const canSubmitTx = txType === 'tax_invoice'
     ? (txForm.receivedReports.length > 0 || !!String(txForm.receivedDocNumber || '').trim())
-    : (!!txForm.amount && Number(txForm.amount) > 0);
+    // ── والمشترياتُ لكشفٍ وُجد فعلًا، ولم يُشترَ من قبل ──────────────────────
+    // لا يكفي أن يُكتب رقمٌ في الخانة: كُتب فيها رقمُ سيّارةٍ ورقمٌ عاديٌّ فمرّا،
+    // فصار في الدفتر شراءٌ لكشفٍ لا وجودَ له. فالزرُّ لا يعمل حتى يُبحَث عن
+    // الرقم ويظهر الكشف. والخادمُ يمنع أيضًا — الشاشةُ تُرشد وهو يمنع.
+    : txType === 'purchase'
+      ? (!!txForm.amount && Number(txForm.amount) > 0 && purchaseReportFound && !purchaseAlready)
+      : (!!txForm.amount && Number(txForm.amount) > 0);
 
   /** يُضيف الكشفَ وسندَه زوجًا — ويُستدعى من الزرّ ومن مفتاح الإدخال معًا. */
   const addReceivedReport = () => {
@@ -518,6 +526,7 @@ export default function WalletPage() {
     if (!purchaseReportSearch.trim()) return;
     setPurchaseReportMsg('');
     setPurchaseReportFound(false);
+    setPurchaseAlready(null);
     setPurchaseInvoiceAmount(null);
     setExpectedPurchaseValue(null);
     try {
@@ -532,6 +541,7 @@ export default function WalletPage() {
       setPurchaseInvoiceAmount(data.sellingValue || null);
       setExpectedPurchaseValue(data.purchaseValue != null ? Number(data.purchaseValue) : null);
       setPurchaseReportFound(true);
+      setPurchaseAlready(data.alreadyPurchased || null);
       setPurchaseReportMsg(`${txx.purchasePrice}: ${(data.purchaseValue || 0).toLocaleString()}`);
     } catch (err: any) {
       setPurchaseReportFound(false);
@@ -696,6 +706,7 @@ export default function WalletPage() {
     setPurchaseReportSearch('');
     setPurchaseReportMsg('');
     setPurchaseReportFound(false);
+    setPurchaseAlready(null);
     setPurchaseInvoiceAmount(null);
     setExpectedPurchaseValue(null);
     setExpectedSellingValue(null);
@@ -1195,7 +1206,25 @@ export default function WalletPage() {
                           <Search className="w-4 h-4" />
                         </button>
                       </div>
-                      {purchaseReportMsg && (
+                      {purchaseAlready && (
+                        <div className="mt-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+                          <p className="text-[12.5px] font-bold text-red-800">
+                            {lang === 'ar' ? 'هذا الكشف سُجِّلت له مشترياتٌ من قبل' : 'This report already has a purchase'}
+                          </p>
+                          <p className="text-[11.5px] text-red-700 mt-0.5">
+                            {lang === 'ar'
+                              ? `${purchaseAlready.amount.toLocaleString()} ريال بتاريخ ${purchaseAlready.date}`
+                                + `${purchaseAlready.by ? ` — بواسطة ${purchaseAlready.by}` : ''}`
+                                + `${purchaseAlready.receipt ? ` — سند ${purchaseAlready.receipt}` : ''}`
+                              : `${purchaseAlready.amount.toLocaleString()} SAR on ${purchaseAlready.date}`
+                                + `${purchaseAlready.by ? ` by ${purchaseAlready.by}` : ''}`}
+                          </p>
+                          <p className="text-[11px] text-red-600 mt-1">
+                            {lang === 'ar' ? 'الكشف الواحد لا يُشترى مرّتين.' : 'A report cannot be purchased twice.'}
+                          </p>
+                        </div>
+                      )}
+                      {purchaseReportMsg && !purchaseAlready && (
                         <p className={`text-xs mt-1 ${purchaseReportFound ? 'text-green-600' : 'text-red-600'}`}>{purchaseReportMsg}</p>
                       )}
                     </div>

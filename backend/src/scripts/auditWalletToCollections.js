@@ -268,6 +268,42 @@ const call = async (method, path, ck, body) => {
 
     trackTx(ti);
 
+    // ── والكشفُ يُشترى مرّةً واحدةً، ولكشفٍ موجود ─────────────────────────
+    // قاعدتان تُمنعان في الخادم لا في الشاشة وحدَها: كُتب في خانة رقم الكشف
+    // رقمُ سيّارةٍ فمرّ، وعشرةُ كشوفٍ سُجِّل لها شراءان — ثمنُ الشحنة الواحدة
+    // مدفوعٌ مرّتين من عهدة الفرع.
+    head('المشترياتُ لكشفٍ موجود، ومرّةً واحدة');
+    const ghostBuy = await call('POST', '/api/wallet/transactions', accLogin.ck, {
+      type: 'purchase', amount: 100, branchId: String(branch?._id),
+      purchaseDeliveryStatementNumber: 'zz-لا-وجود-له',
+    });
+    ok('رقمُ كشفٍ لا وجودَ له يُرفض', ghostBuy.status === 404, `HTTP ${ghostBuy.status}`);
+    ok('والرسالةُ تسمّي الرقم', /zz-لا-وجود-له/.test(ghostBuy.json?.message || ''), ghostBuy.json?.message || '');
+
+    const noNum = await call('POST', '/api/wallet/transactions', accLogin.ck, {
+      type: 'purchase', amount: 100, branchId: String(branch?._id),
+    });
+    ok('وشراءٌ بلا رقم كشفٍ يُرفض', noNum.status === 400, `HTTP ${noNum.status}`);
+
+    const bought = await WalletTransaction.findOne({
+      type: 'purchase', purchaseDeliveryStatementNumber: { $nin: [null, ''] },
+    }).select('purchaseDeliveryStatementNumber amount date').lean();
+    if (bought) {
+      const again = await call('POST', '/api/wallet/transactions', accLogin.ck, {
+        type: 'purchase', amount: 100, branchId: String(branch?._id),
+        purchaseDeliveryStatementNumber: bought.purchaseDeliveryStatementNumber,
+      });
+      ok('وكشفٌ مشترًى سلفًا يُرفض', again.status === 409, `HTTP ${again.status}`);
+      ok('والرسالةُ تسمّي الشراءَ السابق بمبلغه وتاريخه',
+        String(again.json?.message || '').includes(String(bought.amount))
+        && String(again.json?.message || '').includes(String(bought.date)),
+        again.json?.message || '');
+      // والبحثُ يقولها قبل ملء الاستمارة لا بعد الضغط على «حفظ».
+      const look = await call('GET', `/api/wallet/lookup-report?reportNumber=${encodeURIComponent(bought.purchaseDeliveryStatementNumber)}`, accLogin.ck);
+      ok('والبحثُ يُعلِمُ بالشراء السابق قبل الإدخال', !!look.json?.alreadyPurchased,
+        JSON.stringify(look.json?.alreadyPurchased || null));
+    }
+
     // ── ٥ · ويصل الصفحةَ الصحيحة بعد أن يُكتب نوعُه ────────────────────────
     // الكشفُ لا يصل التحصيلَ حتى يقول أحدٌ نوعَه — وهو الصواب: قبل أن يُقال،
     // لا أحدَ يعرف أنقدًا حوسب أم بفاتورة.

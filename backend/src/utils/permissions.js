@@ -6,39 +6,50 @@ const { SECTIONS, SECTION_KEYS, defaultAccess } = require('../config/sections');
 const { PAGES } = require('../config/pages');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 
+// ── والذاكرةُ مشتركةٌ بين العاملَين ──────────────────────────────────────────
+//
+// كانت هنا `Map` داخل العمليّة بمهلة عشرين ثانية، و`invalidate` تمسحها في
+// العامل الذي عالج الحفظ وحدَه. والبرودكشن عاملان بالتناوب — فمن منح دورًا
+// قسمًا رآه يعمل مرّةً ويردّ ٤٠٣ مرّة. أثبته الفحصُ الحيّ: النداءُ نفسُه بعد
+// المنح مباشرةً ردّ `SECTION_FORBIDDEN` من عاملٍ و`SECTION_READ_ONLY` من الآخر
+// في الثانية نفسِها — أي أنّ العاملَين اختلفا في **صلاحيّات** مستخدمٍ واحد.
+//
+// وهذه ثالثُ مرّةٍ يظهر فيها هذا الشكل (راجع two-workers-two-caches)، فلا
+// تُصلَّح بذاكرةٍ ثالثةٍ خاصّة: تُوضع في `ttlCache` المشتركة، وإبطالُها يُختم في
+// القاعدة فيعبر إلى العامل الآخر في أجزاءٍ من الثانية.
+const cache = require('./ttlCache');
+
 const TTL = 20 * 1000;
-const cache = new Map(); // role -> { overrides, pages, homePage, expires }
+const PREFIX = 'perm:';
 
-// ── الأدوارُ المصنوعة من الشاشة ──────────────────────────────────────────────
-// تُقرأ مرّةً وتُحفَظ: كلُّ نداءٍ محروسٍ يسأل «أهذا الدورُ مصنوع؟»، والجوابُ يقرّر
-// أيرث افتراضياتِ قسمِه أم لا يملك إلّا ما مُنح صراحةً. راجع models/CustomRole.
-let customCache = { keys: new Set(), expires: 0 };
-
+// eslint-disable-next-line no-unused-vars — الدورُ يُمرَّر ليُقرأ في موضع النداء
 const invalidate = (role) => {
-  if (role) cache.delete(String(role));
-  else cache.clear();
-  customCache = { keys: new Set(), expires: 0 };
+  // البادئةُ كلُّها لا دورٌ واحد: الخريطةُ ستّةٌ وأربعون سجلًّا صغيرًا، وحسابُ
+  // أيِّها يتأثّر بتغيير الآخر أغلى من إعادة قراءتها عند الحاجة.
+  cache.clear(PREFIX);
 };
 
+/**
+ * الأدوارُ المصنوعة من الشاشة — يُسأل عنها في كلّ نداءٍ محروس.
+ *
+ * الجوابُ يقرّر أيرث الدورُ افتراضياتِ قسمِه أم لا يملك إلّا ما مُنح صراحةً.
+ * راجع models/CustomRole.
+ */
 const customRoleKeys = async () => {
-  if (customCache.expires > Date.now()) return customCache.keys;
-  let keys = new Set();
-  try {
-    const CustomRole = require('../models/CustomRole');
-    const rows = await CustomRole.find({ isActive: true }).select('key').lean();
-    keys = new Set(rows.map((r) => r.key));
-  } catch (_) { /* الفهرسُ غيرُ متاحٍ الآن — لا دورَ مصنوعًا اليوم */ }
-  customCache = { keys, expires: Date.now() + TTL };
-  return keys;
+  const keys = await cache.wrap(`${PREFIX}custom`, TTL, async () => {
+    try {
+      const CustomRole = require('../models/CustomRole');
+      const rows = await CustomRole.find({ isActive: true }).select('key').lean();
+      return rows.map((r) => r.key);
+    } catch (_) { return []; /* الفهرسُ غيرُ متاحٍ الآن — لا دورَ مصنوعًا اليوم */ }
+  });
+  return new Set(keys || []);
 };
 
 const isCustomRole = async (role) => (await customRoleKeys()).has(String(role));
 
-// Raw saved doc for a role (empty when none). Cached.
-const getSaved = async (role) => {
-  const key = String(role);
-  const hit = cache.get(key);
-  if (hit && hit.expires > Date.now()) return hit;
+// Raw saved doc for a role (empty when none). Cached across workers.
+const getSaved = async (role) => cache.wrap(`${PREFIX}role:${role}`, TTL, async () => {
   const doc = await RolePermission.findOne({ role }).lean();
   const overrides = {};
   const pages = {};
@@ -49,10 +60,8 @@ const getSaved = async (role) => {
   if (doc && doc.pages) {
     for (const [k, v] of Object.entries(doc.pages)) pages[k] = !!v;
   }
-  const entry = { overrides, pages, homePage: (doc && doc.homePage) || '', expires: Date.now() + TTL };
-  cache.set(key, entry);
-  return entry;
-};
+  return { overrides, pages, homePage: (doc && doc.homePage) || '' };
+});
 
 const getOverrides = async (role) => (await getSaved(role)).overrides;
 

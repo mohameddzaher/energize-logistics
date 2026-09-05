@@ -89,6 +89,14 @@ class DocFamily {
   /// طريقه — فتصير كلُّ شاشةٍ بابًا خلفيًّا إلى كل شيء. تلك شاشةُ سجل المركبات.
   final List<DocEditField> editable;
 
+  /// الحقلُ الذي **وجودُه** يعني أنّ المستند موجود.
+  ///
+  /// كان «عليها مستند» يعني أنّ أيَّ حقلٍ من حقول العائلة غيرُ فارغ. وفي شرائح
+  /// الوقود عشرُ مركباتٍ مكتوبٌ عندها **حالةُ الشريحة** ولا شريحةَ لها — فتُحسب
+  /// «عليها شريحة» وتختفي من قائمة الاختيار عند الإضافة، مع أنّ الشريحةَ فوق
+  /// الجدول تقول إنّها هناك.
+  final String? keyField;
+
   /// هل هذا المستند ورقةٌ واحدةٌ تغطّي عدّة مركبات؟
   ///
   /// وثيقةُ تأمينٍ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة، ورقمُها واحدٌ عليها
@@ -106,6 +114,7 @@ class DocFamily {
     this.chips,
     this.editable = const [],
     this.sharedPaper = false,
+    this.keyField,
   });
 }
 
@@ -160,10 +169,16 @@ List<String> _rootsOf(List<DocEditField> fields) =>
     fields.map((f) => f.path.split('.').first).toSet().toList();
 
 /// أهذه المركبة مسجَّلٌ عليها شيءٌ من هذه العائلة أصلًا؟
-bool _hasDoc(Map v, List<DocEditField> fields) => fields.any((f) {
-      final x = _readPath(v, f.path);
-      return x != null && '$x'.isNotEmpty;
-    });
+bool _hasDoc(Map v, List<DocEditField> fields, [String? keyField]) {
+  if (keyField != null) {
+    final x = _readPath(v, keyField);
+    return x != null && '$x'.isNotEmpty;
+  }
+  return fields.any((f) {
+    final x = _readPath(v, f.path);
+    return x != null && '$x'.isNotEmpty;
+  });
+}
 
 /// الطيُّ الموحَّد — راجع services/flex_match.
 String _fold(String s) => flexFold(s);
@@ -260,6 +275,42 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     'hr_manager', 'hr_specialist', 'finance_manager', 'accountant'};
   static const _adminRoles = {'super_admin', 'admin', 'vehicles_manager', 'hr_manager'};
 
+  /// نزعُ شريحة بترو اب — فعلٌ يُقيَّد باسم من نزعها وتاريخه.
+  ///
+  /// وهو شرطٌ في إخلاء طرف الموظّف، فلا يصحّ أن يكون مسحًا صامتًا لخانة: تُفرَّغ
+  /// فيسقط الشرط، ولا يبقى بعد شهرين جوابٌ لـ«مَن نزعها ومتى؟».
+  Future<void> _removeChip(Map<String, dynamic> v) async {
+    final card = _s(_sub(v, 'fuelCard')['cardNumber']);
+    final who = _s(_sub(v, 'authorizedPerson')['name']);
+    final okGo = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('نزع الشريحة', 'Remove chip')),
+        content: Text(tr(
+          'نزع شريحة بترو اب $card عن المركبة ${v['plateNumber']}${who.isEmpty ? '' : ' ($who)'}؟ يُقيَّد النزع باسمك وتاريخه.',
+          'Remove Petro App chip $card from ${v['plateNumber']}? The removal is recorded with your name and the date.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: T.warn),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(tr('نزع', 'Remove')),
+          ),
+        ],
+      ),
+    );
+    if (okGo != true) return;
+    try {
+      final d = await Api.instance.post('/api/vehicle-registry/${v['_id']}/fuel-card', {'action': 'remove'});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${d['message'] ?? tr('نُزعت الشريحة', 'Chip removed')}')));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   /// اختيارُ المركبة التي يُسجَّل عليها المستند.
   ///
   /// و«الإنشاء» هنا ليس إنشاءَ مركبة: المركبةُ تُولد في شاشة سجل المركبات بلوحتها
@@ -290,7 +341,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
         final all = pool ?? const <Map<String, dynamic>>[];
         final q2 = _fold(q);
         final list = all.where((v) {
-          if (onlyMissing && _hasDoc(v, fields)) return false;
+          if (onlyMissing && _hasDoc(v, fields, widget.family.keyField)) return false;
           if (q2.isEmpty) return true;
           return [_s(v['plateNumber']), _s(v['ownerNameAr']), _s(v['departmentAr']), _s(v['sectorAr'])]
               .any((x) => _fold(x).contains(q2));
@@ -959,6 +1010,21 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                               icon: const Icon(Icons.autorenew_rounded, size: 17),
                                               label: Text(tr('تجديد', 'Renew')),
                                             ),
+                                          // ── نزعُ الشريحة فعلٌ يُقيَّد ────────
+                                          // شرطٌ في إخلاء طرف الموظّف: لا تُنهى
+                                          // خدمتُه والشريحةُ في يده — ولو كانت
+                                          // المركبةُ مركبتَه، فالشريحةُ شريحتُنا
+                                          // وتصرف من حسابنا. وشرطٌ يُبنى على
+                                          // خانةٍ فارغةٍ لا يُثبت شيئًا.
+                                          if (canEdit
+                                              && f.keyField == 'fuelCard.cardNumber'
+                                              && _s(_sub(v, 'fuelCard')['cardNumber']).isNotEmpty)
+                                            TextButton.icon(
+                                              onPressed: () => _removeChip(v),
+                                              icon: const Icon(Icons.power_off_outlined, size: 17),
+                                              label: Text(tr('نزع الشريحة', 'Remove chip')),
+                                              style: TextButton.styleFrom(foregroundColor: T.warn),
+                                            ),
                                           if (canEdit)
                                             IconButton(
                                               tooltip: tr('تعديل بيانات هذا المستند', 'Edit this document'),
@@ -967,7 +1033,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                             ),
                                           // المِمحاة لا سلّةُ المهملات: الأيقونةُ
                                           // نفسها تقول إن الممسوح بياناتٌ لا مركبة.
-                                          if (canEdit && _hasDoc(v, f.editable))
+                                          if (canEdit && _hasDoc(v, f.editable, f.keyField))
                                             IconButton(
                                               tooltip: tr('مسح بيانات هذا المستند', 'Clear this document'),
                                               icon: const Icon(Icons.backspace_outlined, size: 18, color: T.danger),
@@ -1106,7 +1172,14 @@ final vehicleFuelCardFamily = DocFamily(
   docKey: null,
   arTitle: 'بترو اب — شرائح الوقود', enTitle: 'Petro App Cards',
   icon: Icons.local_gas_station_outlined,
+  // وجودُ الشريحة رقمُها لا أيُّ خانةٍ مملوءة — عشرُ مركباتٍ عندها حالةُ شريحةٍ
+  // ولا شريحة، فكانت تختفي من قائمة الإضافة.
+  keyField: 'fuelCard.cardNumber',
   fields: [
+    // مَن يقود المركبة ورقمُ إقامته: مراجعةُ الوقود تسأل «مَن صرف؟» لا «أيُّ
+    // مركبةٍ صرفت»، وكان الجوابُ في شاشةٍ أخرى.
+    DocField('اسم القائد / المفوَّض', 'Driver / authorised', (v) => _s(_sub(v, 'authorizedPerson')['name'])),
+    DocField('رقم الإقامة', 'Iqama number', (v) => _s(_sub(v, 'authorizedPerson')['iqamaNumber']), mono: true),
     DocField('شريحة بترو اب', 'Petro App chip', (v) => _s(_sub(v, 'fuelCard')['cardNumber']), mono: true),
     // اللوحةُ في الفاتورة تُكتب بصيغةٍ أخرى، وهي المفتاح الوحيد لمطابقة بند
     // الفاتورة بالمركبة — فليست تكرارًا للوحة.
@@ -1119,7 +1192,10 @@ final vehicleFuelCardFamily = DocFamily(
       return fc['limitSar'] != null ? money(fc['limitSar']) : '';
     }),
   ],
-  searchIn: (v) => [_s(v['plateNumber']), _s(_sub(v, 'fuelCard')['cardNumber']), _s(_sub(v, 'fuelCard')['plateOnInvoiceAr'])],
+  searchIn: (v) => [
+    _s(v['plateNumber']), _s(_sub(v, 'fuelCard')['cardNumber']), _s(_sub(v, 'fuelCard')['plateOnInvoiceAr']),
+    _s(_sub(v, 'authorizedPerson')['name']), _s(_sub(v, 'authorizedPerson')['iqamaNumber']),
+  ],
   // «مفتوح» علامةٌ لا رقم: صفرٌ في خانة السقف يعني «ممنوع الصرف»، وفراغٌ يعني
   // «لا نعلم» — وكلاهما عكسُ المقصود. فالعلامةُ مفتاحٌ يكتب `open`.
   editable: const [

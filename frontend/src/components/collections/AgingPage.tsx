@@ -127,6 +127,11 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
     { header: ar ? 'الحد الائتماني' : 'Credit limit', key: 'creditLimit', width: 16 },
     { header: ar ? 'مهلة السداد' : 'Credit days', key: 'creditDays', width: 12 },
     { header: ar ? 'إجمالي المديونية' : 'Outstanding', key: 'outstanding', width: 18 },
+    // ── والمديونيّةُ وجهان ────────────────────────────────────────────────────
+    // الضريبيُّ من دفتر الفواتير، والنقديُّ من الكشوف غير المحصَّلة. وكان
+    // النقديُّ لا يُحسب أصلًا، فيظهر الحسابُ النقديُّ بصفرٍ وعليه عشراتُ الآلاف.
+    { header: ar ? 'منها ضريبي' : 'of which tax', key: 'taxOutstanding', width: 16 },
+    { header: ar ? 'منها نقدي' : 'of which cash', key: 'cashOutstanding', width: 16 },
     ...ageBands.map((b) => ({ header: b.label, key: `band_${b.key}`, width: 14 })),
   ];
   const exportRows = rows.map((r) => ({
@@ -290,7 +295,20 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
                     title={r.limitUsedPct == null ? (ar ? 'لا حدّ ائتمانيّ مضبوط لهذا الحساب' : 'No credit limit set') : undefined}>
                     {r.limitUsedPct == null ? '—' : `${Math.round(r.limitUsedPct)}%`}
                   </td>
-                  <td className="px-3 py-2.5 text-sm text-end tabular-nums font-semibold text-slate-900 whitespace-nowrap">{money(r.outstanding)}</td>
+                  <td className="px-3 py-2.5 text-sm text-end tabular-nums font-semibold text-slate-900 whitespace-nowrap">
+                    {money(r.outstanding)}
+                    {/* الكشوفُ النقديّةُ غيرُ المحصَّلة دَينٌ كالفاتورة — تُقال
+                        صراحةً لأنّ الحسابَ النقديَّ كان يظهر بصفر. */}
+                    {(r.cashOutstanding ?? 0) > 0 && (r.taxOutstanding ?? 0) > 0 && (
+                      <span className="block text-[10.5px] font-normal text-slate-400">
+                        {ar ? `ضريبي ${money(r.taxOutstanding ?? 0)} · نقدي ${money(r.cashOutstanding ?? 0)}`
+                            : `tax ${money(r.taxOutstanding ?? 0)} · cash ${money(r.cashOutstanding ?? 0)}`}
+                      </span>
+                    )}
+                    {(r.cashOutstanding ?? 0) > 0 && !(r.taxOutstanding ?? 0) && (
+                      <span className="block text-[10.5px] font-normal text-emerald-600">{ar ? 'نقدي' : 'cash'}</span>
+                    )}
+                  </td>
                   {ageBands.map((b) => (
                     <td key={b.key} className={`px-3 py-2.5 text-sm text-end tabular-nums whitespace-nowrap ${(r.bands?.[b.key] || 0) ? 'text-slate-700' : 'text-slate-300'}`}>
                       {(r.bands?.[b.key] || 0) ? money(r.bands[b.key]) : '—'}

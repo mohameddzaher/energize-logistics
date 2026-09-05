@@ -141,6 +141,13 @@ export const paymentTypeLabel = (t: string | undefined, ar: boolean) =>
 export interface AgeBand { key: string; label: string; min: number | null }
 
 export interface AgingRow extends CollectionsParty {
+  /**
+   * المديونيّةُ وجهان: فواتيرُ ضريبيّةٌ من دفتر الفواتير، وكشوفٌ نقديّةٌ لم
+   * تُحصَّل. وكان النقديُّ لا يُحسب أصلًا فيظهر الحسابُ النقديُّ بصفرٍ وعليه
+   * عشراتُ الآلاف — راجع cashAgingByParty في الخادم.
+   */
+  taxOutstanding?: number;
+  cashOutstanding?: number;
   outstanding: number;
   invoiceCount: number;
   bands: Record<string, number>;

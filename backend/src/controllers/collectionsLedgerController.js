@@ -116,6 +116,67 @@ function partyFilter(q = {}) {
  * الاثنتان: ٢٣٧ حسابًا من ٢٥٤ تتطابقان إلى الهللة، والباقي فرقٌ بين لقطةٍ
  * ودفتر — يُعرَض ليُرى، لا يُخفى.
  */
+/**
+ * ── والمستحقُّ النقديُّ ليس في دفتر الفواتير ──────────────────────────────────
+ *
+ * `agingByParty` تقرأ `CollectionInvoice` وحدَها، وهي الفواتيرُ الضريبيّة. أمّا
+ * الحسابُ النقديُّ فلا فاتورةَ له أصلًا — يُحصَّل بالكشف. فكان مئةٌ وسبعةٌ
+ * وعشرون حسابًا نقديًّا تظهر في سجلّ الأعمار **بصفر**، وورقةُ «Aging Shipment»
+ * تقول إنّ خمسةً وعشرين منها عليها ثلاثُمئةٍ وستّةٌ وثمانون ألفًا ومئتان.
+ * أي أنّ الشاشةَ كانت تقول «لا شيءَ على العميل» عن عميلٍ عليه سبعةٌ وسبعون ألفًا.
+ *
+ * والمستحقُّ النقديُّ يُحسب من الكشوف نفسِها لا يُنسَخ رقمًا من ورقة: كشفٌ نقديٌّ
+ * لم يُحصَّل هو دَينٌ قائم. وقد قِيس ذلك بالورقة حسابًا حسابًا فتطابقا — مكتب
+ * الشيخ ٢١٥٠٠ في الاثنين، والزهراني ٩٠٠٠، والراجحي ٩٣٥٠ — فالرقمُ المحسوبُ حيٌّ
+ * ويصحّ، ولا يجمُد يومَ صُدِّرت الورقة.
+ *
+ * والربطُ بالاسم المطويّ: أربعةٌ وسبعون ألفَ... بل ألفان وأربعةٌ وسبعون كشفًا من
+ * ألفين وأربعةٍ وثمانين تجد حسابَها (١٠٠٪)، والعشرةُ الباقية بلا اسم عميلٍ أصلًا.
+ */
+async function cashAgingByParty(parties) {
+  const OperationsWorkflow = require('../models/OperationsWorkflow');
+  const { fold } = CollectionsParty;
+  const byKey = new Map();
+  for (const p of parties) {
+    const k = p.nameKey || fold(p.name || '');
+    if (k) byKey.set(k, String(p._id));
+  }
+  // الكشوفُ النقديّةُ غيرُ المحصَّلة قليلة (مئاتٌ لا آلاف)، فتُقرأ وتُجمَّع هنا:
+  // الطيُّ العربيُّ لا يُكتب في القاعدة، فالمطابقةُ في العقدة أصدقُ من `$in`
+  // على أسماءٍ خامّةٍ تختلف بهمزةٍ أو مسافة.
+  const rows = await OperationsWorkflow.find({
+    paymentType: 'cash',
+    collectionDate: null,
+    cashCollectionStatus: { $ne: 'collected' },
+    username: { $nin: [null, ''] },
+  }).select('username sellingValue reportDate paymentDate').lean();
+
+  const today = startOfToday();
+  const out = new Map();
+  for (const w of rows) {
+    const id = byKey.get(fold(w.username || ''));
+    if (!id) continue;
+    const base = w.reportDate || w.paymentDate || null;
+    const days = base ? Math.floor((today - new Date(base)) / 86400000) : null;
+    const band = days === null ? 'noDate'
+      : days >= 365 ? '1Y+' : days >= 120 ? '120+' : days >= 90 ? '90+'
+        : days >= 60 ? '60+' : days >= 45 ? '60-' : days >= 30 ? '45-'
+          : days >= 15 ? '30-' : '15-';
+    if (!out.has(id)) {
+      out.set(id, {
+        outstanding: 0, count: 0,
+        bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])),
+        counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])),
+      });
+    }
+    const e = out.get(id);
+    const v = Number(w.sellingValue) || 0;
+    e.outstanding += v; e.count += 1;
+    e.bands[band] += v; e.counts[band] += 1;
+  }
+  return out;
+}
+
 async function agingByParty(partyIds) {
   const today = startOfToday();
   // ── والحسابُ في القاعدة لا في العقدة ────────────────────────────────────
@@ -177,11 +238,26 @@ exports.aging = async (req, res) => {
       .select('code name paymentType collectionOfficer hoLocation grade salesManagers department region creditLimit creditDays status')
       .lean();
 
-    const ageMap = await agingByParty(parties.map((p) => p._id));
+    // الضريبيُّ من دفتر الفواتير، والنقديُّ من الكشوف — راجع cashAgingByParty.
+    const [ageMap, cashMap] = await Promise.all([
+      agingByParty(parties.map((p) => p._id)),
+      cashAgingByParty(parties),
+    ]);
     let rows = parties.map((p) => {
-      const a = ageMap.get(String(p._id)) || { outstanding: 0, count: 0, bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])), counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])) };
+      const blank = { outstanding: 0, count: 0, bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])), counts: Object.fromEntries(BANDS.map((b) => [b.key, 0])) };
+      const tax = ageMap.get(String(p._id)) || blank;
+      const cash = cashMap.get(String(p._id)) || blank;
+      // حسابٌ قد يكون له الوجهان (كودُه في الورقتين)، فيُجمَعان لا يُختار أحدُهما.
+      const a = {
+        outstanding: tax.outstanding + cash.outstanding,
+        count: tax.count + cash.count,
+        bands: Object.fromEntries(BANDS.map((b) => [b.key, (tax.bands[b.key] || 0) + (cash.bands[b.key] || 0)])),
+        counts: Object.fromEntries(BANDS.map((b) => [b.key, (tax.counts[b.key] || 0) + (cash.counts[b.key] || 0)])),
+        taxOutstanding: tax.outstanding,
+        cashOutstanding: cash.outstanding,
+      };
       const pct = p.creditLimit > 0 ? (a.outstanding / p.creditLimit) * 100 : null;
-      return { ...p, outstanding: a.outstanding, invoiceCount: a.count, bands: a.bands, bandCounts: a.counts, limitUsedPct: pct };
+      return { ...p, outstanding: a.outstanding, taxOutstanding: a.taxOutstanding, cashOutstanding: a.cashOutstanding, invoiceCount: a.count, bands: a.bands, bandCounts: a.counts, limitUsedPct: pct };
     });
     // شريحةٌ بعينها: تُطبَّق بعد الجمع لا قبله، وإلّا لم تجمع الشرائحُ الإجماليَّ.
     if (band && BANDS.some((b) => b.key === band)) rows = rows.filter((r) => r.bands[band] !== 0);
@@ -383,8 +459,9 @@ exports.alerts = async (req, res) => {
     // لا يعتمد أيٌّ منها على نتيجة الآخر، وكانت تُطلب بالتتابع — فثلاثُ رحلاتٍ
     // إلى العنقود المشترك ثمنُها ثلاثةُ أضعاف الواحدة بلا سبب.
     const cdByCode = new Map(parties.filter((p) => p.creditDays > 0).map((p) => [p.code, p]));
-    const [ageMap, acks, open] = await Promise.all([
+    const [ageMap, cashMap, acks, open] = await Promise.all([
       agingByParty(ids),
+      cashAgingByParty(parties),
       CreditAlertAck.find({ party: { $in: ids } }).lean(),
       CollectionInvoice.find({ ...OPEN, partyCode: { $in: [...cdByCode.keys()] }, deliveryDate: { $ne: null } })
         .select('invoiceNumber partyCode partyName party total deliveryDate invoiceDate').lean(),
@@ -395,7 +472,8 @@ exports.alerts = async (req, res) => {
     const limitAlerts = [];
     for (const p of parties) {
       if (!p.creditLimit || p.creditLimit <= 0) continue;
-      const out = ageMap.get(String(p._id))?.outstanding || 0;
+      // الحدُّ يُقاس على ما على العميل كلِّه — ضريبيًّا كان أم نقديًّا.
+      const out = (ageMap.get(String(p._id))?.outstanding || 0) + (cashMap.get(String(p._id))?.outstanding || 0);
       const pct = (out / p.creditLimit) * 100;
       if (pct < warnPct) continue;
       // الإسكاتُ يسقط إذا ارتفعت المديونيّةُ بعده: «رأيتُه عند ٩٠٪» لا يُسكت ١٢٠٪.
@@ -544,14 +622,19 @@ exports.team = async (req, res) => {
     if (cached) return res.json(cached);
     const parties = await CollectionsParty.find({ kind: 'customer', code: { $gt: '' } })
       .select('code name collectionOfficer creditLimit paymentType').lean();
-    const ageMap = await agingByParty(parties.map((p) => p._id));
+    // الضريبيُّ من دفتر الفواتير، والنقديُّ من الكشوف — راجع cashAgingByParty.
+    const [ageMap, cashMap] = await Promise.all([
+      agingByParty(parties.map((p) => p._id)),
+      cashAgingByParty(parties),
+    ]);
     // (رحلتان لا ثلاث: الثانيةُ تحتاج معرّفاتِ الأولى فلا تُوازى.)
     const byOfficer = new Map();
     for (const p of parties) {
       const k = p.collectionOfficer || '';
       if (!byOfficer.has(k)) byOfficer.set(k, { officer: k, accounts: 0, outstanding: 0, overLimit: 0, tax: 0, cash: 0 });
       const e = byOfficer.get(k);
-      const out = ageMap.get(String(p._id))?.outstanding || 0;
+      // الحدُّ يُقاس على ما على العميل كلِّه — ضريبيًّا كان أم نقديًّا.
+      const out = (ageMap.get(String(p._id))?.outstanding || 0) + (cashMap.get(String(p._id))?.outstanding || 0);
       e.accounts += 1; e.outstanding += out;
       if (p.creditLimit > 0 && out > p.creditLimit) e.overLimit += 1;
       if (p.paymentType === 'cash') e.cash += 1; else e.tax += 1;

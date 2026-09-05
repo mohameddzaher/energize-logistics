@@ -1002,92 +1002,106 @@ exports.cashInvoices = async (req, res) => {
  * الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف، وذلك معتاد. فالصفُّ هنا فاتورةٌ لا
  * كشف، ومعه عددُ كشوفه — ومن أراد تفصيلَها فتحها.
  */
+/**
+ * الفواتيرُ الضريبيّة — من دفتر الفواتير، لا من الكشوف.
+ *
+ * ── لماذا انقلب المصدر ────────────────────────────────────────────────────
+ * كانت هذه الصفحة تُجمِّع كشوفَ التشغيل على رقم الفاتورة. والفاتورةُ لا تُولَد
+ * من كشف: في دفتر التحصيل ثمانيةُ آلافٍ وتسعُمئةٍ وثمانٍ وسبعون فاتورة، ولا
+ * يحمل رقمَها في كشوفنا إلّا خمسُمئةٍ وثمانٍ وخمسون — ستّةٌ في المئة. فكان
+ * أربعةٌ وتسعون في المئة من فواتير الشركة لا تظهر في صفحة اسمُها «الفواتير
+ * الضريبيّة»: يُبحَث عن الفاتورة ١١٨٠٠ فلا تُوجد، وهي في النظام وقيمتُها
+ * ٤٧١٥ ومسلَّمةٌ لصاحبها.
+ *
+ * فالمصدرُ الآن هو الدفتر — وهو ما يقوله نموذجُ CollectionInvoice نفسُه:
+ * الفاتورةُ مستندٌ قائمٌ بنفسه، والكشفُ يُنسَب إليها حين يوجد لا العكس.
+ * وتُلحَق بها كشوفُها متى وُجدت، فيبقى «كم كشفًا تحتها» و«أحُصّلت كلُّها».
+ */
 exports.taxInvoices = async (req, res) => {
   try {
-    // ── وعمرُ الفاتورة يُقاس على الفاتورة، لا على كلّ كشفٍ فيها ────────────
-    // فُلتِرت أوّلًا قبل التجميع، فالفاتورةُ التي تحمل كشوفًا بتواريخَ متفرّقة
-    // كانت تظهر في شريحتين — ومجموعُ الشرائح يزيد على الكلّ، فلا يُعرف كم
-    // فاتورةً في كلّ عمر. الشرطُ الزمنيُّ يُطبَّق بعد التجميع على تاريخها هي.
-    const { [`invoiceDate`]: ageCond, ...rowFilter } = invoiceFilters(req.query, { ageField: 'invoiceDate' });
-    const filter = {
-      ...rowFilter,
-      ...REAL_INVOICE,
-      // ── ولا يصل القسمَ كشفٌ لم يُختَر نوعُ دفعه ────────────────────────────
-      // كُتب الشرطُ أوّلًا «ليس نقديًّا»، وهو يشمل الفارغ — فدخلت الصفحةَ كلُّ
-      // الكشوف القديمة التي تحمل رقمَ فاتورة، أربعةٌ وثلاثون ألفًا لم يُختَر
-      // لواحدٍ منها نوعُ دفع. وظهرت ٥٥٤ «فاتورة» لم يرسلها أحد.
-      //
-      // والقاعدةُ أنّ الكشفَ لا يصل التحصيلَ إلّا باختيارٍ صريح: نقديٌّ فيذهب
-      // إلى فواتير الكاش، أو ضريبيٌّ فيذهب إلى هذه. والفارغُ لم يُقرَّر بعد.
-      paymentType: 'tax',
-    };
-
+    const CollectionInvoice = require('../models/CollectionInvoice');
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
-    const grouped = await OperationsWorkflow.aggregate([
-      { $match: filter },
-      {
-        $group: {
-          _id: '$invoiceNumber',
-          // العميلُ والتواريخُ تُؤخَذ من أوّل كشفٍ في الفاتورة — وهي واحدةٌ
-          // فيها كلِّها في العمل الطبيعيّ.
-          customer: { $first: '$username' },
-          invoiceDate: { $max: '$invoiceDate' },
-          deliveryDate: { $max: '$deliveryDate' },
-          branch: { $first: '$branch' },
-          payingBranch: { $first: '$payingBranch' },
-          value: { $sum: { $ifNull: ['$totalInvoice', 0] } },
-          net: { $sum: { $ifNull: ['$netInvoice', 0] } },
-          vat: { $sum: { $ifNull: ['$tax', 0] } },
-          reports: { $sum: 1 },
-          // الفاتورةُ تُعدّ محصَّلةً حين تُحصَّل كشوفُها كلُّها — لا بعضُها.
-          collectedReports: { $sum: { $cond: [{ $ifNull: ['$collectionDate', false] }, 1, 0] } },
-          collectionDate: { $max: '$collectionDate' },
-        },
-      },
-      // الشرطُ الزمنيُّ هنا — على تاريخ الفاتورة المجمَّع.
-      ...(ageCond ? [{ $match: { invoiceDate: ageCond } }] : []),
-      { $sort: { invoiceDate: -1, _id: -1 } },
-      {
-        $facet: {
-          rows: [{ $skip: (page - 1) * limit }, { $limit: limit }],
-          count: [{ $count: 'n' }],
-          totals: [{
-            $group: {
-              _id: null,
-              value: { $sum: '$value' },
-              invoices: { $sum: 1 },
-              fullyCollected: { $sum: { $cond: [{ $eq: ['$reports', '$collectedReports'] }, 1, 0] } },
-            },
-          }],
-        },
-      },
-    ]).allowDiskUse(true);
+    // فلاترُ الدفتر — بمعاني الصفحة نفسِها لا بحقول الكشوف.
+    const f = { kind: { $ne: 'cash' } };
+    if (req.query.customer) f.partyName = flexSpaceRegex(String(req.query.customer));
+    if (req.query.q) {
+      const { exact, loose } = numberSearchRegex(String(req.query.q));
+      const rx = exact || loose;
+      f.$or = [{ invoiceNumber: rx }, { partyName: exact ? rx : loose }, { partyCode: rx }];
+    }
+    if (req.query.collected === 'yes') f.$and = [...(f.$and || []), { $or: [{ collectionDate: { $ne: null } }, { status: /collected/i }] }];
+    else if (req.query.collected === 'no') f.$and = [...(f.$and || []), { collectionDate: null, status: { $not: /collected/i } }];
+    if (req.query.from || req.query.to) {
+      f.invoiceDate = {};
+      if (req.query.from) f.invoiceDate.$gte = new Date(req.query.from);
+      if (req.query.to) f.invoiceDate.$lte = new Date(`${req.query.to}T23:59:59.999Z`);
+    }
+    if (req.query.age) {
+      const c = ageCondition('invoiceDate', String(req.query.age));
+      if (c.invoiceDate) f.invoiceDate = { ...(f.invoiceDate || {}), ...c.invoiceDate };
+    }
 
-    const f = grouped[0] || { rows: [], count: [], totals: [] };
-    const total = f.count[0]?.n || 0;
-    const t = f.totals[0] || { value: 0, invoices: 0, fullyCollected: 0 };
+    const [rows, total, totalsAgg] = await Promise.all([
+      CollectionInvoice.find(f).sort({ invoiceDate: -1, _id: -1 })
+        .skip((page - 1) * limit).limit(limit).lean(),
+      CollectionInvoice.countDocuments(f),
+      CollectionInvoice.aggregate([
+        { $match: f },
+        { $group: {
+          _id: null,
+          value: { $sum: '$total' },
+          invoices: { $sum: 1 },
+          fullyCollected: { $sum: { $cond: [{ $or: [{ $ifNull: ['$collectionDate', false] }, { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /collected/i } }] }, 1, 0] } },
+        } },
+      ]),
+    ]);
+
+    // كشوفُ هذه الصفحة وحدَها — لا الدفترِ كلِّه: استعلامٌ صغيرٌ على مئةِ رقم.
+    const nums = rows.map((r) => r.invoiceNumber).filter(Boolean);
+    const repAgg = nums.length ? await OperationsWorkflow.aggregate([
+      { $match: { invoiceNumber: { $in: nums }, ...NOT_CANCELLED } },
+      { $group: {
+        _id: '$invoiceNumber',
+        reports: { $sum: 1 },
+        collectedReports: { $sum: { $cond: [{ $ifNull: ['$collectionDate', false] }, 1, 0] } },
+        branch: { $first: '$branch' },
+        payingBranch: { $first: '$payingBranch' },
+      } },
+    ]) : [];
+    const byNo = new Map(repAgg.map((r) => [r._id, r]));
+
+    const t = totalsAgg[0] || { value: 0, invoices: 0, fullyCollected: 0 };
     const now = Date.now();
 
     res.json({
-      invoices: f.rows.map((g) => ({
-        invoiceNumber: g._id,
-        customer: g.customer || '',
-        value: r2(g.value),
-        net: r2(g.net),
-        vat: r2(g.vat),
-        invoiceDate: g.invoiceDate,
-        deliveryDate: g.deliveryDate,
-        branch: g.branch || '',
-        payingBranch: g.payingBranch || '',
-        reports: g.reports,
-        collectedReports: g.collectedReports,
-        // محصَّلةٌ تمامًا أم بعضُها — والفرقُ يُقال، لا يُقرَّب.
-        fullyCollected: g.reports === g.collectedReports,
-        collectionDate: g.reports === g.collectedReports ? g.collectionDate : null,
-        ageDays: g.invoiceDate ? Math.floor((now - new Date(g.invoiceDate).getTime()) / 86400000) : null,
-      })),
+      invoices: rows.map((i) => {
+        const rep = byNo.get(i.invoiceNumber);
+        // ── والمحصَّلُ يُقرأ من الدفتر أوّلًا ────────────────────────────────
+        // الدفترُ يقول «محصَّلة» ولو لم يكن لها كشفٌ عندنا؛ وكشوفُنا تُكمِّل
+        // الصورةَ ولا تنقضها.
+        const collected = !!i.collectionDate || /collected/i.test(i.status || '');
+        return {
+          invoiceNumber: i.invoiceNumber,
+          customer: i.partyName || '',
+          partyCode: i.partyCode || '',
+          value: r2(i.total),
+          // الصافي والضريبة يُشتقّان من الإجمالي حين لا يذكرهما الدفتر.
+          net: r2(i.total / 1.15),
+          vat: r2(i.total - i.total / 1.15),
+          invoiceDate: i.invoiceDate,
+          deliveryDate: i.deliveryDate,
+          branch: rep?.branch || '',
+          payingBranch: rep?.payingBranch || '',
+          reports: rep?.reports || 0,
+          collectedReports: rep?.collectedReports || 0,
+          fullyCollected: collected,
+          collectionDate: i.collectionDate || null,
+          status: i.status || '',
+          ageDays: i.invoiceDate ? Math.floor((now - new Date(i.invoiceDate).getTime()) / 86400000) : null,
+        };
+      }),
       total,
       page,
       limit,
@@ -1267,11 +1281,19 @@ exports.invoiceFilterOptions = async (req, res) => {
     const base = kind === 'cash'
       ? { paymentType: 'cash', ...NOT_CANCELLED }
       : { ...REAL_INVOICE, paymentType: 'tax', ...NOT_CANCELLED };
+    // ── وقائمةُ العملاء تتبع مصدرَ الصفحة ────────────────────────────────────
+    // الضريبيّةُ صارت تُقرأ من دفتر الفواتير، وفيه ثمانيةُ آلافٍ من الفواتير
+    // لأصحابٍ لا كشفَ لهم عندنا. فقائمةٌ مبنيّةٌ على أسماء الكشوف تعرض ستّةً في
+    // المئة من عملاء الصفحة، فيبحث المستخدمُ عن عميلٍ يراه في الجدول ولا يجده
+    // في الفلتر.
+    const CollectionInvoice = require('../models/CollectionInvoice');
     const [customers, branches] = await Promise.all([
-      OperationsWorkflow.distinct('username', { ...base, username: { $nin: [null, ''] } }),
+      kind === 'cash'
+        ? OperationsWorkflow.distinct('username', { ...base, username: { $nin: [null, ''] } })
+        : CollectionInvoice.distinct('partyName', { kind: { $ne: 'cash' }, partyName: { $nin: [null, ''] } }),
       OperationsWorkflow.distinct('payingBranch', { ...base, payingBranch: { $nin: [null, ''] } }),
     ]);
-    res.json({ customers: customers.sort().slice(0, 1000), branches: branches.sort() });
+    res.json({ customers: customers.sort().slice(0, 2000), branches: branches.sort() });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تحميل الفلاتر', error: e.message });
   }

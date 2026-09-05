@@ -38,6 +38,8 @@ interface TaxRow {
   invoiceDate: string | null; deliveryDate: string | null; branch: string; payingBranch: string;
   reports: number; collectedReports: number; fullyCollected: boolean;
   collectionDate: string | null; ageDays: number | null;
+  /** كودُ الحساب في دفتر التحصيل، وحالتُه كما يقولها الدفتر. */
+  partyCode?: string; status?: string;
 }
 
 /**
@@ -403,9 +405,19 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                   <td className="px-3 py-2.5 text-slate-700">{r.customer || '—'}</td>
                   {/* عددُ الكشوفات: الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف. */}
                   <td className="px-3 py-2.5 tabular-nums text-slate-600">
-                    {r.reports}
-                    {r.reports > r.collectedReports && r.collectedReports > 0 && (
-                      <span className="text-[11px] text-amber-600 ms-1">({r.collectedReports} {t('محصَّل', 'collected')})</span>
+                    {/* ── وفاتورةٌ بلا كشفٍ عندنا ليست فاتورةً ناقصة ──────────
+                        دفترُ التحصيل فيه فواتيرُ سنواتٍ سابقةٍ لا كشوفَ لها في
+                        النظام أصلًا — أربعةٌ وتسعون في المئة منها. فيُقال «لا
+                        كشوف» لا «صفر»، فالصفرُ يُقرأ نقصًا وليس به. */}
+                    {r.reports > 0 ? (
+                      <>
+                        {r.reports}
+                        {r.reports > r.collectedReports && r.collectedReports > 0 && (
+                          <span className="text-[11px] text-amber-600 ms-1">({r.collectedReports} {t('محصَّل', 'collected')})</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">{t('لا كشوف', 'no reports')}</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-900">{money(r.value)}</td>
